@@ -12,6 +12,11 @@
  * hands. The felt reports its size through `onLayout` so the screen can size
  * the geometry to it. Overlays (flashes, toasts) and the betting spot are
  * passed as children and drawn on top.
+ *
+ * Motion (#3581): the cards are drawn by FeltCards (dealt, slid and turned on
+ * the UI thread), the moving chips by FeltChips, and the result banner and a
+ * split hand's result pop in while the motion runs. The screen's motion
+ * (useBlackjackMotion) decides what is shown when.
  */
 import React from "react";
 import { View, Text, StyleSheet, type LayoutChangeEvent } from "react-native";
@@ -20,14 +25,33 @@ import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { HandResponse } from "../../game/blackjack/types";
 import { showsResult, type TableGeometry, type Rect } from "../../game/blackjack/layout";
-import FannedHand from "./FannedHand";
-import { feltColor } from "./tableColors";
+import FeltCards, { type FeltHand } from "./FeltCards";
+import { FeltChips, PopIn } from "./FeltChips";
+import { ChipFace } from "./ChipButton";
+
+/** The stake chip beside a hand's total. */
+const STAKE_CHIP = 11;
+import { feltColor, naturalColors } from "./tableColors";
 import ResultBanner from "./ResultBanner";
+import {
+  BANNER_POP_MS,
+  dealOrigin,
+  TAG_POP_MS,
+  type CardIds,
+  type ChipShown,
+} from "./blackjackMotion";
+import type { CardMotion, FeltNatural } from "./useBlackjackMotion";
+import { NaturalSweep } from "./NaturalMoment";
 
 export interface FeltResult {
   outcome: string;
   payout: number;
   detail: string | null;
+  /**
+   * A split round's summary ("Won: 1 · Lost: 2"), shown in the strip in place of the outcome's
+   * words (#3581 spec, #3720 round 2); null for one hand.
+   */
+  summary?: string | null;
 }
 
 interface Props {
@@ -40,9 +64,31 @@ interface Props {
   handOutcomes: readonly (string | null)[];
   handPayouts: readonly number[];
   result: FeltResult | null;
+  /** Each card's id (#3581); left out: by place. */
+  cardIds?: CardIds;
+  /** How the cards move (#3581); left out: they never do. */
+  cardMotion?: CardMotion;
+  /** Hands whose own result shows (a split round reveals them in turn); left out: all. */
+  revealedHands?: number;
+  /**
+   * The dealer's total reads "?" (#3581: until the hole card has turned); left out: while the
+   * player plays and the hole card is down.
+   */
+  dealerConcealed?: boolean;
+  /** Chips moving on the felt. */
+  chips?: readonly ChipShown[];
+  /** The moving chips' colour (the table's accent). */
+  chipColor?: string;
+  /** The motion is running: a result shown now pops in. */
+  animating?: boolean;
+  /** The naturals marked, and the player's natural moment (#3621); left out: none. */
+  natural?: FeltNatural;
   onLayout?: (e: LayoutChangeEvent) => void;
   children?: React.ReactNode;
 }
+
+const STILL: CardMotion = { dealing: new Set(), flipping: new Set(), slideMs: 0, epoch: 0 };
+const NO_NATURAL: FeltNatural = { player: false, dealer: false, since: null };
 
 type Tone = "plain" | "active" | "bust" | "win" | "lose" | "push";
 
@@ -134,6 +180,12 @@ interface HandLabelProps {
   outcome: string | null;
   /** A split hand's own payout once the result shows, else null. */
   payout: number | null;
+  /** A split hand's result pops in as it is revealed. */
+  pops: boolean;
+  /** The stake chip's colour (the table's chips). */
+  chipColor: string;
+  /** The cards' landing epoch: a new one shows a pop-in at once. */
+  epoch: number;
 }
 
 function HandLabel({
@@ -148,6 +200,9 @@ function HandLabel({
   bet,
   outcome,
   payout,
+  pops,
+  epoch,
+  chipColor,
 }: HandLabelProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -166,24 +221,6 @@ function HandLabel({
   ]
     .filter(Boolean)
     .join(", ");
-  const payoutNode =
-    payoutText === null ? null : (
-      <Text
-        testID="hand-payout"
-        style={[
-          styles.payout,
-          styles.shrink,
-          {
-            color: payout! > 0 ? colors.bonus : payout! < 0 ? colors.error : colors.textMuted,
-          },
-        ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.75}
-      >
-        {compact && payout !== null ? (payout > 0 ? `+${payout}` : String(payout)) : payoutText}
-      </Text>
-    );
 
   return (
     <View
@@ -210,14 +247,92 @@ function HandLabel({
           label={t("a11y.playerScore", { score: valueText })}
         />
         {bet != null && payoutText === null && (
-          <Text style={[styles.bet, { color: colors.celebration, fontFamily: typography.heading }]}>
-            ● {bet}
-          </Text>
+          // The stake: a chip (decorative) beside the amount (#3720, as the mockup). The amount
+          // shrinks to fit a tight row label; the label's accessibility name says the bet.
+          <View style={[styles.stake, styles.shrink]}>
+            <ChipFace testID="hand-stake-chip" size={STAKE_CHIP} color={chipColor} />
+            <Text
+              testID="hand-bet"
+              style={[
+                styles.bet,
+                styles.shrink,
+                { color: colors.celebration, fontFamily: typography.heading },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {bet}
+            </Text>
+          </View>
         )}
-        {payoutNode}
+        {payoutText !== null && payout !== null && (
+          // A split hand's own result: it pops in as the hands are revealed in turn (#3581).
+          <PopIn
+            animate={pops}
+            epoch={epoch}
+            durationMs={TAG_POP_MS}
+            fromScale={0.8}
+            style={styles.shrink}
+          >
+            <View style={[styles.labelLine, styles.shrink]}>
+              {outcome !== null && <HandTag outcome={outcome} />}
+              <PayoutText payout={payout} text={payoutText} compact={compact} />
+            </View>
+          </PopIn>
+        )}
       </View>
     </View>
   );
+}
+
+/** A split hand's WIN / LOSE / PUSH tag, popping in with its chips (#3581 spec). */
+function HandTag({ outcome }: { outcome: string }) {
+  const { t } = useTranslation("blackjack");
+  const { colors } = useTheme();
+  const key =
+    outcome === "win" || outcome === "blackjack" ? "win" : outcome === "lose" ? "lose" : "push";
+  const color = key === "win" ? colors.bonus : key === "lose" ? colors.error : colors.textMuted;
+  return (
+    <Text
+      testID="hand-tag"
+      style={[
+        styles.tag,
+        styles.shrink,
+        { color, borderColor: color, fontFamily: typography.heading },
+      ]}
+      // A longer word (a translation) shrinks to fit the row's label column, never overflows it.
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.7}
+    >
+      {t(`tag.${key}` as Parameters<typeof t>[0])}
+    </Text>
+  );
+}
+
+function PayoutText({ payout, text, compact }: { payout: number; text: string; compact: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <Text
+      testID="hand-payout"
+      style={[
+        styles.payout,
+        styles.shrink,
+        { color: payout > 0 ? colors.bonus : payout < 0 ? colors.error : colors.textMuted },
+      ]}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.75}
+    >
+      {compact ? (payout > 0 ? `+${payout}` : String(payout)) : text}
+    </Text>
+  );
+}
+
+/** A chip's stake: its hand's label (the bet shows there), or the betting circle. */
+function stakeOf(geometry: TableGeometry, chip: ChipShown): Rect | null {
+  return chip.kind === "bet" ? geometry.betSpot : (geometry.hands[chip.hand]?.label ?? null);
 }
 
 function HandBox({ rect, active, rows }: { rect: Rect; active: boolean; rows: boolean }) {
@@ -240,6 +355,63 @@ function HandBox({ rect, active, rows }: { rect: Rect; active: boolean; rows: bo
   );
 }
 
+/**
+ * The cards FeltCards draws: the dealer's (unless collapsed beside the result), then each hand's,
+ * with a natural's edges (#3621): the dealer's silver, and one hand's gold with its moment.
+ */
+function feltHandsOf(p: {
+  readonly geometry: TableGeometry;
+  readonly dealerHand: HandResponse;
+  readonly hands: readonly HandResponse[];
+  readonly cardIds: CardIds | undefined;
+  readonly isPlayed: (i: number) => boolean;
+  readonly natural: FeltNatural;
+}): FeltHand[] {
+  const { geometry, dealerHand, hands, cardIds, isPlayed, natural } = p;
+  const gold = natural.player && hands.length === 1;
+  return [
+    ...(dealerHand.cards.length > 0 && !geometry.dealer.collapsed
+      ? [
+          {
+            id: "dealer",
+            cards: dealerHand.cards,
+            ids: cardIds?.dealer ?? [],
+            fan: geometry.dealer.fan,
+            natural: natural.dealer ? ("silver" as const) : null,
+          },
+        ]
+      : []),
+    ...hands.flatMap((hand, i) => {
+      const g = geometry.hands[i];
+      if (!g) return [];
+      return [
+        {
+          id: `hand-${i}`,
+          cards: hand.cards,
+          ids: cardIds?.hands[i] ?? [],
+          fan: g.fan,
+          dimmed: isPlayed(i),
+          natural: gold ? ("gold" as const) : null,
+          moment: gold ? natural.since : null,
+        },
+      ];
+    }),
+  ];
+}
+
+/** The player's natural moment's light sweep, while it plays (#3621). */
+function sweepOf(natural: FeltNatural, geometry: TableGeometry) {
+  if (natural.since === null) return null;
+  return (
+    <NaturalSweep
+      key={natural.since}
+      since={natural.since}
+      feltWidth={geometry.feltWidth}
+      feltHeight={geometry.feltHeight}
+    />
+  );
+}
+
 export default function TableFelt({
   geometry,
   phase,
@@ -250,17 +422,28 @@ export default function TableFelt({
   handOutcomes,
   handPayouts,
   result,
+  cardIds,
+  cardMotion = STILL,
+  revealedHands,
+  dealerConcealed,
+  chips = [],
+  chipColor,
+  animating = false,
+  natural = NO_NATURAL,
   onLayout,
   children,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const playing = phase === "player";
   const showResult = showsResult(phase) && result !== null;
   const split = hands.length > 1;
   const rows = geometry.mode === "rows";
   const compact = rows || geometry.mode === "grid";
-  const concealed = playing && dealerHand.cards.some((c) => c.face_down);
-
+  const concealed = dealerConcealed ?? (playing && dealerHand.cards.some((c) => c.face_down));
+  const revealed = revealedHands ?? hands.length;
+  // While the dealer plays every hand is played: none is outlined, all are dimmed.
+  const isPlayed = (i: number) => playing && split && i < activeHandIndex;
+  const feltHands = feltHandsOf({ geometry, dealerHand, hands, cardIds, isPlayed, natural });
   return (
     <View
       testID="blackjack-felt"
@@ -296,16 +479,17 @@ export default function TableFelt({
               compact={geometry.dealer.collapsed}
             />
           </View>
-          {!geometry.dealer.collapsed && (
-            <FannedHand cards={dealerHand.cards} fan={geometry.dealer.fan} id="dealer" />
-          )}
         </>
       )}
 
       {/* Result, between the dealer and the hands */}
       {showResult && geometry.result && (
-        <View
+        <PopIn
           testID="blackjack-felt-result"
+          animate={animating}
+          epoch={cardMotion.epoch}
+          durationMs={BANNER_POP_MS}
+          fromScale={0.9}
           style={[styles.abs, styles.result, abs(geometry.result)]}
         >
           <ResultBanner
@@ -314,34 +498,51 @@ export default function TableFelt({
             outcome={result.outcome}
             payout={result.payout}
             detail={result.detail}
+            summary={result.summary ?? null}
           />
-        </View>
+        </PopIn>
       )}
 
       {/* Player hand(s) */}
       {hands.map((hand, i) => {
         const g = geometry.hands[i];
         if (!g) return null;
-        const played = playing && split && i < activeHandIndex;
+        const played = isPlayed(i);
+        const shows = showResult && i < revealed;
         return (
-          <React.Fragment key={`hand-${i}`}>
-            <HandLabel
-              hand={hand}
-              index={i}
-              rect={g.label}
-              rows={rows}
-              compact={compact}
-              split={split}
-              active={playing && i === activeHandIndex}
-              played={played}
-              bet={handBets[i]}
-              outcome={showResult ? (handOutcomes[i] ?? (split ? "push" : result.outcome)) : null}
-              payout={showResult && split ? (handPayouts[i] ?? 0) : null}
-            />
-            <FannedHand cards={hand.cards} fan={g.fan} id={`hand-${i}`} dimmed={played} />
-          </React.Fragment>
+          <HandLabel
+            key={`hand-${i}`}
+            hand={hand}
+            index={i}
+            rect={g.label}
+            rows={rows}
+            compact={compact}
+            split={split}
+            active={playing && i === activeHandIndex}
+            played={played}
+            bet={handBets[i]}
+            outcome={shows ? (handOutcomes[i] ?? (split ? "push" : result.outcome)) : null}
+            payout={shows && split ? (handPayouts[i] ?? 0) : null}
+            pops={animating}
+            epoch={cardMotion.epoch}
+            chipColor={chipColor ?? colors.accent}
+          />
         );
       })}
+
+      {/* A natural's light sweep across the felt, under the cards (#3621). */}
+      {sweepOf(natural, geometry)}
+      {/* The cards, above the labels and the result: a dealt card flies in over them. */}
+      <FeltCards hands={feltHands} motion={cardMotion} origin={dealOrigin(geometry.feltWidth)} />
+      <FeltChips
+        chips={chips}
+        feltWidth={geometry.feltWidth}
+        feltHeight={geometry.feltHeight}
+        stakeOf={(chip) => stakeOf(geometry, chip)}
+        color={chipColor ?? colors.accent}
+        rim={colors.surface}
+        naturalRim={naturalColors(theme).gold}
+      />
 
       {children}
     </View>
@@ -399,9 +600,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
+  stake: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
   payout: {
     fontSize: 11,
     fontWeight: "700",
+  },
+  tag: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    overflow: "hidden",
   },
   shrink: {
     flexShrink: 1,

@@ -13,7 +13,9 @@ name: Mobile Smoke — Android
 #    Maestro-relevant (the job is then skipped). Workflow edits that aren't
 #    Maestro's own don't run it (#3546). This is the per-PR Maestro leg; the
 #    iOS leg runs on PRs into dev only for native/iOS changes (#3547).
-#  - workflow_dispatch: manual, always the full suite.
+#  - workflow_dispatch: manual, the full suite, or with `flows: cascade-demo`
+#    only the Cascade demo flows (#3705; docs/MAESTRO.md, "Cascade demo
+#    flows"). Every other run leaves the `demo`-tagged flows out.
 #  - schedule: weekly full suite on the default branch (`dev`). It gives
 #    ongoing signal and is the run that writes the Gradle/Metro caches PR runs
 #    restore (runs off `dev` are read-only, see setup-gradle below). A scheduled run
@@ -27,6 +29,12 @@ on:
     branches: [dev, main]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+    inputs:
+      flows:
+        description: "full = every flow directory; cascade-demo = only the Cascade demo flows (records video, #3705)"
+        type: choice
+        options: [full, cascade-demo]
+        default: full
   schedule:
     # Mondays 09:23 UTC (off-peak; off the hour to dodge scheduler load).
     - cron: "23 9 * * 1"
@@ -39,7 +47,9 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  # A dispatch's group includes its `flows` input (#3705), so a demo dispatch
+  # neither queues behind nor cancels a full run on the same commit.
+  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -48,6 +58,9 @@ jobs:
     # maestro job below needs this one, so it is skipped too.
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: ./.github/workflows/detect-maestro-scope.yml
+    with:
+      # Empty on every event but workflow_dispatch (#3705).
+      flows: ${{ inputs.flows }}
 
   maestro-android:
     name: Maestro Android smoke
@@ -55,6 +68,19 @@ jobs:
     if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # One place for the emulator image: the pre-download step and the
+      # emulator step both read these.
+      EMULATOR_API_LEVEL: "34"
+      EMULATOR_TARGET: google_apis
+      EMULATOR_ARCH: x86_64
+      # Demo flows (tag `demo`, #3705) run only in a `flows: cascade-demo`
+      # dispatch; every other run leaves them out.
+      MAESTRO_TAG_ARG: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && '--include-tags=demo' || '--exclude-tags=demo' }}
+      # Scope outputs go to the scripts through env, never `${{ }}` inside a
+      # run:/script: body, so no output text is ever parsed as shell.
+      MAESTRO_PROJECTS: ${{ needs.detect-maestro-scope.outputs.projects }}
+      MAESTRO_LABEL: ${{ needs.detect-maestro-scope.outputs.label }}
     steps:
       # PR #3543's first run was killed mid native build ("The runner has
       # received a shutdown signal" during buildCMakeDebug, run 41580554078):
@@ -156,12 +182,40 @@ jobs:
           df -h
           free -m
 
+      # The emulator step below downloads its system image itself, once, and a
+      # corrupt download ("Error reading Zip content from a
+      # SeekableByteChannel", #3668 and #3674) still exits 0, so the emulator
+      # then fails to boot and the job waits on a manual re-run (#3705).
+      # Install it here first, check the image is really on disk, and retry a
+      # bad download from scratch. The emulator step's own install then finds
+      # it installed and skips the download. A retry rather than a cache: the
+      # image is about 1.5 GB of the repo's 10 GB cache quota.
+      - name: Download the emulator system image (retried)
+        run: |
+          PKG="system-images;android-${EMULATOR_API_LEVEL};${EMULATOR_TARGET};${EMULATOR_ARCH}"
+          IMG_DIR="$ANDROID_HOME/system-images/android-${EMULATOR_API_LEVEL}/${EMULATOR_TARGET}/${EMULATOR_ARCH}"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          for attempt in 1 2 3; do
+            yes | "$SDKMANAGER" --install "$PKG" --channel=0 > sdkmanager.log 2>&1 || true
+            tail -n 5 sdkmanager.log
+            if ! grep -q "An error occurred while preparing" sdkmanager.log \
+               && [ -f "$IMG_DIR/package.xml" ] && [ -f "$IMG_DIR/system.img" ]; then
+              echo "System image ready: $IMG_DIR (attempt $attempt)"
+              exit 0
+            fi
+            echo "::warning::System image download attempt $attempt failed or is incomplete; removing it"
+            rm -rf "$IMG_DIR" "$ANDROID_HOME/.temp"
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+          echo "::error::Could not download $PKG after 3 attempts (see sdkmanager.log above)"
+          exit 1
+
       - name: Run Maestro flows on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
+          api-level: ${{ env.EMULATOR_API_LEVEL }}
+          target: ${{ env.EMULATOR_TARGET }}
+          arch: ${{ env.EMULATOR_ARCH }}
           profile: pixel_6
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
@@ -219,15 +273,17 @@ jobs:
           # date and time as two arguments), so an older game's ANR isn't
           # shown again. Readable without root; each capped at 400 lines. Kept on one line: the emulator
           # action runs each script line in its own sh -c.
+          # $MAESTRO_TAG_ARG (job env) is --exclude-tags=demo, or
+          # --include-tags=demo in a `flows: cascade-demo` dispatch (#3705).
           script: |
             adb shell settings put global hide_error_dialogs 1
             adb shell settings put secure anr_show_background 0
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; exit $FAIL
+            FAIL=0; for d in $MAESTRO_PROJECTS; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output $MAESTRO_TAG_ARG "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; exit $FAIL
 
       - name: Write job summary
         if: always()
-        run: python3 e2e/maestro/summarize.py "Android" "${{ needs.detect-maestro-scope.outputs.label }}" "${{ needs.detect-maestro-scope.outputs.projects }}"
+        run: python3 e2e/maestro/summarize.py "Android" "$MAESTRO_LABEL" "$MAESTRO_PROJECTS"
 
       # Artifacts aren't always reachable (e.g. from sandboxed agents), so print
       # the failed command, its error, the drag-relevant element bounds from the
@@ -248,6 +304,27 @@ jobs:
             ~/.maestro/tests/
           if-no-files-found: warn
           retention-days: 7
+
+      # Every flow's named `takeScreenshot` and `startRecording` output, on
+      # success too (#3705), so a PR can show its change running on a device.
+      # Maestro 1.x writes both to the working directory (the workspace root);
+      # ~/.maestro/tests/ is listed too in case a CLI version writes them to
+      # its test output directory instead. Cost: artifact storage only,
+      # bounded by the 14-day retention.
+      - name: Upload screenshots and recordings
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: maestro-android-media
+          path: |
+            *.png
+            *.mp4
+            ~/.maestro/tests/**/*.png
+            ~/.maestro/tests/**/*.mp4
+          # A demo dispatch exists to produce media, so none is an error there;
+          # normal runs are unaffected.
+          if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
+          retention-days: 14
 
       - name: Upload failure screenshots
         uses: actions/upload-artifact@v7

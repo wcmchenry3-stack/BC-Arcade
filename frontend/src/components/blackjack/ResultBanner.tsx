@@ -14,6 +14,29 @@ interface Props {
    */
   variant?: "card" | "felt";
   detail?: string | null;
+  /** "felt": a split round's summary ("Won: 1 · Lost: 2") in place of the outcome's words. */
+  summary?: string | null;
+}
+
+/** The outcome's words. On the felt a natural says what it pays: "Blackjack! 3:2" (#3621). */
+function outcomeKeyOf(outcome: string, variant: "card" | "felt"): string {
+  return variant === "felt" && outcome === "blackjack"
+    ? "outcome.blackjackNatural"
+    : `outcome.${outcome}`;
+}
+
+/**
+ * The felt outcome's spoken label: a split round's summary after its outcome; a natural, what it
+ * pays in words ("Blackjack, pays 3 to 2", not "3 colon 2"); else its text.
+ */
+function feltLabelOf(
+  t: (key: string) => string,
+  outcome: string,
+  outcomeText: string,
+  summary: string | null
+): string | undefined {
+  if (summary !== null) return `${outcomeText}. ${summary}`;
+  return outcome === "blackjack" ? t("outcome.blackjackNaturalLabel") : undefined;
 }
 
 export default function ResultBanner({
@@ -22,12 +45,12 @@ export default function ResultBanner({
   compact = false,
   variant = "card",
   detail,
+  summary = null,
 }: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
-  const outcomeKey = `outcome.${outcome}` as const;
-  const outcomeText = t(outcomeKey as Parameters<typeof t>[0]);
+  const outcomeText = t(outcomeKeyOf(outcome, variant) as Parameters<typeof t>[0]);
 
   // Per-outcome accent color: blackjack=tertiary lime, win=bonus green,
   // lose=error red, push=textMuted
@@ -77,8 +100,14 @@ export default function ResultBanner({
               { color: accentColor },
             ]}
             numberOfLines={1}
+            accessibilityLabel={feltLabelOf(
+              (key) => t(key as Parameters<typeof t>[0]),
+              outcome,
+              outcomeText,
+              summary
+            )}
           >
-            {outcomeText}
+            {summary ?? outcomeText}
           </Text>
           <Text
             style={[styles.feltPayout, compact && styles.feltPayoutCompact, { color: payoutColor }]}

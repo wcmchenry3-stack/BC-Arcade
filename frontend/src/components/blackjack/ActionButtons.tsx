@@ -14,6 +14,11 @@ interface Props {
   onSplit: () => void;
   doubleDownAvailable: boolean;
   splitAvailable: boolean;
+  /**
+   * Every button greyed and off: the dealer's turn is still playing out on the felt (owner
+   * decision, #3720), so the result's dock only replaces this one when the result shows.
+   */
+  disabled?: boolean;
 }
 
 const ICON_SIZE = 20;
@@ -23,9 +28,12 @@ export default function ActionButtons({
   onStand,
   onDoubleDown,
   onSplit,
-  doubleDownAvailable,
-  splitAvailable,
+  doubleDownAvailable: canDouble,
+  splitAvailable: canSplit,
+  disabled = false,
 }: Props) {
+  const doubleDownAvailable = canDouble && !disabled;
+  const splitAvailable = canSplit && !disabled;
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -50,10 +58,13 @@ export default function ActionButtons({
             shadowRadius: 12,
             elevation: 6,
           },
+          disabled && styles.off,
         ]}
         onPress={onHit}
+        disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={t("actions.hitLabel")}
+        accessibilityState={{ disabled }}
       >
         <MaterialIcons name="add" size={ICON_SIZE} color={colors.textOnAccent} />
         <Text style={[styles.btnLabel, { color: colors.textOnAccent }]}>{t("actions.hit")}</Text>
@@ -61,10 +72,17 @@ export default function ActionButtons({
 
       {/* Stand — secondary purple outline */}
       <Pressable
-        style={[styles.btn, styles.dockBtn, { borderColor: colors.secondary, borderWidth: 2 }]}
+        style={[
+          styles.btn,
+          styles.dockBtn,
+          { borderColor: colors.secondary, borderWidth: 2 },
+          disabled && styles.off,
+        ]}
         onPress={onStand}
+        disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={t("actions.standLabel")}
+        accessibilityState={{ disabled }}
       >
         {/* hand-back-right is the closest MCI equivalent to Material Symbols front_hand */}
         <MaterialCommunityIcons name="hand-back-right" size={ICON_SIZE} color={colors.secondary} />
@@ -124,6 +142,9 @@ export default function ActionButtons({
 }
 
 const styles = StyleSheet.create({
+  off: {
+    opacity: 0.4,
+  },
   dock: {
     flexDirection: "row",
     gap: 8,

@@ -332,8 +332,7 @@ for (const locale of LOCALES) {
       // Registered first so the entitlements mock (registered later) wins.
       await page.route("http://localhost:8000/**", (route) => route.abort());
       await installEntitlementsMock(page);
-      // Sort fetches its levels from the API; without them it shows a retry
-      // state instead of the level-select screen a player sees.
+      // Sort's levels ship in the app (#2761); this mocks its leaderboard.
       await mockSortApi(page);
       // Daily Word fetches today's puzzle; without it the board never shows.
       await mockDailyWordApi(page);
@@ -394,4 +393,59 @@ for (const locale of LOCALES) {
       });
     }
   });
+}
+
+/**
+ * The Yacht board (#3748), not just its mode picker: the thumb tray's scorecard, hint, Roll and
+ * action bar in en, es and fr-CA (the longest words) at 320 pt (iPhone SE class and smaller) and
+ * 390 pt, solo and VS, after a roll with a die held, and during the computer's turn.
+ */
+const YACHT_BOARD_VIEWPORTS = [
+  { width: 320, height: 568 },
+  { width: 390, height: 844 },
+] as const;
+
+for (const locale of LOCALES) {
+  for (const viewport of YACHT_BOARD_VIEWPORTS) {
+    test.describe(`Yacht board overflow — ${locale} @ ${viewport.width}x${viewport.height}`, () => {
+      test.use({ viewport });
+
+      test.beforeEach(async ({ page }) => {
+        await page.route("http://localhost:8000/**", (route) => route.abort());
+        await installEntitlementsMock(page);
+      });
+
+      for (const mode of ["solo", "vs"] as const) {
+        test(`${mode} board has no clipped or spilling text`, async ({
+          page,
+        }) => {
+          await openLobby(page, locale);
+          await page.getByTestId("game-tile-yacht").click();
+          await expect(page.getByTestId("game-tile-yacht")).toBeHidden();
+          await page.getByTestId(`yacht-mode-${mode}`).click();
+          await expect(page.getByTestId("yacht-tray")).toBeVisible();
+          await expect(page.getByTestId("nav-menu")).toBeVisible();
+
+          // Before the first roll, then with potentials showing and a die held.
+          const problems: Record<string, Finding[]> = {};
+          problems.start = await measure(page, "yacht-board", locale);
+          await page.getByTestId("yacht-roll-button").click();
+          await page.getByTestId("yacht-die-4").click();
+          problems.rolled = await measure(page, "yacht-board", locale);
+
+          if (mode === "vs") {
+            // The computer's turn: its own hint text, its roll counter, "Computer's Turn" on Roll.
+            await page.getByTestId("score-row-chance").click();
+            await expect(page.getByTestId("yacht-roll-button")).toBeDisabled();
+            problems.computerTurn = await measure(page, "yacht-board", locale);
+          }
+
+          const bad = Object.fromEntries(
+            Object.entries(problems).filter(([, v]) => v.length),
+          );
+          expect(bad, JSON.stringify(bad, null, 2)).toEqual({});
+        });
+      }
+    });
+  }
 }

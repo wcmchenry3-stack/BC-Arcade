@@ -22,6 +22,11 @@ name: Detect Maestro scope
 # `native_ios` path resolves to an empty `projects` (the iOS job is skipped)
 # and a label saying why. PRs into main, schedule and workflow_dispatch are
 # unaffected. Android (`platform: android`, the default) is not gated.
+#
+# Demo mode (#3705): `flows: cascade-demo`, passed through from the callers'
+# workflow_dispatch input, resolves to `projects=cascade` and `demo=true`. The
+# callers then run only the flows tagged `demo` in that directory
+# (--include-tags=demo). Every other run leaves them out (--exclude-tags=demo).
 
 on:
   workflow_call:
@@ -31,6 +36,11 @@ on:
         type: string
         required: false
         default: android
+      flows:
+        description: "Flow set: `full` or empty (the scope rules below) or `cascade-demo` (only the Cascade demo flows, #3705). Callers pass their workflow_dispatch input, which is empty on every other event."
+        type: string
+        required: false
+        default: ""
     outputs:
       projects:
         description: Space-separated Maestro flow directory names to run (empty = nothing Maestro-relevant changed).
@@ -38,6 +48,9 @@ on:
       label:
         description: Human-readable summary for job summaries/logs.
         value: ${{ jobs.detect.outputs.label }}
+      demo:
+        description: "`true` when only the flows tagged `demo` run (flows: cascade-demo), else `false`."
+        value: ${{ jobs.detect.outputs.demo }}
 
 # No `permissions:` block on purpose: a called workflow inherits its
 # caller's token, and can't ask for more than the caller grants. Each caller
@@ -53,6 +66,7 @@ jobs:
     outputs:
       projects: ${{ steps.scope.outputs.projects }}
       label: ${{ steps.scope.outputs.label }}
+      demo: ${{ steps.scope.outputs.demo || 'false' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -96,6 +110,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
           PLATFORM: ${{ inputs.platform }}
+          FLOWS: ${{ inputs.flows }}
           FULL_SUITE: ${{ steps.guard.outputs.full_suite }}
           F_SHARED_APP: ${{ steps.filter.outputs.shared_app }}
           F_MAESTRO_SHARED: ${{ steps.filter.outputs.maestro_shared }}
@@ -116,6 +131,19 @@ jobs:
           case "$PLATFORM" in
             android|ios) ;;
             *) echo "::error::detect-maestro-scope.yml: unknown platform '$PLATFORM' (expected android or ios)"; exit 1 ;;
+          esac
+          # Demo mode (#3705): only the Cascade demo flows, whatever changed.
+          # Only a workflow_dispatch sets it: the callers' input is empty on
+          # every other event.
+          case "$FLOWS" in
+            ""|full) ;;
+            cascade-demo)
+              echo "projects=cascade" >> "$GITHUB_OUTPUT"
+              echo "label=Cascade demo flows (flows: cascade-demo)" >> "$GITHUB_OUTPUT"
+              echo "demo=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            *) echo "::error::detect-maestro-scope.yml: unknown flows '$FLOWS' (expected full or cascade-demo)"; exit 1 ;;
           esac
           # Push events, manual dispatches, the schedule and PRs targeting
           # main always run the full suite on both legs (the release gate).

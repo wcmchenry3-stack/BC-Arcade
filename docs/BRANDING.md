@@ -56,6 +56,7 @@ Tokens live in `frontend/src/theme/ThemeContext.tsx`. Import via `useTheme()` �
 | `textMuted`    | `#a0a0ac` | Secondary text, labels                                                         |
 | `textOnAccent` | `#0e0e13` | Text on accent-filled buttons                                                  |
 | `accent`       | `#8ff5ff` | Cyan primary — CTAs, highlights                                                |
+| `accentText`   | `#8ff5ff` | The accent as the colour of text (the same as `accent` in dark)                |
 | `accentBright` | `#00eefc` | Accent gradient stop, neon glow                                                |
 | `secondary`    | `#d674ff` | Magenta secondary — combo, alt state                                           |
 | `tertiary`     | `#cafd00` | Lime tertiary — tertiary accents                                               |
@@ -77,6 +78,7 @@ Stitch only ships a dark mockup. The light theme is **first-class** and maintain
 | `text`         | `#1a1412` | Primary text                                                                   |
 | `textMuted`    | `#6b5e4a` | Secondary text                                                                 |
 | `accent`       | `#1bc5d4` | Teal — fills and decoration, not text                                          |
+| `accentText`   | `#006d77` | Teal for text: ≥ 4.5:1 on every cream surface (4.6–5.8:1)                      |
 | `accentBright` | `#00a8b8` | Accent-filled buttons (dark text on it)                                        |
 | `secondary`    | `#a34fc4` | Darkened magenta                                                               |
 | `tertiary`     | `#8fa800` | Darkened lime                                                                  |
@@ -86,6 +88,12 @@ Stitch only ships a dark mockup. The light theme is **first-class** and maintain
 The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 
 **Contrast rule:** all body and label text must achieve **≥ 4.5:1** against its surface (WCAG AA). Accent-on-surface pairs used for meaningful information (not decoration) must also meet 4.5:1.
+
+### Accent as text: `accentText` (#3748)
+
+The light accent `#1bc5d4` measures 1.6–2:1 on cream, so it can't colour text. **Any text (or thin stroke) that would be `colors.accent` is `colors.accentText`**: in dark it is the accent itself, in light a darker teal `#006d77` that reaches **≥ 4.5:1** on `background`, `surface`, `surfacePeer`, `surfaceAlt`, `surfaceHigh` and the held-die tint (`frontend/src/theme/__tests__/accentTextContrast.test.ts`). Backgrounds, button fills, bars and borders that carry no information stay `accent`. The light `potential` token (Yacht's potential scores) is `accentText`.
+
+Not switched, by design: icons and spinners (graphics need 3:1, not 4.5:1), text on a fixed dark surface (the dark header bar, the blackjack and solitaire felt, dev panels) where the bright accent is the readable one.
 
 ### Outcome tokens (end-of-game results)
 
@@ -109,17 +117,17 @@ Use `colors.overlay` behind every modal card: `rgba(0,0,0,0.75)` in dark, `rgba(
 
 Some colours are not UI chrome and must not follow the light/dark theme: a Mahjong tile is ivory, Star Swarm is drawn on black, a Wordle tile is green or yellow because that is the game. These live in a per-game module `frontend/src/theme/theme.<game>.ts` as named constants, never inlined in a screen or component:
 
-| Module                                  | Holds                                                                                                                                                                                                                                                                                                        |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `theme.mahjong.ts`                      | Board, tile face / border / sides, shadow and lock tint, suit placeholder colours (`MAHJONG_SUIT_COLOR`), flying pair (`MAHJONG_FP_*`), mini-map (`MAHJONG_MINIMAP_*`), deadlock dim and sparks (`MAHJONG_DEADLOCK_DIM`, `MAHJONG_SPARK`), overlay                                                           |
-| `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, armour blue and pale, lightning, pause scrim                                                                                                                                                                                                |
-| `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups                                                                                                                                                                          |
-| `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent), their letter colour, and the win sparks (`DAILYWORD_SPARK`)                                                                                                                                                                                        |
-| `theme.cascade.ts`                      | Cascade placeholder piece colours (`CASCADE_PIECE_COLORS`): the plain circle shown for a tier whose sprite hasn't decoded, and the dev-panel swatch. Replaced by the code-drawn art in #3698. The lid and danger state (`CASCADE_LID_PALETTE`, light and dark: lid line, spawner ring, over-lid wash, #3694) |
-| `theme.twenty48.ts`                     | 2048 flat tile ladder, 2 to 131072 (`TWENTY48_TILES`: fill and AA text colour per value), the empty slot per theme (`TWENTY48_SLOT`), and the 2048+ glow (`TWENTY48_TOP_TILE_GLOW`); contrast and distinctness are tested in `components/twenty48/__tests__/tileStyles.test.ts` (#3688)                      |
-| `theme.hearts.ts`                       | Hearts card-table felt (centre, edge, rim; same in light and dark) and the moments' colours (queen, hearts broken, moon shot)                                                                                                                                                                                |
-| `theme.table.ts`                        | Card-table felt for Solitaire and FreeCell (centre, edge, rim; own dark and light greens) and the felt's slot outlines                                                                                                                                                                                       |
-| `theme.bottle.ts`, `theme.constants.ts` | Sort liquids; shared one-offs (badges, menu shadow, dev-panel accents)                                                                                                                                                                                                                                       |
+| Module                                  | Holds                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `theme.mahjong.ts`                      | Board, tile face / border / sides, shadow and lock tint, suit placeholder colours (`MAHJONG_SUIT_COLOR`), flying pair (`MAHJONG_FP_*`), mini-map (`MAHJONG_MINIMAP_*`), deadlock dim and sparks (`MAHJONG_DEADLOCK_DIM`, `MAHJONG_SPARK`), overlay                                                                                              |
+| `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, armour blue and pale, lightning, pause scrim                                                                                                                                                                                                                                   |
+| `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups                                                                                                                                                                                                             |
+| `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent), their letter colour, and the win sparks (`DAILYWORD_SPARK`)                                                                                                                                                                                                                           |
+| `theme.cascade.ts`                      | Cascade placeholder piece colours (`CASCADE_PIECE_COLORS`): the plain circle shown for a tier whose sprite hasn't decoded, and the dev-panel swatch. Replaced by the code-drawn art in #3698. The lid and danger state (`CASCADE_LID_PALETTE`, light and dark: lid line, spawner ring, over-lid wash, #3694)                                    |
+| `theme.twenty48.ts`                     | 2048 flat tile ladder, 2 to 131072 (`TWENTY48_TILES`: fill and AA text colour per value), the empty slot per theme (`TWENTY48_SLOT`), the 2048+ glow (`TWENTY48_TOP_TILE_GLOW`), and the game-over beat's board dim (`TWENTY48_DIM`, #3689); contrast and distinctness are tested in `components/twenty48/__tests__/tileStyles.test.ts` (#3688) |
+| `theme.hearts.ts`                       | Hearts card-table felt (centre, edge, rim; same in light and dark) and the moments' colours (queen, hearts broken, moon shot)                                                                                                                                                                                                                   |
+| `theme.table.ts`                        | Card-table felt for Solitaire and FreeCell (centre, edge, rim; own dark and light greens) and the felt's slot outlines                                                                                                                                                                                                                          |
+| `theme.bottle.ts`, `theme.constants.ts` | Sort liquids; shared one-offs (badges, menu shadow, dev-panel accents); Blackjack's natural edges and sweep (`BLACKJACK_NATURAL_*`, a dark and a light set, #3621)                                                                                                                                                                              |
 
 Rules:
 
@@ -141,7 +149,7 @@ Stitch mockups are **guidelines, not truth**. They contain inconsistencies and r
 | Screen        | Source of truth            | Notes                                                                                                             |
 | ------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **Cascade**   | Our implementation         | Tokens already match Stitch exactly. Do not regress Cascade to match the Stitch mockup layout.                    |
-| **Yacht**     | Stitch mockup              | `stitch_gaming_app/yatch_gameplay/` is the target layout.                                                         |
+| **Yacht**     | Our implementation         | The thumb tray (#3748, see [Yacht UI](games/yacht.md#ui)). The Stitch mockup is no longer the target.             |
 | **2048**      | Stitch mockup              | Rebuild from the Stitch layout, not a reskin.                                                                     |
 | **Blackjack** | Stitch mockup (priority)   | `stitch_gaming_app/blackjack_table/` and `blackjack_betting/` — this is the one we most want to faithfully match. |
 | **Lobby**     | Stitch mockup              | The shipped lobby came out squished; any rework must honor the Stitch layout's breathing room and proportions.    |
@@ -150,6 +158,20 @@ Stitch mockups are **guidelines, not truth**. They contain inconsistencies and r
 ---
 
 ## Card decks
+
+### The card back (Classic, Minimal, Neon)
+
+The always-available decks share one back (#3740, owner decision #3742): the **lattice**. A white margin (`cardFace`) round a BC teal field (`cardBack`, `#00737e`), a dense diamond lattice and an inset line in white (`cardBackInk`), a diamond medallion from 40 px card width, and a 1-px outer edge. Like the face, it is the same in light and dark: one physical deck. The tokens sit next to `cardFace` in `theme/ThemeContext.tsx`.
+
+| Deck    | Back                                                                                                                                         |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Classic | The lattice in `cardFace` / `cardBack` / `cardBackInk`.                                                                                      |
+| Neon    | The lattice in `NEON_DECK`: a cyan margin (`backRim`), a navy field (`backField`), a cyan inset line and lattice (`backLine`, `backAccent`). |
+| Minimal | The frame only (margin, field, inset line), drawn with Views, no pattern, no mark.                                                           |
+
+The back holds 3:1 (WCAG 1.4.11) against the Blackjack, Solitaire / FreeCell and Hearts felts in both themes, through its margin or its field (`theme/__tests__/cardBackContrast.test.ts`), so no table outlines it. The outer edge is the `border` prop, so the Solitaire and FreeCell hint and selection borders show on face-down cards.
+
+It is drawn by `decks/CardBack.tsx` from the pure shapes in `decks/cardBackShapes.ts`: 4-6 SVG elements per card (the lattice is one path clipped analytically), no filters, clip paths, gradients or per-card ids. The shapes are cached per (design, size, radius, colours) and the component is `React.memo`. The back is a function of (design, palette): a chosen back (#3429) overrides it by passing a different `backDesign` or palette to `SvgCardFace`; there is no cosmetics system yet.
 
 Besides Classic, Minimal and Neon, three original decks are drawn in code (SVG, no third-party art) in `frontend/src/game/_shared/decks/`. They share one face component (`bc/BcCardFace.tsx`) and a 250 x 350 card box; art colours live in `BC_DECK_ART` (`theme/theme.cards.ts`). They are listed in Settings only when `BC_DECK_ENABLED` is on (internal and dev builds, same rule as hidden games); in store builds a saved selection falls back to Classic.
 

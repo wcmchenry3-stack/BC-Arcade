@@ -1,27 +1,22 @@
 /**
  * useSortLevels (#2981) — the Sort screen's data: which view it shows, the
- * level definitions, the player's progress and whether the levels failed to
- * load. Loads on mount; `loadScreen` is the error banner's Retry.
+ * level definitions and the player's progress. Loads on mount.
  *
- * Levels come from the API (with retry) and are cached for offline play. The
- * cache is served only on a network failure: an HTTP error such as a 401
- * means the server is denying access (an expired entitlement), and the cache
- * must not bypass that. The stored best moves load alongside and are handed
- * to `onStoredBests`, which the screen merges into its in-memory bests.
+ * The levels are the fixed catalog shipped in the app (#2761, `catalog.ts`):
+ * nothing is fetched, so there is no load error and no offline cache. Only
+ * the player's progress and best moves are read from storage, after the save
+ * has been moved onto the catalog (`migrateToCatalog`). The stored best moves
+ * are handed to `onStoredBests`, which the screen merges into its in-memory
+ * bests; they are withheld when the migration failed, since they may still
+ * be bests on the old random levels.
+ * A save of a catalog this build doesn't know is not read at all: the
+ * session starts from level 1 in memory and writes no progress.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { isNetworkError } from "../_shared/httpClient";
-import { withRetry } from "../_shared/withRetry";
-import { sortApi, type LevelData } from "./api";
-import {
-  loadBestMoves,
-  loadLevelsCache,
-  loadProgress,
-  saveLevelsCache,
-  type BestMoves,
-  type SortProgress,
-} from "./storage";
+import { SORT_LEVELS, type CatalogLevel } from "./catalog";
+import { migrateToCatalog } from "./catalogMigration";
+import { loadBestMoves, loadProgress, type BestMoves, type SortProgress } from "./storage";
 
 type SortView = "loading" | "select" | "play";
 
@@ -32,8 +27,7 @@ interface SortLevelsOptions {
 
 export function useSortLevels({ onStoredBests }: SortLevelsOptions) {
   const [view, setView] = useState<SortView>("loading");
-  const [levels, setLevels] = useState<LevelData[]>([]);
-  const [loadError, setLoadError] = useState(false);
+  const levels: readonly CatalogLevel[] = SORT_LEVELS;
   const [progress, setProgress] = useState<SortProgress>({
     unlockedLevel: 1,
     currentLevelId: null,
@@ -44,45 +38,27 @@ export function useSortLevels({ onStoredBests }: SortLevelsOptions) {
     onStoredBestsRef.current = onStoredBests;
   });
 
-  const loadScreen = useCallback(async () => {
-    setLoadError(false);
-    setView("loading");
-    const [levelsResult, prog, stored] = await Promise.all([
-      withRetry(() => sortApi.getLevels())
-        .then((result) => {
-          // Cache the level definitions for offline use. Fire-and-forget —
-          // don't block the render on the AsyncStorage write.
-          saveLevelsCache(result).catch(() => {});
-          return result;
-        })
-        // Only serve cached levels on network failures (isNetworkError). HTTP errors
-        // such as 401 Unauthorized mean the server is actively denying access
-        // (e.g. entitlement expired) — falling back to cache would bypass that.
-        .catch((e) => (isNetworkError(e) ? loadLevelsCache() : null)),
-      loadProgress(),
-      loadBestMoves(),
-    ]);
-    if (stored !== null) onStoredBestsRef.current(stored);
-    if (!levelsResult) {
-      setLoadError(true);
-    } else {
-      setLevels(levelsResult.levels as LevelData[]);
-    }
-    setProgress(prog);
-    setView("select");
-  }, []);
-
   useEffect(() => {
-    void loadScreen();
-  }, [loadScreen]);
-
-  /** Silently refetches the levels, so the next session gets new mixtures. */
-  const refreshLevels = useCallback(() => {
-    void sortApi
-      .getLevels()
-      .then((res) => setLevels(res.levels as LevelData[]))
-      .catch(() => {});
+    let cancelled = false;
+    void (async () => {
+      const migration = await migrateToCatalog();
+      if (migration === "foreign") {
+        // Another catalog's save: leave it untouched and play from defaults.
+        if (!cancelled) setView("select");
+        return;
+      }
+      const [prog, stored] = await Promise.all([loadProgress(), loadBestMoves()]);
+      if (cancelled) return;
+      const migrated = migration === "current";
+      if (migrated && stored !== null) onStoredBestsRef.current(stored);
+      // Unmigrated (storage failed): an unfinished board may be an old random deal.
+      setProgress(migrated ? prog : { ...prog, currentLevelId: null, currentState: null });
+      setView("select");
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  return { view, setView, levels, loadError, progress, setProgress, loadScreen, refreshLevels };
+  return { view, setView, levels, progress, setProgress };
 }

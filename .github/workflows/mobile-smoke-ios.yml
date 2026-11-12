@@ -22,7 +22,9 @@ name: Mobile Smoke — iOS
 #   refreshes the CocoaPods cache that PR runs only read (a cache saved from a
 #   PR ref is invisible to other PRs) and gives a weekly signal. It never gates
 #   a PR or a Render deploy. Android's weekly run is Mon 09:23 UTC.
-# - workflow_dispatch: always the full suite.
+# - workflow_dispatch: the full suite, or with `flows: cascade-demo` only the
+#   Cascade demo flows (#3705; docs/MAESTRO.md, "Cascade demo flows"). Every
+#   other run leaves the `demo`-tagged flows out.
 # - NOT push to main (2026-09-23): prod auto-deploys `main` with Render's "After
 #   CI Checks Pass" trigger, which waits for EVERY check on the commit, so a red
 #   smoke check here would block prod deploys (it blocked #2522). PR runs gate
@@ -49,6 +51,12 @@ on:
   schedule:
     - cron: "41 10 * * 1"
   workflow_dispatch:
+    inputs:
+      flows:
+        description: "full = every flow directory; cascade-demo = only the Cascade demo flows (records video, #3705)"
+        type: choice
+        options: [full, cascade-demo]
+        default: full
 
 permissions:
   contents: read
@@ -57,7 +65,9 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  # A dispatch's group includes its `flows` input (#3705), so a demo dispatch
+  # neither queues behind nor cancels a full run on the same commit.
+  group: mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -68,6 +78,8 @@ jobs:
     with:
       # Gates PRs into dev on a native/iOS change (#3547).
       platform: ios
+      # Empty on every event but workflow_dispatch (#3705).
+      flows: ${{ inputs.flows }}
 
   maestro-ios:
     name: Maestro iOS smoke
@@ -93,6 +105,13 @@ jobs:
       # the default driver startup timeout on CI runners (milliseconds).
       MAESTRO_DRIVER_STARTUP_TIMEOUT: "180000"
       MAESTRO_CLI_NO_ANALYTICS: "1"
+      # Demo flows (tag `demo`, #3705) run only in a `flows: cascade-demo`
+      # dispatch; every other run leaves them out.
+      MAESTRO_TAG_ARG: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && '--include-tags=demo' || '--exclude-tags=demo' }}
+      # Scope outputs go to the scripts through env, never `${{ }}` inside a
+      # run: body, so no output text is ever parsed as shell.
+      MAESTRO_PROJECTS: ${{ needs.detect-maestro-scope.outputs.projects }}
+      MAESTRO_LABEL: ${{ needs.detect-maestro-scope.outputs.label }}
     steps:
       - uses: actions/checkout@v7
 
@@ -228,6 +247,24 @@ jobs:
           xcrun simctl bootstatus "$SIM_UDID" -b
           xcrun simctl install "$SIM_UDID" DerivedData/Build/Products/Release-iphonesimulator/GamingApp.app
 
+      - name: Warm up the simulator and app
+        # #3677: the first flow of a run paid the cold start (first app launch
+        # and JS bundle load, the XCTest driver's first queries) and was the
+        # slowest of every run; in run 42629193406 it timed out. This launches
+        # the app once and waits for Home before any game's flow, so none of
+        # them pays it. It opens no game, so a game screen that is really slow
+        # to mount still fails its own flow. Not fatal: if the app can't even
+        # reach Home, every flow fails next and says so. Bounded so a hung
+        # driver can't eat the job's time.
+        timeout-minutes: 8
+        continue-on-error: true
+        run: |
+          maestro --device "$SIM_UDID" test \
+            --debug-output maestro-debug/_warm-up \
+            --flatten-debug-output \
+            e2e/maestro/flows/_shared/warm-up.yaml \
+            || echo "::warning::Warm-up flow failed (see maestro-debug/_warm-up); running the flows anyway"
+
       - name: Run Maestro flows on iOS Simulator
         run: |
           # One `maestro test` invocation per flow directory, not one call
@@ -248,6 +285,9 @@ jobs:
           # e2e/maestro/summarize.py (which reads maestro-results/*/report.xml)
           # with no results.
           #
+          # $MAESTRO_TAG_ARG (job env) is --exclude-tags=demo, or
+          # --include-tags=demo in a `flows: cascade-demo` dispatch (#3705).
+          #
           # NOTE: this per-directory split does NOT fix — and was never the
           # cause of — the "Unrecognized field \"timeout\"" parse error on
           # YamlElementSelector (#2350). That was a real schema mismatch:
@@ -257,7 +297,7 @@ jobs:
           # YamlElementSelector.kt at the pinned v1.39.13 tag. The actual
           # fix was rewriting flows to use `extendedWaitUntil` instead.
           FAIL=0
-          for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do
+          for d in $MAESTRO_PROJECTS; do
             # offline/ requires toggleAirplaneMode (Android-only) — never runs on iOS.
             [ "$d" = "offline" ] && continue
             mkdir -p "maestro-results/$d"
@@ -267,6 +307,7 @@ jobs:
               --output "maestro-results/$d/report.xml" \
               --debug-output "maestro-debug/$d" \
               --flatten-debug-output \
+              $MAESTRO_TAG_ARG \
               "e2e/maestro/flows/$d/" || FAIL=1
           done
           exit $FAIL
@@ -292,12 +333,9 @@ jobs:
         if: always()
         # offline/ never runs on iOS, so leave it out of the expected-projects
         # list (summarize.py would otherwise report it as missing).
-        env:
-          LABEL: ${{ needs.detect-maestro-scope.outputs.label }}
-          PROJECTS: ${{ needs.detect-maestro-scope.outputs.projects }}
         run: |
-          PROJECTS_IOS=$(echo "$PROJECTS" | tr ' ' '\n' | grep -vx offline | tr '\n' ' ' | xargs)
-          python3 e2e/maestro/summarize.py "iOS" "$LABEL" "$PROJECTS_IOS"
+          PROJECTS_IOS=$(echo "$MAESTRO_PROJECTS" | tr ' ' '\n' | grep -vx offline | tr '\n' ' ' | xargs)
+          python3 e2e/maestro/summarize.py "iOS" "$MAESTRO_LABEL" "$PROJECTS_IOS"
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7
@@ -310,6 +348,29 @@ jobs:
             ~/.maestro/tests/
           if-no-files-found: warn
           retention-days: 7
+
+      # Every flow's named `takeScreenshot` and `startRecording` output, on
+      # success too (#3705), so a PR can show its change running on a device.
+      # Maestro 2.12.1, run with --debug-output maestro-debug/<dir>
+      # --flatten-debug-output, writes them into each flow's debug bundle:
+      # maestro-debug/<dir>/<flow>/takeScreenshot/<name>.png and
+      # .../startRecording/<name>.mp4 (unlike Android's 1.39.13, which writes
+      # to the working directory). The working-directory globs stay as a
+      # fallback. Cost: artifact storage only, bounded by the 14-day retention.
+      - name: Upload screenshots and recordings
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: maestro-ios-media
+          path: |
+            maestro-debug/**/takeScreenshot/*.png
+            maestro-debug/**/startRecording/*.mp4
+            *.png
+            *.mp4
+          # A demo dispatch exists to produce media, so none is an error there;
+          # normal runs are unaffected.
+          if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
+          retention-days: 14
 
       - name: Upload failure screenshots and build log
         uses: actions/upload-artifact@v7

@@ -78,7 +78,8 @@ function PlayingCard({
       height={height}
       faceDown={faceDown}
       cardBg={colors.cardFace}
-      cardBgBack={colors.surfaceAlt}
+      cardBgBack={colors.cardBack}
+      cardBackInk={colors.cardBackInk}
       border={hintHighlighted ? colors.bonus : highlighted ? colors.accent : colors.border}
       borderHighlight={colors.accent}
       textColor={colors.cardInk}

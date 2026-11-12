@@ -584,6 +584,13 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
     strings change; new strings are at most 10 characters and the chips size to fit.
   - The web canvas loads the brand faces explicitly (`document.fonts.load`) and falls back to
     `sans-serif`, never Courier, until they land. Web gained the 1UP flash for parity.
+- **2026-11-11 (#3709), Lightning: honest hits, not a new look.** The beam read as one solid
+  ribbon, so an Elite surviving a sweep looked like a bug. The cause was gameplay: pulses only hit
+  what the beam overlapped at the pulse instant, so fast sweeps skipped ships between pulses. The
+  owner picked the gameplay fix, a swept hit test (each pulse hits what the beam crossed since the
+  last one; see [starswarm.md, Lightning beam](starswarm.md#lightning-beam-3562)), over the
+  look-only options (packets up the beam, a brightening per pulse, an impact star). Today's beam
+  look is kept; brightening on each pulse can be revisited if the beam still feels off.
 - **2026-11-11 (#3598), owner decisions after the in-game audition** (English and Arabic; the look
   approved):
   1. **The best score stays Space Grotesk 400.** 500 is not loaded.

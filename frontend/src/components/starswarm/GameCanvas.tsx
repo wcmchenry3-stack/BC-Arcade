@@ -41,6 +41,7 @@ import {
   waveJustCleared,
   isAutopilot,
   PLAYER_W,
+  clearLightningSweep,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
 import { devRevert } from "../../game/starswarm/waveEvents";
@@ -406,7 +407,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       const wasPaused = isPausedRef.current;
       isPausedRef.current = isPaused;
-      if (wasPaused && !isPaused) lastFrameTimeRef.current = 0; // prevent delta spike on resume
+      if (wasPaused && !isPaused) {
+        lastFrameTimeRef.current = 0; // prevent delta spike on resume
+        // #3709: the ship may have been moved while paused; don't let Lightning sweep that jump
+        gameRef.current = clearLightningSweep(gameRef.current);
+      }
     }, [isPaused]);
     useEffect(() => {
       onGameOverRef.current = onGameOver;

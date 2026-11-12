@@ -121,7 +121,7 @@ still stopped. Adding a job is one `PeriodicJob(...)` builder plus one line in
 | Daily Word                | `backend/daily_word/`      | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions                                  |
 | Internal bug logs         | `backend/logs/`            | Session-linked diagnostic log ingestion                                                                            |
 | Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
-| Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
+| Bottle Sort level service | `backend/sort/`            | Catalog version and size (levels ship in the app); legacy random level sets for older builds                      |
 | Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
 
 The `backend/games/` service layer is split by job (#2991; the former
@@ -440,7 +440,7 @@ public module keeps its path (`game/starswarm/engine.ts`, now a pure
 | `waveStats.ts`   | The per-wave stats record (#3245): open, `bumpWave`, close into a v1 snapshot, the wire format              |
 | `entities.ts`    | Pickups, explosions, the power-up type roll                                                                 |
 | `extraction.ts`  | The `weaponsFree` / `playerFireAllowed` / `hazardsLive` gates, hazards, the autopilot, `clearTransientCombat`|
-| `lightningBeam.ts` | The guns' layout (`GUN_LAYOUT`) and Lightning's beams (#3562): when on, their geometry, the pulse clock |
+| `lightningBeam.ts` | The guns' layout (`GUN_LAYOUT`) and Lightning's beams (#3562): when on, their geometry, the pulse clock, #3709's swept hit test |
 | `asteroids.ts`   | Rocks: entries, spawns, the threat contract, and the enemies' response to them (`tickAsteroidThreats`)      |
 | `buddy.ts`       | Buddy: station, attack runs, evasion, the fire it draws, the hits it takes                                  |
 | `carrier.ts`     | The Carrier: cadences, the volley seam, beam, attack run, and the event selectors                           |
@@ -1366,6 +1366,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
 | `CLIENT_SENTRY_ENABLED` | `true`: `false` stops the apps' Sentry events but the keep-list, served on `GET /games/catalog` as `client_sentry.enabled` (#3437) | `observability/client_sentry_dial.py` (lazy) |
 | `CLIENT_SENTRY_SAMPLE_RATE` | `1.0` (0–1): share of the apps' Sentry events sent, served as `client_sentry.sample_rate` (#3437) | `observability/client_sentry_dial.py` (lazy) |
+| `SORT_CATALOG_EDITION_ENFORCED` | `false`: `true` makes the Sort board and Stats "Best" rank only solves of the current level catalog (#2761; set once the catalog builds are live) | `games/boards/editions.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is

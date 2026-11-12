@@ -219,3 +219,14 @@ Returns `true` once the Matter.js engine has finished its async initialisation a
 ### `__cascade_setSeed`
 
 Seeds the seeded RNG used by `FruitQueue` to produce the next-fruit sequence. Must be called before the first `dropAt` or `spawnTierAt` of a session to produce a fully reproducible run.
+
+### Checklist: what the sim harness covers (#2893)
+
+The UC1-UC6 scenarios as a checklist for the Cascade sim harness (`frontend/src/game/cascade/sim/`, see [`docs/games/cascade.md`](../games/cascade.md#sim-harness-sim-2893)). This research doc is historical; the harness measures today's engine.
+
+- [x] **UC1** settling, air friction, sleeping: settle time after a drop, jitter of settled pieces (px/s), packing density.
+- [x] **UC2** merge correctness and spawn pop: `contactPair` (1 px contact) merge test at 60 and 120 Hz; deepest overlap and visible gap per game; guard-rail events (the NaN / out-of-bounds guards of S11) counted, never acted on.
+- [ ] **UC3** per-tier density and restitution: not applicable today (one restitution and density for every tier); the metrics are per game, not per tier. Revisit with #3697.
+- [x] **UC4** combo and game-over suppression during cascades: settle time after a 3+ merge chain; the merge grace is covered by the lid tests (`engine.lid.test.ts`). Combo events are not a metric.
+- [ ] **UC5** concave hulls: not applicable (every tier is a circle today).
+- [x] **UC6** ballistic filter / game-over false positives: the spam bot must reach game over inside 120 simulated seconds at both frame rates (the lid, #3694).

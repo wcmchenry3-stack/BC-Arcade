@@ -5,26 +5,29 @@
  *   1. Game logic: the engine (`game/cascade/engine.ts`, Matter.js) is stepped from a RAF loop
  *      recreated on `gameKey`; the screen drops pieces from the queue and reads state back
  *      each frame. The engine owns the physics, scoring and game over; the screen owns none.
- *   2. Layout: `calculateCascadeLayout` (`game/cascade/layout.ts`) scales the fixed world into
+ *   2. Rendering (#2960): no per-frame React state. The loop reads the engine into a reused
+ *      snapshot, packs it into a `Float64Array` (`game/cascade/render/frame.ts`) and publishes it
+ *      to a shared value only when it changed; `CascadeBoard` records a Skia Picture from it on
+ *      the UI thread. The score lives in a `ScoreStore` that `ScoreDisplay` subscribes to.
+ *   3. Layout: `calculateCascadeLayout` (`game/cascade/layout.ts`) scales the fixed world into
  *      the measured board area (#3693).
- *   3. Persistence: the board, queue, score and play time are throttle-saved
+ *   4. Persistence: the board, queue, score and play time are throttle-saved
  *      (`game/cascade/storage.ts`, `SAVE_THROTTLE_MS`), restored on mount and saved on pause.
- *   4. Session: `useGameSync("cascade")`; drops and merges are enqueued as events, the session
+ *   5. Session: `useGameSync("cascade")`; drops and merges are enqueued as events, the session
  *      completes at game over and abandons on a theme switch, restart or unmount (#2450, #2619).
- *   5. Clock: a `PlayClock` stopped while another screen covers the board or the app is in
+ *   6. Clock: a `PlayClock` stopped while another screen covers the board or the app is in
  *      the background, through `usePauseWhileAway` (#2735, #2750).
- *   6. Result (#2515, #2632): the shared `GameResultModal`; the card shows the rank from
+ *   7. Result (#2515, #2632): the shared `GameResultModal`; the card shows the rank from
  *      `useGameRank` through `toSubmission`.
- *   7. Audio and animation: tier-scaled merge sound, game-over sound, merge bursts
- *      (reanimated; skipped under reduce motion).
- *   8. The lid (#3694): the engine decides game over; the board draws the lid line, the
+ *   8. Audio and animation: tier-scaled merge sound (`useTieredMergeSound`), game-over sound,
+ *      merge bursts (`components/cascade/MergeBurst`; skipped under reduce motion).
+ *   9. The lid (#3694): the engine decides game over; the board draws the lid line, the
  *      spawner's clock ring from `dangerRatio`, the red wash on pieces over the lid, and the
- *      waiting ghost while `canDrop()` is false (`components/cascade/LidOverlay.tsx`). A tap
- *      drops only when the engine allows it.
- *   9. Test and dev seams: `registerCascadeTestHooks` (`game/cascade/testHooks.ts`) for E2E
- *      builds, `CascadeDevPanel` for dev builds (#3693).
+ *      waiting ghost while `canDrop()` is false. A tap drops only when the engine allows it.
+ *  10. Test and dev seams: `registerCascadeTestHooks` (`game/cascade/testHooks.ts`) for E2E
+ *      builds, `CascadeDevPanel` (with the frame readout, #2960) for dev builds (#3693).
  */
-import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import React, { Profiler, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -32,21 +35,13 @@ import {
   View,
   LayoutChangeEvent,
   Pressable,
+  type GestureResponderEvent,
 } from "react-native";
-import { Canvas, Circle, Group, Image as SkiaImage } from "@shopify/react-native-skia";
-import type { SkImage } from "@shopify/react-native-skia";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  runOnJS,
-} from "react-native-reanimated";
+import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { createAudioPlayer } from "expo-audio";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
@@ -57,28 +52,38 @@ import { clockElapsedMs, pauseClock, resumeClock, type PlayClock } from "../game
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
-import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
+import type { FruitTier } from "../theme/fruitSets";
 import { useFruitImages, getImagesForSet } from "../theme/useFruitImages";
 import { useAssetsReady } from "../game/_shared/useAssetsReady";
 import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine";
-import {
-  WORLD_WIDTH,
-  WORLD_HEIGHT,
-  OVERFLOW_LINE_Y,
-  DANGER_STACK_MARGIN,
-} from "../game/cascade/constants";
-import { PIECE_DEFS } from "../game/cascade/pieceDefs";
-import { spriteHalfSize, tierRadius } from "../game/cascade/tiers";
+import { WORLD_WIDTH, OVERFLOW_LINE_Y, DANGER_STACK_MARGIN } from "../game/cascade/constants";
 import { calculateCascadeLayout, tapToWorldX } from "../game/cascade/layout";
 import { registerCascadeTestHooks } from "../game/cascade/testHooks";
 import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector";
 import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/pieceQueue";
+import {
+  createFramePacker,
+  createGameState,
+  emptyFrame,
+  nextFrame,
+  packFrame,
+} from "../game/cascade/render/frame";
+import type { FrameState } from "../game/cascade/render/frame";
+import { createScoreStore } from "../game/cascade/scoreStore";
+import { useTieredMergeSound } from "../game/cascade/useTieredMergeSound";
+import {
+  createFrameStats,
+  recordCommit,
+  recordLoopFrame,
+  summarizeFrameStats,
+} from "../game/starswarm/render/frameStats";
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import CascadeDevPanel from "../components/cascade/CascadeDevPanel";
-import { LidLine, OverLidWash, Spawner } from "../components/cascade/LidOverlay";
-import { CASCADE_LID_PALETTE, type CascadeLidPalette } from "../theme/theme.cascade";
+import CascadeBoard from "../components/cascade/CascadeBoard";
+import MergeBurst, { type MergeBurstData } from "../components/cascade/MergeBurst";
+import { CASCADE_LID_PALETTE } from "../theme/theme.cascade";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameRank } from "../game/_shared/useGameRank";
 import {
@@ -90,8 +95,21 @@ import {
   saveBestScore,
   type SavedState,
 } from "../game/cascade/storage";
+import { useSound } from "../game/_shared/useSound";
+import { CASCADE_SOUNDS } from "../game/cascade/sounds";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
 
 const SETTLE_TICKS = 60;
+const SAVE_THROTTLE_MS = 2000;
+
+/**
+ * Frame-time and commit sampling (#2960, Star Swarm's #2567 ring buffer) for the dev panel's
+ * readout. Dev builds only, like the panel that shows it.
+ */
+const FRAME_STATS_ENABLED = __DEV__;
+
+/** A board with no pieces, for a reset (the lid and spawner still draw). */
+const NO_PIECES: FrameState = { pieces: [] };
 
 function createSeededRng(seed: number): () => number {
   let s = seed | 0;
@@ -104,214 +122,6 @@ function createSeededRng(seed: number): () => number {
 function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] } {
   const queue = createPieceQueue([], rng);
   return { queue, history: [queue.current, queue.next] };
-}
-import { useSound } from "../game/_shared/useSound";
-import { GAME_AUDIO_PLAYER_OPTIONS, retainAudioSession } from "../game/_shared/audioSession";
-import { useSoundSettings } from "../game/_shared/SoundContext";
-import { CASCADE_SOUNDS } from "../game/cascade/sounds";
-import { useReduceMotion } from "../components/shared/useReduceMotion";
-
-const SAVE_THROTTLE_MS = 2000;
-
-// ---------------------------------------------------------------------------
-// Merge burst animation (react-native-reanimated)
-// ---------------------------------------------------------------------------
-
-interface MergeBurstData {
-  id: string;
-  x: number;
-  y: number;
-  color: string;
-}
-
-function MergeBurst({ x, y, color, onDone }: MergeBurstData & { onDone: () => void }) {
-  const scale = useSharedValue(0.1);
-  const opacity = useSharedValue(0.75);
-
-  useEffect(() => {
-    scale.value = withSpring(2.2, { damping: 9, stiffness: 25 });
-    opacity.value = withTiming(0, { duration: 1100 }, (finished) => {
-      if (finished) runOnJS(onDone)();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const animStyle = useAnimatedStyle(() => ({
-    position: "absolute",
-    left: x - 20,
-    top: y - 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: color,
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
-  return <Animated.View pointerEvents="none" style={animStyle} />;
-}
-
-// ---------------------------------------------------------------------------
-// Tier-scaled merge sound (volume 0.35 → 1.0 across tiers 0 → 11)
-// ---------------------------------------------------------------------------
-
-function useTieredMergeSound() {
-  const { muted } = useSoundSettings();
-  const mutedRef = useRef(muted);
-  useEffect(() => {
-    mutedRef.current = muted;
-  }, [muted]);
-
-  const playerRef = useRef<ReturnType<typeof createAudioPlayer> | null>(null);
-  useEffect(() => {
-    const source = CASCADE_SOUNDS["cascade.fruitMerge"];
-    if (!source) return;
-    // Same session handling as useSound: see GAME_AUDIO_PLAYER_OPTIONS in audioSession.ts.
-    const player = createAudioPlayer(source, GAME_AUDIO_PLAYER_OPTIONS);
-    playerRef.current = player;
-    const releaseSession = retainAudioSession();
-    return () => {
-      try {
-        player.pause();
-      } catch {
-        // audio cleanup, failure is safe
-      }
-      player.remove();
-      releaseSession();
-      playerRef.current = null;
-    };
-  }, []);
-
-  return useCallback((tier: number) => {
-    if (mutedRef.current || !playerRef.current) return;
-    const volume = 0.35 + (tier * 0.65) / 11;
-    try {
-      (playerRef.current as unknown as { volume: number }).volume = volume;
-      playerRef.current.seekTo(0);
-      playerRef.current.play();
-    } catch {
-      /* expo-audio may throw if audio context is suspended */
-    }
-  }, []);
-}
-
-// ---------------------------------------------------------------------------
-// Piece renderer — SVG circles for each physics body
-// ---------------------------------------------------------------------------
-
-function PieceRenderer({
-  pieces,
-  scale,
-  fruitDefs,
-  images,
-  dangerRatio,
-  canDrop,
-  lidPalette,
-  spawnerTier,
-}: {
-  pieces: PieceSnapshot[];
-  scale: number;
-  /** The engine's lid countdown, 0..1 (#3694). */
-  dangerRatio: number;
-  /** False while the last dropped piece is still over the lid: the spawner shows the ghost. */
-  canDrop: boolean;
-  lidPalette: CascadeLidPalette;
-  /** The queue's current tier, shown in the spawner. */
-  spawnerTier: number;
-  /** Active fruit set's definitions, indexed by tier — supplies bakedClipR for sprite sizing. */
-  fruitDefs: FruitDefinition[];
-  /** Decoded sprites for the active fruit set, indexed by tier. null = not yet loaded. */
-  images: (SkImage | null)[];
-}) {
-  // Freeze the rendered position of sleeping pieces to prevent sub-pixel physics
-  // drift from causing visible jitter on settled pieces.
-  const { t } = useTranslation("cascade");
-  const frozenPositions = useRef<Map<number, { x: number; y: number }>>(new Map());
-
-  // Evict stale entries when pieces are removed (merge, game-over reset).
-  useEffect(() => {
-    const activeIds = new Set(pieces.map((p) => p.id));
-    for (const id of frozenPositions.current.keys()) {
-      if (!activeIds.has(id)) frozenPositions.current.delete(id);
-    }
-  }, [pieces]);
-
-  return (
-    <Canvas
-      style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
-      accessibilityRole="image"
-      accessibilityLabel={t("a11y.board")}
-    >
-      <Group transform={[{ scale }]}>
-        {pieces.map((piece) => {
-          const def = PIECE_DEFS[piece.tier];
-          if (!def) return null;
-          const r = tierRadius(piece.tier);
-
-          if (piece.isSleeping) {
-            if (!frozenPositions.current.has(piece.id)) {
-              frozenPositions.current.set(piece.id, { x: piece.x, y: piece.y });
-            }
-          } else {
-            frozenPositions.current.delete(piece.id);
-          }
-          const pos = frozenPositions.current.get(piece.id) ?? piece;
-
-          const sprite = images[piece.tier];
-          let body: React.ReactNode;
-          if (sprite) {
-            // Baked sprites carry padding beyond the visible fruit: bakedClipR scales the
-            // ladder radius (the collider's) to the canvas half-size, so the visible fruit is
-            // exactly the collider size (#3695).
-            const half = spriteHalfSize(piece.tier, fruitDefs[piece.tier]?.bakedClipR);
-            body = (
-              <SkiaImage
-                image={sprite}
-                x={pos.x - half}
-                y={pos.y - half}
-                width={half * 2}
-                height={half * 2}
-                fit="contain"
-              />
-            );
-          } else {
-            body = <Circle cx={pos.x} cy={pos.y} r={r} color={def.color} />;
-          }
-
-          // The lid (#3694): a piece over the lid is washed red while the count runs.
-          return (
-            <React.Fragment key={piece.id}>
-              {body}
-              <OverLidWash
-                x={pos.x}
-                y={pos.y}
-                radius={r}
-                dangerRatio={dangerRatio}
-                palette={lidPalette}
-              />
-            </React.Fragment>
-          );
-        })}
-        {/* The lid line, then the spawner and its clock ring on top. */}
-        <LidLine dangerRatio={dangerRatio} palette={lidPalette} />
-        <Spawner
-          dangerRatio={dangerRatio}
-          canDrop={canDrop}
-          palette={lidPalette}
-          piece={
-            PIECE_DEFS[spawnerTier]
-              ? {
-                  radius: tierRadius(spawnerTier),
-                  image: images[spawnerTier] ?? null,
-                  imageScale: fruitDefs[spawnerTier]?.bakedClipR ?? 1,
-                  color: PIECE_DEFS[spawnerTier]!.color,
-                }
-              : null
-          }
-        />
-      </Group>
-    </Canvas>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -330,7 +140,8 @@ function CascadeGame() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Cascade">>();
 
   const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const [score, setScore] = useState(0);
+  // The live score, outside React state (#2960): ScoreDisplay subscribes to it.
+  const [scoreStore] = useState(() => createScoreStore());
   const [gameOver, setGameOver] = useState(false);
   // What the result card shows, captured at game over (#2515).
   const [result, setResult] = useState<{
@@ -348,10 +159,6 @@ function CascadeGame() {
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [, setQueueVersion] = useState(0);
-  const [pieces, setPieces] = useState<PieceSnapshot[]>([]);
-  // The lid (#3694), read from the engine every frame.
-  const [dangerRatio, setDangerRatio] = useState(0);
-  const [canDrop, setCanDrop] = useState(true);
   const [gameKey, setGameKey] = useState(0);
 
   // Animation state
@@ -373,6 +180,51 @@ function CascadeGame() {
     queueRef.current = init.queue;
     queueHistoryRef.current = init.history;
   }
+
+  // The board's frame (#2960): what the loop last published, read by CascadeBoard's Picture on
+  // the UI thread. The loop writes through refs; nothing per frame touches React state.
+  // One empty frame, made once, seeds both the shared value and the publish gate, so a render
+  // never reads `.value` (a synchronous UI-runtime read on device).
+  const [initialFrame] = useState(() => emptyFrame(queueRef.current.current));
+  const frameSV = useSharedValue<Float64Array>(initialFrame);
+  const frameSVRef = useRef(frameSV);
+  frameSVRef.current = frameSV;
+  const publishedFrameRef = useRef<Float64Array>(initialFrame);
+  const packerRef = useRef(createFramePacker());
+  // The engine writes the board into this each frame (`getState(into)`), allocation-free.
+  const engineStateRef = useRef(createGameState());
+  // The board last read from the engine; a reset points it at an empty board.
+  const lastBoardRef = useRef<FrameState>(NO_PIECES);
+
+  /** Publishes `board` (with the queue's current piece in the spawner) if it draws anything new. */
+  const publishBoard = useCallback((board: FrameState) => {
+    lastBoardRef.current = board;
+    const packer = packerRef.current;
+    packFrame(packer, board, queueRef.current.current);
+    const next = nextFrame(packer, publishedFrameRef.current);
+    if (next) {
+      publishedFrameRef.current = next;
+      frameSVRef.current.value = next;
+    }
+  }, []);
+
+  /** The queue moved on: re-render the preview and show the new piece in the spawner. */
+  const queueChanged = useCallback(() => {
+    setQueueVersion((v) => v + 1);
+    publishBoard(lastBoardRef.current);
+  }, [publishBoard]);
+
+  // Frame time and React commits for the dev panel's readout (#2960). Commits are counted by a
+  // Profiler around the whole screen body, so a commit of ScoreDisplay alone counts too, and a
+  // commit that touches several components counts once.
+  const frameStatsRef = useRef(FRAME_STATS_ENABLED ? createFrameStats() : null);
+  const onCommit = useCallback(() => {
+    if (frameStatsRef.current) recordCommit(frameStatsRef.current, performance.now());
+  }, []);
+  const readFrameStats = useCallback(() => {
+    const stats = frameStatsRef.current;
+    return stats ? summarizeFrameStats(stats, performance.now()) : null;
+  }, []);
   const droppingRef = useRef(false);
   const lastDropTimeRef = useRef<number>(Date.now());
   const dropCountRef = useRef<number>(0);
@@ -516,16 +368,16 @@ function CascadeGame() {
       // in place of the untouched one opened at mount.
       syncResume();
       scoreRef.current = snapshot.score;
-      setScore(snapshot.score);
+      scoreStore.set(snapshot.score);
       queueRef.current = snapshot.queue;
       queueHistoryRef.current = [snapshot.queue.current, snapshot.queue.next];
-      setQueueVersion((v) => v + 1);
+      queueChanged();
       settlingTicksLeftRef.current = SETTLE_TICKS;
     });
     return () => {
       active = false;
     };
-  }, [syncResume, restartClock]);
+  }, [syncResume, restartClock, scoreStore, queueChanged]);
 
   const buildSnapshot = useCallback((): SavedState => {
     return {
@@ -562,19 +414,26 @@ function CascadeGame() {
       scoreRef.current = 0;
       gameOverRef.current = false;
       dropCountRef.current = 0;
-      setScore(0);
+      scoreStore.set(0);
       setGameOver(false);
       // A new game: the next game over must be able to submit again.
       setResult(null);
       resetScore();
-      setPieces([]);
       setQueueVersion((v) => v + 1);
+      publishBoard(NO_PIECES);
       clearCascadeGame().catch(() => {});
       settlingTicksLeftRef.current = 0;
       setGameKey((k) => k + 1);
       startInstrumentedSession(activeFruitSet.id);
     }
-  }, [activeFruitSet.id, endInstrumentedSession, startInstrumentedSession, resetScore]);
+  }, [
+    activeFruitSet.id,
+    endInstrumentedSession,
+    startInstrumentedSession,
+    resetScore,
+    scoreStore,
+    publishBoard,
+  ]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -729,13 +588,16 @@ function CascadeGame() {
       rafId = null;
       if (awayRef.current) return; // resumed by resumeLoopRef below
 
-      const delta = Math.min(now - last, 100);
+      const interval = now - last;
+      const delta = Math.min(interval, 100);
       last = now;
+      if (frameStatsRef.current) recordLoopFrame(frameStatsRef.current, now, interval);
 
       if (settlingTicksLeftRef.current > 0) settlingTicksLeftRef.current--;
 
       const result = engine.step(delta);
-      const state = engine.getState();
+      // Written into the screen's reused snapshot: no allocation per frame (#2960).
+      const state = engine.getState(engineStateRef.current);
 
       // Update score ref before calling merge handlers so score_after is current.
       scoreRef.current = state.score;
@@ -751,11 +613,11 @@ function CascadeGame() {
         // "score" event — score is read from state above; no separate handling needed.
       }
 
-      setScore(state.score);
+      // No React state per frame (#2960): the score store notifies only on a new integer, and
+      // the board is published to the shared value only when it draws something new.
+      scoreStore.set(state.score);
       piecesRef.current = state.pieces;
-      setPieces(state.pieces);
-      setDangerRatio(state.dangerRatio);
-      setCanDrop(state.canDrop);
+      publishBoard(state);
 
       if (!gameOverRef.current) schedule();
     }
@@ -775,12 +637,10 @@ function CascadeGame() {
       if (rafId !== null) cancelAnimationFrame(rafId);
       engine.destroy();
       engineRef.current = null;
-      setPieces([]);
-      setDangerRatio(0);
-      setCanDrop(true);
+      publishBoard(NO_PIECES);
       resumeLoopRef.current = () => {};
     };
-  }, [gameKey, awayRef]);
+  }, [gameKey, awayRef, scoreStore, publishBoard]);
 
   const handleTap = useCallback(
     (x: number) => {
@@ -806,7 +666,7 @@ function CascadeGame() {
       // isInDanger shapes the piece added to the back of the queue (2 drops ahead)
       const isInDanger = pieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
       const tier = consumeFromQueue(isInDanger);
-      setQueueVersion((v) => v + 1);
+      queueChanged();
 
       if (__DEV__) {
         console.log(
@@ -832,17 +692,20 @@ function CascadeGame() {
         droppingRef.current = false;
       }, 200);
     },
-    [consumeFromQueue, gameOver, saveGameThrottled, syncEnqueue, syncMarkStarted]
+    [consumeFromQueue, gameOver, saveGameThrottled, syncEnqueue, syncMarkStarted, queueChanged]
   );
 
-  const handleSetSeed = useCallback((seed: number) => {
-    const rng = createSeededRng(seed);
-    queueRngRef.current = rng;
-    const seeded = makeQueue(rng);
-    queueRef.current = seeded.queue;
-    queueHistoryRef.current = seeded.history;
-    setQueueVersion((v) => v + 1);
-  }, []);
+  const handleSetSeed = useCallback(
+    (seed: number) => {
+      const rng = createSeededRng(seed);
+      queueRngRef.current = rng;
+      const seeded = makeQueue(rng);
+      queueRef.current = seeded.queue;
+      queueHistoryRef.current = seeded.history;
+      queueChanged();
+    },
+    [queueChanged]
+  );
 
   // -------------------------------------------------------------------------
   // Test seam: __cascade_* hooks (EXPO_PUBLIC_TEST_HOOKS=1 builds only, #3693)
@@ -874,7 +737,7 @@ function CascadeGame() {
         const dangerPieces = engineRef.current?.getState().pieces ?? [];
         const isInDanger = dangerPieces.some((p) => p.y < OVERFLOW_LINE_Y + DANGER_STACK_MARGIN);
         const tier = consumeFromQueue(isInDanger);
-        setQueueVersion((v) => v + 1);
+        queueChanged();
         engineRef.current?.drop(tier, x);
       },
       fastForward: (ms: number) => {
@@ -896,10 +759,8 @@ function CascadeGame() {
           remaining -= stepMs;
         }
         const state = engine.getState();
-        setScore(state.score);
-        setPieces(state.pieces);
-        setDangerRatio(state.dangerRatio);
-        setCanDrop(state.canDrop);
+        scoreStore.set(state.score);
+        publishBoard(state);
       },
       triggerGameOver: () => {
         completedGameIdRef.current = getGameId();
@@ -926,10 +787,10 @@ function CascadeGame() {
     scoreRef.current = 0;
     gameOverRef.current = false;
     dropCountRef.current = 0;
-    setScore(0);
+    scoreStore.set(0);
     setGameOver(false);
-    setPieces([]);
     setQueueVersion((v) => v + 1);
+    publishBoard(NO_PIECES);
     clearCascadeGame().catch(() => {});
     lastSaveTimeRef.current = 0;
     settlingTicksLeftRef.current = 0;
@@ -947,19 +808,58 @@ function CascadeGame() {
   });
   scaleRef.current = scale;
 
-  return (
+  // Hoisted (#2960) so the memoized children see the same props until something real changes.
+  const goHome = useCallback(() => navigation.popToTop(), [navigation]);
+  const shellStyle = useMemo(
+    () => ({
+      paddingBottom: 16,
+      paddingLeft: Math.max(insets.left, 16),
+      paddingRight: Math.max(insets.right, 16),
+    }),
+    [insets.left, insets.right]
+  );
+  const preview = useMemo(
+    () =>
+      currentDef !== undefined && nextDef !== undefined ? (
+        <NextFruitPreview current={currentDef} next={nextDef} />
+      ) : null,
+    [currentDef, nextDef]
+  );
+  const onBoardPress = useCallback(
+    (e: GestureResponderEvent) => handleTap(tapToWorldX(e.nativeEvent.locationX, scale)),
+    [handleTap, scale]
+  );
+  const boardAreaStyle = useMemo(
+    () => ({ width: boardWidth, height: boardHeight }),
+    [boardWidth, boardHeight]
+  );
+  const canvasOuterStyle = useMemo(
+    () => [styles.canvasOuter, { backgroundColor: colors.surface, borderColor: colors.border }],
+    [colors.surface, colors.border]
+  );
+  const boardImages = useMemo(
+    () => getImagesForSet(fruitImages, activeFruitSet.id),
+    [fruitImages, activeFruitSet.id]
+  );
+  const removeBurst = useCallback(
+    (id: string) => setMergeBursts((prev) => prev.filter((b) => b.id !== id)),
+    []
+  );
+  const openDevPanel = useCallback(() => setDevPanelOpen(true), []);
+  const closeDevPanel = useCallback(() => setDevPanelOpen(false), []);
+  const devSpawn = useCallback((tier: number) => {
+    engineRef.current?.drop(tier, WORLD_WIDTH / 2);
+  }, []);
+
+  const body = (
     <GameShell
       gameType="cascade"
       title={t("game.title")}
       requireBack
-      onBack={() => navigation.popToTop()}
+      onBack={goHome}
       onNewGame={handleRestart}
       onOpenLeaderboard={openLeaderboard}
-      style={{
-        paddingBottom: 16,
-        paddingLeft: Math.max(insets.left, 16),
-        paddingRight: Math.max(insets.right, 16),
-      }}
+      style={shellStyle}
     >
       {!assetsReady ? (
         <View style={styles.loadingContainer}>
@@ -967,37 +867,20 @@ function CascadeGame() {
         </View>
       ) : (
         <>
-          <ScoreDisplay score={score}>
-            {currentDef !== undefined && nextDef !== undefined && (
-              <NextFruitPreview current={currentDef} next={nextDef} />
-            )}
-          </ScoreDisplay>
+          <ScoreDisplay store={scoreStore}>{preview}</ScoreDisplay>
 
           <ThemeSelector />
 
           <View style={styles.canvasWrapper}>
-            <View
-              style={[
-                styles.canvasOuter,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-              onLayout={onLayout}
-            >
+            <View style={canvasOuterStyle} onLayout={onLayout}>
               {scale > 0 && (
-                <Pressable
-                  testID="cascade-game-area"
-                  onPress={(e) => handleTap(tapToWorldX(e.nativeEvent.locationX, scale))}
-                  style={{ width: boardWidth, height: boardHeight }}
-                >
-                  <PieceRenderer
-                    pieces={pieces}
+                <Pressable testID="cascade-game-area" onPress={onBoardPress} style={boardAreaStyle}>
+                  <CascadeBoard
+                    frame={frameSV}
                     scale={scale}
-                    dangerRatio={dangerRatio}
-                    canDrop={canDrop}
                     lidPalette={CASCADE_LID_PALETTE[theme]}
-                    spawnerTier={queue.current}
                     fruitDefs={activeFruitSet.fruits}
-                    images={getImagesForSet(fruitImages, activeFruitSet.id)}
+                    images={boardImages}
                   />
                 </Pressable>
               )}
@@ -1005,11 +888,7 @@ function CascadeGame() {
 
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
               {mergeBursts.map((burst) => (
-                <MergeBurst
-                  key={burst.id}
-                  {...burst}
-                  onDone={() => setMergeBursts((prev) => prev.filter((b) => b.id !== burst.id))}
-                />
+                <MergeBurst key={burst.id} {...burst} onDone={removeBurst} />
               ))}
             </View>
           </View>
@@ -1021,7 +900,7 @@ function CascadeGame() {
             hero={{
               kind: "score",
               label: tResult("stat.score"),
-              value: result?.score ?? score,
+              value: result?.score ?? scoreStore.get(),
             }}
             isNewBest={result?.isNewBest ?? false}
             stats={
@@ -1041,7 +920,7 @@ function CascadeGame() {
             }
             onViewLeaderboard={openLeaderboard}
             onPlayAgain={handleRestart}
-            onHome={() => navigation.popToTop()}
+            onHome={goHome}
             testID="cascade-result"
           />
         </>
@@ -1050,14 +929,20 @@ function CascadeGame() {
       <CascadeDevPanel
         enabled={__DEV__}
         open={devPanelOpen}
-        onOpen={() => setDevPanelOpen(true)}
-        onClose={() => setDevPanelOpen(false)}
+        onOpen={openDevPanel}
+        onClose={closeDevPanel}
         activeFruitSet={activeFruitSet}
-        onSpawn={(tier) => {
-          engineRef.current?.drop(tier, WORLD_WIDTH / 2);
-        }}
+        onSpawn={devSpawn}
+        readFrameStats={FRAME_STATS_ENABLED ? readFrameStats : undefined}
       />
     </GameShell>
+  );
+  return FRAME_STATS_ENABLED ? (
+    <Profiler id="cascade" onRender={onCommit}>
+      {body}
+    </Profiler>
+  ) : (
+    body
   );
 }
 

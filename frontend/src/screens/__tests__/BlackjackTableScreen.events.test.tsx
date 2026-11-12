@@ -1,6 +1,6 @@
 /**
- * BlackjackTableScreen game events and actions (#2957): the sound and overlay
- * each engine event raises, the player's Stand / Double Down / Split buttons,
+ * BlackjackTableScreen game events and actions (#2957): the sound each engine
+ * event raises, the player's Stand / Double Down / Split buttons,
  * the New Game confirmation (in the ⋯ menu since #3580), and the result of a
  * split hand. Each test
  * resumes a hand-built engine state through the mocked storage.
@@ -35,6 +35,8 @@ const mockPlayed: string[] = [];
 jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
 
 const played = (name: string) => playedCount(mockPlayed, name);
+/** The card flip, any of its variations (#3581). */
+const flips = () => mockPlayed.filter((n) => /^blackjack\.cardFlip\d?$/.test(n)).length;
 
 const card = (rank: string, suit = "♠"): Card => ({ rank, suit });
 
@@ -107,24 +109,35 @@ afterEach(() => {
   (loadGame as jest.Mock).mockResolvedValue(null);
 });
 
+// #3581: the sounds come from the motion (each at its moment of the replayed action; see
+// BlackjackTableScreen.motion.test.tsx), never from a restored state's events.
 describe("event sounds", () => {
   it.each<[BlackjackGameEvent["type"], string]>([
     ["cardDeal", "blackjack.cardDeal"],
     ["bust", "blackjack.bust"],
     ["win", "blackjack.win"],
     ["push", "blackjack.push"],
-  ])("a %s event plays its sound", async (type, sound) => {
+  ])("a restored %s event plays nothing (no replay)", async (type, sound) => {
     await mountOn(withEvents({ type } as BlackjackGameEvent));
-    expect(played(sound)).toBe(1);
+    expect(played(sound)).toBe(0);
   });
 
-  it("a bust that leaves the player nearly broke plays the same sound", async () => {
-    await mountOn(playerPhase({ chips: 100, startingChips: 1000, events: [{ type: "bust" }] }));
+  it("a bust that leaves the player nearly broke plays the bust sound", async () => {
+    jest.useFakeTimers();
+    await mountOn(
+      playerPhase({ chips: 100, startingChips: 1000, deck: [card("2", "♣"), card("K", "♦")] })
+    );
+    await pressLabel(/^Hit/);
+    await advance(2000);
     expect(played("blackjack.bust")).toBe(1);
   });
 
-  it("plays an event's sound once, not again on a later render", async () => {
-    const { view } = await mountOn(withEvents({ type: "win" }));
+  it("plays an action's sound once, not again on a later render", async () => {
+    jest.useFakeTimers();
+    const { view } = await mountOn(playerPhase());
+    await pressLabel(/^Stand/);
+    await advance(5000);
+    expect(flips()).toBe(1);
     await view.rerender(
       <ThemeProvider>
         <BlackjackGameProvider>
@@ -132,30 +145,47 @@ describe("event sounds", () => {
         </BlackjackGameProvider>
       </ThemeProvider>
     );
-    expect(played("blackjack.win")).toBe(1);
+    await advance(5000);
+    expect(flips()).toBe(1);
   });
 });
 
-describe("blackjack celebration", () => {
-  // The overlay stays mounted while hidden; it takes touches only while it shows.
-  const celebration = () =>
-    screen.getByTestId(/^animation-overlay/, { includeHiddenElements: true });
+// #3621 (owner decision, #3739): the natural's moment is on the felt. The old "BLACKJACK!" overlay
+// is gone: its backdrop took touches for ~2 s, so a Rebet tapped then only dismissed it.
+describe("blackjack natural", () => {
+  const HIDDEN = { includeHiddenElements: true };
 
-  it("plays the sound and shows the celebration, until it is skipped", async () => {
-    await mountOn(withEvents({ type: "blackjack" }));
+  /** Deals a natural (A K against 7 9) and plays the deal out to its result (#3581). */
+  async function dealNatural() {
+    jest.useFakeTimers();
+    const order = [card("A"), card("7", "♣"), card("K", "♥"), card("9", "♥")];
+    await mountOn(
+      newGame([...Array.from({ length: 60 }, () => card("2", "♣")), ...order.reverse()], {
+        startingChips: 100,
+        runGoal: 250,
+        betMin: 5,
+        betMax: 25,
+      })
+    );
+    await pressLabel("Add 10 to bet");
+    await pressLabel(/deal cards with 10-chip bet/i);
+    await advance(1400);
+  }
+
+  it("plays the sting once, with no overlay over the table", async () => {
+    await dealNatural();
     expect(played("blackjack.blackjack")).toBe(1);
-    expect(celebration().props.pointerEvents).toBe("auto");
-
-    await pressLabel("Skip celebration");
-    expect(celebration().props.pointerEvents).toBe("none");
+    expect(screen.queryByTestId(/^animation-overlay/, HIDDEN)).toBeNull();
+    expect(screen.queryByLabelText("Skip celebration")).toBeNull();
+    await advance(2500);
+    expect(played("blackjack.blackjack")).toBe(1);
   });
 
-  it("ends by itself", async () => {
-    jest.useFakeTimers();
+  it("is not replayed by a restored state's blackjack event", async () => {
     await mountOn(withEvents({ type: "blackjack" }));
-    expect(celebration().props.pointerEvents).toBe("auto");
-    await advance(2500);
-    expect(celebration().props.pointerEvents).toBe("none");
+    expect(played("blackjack.blackjack")).toBe(0);
+    expect(screen.queryByTestId(/^animation-overlay/, HIDDEN)).toBeNull();
+    expect(screen.queryByTestId("natural-sweep", HIDDEN)).toBeNull();
   });
 });
 
@@ -191,17 +221,45 @@ describe("player actions", () => {
   // The result dock (#3580) replaces the old Next Hand button.
   const finished = () => screen.queryByLabelText(/^Rebet —/);
 
+  // Owner decision (#3720): the result's dock shows once the result does; a tap on the felt shows
+  // it at once.
+  const tapFelt = () =>
+    act(async () => {
+      await fireEvent.press(screen.getByTestId("blackjack-table-area"));
+    });
+
+  /** The dock shows greyed actions, not the result's, while the dealer's turn plays out. */
+  const expectGreyedDock = () => {
+    expect(finished()).toBeNull();
+    expect(screen.getByLabelText(/^Hit/).props.accessibilityState?.disabled).toBe(true);
+    expect(screen.getByLabelText(/^Stand/).props.accessibilityState?.disabled).toBe(true);
+  };
+
   it("Stand ends the hand", async () => {
     await mountOn(playerPhase());
     expect(finished()).toBeNull();
     await pressLabel(/^Stand/);
+    expectGreyedDock();
+    await tapFelt();
     expect(finished()).toBeTruthy();
   });
 
   it("Double Down takes one card and ends the hand", async () => {
     await mountOn(playerPhase());
     await pressLabel(/^Double down/);
+    expectGreyedDock();
+    await tapFelt();
     expect(finished()).toBeTruthy();
+  });
+
+  // #3720 round 2: the felt's tap target is not a stop for TalkBack, the D-pad or tab focus.
+  it("the felt's tap target is hidden from accessibility focus, its children are not", async () => {
+    await mountOn(playerPhase());
+    const felt = screen.getByTestId("blackjack-table-area");
+    expect(felt.props.accessible).toBe(false);
+    expect(felt.props.focusable).toBe(false);
+    expect(felt.props.importantForAccessibility).toBe("no");
+    expect(screen.getByLabelText("Dealer score hidden")).toBeTruthy();
   });
 
   it("Split turns a pair into two hands", async () => {
@@ -245,12 +303,16 @@ describe("split hand result", () => {
         hand_payouts: [50, -50],
       })
     );
-    // Net 0: the felt shows a push.
-    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual(["Push"]);
+    // Net 0: the felt's strip sums the round up (#3581 spec), its label naming the net push.
+    const strip = screen.getByTestId("result-outcome");
+    expect(strip.props.children).toBe("Won: 1 · Lost: 1");
+    expect(strip.props.accessibilityLabel).toBe("Push. Won: 1 · Lost: 1");
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "+50 chips",
       "-50 chips",
     ]);
+    // Each hand's own tag.
+    expect(screen.getAllByTestId("hand-tag").map((n) => n.props.children)).toEqual(["Win", "Lose"]);
   });
 
   it("falls back to a push when a hand has no recorded outcome", async () => {
@@ -268,10 +330,16 @@ describe("split hand result", () => {
         hand_payouts: [],
       })
     );
-    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual(["Push"]);
+    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual([
+      "Push: 2",
+    ]);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "No change",
       "No change",
+    ]);
+    expect(screen.getAllByTestId("hand-tag").map((n) => n.props.children)).toEqual([
+      "Push",
+      "Push",
     ]);
   });
 });

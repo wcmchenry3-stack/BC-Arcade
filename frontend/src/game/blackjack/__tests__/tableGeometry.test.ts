@@ -32,6 +32,7 @@ import {
   ROWS_RESULT_BANNER_HEIGHT,
   showsResult,
   splitModeFor,
+  tableGeometryForTurn,
   type FanGeometry,
   type Rect,
   type TableGeometry,
@@ -371,6 +372,65 @@ describe.each([...PHONES, SMALLEST])("table geometry at $name", (phone) => {
       showResult: false,
     });
     expectSound(g);
+  });
+});
+
+// #3720: the split rows jumped down 46 px as the summary strip mounted. While the dealer plays the
+// result's band is kept free already, so the strip appearing moves no hand.
+describe("the dealer's turn keeps the result's band free", () => {
+  it.each([
+    [375, 667],
+    [390, 844],
+    [430, 932],
+  ])("%i×%i: 2, 3 and 4 hands stay where they are when the result shows", (w, h) => {
+    const felt = estimateFeltSize({
+      screenWidth: w,
+      screenHeight: h,
+      insetTop: 0,
+      insetBottom: 0,
+      headerHeight: HEADER,
+    });
+    for (const n of [2, 3, 4]) {
+      const input: TableGeometryInput = {
+        feltWidth: felt.width,
+        feltHeight: felt.height,
+        screenWidth: w,
+        screenHeight: h,
+        dealerCards: 5,
+        handCards: Array.from({ length: n }, () => 3),
+        // Every hand played: none is the hand to play.
+        activeHandIndex: n,
+        showResult: false,
+      };
+      const turn = tableGeometryForTurn(input, true);
+      const result = computeTableGeometry({ ...input, showResult: true });
+      expect(turn.dealer.collapsed).toBe(false);
+      expect(turn.result).toBeNull();
+      expect(turn.hands).toEqual(result.hands);
+      expect(turn.dealer).toEqual(result.dealer);
+    }
+  });
+
+  it("on the smallest phone, where the dealer would collapse, the dealer's cards keep their room", () => {
+    const felt = estimateFeltSize({
+      screenWidth: 320,
+      screenHeight: 568,
+      insetTop: 0,
+      insetBottom: 0,
+      headerHeight: HEADER,
+    });
+    const input: TableGeometryInput = {
+      feltWidth: felt.width,
+      feltHeight: felt.height,
+      screenWidth: 320,
+      screenHeight: 568,
+      dealerCards: 5,
+      handCards: [3, 3, 3],
+      activeHandIndex: 3,
+      showResult: false,
+    };
+    expect(computeTableGeometry({ ...input, showResult: true }).dealer.collapsed).toBe(true);
+    expect(tableGeometryForTurn(input, true)).toEqual(computeTableGeometry(input));
   });
 });
 

@@ -24,6 +24,9 @@
  * unchanged). "read fails" keeps the old key, because the first read is now
  * the migration's read of the old slot, and "bad puzzle id" seeds the old slot.
  *
+ * Sort's level cache (`@sort/levels_cache`) is gone (#2761): the levels ship
+ * in the app, so its four recorded scenarios were removed with it.
+ *
  * Cascade's save moved to the 12-tier ladder (#3695): its recorded scenarios were edited by hand
  * to the new key, `cascade_game_v4`, and `"version":4` (the bytes and results are otherwise
  * unchanged). Discarding an old `cascade_game_v3` save is tested in `cascade/__tests__/storage.test.ts`.
@@ -555,7 +558,7 @@ Object.assign(scenarios, {
     run: yacht.loadGame,
   },
   "yacht: solo save": { run: () => yacht.saveGame(yachtState()) },
-  // Sort: saved progress, cache and bests keep their bytes and load the same.
+  // Sort: saved progress and bests keep their bytes and load the same.
   "sort: progress": {
     run: async () => {
       await sort.saveProgress({
@@ -573,13 +576,6 @@ Object.assign(scenarios, {
     },
   },
   "sort: progress none": { run: sort.loadProgress },
-  "sort: levels cache": {
-    run: async () => {
-      await sort.saveLevelsCache({ levels: [{ id: 1, bottles: [["red"], []] }] } as never);
-      return sort.loadLevelsCache();
-    },
-  },
-  "sort: levels cache none": { run: sort.loadLevelsCache },
   "sort: best moves": {
     run: async () => {
       await sort.saveBestMoves({ "1": 8, "2": 11 });
@@ -604,16 +600,6 @@ Object.assign(scenarios, {
     compare: "result",
   },
   "sort: progress read fails": { fail: ["getItem"], run: sort.loadProgress, compare: "result" },
-  "sort: levels cache corrupt": {
-    seed: { "@sort/levels_cache": "oops" },
-    run: sort.loadLevelsCache,
-    compare: "result",
-  },
-  "sort: levels cache read fails": {
-    fail: ["getItem"],
-    run: sort.loadLevelsCache,
-    compare: "result",
-  },
   "sort: best moves corrupt": {
     seed: { "@sort/best_moves": "{x" },
     run: sort.loadBestMoves,

@@ -1437,7 +1437,7 @@ export default function HeartsScreen() {
           >
             <Text style={[styles.panelTitle, { color: colors.text }]}>{t("hand_end.title")}</Text>
             {moonShooter !== null && (
-              <Text style={[styles.moonText, { color: colors.accent }]}>
+              <Text style={[styles.moonText, { color: colors.accentText }]}>
                 {t("hand_end.moon", { label: playerLabels[moonShooter] ?? "" })}
               </Text>
             )}

@@ -191,6 +191,25 @@ async function mount(props: Partial<React.ComponentProps<typeof GameCanvas>> = {
 }
 
 describe("Star Swarm GameCanvas (web)", () => {
+  it("a resume clears Lightning's sweep origin, so a move made while paused is not swept (#3709)", async () => {
+    const { ref, rerender } = await mount({
+      initialState: { ...seeded(), lightningPulseX: 40 },
+      isPaused: true,
+    });
+    expect(ref.current!.getState().lightningPulseX).toBe(40); // paused: untouched
+    await rerender(
+      <GameCanvas
+        ref={ref}
+        width={W}
+        height={H}
+        scale={1}
+        initialState={{ ...seeded(), lightningPulseX: 40 }}
+        isPaused={false}
+      />
+    );
+    expect("lightningPulseX" in ref.current!.getState()).toBe(false);
+  });
+
   it("renders a labelled canvas element", async () => {
     await mount({ initialState: seeded() });
     expect(screen.getByLabelText(/Star Swarm game/).props.accessibilityRole).toBe("image");

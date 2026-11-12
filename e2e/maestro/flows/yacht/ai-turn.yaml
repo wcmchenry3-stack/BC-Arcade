@@ -22,7 +22,7 @@ appId: com.buffingchi.games
     visible:
       text: "Tap dice to hold"
     timeout: 5000
-# Score Ones (always visible in the default upper tab; may score 0 but is always legal).
+# Score Ones (every row is on screen at once, no tabs; may score 0 but is always legal).
 # This triggers setIsAiTurn(true) and the AI autonomous turn loop begins.
 - tapOn:
     id: "score-row-ones"
