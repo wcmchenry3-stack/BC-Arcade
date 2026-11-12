@@ -32,10 +32,6 @@ export const CELEBRATION_SPARKLE = "#ffd700";
 /** Yacht celebration badge text — near-black on the gold / purple badge. */
 export const BADGE_TEXT = "#1a1a1a";
 
-/** Yacht scorecard row glow: upper section (cyan) and lower section (purple). */
-export const SCORE_ROW_GLOW_UPPER = "rgba(143,245,255,0.45)";
-export const SCORE_ROW_GLOW_LOWER = "rgba(214,116,255,0.45)";
-
 /** Blackjack HUD warning amber — chips below 30% of the starting stack. */
 export const BLACKJACK_CHIPS_LOW = "#ffb547";
 

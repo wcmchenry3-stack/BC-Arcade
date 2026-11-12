@@ -66,7 +66,7 @@ export default function ScoreBoard({ score, bestScore, scoreDelta }: ScoreBoardP
         </Text>
         <View style={styles.valueWrap}>
           <Text
-            style={[styles.value, { color: colors.accent }]}
+            style={[styles.value, { color: colors.accentText }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             accessibilityLabel={t("twenty48:score.accessibilityLabel", { score })}
@@ -78,7 +78,7 @@ export default function ScoreBoard({ score, bestScore, scoreDelta }: ScoreBoardP
               style={[
                 styles.delta,
                 {
-                  color: colors.accent,
+                  color: colors.accentText,
                   opacity: deltaOpacity,
                   transform: [{ translateY: deltaTranslateY }],
                 },

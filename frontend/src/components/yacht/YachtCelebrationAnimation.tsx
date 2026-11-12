@@ -1,6 +1,7 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated from "react-native-reanimated";
+import { useTranslation } from "react-i18next";
 import { AnimationOverlay } from "../shared/AnimationOverlay";
 import { useCelebration } from "../shared/useCelebration";
 import { BADGE_JOKER_BG, BADGE_TEXT, BADGE_YACHT_BG } from "../../theme/theme.constants";
@@ -24,7 +25,26 @@ const FACE_OFFSETS = [
   { x: 20, y: 140 },
 ] as const;
 
+/** The badge's side padding (pt) and the screen margin kept clear of it. */
+const BADGE_PAD_H = 24;
+const SCREEN_MARGIN = 16;
+const MAX_FONT = 42;
+
+/**
+ * The word's font size: 42 pt where it fits, smaller where it doesn't (a longer word in another
+ * language on a 320 pt phone must not spill off the badge or the screen).
+ */
+export function celebrationFontSize(text: string, windowWidth: number): number {
+  const room = windowWidth - 2 * SCREEN_MARGIN - 2 * BADGE_PAD_H;
+  // A capital is about 0.78 em wide with the letter spacing below.
+  return Math.max(20, Math.min(MAX_FONT, Math.floor(room / (Math.max(text.length, 1) * 0.78))));
+}
+
 export function YachtCelebrationAnimation({ visible, onDismiss, variant = "yacht" }: Props) {
+  const { t } = useTranslation("yacht");
+  const { width } = useWindowDimensions();
+  const word = t(variant === "joker" ? "celebration.joker" : "celebration.yacht");
+  const fontSize = celebrationFontSize(word, width);
   const { badgeStyle, particleStyles: faceStyles } = useCelebration({
     visible,
     particleCount: FACE_OFFSETS.length,
@@ -68,11 +88,13 @@ export function YachtCelebrationAnimation({ visible, onDismiss, variant = "yacht
           ]}
         >
           <Text
-            style={styles.badgeText}
+            style={[styles.badgeText, { fontSize, letterSpacing: Math.round(fontSize / 14) }]}
+            numberOfLines={1}
             accessibilityRole="text"
             accessibilityLiveRegion="assertive"
+            testID="yacht-celebration-text"
           >
-            {variant === "joker" ? "JOKER!" : "YACHT!"}
+            {word}
           </Text>
         </Animated.View>
       </View>
@@ -92,7 +114,7 @@ const styles = StyleSheet.create({
   },
   badge: {
     borderRadius: 20,
-    paddingHorizontal: 40,
+    paddingHorizontal: BADGE_PAD_H,
     paddingVertical: 18,
   },
   badgeYacht: {
@@ -102,10 +124,8 @@ const styles = StyleSheet.create({
     backgroundColor: BADGE_JOKER_BG,
   },
   badgeText: {
-    fontSize: 42,
     fontWeight: "900",
     color: BADGE_TEXT,
-    letterSpacing: 3,
     textTransform: "uppercase",
   },
   dieFace: {

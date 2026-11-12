@@ -22,8 +22,8 @@ const CATEGORY_LABELS_IN_ORDER = [
   "Three of a Kind",
   "Four of a Kind",
   "Full House (25)",
-  "Sm. Straight (30)",
-  "Lg. Straight (40)",
+  "Small Straight (30)",
+  "Large Straight (40)",
   "Yacht! (50)",
   "Chance",
 ];
@@ -87,8 +87,8 @@ test.describe("Yacht — scoring verification (#180)", () => {
     page,
   }) => {
     await page.getByRole("button", { name: /Roll/i }).click();
-    // Bonus (≥63 = +35) row is visible and progress starts at 0
-    await expect(page.getByText(/Bonus \(≥63/)).toBeVisible();
+    // The upper subtotal band (not a score row) is visible and progress starts at 0
+    await expect(page.getByTestId("yacht-upper-subtotal")).toBeVisible();
     await expect(page.getByText("0 / 63")).toBeVisible();
   });
 

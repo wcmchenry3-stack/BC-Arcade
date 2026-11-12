@@ -46,7 +46,7 @@ export function PillButton({
   style,
 }: PillButtonProps) {
   const { colors } = useTheme();
-  const tint = color ?? colors.accent;
+  const tint = color ?? colors.accentText;
   const inactive = disabled || busy;
 
   return (
