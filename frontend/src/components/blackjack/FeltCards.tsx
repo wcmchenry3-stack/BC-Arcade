@@ -21,7 +21,7 @@
  * new `epoch` lands every card at once.
  */
 import React, { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import Reanimated, {
   cancelAnimation,
   Easing,
