@@ -37,5 +37,8 @@
   "pieces.cosmos.saturn": "Saturn",
   "pieces.cosmos.jupiter": "Jupiter",
   "pieces.cosmos.sun": "Sun",
-  "pieces.cosmos.milkyWay": "Milky Way"
+  "pieces.cosmos.milkyWay": "Milky Way",
+  "web.loading": "טוען את Cascade…",
+  "web.loadError": "ל-Cascade לא הצליח לטעון את הגרפיקה. בדקו את החיבור ונסו שוב.",
+  "web.retry": "לנסות שוב"
 }

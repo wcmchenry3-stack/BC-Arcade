@@ -205,7 +205,10 @@ services:
         name: Content-Security-Policy
         # 'unsafe-inline' for script/style is required by Expo Web's output format (inlined styles
         # and event handlers). This is an accepted exception pending upstream Expo fix.
-        value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://dev-games-api.buffingchi.com https://dev-games.buffingchi.com; img-src 'self' data: blob:; font-src 'self' data:; frame-ancestors 'none'"
+        # 'wasm-unsafe-eval' lets the browser compile WebAssembly (not eval JS): Cascade draws
+        # through Skia's CanvasKit on web, served from this origin (#2960). Prod gets it when
+        # Cascade ships there (#3703); store web builds leave Cascade out until then.
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://dev-games-api.buffingchi.com https://dev-games.buffingchi.com; img-src 'self' data: blob:; font-src 'self' data:; frame-ancestors 'none'"
       - path: /*
         name: X-Content-Type-Options
         value: nosniff

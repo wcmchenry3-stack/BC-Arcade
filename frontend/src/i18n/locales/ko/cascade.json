@@ -37,5 +37,8 @@
   "pieces.cosmos.saturn": "Saturn",
   "pieces.cosmos.jupiter": "Jupiter",
   "pieces.cosmos.sun": "Sun",
-  "pieces.cosmos.milkyWay": "Milky Way"
+  "pieces.cosmos.milkyWay": "Milky Way",
+  "web.loading": "Cascade 불러오는 중…",
+  "web.loadError": "Cascade 그래픽을 불러오지 못했습니다. 연결을 확인하고 다시 시도하세요.",
+  "web.retry": "다시 시도"
 }

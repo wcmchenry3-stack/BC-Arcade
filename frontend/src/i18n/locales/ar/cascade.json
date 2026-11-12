@@ -37,5 +37,8 @@
   "pieces.cosmos.saturn": "Saturn",
   "pieces.cosmos.jupiter": "Jupiter",
   "pieces.cosmos.sun": "Sun",
-  "pieces.cosmos.milkyWay": "Milky Way"
+  "pieces.cosmos.milkyWay": "Milky Way",
+  "web.loading": "جارٍ تحميل Cascade…",
+  "web.loadError": "تعذّر على Cascade تحميل الرسومات. تحقّق من اتصالك وحاول مرة أخرى.",
+  "web.retry": "إعادة المحاولة"
 }

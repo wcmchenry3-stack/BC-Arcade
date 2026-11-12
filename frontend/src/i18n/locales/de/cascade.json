@@ -37,5 +37,8 @@
   "pieces.cosmos.saturn": "Saturn",
   "pieces.cosmos.jupiter": "Jupiter",
   "pieces.cosmos.sun": "Sun",
-  "pieces.cosmos.milkyWay": "Milky Way"
+  "pieces.cosmos.milkyWay": "Milky Way",
+  "web.loading": "Cascade wird geladen…",
+  "web.loadError": "Cascade konnte die Grafik nicht laden. Prüfe deine Verbindung und versuche es erneut.",
+  "web.retry": "Erneut versuchen"
 }
