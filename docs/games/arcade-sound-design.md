@@ -463,7 +463,7 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
   | Dealer's turn | the hole card turns (320 ms, rotate Y, 1.08 lift), draws ~600 ms apart | `card-flip` at its start, `card-deal` per draw |
   | Result | ~300 ms after the last landing, the banner pops (260 ms) | `result-*` |
   | Chips | ~420 ms after the result: payout (360 ms), sweep (380 ms) or nudge (300 ms); the chip count after it | `chip-payout` / `chip-collect` / `chip-nudge` |
-  | Split result | one **net** chime, then each hand's tag and chips 300 ms apart | net chime, then each hand's chip sound |
+  | Split result | one **net** chime with a summary strip under the dealer ("Won: 1 · Lost: 2", the net payout), then each hand's WIN / LOSE / PUSH tag and chips 300 ms apart | net chime, then each hand's chip sound |
 
 - **How the sound follows the motion.** The engine stays instant and settles the round at once; the felt replays it from the settled state as a timeline of stages (`blackjackMotion.ts`). The sounds are cues on the same timeline, so each is at its moment by construction: a deal at the card's launch, the flip at the turn's start, the chime with the banner, the chips with their slide.
 - **Implementation choices.**
@@ -474,6 +474,11 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
   - **Avoided from the start**, from #3676 and #3712: no hold blocks input or the result (the dock is live throughout; the victory screen and the out-of-chips card wait for the round to settle, but no input waits); no alpha-0 view (no card is ever hidden: a card is drawn when its stage shows it); no stale flight on Reduce Motion (everything lands); no cue while away (`usePauseWhileAway` lands silently), after New Game or after unmount (the clock is cancelled); no duplicate cue (each cue is scheduled once per timeline and a landing cancels the rest; the fuzz tests check the counts).
   - **Events.** The engine's events no longer play sounds (they were incomplete: a split emitted no deal events, a split hand's last bust no result). The motion owns the sounds and the result's flashes and celebration; the milestone and comeback toasts wait for the round to settle; a restored state's events replay nothing.
   - The natural's lift and glint (#3621) is left for its own story; only its sound changed here (`result-blackjack`, 1.08 s, instead of the 10 s moon-shot fanfare).
+- **Review round 2 (PR #3720).**
+  - The hole card stayed lifted after its flip and covered the dealer's up card through the result: a card is lifted only while it flies or turns.
+  - The split result now follows the spec: a summary strip under the dealer ("Won: 1 · Lost: 2", localised in every shipped locale as a label and a number) with the net payout, then each hand's WIN / LOSE / PUSH tag popping with its chips, 300 ms apart.
+  - The skip's beat is only for a result not yet shown; Reduce Motion turned on draws a held-back split card; the felt's tap target is hidden from accessibility focus.
+  - Tests: motion decks of 78+ cards and a seeded shoe (a next hand no longer deals from a random reshuffle); the Playwright full-game spec waits for an enabled Hit; the fuzz test keeps bounds that do not come from the plan (a round's deal sounds never outnumber its cards; every settled round heard).
 - **Owner decisions on PR #3720.**
   - **The dock follows the mockup:** Hit and Stand stay greyed while a result plays out, and the result's dock appears with the banner, so the dock never gives the result away (it showed the engine's phase, which told a natural or the dealer's turn ~1.4 s early).
   - **A skip shows the result, then deals:** a tap that cuts a result short lands the dealer's cards, the banner with its chime (once, never without its banner), the chips and the count, and holds 400 ms (`SKIP_HOLD_MS`) before the next action runs. The player always sees how the hand ended.
