@@ -124,9 +124,14 @@ near-duplicates of each other, the threshold would rise toward 1.0 and the check
 - **Volume: 0.57** (#3638), `STARSWARM_BGM_VOLUME` in `frontend/src/hooks/useStarSwarmAudio.ts`
   (the `music` key of `DEFAULT_SFX_VOLUMES`). 20·log10(0.57 / 0.2) ≈ +9.1 dB over the shared 0.2,
   which brings the −21.1 LUFS track level with the old tracks' about −12 LUFS. Mahjong stays at 0.2.
-  **Owner confirmation by ear pending:** in a dev build, the Star Swarm dev panel's Sound section has
-  a **Music** row that steps the volume by 0.05 (about 0.8 dB here) live, without a rebuild. Record
-  the confirmed value here and in `STARSWARM_BGM_VOLUME`.
+  **Owner-approved on 2026-11-12** from an in-game recording: a web build in headless Chromium,
+  with every sound the game played logged and re-mixed from the real files at the logged times and
+  volumes. Music alone measured about −25 LUFS against about −20 LUFS for the full mix, so it sits
+  about 5 dB under the action. The owner also approved the fade on every visit, and pause or mute
+  during the fade ending at the target volume. A phone speaker loses much of the track's bass, so
+  re-check on a device. The Star Swarm dev panel's Sound section has a **Music** row that steps the
+  volume by 0.05 (about 0.8 dB here) live, without a rebuild. Record any change here and in
+  `STARSWARM_BGM_VOLUME`.
 
 ## Playback (#3638)
 
