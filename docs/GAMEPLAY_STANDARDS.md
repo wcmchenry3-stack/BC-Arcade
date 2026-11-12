@@ -592,13 +592,13 @@ A game screen (`frontend/src/screens/<Game>Screen.tsx`) sits above the five laye
     - **Cascade** is disabled (#3033).
 - **Engine events.** `useGameEvents(state.events, handlers)` for one-shot sounds and effects (Yacht, FreeCell, Hearts, Blackjack). Events are one-shot and must not replay on reload: Twenty48 and Blackjack strip them before `saveGame`.
 - **Result.** `GameResultModal` (`components/result/`, #2504, split in #2990), and nothing else: no screen builds its own result screen. Blackjack's Goal Reached screen renders the same `ResultCard` inline. See [GAME-CONTRACT §2.5](GAME-CONTRACT.md#25-result-card-and-leaderboard).
-- **Components.** Boards, piles, overlays, pickers and the dev panel live in `components/<game>/` (#2979). Dev panels build on `components/dev/DevPanelShell` (#2978) and only render in dev and internal builds. The screen file defines no board, overlay or panel component of its own (Star Swarm's `StarSwarmGame` is the screen body behind its hydration gate; Cascade's inline renderers wait for #3033).
+- **Components.** Boards, piles, overlays, pickers and the dev panel live in `components/<game>/` (#2979). Dev panels build on `components/dev/DevPanelShell` (#2978) and only render in dev and internal builds. The screen file defines no board, overlay or panel component of its own (Star Swarm's `StarSwarmGame` is the screen body behind its hydration gate).
 
 Restoring and saving go through `usePersistedGameState`, and the end of the game through `useCompletionTransition`, both described above, for the screens they fit. A screen that repeats a reset block (leaving one game for the next) keeps it in one local function, such as Mahjong's and Hearts' `leaveCurrentGame()` and Sort's `leaveBoard()`.
 
 ### No per-frame React state
 
-A screen never calls `setState` once per frame. Per-frame values live in Reanimated shared values (§5) or in refs that a canvas loop reads. Star Swarm's canvas runs the engine in a ref and writes one display list to a shared value per frame (§6), so the screen only re-renders on lifecycle changes (picker, running, paused, over). **Exempt pending epic #3033:** Cascade's screen still drives its physics loop through React state. It is disabled, and #3033 reworks it.
+A screen never calls `setState` once per frame. Per-frame values live in Reanimated shared values (§5) or in refs that a canvas loop reads. Star Swarm's canvas runs the engine in a ref and writes one display list to a shared value per frame (§6), so the screen only re-renders on lifecycle changes (picker, running, paused, over). Cascade's loop does the same with a packed frame buffer and a Picture (`game/cascade/render/`, #2960).
 
 ### The screen header
 

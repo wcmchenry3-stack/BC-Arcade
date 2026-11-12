@@ -1,8 +1,8 @@
 /**
  * The lid and danger state as drawing data (#3694): pure mappings from the engine's
  * `dangerRatio`, `canDrop` and piece positions to what the board draws. No React, no Skia, so
- * they are unit-tested on their own and the drawing (`components/cascade/LidOverlay.tsx`) only
- * places shapes.
+ * they are unit-tested on their own and the drawing (`render/drawFrame.ts`, #2960) only places
+ * shapes. Each is a worklet: the board's Picture is recorded on the UI thread, which calls them.
  *
  * The look (owner's pick on #3694): proposal 3, a clock ring around the spawner that drains
  * clockwise as the danger rises (cyan to red, with a glow near the end), plus proposal 1's solid
@@ -46,11 +46,13 @@ export const OVER_LID_OUTLINE_OPACITY = 0.9;
 export const OVER_LID_OUTLINE_WIDTH = 2;
 
 function clamp01(v: number): number {
+  "worklet";
   return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
 }
 
 /** Linear mix of two `#rrggbb` colours, `t` = 0 gives `a`, 1 gives `b`. */
 export function mixHex(a: string, b: string, t: number): string {
+  "worklet";
   const k = clamp01(t);
   const channel = (i: number) => {
     const ca = parseInt(a.slice(i, i + 2), 16);
@@ -73,6 +75,7 @@ export interface RingState {
 
 /** The spawner ring for a danger ratio: full and cyan when safe, draining and reddening. */
 export function ringState(dangerRatio: number, palette: CascadeLidPalette): RingState {
+  "worklet";
   const ratio = clamp01(dangerRatio);
   const remaining = 1 - ratio;
   return {
@@ -88,6 +91,7 @@ export function ringState(dangerRatio: number, palette: CascadeLidPalette): Ring
  * arc; a full ring is drawn as a circle instead (an SVG arc cannot close on itself).
  */
 export function ringArcPath(cx: number, cy: number, r: number, sweepDeg: number): string {
+  "worklet";
   const sweep = Math.min(359.99, Math.max(0, sweepDeg));
   if (sweep <= 0) return "";
   const end = ((sweep - 90) * Math.PI) / 180;
@@ -100,11 +104,13 @@ export function ringArcPath(cx: number, cy: number, r: number, sweepDeg: number)
 
 /** The lid line's colour: the calm colour, reddening as the count runs. */
 export function lidColor(dangerRatio: number, palette: CascadeLidPalette): string {
+  "worklet";
   return mixHex(palette.lid, palette.danger, clamp01(dangerRatio));
 }
 
 /** True when a piece's top edge is above the lid (the engine's overflow test, by position). */
 export function isOverLid(piece: { y: number }, radius: number): boolean {
+  "worklet";
   return piece.y - radius < OVERFLOW_LINE_Y;
 }
 
@@ -117,6 +123,7 @@ export function overLidWash(
   radius: number,
   dangerRatio: number
 ): { opacity: number } | null {
+  "worklet";
   const ratio = clamp01(dangerRatio);
   if (ratio <= 0 || !isOverLid(piece, radius)) return null;
   return { opacity: 0.3 + 0.35 * ratio };
@@ -124,5 +131,6 @@ export function overLidWash(
 
 /** The spawner piece's drawn radius: its own, capped so the ring fits above the lid. */
 export function spawnerPieceRadius(radius: number): number {
+  "worklet";
   return Math.min(radius, SPAWNER.maxPieceRadius);
 }

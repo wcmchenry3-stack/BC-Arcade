@@ -42,6 +42,9 @@ jest.mock("@shopify/react-native-skia", () => {
     Image: () => null,
     Circle: () => null,
     Line: () => null,
+    // The board's Picture (#2960).
+    Picture: () => null,
+    createPicture: jest.fn(() => null),
     // The lid's drawing (#3694).
     Path: () => null,
     DashPathEffect: () => null,
@@ -264,6 +267,14 @@ describe("developer panel", () => {
       await fireEvent.press(screen.getByText("Close"));
     });
     expect(screen.queryByText("Cascade Dev Panel")).toBeNull();
+  });
+
+  it("shows the frame readout of the screen's loop (#2960)", async () => {
+    await mount();
+    await act(async () => {
+      await fireEvent.press(screen.getByText("DEV"));
+    });
+    expect(screen.getByTestId("cascade-frame-stats")).toBeTruthy();
   });
 
   it("spawns a piece of the chosen tier in the middle of the board", async () => {

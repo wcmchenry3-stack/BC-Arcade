@@ -53,7 +53,7 @@ The lid is the line at `OVERFLOW_LINE_Y` (y = 80 of the 600-unit world). The rul
 - **Hard stop.** A settled piece whose top edge reaches the top of the board (y ≤ `HARD_STOP_Y` = 0) ends the game at once (reason `hardStop`), so the pile is never drawn off-screen. The last dropped piece gets a short grace: a large piece spawns with its top edge above the canvas (a tier-4 piece is at the edge, a dev-panel piece of tier 5 and up is clear above it) and can touch a pile that reaches just under the lid while still near spawn height, so it must stay settled with its top edge at or above y = 0 for `HARD_STOP_SETTLE_TICKS` (30 steps, 0.5 s) before the hard stop fires. If it really rests there, the game still ends (and the overflow count runs meanwhile).
 - **Drop gating.** `canDrop()` is false from a drop until that piece is below the lid (its top edge at or under the line), or merges into a piece that is. The screen ignores taps until then (on top of its 200 ms tap debounce). It cannot deadlock: once the piece lands it counts like any other, so a piece that comes to rest over the lid ends the game through the overflow rule. `drop()` itself is not gated, so the dev panel and the `__cascade_*` test seams can still place pieces.
 - **Restore.** A restored game gets the merge grace once (1 s while the pieces settle), then the counter runs as normal. It is one grace per restore: a later restore starts a fresh grace, but does not extend a count already running. The hard stop applies at once to restored pieces that are part of the pile. A saved piece whose top edge is over the lid and that touches no other piece was most likely mid-air (velocities are not saved), so it is treated as falling again (no hard stop or overflow count until its first contact); if exactly one such piece exists it is the last drop for `canDrop()` and the hard-stop settle run.
-- **Danger state.** `getState().dangerRatio` is the counter over the threshold (0..1) and `getState().canDrop` the gate. The board draws them (`components/cascade/LidOverlay.tsx`, mappings in `lidVisuals.ts`, colours `CASCADE_LID_PALETTE` in `theme/theme.cascade.ts`): a solid lid line that reddens as the counter runs; a clock ring around the spawner piece (above the lid) that drains clockwise from cyan to red, with a glow from 0.7; a red wash and outline on pieces over the lid while the counter runs; and the spawner piece as a dashed, faded ghost while a drop is not allowed.
+- **Danger state.** `getState().dangerRatio` is the counter over the threshold (0..1) and `getState().canDrop` the gate. The board draws them (`render/drawFrame.ts`, mappings in `lidVisuals.ts`, colours `CASCADE_LID_PALETTE` in `theme/theme.cascade.ts`): a solid lid line that reddens as the counter runs; a clock ring around the spawner piece (above the lid) that drains clockwise from cyan to red, with a glow from 0.7; a red wash and outline on pieces over the lid while the counter runs; and the spawner piece as a dashed, faded ghost while a drop is not allowed.
 - **Regression.** `__tests__/engine.sim.test.ts` runs a bot tapping every 200–250 ms at random x on fixed seeds; it must lose within 120 simulated seconds at 60 and 120 Hz (it lost in 34–46 s when recorded).
 
 ## Client-Side Engine
@@ -62,17 +62,22 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 
 ### Module Map
 
-| File               | Purpose                                                                     |
-| ------------------ | --------------------------------------------------------------------------- |
-| `engine.ts`        | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)          |
-| `tiers.ts`         | The tier ladder: the one table of radius, score, density, droppable, names  |
-| `pieceDefs.ts`     | Engine piece definitions built from `tiers.ts`: color, score, shape         |
-| `constants.ts`     | All tunable physics & gameplay parameters                                   |
-| `pieceQueue.ts`    | Current + next piece queue (preview UI data)                                |
-| `spawnSelector.ts` | Weighted random tier selection with drought correction & danger suppression |
-| `storage.ts`       | AsyncStorage save/load — versioned `SavedState` (v4), discards v3           |
-| `layout.ts`        | `calculateCascadeLayout()`: world-to-screen scale for the measured board    |
-| `testHooks.ts`     | `__cascade_*` E2E hooks through the shared `registerTestHooks`              |
+| File                     | Purpose                                                                     |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `engine.ts`              | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)          |
+| `tiers.ts`               | The tier ladder: the one table of radius, score, density, droppable, names  |
+| `pieceDefs.ts`           | Engine piece definitions built from `tiers.ts`: color, score, shape         |
+| `constants.ts`           | All tunable physics & gameplay parameters                                   |
+| `pieceQueue.ts`          | Current + next piece queue (preview UI data)                                |
+| `spawnSelector.ts`       | Weighted random tier selection with drought correction & danger suppression |
+| `storage.ts`             | AsyncStorage save/load — versioned `SavedState` (v4), discards v3           |
+| `layout.ts`              | `calculateCascadeLayout()`: world-to-screen scale for the measured board    |
+| `testHooks.ts`           | `__cascade_*` E2E hooks through the shared `registerTestHooks`              |
+| `render/frame.ts`        | The per-frame board buffer, its packer and the publish gate (#2960)         |
+| `render/drawFrame.ts`    | UI-thread worklet that draws a frame into the board's Skia Picture          |
+| `render/boardStyle.ts`   | Per-tier sizes and placeholder colours handed to the renderer               |
+| `scoreStore.ts`          | The live score outside React state; `ScoreDisplay` subscribes               |
+| `useTieredMergeSound.ts` | The tier-scaled merge sound                                                 |
 
 ### Physics
 
@@ -80,7 +85,18 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 - **Timestep:** Fixed 16.67 ms (60 Hz) with up to 3 substeps per frame to handle variable frame rates
 - **Sleep system:** Pieces sleep after 10 frames below velocity threshold — eliminates micro-vibration
 - **Guard rails:** Out-of-bounds bodies are clamped back inside and a `guardRailFired` event is emitted. `Matter.World.remove()` is only called during confirmed merges — no silent deletion
-- **Angular damping:** Applied post-physics with a hard clamp on `MAX_ANGULAR_VELOCITY`
+- **Angular damping:** Applied post-physics with a hard clamp on `MAX_ANGULAR_VELOCITY`. Damping and the guard rails skip a body that was already checked while asleep (#2960): Matter neither moves nor spins a sleeping body, so the pass cannot change it. A seeded 16-game state hash was identical before and after.
+
+### Rendering (#2960)
+
+Nothing per frame goes through React state. The screen's RAF loop steps the engine and reads it with `engine.getState(into)`, which writes into one reused state object (no allocation per frame). `render/frame.ts` packs what the board draws into a `Float64Array`: a header (piece count, `dangerRatio`, `canDrop`, the spawner's tier) and six numbers per piece (id, tier, x, y, angle, sleeping). The loop publishes a copy to a Reanimated shared value only when it differs from the last one published. `components/cascade/CascadeBoard.tsx` records a Skia `Picture` from that shared value in `useDerivedValue` (`createPicture`), on the UI thread, with `render/drawFrame.ts`; the Picture is drawn inside a `Group` scaled from world units to the board.
+
+- **What is drawn.** The same primitives, in the same order and with the same paints, as the declarative `PieceRenderer` and the #3694 lid components it replaced: each piece (its baked sprite in a square of half-size radius x `bakedClipR`, or a placeholder circle at the ladder radius) with its over-lid wash, then the lid line, then the spawner (piece, waiting ghost, clock ring). Every lid decision comes from `lidVisuals.ts`, whose mappings are worklets. A headless CanvasKit comparison of the old and new renderers on real engine states (light and dark, sprites and placeholders, calm, waiting, danger 0.5 and 0.9) was pixel-identical. That comparison ran headless, on one thread (CanvasKit, with the Picture recorded and drawn on the JS thread); it has not been verified on a device, where the Picture is recorded on the UI thread. Checking the board on iOS and Android is an owner follow-up (the Maestro screenshots of #3705, or a device session). `render/__tests__/worklets.test.ts` runs the real worklets Babel plugin to check that every function the UI-thread recording reaches is a worklet, which the Jest Reanimated stub cannot.
+- **Sleeping pieces** are drawn where they fell asleep (the #1746 freeze, kept in the packer). A settled board therefore packs the same frame every time and publishes nothing.
+- **Score.** `scoreStore.ts` holds the live score; `ScoreDisplay` subscribes with `useSyncExternalStore` and re-renders only when the integer changes. `ScoreDisplay`, `ThemeSelector`, `NextFruitPreview` and `CascadeBoard` are `React.memo`; the screen's handlers and styles are hoisted.
+- **Events.** Merges and game over still reach the screen through `onMergeRef` / `onGameOverRef`; a merge burst (`components/cascade/MergeBurst.tsx`) is the one React update a merge makes, besides the score.
+- **Measured.** `CascadeScreen.frames.test.tsx` counts React commits with a `Profiler`: 60 frames commit 60 times before #2960 (settled or moving) and 0 times after; a score change commits once. The dev panel's _Frame_ line (Star Swarm's `render/frameStats.ts` ring buffer, dev builds only) shows frame time and commits per second on a device; commits are counted by a `Profiler` around the screen, so a commit of `ScoreDisplay` alone counts. Numbers are in [PERFORMANCE.md](../PERFORMANCE.md#cascade-renderer-2960).
+- **Web.** Cascade does not render on web yet; Skia's web runtime for it is #2960 part (b).
 
 ### Piece Queue & Spawn Selection (`pieceQueue.ts`, `spawnSelector.ts`)
 

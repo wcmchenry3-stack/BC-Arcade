@@ -128,6 +128,35 @@ function pieceRadius(def: PieceDef): number {
   return def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
 }
 
+/** Writes one body into `out` (a new snapshot when `out` is undefined) and returns it. */
+function writeSnapshot(
+  out: PieceSnapshot | undefined,
+  body: Matter.Body,
+  tier: number
+): PieceSnapshot {
+  const snap: PieceSnapshot = out ?? {
+    id: 0,
+    tier: 0,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    shapeKind: "circle",
+    isSleeping: false,
+  };
+  snap.id = body.id;
+  snap.tier = tier;
+  snap.x = body.position.x;
+  snap.y = body.position.y;
+  snap.vx = body.velocity.x;
+  snap.vy = body.velocity.y;
+  snap.angle = body.angle;
+  snap.shapeKind = PIECE_DEFS[tier]!.shape.kind;
+  snap.isSleeping = body.isSleeping;
+  return snap;
+}
+
 function makeBody(def: PieceDef, x: number, y: number): Matter.Body {
   const opts = {
     restitution: PIECE_RESTITUTION,
@@ -156,10 +185,24 @@ function makeBody(def: PieceDef, x: number, y: number): Matter.Body {
   return body;
 }
 
+/**
+ * One live piece. `railsAtRest` (#2960) is true once the post-physics pass has run on the body
+ * while it was asleep: a sleeping body does not move, so later steps skip it until it wakes.
+ */
+interface PieceEntry {
+  body: Matter.Body;
+  tier: number;
+  railsAtRest: boolean;
+}
+
+function newEntry(body: Matter.Body, tier: number): PieceEntry {
+  return { body, tier, railsAtRest: false };
+}
+
 export class CascadeEngine {
   private readonly _engine: Matter.Engine;
   private readonly _world: Matter.World;
-  private readonly _pieces: Map<number, { body: Matter.Body; tier: number }> = new Map();
+  private readonly _pieces: Map<number, PieceEntry> = new Map();
   private _score = 0;
   private _gameOver = false;
   private _overflowTicksCount = 0;
@@ -268,8 +311,21 @@ export class CascadeEngine {
 
   /** The post-physics work of one fixed step: damping, guard rails, merges, the lid, combos. */
   private _fixedStep(events: EngineEvent[]): void {
-    // Angular damping + guard rails (applied post-physics)
-    for (const { body, tier } of this._pieces.values()) {
+    // Angular damping + guard rails (applied post-physics).
+    //
+    // #2960: a body that was already checked while asleep is skipped. Matter does not integrate a
+    // sleeping body and sets its angular velocity to 0 when it falls asleep, so damping it is a
+    // no-op, and its position cannot change until it wakes, so a rail that did not fire on its
+    // first sleeping step (or fired and clamped it in bounds) cannot fire on a later one. The
+    // first sleeping step still runs the full pass: the step it fell asleep in also moved it.
+    for (const entry of this._pieces.values()) {
+      const { body, tier } = entry;
+      if (body.isSleeping) {
+        if (entry.railsAtRest) continue;
+        entry.railsAtRest = true;
+      } else {
+        entry.railsAtRest = false;
+      }
       const damped = body.angularVelocity * (1 - PIECE_ANGULAR_DAMPING);
       const clamped =
         Math.abs(damped) > MAX_ANGULAR_VELOCITY ? Math.sign(damped) * MAX_ANGULAR_VELOCITY : damped;
@@ -358,7 +414,7 @@ export class CascadeEngine {
         y: Math.max(-MAX_SPAWN_VELOCITY, Math.min(MAX_SPAWN_VELOCITY, mergedVy)),
       });
       Matter.Composite.add(this._world, newBody);
-      this._pieces.set(newBody.id, { body: newBody, tier: newTier });
+      this._pieces.set(newBody.id, newEntry(newBody, newTier));
       // The dropped piece merged: the gate follows the piece it became, which has landed.
       if (this._dropId === idA || this._dropId === idB) {
         this._dropId = newBody.id;
@@ -476,7 +532,7 @@ export class CascadeEngine {
       if (!def) continue;
       const body = makeBody(def, x, y);
       Matter.Composite.add(this._world, body);
-      this._pieces.set(body.id, { body, tier });
+      this._pieces.set(body.id, newEntry(body, tier));
     }
     // A saved piece whose top edge is over the lid and that touches no other piece was most
     // likely still in the air (saved right after a drop; velocities are not saved). Treat it as
@@ -505,7 +561,7 @@ export class CascadeEngine {
     const y = OVERFLOW_LINE_Y - pieceRadius(def) - DROP_SPAWN_INSET;
     const body = makeBody(def, x, y);
     Matter.Composite.add(this._world, body);
-    this._pieces.set(body.id, { body, tier });
+    this._pieces.set(body.id, newEntry(body, tier));
     // It spawns over the lid: the gate holds until it falls below, and the lid rule ignores it
     // until it lands (#3694).
     this._dropId = body.id;
@@ -516,24 +572,43 @@ export class CascadeEngine {
     this._comboEmitted = false;
   }
 
-  getState(): GameState {
-    const pieces: PieceSnapshot[] = Array.from(this._pieces.values()).map(({ body, tier }) => ({
-      id: body.id,
-      tier,
-      x: body.position.x,
-      y: body.position.y,
-      vx: body.velocity.x,
-      vy: body.velocity.y,
-      angle: body.angle,
-      shapeKind: PIECE_DEFS[tier]!.shape.kind,
-      isSleeping: body.isSleeping,
-    }));
-    return {
-      pieces,
-      score: this._score,
-      gameOver: this._gameOver,
-      dangerRatio: Math.min(1, this._overflowTicksCount / OVERFLOW_TICKS_THRESHOLD),
-      canDrop: this.canDrop(),
-    };
+  /**
+   * A snapshot of the board.
+   *
+   * Without `into`, every call builds a new state (tests, hooks and saves hold on to it). With
+   * `into` (#2960), the board is written into that object and returned: its `pieces` array and
+   * the snapshot objects in it are reused, so the per-frame read allocates nothing once the
+   * array has grown to the board's size. The caller owns `into`, and the next call with it
+   * overwrites what this one wrote.
+   */
+  getState(into?: GameState): GameState {
+    const dangerRatio = Math.min(1, this._overflowTicksCount / OVERFLOW_TICKS_THRESHOLD);
+    if (!into) {
+      const pieces: PieceSnapshot[] = [];
+      for (const { body, tier } of this._pieces.values()) {
+        pieces.push(writeSnapshot(undefined, body, tier));
+      }
+      return {
+        pieces,
+        score: this._score,
+        gameOver: this._gameOver,
+        dangerRatio,
+        canDrop: this.canDrop(),
+      };
+    }
+    const pieces = into.pieces;
+    let n = 0;
+    for (const { body, tier } of this._pieces.values()) {
+      const existing = pieces[n];
+      const snap = writeSnapshot(existing, body, tier);
+      if (!existing) pieces.push(snap);
+      n++;
+    }
+    pieces.length = n;
+    into.score = this._score;
+    into.gameOver = this._gameOver;
+    into.dangerRatio = dangerRatio;
+    into.canDrop = this.canDrop();
+    return into;
   }
 }
