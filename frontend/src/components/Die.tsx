@@ -95,7 +95,8 @@ const WAITING = -1;
 export function tumbleFace(p: number, finalFace: number, index: number, fromFace = 0): number {
   "worklet";
   if (p >= TUMBLE_LAND_AT) return finalFace;
-  if (p < 0 && fromFace > 0) return fromFace;
+  // Waiting: its old face (0, a blank die before the first roll, shows no pips).
+  if (p < 0) return fromFace;
   const k = Math.floor((Math.max(0, p) * TUMBLE_MS) / TUMBLE_FACE_MS);
   return 1 + ((index * 7 + k * 13 + index * k * 3) % 6);
 }

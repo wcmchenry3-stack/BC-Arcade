@@ -36,8 +36,8 @@ describe("tumbleFace", () => {
 
   it("while a die waits for its stagger it shows its old face, not a frozen flick", () => {
     expect(tumbleFace(-1, 6, 3, 2)).toBe(2);
-    // A die blank before (the first roll) flicks from the start.
-    expect(tumbleFace(-1, 6, 3, 0)).toBe(tumbleFace(0, 6, 3));
+    // A die blank before (the first roll) stays blank until its tumble starts.
+    expect(tumbleFace(-1, 6, 3, 0)).toBe(0);
   });
 
   it("shows the final face from the landing on", () => {
