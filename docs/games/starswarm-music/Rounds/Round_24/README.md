@@ -6,7 +6,7 @@
 - `starswarm-round24-B-relentless-harmonic-motion.mp3` — 56 seconds. Owner found it insufficiently melodious; faster chord changes felt musically incoherent.
 - `starswarm_round24_drive_tests.py` — reproducible local generator. It requires the earlier original Round 15A audio as source, as documented in the script.
 
-**Audio status:** MP3 files are **not committed in this branch**. The GitHub integration used to prepare this PR could write UTF-8 source, but not supply binary MP3 bytes. Add the two MP3s via a Git-capable client before treating the archive as complete.
+**Audio status:** Both MP3s have now been added to this PR branch by the owner. They are retained as rejected audition references and are not the production soundtrack.
 
 **Lesson:** Tempo and musical momentum are not interchangeable. Increasing pulse frequency or harmonic churn without compelling compositional direction did not solve the core problem.
 
