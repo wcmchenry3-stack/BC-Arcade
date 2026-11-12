@@ -34,7 +34,7 @@
 
 ## Reproduction and delivery
 
-The generated verified ZIP `StarSwarm_Round45_First_Two_Minutes.zip` includes both MP3s, the original seven-minute Round 44 source MP3, exact standalone orchestration script `starswarm_round45_orchestration.py`, original Round 18 and Round 20 synth generators used to regenerate signature-only stems (old backing *nulled*), and listening README. The MP3s and source are **not in GitHub yet** because the connector cannot stream locally generated binary assets; owner must upload the ZIP to the existing PR branch. ZIP tested. The companion scripts and synthesis are original, not derivative samples of licensed source BG music.
+Both MP3s and `starswarm_round45_orchestration.py` are committed in this directory (the original ZIP was unpacked: it exceeded the 5 MiB limit). Inputs that the ZIP bundled as duplicates are not repeated here: the Round 44 source MP3 is in `../Round_44/`, and the Round 18 and Round 20 synth generators are in `../Round_18/` and `../Round_20/`.
 
 **Pending:** owner approval, other signature variants and placements across full seven minutes, level/spectral balance under laser/explosion SFX, mastered bitrate and loudness, seamless playback loop and safe phrase entry points. No production game code changed.
 
