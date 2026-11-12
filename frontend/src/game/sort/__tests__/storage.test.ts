@@ -5,11 +5,9 @@ import {
   clearGame,
   highestSolvedLevel,
   loadBestMoves,
-  loadLevelsCache,
   loadProgress,
   mergeBestMoves,
   saveBestMoves,
-  saveLevelsCache,
   saveProgress,
   totalBestMoves,
   type SortProgress,
@@ -165,31 +163,6 @@ describe("saveProgress / loadProgress / clearGame (#2957)", () => {
   });
 });
 
-describe("saveLevelsCache / loadLevelsCache (#2957)", () => {
-  const levels = { levels: [{ id: 1, bottles: [["red", "blue"], ["blue", "red"], []] }] };
-
-  it("reads back the cached levels", async () => {
-    await saveLevelsCache(levels);
-    await expect(loadLevelsCache()).resolves.toEqual(levels);
-  });
-
-  it("is null when nothing is cached", async () => {
-    await expect(loadLevelsCache()).resolves.toBeNull();
-  });
-
-  it("is null when the cache is corrupt", async () => {
-    await AsyncStorage.setItem("@sort/levels_cache", "oops");
-    await expect(loadLevelsCache()).resolves.toBeNull();
-  });
-
-  it("is null when storage can't be read", async () => {
-    await saveLevelsCache(levels);
-    jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
-    await expect(loadLevelsCache()).resolves.toBeNull();
-    await expect(loadLevelsCache()).resolves.toEqual(levels);
-  });
-});
-
 describe("Sentry reporting (#2987: failures used to be swallowed)", () => {
   const captureException = Sentry.captureException as jest.Mock;
   const captureMessage = Sentry.captureMessage as jest.Mock;
@@ -207,10 +180,6 @@ describe("Sentry reporting (#2987: failures used to be swallowed)", () => {
     expect(captureException).toHaveBeenLastCalledWith(expect.any(Error), tags("save"));
 
     jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(new Error("full"));
-    await expect(saveLevelsCache({ levels: [] })).resolves.toBeUndefined();
-    expect(captureException).toHaveBeenLastCalledWith(expect.any(Error), tags("save"));
-
-    jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(new Error("full"));
     await expect(saveBestMoves({ "1": 3 })).resolves.toBe(false);
     expect(captureException).toHaveBeenLastCalledWith(expect.any(Error), tags("saveBestMoves"));
 
@@ -221,14 +190,12 @@ describe("Sentry reporting (#2987: failures used to be swallowed)", () => {
 
   it("reports failed reads, and keeps what is stored", async () => {
     await saveProgress({ unlockedLevel: 5, currentLevelId: null, currentState: null });
-    await saveLevelsCache({ levels: [] });
     await saveBestMoves({ "1": 3 });
-    for (const load of [loadProgress, loadLevelsCache, loadBestMoves]) {
+    for (const load of [loadProgress, loadBestMoves]) {
       jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
       await load();
     }
     expect(captureException.mock.calls.map((c) => c[1])).toEqual([
-      tags("load"),
       tags("load"),
       tags("loadBestMoves"),
     ]);
@@ -237,24 +204,19 @@ describe("Sentry reporting (#2987: failures used to be swallowed)", () => {
       currentLevelId: null,
       currentState: null,
     });
-    await expect(loadLevelsCache()).resolves.toEqual({ levels: [] });
     await expect(loadBestMoves()).resolves.toEqual({ "1": 3 });
   });
 
-  it("warns about corrupt payloads; progress and cache are discarded, bests read as none", async () => {
+  it("warns about corrupt payloads; progress is discarded, bests read as none", async () => {
     await AsyncStorage.setItem("@sort/progress", "{x");
-    await AsyncStorage.setItem("@sort/levels_cache", "{x");
     await AsyncStorage.setItem("@sort/best_moves", "{x");
     await loadProgress();
-    await loadLevelsCache();
     await loadBestMoves();
     expect(captureMessage.mock.calls.map((c) => [c[0], c[1].tags.op])).toEqual([
       ["sort.storage: corrupt progress payload, discarding", "load"],
-      ["sort.storage: corrupt levels cache, discarding", "load"],
       ["sort.storage: corrupt best moves, reading as none", "loadBestMoves"],
     ]);
     await expect(AsyncStorage.getItem("@sort/progress")).resolves.toBeNull();
-    await expect(AsyncStorage.getItem("@sort/levels_cache")).resolves.toBeNull();
     await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBe("{x");
   });
 

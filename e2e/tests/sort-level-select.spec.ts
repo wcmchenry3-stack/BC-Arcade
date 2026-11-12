@@ -12,7 +12,7 @@ test.describe("Sort Puzzle — level select", () => {
   test("locked levels are disabled and labelled as locked", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    const lockedBtn = page.getByRole("button", { name: "Level 2, locked" });
+    const lockedBtn = page.getByRole("button", { name: "Level 2, locked", exact: true });
     await expect(lockedBtn).toBeVisible({ timeout: 5_000 });
     await expect(lockedBtn).toBeDisabled();
   });
@@ -20,7 +20,7 @@ test.describe("Sort Puzzle — level select", () => {
   test("tapping an unlocked level starts gameplay", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
   });
 
@@ -28,7 +28,7 @@ test.describe("Sort Puzzle — level select", () => {
     await mockSortApi(page);
     await gotoSort(page);
     await expect(
-      page.getByRole("button", { name: "Level 1" }),
+      page.getByRole("button", { name: "Level 1", exact: true }),
     ).not.toBeDisabled({ timeout: 5_000 });
   });
 
@@ -64,7 +64,7 @@ test.describe("Sort Puzzle — level select", () => {
     await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
     await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
     await expect(
-      page.getByRole("button", { name: "Level 2" }),
+      page.getByRole("button", { name: "Level 2", exact: true }),
     ).not.toBeDisabled({ timeout: 5_000 });
   });
 });

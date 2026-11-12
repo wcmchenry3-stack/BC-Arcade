@@ -340,16 +340,39 @@ async def test_qualifying_outcomes_apply_to_a_score_board(
 
 
 async def test_a_malformed_metadata_metric_is_ignored() -> None:
-    # Sort has no result_model, so any result block is stored as sent.
+    # Rows inserted directly, past SortResult's checks: malformed stored values are ignored.
     sid = _sid()
     await _add(sid, "sort", at=0, metadata={"level_reached": "twelve"})
     await _add(sid, "sort", at=1, metadata={"level_reached": True})
-    await _add(sid, "sort", at=2, metadata={"level_reached": 7})
+    await _add(sid, "sort", at=2, metadata={"level_reached": 7, "catalog_version": 1})
     await _add(sid, "sort", at=3, metadata={})
 
     s = await _game(sid, "sort")
     assert s.best_value == 7
     assert s.best_label_key == "level"
+
+
+async def test_sort_best_counts_only_the_current_catalog(sort_edition) -> None:
+    """The board reset (#2761), switched on: a level from the random levels before
+    the catalog (no catalog_version) or another catalog is no one's best."""
+    sort_edition(True)
+    sid = _sid()
+    await _add(sid, "sort", at=0, metadata={"level_reached": 23})
+    await _add(sid, "sort", at=1, metadata={"level_reached": 30, "catalog_version": 2})
+    s = await _game(sid, "sort")
+    assert s.best_value is None
+    await _add(sid, "sort", at=2, metadata={"level_reached": 4, "catalog_version": 1})
+    s = await _game(sid, "sort")
+    assert s.best_value == 4
+    assert s.sessions == 3
+
+
+async def test_sort_best_counts_every_row_until_the_reset_is_switched_on(sort_edition) -> None:
+    sort_edition(False)
+    sid = _sid()
+    await _add(sid, "sort", at=0, metadata={"level_reached": 23})
+    await _add(sid, "sort", at=1, metadata={"level_reached": 4, "catalog_version": 1})
+    assert (await _game(sid, "sort")).best_value == 23
 
 
 async def test_best_value_is_null_without_the_metric() -> None:
