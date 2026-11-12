@@ -4,6 +4,7 @@ import {
   BOTTLE_GAP,
   BOTTLE_GAP_RATIO,
   MAX_BOTTLE_SCALE,
+  SORT_ACTION_BAR_H,
   computeBoardLayout,
   computeGridShape,
   MIN_BOTTLE_HEIGHT,
@@ -152,20 +153,58 @@ describe("computeBoardLayout (#2207)", () => {
     expect(l.hitSlop.top + l.hitSlop.bottom).toBe(0);
   });
 
-  // #3658 — the board on a 390x844 phone. The board container is 614 tall
-  // (SortScreen's 639 before the move, plus the 31pt colorblind row, minus the
-  // 56pt action bar), so with 8pt vertical padding the content box is 358 x 598.
+  // #3658 — the board on real phones. The board container's height is derived, not typed in:
+  //   before = the measured container (639 on a 390x844 iPhone, in a browser at 390x844),
+  //   now    = before + the 31pt Colorblind row that is gone - the action bar.
+  // The smaller phones' "before" containers are the 390x844 one minus the screen-height and
+  // safe-area differences (estimated: 390x844 has a 47pt top and 34pt bottom inset, 375x667 has
+  // 20 and 0, 360x640 has about 24 and 0), so they are an estimate, not a device measurement.
+  const COLORBLIND_ROW_H = 31;
+  const BOARD_BEFORE_390 = 639;
+  const PHONES = [
+    { name: "390x844", w: 390, boardBefore: BOARD_BEFORE_390 },
+    { name: "375x667", w: 375, boardBefore: BOARD_BEFORE_390 - (844 - 667) + (47 - 20) + 34 },
+    { name: "360x640", w: 360, boardBefore: BOARD_BEFORE_390 - (844 - 640) + (47 - 24) + 34 },
+  ] as const;
+  // The sizing before this change: bottle capped at the default, 16pt padding, 12pt row gap.
+  function widthBefore(n: number, w: number, boardBefore: number): number {
+    const { numRows, numCols } = computeGridShape(n);
+    const contentH = boardBefore - 2 * 16;
+    const hFromH = Math.min(
+      DEFAULT_BOTTLE_HEIGHT,
+      Math.max(60, (contentH - 12 * (numRows - 1)) / numRows)
+    );
+    return Math.min(hFromH / 3, (w - BOARD_HORIZONTAL_PAD) / numCols - BOTTLE_GAP);
+  }
+  const contentHNow = (boardBefore: number) =>
+    boardBefore + COLORBLIND_ROW_H - SORT_ACTION_BAR_H - 2 * BOARD_VERTICAL_PADDING;
+
+  describe.each(PHONES)("$name phone: never smaller than before (#3658)", (phone) => {
+    it.each([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])("%i bottles", (n) => {
+      const l = computeBoardLayout(
+        n,
+        phone.w - BOARD_HORIZONTAL_PAD,
+        contentHNow(phone.boardBefore),
+        BOTTLE
+      );
+      // Rounding only.
+      expect(l.bottleW).toBeGreaterThanOrEqual(widthBefore(n, phone.w, phone.boardBefore) - 0.01);
+    });
+  });
+
   describe("390x844 phone (#3658)", () => {
     const CONTENT_W = 390 - BOARD_HORIZONTAL_PAD;
-    const CONTENT_H = 614 - 2 * BOARD_VERTICAL_PADDING;
+    const CONTENT_H = contentHNow(BOARD_BEFORE_390);
     // Measured before this change at the old 639pt board (16pt padding, 12pt row gap).
     const BEFORE = { 4: [52, 156], 8: [52, 156], 12: [52, 156], 16: [47.6, 142.8] } as const;
     const layout = (n: number) => computeBoardLayout(n, CONTENT_W, CONTENT_H, BOTTLE);
 
     it.each([4, 8, 12, 16] as const)("%i bottles are at least as big as before", (n) => {
       const l = layout(n);
+      // The 16-bottle "before" is the measured 47.6 x 142.8, rounded to 1 decimal.
       expect(l.bottleW).toBeGreaterThanOrEqual(BEFORE[n][0] - 0.05);
-      expect(l.bottleH).toBeGreaterThanOrEqual(BEFORE[n][1] - 0.15);
+      expect(l.bottleH).toBeGreaterThanOrEqual(BEFORE[n][1] - 0.05);
+      expect(l.bottleW).toBeGreaterThanOrEqual(widthBefore(n, 390, BOARD_BEFORE_390) - 0.01);
     });
 
     it.each([4, 8, 12, 16] as const)(
@@ -191,8 +230,8 @@ describe("computeBoardLayout (#2207)", () => {
       expect(sizes).toEqual([
         [4, 77.5, 232.5, 89.5],
         [8, 77.5, 232.5, 89.5],
-        [12, 64.7, 194, 77.6],
-        [16, 47.8, 143.5, 59.8],
+        [12, 64.9, 194.7, 77.9],
+        [16, 48, 144, 60],
       ]);
     });
 

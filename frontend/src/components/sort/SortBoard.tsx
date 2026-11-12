@@ -511,6 +511,7 @@ export default function SortBoard({
                     bottleHeight={bottleH}
                     hitSlop={hitSlop}
                     onTap={handlers[idx]}
+                    hintTarget={idx === hintTo}
                   />
                   {idx === hintTo && (
                     <View

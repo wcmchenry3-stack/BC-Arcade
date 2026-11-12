@@ -1660,7 +1660,7 @@ describe("SortScreen — action bar, menu toggle and hint destination (#3658)", 
     expect(within(bar).getByRole("button", { name: "Undo" })).toBeTruthy();
     expect(r.getByTestId("sort-hint-button")).toBeTruthy();
     expect(r.getByTestId("sort-undo-button")).toBeTruthy();
-    expect(StyleSheet.flatten(bar.props.style).height).toBe(56);
+    expect(StyleSheet.flatten(bar.props.style).height).toBe(54);
   });
 
   it("keeps the bar after the board in reading order", async () => {
@@ -1725,6 +1725,8 @@ describe("SortScreen — action bar, menu toggle and hint destination (#3658)", 
     await tapHint(r);
     expect(await r.findByLabelText(/Bottle 2 selected/)).toBeTruthy();
     expect(lastProps().hintTo).toBe(0);
+    // Screen readers learn the destination from its label (the ring is hidden from them).
+    expect(r.getByLabelText(/^Bottle 1,.*Hint: pour here$/)).toBeTruthy();
     expect(
       within(r.getByTestId("bottle-cell-0")).getByTestId("hint-dst-ring", {
         includeHiddenElements: true,

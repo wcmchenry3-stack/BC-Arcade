@@ -52,24 +52,58 @@ describe("BottleView", () => {
   });
 });
 
-// #3658: Colorblind Mode symbols must draw as text glyphs on iOS and Android,
-// never as colour emoji.
+// #3658: Colorblind Mode symbols draw as plain text glyphs on iOS and Android, never as emoji.
 describe("COLORBLIND_SYMBOLS (#3658)", () => {
   const entries = Object.entries(COLORBLIND_SYMBOLS);
+  // The shape family of each symbol (see the comment on COLORBLIND_SYMBOLS). No two colours
+  // may share one, so they stay apart at a glance.
+  const FAMILY: Record<string, string> = {
+    "▲": "triangle",
+    "●": "circle",
+    "■": "square",
+    "★": "star",
+    "⬡": "hexagon",
+    "◆": "diamond",
+    "✱": "asterisk",
+    "✚": "plus",
+    "↑": "arrow",
+    "✿": "flower",
+    "♪": "note",
+    "∞": "infinity",
+    "☾": "crescent",
+    "✕": "cross",
+  };
 
   it("has a symbol for every colour, all different", () => {
     expect(entries).toHaveLength(14);
     expect(new Set(Object.values(COLORBLIND_SYMBOLS)).size).toBe(entries.length);
   });
 
-  it.each(entries)("%s: a text glyph, not a colour emoji", (_color, symbol) => {
-    // Emoji by default (the old lightning bolt): never allowed.
+  it("gives every colour its own shape family", () => {
+    const families = Object.values(COLORBLIND_SYMBOLS).map((s) => FAMILY[s]);
+    expect(families).not.toContain(undefined);
+    expect(new Set(families).size).toBe(entries.length);
+  });
+
+  it.each(entries)("%s: a single plain text glyph, not emoji-capable", (_color, symbol) => {
+    // One code point: no variation selector (U+FE0E or U+FE0F) to be dropped or drawn as a box
+    // by Android's per-glyph SVG text layout.
+    expect([...symbol]).toHaveLength(1);
+    expect(symbol).not.toMatch(/\p{Emoji}/u);
     expect(symbol).not.toMatch(/\p{Emoji_Presentation}/u);
-    // Emoji-capable (such as the heart): must carry the text selector U+FE0E.
-    if (/\p{Extended_Pictographic}/u.test(symbol)) {
-      expect(symbol.endsWith("︎")).toBe(true);
-    }
-    // Never the emoji selector U+FE0F.
-    expect(symbol).not.toContain("️");
+    expect(symbol).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+});
+
+describe("BottleView hint destination (#3658)", () => {
+  it("adds the hint to the bottle's label only when it is the destination", async () => {
+    const bottle: Color[] = ["red"];
+    const { getByLabelText, queryByLabelText, rerender } = await render(
+      withTheme(<BottleView bottle={bottle} index={0} hintTarget />)
+    );
+    expect(getByLabelText("Bottle 1, 1 of 4 filled. Hint: pour here")).toBeTruthy();
+    await rerender(withTheme(<BottleView bottle={bottle} index={0} />));
+    expect(queryByLabelText(/Hint: pour here/)).toBeNull();
+    expect(getByLabelText("Bottle 1, 1 of 4 filled")).toBeTruthy();
   });
 });

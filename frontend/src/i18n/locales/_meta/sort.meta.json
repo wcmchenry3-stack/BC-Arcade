@@ -54,7 +54,7 @@
     "notes": null
   },
   "action.undo": {
-    "component": "SortScreen header",
+    "component": "SortScreen action bar",
     "description": "Undo button.",
     "tone": "functional",
     "characterLimit": 10,
@@ -63,19 +63,10 @@
     "notes": null
   },
   "action.hint": {
-    "component": "SortScreen header",
+    "component": "SortScreen action bar",
     "description": "Hint button — highlights the next suggested move.",
     "tone": "functional",
     "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.colorblindToggle": {
-    "component": "SortScreen header",
-    "description": "Button label for toggling colorblind symbol overlay.",
-    "tone": "functional",
-    "characterLimit": 20,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -259,6 +250,15 @@
     "placeholders": ["{{index}}"],
     "doNotTranslate": [],
     "notes": "Indicates that this bottle is already in its final solved state."
+  },
+  "a11y.hintDestination": {
+    "component": "BottleView",
+    "description": "Added to a bottle's accessibility label when a Hint says to pour into it.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   },
   "settings.colorblindMode": {
     "component": "SortScreen settings",

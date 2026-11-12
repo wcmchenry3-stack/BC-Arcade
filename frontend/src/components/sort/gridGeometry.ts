@@ -44,11 +44,13 @@ export const BOARD_PADDING = 16;
  * Padding inside SortScreen's board container, top and bottom (#3658). The bars
  * (Hint/Undo at the foot) take height from the board, so the vertical padding is
  * tighter than the horizontal one to keep the 16-bottle grid at least as large
- * as before. The selected bottle's bounce and the pour lift are not clipped.
+ * as before. The selected bottle's 10pt bounce and the pour lift can rise past the top
+ * padding: nothing clips them (Views draw their children outside their bounds unless
+ * overflow is hidden), so keep overflow hidden off the board and its container.
  */
 export const BOARD_VERTICAL_PADDING = 8;
-/** Height of Sort's bottom bar (Hint, Undo): the shared bar's 52pt buttons plus a little air (#3658). */
-export const SORT_ACTION_BAR_H = 56;
+/** Height of Sort's bottom bar (Hint, Undo): the shared bar's 52pt buttons plus 2pt (#3658). */
+export const SORT_ACTION_BAR_H = 54;
 /** Total horizontal padding around the board (both sides). */
 export const BOARD_HORIZONTAL_PAD = 2 * BOARD_PADDING;
 
