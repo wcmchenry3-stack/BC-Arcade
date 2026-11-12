@@ -215,7 +215,10 @@ describe("one table only", () => {
   ];
   const NUMERIC_ARRAY = /\[\s*-?\d+(\.\d+)?\s*(,\s*-?\d+(\.\d+)?\s*){2,}\]/;
   /** file (relative to src) -> why a numeric array of 3+ numbers is fine there. */
-  const ARRAY_OK: Record<string, string> = {};
+  const ARRAY_OK: Record<string, string> = {
+    "game/cascade/testHooks.ts":
+      "the demo set-ups' piles are lists of tier ids (which tiers sit side by side), not radii, scores or densities (#3719); sizes still come from tierRadius",
+  };
 
   it("defines no per-tier radius, score or density outside tiers.ts", () => {
     const offenders: string[] = [];

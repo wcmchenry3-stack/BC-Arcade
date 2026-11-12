@@ -58,7 +58,13 @@ import { useAssetsReady } from "../game/_shared/useAssetsReady";
 import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine";
 import { WORLD_WIDTH, OVERFLOW_LINE_Y, DANGER_STACK_MARGIN } from "../game/cascade/constants";
 import { calculateCascadeLayout, tapToWorldX } from "../game/cascade/layout";
-import { registerCascadeTestHooks } from "../game/cascade/testHooks";
+import {
+  registerCascadeTestHooks,
+  cascadeSetup,
+  type CascadeSetupId,
+} from "../game/cascade/testHooks";
+import { areTestHooksEnabled } from "../game/_shared/envFlags";
+import CascadeTestControls from "../components/cascade/CascadeTestControls";
 import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector";
 import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/pieceQueue";
 import {
@@ -175,6 +181,8 @@ function CascadeGame() {
   const queueRef = useRef<PieceQueue>(null as unknown as PieceQueue);
   const queueHistoryRef = useRef<number[]>([]);
   const queueRngRef = useRef<(() => number) | undefined>(undefined);
+  // Test builds only (#3719): tiers the queue still has to offer, after `next`, before it goes random.
+  const queueScriptRef = useRef<number[]>([]);
   if (queueRef.current == null) {
     const init = makeQueue();
     queueRef.current = init.queue;
@@ -344,6 +352,8 @@ function CascadeGame() {
       isInDanger,
       queueRngRef.current
     );
+    const scripted = queueScriptRef.current.shift();
+    if (scripted !== undefined) newQueue.next = scripted;
     queueHistoryRef.current = [...queueHistoryRef.current, newQueue.next].slice(-DROUGHT_WINDOW);
     queueRef.current = newQueue;
     return tier;
@@ -707,6 +717,72 @@ function CascadeGame() {
     [queueChanged]
   );
 
+  /** Steps the physics by `ms` without waiting for frames (the `fastForward` hook). */
+  const fastForward = useCallback(
+    (ms: number) => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      const stepMs = 16.67;
+      let remaining = ms;
+      while (remaining > 0) {
+        const result = engine.step(Math.min(remaining, stepMs));
+        const state = engine.getState();
+        scoreRef.current = state.score;
+        for (const ev of result.events) {
+          if (ev.type === "merge") {
+            onMergeRef.current(ev.result as FruitTier, ev.x, ev.y);
+          } else if (ev.type === "gameOver") {
+            onGameOverRef.current();
+          }
+        }
+        remaining -= stepMs;
+      }
+      const state = engine.getState();
+      scoreStore.set(state.score);
+      publishBoard(state);
+    },
+    [scoreStore, publishBoard]
+  );
+
+  /** Scripts the queue (test builds, #3719): the next pieces are exactly `tiers`, then random. */
+  const seedQueue = useCallback(
+    (tiers: number[]) => {
+      if (tiers.length === 0) return;
+      const [current, next, ...rest] = tiers as [number, ...number[]];
+      queueRef.current = { current, next: next ?? current };
+      queueScriptRef.current = rest;
+      queueHistoryRef.current = [current, next ?? current].slice(-DROUGHT_WINDOW);
+      queueChanged();
+    },
+    [queueChanged]
+  );
+
+  /**
+   * A demo set-up (test builds, #3719): restores the pile into the live engine (so its rules,
+   * the lid included, decide what happens next), scripts the queue and lets the pile settle.
+   */
+  const applySetup = useCallback(
+    (id: CascadeSetupId) => {
+      const engine = engineRef.current;
+      if (!engine || gameOverRef.current) return;
+      const setup = cascadeSetup(id);
+      engine.restore(setup.pieces, scoreRef.current);
+      settlingTicksLeftRef.current = 0;
+      droppingRef.current = false;
+      if (setup.queue) seedQueue(setup.queue);
+      fastForward(setup.settleMs);
+      publishBoard(engine.getState());
+    },
+    [fastForward, seedQueue, publishBoard]
+  );
+
+  const forceGameOver = useCallback(() => {
+    completedGameIdRef.current = getGameId();
+    gameOverRef.current = true;
+    setGameOver(true);
+    showResultRef.current(completedGameIdRef.current);
+  }, [getGameId]);
+
   // -------------------------------------------------------------------------
   // Test seam: __cascade_* hooks (EXPO_PUBLIC_TEST_HOOKS=1 builds only, #3693)
   // -------------------------------------------------------------------------
@@ -740,39 +816,17 @@ function CascadeGame() {
         queueChanged();
         engineRef.current?.drop(tier, x);
       },
-      fastForward: (ms: number) => {
-        const engine = engineRef.current;
-        if (!engine) return;
-        const stepMs = 16.67;
-        let remaining = ms;
-        while (remaining > 0) {
-          const result = engine.step(Math.min(remaining, stepMs));
-          const state = engine.getState();
-          scoreRef.current = state.score;
-          for (const ev of result.events) {
-            if (ev.type === "merge") {
-              onMergeRef.current(ev.result as FruitTier, ev.x, ev.y);
-            } else if (ev.type === "gameOver") {
-              onGameOverRef.current();
-            }
-          }
-          remaining -= stepMs;
-        }
-        const state = engine.getState();
-        scoreStore.set(state.score);
-        publishBoard(state);
-      },
-      triggerGameOver: () => {
-        completedGameIdRef.current = getGameId();
-        gameOverRef.current = true;
-        setGameOver(true);
-        showResultRef.current(completedGameIdRef.current);
-      },
+      fastForward,
+      triggerGameOver: forceGameOver,
       isReady: () => engineRef.current !== null,
       spawnTierAt: (tier: number, x: number) => {
         if (gameOverRef.current) return;
         engineRef.current?.drop(tier, x);
       },
+      seedQueue,
+      setupChain: () => applySetup("chain"),
+      setupNearLid: () => applySetup("nearLid"),
+      fillBin: () => applySetup("fillBin"),
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -892,6 +946,15 @@ function CascadeGame() {
               ))}
             </View>
           </View>
+
+          {areTestHooksEnabled() && (
+            <CascadeTestControls
+              onChain={() => applySetup("chain")}
+              onNearLid={() => applySetup("nearLid")}
+              onFillBin={() => applySetup("fillBin")}
+              onForceGameOver={forceGameOver}
+            />
+          )}
 
           <GameResultModal
             visible={gameOver}
