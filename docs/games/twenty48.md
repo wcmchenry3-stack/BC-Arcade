@@ -153,7 +153,7 @@ Every timing is in `frontend/src/game/twenty48/motion.ts`; `__tests__/motion.tes
 | Win beat              | card at 1000 ms              | the 2048 tile pops to 1.35 (peak at 280 ms, back by 540 ms) with a gold glow (100 to 800 ms)                            |
 | Game-over beat        | card at 600 ms               | the board dims (220 to 470 ms, to 45%) and shakes 5 px (220 to 520 ms); it stays dimmed under the card until a New Game |
 
-For the sounds (#3690): the merge "meet" is at 100 ms, the spawn appears from 60 ms, the win card at 1000 ms and the game-over card at 600 ms after the winning or last move. The win and game-over sounds start with the move today; they should end on the card.
+For the sounds (#3690): the merge "meet" is at 100 ms, the spawn appears from 60 ms, the win card at 1000 ms and the game-over card at 600 ms after the winning or last move. #3690 re-timed the sounds to these moments: each still starts with the move, and the win and game-over chords land as their cards show (see Sound).
 
 How it works:
 
