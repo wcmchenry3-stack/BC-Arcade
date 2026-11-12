@@ -280,7 +280,8 @@ type AddedStateKey =
   | "devAffected"
   | "endContext"
   | "bankedPowerUp"
-  | "carrierBayOpen";
+  | "carrierBayOpen"
+  | "lightningPulseX";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
@@ -304,6 +305,10 @@ const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   // #3561: play state, but absent reads as "bay closed" (a save from before the telegraph); kept
   // out of the fingerprint so old saves load. Restored by restoreCarrierBayOpen.
   carrierBayOpen: "optional",
+  // #3709: play state, but absent reads as "no previous pulse" (the next pulse uses the beam's
+  // instant overlap); kept out of the fingerprint so old saves load. Always dropped on restore:
+  // the finger is somewhere else on resume, so the first pulse must not sweep from the saved x.
+  lightningPulseX: "optional",
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -619,6 +624,7 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
     bankedPowerUp: restoreBankedPowerUp(saved.bankedPowerUp), // #3512
     carrierBayOpen: restoreCarrierBayOpen(saved.carrierBayOpen), // #3561
     endContext: undefined, // #3534: a finished run is never saved; a live one has not ended
+    lightningPulseX: undefined, // #3709: the first pulse after a resume uses the instant overlap
   };
 }
 

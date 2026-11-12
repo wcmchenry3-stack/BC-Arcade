@@ -30,8 +30,15 @@ import { absorbBulletsIntoRocks, rocksStrikeEnemies, settleRocks } from "./aster
 import { makeBuddy, resolveBuddyHits } from "./buddy";
 import { enemyExplosion, makePickup, pickPowerUpType, spawnExplosion } from "./entities";
 import { arrivalsAllowed, isWaveCleared } from "./extraction";
-import { aabb, beamHitsAabb, circleCircle, collideCircleAABB } from "./geometry";
-import { GUN_LAYOUT, lightningBeamAt, newLightningBeam, type LightningBeam } from "./lightningBeam";
+import { aabb, circleCircle, collideCircleAABB } from "./geometry";
+import {
+  GUN_LAYOUT,
+  beamSweepHitsAabb,
+  lightningBeamAt,
+  lightningSweepDx,
+  newLightningBeam,
+  type LightningBeam,
+} from "./lightningBeam";
 import { rng } from "./rng";
 import { carrierArmoredIn, mapFilterKeep } from "./roster";
 import { bumpRun, bumpStat } from "./stats";
@@ -419,9 +426,11 @@ const PULSE_BEAM: LightningBeam = newLightningBeam();
 
 /**
  * #3562: one Lightning beam pulse, already judged due by `tick`. Each beam (one per gun, `lightningBeamAt`) deals
- * `SUPER_DAMAGE` to every live ship it overlaps (`beamHitsAabb` against the ship's box, the same
- * box a bolt was tested against) and to the rock that stops it; the beam is armor-piercing, so
- * the escorted Carrier's field does not stop it. Beams resolve in gun order, each on the rocks as
+ * `SUPER_DAMAGE` to every live ship it crossed since the last pulse (#3709: `beamSweepHitsAabb`
+ * against the ship's box, the same box a bolt was tested against, over `lightningSweepDx`; at the
+ * beam's current length) and to the rock that stops it now. A beam damages a ship at most once per
+ * pulse; as before, two beams that both cross a ship each deal their pulse. The beam is
+ * armor-piercing, so the escorted Carrier's field does not stop it. Beams resolve in gun order, each on the rocks as
  * the one before left them: a rock one beam breaks no longer stops the next.
  *
  * Stats, mirroring one bolt per gun per volley: in combat a pulse adds one `shotsFired` per beam,
@@ -444,13 +453,18 @@ export function resolveLightningPulse(
   let onRocks = 0;
   let broken = 0;
   let enemies: Enemy[] | null = null;
+  // #3709: each beam sweeps the ship's travel since the last pulse (0: the instant overlap)
+  const dx = lightningSweepDx(state);
   for (let i = 0; i < n; i++) {
     const beam = lightningBeamAt(state, i, w.rocks, PULSE_BEAM);
     let hit = false;
     const list = enemies ?? w.enemies;
     for (let e = 0; e < list.length; e++) {
       const enemy = list[e]!;
-      if (!enemy.isAlive || !beamHitsAabb(beam, enemy.x, enemy.y, enemy.width, enemy.height))
+      if (
+        !enemy.isAlive ||
+        !beamSweepHitsAabb(beam, dx, enemy.x, enemy.y, enemy.width, enemy.height)
+      )
         continue;
       enemies ??= [...w.enemies];
       enemies[e] = damageShip(state, w, awards, enemy, SUPER_DAMAGE, false, tally);
