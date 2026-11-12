@@ -15,7 +15,7 @@ test.describe("Sort Puzzle — undo", () => {
   test.beforeEach(async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
   });
 

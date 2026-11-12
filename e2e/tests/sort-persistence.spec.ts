@@ -20,7 +20,7 @@ test("Sort Puzzle — in-progress state survives navigate away and back", async 
   await gotoSort(page);
 
   // Start Level 1
-  await page.getByRole("button", { name: "Level 1" }).click();
+  await page.getByRole("button", { name: "Level 1", exact: true }).click();
   await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
 
   // Make one pour: a full bottle into an empty one (catalog level 1, #2761)
@@ -61,7 +61,7 @@ test("Sort Puzzle — unlockedLevel survives page reload", async ({ page }) => {
   await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
   await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
   await expect(
-    page.getByRole("button", { name: "Level 2" }),
+    page.getByRole("button", { name: "Level 2", exact: true }),
   ).not.toBeDisabled({ timeout: 5_000 });
 
   // Reload the page
@@ -72,13 +72,13 @@ test("Sort Puzzle — unlockedLevel survives page reload", async ({ page }) => {
   await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
   await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
   await expect(
-    page.getByRole("button", { name: "Level 2" }),
+    page.getByRole("button", { name: "Level 2", exact: true }),
   ).not.toBeDisabled({ timeout: 5_000 });
 });
 
 test("Sort Puzzle — a save from the random levels moves onto the catalog", async ({ page }) => {
   // #2761: old level 10 had 7 colours, so the player unlocks up to the first
-  // catalog level with 7; their old bests and unfinished board are dropped.
+  // catalog level with 7; their old bests are cleared and the unfinished board dropped.
   await mockSortApi(page);
   await injectLegacySortSave(
     page,
@@ -100,16 +100,18 @@ test("Sort Puzzle — a save from the random levels moves onto the catalog", asy
 
   await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
   await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-  await expect(page.getByRole("button", { name: `Level ${firstSeven}` })).not.toBeDisabled({
+  await expect(page.getByRole("button", { name: `Level ${firstSeven}`, exact: true })).not.toBeDisabled({
     timeout: 5_000,
   });
   await expect(
-    page.getByRole("button", { name: `Level ${firstSeven + 1}, locked` }),
+    page.getByRole("button", { name: `Level ${firstSeven + 1}, locked`, exact: true }),
   ).toBeDisabled();
   await expect(page.getByRole("button", { name: /^Continue Level/ })).toHaveCount(0);
   const stored = await page.evaluate(() => ({
     bests: localStorage.getItem("@sort/best_moves"),
     version: localStorage.getItem("@sort/catalog_version"),
   }));
-  expect(stored).toEqual({ bests: null, version: "1" });
+  // Bests are written empty in the same write as the version (#2761 review: never removed
+  // before the migrated progress is saved).
+  expect(stored).toEqual({ bests: "{}", version: "1" });
 });

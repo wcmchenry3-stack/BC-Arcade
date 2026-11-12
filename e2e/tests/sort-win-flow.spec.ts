@@ -199,7 +199,7 @@ test.describe("Sort Puzzle — win flow", () => {
       .click();
 
     await expect(
-      page.getByRole("button", { name: "Level 2" }),
+      page.getByRole("button", { name: "Level 2", exact: true }),
     ).not.toBeDisabled({
       timeout: 5_000,
     });

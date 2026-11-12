@@ -40,7 +40,7 @@ test.describe("Sort Puzzle — accessibility", () => {
   test("gameplay screen passes axe-core WCAG 2.2 AA scan", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
     await assertNoA11yViolations(
       new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]),
@@ -50,14 +50,14 @@ test.describe("Sort Puzzle — accessibility", () => {
   test("board region has accessible label", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
   });
 
   test("bottles have descriptive accessible labels", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
 
     // Filled bottles describe content
@@ -73,7 +73,7 @@ test.describe("Sort Puzzle — accessibility", () => {
   test("selected bottle label announces selected state", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
 
     await page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }).click();
@@ -109,7 +109,7 @@ test.describe("Sort Puzzle — accessibility", () => {
   test("undo button has aria-disabled when history is empty", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
 
     const undoBtn = page.getByRole("button", { name: "Undo" });

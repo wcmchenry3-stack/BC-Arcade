@@ -25,13 +25,13 @@ test.describe("Sort Puzzle — smoke tests", () => {
 
   test("level-select screen shows level grid on fresh install", async ({ page }) => {
     await expect(
-      page.getByRole("button", { name: "Level 1" }),
+      page.getByRole("button", { name: "Level 1", exact: true }),
     ).toBeVisible({ timeout: 5_000 });
   });
 
   test("level 1 is unlocked on a fresh install", async ({ page }) => {
     await expect(
-      page.getByRole("button", { name: "Level 1" }),
+      page.getByRole("button", { name: "Level 1", exact: true }),
     ).not.toBeDisabled({ timeout: 5_000 });
   });
 
@@ -45,16 +45,16 @@ test.describe("Sort Puzzle — smoke tests", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
     await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
     // The grid holds the whole catalog: 120 levels.
     await page.getByRole("button", { name: "Back to levels" }).click();
-    await expect(page.getByRole("button", { name: "Level 120, locked" })).toBeAttached();
+    await expect(page.getByRole("button", { name: "Level 120, locked", exact: true })).toBeAttached();
     expect(levelRequests).toEqual([]);
   });
 
   test("locked levels show progression gate", async ({ page }) => {
-    const lockedBtn = page.getByRole("button", { name: "Level 2, locked" });
+    const lockedBtn = page.getByRole("button", { name: "Level 2, locked", exact: true });
     await expect(lockedBtn).toBeVisible({ timeout: 5_000 });
     await expect(lockedBtn).toBeDisabled();
   });
