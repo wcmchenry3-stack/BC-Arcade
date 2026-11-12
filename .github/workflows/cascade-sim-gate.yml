@@ -26,6 +26,7 @@ on:
       - "frontend/src/game/cascade/engine.ts"
       - "frontend/src/game/cascade/constants.ts"
       - "frontend/src/game/cascade/pieceDefs.ts"
+      - "frontend/src/game/cascade/tiers.ts"
       - "frontend/src/game/cascade/pieceQueue.ts"
       - "frontend/src/game/cascade/spawnSelector.ts"
       - "frontend/src/game/cascade/sim/**"
