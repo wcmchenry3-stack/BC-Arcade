@@ -879,9 +879,80 @@ describe("Reduce Motion spaces an action's sounds 100 ms apart (#3751)", () => {
 
   it("the round is settled at once: the out-of-chips card does not wait for the sounds", async () => {
     await reduced(LOSE, 10);
-    await action(/^Stand/);
+    const at = await action(/^Stand/);
+    // The card (testID "blackjack-result") shows straight away, before the chime or the chips.
     expect(screen.getByTestId("blackjack-result")).toBeTruthy();
-    expect(named(T0, "blackjack.lose")).toEqual([]);
+    expect(soundsSince(at)).toEqual([["blackjack.cardFlip", 0]]);
+    expect(named(at, "blackjack.lose")).toEqual([]);
+    await advance(GAP);
+    expect(screen.getByTestId("blackjack-result")).toBeTruthy();
+  });
+
+  // The felt's tap overlay is on only while spaced sounds are due, so a tap can land them (#3751).
+  describe("the felt's tap overlay", () => {
+    const overlayOn = () =>
+      screen.getByTestId("blackjack-table-area").props.accessibilityState?.disabled !== true;
+
+    it("is on mid-sequence and off once the sequence ends", async () => {
+      await reduced(WIN);
+      expect(overlayOn()).toBe(false);
+      await action(/^Stand/);
+      expect(overlayOn()).toBe(true);
+      await advance(GAP);
+      expect(overlayOn()).toBe(true);
+      await advance(2 * GAP);
+      expect(overlayOn()).toBe(false);
+    });
+
+    it("is off after a tap lands the sounds", async () => {
+      await reduced(WIN);
+      await action(/^Stand/);
+      await advance(50);
+      expect(overlayOn()).toBe(true);
+      await tapFelt();
+      expect(overlayOn()).toBe(false);
+    });
+
+    it("is off after the next action lands them", async () => {
+      await reduced([...WIN, card("2", "♣"), card("2", "♣"), ...WIN]);
+      await action(/^Stand/);
+      await advance(50);
+      await press(/^Rebet — deal again with 10 chips/);
+      await settle();
+      expect(overlayOn()).toBe(false);
+    });
+
+    it("is off after leaving mid-sequence", async () => {
+      await reduced(WIN);
+      await action(/^Stand/);
+      await advance(50);
+      expect(overlayOn()).toBe(true);
+      await fire("blur");
+      expect(overlayOn()).toBe(false);
+    });
+
+    it("is off after New Game mid-sequence", async () => {
+      await reduced(WIN);
+      await action(/^Stand/);
+      await advance(50);
+      expect(overlayOn()).toBe(true);
+      await press("More options");
+      await act(async () => {
+        await fireEvent.press(screen.getByText("New Game"));
+      });
+      await press("Start New");
+      await settle();
+      // New Game goes back to the table pick: no felt, so no overlay is left on.
+      expect(screen.queryByTestId("blackjack-table-area")).toBeNull();
+    });
+
+    it("is never on for a one-sound action: it plays at the instant", async () => {
+      // A plain Hit that does not bust: one deal sound.
+      await reduced([card("5"), card("7", "♣"), card("4", "♥"), card("9", "♥"), card("2", "♦")]);
+      const at = await action(/^Hit/);
+      expect(soundsSince(at)).toEqual([["blackjack.cardDeal", 0]]);
+      expect(overlayOn()).toBe(false);
+    });
   });
 
   it("a tap mid-sequence drops the rest; the result chime still plays, once, at once", async () => {
