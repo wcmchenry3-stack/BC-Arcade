@@ -199,7 +199,7 @@ Adds 51,027 B now. The fanfare can only go once 2048, Sudoku, Mahjong and Daily 
 
 - **Brief.** The owner wanted merge and spawn designed together, since they play on nearly every swipe, and asked to hear samples.
 - **Constraints.**
-  - A slide takes 100 ms, the merge pop starts at 90 ms (1.15×, 150 ms), and a new tile scales in from 60 ms (`AnimatedTile.tsx`). Both sounds fire at the swipe, so each file puts its accent on its animation: the merge at 90 ms, the spawn at 60 ms.
+  - A slide takes 100 ms, the merge pop starts at 90 ms (1.15×, 150 ms), and a new tile scales in from 60 ms (`AnimatedTile.tsx`). Both sounds fire at the swipe, so each file puts its accent on its animation: the merge at 90 ms, the spawn at 60 ms. (As first designed; #3690 below moved the merge to 100 ms for the sliding merges.)
   - Swipes come up to ~4–5 a second, and merge and spawn usually play together, so both are short with three variations each.
   - The old spawn rang 0.68 s on every swipe with 91% of its energy under 300 Hz (mostly lost on phone speakers); the old merge sat at about −27.5 dBFS after its 0.3 volume.
 - **Options**, each previewed as 8 swipes ~0.4 s apart and a fast burst of 6 at 0.22 s:
@@ -244,7 +244,34 @@ Six files where there were two: 18,437 B more, for variations on the two sounds 
 | `game-over-2048.ogg`                 | —                        | 17.3 KB            | 2.0 s (rings ~1.5 s) |
 | **Total**                            | —                        | 43.7 KB (44,757 B) |                      |
 
-Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
+Sizes and lengths as first shipped; #3690 below re-timed both (win 2.6 s, 22.0 KB; game over 2.1 s, 17.1 KB). Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
+
+### 2048 sounds re-timed to the new motion (#3690)
+
+- **Brief.** The 2048 motion story (#3689) changed when things happen on the board: the two tiles of a merge now slide into each other, and the win and game-over cards wait for a short beat. The sounds stay as they were; only their timing moves, so each accent lands on its new moment. Every timing comes from `game/twenty48/motion.ts`, and the generator's tests pin each one.
+- **Changes.** All four sounds still play as the move lands.
+
+| Sound     | Was                                                   | Now                                                        | Motion it follows                                                          |
+| --------- | ----------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Merge     | clack at 90 ms                                        | clack at 100 ms                                            | the two sliding tiles meet at 100 ms and the merged tile pops              |
+| Spawn     | set-down at 60 ms                                     | unchanged, the same audio                                  | the new tile shows from 60 ms                                              |
+| Win       | run from 0 s, "ta-da" chord at 1.5 s                  | run from 100 ms, chord and bell at 1.0 s                   | the 2048 tile pops at 100 ms; the win card at 1.0 s                        |
+| Game over | clack at 0 s, falling line from 50 ms, chord at 0.5 s | clack at 100 ms, falling line 0.2 to 0.5 s, chord at 0.6 s | the move lands; the board dims and shakes 220 to 520 ms; the card at 0.6 s |
+
+- **Gameplay audition.** The motion branch built with the new files. A board of pairs took four calm moves and a quick burst of three, then a 1024 + 1024 win, then a last move that left the board stuck. Every logged sound was laid over the video, next to a copy with today's sounds at the same moments. The win chord lands as the card fades in, and the game-over chord as its card appears. Approved by the owner.
+- **Found in the audition.**
+  - The board flashed back to full brightness between the game-over beat ending and the card's scrim fading in. Fixed in #3725: the board stays dimmed under the card.
+  - "Time played" briefly read "-1:-2" after the first move. Filed as #3735.
+
+| File                   | Before   | After               | Length before | Length after |
+| ---------------------- | -------- | ------------------- | ------------- | ------------ |
+| `tile-merge-1/2/3.ogg` | 17,179 B | 17,224 B            | 0.22 s        | 0.22 s       |
+| `tile-spawn-1/2/3.ogg` | 13,751 B | 13,751 B, unchanged | 0.16 s        | 0.16 s       |
+| `win-2048.ogg`         | 27,028 B | 22,037 B            | 3.1 s         | 2.6 s        |
+| `game-over-2048.ogg`   | 17,729 B | 17,560 B            | 2.0 s         | 2.1 s        |
+| **Changed files**      | 61,936 B | 56,821 B            |               |              |
+
+5,115 B smaller: the win no longer rings on half a second past the card.
 
 ### Mahjong select and match (`mahjong.tileSelect`, `mahjong.tileMatch`)
 

@@ -153,7 +153,7 @@ Every timing is in `frontend/src/game/twenty48/motion.ts`; `__tests__/motion.tes
 | Win beat              | card at 1000 ms              | the 2048 tile pops to 1.35 (peak at 280 ms, back by 540 ms) with a gold glow (100 to 800 ms)                            |
 | Game-over beat        | card at 600 ms               | the board dims (220 to 470 ms, to 45%) and shakes 5 px (220 to 520 ms); it stays dimmed under the card until a New Game |
 
-For the sounds (#3690): the merge "meet" is at 100 ms, the spawn appears from 60 ms, the win card at 1000 ms and the game-over card at 600 ms after the winning or last move. The win and game-over sounds start with the move today; they should end on the card.
+For the sounds (#3690): the merge "meet" is at 100 ms, the spawn appears from 60 ms, the win card at 1000 ms and the game-over card at 600 ms after the winning or last move. #3690 re-timed the sounds to these moments: each still starts with the move, and the win and game-over chords land as their cards show (see Sound).
 
 How it works:
 
@@ -286,11 +286,11 @@ Registry: `frontend/src/game/twenty48/sounds.ts` (`TWENTY48_SOUNDS`), played thr
 
 Triggers are in `frontend/src/screens/Twenty48Screen.tsx`.
 
-| Key                                              | File                                        | Plays when                                                                                                         | Volume |
-| ------------------------------------------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------ |
-| `twenty48.tileMerge`, `tileMerge2`, `tileMerge3` | `tile-merge-1/2/3.ogg` (synthesized, #3578) | a swipe with a merge; the clack lands on the merge pop (100 ms, the tiles meeting; see Motion); `useSoundVariants` | 1.0    |
-| `twenty48.tileSpawn`, `tileSpawn2`, `tileSpawn3` | `tile-spawn-1/2/3.ogg` (synthesized, #3578) | a new tile appears (every swipe); lands as it starts to appear (60 ms; see Motion); `useSoundVariants`             | 1.0    |
-| `twenty48.win2048`                               | `win-2048.ogg` (synthesized, #3578)         | the 2048 tile is reached (the card follows after the 1 s win beat, see Motion)                                     | 1.0    |
-| `twenty48.gameOver`                              | `game-over-2048.ogg` (synthesized, #3578)   | no moves are left (the card follows after the 0.6 s game-over beat, see Motion)                                    | 1.0    |
+| Key                                              | File                                        | Plays when                                                                                          | Volume |
+| ------------------------------------------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------ |
+| `twenty48.tileMerge`, `tileMerge2`, `tileMerge3` | `tile-merge-1/2/3.ogg` (synthesized, #3578) | a swipe with a merge; the clack lands as the sliding tiles meet (100 ms, #3690); `useSoundVariants` | 1.0    |
+| `twenty48.tileSpawn`, `tileSpawn2`, `tileSpawn3` | `tile-spawn-1/2/3.ogg` (synthesized, #3578) | a new tile appears (every swipe); lands as it scales in (60 ms); `useSoundVariants`                 | 1.0    |
+| `twenty48.win2048`                               | `win-2048.ogg` (synthesized, #3578)         | the 2048 tile is reached; the chord lands as the win card shows (1.0 s, #3690)                      | 1.0    |
+| `twenty48.gameOver`                              | `game-over-2048.ogg` (synthesized, #3578)   | no moves are left; the chord lands as the result card shows (0.6 s, #3690)                          | 1.0    |
 
 Reopening a saved game plays nothing: a save keeps its last move's tile flags, so the tiles a restored game opens with are skipped (#3578). A fresh deal still plays its spawn.
