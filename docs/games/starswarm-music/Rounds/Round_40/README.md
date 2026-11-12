@@ -1,6 +1,6 @@
 # Round 40 — Better signature spacing, fuller signals and audible Shepard
 
-**Status: owner audition pending (November 12, 2026).** This is a focused arrangement revision of Round 39B, not a rewritten foundation, final loop, mastered in-game mix or production audio change.
+**Status: owner approves Round 40B as working creative direction; long-form score still to compose (November 12, 2026).** This is a focused arrangement revision of Round 39B, not a rewritten foundation, final loop, mastered in-game mix or production audio change.
 
 ## Owner requirements
 
@@ -49,3 +49,14 @@ Both files measure **−21.2 LUFS integrated**, with loudness ranges 4.6 LU (A) 
 **Archive limitations:** the exact two MP3s and source plus all regeneration inputs are in `StarSwarm_Round40_Audio_and_Source.zip` supplied in the ChatGPT conversation. The available GitHub connector cannot directly commit local audio files. The files must still be uploaded into this `Round_40` directory in the ongoing [draft PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734) via the repo uploader; this README is committed. No production audio has changed.
 
 [Audition issue #3642](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3642) · [Epic #3635](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3635).
+
+## Owner approval and long-form arrangement principle — November 12, 2026
+
+**Round 40B approved as the working musical/sonic direction.** Owner says "I think we've got it" and likes **all of the signature elements**, including the astronomical rise, Gathering Swarm Chorus, robotic signals, electromagnetic choir and now the **descending Shepard tone, finally audible and functioning as intended**. Preserve the Round 40B Shepard treatment with the continuous backing score under it.
+
+**Critical new spacing requirement:** ALL signature events need breathing room—not merely the astronomical-to-robotic handoff. As a typical musical aim, allow **about 10–20 seconds of foundation-only music between significant featured events** (musically adjusted, not an inflexible stopwatch rule). This must be a meaningful stretch of the established urgent, developing Round 38-style score, not silence or static pads. Do **not** return to Round 23's whole-minute gaps or Round 39's near-back-to-back dense features. The astronomical upward rises and descending Shepard falls especially **must remain distinct and well separated**, never competing or directly adjacent; avoid effects soup or masking a foreground voice with the next one.
+
+**Approval scope:** this approves the creative direction and individual treatments in the short 90-second study, **not** an exact final-event schedule, a finished seven-minute arrangement, production mix/master, saved session entry cues or loop implementation. Round 40's packed 90-second audition exists to test features and should **not** be mechanically repeated.
+
+**Next recommended workflow:** move into long-form composition planning. Draft a **6–8-minute macro-arrangement/storyboard** built on Round 38's development, Round 35B urgency, Round 34B force and Round 37B quiet-passage propulsion; include new contrasting phrases and coordinated reprises, and identify several **10–20s foundation-only intervals** across the piece. Place approved signature sounds as distinct, clear events with varied prominence, no literal gameplay sync, and with independent space for astronomical rises vs Shepard descents. Review the plan before building a complete audition. Then render a first long-form *musical rough* (not loop/master) for owner review; after approval validate SFX balance at 20%, actual iOS/Android playback, seamless codec loop, target loudness, filesize and distributed entry/carry-over points (old Round 23 cue timestamps are obsolete). Keep versioned assets and creative decisions on PR #3734 and issue #3642. No production changes authorized yet.
+
