@@ -1,11 +1,14 @@
 /**
  * The lid (#3694): the game-over rule that always fires.
  *
- * Fixture: `COLUMN` restores three Watermelons stacked exactly on top of each other against the
- * left wall. Matter.js keeps the stack (no sideways force acts on it), so its top piece rests
- * with its top edge at y = 30, over the lid (`OVERFLOW_LINE_Y` = 80), and the right half of the
- * bin is an empty lane with one Cherry on the floor. Restore grants the merge grace once
- * (`OVERFLOW_IGNORE_MERGE_TICKS`), so the count starts after it.
+ * Fixture: `COLUMN` restores a capstone (tier 11, radius 101), a Watermelon (tier 10, radius 88)
+ * and a Pineapple (tier 9, radius 77), stacked exactly on top of each other against the left
+ * wall. The tiers differ so nothing merges (two equal neighbours would). Matter.js keeps the
+ * stack (no sideways force acts on it), so its top piece rests with its top edge at y = 48, over
+ * the lid (`OVERFLOW_LINE_Y` = 80), and the right half of the bin is an empty lane with one
+ * Cherry on the floor. Restore grants the merge grace once (`OVERFLOW_IGNORE_MERGE_TICKS`), so
+ * the count starts after it. (#3695: the fixture follows the 12-tier ladder in `tiers.ts`; it
+ * used three of the old ladder's tier 9, radius 92.)
  */
 import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
 import { PIECE_DEFS } from "../pieceDefs";
@@ -23,10 +26,10 @@ const HZ120 = 8.33;
 
 const LANE_X = 360;
 const COLUMN = [
-  { tier: 9, x: 112, y: 487.5 },
-  { tier: 9, x: 112, y: 304 },
-  { tier: 9, x: 112, y: 120 },
-  { tier: 0, x: LANE_X, y: 563.5 },
+  { tier: 11, x: 121, y: 479 },
+  { tier: 10, x: 121, y: 290 },
+  { tier: 9, x: 121, y: 125 },
+  { tier: 0, x: LANE_X, y: 558 },
 ];
 /** Fixed steps from a COLUMN restore to game over: the grace, then the full count. */
 const COLUMN_GAME_OVER_STEP = OVERFLOW_IGNORE_MERGE_TICKS + OVERFLOW_TICKS_THRESHOLD;
@@ -147,9 +150,9 @@ describe("the lid: merge grace only near the lid", () => {
 describe("the lid: hard stop", () => {
   it("a settled piece whose top edge reaches the canvas top ends the game at once", () => {
     const engine = new CascadeEngine({});
-    // The column with a Cherry on top: its top edge is at y = -4. Restore's grace does not
-    // delay the hard stop.
-    engine.restore([...COLUMN.slice(0, 3), { tier: 0, x: 112, y: 12 }], 0);
+    // The column with a tier-3 piece (radius 33) on top: its top edge is at y = -18. Restore's
+    // grace does not delay the hard stop.
+    engine.restore([...COLUMN.slice(0, 3), { tier: 3, x: 121, y: 15 }], 0);
     const result = engine.step(HZ60);
     expect(result.events).toContainEqual({ type: "gameOver", reason: "hardStop" });
     expect(engine.getState()).toMatchObject({ gameOver: true, dangerRatio: 1, canDrop: false });
@@ -165,11 +168,11 @@ describe("the lid: hard stop", () => {
 });
 
 describe("the lid: hard stop grace for the dropped piece", () => {
-  /** Two Watermelons and a Pumpkin-sized (tier 6) ledge: its top edge rests at about y = 88. */
+  /** A capstone, a Watermelon and a tier-7 ledge: its top edge rests at about y = 86. */
   const LEDGE = [
-    { tier: 9, x: 112, y: 487.5 },
-    { tier: 9, x: 112, y: 304 },
-    { tier: 6, x: 112, y: 150 },
+    { tier: 11, x: 121, y: 479 },
+    { tier: 10, x: 121, y: 290 },
+    { tier: 7, x: 121, y: 144 },
   ];
 
   it("a large piece touching a pile just under the lid is not a hard stop at once", () => {
@@ -179,7 +182,7 @@ describe("the lid: hard stop grace for the dropped piece", () => {
     const ledgeTop = Math.min(...engine.getState().pieces.map((p) => p.y - radius(p.tier)));
     expect(ledgeTop).toBeGreaterThan(OVERFLOW_LINE_Y);
     expect(ledgeTop).toBeLessThan(OVERFLOW_LINE_Y + 12);
-    engine.drop(5, 112);
+    engine.drop(5, 121);
     const results = run(engine, HARD_STOP_SETTLE_TICKS - 1);
     expect(results).toHaveLength(HARD_STOP_SETTLE_TICKS - 1);
     expect(events(results).find((e) => e.type === "gameOver")).toBeUndefined();
@@ -187,10 +190,10 @@ describe("the lid: hard stop grace for the dropped piece", () => {
 
   it("a dropped piece that really rests with its top edge above the canvas still hard-stops, after the run", () => {
     const engine = new CascadeEngine({});
-    // The column's top edge is at y = 30: an Apple-sized (tier 3) piece dropped on it is pushed out of the pile and
-    // comes to rest on top, its top edge above y = 0.
+    // The column's top edge is at y = 48: a tier-3 piece (radius 33) dropped on it comes to rest
+    // on top, its top edge at about y = -18, above the canvas.
     engine.restore(COLUMN.slice(0, 3), 0);
-    engine.drop(3, 112);
+    engine.drop(3, 121);
     const results = run(engine, 120);
     expect(gameOverEvent(results)).toEqual({ type: "gameOver", reason: "hardStop" });
     expect(results.length).toBeGreaterThanOrEqual(HARD_STOP_SETTLE_TICKS);
@@ -239,14 +242,16 @@ describe("the lid: drop gating", () => {
   });
 
   it("a piece that lands and rests over the lid cannot deadlock: the game ends", () => {
-    // Two Watermelons and a Pear: the stack's top edge is at y = 108, under the lid.
+    // A capstone, a Watermelon and a tier-6 piece (radius 51): the stack's top edge is at y = 100,
+    // under the lid.
     const engine = new CascadeEngine({});
-    engine.restore([...COLUMN.slice(0, 2), { tier: 5, x: 112, y: 160 }], 0);
+    engine.restore([...COLUMN.slice(0, 2), { tier: 6, x: 121, y: 160 }], 0);
     run(engine, OVERFLOW_IGNORE_MERGE_TICKS + 10);
     expect(engine.getState().dangerRatio).toBe(0);
     expect(engine.canDrop()).toBe(true);
-    // A Strawberry dropped on top lands with its top edge at about y = 64: over the lid, for good.
-    engine.drop(1, 112);
+    // A Blueberry (tier 1, radius 25) dropped on top lands with its top edge at about y = 50:
+    // over the lid, for good.
+    engine.drop(1, 121);
     const results = run(engine, 600);
     const landed = engine.getState().pieces.find((p) => p.tier === 1)!;
     expect(landed.y - radius(1)).toBeLessThan(OVERFLOW_LINE_Y);

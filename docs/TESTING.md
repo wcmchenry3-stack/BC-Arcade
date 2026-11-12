@@ -372,10 +372,10 @@ frontend/src/
 
 **fruitQueue.test.ts**
 
-- `peek()` and `peekNext()` return tiers within `[0, MAX_SPAWN_TIER]`
+- `peek()` and `peekNext()` return tiers within the droppable tiers (`DROPPABLE_TIERS` in `tiers.ts`)
 - `consume()` returns the current peek value
 - Queue advances correctly after consume
-- Never spawns above `MAX_SPAWN_TIER` across 200 samples
+- Never spawns outside `DROPPABLE_TIERS` across 200 samples
 
 **fruitSets.test.ts**
 
