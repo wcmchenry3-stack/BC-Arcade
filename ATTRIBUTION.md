@@ -147,8 +147,8 @@ project-owned track (design log `docs/games/starswarm-music-design.md`, #3638) a
 source names are in `frontend/assets/sounds/SOUND_CREDITS.md`.
 Every Star Swarm sprite (the player ship layers, Buddy, the enemies, asteroids, projectiles and
 pickups) is original art generated in-house (generator `tools/assets/draw_starswarm_art.py`, design
-log `docs/games/starswarm-art-design.md`, #3592, #3600, #3593, #3596, #3594, #3595); they use no
-third-party art and need no credit. Its explosions, Smart Bomb flash and nebula background are drawn
+log `docs/games/starswarm-art-design.md`, #3592, #3600, #3593, #3596, #3594, #3595, #3708); they use
+no third-party art and need no credit. So is its home tile icon (`frontend/assets/home/`, #3599). Its explosions, Smart Bomb flash and nebula background are drawn
 in code (#3597), with no image files. The last Kenney CC0 sprites (the power-ups) were replaced in
 #3595.
 Assets whose source or license is not yet recorded (for example the three Blackjack sounds, the

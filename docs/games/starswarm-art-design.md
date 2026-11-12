@@ -180,6 +180,30 @@ code-drawn effect that touch each other match.
 
 ## Size baseline and budget
 
+**After #3708** (the bolder Wasp Grunt) **and the #3599 tile icon**: the Star Swarm sprites are
+**43 images, 65,376 B (63.8 KB)**, 128 B less than after #3595 and 4,824 B (8.0%) over the
+pre-epic baseline (60,552 B), inside the owner-accepted overrun (below). The home tile icon adds
+one image of 2,698 B outside `assets/starswarm/` (`assets/home/starswarm-tile.webp`), so Star
+Swarm's art is **44 images, 68,074 B (66.5 KB)** in all. Sizes are under the CI's Pillow 13; the
+design pass measured -102 B under Pillow 12.
+
+| File                        | Recipe                  | Before | After | Change | Budget |
+| --------------------------- | ----------------------- | -----: | ----: | -----: | -----: |
+| `enemy/grunt.webp`          | `grunt-wasp`            |  1,464 | 1,560 |    +96 |  2,000 |
+| `enemy/elite.webp`          | `elite-mantis`          |  2,066 | 2,046 |    -20 |  2,600 |
+| `enemy/elite-attack.webp`   | `elite-mantis-attack`   |  2,374 | 2,310 |    -64 |  3,000 |
+| `enemy/elite-hurt.webp`     | `elite-mantis-hurt`     |  2,270 | 2,194 |    -76 |  2,900 |
+| `enemy/carrier.webp`        | `carrier-queen`         |  4,302 | 4,220 |    -82 |  5,400 |
+| `enemy/carrier-cracks.webp` | `carrier-queen-cracks`  |  1,942 | 1,952 |    +10 |  2,400 |
+| `enemy/guardian.webp`       | `guardian-scarab`       |  2,092 | 2,094 |     +2 |  2,700 |
+| `enemy/guardian-plate.webp` | `guardian-scarab-plate` |  1,664 | 1,670 |     +6 |  2,100 |
+| `home/starswarm-tile.webp`  | `home-tile-badge`       |    new | 2,698 | +2,698 |  3,400 |
+
+The crack layer is clipped to the Queen's hull mask, which includes her wings, so it changes with
+them. The Guardian has no wings and its art is unchanged; its base and two plate layers (first encoded
+under Pillow 12 in #3593) are re-encoded under the CI's Pillow 13 (+8 B, owner-approved), so the
+shipped-file test now covers every enemy file. `guardian-plate2.webp` keeps its size (1,322 B).
+
 **After #3595** (pickups): **43 images, 65,504 B (64.0 KB)**, **4,952 B (8.2%) over** the
 pre-epic baseline (60,552 B), an **owner-accepted overrun** (below). The four Kenney power-up PNGs
 (2,755 B) are replaced by six generated pickup sprites (8,664 B, +5,909 B net): the four power-up
@@ -335,6 +359,31 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   were shown in the owner's design sheet and not picked. No gameplay change: same size, hitbox and behaviour.
 - **Ship picker.** Choosing one of the three ships is its own story, #3600 (three free cosmetic
   ships, P1 default).
+
+- **2026-11-11 (#3708), the bolder Wasp (owner option A).** On device (1 game px is about 3.27
+  device px on iPhone) grunts blurred in motion. Motion was not the cause (grunts and Elites move
+  alike); the art was: rims under half a game px and a 35% membrane that melted into the violet
+  cloud (1.95:1). Changes: Grunt wing rims 0.4 -> 0.8 gpx, segment rims 0.45 -> 0.7, wing
+  membrane alpha 0.35 -> 0.6, slightly fuller segments that touch, a wider stinger
+  (`GRUNT_*` constants). The shared `hive_wings` of the Elite (all three looks) and the Carrier
+  follow: rim 0.4 -> 0.6, alpha 0.3 -> 0.45 (`HIVE_WING_*`). The Guardian has no wings and is
+  unchanged. Measured in the design pass: Grunt light mass on the violet cloud 25 -> 38.8 (about
+  the Elite's 37.6), opaque area 116 -> 198 gpx², body contrast on violet 3.75 -> 4.12, outline at
+  1 gpx blur 2.25 -> 2.83. Generator only: no code, hitbox, gameplay or golden-replay change.
+  Alternatives on file if A is not enough on device: B, a 1 gpx dark keyline under every enemy
+  (about +778 B, can be layered on A); C, A + B with the Grunt drawn at 26 gpx (about +922 B, needs
+  a per-tier art scale in `render/enemies.ts`).
+
+- **2026-11-11 (#3599), the home tile icon (owner pick I3).** The Wasp Grunt in a hex badge
+  replaces the 👾 emoji on the Star Swarm home tile, on native and web. Recipe `home-tile-badge`
+  (`ICON_RECIPES`, left off the sprite contact sheet): a 168 px square (3x the 56 px the tile
+  shows, inside the 88 px `emojiZone`), a hex with vertices at k x 60° (points left and right), a
+  silver bevel to radius 80 lit from the top left, a dark violet face to radius 66 with a
+  `#3a1f5c` to `#120826` vertical gradient, and `grunt_wasp()` scaled to 104 px and centred, so the
+  tile always shows the shipped Grunt. The badge carries its own dark face, so it reads on the
+  light and the dark card. Ships as `frontend/assets/home/starswarm-tile.webp` (2,698 B). The
+  other tiles keep their emoji; the tile's accessibility label is unchanged. Store art (#3599's
+  other half) comes later, from the finished game.
 
 - **2026-11-08 (#3600), all three ships ship, chosen in a picker.** P2 and P3 ship as five layers
   each (`player/p2-*.webp`, `player/p3-*.webp`), loaded up front with P1 (about 21 KB for 15
