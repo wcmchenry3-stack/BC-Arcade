@@ -266,7 +266,8 @@ test.describe("2048 — motion (#3689)", () => {
     const elapsed = Date.now() - t0;
     expect(elapsed).toBeGreaterThan(500);
     expect(elapsed).toBeLessThan(1800);
-    await expect(page.getByTestId("twenty48-dim")).toHaveCount(0);
+    // The board stays dimmed under the card: no bright flash before its scrim fades in (#3725).
+    await expect(page.getByTestId("twenty48-dim")).toBeVisible();
   });
 
   test.describe("Reduce Motion", () => {

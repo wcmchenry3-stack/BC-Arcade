@@ -39,6 +39,8 @@ interface GridProps {
   maxSize?: number;
   /** The end-of-game beat playing: a stuck board dims and shakes (the win's is on its 2048 tile). */
   beat?: Beat;
+  /** No moves left: a board the game-over beat dimmed stays dim under the card (#3725). */
+  stuck?: boolean;
 }
 
 // Large drop shadow: native properties + web boxShadow via inline style.
@@ -53,7 +55,7 @@ const BOARD_SHADOW =
         elevation: 24,
       } as object);
 
-export default function Grid({ tiles, maxSize, beat = null }: GridProps) {
+export default function Grid({ tiles, maxSize, beat = null, stuck = false }: GridProps) {
   const { t } = useTranslation("twenty48");
   const { width } = useWindowDimensions();
   const { colors, theme } = useTheme();
@@ -72,19 +74,28 @@ export default function Grid({ tiles, maxSize, beat = null }: GridProps) {
   const tileSize = (boardWidth - GAP * (GRID_SIZE + 1)) / GRID_SIZE;
 
   // The game-over beat (#3689): after the last tile has settled, the stuck board dims and gives
-  // a small shake. Both are gone when the beat ends (the card then covers the board) or when
-  // Reduce Motion turns on.
+  // a small shake. The dim stays while the board is stuck, so the board doesn't flash back to full
+  // brightness between the beat ending and the card's scrim fading in (#3725). Both go on a New
+  // Game, or when Reduce Motion turns on. A restored game over never played the beat: no dim.
   const dim = useSharedValue(0);
   const shake = useSharedValue(0);
   const gameOverBeat = beat === "gameOver" && !reduceMotion;
+  const [dimHeld, setDimHeld] = useState(false);
+  if (gameOverBeat && !dimHeld) {
+    setDimHeld(true);
+  } else if (dimHeld && !gameOverBeat && (!stuck || reduceMotion)) {
+    setDimHeld(false);
+  }
+  const showDim = gameOverBeat || dimHeld;
   useEffect(() => {
-    if (!gameOverBeat) {
+    if (!showDim) {
       cancelAnimation(dim);
       cancelAnimation(shake);
       dim.value = 0;
       shake.value = 0;
       return;
     }
+    if (!gameOverBeat) return; // the beat is over: the board stays dimmed where it ended
     const step = GAME_OVER_SHAKE_MS / SHAKE_STEPS;
     const px = GAME_OVER_SHAKE_PX;
     dim.value = withDelay(
@@ -103,7 +114,7 @@ export default function Grid({ tiles, maxSize, beat = null }: GridProps) {
       )
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameOverBeat]); // shared values are stable refs
+  }, [showDim, gameOverBeat]); // shared values are stable refs
   const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
   const dimStyle = useAnimatedStyle(() => ({ opacity: dim.value }));
 
@@ -169,7 +180,7 @@ export default function Grid({ tiles, maxSize, beat = null }: GridProps) {
           reduceMotion={reduceMotion}
         />
       ))}
-      {gameOverBeat && (
+      {showDim && (
         <Animated.View
           testID="twenty48-dim"
           style={[styles.dim, { backgroundColor: TWENTY48_DIM }, dimStyle]}

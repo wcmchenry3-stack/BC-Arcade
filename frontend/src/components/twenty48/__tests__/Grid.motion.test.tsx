@@ -42,10 +42,10 @@ const MERGED: TileData = tile({
   ],
 });
 
-async function renderGrid(tiles: TileData[], beat?: "win" | "gameOver" | null) {
+async function renderGrid(tiles: TileData[], beat?: "win" | "gameOver" | null, stuck?: boolean) {
   return await render(
     <ThemeProvider>
-      <Grid tiles={tiles} beat={beat} />
+      <Grid tiles={tiles} beat={beat} stuck={stuck} />
     </ThemeProvider>
   );
 }
@@ -222,5 +222,36 @@ describe("Grid: the game-over beat", () => {
     mockReduceMotion = true;
     const { queryByTestId } = await renderGrid([MERGED], "gameOver");
     expect(queryByTestId("twenty48-dim")).toBeNull();
+  });
+
+  // #3725: the card's scrim fades in after the beat; the board must not flash bright between.
+  const grid = (beat: "gameOver" | null, stuck: boolean) => (
+    <ThemeProvider>
+      <Grid tiles={[MERGED]} beat={beat} stuck={stuck} />
+    </ThemeProvider>
+  );
+
+  it("stays dimmed under the card once the beat ends, until a New Game", async () => {
+    const r = await render(grid("gameOver", true));
+    await r.rerender(grid(null, true)); // the beat is over, the card is up
+    expect(r.getByTestId("twenty48-dim")).toBeTruthy();
+    await r.rerender(grid(null, false)); // New Game
+    expect(r.queryByTestId("twenty48-dim")).toBeNull();
+  });
+
+  it("a restored game over, which never played the beat, is not dimmed", async () => {
+    const { queryByTestId } = await renderGrid([MERGED], null, true);
+    expect(queryByTestId("twenty48-dim")).toBeNull();
+  });
+
+  it("Reduce Motion turning on clears a held dim, and turning it off doesn't bring it back", async () => {
+    const r = await render(grid("gameOver", true));
+    await r.rerender(grid(null, true));
+    mockReduceMotion = true;
+    await r.rerender(grid(null, true));
+    expect(r.queryByTestId("twenty48-dim")).toBeNull();
+    mockReduceMotion = false;
+    await r.rerender(grid(null, true));
+    expect(r.queryByTestId("twenty48-dim")).toBeNull();
   });
 });

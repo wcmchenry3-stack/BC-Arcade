@@ -180,7 +180,9 @@ describe("2048 beats: the result card waits for the move's last moment", () => {
     expect(r.queryByTestId("twenty48-result")).toBeNull();
     await advance(1);
     expect(r.getByText("Game Over")).toBeTruthy();
-    expect(r.queryByTestId("twenty48-dim")).toBeNull();
+    // The board stays dimmed under the card: no bright flash before its scrim fades in (#3725).
+    // The board is behind the open card, so it is queried with hidden elements included.
+    expect(r.getByTestId("twenty48-dim", { includeHiddenElements: true })).toBeTruthy();
   });
 
   it("the 2048 move that also ends the game shows the win card, after the win beat", async () => {
@@ -221,7 +223,7 @@ describe("2048 beats: the result card waits for the move's last moment", () => {
     });
     await advance(GAME_OVER_BEAT_MS * 2);
     expect(r.queryByTestId("twenty48-result")).toBeNull();
-    expect(r.queryByTestId("twenty48-dim")).toBeNull();
+    expect(r.queryByTestId("twenty48-dim", { includeHiddenElements: true })).toBeNull();
   });
 });
 
@@ -240,7 +242,7 @@ describe("2048 beats: Reduce Motion", () => {
     mockedMove.mockImplementationOnce(() => STUCK);
     await act(async () => key("ArrowLeft"));
     expect(r.getByText("Game Over")).toBeTruthy();
-    expect(r.queryByTestId("twenty48-dim")).toBeNull();
+    expect(r.queryByTestId("twenty48-dim", { includeHiddenElements: true })).toBeNull();
   });
 
   it("turning it on mid-beat releases the card now, and the card stays up", async () => {
@@ -274,7 +276,7 @@ describe("2048 beats: a restored finished game", () => {
   it("shows the game-over card at once", async () => {
     const r = await open(FINISHED_STUCK);
     expect(r.getByText("Game Over")).toBeTruthy();
-    expect(r.queryByTestId("twenty48-dim")).toBeNull();
+    expect(r.queryByTestId("twenty48-dim", { includeHiddenElements: true })).toBeNull();
   });
 
   it("shows the win card at once", async () => {

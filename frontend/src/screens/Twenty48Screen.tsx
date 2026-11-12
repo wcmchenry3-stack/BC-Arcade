@@ -701,6 +701,7 @@ export default function Twenty48Screen({ navigation }: Props) {
                 <Grid
                   tiles={state.tiles}
                   beat={beat}
+                  stuck={state.game_over}
                   maxSize={
                     // A first or transient layout can measure ~0: use the width cap until the
                     // area is a usable height, never a zero or negative board (#3715 review).

@@ -142,16 +142,16 @@ Like Mahjong, FreeCell and Solitaire, 2048 has no always-on instructions: a **Hi
 
 Every timing is in `frontend/src/game/twenty48/motion.ts`; `__tests__/motion.test.ts` holds the ceilings. Times are from the moment the swipe's board renders.
 
-| What                  | When / how long              | Notes                                                                                                 |
-| --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Slide                 | 0 to 100 ms                  | ease-out; every tile, and both tiles of a merge                                                       |
-| Merge: the tiles meet | 100 ms (`SLIDE_MS`)          | the two source tiles (ghosts) slide into the destination and vanish; the merged tile appears and pops |
-| Merge pop             | 100 to 240 ms                | 1 to 1.15 and back, 70 + 70 ms; peak at 170 ms                                                        |
-| Spawn                 | starts 60 ms, at rest 220 ms | appears at once from 0.4 scale, up to 1.1 (90 ms), back (70 ms)                                       |
-| Move lock             | 120 ms                       | up to 2 swipes queue behind it                                                                        |
-| Score float           | 600 ms                       | "+N" rises 24 px and fades (RN `Animated`)                                                            |
-| Win beat              | card at 1000 ms              | the 2048 tile pops to 1.35 (peak at 280 ms, back by 540 ms) with a gold glow (100 to 800 ms)          |
-| Game-over beat        | card at 600 ms               | the board dims (220 to 470 ms, to 45%) and shakes 5 px (220 to 520 ms)                                |
+| What                  | When / how long              | Notes                                                                                                                   |
+| --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Slide                 | 0 to 100 ms                  | ease-out; every tile, and both tiles of a merge                                                                         |
+| Merge: the tiles meet | 100 ms (`SLIDE_MS`)          | the two source tiles (ghosts) slide into the destination and vanish; the merged tile appears and pops                   |
+| Merge pop             | 100 to 240 ms                | 1 to 1.15 and back, 70 + 70 ms; peak at 170 ms                                                                          |
+| Spawn                 | starts 60 ms, at rest 220 ms | appears at once from 0.4 scale, up to 1.1 (90 ms), back (70 ms)                                                         |
+| Move lock             | 120 ms                       | up to 2 swipes queue behind it                                                                                          |
+| Score float           | 600 ms                       | "+N" rises 24 px and fades (RN `Animated`)                                                                              |
+| Win beat              | card at 1000 ms              | the 2048 tile pops to 1.35 (peak at 280 ms, back by 540 ms) with a gold glow (100 to 800 ms)                            |
+| Game-over beat        | card at 600 ms               | the board dims (220 to 470 ms, to 45%) and shakes 5 px (220 to 520 ms); it stays dimmed under the card until a New Game |
 
 For the sounds (#3690): the merge "meet" is at 100 ms, the spawn appears from 60 ms, the win card at 1000 ms and the game-over card at 600 ms after the winning or last move. The win and game-over sounds start with the move today; they should end on the card.
 
