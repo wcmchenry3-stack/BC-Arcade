@@ -1,6 +1,6 @@
 # Round 28 — Coordinated-force opening
 
-**Status:** pending owner audition (November 11, 2026).
+**Status:** partially successful (greater force); not approved due to medieval/fantasy-sounding lead (November 11, 2026).
 
 ## Hypothesis
 The sound missing from Round 27 is **coordinated force**, not an isolated louder lead or faster individual notes. BG-1's opening has a rapid build into sustained musical mass; Round 27 began loud but lost energy. The previously approved swarm and astronomical spotlight create perceived force through aligned voices, register expansion, shared musical direction and dynamic handoffs.
@@ -20,3 +20,12 @@ Does the new opening feel **forceful, cinematic, unmistakably science fiction, c
 The MP3 and exact script are in the ChatGPT ZIP but **not yet committed to this branch**. Please copy both to this Round_28 folder through the repository's binary-capable uploader; archive files and checksums can then be updated. The historical Round 23 feature sounds and Round 27 rejection remain intact.
 
 See [audition issue #3642](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3642) and [draft PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734).
+
+## Owner feedback — partially successful, NOT approved (November 11, 2026)
+
+The opening **feels more powerful** than previous attempts. **The strongest sense of force emerges toward the end of the 22-second clip**; preserve that progressive buildup, ensemble interaction, and the underlying supporting musical mass.
+
+However, one prominent instrument/voice still strongly evokes a **Renaissance fair / medieval fantasy** setting. Its exposed timbre and phrasing undermine the sci-fi identity despite the improvement in power. **Do not call Round 28 an approved musical foundation.** The success is in the *background/supporting music toward the end*, not the objectionable foreground instrument.
+
+**Next focused A/B diagnostic:** keep the successful ~last 8–10 seconds of the underlying composition/energy contour as a baseline, and replace/remove the medieval-sounding foreground voice rather than masking it with additional tracks. Audition (A) instrumental **minus** that voice and (B) same musical function revoiced using an unmistakably futuristic, inharmonic/electromagnetic texture. Preserve shared harmony, dynamics, timing and gain for a clear comparison; assess whether the end retains its weight. Then build a stronger immediate opening **from that proven late-section character**, not by stacking additional unrelated sounds. Test only short excerpts before expanding. Do not assume the culprit instrument's exact oscillator until checking the synthesis source and auditioning isolated stems.
+
