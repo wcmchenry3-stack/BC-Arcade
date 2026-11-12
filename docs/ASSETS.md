@@ -80,7 +80,7 @@ The world is 400 × 600 units. The canvas takes the whole game area, so `scale` 
 
 **BGM note**: the three Mahjong tracks, `mahjong-bg-{1,2,3}.mp3` (2.3–4.8 MB), are encoded at 128 kbps stereo (re-encoded in #1024). Long looping tracks (3–5 min) naturally exceed 2 MB at this bitrate. The budget is a target for _new_ tracks.
 
-**Star Swarm BGM exception (#3638)**: Star Swarm has one original 7:00 track, `starswarm-bgm.mp3`: 5.88 MB (5,881,052 B), MP3 24 kHz stereo 112 kbps. It is over the 2 MB per-track budget but under the 11.28 MB of the four Pixabay tracks it replaced (`starswarm-bg-1..4.mp3`, deleted in #3638), which is the epic's ceiling (#3635); `scripts/check_large_files.py` allow-lists it at its exact size. The file is shipped untouched at −21.1 LUFS, so it plays at its own volume, 0.57, where Mahjong's music plays at the shared 0.2 (`useBackgroundMusic`'s `volume` option).
+**Star Swarm BGM exception (#3638)**: Star Swarm has one original 6:52.7 track, `starswarm-bgm.mp3` (Round 46 with the loop edit): 6.60 MB (6,604,461 B), MP3 24 kHz stereo 128 kbps. It is over the 2 MB per-track budget but under the 11.28 MB of the four Pixabay tracks it replaced (`starswarm-bg-1..4.mp3`, deleted in #3638), which is the epic's ceiling (#3635); `scripts/check_large_files.py` allow-lists it at its exact size. The loop edit (`tools/assets/make_starswarm_bgm_loop.py`: fades trimmed, 3 s seam, +2.9 dB, one encode) leaves it at −21.5 LUFS, so it plays at its own volume, 0.57, where Mahjong's music plays at the shared 0.2 (`useBackgroundMusic`'s `volume` option).
 
 ## Credits and attribution
 

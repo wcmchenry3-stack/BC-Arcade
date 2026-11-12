@@ -20,8 +20,8 @@ TRACK = REPO / "frontend/assets/sounds/starswarm-bgm.mp3"
 DEFAULT_OUT = Path(__file__).resolve().parent / "out" / "bgm-cues"
 
 # Mirrors bgmCues.ts (STARSWARM_BGM).
-DURATION_MS = 420_000
-CUES_MS = [0, 72_000, 155_000, 269_000, 326_000]
+DURATION_MS = 412_700
+CUES_MS = [0, 66_500, 156_500, 223_500, 290_500]
 
 CLIP_S = 20
 FADE_IN_S = 1.5
@@ -29,7 +29,7 @@ SEAM_S = 15
 
 
 def clip_name(index: int, cue_ms: int) -> str:
-    """`cue-<n>-<m>m<ss>s.mp3`, e.g. cue-2-1m12s.mp3."""
+    """`cue-<n>-<m>m<ss>s.mp3`, e.g. cue-2-1m06s.mp3."""
     secs = cue_ms // 1000
     return f"cue-{index}-{secs // 60}m{secs % 60:02d}s.mp3"
 
