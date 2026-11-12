@@ -27,6 +27,10 @@ import type { HandResponse } from "../../game/blackjack/types";
 import { showsResult, type TableGeometry, type Rect } from "../../game/blackjack/layout";
 import FeltCards, { type FeltHand } from "./FeltCards";
 import { FeltChips, PopIn } from "./FeltChips";
+import { ChipFace } from "./ChipButton";
+
+/** The stake chip beside a hand's total. */
+const STAKE_CHIP = 11;
 import { feltColor } from "./tableColors";
 import ResultBanner from "./ResultBanner";
 import {
@@ -174,6 +178,8 @@ interface HandLabelProps {
   payout: number | null;
   /** A split hand's result pops in as it is revealed. */
   pops: boolean;
+  /** The stake chip's colour (the table's chips). */
+  chipColor: string;
   /** The cards' landing epoch: a new one shows a pop-in at once. */
   epoch: number;
 }
@@ -192,6 +198,7 @@ function HandLabel({
   payout,
   pops,
   epoch,
+  chipColor,
 }: HandLabelProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -236,9 +243,24 @@ function HandLabel({
           label={t("a11y.playerScore", { score: valueText })}
         />
         {bet != null && payoutText === null && (
-          <Text style={[styles.bet, { color: colors.celebration, fontFamily: typography.heading }]}>
-            ● {bet}
-          </Text>
+          // The stake: a chip (decorative) beside the amount (#3720, as the mockup). The amount
+          // shrinks to fit a tight row label; the label's accessibility name says the bet.
+          <View style={[styles.stake, styles.shrink]}>
+            <ChipFace testID="hand-stake-chip" size={STAKE_CHIP} color={chipColor} />
+            <Text
+              testID="hand-bet"
+              style={[
+                styles.bet,
+                styles.shrink,
+                { color: colors.celebration, fontFamily: typography.heading },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {bet}
+            </Text>
+          </View>
         )}
         {payoutText !== null && payout !== null && (
           // A split hand's own result: it pops in as the hands are revealed in turn (#3581).
@@ -466,6 +488,7 @@ export default function TableFelt({
             payout={shows && split ? (handPayouts[i] ?? 0) : null}
             pops={animating}
             epoch={cardMotion.epoch}
+            chipColor={chipColor ?? colors.accent}
           />
         );
       })}
@@ -536,6 +559,11 @@ const styles = StyleSheet.create({
   bet: {
     fontSize: 11,
     fontWeight: "700",
+  },
+  stake: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
   },
   payout: {
     fontSize: 11,

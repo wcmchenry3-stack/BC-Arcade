@@ -19,6 +19,7 @@ import Reanimated, {
 
 import type { Rect } from "../../game/blackjack/layout";
 import { FLIGHT_BACKSTOP_MS, type Point } from "../cards/cardMotion";
+import { chipShape } from "./ChipButton";
 import { easeSlide, NUDGE_PX, type ChipKind, type ChipShown } from "./blackjackMotion";
 
 /** A moving chip's diameter. */
@@ -129,7 +130,7 @@ const ChipSprite = React.memo(function ChipSprite({
   return (
     <Reanimated.View
       testID={`felt-chip-${kind}`}
-      style={[styles.chip, { backgroundColor: color, borderColor: rim }, style]}
+      style={[styles.chip, chipShape(CHIP_SPRITE, color), { borderColor: rim }, style]}
     />
   );
 });
@@ -200,10 +201,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     top: 0,
-    width: CHIP_SPRITE,
-    height: CHIP_SPRITE,
-    borderRadius: CHIP_SPRITE / 2,
-    borderWidth: 3,
-    borderStyle: "dashed",
+    // The tray's chip face (chipShape), with a thin rim so it reads over the cards.
+    borderWidth: 1,
   },
 });
