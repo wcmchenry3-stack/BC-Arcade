@@ -14,12 +14,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import {
-  DEFAULT_RULES,
-  DEFAULT_RUN_CONFIG,
-  EngineState,
-  settleUnpeekedDealerNatural,
-} from "./engine";
+import { DEFAULT_RULES, DEFAULT_RUN_CONFIG, EngineState } from "./engine";
 import { createJsonSlot } from "../_shared/storageSlot";
 
 const RUNS_KEY = "blackjack_runs_v1";
@@ -158,11 +153,7 @@ function backfill(parsed: EngineState): EngineState {
   if (typeof parsed.comebackEmitted !== "boolean") {
     parsed.comebackEmitted = false;
   }
-  // A save from before the dealer's peek (#3741), mid-hand against a dealer
-  // natural the peek would have found: settled now as the peek would have, for
-  // the original bet only, before any double or split can be taken. Every other
-  // save is unchanged. The rule is on `settleUnpeekedDealerNatural`.
-  return settleUnpeekedDealerNatural(parsed);
+  return parsed;
 }
 
 export const {

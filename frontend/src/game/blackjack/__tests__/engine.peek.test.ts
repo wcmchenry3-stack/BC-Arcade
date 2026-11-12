@@ -12,11 +12,18 @@ import {
   placeBet,
   split,
   stand,
+  settleUnpeekedDealerNatural,
   toViewState,
   type Card,
   type EngineState,
 } from "../engine";
-import { c, savedAgainstNatural, splitSetup, stateInPlayer } from "./helpers/engineFixtures";
+import {
+  c,
+  savedAgainstNatural,
+  splitSetup,
+  stateInPlayer,
+  stateInResult,
+} from "./helpers/engineFixtures";
 
 /** A deck dealt in this order (player, dealer hole, player, dealer up, then draws), then 5s. */
 function dealt(order: Card[], chips = 1000): EngineState {
@@ -153,5 +160,80 @@ describe("a natural beats any 21 that is not one", () => {
     });
     expect(s.dealer_hand).toHaveLength(3);
     expect(s.outcome).toBe("push");
+  });
+});
+
+// A save from before the peek, mid-hand against a dealer natural, is settled on load as the peek
+// would have settled it at the deal (by the game context: BlackjackGameContext.peek.test.tsx).
+describe("settleUnpeekedDealerNatural", () => {
+  it("in play against a dealer natural: lost for the original bet, phase result", () => {
+    const s = settleUnpeekedDealerNatural(savedAgainstNatural([c("♠", "10"), c("♥", "8")]));
+    expect(s.phase).toBe("result");
+    expect(s.outcome).toBe("lose");
+    expect(s.payout).toBe(-100);
+    expect(s.chips).toBe(900);
+    expect(s.bet).toBe(100);
+    expect(s.events).toBeUndefined();
+  });
+
+  it("with a card already hit: back to the two dealt cards, still the original bet only", () => {
+    const s = settleUnpeekedDealerNatural(
+      savedAgainstNatural([c("♠", "10"), c("♥", "6"), c("♣", "5")])
+    );
+    expect(s.player_hand).toEqual([c("♠", "10"), c("♥", "6")]);
+    expect(s.outcome).toBe("lose");
+    expect(s.chips).toBe(900);
+  });
+
+  it("split and re-split: the split is undone, the real dealt pair restored, the original bet lost", () => {
+    // K♠ Q♥ dealt against 7 9; split (K♠ J♦ | Q♥ 5♣), then the first hand re-split
+    // (K♠ 2♠ | J♦ 3♠ | Q♥ 5♣): the hands' first cards are no longer the dealt pair.
+    const order = [
+      c("♠", "K"),
+      c("♣", "7"),
+      c("♥", "Q"),
+      c("♦", "9"),
+      c("♦", "J"),
+      c("♣", "5"),
+      c("♠", "2"),
+      c("♠", "3"),
+    ];
+    const s = split(split(placeBet(dealt(order), 100)));
+    expect(s.split_count).toBe(2);
+    expect(s.player_hands.map((h) => h[0])).toEqual([c("♠", "K"), c("♦", "J"), c("♥", "Q")]);
+    // As an older build saved it, against the dealer's natural it never peeked at.
+    const settled = settleUnpeekedDealerNatural({ ...s, dealer_hand: [c("♦", "K"), c("♣", "A")] });
+    expect(settled.player_hand).toEqual([c("♠", "K"), c("♥", "Q")]);
+    expect(settled.split_count).toBe(0);
+    expect(settled.player_hands).toEqual([]);
+    expect(settled.outcome).toBe("lose");
+    expect(settled.payout).toBe(-100);
+    expect(settled.chips).toBe(900);
+  });
+
+  it("the player's natural against the dealer's natural (a guard; no real save holds it): a push", () => {
+    const s = settleUnpeekedDealerNatural(savedAgainstNatural([c("♠", "A"), c("♥", "K")]));
+    expect(s.outcome).toBe("push");
+    expect(s.chips).toBe(1000);
+  });
+
+  it("all in: the chips go to 0 and the run is over", () => {
+    const s = settleUnpeekedDealerNatural({
+      ...savedAgainstNatural([c("♠", "10"), c("♥", "8")]),
+      chips: 100,
+    });
+    expect(s.chips).toBe(0);
+    expect(toViewState(s).game_over).toBe(true);
+  });
+
+  it("a save that needs no change is returned as it is", () => {
+    const natural = [c("♦", "K"), c("♣", "A")];
+    for (const s of [
+      stateInPlayer(), // in play, the dealer not a natural
+      { ...stateInResult(900, 100, "lose", -100), dealer_hand: natural }, // already settled
+      newGame(), // betting
+    ]) {
+      expect(settleUnpeekedDealerNatural(s)).toBe(s);
+    }
   });
 });

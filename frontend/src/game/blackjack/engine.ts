@@ -482,31 +482,33 @@ export function legalBetRange(
 /**
  * A game saved mid-hand by a build from before the peek (#3741), against a
  * dealer natural the peek would have found: settled now as the peek would have
- * settled it at the deal. The rule (applied on load, `storage.ts`):
+ * settled it at the deal. The rule (applied on load, by the game context's load
+ * path, `BlackjackGameContext.tsx`, which records the round like any other):
  *
  * - Only a save still in the player's phase with a dealer natural changes; any
  *   other save (betting, settled, or a dealer hand that is not a natural) is
  *   returned as it is.
- * - The hand goes back to its two dealt cards (a split's pair: the first card of
- *   its first two hands), with no split and no double, and settles for the
- *   original bet only: lost, or a push if those two cards are a natural. So a
- *   save already split, or with cards hit, never loses more than that bet (a
- *   single hand's double settles at once, so no doubled save is in this phase).
+ * - The hand goes back to its two dealt cards, with no split and no double, and
+ *   settles for the original bet only. So a save already split, or with cards
+ *   hit, never loses more than that bet (a single hand's double settles at once,
+ *   so no doubled save is in this phase).
  * - Chips, victory, milestones and the low-chips tracking update as for any
  *   settlement; no events (a restored round replays nothing).
  */
 export function settleUnpeekedDealerNatural(s: EngineState): EngineState {
   if (s.phase !== "player" || !isNaturalBlackjack(s.dealer_hand)) return s;
-  const split = s.split_count > 0;
-  const first = split ? s.player_hands[0]?.[0] : s.player_hand[0];
-  const second = split ? s.player_hands[1]?.[0] : s.player_hand[1];
-  const dealt = first && second ? [first, second] : s.player_hand.slice(0, 2);
+  // `player_hand` is the two cards dealt and any hit on them: a split and its
+  // re-splits only change `player_hands`, so its first two are the dealt pair.
+  const dealt = s.player_hand.slice(0, 2);
   const restored: EngineState = {
     ...s,
     player_hand: dealt,
     doubled: false,
     ...emptySplitState(),
   };
+  // A push only if the dealt pair is a natural. No real save reaches it: old
+  // builds also settled a player natural in `placeBet`, so it never reached the
+  // player's phase. Kept as a guard.
   const settled = settleWith(restored, isNaturalBlackjack(dealt) ? "push" : "lose");
   return { ...settled, events: undefined };
 }
