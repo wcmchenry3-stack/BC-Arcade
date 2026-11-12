@@ -103,7 +103,7 @@ Tab bar     unchanged
 
 `game/yacht/hint.ts` asks the exact oracle (`ai.ts`, λ = 1: optimal play, no slips) what to do with the dice on the table. Before the last roll it names the dice to keep (a green ring on each; all five dice rolled again if it keeps none). After the third roll, or when the best play is to stop and score, it names the best row (Joker rules included). The message ("Hint: keep the highlighted dice", "Hint: score Large Straight (40)") replaces the turn hint in the tray and is announced to a screen reader.
 
-It behaves like 2048's: up for **2 s** (`useTransientToast`), cleared by a roll, a hold or a score; with nothing to suggest (before the first roll) a 2 s "No hint available" message; **disabled** while the dice are rolling, on the computer's turn and once the game is over. It changes nothing in the game and is not recorded (the replay has no slot for it, and Yacht scores no cost for one). The first hint decodes the oracle table (tens of ms, once per session); nothing is loaded for a player who never asks.
+It behaves like 2048's: up for **2 s** (`useTransientToast`), cleared by a roll, a hold or a score; with nothing to suggest (before the first roll) a 2 s "No hint available" message; **disabled** while the dice are rolling, on the computer's turn and once the game is over. It changes nothing in the game and is not recorded (the replay has no slot for it, and Yacht scores no cost for one). The oracle table (about 400 ms to decode in Jest, more on a phone) is warmed on a timer once the first roll of a solo game is down, so the first Hint is instant; a VS game warms it for the computer, and a player who never rolls never loads it.
 
 ### End card
 

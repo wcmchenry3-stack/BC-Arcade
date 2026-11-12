@@ -123,6 +123,36 @@ describe("YachtFinalScorecard — a game against the computer (#3748)", () => {
     });
   });
 
+  describe("the total keeps its emphasis (heading font, 14 pt), tinted or not", () => {
+    it("solo", async () => {
+      const { getByTestId } = await renderCard(card({ totalScore: 150 }));
+      const total = flat(getByTestId("yacht-final-you-total"));
+      expect(total.fontSize).toBe(14);
+      expect(total.fontFamily).not.toBe(flat(getByTestId("yacht-final-you-ones")).fontFamily);
+    });
+
+    it("on a tie, both totals", async () => {
+      const { getByTestId } = await renderCard(
+        card({ totalScore: 120 }),
+        card({ totalScore: 120 })
+      );
+      for (const id of ["yacht-final-you-total", "yacht-final-cpu-total"]) {
+        expect(flat(getByTestId(id)).fontSize).toBe(14);
+        expect(flat(getByTestId(id)).backgroundColor).toBeUndefined();
+      }
+    });
+
+    it("a winner's total has the same size with its tint on top", async () => {
+      const { getByTestId } = await renderCard(
+        card({ totalScore: 150 }),
+        card({ totalScore: 120 })
+      );
+      const total = flat(getByTestId("yacht-final-you-total"));
+      expect(total.fontSize).toBe(14);
+      expect(total.backgroundColor).toBe(dark.outcomeWinTint);
+    });
+  });
+
   describe("the total", () => {
     it("is marked for the computer when it wins (it was always muted)", async () => {
       const { getByTestId } = await renderCard(card({ totalScore: 90 }), card({ totalScore: 120 }));

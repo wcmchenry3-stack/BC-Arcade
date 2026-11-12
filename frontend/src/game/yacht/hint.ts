@@ -4,7 +4,9 @@
  * after the third roll, or when the best play is to stop and score, the best row.
  *
  * Pure and deterministic; reads the oracle, changes no state and records nothing (a hint costs
- * nothing, as in 2048). The first call decodes the oracle table (tens of ms, once per session).
+ * nothing, as in 2048). The first call decodes the oracle table (about 400 ms in Jest, more on a
+ * phone, once per session): `useYachtHint` warms it with `preloadOracleTable` after the first roll,
+ * off the press.
  */
 
 import type { Category } from "./engine";

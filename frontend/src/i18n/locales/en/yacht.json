@@ -83,5 +83,7 @@
   "gameOver.rowYou": "{{category}}: you {{you}}, computer {{cpu}}, you win the row",
   "gameOver.rowCpu": "{{category}}: you {{you}}, computer {{cpu}}, the computer wins the row",
   "gameOver.rowTie": "{{category}}: you {{you}}, computer {{cpu}}, tied",
-  "gameOver.yachtScored": "Yacht! +{{score}} points"
+  "gameOver.yachtScored": "Yacht! +{{score}} points",
+  "score.labelVs": "{{category}}: {{state}}. Computer: {{cpu}}",
+  "score.cpuOpen": "not scored"
 }

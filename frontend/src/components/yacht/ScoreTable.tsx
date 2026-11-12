@@ -84,6 +84,8 @@ export default function ScoreTable({
   // Scroll the computer's row into view when the table has to scroll (a small phone).
   const scrollRef = useRef<ScrollView>(null);
   const rowY = useRef<Record<string, number>>({});
+  // Row y is relative to the card, not to the scroll content: add where the card starts.
+  const cardY = useRef(0);
   const onRowLayout = useCallback(
     (key: string) => (e: LayoutChangeEvent) => {
       rowY.current[key] = e.nativeEvent.layout.y;
@@ -94,7 +96,10 @@ export default function ScoreTable({
     if (!cpuLastScored) return;
     const y = rowY.current[cpuLastScored];
     if (y === undefined) return;
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - SCROLL_MARGIN), animated: !reduceMotion });
+    scrollRef.current?.scrollTo({
+      y: Math.max(0, cardY.current + y - SCROLL_MARGIN),
+      animated: !reduceMotion,
+    });
   }, [cpuLastScored, reduceMotion]);
 
   function renderRow(key: string, isLast: boolean) {
@@ -145,7 +150,15 @@ export default function ScoreTable({
           onPress={hot ? () => onScore(key) : undefined}
           disabled={!hot}
           accessibilityRole="button"
-          accessibilityLabel={t("score.label", { category: label, state: stateText })}
+          accessibilityLabel={
+            cpu
+              ? t("score.labelVs", {
+                  category: label,
+                  state: stateText,
+                  cpu: cpuScore !== null ? String(cpuScore) : t("score.cpuOpen"),
+                })
+              : t("score.label", { category: label, state: stateText })
+          }
           accessibilityState={{ disabled: !hot }}
           style={[
             styles.row,
@@ -263,7 +276,13 @@ export default function ScoreTable({
       contentContainerStyle={styles.content}
       testID="yacht-scorecard"
     >
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View
+        testID="yacht-score-card"
+        onLayout={(e) => {
+          cardY.current = e.nativeEvent.layout.y;
+        }}
+        style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+      >
         <View style={styles.head}>
           <Text style={[styles.headLabel, { color: colors.textMuted }]} numberOfLines={1}>
             {t("vsMode.category")}

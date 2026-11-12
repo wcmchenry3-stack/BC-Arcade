@@ -57,11 +57,12 @@ export default function YachtFinalScorecard({ player, opponent }: YachtFinalScor
   const bonusColor = (val: number) => (val > 0 ? colors.outcomeWin : colors.textMuted);
 
   /** A value cell: the winner of a row is bold, in its player's colour, on a tint. */
-  function valueStyle(side: "you" | "cpu", winner: Winner | null) {
+  function valueStyle(side: "you" | "cpu", winner: Winner | null, total = false) {
     const youWins = side === "you" && winner === "you";
     const cpuWins = side === "cpu" && winner === "cpu";
     return [
       styles.value,
+      total && styles.totalValue,
       { color: side === "you" ? colors.text : colors.textMuted },
       youWins && {
         color: colors.outcomeWin,
@@ -201,11 +202,11 @@ export default function YachtFinalScorecard({ player, opponent }: YachtFinalScor
 
       <View style={[styles.totalRow, { borderTopColor: colors.border }]}>
         <Text style={[styles.totalLabel, { color: colors.text }]}>{t("section.total")}</Text>
-        <Text style={valueStyle("you", totalWinner)} testID="yacht-final-you-total">
+        <Text style={valueStyle("you", totalWinner, true)} testID="yacht-final-you-total">
           {player.totalScore}
         </Text>
         {opponent && (
-          <Text style={valueStyle("cpu", totalWinner)} testID="yacht-final-cpu-total">
+          <Text style={valueStyle("cpu", totalWinner, true)} testID="yacht-final-cpu-total">
             {opponent.totalScore}
           </Text>
         )}
@@ -244,6 +245,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: "hidden",
   },
+  // The total stands out from the rows (heading font, 14 pt); a winner's tint layers on top.
+  totalValue: { fontFamily: typography.heading, fontSize: 14 },
   colHeader: {
     flex: 1.5,
     fontFamily: typography.label,

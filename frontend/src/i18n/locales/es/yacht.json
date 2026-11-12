@@ -84,5 +84,7 @@
   "gameOver.rowYou": "{{category}}: tú {{you}}, CPU {{cpu}}, ganas la fila",
   "gameOver.rowCpu": "{{category}}: tú {{you}}, CPU {{cpu}}, la CPU gana la fila",
   "gameOver.rowTie": "{{category}}: tú {{you}}, CPU {{cpu}}, empate",
-  "gameOver.yachtScored": "Yacht! +{{score}} puntos"
+  "gameOver.yachtScored": "Yacht! +{{score}} puntos",
+  "score.labelVs": "{{category}}: {{state}}. CPU: {{cpu}}",
+  "score.cpuOpen": "sin anotar"
 }

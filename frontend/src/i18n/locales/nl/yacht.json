@@ -83,5 +83,7 @@
   "gameOver.rowYou": "{{category}}: jij {{you}}, computer {{cpu}}, jij wint de rij",
   "gameOver.rowCpu": "{{category}}: jij {{you}}, computer {{cpu}}, de computer wint de rij",
   "gameOver.rowTie": "{{category}}: jij {{you}}, computer {{cpu}}, gelijk",
-  "gameOver.yachtScored": "Yacht! +{{score}} punten"
+  "gameOver.yachtScored": "Yacht! +{{score}} punten",
+  "score.labelVs": "{{category}}: {{state}}. Computer heeft: {{cpu}}",
+  "score.cpuOpen": "nog niet gescoord"
 }

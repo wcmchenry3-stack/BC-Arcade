@@ -83,5 +83,7 @@
   "gameOver.rowYou": "{{category}}: du {{you}}, Computer {{cpu}}, du gewinnst die Zeile",
   "gameOver.rowCpu": "{{category}}: du {{you}}, Computer {{cpu}}, der Computer gewinnt die Zeile",
   "gameOver.rowTie": "{{category}}: du {{you}}, Computer {{cpu}}, Gleichstand",
-  "gameOver.yachtScored": "Yacht! +{{score}} Punkte"
+  "gameOver.yachtScored": "Yacht! +{{score}} Punkte",
+  "score.labelVs": "{{category}}: {{state}}. Computer hat: {{cpu}}",
+  "score.cpuOpen": "noch nicht eingetragen"
 }

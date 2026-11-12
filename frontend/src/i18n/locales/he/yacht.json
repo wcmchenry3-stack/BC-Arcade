@@ -84,5 +84,7 @@
   "gameOver.rowYou": "{{category}}: אתה {{you}}, מחשב {{cpu}}, אתה מנצח בשורה",
   "gameOver.rowCpu": "{{category}}: אתה {{you}}, מחשב {{cpu}}, המחשב מנצח בשורה",
   "gameOver.rowTie": "{{category}}: אתה {{you}}, מחשב {{cpu}}, תיקו",
-  "gameOver.yachtScored": "Yacht! +{{score}} נקודות"
+  "gameOver.yachtScored": "Yacht! +{{score}} נקודות",
+  "score.labelVs": "{{category}}: {{state}}. המחשב: {{cpu}}",
+  "score.cpuOpen": "טרם נרשם"
 }

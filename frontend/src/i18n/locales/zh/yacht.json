@@ -83,5 +83,7 @@
   "gameOver.rowYou": "{{category}}：你 {{you}}，电脑 {{cpu}}，你赢得此行",
   "gameOver.rowCpu": "{{category}}：你 {{you}}，电脑 {{cpu}}，电脑赢得此行",
   "gameOver.rowTie": "{{category}}：你 {{you}}，电脑 {{cpu}}，平局",
-  "gameOver.yachtScored": "Yacht! +{{score}} 分"
+  "gameOver.yachtScored": "Yacht! +{{score}} 分",
+  "score.labelVs": "{{category}}：{{state}}。电脑：{{cpu}}",
+  "score.cpuOpen": "未计分"
 }

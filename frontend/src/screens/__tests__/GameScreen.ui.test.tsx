@@ -363,6 +363,40 @@ describe("the computer's turn (audit bugs 3 and 4)", () => {
   });
 });
 
+describe("New Game clears the Hint and the computer's highlight", () => {
+  async function newGameConfirmed(r: Awaited<ReturnType<typeof solo>>) {
+    await fireEvent.press(r.getByTestId("yacht-new-game-button"));
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start new game" }));
+    });
+  }
+
+  it("solo: a hint that is up is gone, and a fresh game shows none", async () => {
+    const r = await solo({ rolls_used: 1, dice: [6, 6, 6, 2, 3] });
+    await fireEvent.press(r.getByTestId("yacht-hint-button"));
+    expect(r.getByTestId("yacht-hint-message")).toBeTruthy();
+    await newGameConfirmed(r);
+    await fireEvent.press(r.getByTestId("yacht-mode-solo"));
+    expect(r.queryByTestId("yacht-hint-message")).toBeNull();
+    expect(r.queryByTestId("yacht-die-0-hint-ring")).toBeNull();
+  });
+
+  it("vs: the computer's highlighted row is gone, and a fresh game shows none", async () => {
+    const r = await vs({ dice: [1, 1, 1, 1, 1], rolls_used: 1 });
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("score-row-ones"));
+    });
+    await finishCpuTurn();
+    expect(r.getAllByTestId("yacht-cpu-row-bar")).toHaveLength(1);
+    await fireEvent.press(r.getByTestId("yacht-new-game-button"));
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start new game" }));
+    });
+    await fireEvent.press(r.getByTestId("yacht-mode-vs"));
+    expect(r.queryByTestId("yacht-cpu-row-bar")).toBeNull();
+  });
+});
+
 /** A final-round state: every category scored except `open`, left to play. */
 function lastRound(open: string, scores: Record<string, number>, over: Partial<GameState> = {}) {
   const filled = Object.fromEntries(

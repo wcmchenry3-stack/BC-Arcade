@@ -85,5 +85,7 @@
   "gameOver.rowYou": "{{category}}: вы {{you}}, компьютер {{cpu}}, строка ваша",
   "gameOver.rowCpu": "{{category}}: вы {{you}}, компьютер {{cpu}}, строка компьютера",
   "gameOver.rowTie": "{{category}}: вы {{you}}, компьютер {{cpu}}, ничья",
-  "gameOver.yachtScored": "Yacht! +{{score}} очков"
+  "gameOver.yachtScored": "Yacht! +{{score}} очков",
+  "score.labelVs": "{{category}}: {{state}}. Компьютер: {{cpu}}",
+  "score.cpuOpen": "не записано"
 }

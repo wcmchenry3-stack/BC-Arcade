@@ -83,5 +83,7 @@
   "gameOver.rowYou": "{{category}}: 나 {{you}}, 컴퓨터 {{cpu}}, 내가 이긴 항목",
   "gameOver.rowCpu": "{{category}}: 나 {{you}}, 컴퓨터 {{cpu}}, 컴퓨터가 이긴 항목",
   "gameOver.rowTie": "{{category}}: 나 {{you}}, 컴퓨터 {{cpu}}, 무승부",
-  "gameOver.yachtScored": "Yacht! +{{score}}점"
+  "gameOver.yachtScored": "Yacht! +{{score}}점",
+  "score.labelVs": "{{category}}: {{state}}. 컴퓨터: {{cpu}}",
+  "score.cpuOpen": "미기록"
 }

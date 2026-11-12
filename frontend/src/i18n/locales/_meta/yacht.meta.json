@@ -763,5 +763,23 @@
     "placeholders": ["{{score}}"],
     "doNotTranslate": ["Yacht!"],
     "notes": "Keep the game name Yacht."
+  },
+  "score.labelVs": {
+    "component": "ScoreTable",
+    "description": "Screen-reader label for one row of the scorecard in a game against the computer: the row, your state, then the computer's.",
+    "tone": "functional, descriptive",
+    "characterLimit": 70,
+    "placeholders": ["{{category}}", "{{state}}", "{{cpu}}"],
+    "doNotTranslate": [],
+    "notes": "{{state}} is a phrase such as 'scored 22'; {{cpu}} is the computer's score or the 'not scored' phrase."
+  },
+  "score.cpuOpen": {
+    "component": "ScoreTable",
+    "description": "What a screen reader says for the computer's value in a row it has not scored yet.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

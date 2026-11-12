@@ -8,7 +8,7 @@
  */
 
 import { test, expect, type Page } from "./fixtures";
-import { gotoYacht } from "./helpers/yacht";
+import { gotoYacht, blankScores } from "./helpers/yacht";
 
 const ROWS = [
   "ones",
@@ -135,6 +135,75 @@ for (const [mode, open] of [
     });
   });
 }
+
+/** A game under way with a Yacht (50) and one Yacht bonus (100): the total row grows a caption. */
+function withYachtBonus() {
+  const scores = {
+    ...blankScores(),
+    ones: 3,
+    twos: 6,
+    yacht: 50,
+    chance: 20,
+  };
+  return {
+    dice: [2, 2, 3, 4, 6],
+    held: [false, false, false, false, false],
+    rolls_used: 1,
+    round: 5,
+    scores,
+    game_over: false,
+    upper_subtotal: 9,
+    upper_bonus: 0,
+    yacht_bonus_count: 1,
+    yacht_bonus_total: 100,
+    total_score: 3 + 6 + 50 + 20 + 100,
+  };
+}
+
+test.describe("Yacht layout — with a Yacht bonus showing", () => {
+  test.use({ viewport: PHONE });
+
+  for (const mode of ["solo", "VS"] as const) {
+    test(`${mode}: the total row's bonus caption does not make the card scroll`, async ({
+      page,
+    }) => {
+      const state = withYachtBonus();
+      await page.goto("/");
+      await page.evaluate(
+        ([s, vs]) =>
+          localStorage.setItem(
+            "yacht_game_v2",
+            JSON.stringify({
+              state: s,
+              aiDifficulty: vs ? "easy" : null,
+              aiState: vs
+                ? {
+                    ...s,
+                    rolls_used: 0,
+                    round: 5,
+                    yacht_bonus_count: 0,
+                    yacht_bonus_total: 0,
+                    scores: { ...s.scores, yacht: null },
+                    total_score: 29,
+                  }
+                : null,
+            }),
+          ),
+        [state, mode === "VS"] as const,
+      );
+      await page.goto("/");
+      await page.getByRole("button", { name: "Play Yacht" }).click();
+      await page.getByText(/Round \d+ \/ 13/).waitFor();
+      await expect(
+        page.getByTestId("yacht-total-row").getByText("Yacht Bonus"),
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("yacht-total-row").getByText("+100"),
+      ).toBeVisible();
+      await expectWholeCardOnScreen(page);
+    });
+  }
+});
 
 test.describe("Yacht Hint is solo only", () => {
   test.use({ viewport: PHONE });

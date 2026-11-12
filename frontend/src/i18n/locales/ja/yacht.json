@@ -83,5 +83,7 @@
   "gameOver.rowYou": "{{category}}：あなた {{you}}、コンピュータ {{cpu}}、あなたの勝ち",
   "gameOver.rowCpu": "{{category}}：あなた {{you}}、コンピュータ {{cpu}}、コンピュータの勝ち",
   "gameOver.rowTie": "{{category}}：あなた {{you}}、コンピュータ {{cpu}}、引き分け",
-  "gameOver.yachtScored": "Yacht! +{{score}}点"
+  "gameOver.yachtScored": "Yacht! +{{score}}点",
+  "score.labelVs": "{{category}}：{{state}}。コンピュータ：{{cpu}}",
+  "score.cpuOpen": "未記入"
 }

@@ -83,5 +83,7 @@
   "gameOver.rowYou": "{{category}}: आप {{you}}, कंप्यूटर {{cpu}}, आप यह पंक्ति जीते",
   "gameOver.rowCpu": "{{category}}: आप {{you}}, कंप्यूटर {{cpu}}, कंप्यूटर यह पंक्ति जीता",
   "gameOver.rowTie": "{{category}}: आप {{you}}, कंप्यूटर {{cpu}}, बराबरी",
-  "gameOver.yachtScored": "Yacht! +{{score}} अंक"
+  "gameOver.yachtScored": "Yacht! +{{score}} अंक",
+  "score.labelVs": "{{category}}: {{state}}। कंप्यूटर: {{cpu}}",
+  "score.cpuOpen": "अभी स्कोर नहीं"
 }

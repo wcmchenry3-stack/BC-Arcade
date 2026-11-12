@@ -217,6 +217,29 @@ describe("ScoreTable — scoring rows", () => {
     expect(onScore).not.toHaveBeenCalled();
   });
 
+  it("vs: a row's label gives the computer's value too, or that it has not scored", async () => {
+    const { getByTestId } = await renderTable({
+      cpu: { ...CPU, scores: { ...emptyScores, chance: 21 } },
+      playerRollsUsed: 1,
+      playerScores: { ...emptyScores, twos: 6, chance: 22 },
+      playerPossibleScores: { ones: 3 },
+    });
+    expect(getByTestId("score-row-chance").props.accessibilityLabel).toBe(
+      "Chance: scored 22. Computer: 21"
+    );
+    expect(getByTestId("score-row-ones").props.accessibilityLabel).toBe(
+      "Ones: potential score 3, double-tap to score. Computer: not scored"
+    );
+    expect(getByTestId("score-row-threes").props.accessibilityLabel).toBe(
+      "Threes: not available. Computer: not scored"
+    );
+  });
+
+  it("solo: a row's label is yours alone", async () => {
+    const { getByTestId } = await renderTable({ playerScores: { ...emptyScores, twos: 6 } });
+    expect(getByTestId("score-row-twos").props.accessibilityLabel).toBe("Twos: scored 6");
+  });
+
   it("labels an open row for a screen reader with its potential, a scored one with its score", async () => {
     const { getByTestId } = await renderTable({
       playerRollsUsed: 1,
@@ -346,6 +369,18 @@ describe("ScoreTable — the Hint's row and the computer's last row", () => {
       const arg = scrollTo.mock.calls[0]![0] as { y: number };
       expect(arg.y).toBeGreaterThan(300);
       expect(arg.y).toBeLessThanOrEqual(400);
+    });
+
+    it("adds where the card starts: a row's y is relative to the card", async () => {
+      const { getByTestId, rerender } = await renderTable({ cpu: CPU });
+      await fireEvent(getByTestId("yacht-score-card"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 26, width: 300, height: 600 } },
+      });
+      await fireEvent(getByTestId("yacht-row-wrap-chance"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 400, width: 300, height: 29 } },
+      });
+      await rerender(table({ cpu: CPU, cpuLastScored: "chance" }));
+      expect((scrollTo.mock.calls[0]![0] as { y: number }).y).toBe(26 + 400 - 48);
     });
 
     it("never scrolls above the top", async () => {

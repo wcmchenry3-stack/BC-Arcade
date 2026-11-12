@@ -87,5 +87,7 @@
   "gameOver.rowYou": "{{category}}: أنت {{you}}، الكمبيوتر {{cpu}}، تفوز بالصف",
   "gameOver.rowCpu": "{{category}}: أنت {{you}}، الكمبيوتر {{cpu}}، يفوز الكمبيوتر بالصف",
   "gameOver.rowTie": "{{category}}: أنت {{you}}، الكمبيوتر {{cpu}}، تعادل",
-  "gameOver.yachtScored": "Yacht! +{{score}} نقطة"
+  "gameOver.yachtScored": "Yacht! +{{score}} نقطة",
+  "score.labelVs": "{{category}}: {{state}}. الكمبيوتر: {{cpu}}",
+  "score.cpuOpen": "لم يسجل بعد"
 }
