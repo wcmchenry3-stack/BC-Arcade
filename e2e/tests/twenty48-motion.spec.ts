@@ -281,6 +281,11 @@ test.describe("2048 — motion (#3689)", () => {
 
   test.describe("Reduce Motion", () => {
     test.use({ reducedMotion: "reduce" });
+    // On CI the context option alone didn't reach the page (matchMedia read false, #3725), so
+    // the page's media is also set directly; it holds across the navigations in the test.
+    test.beforeEach(async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+    });
 
     test("the win card and the game-over card come up at once, with nothing sliding", async ({
       page,
