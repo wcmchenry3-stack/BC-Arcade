@@ -2245,13 +2245,15 @@ shared `useBackgroundMusic` hook with Star Swarm's options (#3638):
   a new game from the pause screen) resumes the same player from the same position; it never picks
   another track or restarts. Pause holds and resumes it as before.
 - **Starting points.** `src/game/starswarm/bgmCues.ts`: 0:00, 1:12, 2:35, 4:29, 5:26. On leaving
-  the screen (unmount) or the app going to the background, the first starting point strictly after
+  the screen (unmount) or the app going inactive or to the background (an iOS app-switcher swipe
+  kills it from inactive), the first starting point strictly after
   the current position is saved to AsyncStorage under `bgm.resume.starswarm` (wrapping to 0:00 after
   5:26). One write per leave, never during play.
 - **Next visit.** The saved point is read once and validated (it must be one of the cues; anything
   else, a first visit or a storage error starts at 0:00). The player seeks there on its first loaded
-  status, then fades in from 0 to 0.57 over 1.5 s in 10 steps. Pause, mute or game over during the
-  fade ends it; muted, the music stays silent.
+  status (if none arrives within 3 s, the seek is skipped), then fades in from 0 to 0.57 over 1.5 s
+  in 10 steps. Pause, mute or game over during the fade ends it; muted, the music stays silent.
+  A resume after game over re-arms the #2923 self-heal, so a lost resume `play()` is retried.
 - **Loop.** The track loops 7:00 → 0:00 (`loop = true`; the file has a 7 s seam crossfade).
 - **Device check pending (owner):** carry-over across 3 games, resume at the next starting point
   after relaunch, no gap or click at the start, a seek or the loop seam, and the volume under the

@@ -142,15 +142,20 @@ options and is unchanged (a random track per game, from 0:00, at 0.2).
 - **One player per visit.** Game over pauses it; the next game (New Game, play again, or a new game
   from the pause screen) resumes it from the same position. It never restarts or picks another track.
   Pause holds and resumes it as before.
-- **Resume point.** On leaving the screen (unmount) or the app going to the background, the hook
+- **Resume point.** On leaving the screen (unmount) or the app going inactive or to the background
+  (an iOS app-switcher swipe kills it from inactive, without background or unmount), the hook
   saves `nextCue(position, cuesMs)` (`frontend/src/game/_shared/nextCue.ts`): the first starting point
   strictly after the position, or 0:00 after 5:26. One AsyncStorage write per leave, none during play.
   A leave before the visit's seek has landed writes nothing, so the saved point is kept.
 - **Next visit.** The saved value is read once and must be one of the cues; anything else (missing,
   unreadable, out of range) or a storage error starts at 0:00. The player is created at volume 0 and
-  `play()` is called at once, as before; the seek runs on the first loaded status; then the volume
+  `play()` is called at once, as before; the seek runs on the first loaded status (given up after
+  3 s without one, `BGM_SEEK_TIMEOUT_MS`, so the track never waits silent); then the volume
   fades from 0 to 0.57 over 1.5 s in 10 steps. Pause, mute or game over during the fade ends it at
   the target volume (silent while paused or muted); a visit that starts muted skips the fade.
+- **Self-heal on resume.** A carry-over resume (a new game after game over) re-arms the #2923
+  self-heal with the same limits and one immediate check, since the original disarmed once the
+  track first played and a lost resume `play()` brings no new status.
 - **Why the seek waits for the loaded status** (not `seekTo` before the first `play()`): on iOS,
   expo-audio's `seekTo` calls `AVPlayer.seek(to:completionHandler:)`, and AVFoundation raises an
   exception for a seek with a completion handler before the item is `readyToPlay`; on web, setting

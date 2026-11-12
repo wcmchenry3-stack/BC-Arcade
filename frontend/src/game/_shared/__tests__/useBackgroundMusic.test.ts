@@ -8,7 +8,12 @@ import {
   SELF_HEAL_MAX_ATTEMPTS,
   useBackgroundMusic,
 } from "../useBackgroundMusic";
-import { BGM_FADE_IN_MS, BGM_FADE_IN_STEPS, type BackgroundMusicOptions } from "../useMusicVisit";
+import {
+  BGM_FADE_IN_MS,
+  BGM_FADE_IN_STEPS,
+  BGM_SEEK_TIMEOUT_MS,
+  type BackgroundMusicOptions,
+} from "../useMusicVisit";
 
 const mockPlay = jest.fn();
 const mockPause = jest.fn();
@@ -792,13 +797,47 @@ describe("useBackgroundMusic — carry-over and starting points (#3638)", () => 
       it("writes once, and not again on the unmount of the same leave", async () => {
         const { player, unmount } = await mountPlaying();
         player.currentTime = 280;
-        await appState("inactive");
-        expect(resumeWrites()).toHaveLength(0);
         await appState("background");
         expect(resumeWrites()).toEqual([[RESUME_KEY, "326000"]]);
         await appState("background");
         await unmount();
         expect(resumeWrites()).toHaveLength(1);
+      });
+
+      // An iOS app-switcher swipe kills the app from inactive, without background or unmount.
+      it("inactive is a leave: one write", async () => {
+        const { player } = await mountPlaying();
+        player.currentTime = 280;
+        await appState("inactive");
+        expect(resumeWrites()).toEqual([[RESUME_KEY, "326000"]]);
+      });
+
+      it("inactive then background is still one write", async () => {
+        const { player, unmount } = await mountPlaying();
+        player.currentTime = 280;
+        await appState("inactive");
+        await appState("background");
+        await unmount();
+        expect(resumeWrites()).toHaveLength(1);
+      });
+
+      it("inactive, back to active, then a leave again writes a second time", async () => {
+        const { player } = await mountPlaying();
+        player.currentTime = 10;
+        await appState("inactive");
+        await appState("active");
+        player.currentTime = 160;
+        await appState("inactive");
+        expect(resumeWrites()).toEqual([
+          [RESUME_KEY, "72000"],
+          [RESUME_KEY, "269000"],
+        ]);
+      });
+
+      it("no listener at all without a resumeKey", async () => {
+        await mountPlaying({ cuesMs: CUES, volume: 0.57 });
+        await renderHook(() => useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true), { wrapper });
+        expect(AppState.addEventListener).not.toHaveBeenCalled();
       });
 
       it("a return to the app starts a new stay, whose leave writes again", async () => {
@@ -854,6 +893,161 @@ describe("useBackgroundMusic — carry-over and starting points (#3638)", () => 
       await unmount();
       expect(storage.setItem).not.toHaveBeenCalled();
       expect(storage.getItem).not.toHaveBeenCalledWith(RESUME_KEY);
+    });
+  });
+
+  describe("review round 1 (#3638)", () => {
+    it("a resumed player that reports loaded but not playing gets play() re-issued, within the self-heal limits", async () => {
+      const { rerender, player } = await mountPlaying();
+      // The first player was seen playing, so its original self-heal is spent.
+      await act(() => player.emit({ isLoaded: true, playing: true, didJustFinish: false }));
+      await rerender({ active: false, tick: 0, paused: false }); // game over
+      mockPlay.mockClear();
+
+      await rerender({ active: true, tick: 1, paused: false }); // play again
+      // The resume itself ([newGameTick], then [active]'s continue path in the same commit).
+      const resumeCalls = mockPlay.mock.calls.length;
+      expect(resumeCalls).toBeGreaterThanOrEqual(1);
+      await act(() => player.emit(LOADED)); // the resume play() was lost
+      await act(() => jest.advanceTimersByTime(SELF_HEAL_DELAY_MS));
+      expect(mockPlay).toHaveBeenCalledTimes(resumeCalls + 1);
+      await act(() => player.emit(LOADED)); // a later status must not re-arm a spent budget
+      await act(() => jest.advanceTimersByTime(SELF_HEAL_DELAY_MS * (SELF_HEAL_MAX_ATTEMPTS + 5)));
+      expect(mockPlay).toHaveBeenCalledTimes(resumeCalls + SELF_HEAL_MAX_ATTEMPTS);
+    });
+
+    it("an active false→true resume without a tick also re-arms the self-heal", async () => {
+      const { rerender, player } = await mountPlaying();
+      await act(() => player.emit({ isLoaded: true, playing: true, didJustFinish: false }));
+      await rerender({ active: false, tick: 0, paused: false });
+      mockPlay.mockClear();
+      await rerender({ active: true, tick: 0, paused: false });
+      await act(() => jest.advanceTimersByTime(SELF_HEAL_DELAY_MS));
+      expect(mockPlay).toHaveBeenCalledTimes(2); // the resume and one checked retry
+    });
+
+    it("a resume that takes is left alone", async () => {
+      const { rerender, player } = await mountPlaying();
+      await rerender({ active: false, tick: 0, paused: false });
+      mockPlay.mockClear();
+      await rerender({ active: true, tick: 1, paused: false });
+      const resumeCalls = mockPlay.mock.calls.length;
+      player.playing = true;
+      await act(() => jest.advanceTimersByTime(SELF_HEAL_DELAY_MS * 5));
+      expect(mockPlay).toHaveBeenCalledTimes(resumeCalls);
+    });
+
+    it("no loaded status within the timeout: the seek is given up and the track fades in", async () => {
+      jest.useFakeTimers();
+      savedCue("155000");
+      const { player } = await mount();
+      await act(() => jest.advanceTimersByTime(BGM_SEEK_TIMEOUT_MS - 1));
+      expect(player.volumes).toEqual([0]);
+      await act(() => jest.advanceTimersByTime(1));
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      expect(mockSeekTo).not.toHaveBeenCalled();
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+      // A late loaded status does not seek any more.
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      expect(mockSeekTo).not.toHaveBeenCalled();
+    });
+
+    it("after the seek timeout a live volume change applies again", async () => {
+      jest.useFakeTimers();
+      savedCue("155000");
+      let volume = 0.57;
+      const hook = await renderHook(
+        () =>
+          useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true, 0, false, {
+            cuesMs: CUES,
+            resumeKey: RESUME_KEY,
+            volume,
+          }),
+        { wrapper }
+      );
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_SEEK_TIMEOUT_MS + BGM_FADE_IN_MS));
+      volume = 0.7;
+      await hook.rerender({});
+      expect(mockPlayers[0]?.volumes.at(-1)).toBeCloseTo(0.7);
+    });
+
+    it("a storage read that resolves after unmount neither seeks nor sets the volume", async () => {
+      jest.useFakeTimers();
+      let resolve: (v: string) => void = () => {};
+      storage.getItem.mockImplementation((key: string) =>
+        key === RESUME_KEY ? new Promise((r) => (resolve = r)) : Promise.resolve(null)
+      );
+      const { player, unmount } = await mount();
+      player.isLoaded = true;
+      await unmount();
+      const volumesAtUnmount = [...player.volumes];
+      await act(async () => resolve("155000"));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_SEEK_TIMEOUT_MS + BGM_FADE_IN_MS));
+      expect(mockSeekTo).not.toHaveBeenCalled();
+      expect(player.volumes).toEqual(volumesAtUnmount);
+    });
+
+    async function midFade() {
+      jest.useFakeTimers();
+      const hook = await mount();
+      hook.player.isLoaded = true;
+      await act(() => hook.player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS / 2));
+      return hook;
+    }
+
+    it("pause in the middle of the fade ends it at the target, silent", async () => {
+      const { player, rerender } = await midFade();
+      const stepsSoFar = player.volumes.length;
+      mockPlay.mockClear();
+      await rerender({ active: true, tick: 0, paused: true });
+      expect(mockPause).toHaveBeenCalled();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS * 2));
+      expect(player.volumes).toHaveLength(stepsSoFar + 1);
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+      expect(mockPlay).not.toHaveBeenCalled();
+    });
+
+    it("unmuting after a mid-fade mute plays at 0.57", async () => {
+      const { player, result } = await midFade();
+      await act(() => result.current.setMuted(true));
+      mockPlay.mockClear();
+      await act(() => result.current.setMuted(false));
+      expect(mockPlay).toHaveBeenCalledTimes(1);
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+    });
+
+    it("a live volume change in the middle of the fade: the fade lands on the new value", async () => {
+      jest.useFakeTimers();
+      let volume = 0.57;
+      const hook = await renderHook(
+        () =>
+          useBackgroundMusic([TEST_KEY], TEST_REGISTRY, true, 0, false, {
+            cuesMs: CUES,
+            resumeKey: RESUME_KEY,
+            volume,
+          }),
+        { wrapper }
+      );
+      await flush();
+      const player = mockPlayers[0] as MockPlayer;
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS / 2));
+      const midValue = player.volumes.at(-1) as number;
+      expect(midValue).toBeLessThan(0.57);
+      volume = 0.8;
+      await hook.rerender({});
+      // The intro still owns the volume: no jump to 0.8 mid-fade.
+      expect(player.volumes.at(-1)).toBe(midValue);
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      expect(player.volumes.at(-1)).toBeCloseTo(0.8);
     });
   });
 

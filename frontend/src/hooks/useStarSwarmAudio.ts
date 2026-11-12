@@ -110,7 +110,8 @@ export function useStarSwarmAudio(
   const v = { ...DEFAULT_SFX_VOLUMES, ...volumes };
 
   useBackgroundMusic(BGM_KEYS, STARSWARM_SOUNDS, bgMusicActive, newGameTick, paused, {
-    volume: v.music,
+    // `volumes` may carry music: undefined; fall back to Star Swarm's own level, not the shared 0.2.
+    volume: v.music ?? STARSWARM_BGM_VOLUME,
     cuesMs: STARSWARM_BGM.cuesMs,
     resumeKey: STARSWARM_BGM_RESUME_KEY,
   });

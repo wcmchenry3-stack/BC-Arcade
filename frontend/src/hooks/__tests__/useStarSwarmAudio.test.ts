@@ -95,6 +95,12 @@ describe("useStarSwarmAudio — music (#3638)", () => {
     expect(DEFAULT_SFX_VOLUMES.music).toBe(STARSWARM_BGM_VOLUME);
   });
 
+  it("an undefined music volume falls back to Star Swarm's own level, not the shared 0.2", async () => {
+    await renderHook(() => useStarSwarmAudio(true, { music: undefined }));
+    const options = mockUseBackgroundMusic.mock.calls.at(-1)?.[5] as { volume: number };
+    expect(options.volume).toBe(STARSWARM_BGM_VOLUME);
+  });
+
   it("the dev mixer's music volume reaches the hook", async () => {
     await renderHook(() => useStarSwarmAudio(true, { music: 0.42 }));
     const options = mockUseBackgroundMusic.mock.calls.at(-1)?.[5] as { volume: number };

@@ -17,6 +17,9 @@ const BG_VOLUME = 0.2;
 // BGM_FADE_IN_MS. Once per visit, never on the frame path.
 export const BGM_FADE_IN_MS = 1500;
 export const BGM_FADE_IN_STEPS = 10;
+// If no loaded status arrives within this long of a visit's first player, the seek is given up:
+// the track fades in from where it is, rather than waiting silent at volume 0 for good.
+export const BGM_SEEK_TIMEOUT_MS = 3000;
 
 // All optional; without them the music behaves as it always has.
 //   volume: the player volume (default BG_VOLUME, 0.2). Changes apply to the playing track.
@@ -68,13 +71,17 @@ export function useMusicVisit(
   // A volume change (the Star Swarm dev mixer) reaches the playing track.
   useEffect(() => visit.changeVolume(volume), [visit, volume]);
 
-  // Going to the background is a leave — save the resume point (the app may be killed there).
-  // Coming back starts a new stay, whose leave writes again.
+  // Going to the background, or inactive, is a leave — save the resume point (the app may be
+  // killed there: an iOS app-switcher swipe kills it from inactive, without background or
+  // unmount, as StarSwarmScreen also assumes for paused runs). Coming back starts a new stay,
+  // whose leave writes again; inactive then background is one leave, one write. No listener
+  // without a resumeKey (Mahjong adds nothing).
   useEffect(() => {
+    if (!resumeKey) return;
     let subscription: { remove: () => void } | null = null;
     try {
       subscription = AppState.addEventListener("change", (state) => {
-        if (state === "background") visit.saveResumePoint();
+        if (state === "background" || state === "inactive") visit.saveResumePoint();
         else if (state === "active") visit.cameBack();
       });
     } catch {
@@ -87,7 +94,7 @@ export function useMusicVisit(
         // cleanup, failure is safe
       }
     };
-  }, [visit]);
+  }, [visit, resumeKey]);
 
   return visit;
 }
@@ -247,9 +254,12 @@ function attachIntro(
   let cue: number | null = null;
   let seeking = false;
   let subscription: { remove: () => void } | null = null;
+  let giveUp: ReturnType<typeof setTimeout> | null = null;
 
   const dispose = () => {
     disposed = true;
+    if (giveUp !== null) clearTimeout(giveUp);
+    giveUp = null;
     try {
       subscription?.remove();
     } catch {
@@ -297,6 +307,10 @@ function attachIntro(
     cue = value;
     trySeek();
   });
+
+  // Fallback: no loaded status (or no stored cue) within BGM_SEEK_TIMEOUT_MS — skip the seek and
+  // fade in from where the track is. A seek already in flight may still land.
+  giveUp = setTimeout(finish, BGM_SEEK_TIMEOUT_MS);
 
   return dispose;
 }

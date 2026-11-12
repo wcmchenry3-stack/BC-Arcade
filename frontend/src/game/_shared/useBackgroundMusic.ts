@@ -10,8 +10,14 @@ import { useMusicVisit, type BackgroundMusicOptions } from "./useMusicVisit";
 export const SELF_HEAL_DELAY_MS = 500;
 export const SELF_HEAL_MAX_ATTEMPTS = 3;
 
-// Picks a random track from keys on each active→true transition (new game session).
-// Volume is kept low (0.2, or options.volume) to sit behind SFX.
+// Two modes, chosen by options.cuesMs:
+//   - No options (Mahjong): as before #3638. A random track from keys on each new game session
+//     (an active false→true edge or a newGameTick), from 0:00, at 0.2.
+//   - With cues (Star Swarm, #3638; see useMusicVisit.ts): one player per visit. Game over pauses
+//     it and the next game resumes it from the same position (carry-over). On leaving, the next
+//     starting point is saved; the next visit seeks there on first load and fades in to
+//     options.volume.
+// Either way the volume sits behind SFX (0.2, or options.volume).
 //
 // newGameTick: increment this on every new-game start (e.g. resetTick from the parent
 // screen) to guarantee a fresh session even when active stays true (e.g. new game
@@ -23,9 +29,6 @@ export const SELF_HEAL_MAX_ATTEMPTS = 3;
 // paused: hold the current track (e.g. while the game is paused) and resume it — the same
 // track, from where it stopped — when paused goes false. Unlike active, it never picks a
 // new track.
-//
-// options (#3638): volume, starting points (carry-over within a visit) and a resume point across
-// visits; see useMusicVisit.ts. Without them (Mahjong) nothing above changes.
 export function useBackgroundMusic(
   keys: string[],
   registry: Record<string, number>,
@@ -65,6 +68,13 @@ export function useBackgroundMusic(
     });
     if (player) visit.begin(player);
   };
+  // #3638 carry-over resume: the old self-heal disarmed once the player first played, so a lost
+  // resume play() would never be retried. A fresh one (same limits) checks the resume too.
+  const resumeCarryOver = (player: AudioPlayer) => {
+    disposeHealRef.current?.();
+    disposeHealRef.current = attachSelfHeal(player, shouldPlayRef.current, { checkNow: true });
+    playSafely(player);
+  };
 
   // Hold the shared audio session while this screen is mounted; the release on unmount hands
   // it back to other apps on iOS (see audioSession.ts).
@@ -92,11 +102,7 @@ export function useBackgroundMusic(
       visit.cancelFade();
       player.pause();
     } else if (prevActiveRef.current && !mutedRef.current) {
-      try {
-        player.play();
-      } catch {
-        // web AudioContext suspended — fail silently
-      }
+      playSafely(player);
     }
   }, [paused, visit]); // visit is stable (useState)
 
@@ -117,7 +123,7 @@ export function useBackgroundMusic(
         visit.cancelFade();
         player.pause();
       } else if (!mutedRef.current && !pausedRef.current) {
-        playSafely(player);
+        resumeCarryOver(player);
       }
       return;
     }
@@ -141,16 +147,14 @@ export function useBackgroundMusic(
       return;
     }
 
-    if (wasActive === true || (visit.carryOver() && playerRef.current)) {
+    const player = playerRef.current;
+    if (wasActive === true || (visit.carryOver() && player)) {
       // Resuming (e.g. unpause) or continuing after a newGameTick session — play existing.
       // #3638 carry-over: a false→true edge (new game after game over) also resumes the same
-      // player, from where game over paused it.
-      if (!mutedRef.current && !pausedRef.current && playerRef.current) {
-        try {
-          playerRef.current.play();
-        } catch {
-          // web AudioContext suspended — fail silently
-        }
+      // player, from where game over paused it, with a re-armed self-heal.
+      if (!mutedRef.current && !pausedRef.current && player) {
+        if (wasActive !== true) resumeCarryOver(player);
+        else playSafely(player);
       }
       return;
     }
@@ -169,11 +173,7 @@ export function useBackgroundMusic(
       visit.cancelFade();
       player.pause();
     } else if (prevActiveRef.current && !pausedRef.current) {
-      try {
-        player.play();
-      } catch {
-        // web AudioContext suspended — fail silently
-      }
+      playSafely(player);
     }
   }, [muted, visit]); // visit is stable (useState)
 
@@ -231,7 +231,14 @@ function releasePlayer(
 // pause, a phone call, headphones unplugged, and is left alone); at most SELF_HEAL_MAX_ATTEMPTS
 // play() calls per player; one pending check at a time; never while paused, muted, inactive or
 // backgrounded; disposed together with the player.
-export function attachSelfHeal(player: AudioPlayer, shouldPlay: () => boolean): () => void {
+//
+// checkNow (#3638): also schedule one check right away, for a carry-over resume. A resumed player
+// is already loaded, so a lost play() may bring no new status to react to.
+export function attachSelfHeal(
+  player: AudioPlayer,
+  shouldPlay: () => boolean,
+  { checkNow = false }: { checkNow?: boolean } = {}
+): () => void {
   let confirmed = false;
   let attempts = 0;
   let disposed = false;
@@ -279,6 +286,7 @@ export function attachSelfHeal(player: AudioPlayer, shouldPlay: () => boolean): 
   } catch {
     // no status events on this platform — the music just isn't self-healed
   }
+  if (checkNow) schedule();
 
   return () => {
     disposed = true;
