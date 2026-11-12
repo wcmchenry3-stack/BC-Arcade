@@ -105,7 +105,7 @@ export default function NumberPad({
           accessibilityLabel={t("numberPad.erase", { defaultValue: "Erase cell" })}
           style={[styles.toolBtn, { borderColor: colors.accent }]}
         >
-          <Text style={[styles.toolText, { color: colors.accent }]}>
+          <Text style={[styles.toolText, { color: colors.accentText }]}>
             {t("numberPad.eraseShort", { defaultValue: "Erase" })}
           </Text>
         </Pressable>
@@ -125,7 +125,10 @@ export default function NumberPad({
           ]}
         >
           <Text
-            style={[styles.toolText, { color: notesMode ? colors.textOnAccent : colors.accent }]}
+            style={[
+              styles.toolText,
+              { color: notesMode ? colors.textOnAccent : colors.accentText },
+            ]}
           >
             {t("numberPad.notes", { defaultValue: "Notes" })}
           </Text>
@@ -137,7 +140,7 @@ export default function NumberPad({
           accessibilityLabel={t("action.hint", { defaultValue: "Hint" })}
           style={[styles.toolBtn, { borderColor: colors.accent }]}
         >
-          <Text style={[styles.toolText, { color: colors.accent }]}>
+          <Text style={[styles.toolText, { color: colors.accentText }]}>
             {t("action.hint", { defaultValue: "Hint" })}
           </Text>
         </Pressable>

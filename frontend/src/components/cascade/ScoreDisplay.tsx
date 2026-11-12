@@ -56,7 +56,7 @@ function ScoreDisplay({ score: scoreProp = 0, store, children }: Props) {
       <View style={styles.scoreSection}>
         <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.label")}</Text>
         <Animated.Text
-          style={[styles.score, { color: colors.accent, transform: [{ scale }] }]}
+          style={[styles.score, { color: colors.accentText, transform: [{ scale }] }]}
           importantForAccessibility="no"
         >
           {formatNumber(t, score)}

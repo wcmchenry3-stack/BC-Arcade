@@ -71,8 +71,11 @@ import {
 } from "../game/yacht/sounds";
 import * as Sentry from "@sentry/react-native";
 import DiceRow from "../components/DiceRow";
-import Scorecard from "../components/Scorecard";
-import VsScorecard from "../components/yacht/VsScorecard";
+import ScoreTable from "../components/yacht/ScoreTable";
+import GameActionBar from "../components/shared/GameActionBar";
+import { useYachtHint } from "../components/yacht/useYachtHint";
+import { soloSubtitle } from "../game/yacht/scoreSummary";
+import { useLastScored } from "../game/yacht/useLastScored";
 import GameResultModal, { type GameOutcome } from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
@@ -87,7 +90,6 @@ import { ModalCard } from "../components/shared/ModalCard";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
-import { PillButton } from "../components/shared/PillButton";
 import { isAwayStatus } from "../hooks/usePauseWhileAway";
 
 type Props = {
@@ -111,6 +113,11 @@ function vsOutcome(player: GameState, cpu: GameState): "win" | "loss" | "draw" {
       ? "loss"
       : "draw";
 }
+
+/** Width (pt) of one button in the action bar beside Roll. */
+const ACTION_W = 68;
+/** The action bar's height (pt): the Roll button's. */
+const ACTION_BAR_H = 56;
 
 export default function GameScreen({ navigation, route }: Props) {
   const { t } = useTranslation(["yacht", "common"]);
@@ -200,6 +207,21 @@ export default function GameScreen({ navigation, route }: Props) {
       !!route.params.aiState &&
       isAiTurnPending(route.params.initialState, route.params.aiState),
   });
+  // The row the computer scored last: highlighted until you roll (#3748).
+  const { lastScored: cpuLastScored, clear: clearCpuLastScored } = useLastScored(
+    aiGameState?.scores
+  );
+
+  // The Hint is solo only: a game against the computer is not made easier. It is off while the
+  // dice roll, on the computer's turn and once the game is over (#3748).
+  const hintAvailable = !aiDifficulty;
+  const hintDisabled = isAiTurn || gameState.game_over || rollingIndices.length > 0;
+  const {
+    onHint,
+    clearHint,
+    active: activeHint,
+    message: hintMessage,
+  } = useYachtHint({ available: hintAvailable, gameState, disabled: hintDisabled });
 
   // Keep a ref in sync for callbacks.
   const gameStateRef = useRef(gameState);
@@ -399,6 +421,8 @@ export default function GameScreen({ navigation, route }: Props) {
   function handleRoll() {
     if (isAiTurn) return;
     setError(null);
+    clearHint();
+    clearCpuLastScored();
     syncMarkStarted();
     try {
       const diceOverride = devDiceOverrideRef.current;
@@ -418,6 +442,7 @@ export default function GameScreen({ navigation, route }: Props) {
 
   function handleToggleHold(index: number) {
     if (isAiTurn) return;
+    clearHint();
     const next = engineToggleHold(gameState, index);
     if (next !== gameState) {
       setGameState(next);
@@ -430,6 +455,7 @@ export default function GameScreen({ navigation, route }: Props) {
   function handleScore(category: string) {
     if (isAiTurn) return;
     setError(null);
+    clearHint();
     try {
       const prev = gameState;
       const alternatives = enginePossibleScores(prev);
@@ -515,6 +541,8 @@ export default function GameScreen({ navigation, route }: Props) {
       resetRank();
       await clearGame();
       setFinishedGameId(null);
+      clearHint();
+      clearCpuLastScored();
       setGameState(newGame());
       endAiTurn();
       setGameKey((k) => k + 1);
@@ -548,6 +576,8 @@ export default function GameScreen({ navigation, route }: Props) {
       setAiGameState,
       aiDifficultyRef,
       aiGameStateRef,
+      clearHint,
+      clearCpuLastScored,
     ]
   );
 
@@ -658,42 +688,55 @@ export default function GameScreen({ navigation, route }: Props) {
         ? tResult("margin.lost", { count: margin })
         : vsResult === "tie"
           ? tResult("margin.tied", { score: gameState.total_score })
-          : gameState.yacht_bonus_total > 0
-            ? t("gameOver.yachtBonus", {
-                count: gameState.yacht_bonus_count,
-                total: gameState.yacht_bonus_total,
-              })
-            : gameState.upper_bonus > 0
-              ? t("gameOver.upperBonus")
-              : undefined;
+          : soloSubtitleText();
   const bonusTotal = gameState.upper_bonus + gameState.yacht_bonus_total;
   const lowerTotal = gameState.total_score - gameState.upper_subtotal - bonusTotal;
 
-  function renderScorecard(which: "player" | "opponent") {
-    const s = which === "player" ? gameState : aiGameState!;
-    return (
-      <Scorecard
-        key={which === "player" ? gameKey : `ai-${gameKey}`}
-        scores={s.scores}
-        possibleScores={which === "player" ? possibleScores : {}}
-        rollsUsed={s.rolls_used}
-        gameOver={s.game_over}
-        upperSubtotal={s.upper_subtotal}
-        upperBonus={s.upper_bonus}
-        yachtBonusCount={s.yacht_bonus_count}
-        yachtBonusTotal={s.yacht_bonus_total}
-        totalScore={s.total_score}
-        onScore={which === "player" ? handleScore : () => {}}
-        locked={which === "opponent" || isAiTurn}
-      />
-    );
+  /** A finished solo game's line under the title: the rarest feat first (soloSubtitle). */
+  function soloSubtitleText(): string | undefined {
+    const s = soloSubtitle(gameState);
+    if (s === null) return undefined;
+    switch (s.kind) {
+      case "yachtBonus":
+        return t("gameOver.yachtBonus", { count: s.count, total: s.total });
+      case "yachtScored":
+        return t("gameOver.yachtScored", { score: s.score });
+      case "upperBonus":
+        return t("gameOver.upperBonus");
+    }
   }
+
+  const actionButtons = [
+    ...(hintAvailable
+      ? [
+          {
+            key: "hint",
+            icon: "lightbulb" as const,
+            label: t("action.hint"),
+            accessibilityLabel: t("action.hintLabel"),
+            color: colors.outcomeWin,
+            disabled: hintDisabled,
+            onPress: onHint,
+            testID: "yacht-hint-button",
+          },
+        ]
+      : []),
+    {
+      key: "newGame",
+      icon: "refresh" as const,
+      label: t("common:newGame.button"),
+      accessibilityLabel: t("common:newGame.button"),
+      color: colors.accentText,
+      onPress: handleNewGamePress,
+      testID: "yacht-new-game-button",
+    },
+  ];
 
   const roundPill = (
     <View
       style={[styles.roundPill, { backgroundColor: colors.surfaceAlt, borderColor: colors.accent }]}
     >
-      <Text style={[styles.roundPillText, { color: colors.accent }]}>
+      <Text style={[styles.roundPillText, { color: colors.accentText }]}>
         {t("round.header", {
           // The round of whoever is playing: the player's counter is already
           // ahead while the computer plays its turn of the same round (#3491).
@@ -717,37 +760,33 @@ export default function GameScreen({ navigation, route }: Props) {
         paddingBottom: 16,
       }}
     >
-      {/* New Game */}
-      <View style={styles.actionRow}>
-        <PillButton label={t("common:newGame.button")} onPress={handleNewGamePress} />
+      {/* The scorecard: one table for solo and VS, all 13 rows (ScoreTable) */}
+      <View style={styles.scorecardContainer}>
+        <ScoreTable
+          key={gameKey}
+          playerScores={gameState.scores}
+          playerPossibleScores={possibleScores}
+          playerRollsUsed={gameState.rolls_used}
+          playerGameOver={gameState.game_over}
+          playerTotalScore={gameState.total_score}
+          playerYachtBonusTotal={gameState.yacht_bonus_total}
+          cpu={
+            aiDifficulty && difficultyChosen && aiGameState
+              ? {
+                  scores: aiGameState.scores,
+                  totalScore: aiGameState.total_score,
+                  yachtBonusTotal: aiGameState.yacht_bonus_total,
+                }
+              : null
+          }
+          isAiTurn={isAiTurn}
+          onScore={handleScore}
+          hintCategory={activeHint?.kind === "score" ? activeHint.category : null}
+          cpuLastScored={cpuLastScored}
+        />
       </View>
 
-      {/* VS mode turn indicator */}
-      {aiDifficulty && difficultyChosen && (
-        <View
-          style={[
-            styles.turnBanner,
-            {
-              backgroundColor: isAiTurn ? colors.surfaceAlt : colors.surface,
-              borderColor: isAiTurn ? colors.border : colors.accent,
-            },
-          ]}
-        >
-          <Text
-            style={[styles.turnText, { color: isAiTurn ? colors.textMuted : colors.accent }]}
-            accessibilityLiveRegion="polite"
-          >
-            {isAiTurn ? t("vsMode.computerTurn") : t("vsMode.yourTurn")}
-          </Text>
-          {isAiTurn && aiGameState && aiGameState.rolls_used > 0 && (
-            <Text style={[styles.rollCounterText, { color: colors.textMuted }]}>
-              {t("vsMode.rollCounter", { n: aiGameState.rolls_used })}
-            </Text>
-          )}
-        </View>
-      )}
-
-      {/* Dice — show AI dice during AI turn */}
+      {/* The thumb tray: turn hint, the dice (the computer's on its turn), Roll and the action bar */}
       <DiceRow
         dice={isAiTurn && aiGameState ? aiGameState.dice : gameState.dice}
         held={isAiTurn && aiGameState ? aiGameState.held : gameState.held}
@@ -757,31 +796,21 @@ export default function GameScreen({ navigation, route }: Props) {
         onToggleHold={handleToggleHold}
         rollingIndices={isAiTurn ? aiRollingIndices : rollingIndices}
         locked={isAiTurn}
+        computerRolls={aiGameState?.rolls_used ?? 0}
+        turnLabel={aiDifficulty && difficultyChosen ? t("vsMode.yourTurn") : null}
+        hintMessage={hintMessage}
+        hintHold={activeHint?.kind === "hold" ? activeHint.held : null}
+        actions={
+          <View style={{ width: ACTION_W * actionButtons.length }}>
+            <GameActionBar
+              testID="yacht-action-bar"
+              height={ACTION_BAR_H}
+              bordered={false}
+              actions={actionButtons}
+            />
+          </View>
+        }
       />
-
-      {/* Scorecard — VS mode shows unified 3-column head-to-head; solo shows player's only */}
-      {aiDifficulty && difficultyChosen && aiGameState ? (
-        <View style={styles.scorecardContainer}>
-          <VsScorecard
-            key={gameKey}
-            playerScores={gameState.scores}
-            playerPossibleScores={possibleScores}
-            playerRollsUsed={gameState.rolls_used}
-            playerGameOver={gameState.game_over}
-            playerUpperBonus={gameState.upper_bonus}
-            playerYachtBonusTotal={gameState.yacht_bonus_total}
-            playerTotalScore={gameState.total_score}
-            cpuScores={aiGameState.scores}
-            cpuUpperBonus={aiGameState.upper_bonus}
-            cpuYachtBonusTotal={aiGameState.yacht_bonus_total}
-            cpuTotalScore={aiGameState.total_score}
-            isAiTurn={isAiTurn}
-            onScore={handleScore}
-          />
-        </View>
-      ) : (
-        <View style={styles.scorecardContainer}>{renderScorecard("player")}</View>
-      )}
 
       <YachtCelebrationAnimation
         visible={showYachtCelebration}
@@ -814,11 +843,17 @@ export default function GameScreen({ navigation, route }: Props) {
               }
             : { kind: "score", label: tResult("stat.score"), value: gameState.total_score }
         }
-        stats={[
-          { label: tResult("stat.upper"), value: gameState.upper_subtotal },
-          { label: tResult("stat.lower"), value: lowerTotal },
-          { label: tResult("stat.bonus"), value: bonusTotal > 0 ? `+${bonusTotal}` : "—" },
-        ]}
+        // Solo: the player's Upper / Lower / Bonus. Against the computer these would be the
+        // player's alone and unlabelled (audit bug 13): the card's scorecard shows both players'.
+        stats={
+          aiDifficulty
+            ? undefined
+            : [
+                { label: tResult("stat.upper"), value: gameState.upper_subtotal },
+                { label: tResult("stat.lower"), value: lowerTotal },
+                { label: tResult("stat.bonus"), value: bonusTotal > 0 ? `+${bonusTotal}` : "—" },
+              ]
+        }
         detail={
           <YachtFinalScorecard
             player={{
@@ -912,12 +947,6 @@ export default function GameScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  actionRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
   roundPill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -929,32 +958,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.8,
   },
+  // The scorecard takes the height the tray leaves; it scrolls only below the height 13 rows need.
   scorecardContainer: {
     flex: 1,
     minHeight: 0,
-    marginHorizontal: 12,
-    marginBottom: 12,
-  },
-  rollCounterText: {
-    fontSize: 11,
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
-  // VS mode styles
-  turnBanner: {
-    marginHorizontal: 12,
-    marginBottom: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: "center",
-  },
-  turnText: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+    marginTop: 4,
+    marginBottom: 10,
   },
   // Pre-game mode selector modal
   // Stretch the mode buttons full width inside the centered card.

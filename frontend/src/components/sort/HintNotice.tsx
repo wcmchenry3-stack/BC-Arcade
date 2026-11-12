@@ -82,7 +82,7 @@ export default function HintNotice({
               accessibilityState={{ disabled: busy, busy }}
               testID="sort-hint-undo"
             >
-              <Text style={[styles.actionText, { color: colors.accent }]}>
+              <Text style={[styles.actionText, { color: colors.accentText }]}>
                 {t("hint.backToLastGoodMove")}
               </Text>
             </Pressable>
@@ -97,7 +97,7 @@ export default function HintNotice({
               accessibilityState={{ disabled: busy, busy }}
               testID="sort-hint-restart"
             >
-              <Text style={[styles.actionText, { color: colors.accent }]}>
+              <Text style={[styles.actionText, { color: colors.accentText }]}>
                 {t("hint.restartLevel")}
               </Text>
             </Pressable>
