@@ -52,9 +52,19 @@ tests, docs, or copy that follows existing wording. If unsure, run the gate.
      Web is the fastest demo, not proof for iOS/Android, and only works for
      games that render on web. Check that first.
    - **Maestro**: cloud sessions have no emulator, simulator or Maestro, so
-     native demos come from the CI Maestro workflows. Those run only on
-     ready PRs, and only some flows record video or keep screenshots on
-     success. Use flows that do, or say what is missing.
+     native demos come from the CI Maestro workflows. Every run uploads a
+     `maestro-android-media` / `maestro-ios-media` artifact (each flow's named
+     screenshots and `startRecording` videos, pass or fail, kept 14 days).
+     For Cascade, dispatch only its demo flows on the story branch, without
+     the full suite (Android about 20–25 min, iOS about 40–55 min):
+     `gh workflow run mobile-smoke-android.yml --ref <branch> -f flows=cascade-demo`
+     (and `mobile-smoke-ios.yml`), then
+     `gh run download <run-id> -n maestro-android-media`. See
+     `docs/MAESTRO.md`, "Cascade demo flows". If the session gets a 403 on
+     the dispatch, ask the owner to start it (same command, or Actions → Run
+     workflow → `cascade-demo`) and say so in the demo comment. For a state
+     the demo flows don't reach yet (they list which), add a `demo`-tagged
+     flow in the story, or say what is missing.
    - **Sound**: a capture with audio, or the files plus a note of which event
      plays which file and when.
 
