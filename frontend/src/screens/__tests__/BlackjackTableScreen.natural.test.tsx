@@ -22,6 +22,7 @@ import { createSeededRng, newGame, placeBet, setRng } from "../../game/blackjack
 import type { Card, EngineState } from "../../game/blackjack/engine";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import { NATURAL_CHIP_SCALE } from "../../components/blackjack/blackjackMotion";
+import { REDUCE_MOTION_SOUND_GAP_MS } from "../../components/blackjack/useBlackjackMotion";
 import { BLACKJACK_NATURAL_GOLD } from "../../theme/theme.constants";
 
 jest.mock("@react-navigation/native", () =>
@@ -499,6 +500,28 @@ describe("the dealer's natural, found by the peek (#3741)", () => {
     await settle();
     expect(named(at, "blackjack.lose")).toEqual([300]);
     expect(stings()).toBe(0);
+  });
+
+  it("Reduce Motion: the static silver edge, the banner and the chips at once; the sounds 100 ms apart (#3751)", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    await mountOn(betting(DEALER));
+    const at = await dealTen();
+    expect(silverEdge()).toBe(true);
+    expect(goldEdge()).toBe(false);
+    expect(moving()).toBe(false);
+    expect(resultShown()).toBe(true);
+    expect(screen.getByTestId("result-outcome").props.children).toBe("You Lose");
+    expect(screen.queryByTestId(/^felt-chip-/, HIDDEN)).toBeNull();
+    expect(screen.getByText("Rebet")).toBeTruthy();
+    await settle();
+    // Each sound once, in the timeline's order, REDUCE_MOTION_SOUND_GAP_MS apart from the tap.
+    const GAP = REDUCE_MOTION_SOUND_GAP_MS;
+    expect(named(at, "blackjack.cardDeal")).toEqual([0]);
+    expect(named(at, "blackjack.cardFlip")).toEqual([GAP]);
+    expect(named(at, "blackjack.lose")).toEqual([2 * GAP]);
+    expect(named(at, "blackjack.chipCollect")).toEqual([3 * GAP]);
+    expect(stings()).toBe(0);
+    expect(silverEdge()).toBe(true);
   });
 });
 
