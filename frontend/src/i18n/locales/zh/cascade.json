@@ -39,6 +39,6 @@
   "pieces.cosmos.sun": "Sun",
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "正在加载 Cascade…",
-  "web.loadError": "Cascade 无法加载图形。请检查网络连接后重试。",
+  "web.loadError": "Cascade 无法启动。请重试。",
   "web.retry": "重试"
 }

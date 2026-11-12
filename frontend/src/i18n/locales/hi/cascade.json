@@ -39,6 +39,6 @@
   "pieces.cosmos.sun": "Sun",
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "Cascade लोड हो रहा है…",
-  "web.loadError": "Cascade अपने ग्राफ़िक्स लोड नहीं कर सका। अपना कनेक्शन जाँचें और फिर से कोशिश करें।",
+  "web.loadError": "Cascade शुरू नहीं हो सका। फिर से कोशिश करें।",
   "web.retry": "फिर से कोशिश करें"
 }

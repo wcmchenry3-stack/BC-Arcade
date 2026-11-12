@@ -16,14 +16,25 @@ import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { GameShell } from "../components/shared/GameShell";
 import { EmptyState } from "../components/shared/EmptyState";
-import { loadCascadeScreen } from "./loadCascadeScreen.web";
+import { loadCascadeScreen, type CascadeScreenProps } from "./loadCascadeScreen.web";
+
+/**
+ * One Sentry event per page session (cost rule, CLAUDE.md): Retry could otherwise send one per
+ * failed attempt, without limit. Later failures leave a breadcrumb on whatever event comes next.
+ */
+let failureReported = false;
+
+/** @internal Test seam: forget that a failure was reported. */
+export function __resetCascadeFailureReportForTests(): void {
+  failureReported = false;
+}
 
 type Phase =
   | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly Screen: ComponentType }
+  | { readonly kind: "ready"; readonly Screen: ComponentType<CascadeScreenProps> }
   | { readonly kind: "error" };
 
-export default function CascadeRoute() {
+export default function CascadeRoute(props: CascadeScreenProps) {
   const { t } = useTranslation("cascade");
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -35,9 +46,18 @@ export default function CascadeRoute() {
         if (live) setPhase({ kind: "ready", Screen });
       },
       (error: unknown) => {
-        // One event per failed attempt; attempts only come from the player's Retry.
-        Sentry.captureException(error, { tags: { subsystem: "cascade.canvaskit" } });
-        if (live) setPhase({ kind: "error" });
+        if (!live) return;
+        if (failureReported) {
+          Sentry.addBreadcrumb({
+            category: "cascade.canvaskit",
+            level: "error",
+            message: error instanceof Error ? error.message : "CanvasKit load failed again",
+          });
+        } else {
+          failureReported = true;
+          Sentry.captureException(error, { tags: { subsystem: "cascade.canvaskit" } });
+        }
+        setPhase({ kind: "error" });
       }
     );
     return () => {
@@ -52,7 +72,7 @@ export default function CascadeRoute() {
 
   if (phase.kind === "ready") {
     const { Screen } = phase;
-    return <Screen />;
+    return <Screen {...props} />;
   }
   return (
     <GameShell gameType="cascade" title={t("game.title")} requireBack loading={false}>

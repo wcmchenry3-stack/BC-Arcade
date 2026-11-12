@@ -1,6 +1,6 @@
 /**
  * loadCanvasKit (#2960): loads Skia's web runtime for Cascade on web, from the `.wasm` Metro
- * bundles (our own origin), once, with a timeout and a retry after a failure.
+ * bundles (our own origin), once, with a timeout and a retry (a fresh load) after a failure or a timeout.
  */
 import { Asset } from "expo-asset";
 
@@ -80,20 +80,57 @@ describe("loadCanvasKit", () => {
     expect((globalThis as G).CanvasKit).toBe(FAKE_CANVASKIT);
   });
 
-  it("rejects when the load stalls past the timeout, and a retry waits for the same load", async () => {
+  it("rejects when the load stalls past the timeout, and a retry starts a fresh load", async () => {
     jest.useFakeTimers();
-    const load = deferred<unknown>();
-    mockInit.mockReturnValue(load.promise);
+    const stalled = deferred<unknown>();
+    const fresh = deferred<unknown>();
+    mockInit.mockReturnValueOnce(stalled.promise).mockReturnValueOnce(fresh.promise);
 
     const first = loadCanvasKit();
     jest.advanceTimersByTime(CANVASKIT_LOAD_TIMEOUT_MS);
     await expect(first).rejects.toThrow(/did not load within/);
 
     const retry = loadCanvasKit();
-    load.resolve(FAKE_CANVASKIT);
+    expect(mockInit).toHaveBeenCalledTimes(2);
+    fresh.resolve(FAKE_CANVASKIT);
     await retry;
-    expect(mockInit).toHaveBeenCalledTimes(1);
     expect((globalThis as G).CanvasKit).toBe(FAKE_CANVASKIT);
+  });
+
+  it("a retry after a timeout can time out and start another fresh load", async () => {
+    jest.useFakeTimers();
+    mockInit.mockReturnValue(new Promise(() => {}));
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const result = loadCanvasKit();
+      jest.advanceTimersByTime(CANVASKIT_LOAD_TIMEOUT_MS);
+      await expect(result).rejects.toThrow(/did not load within/);
+      expect(mockInit).toHaveBeenCalledTimes(attempt);
+    }
+  });
+
+  it("an abandoned load that resolves late sets CanvasKit but never replaces a newer one", async () => {
+    jest.useFakeTimers();
+    const stalled = deferred<unknown>();
+    const fresh = deferred<unknown>();
+    const staleKit = { MakeCanvas: () => "stale" };
+    mockInit.mockReturnValueOnce(stalled.promise).mockReturnValueOnce(fresh.promise);
+
+    const first = loadCanvasKit();
+    jest.advanceTimersByTime(CANVASKIT_LOAD_TIMEOUT_MS);
+    await expect(first).rejects.toThrow(/did not load within/);
+    const retry = loadCanvasKit();
+
+    // The abandoned one lands first: harmless, it is a working CanvasKit and the global is set.
+    stalled.resolve(staleKit);
+    await Promise.resolve();
+    expect((globalThis as G).CanvasKit).toBe(staleKit);
+
+    // The retry's own load then lands: the retry resolves, and the global is not swapped.
+    fresh.resolve(FAKE_CANVASKIT);
+    await retry;
+    expect((globalThis as G).CanvasKit).toBe(staleKit);
+    await loadCanvasKit();
+    expect(mockInit).toHaveBeenCalledTimes(2);
   });
 
   it("gives a slow connection about a minute before it shows the error", () => {

@@ -59,23 +59,25 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 /**
  * Resolves once `global.CanvasKit` is set. Rejects if the download or the WebAssembly start-up
- * fails, or takes longer than `timeoutMs`; calling it again then retries a failed load or keeps
- * waiting for one still in flight.
+ * fails, or takes longer than `timeoutMs`; calling it again then starts a fresh load. Concurrent
+ * calls share one load.
  */
 export function loadCanvasKit(timeoutMs: number = CANVASKIT_LOAD_TIMEOUT_MS): Promise<void> {
   const g = globalThis as CanvasKitGlobal;
   if (g.CanvasKit !== undefined) return Promise.resolve();
-  pending ??= CanvasKitInit({ locateFile }).then(
-    (canvasKit) => {
-      g.CanvasKit = canvasKit;
-      return canvasKit;
-    },
+  const attempt = (pending ??= CanvasKitInit({ locateFile }).then((canvasKit) => {
+    g.CanvasKit ??= canvasKit;
+    return canvasKit;
+  }));
+  return withTimeout(attempt, timeoutMs).then(
+    () => undefined,
     (error: unknown) => {
-      pending = null;
+      // A failed or timed-out attempt is dropped, so the next call starts a fresh one. Only if
+      // it is still the current one: another caller may already have replaced it.
+      if (pending === attempt) pending = null;
       throw error;
     }
   );
-  return withTimeout(pending, timeoutMs).then(() => undefined);
 }
 
 /** @internal Test seam: forget an in-flight or failed load between tests. */

@@ -39,6 +39,6 @@
   "pieces.cosmos.sun": "Sun",
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "Cascade を読み込み中…",
-  "web.loadError": "Cascade のグラフィックを読み込めませんでした。接続を確認して、もう一度お試しください。",
+  "web.loadError": "Cascade を開始できませんでした。もう一度お試しください。",
   "web.retry": "再試行"
 }

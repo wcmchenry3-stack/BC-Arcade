@@ -8,8 +8,11 @@
 import type { ComponentType } from "react";
 import { loadCanvasKit } from "../game/cascade/render/loadCanvasKit";
 
-export async function loadCascadeScreen(): Promise<ComponentType> {
+/** The props the navigator gives the route; the route forwards them to the screen. */
+export type CascadeScreenProps = Record<string, unknown>;
+
+export async function loadCascadeScreen(): Promise<ComponentType<CascadeScreenProps>> {
   await loadCanvasKit();
   const screen = await import("./CascadeScreen");
-  return screen.default;
+  return screen.default as ComponentType<CascadeScreenProps>;
 }
