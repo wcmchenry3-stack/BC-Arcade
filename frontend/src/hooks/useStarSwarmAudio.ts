@@ -9,14 +9,15 @@ import type { StarSwarmCue } from "../game/starswarm/soundCues";
 import type { CarrierEvent, PowerUpType, UpgradeEvent } from "../game/starswarm/types";
 
 const LOOP_NAMES = ["shield", "buddy", "rout", "lightning"] as const;
-// #3638: one original track (Round 23), carried over from game to game within a visit.
+// #3638: one original track (Round 46, loop-ready), carried over from game to game within a visit.
 const BGM_KEYS = ["starswarm.bgm"];
 /** AsyncStorage key of the starting point the next visit opens at (#3638). */
 export const STARSWARM_BGM_RESUME_KEY = "bgm.resume.starswarm";
 /**
- * Star Swarm's music volume (#3638): about +9 dB over the shared 0.2 (20·log10(0.57 / 0.2) ≈ 9.1),
- * which brings the −21.1 LUFS track level with the old tracks' about −12 LUFS. The owner confirms it
- * by ear (the dev mixer's Music row); see docs/games/starswarm-music-design.md.
+ * Star Swarm's music volume (#3638): about +9 dB over the shared 0.2 (20·log10(0.57 / 0.2) ≈ 9.1).
+ * The −21.5 LUFS Round 46 file (+2.9 dB in the loop edit) sits at this level; the owner approved it
+ * by ear in the in-game recording. The dev mixer's Music row tunes it live; see
+ * docs/games/starswarm-music-design.md.
  */
 export const STARSWARM_BGM_VOLUME = 0.57;
 

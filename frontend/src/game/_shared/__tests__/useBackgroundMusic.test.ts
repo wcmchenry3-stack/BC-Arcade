@@ -937,6 +937,31 @@ describe("useBackgroundMusic — carry-over and starting points (#3638)", () => 
       expect(mockPlay).toHaveBeenCalledTimes(resumeCalls);
     });
 
+    it("a 0:00 start waits for the loaded status before the fade (Codex, PR #3733)", async () => {
+      jest.useFakeTimers();
+      const { player } = await mount(); // first visit: no stored cue, so it starts at 0:00
+      await flush();
+      // Loading takes longer than the fade: nothing may fade in yet.
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS * 1.5));
+      expect(player.volumes).toEqual([0]);
+      player.isLoaded = true;
+      await act(() => player.emit(LOADED));
+      await flush();
+      await act(() => jest.advanceTimersByTime(BGM_FADE_IN_MS));
+      expect(player.volumes).toHaveLength(1 + BGM_FADE_IN_STEPS); // the whole fade is heard
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+      expect(mockSeekTo).not.toHaveBeenCalled();
+    });
+
+    it("a 0:00 start with no loaded status still fades in after the timeout", async () => {
+      jest.useFakeTimers();
+      const { player } = await mount();
+      await act(() => jest.advanceTimersByTime(BGM_SEEK_TIMEOUT_MS - 1));
+      expect(player.volumes).toEqual([0]);
+      await act(() => jest.advanceTimersByTime(1 + BGM_FADE_IN_MS));
+      expect(player.volumes.at(-1)).toBeCloseTo(0.57);
+    });
+
     it("no loaded status within the timeout: the seek is given up and the track fades in", async () => {
       jest.useFakeTimers();
       savedCue("155000");

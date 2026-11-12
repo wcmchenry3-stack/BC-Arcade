@@ -276,11 +276,13 @@ function attachIntro(
 
   const trySeek = () => {
     if (disposed || seeking || cue === null) return;
+    // Wait for the loaded status, even for a 0:00 start: fading in before the audio is ready would
+    // cut the fade short, or let a slow load start at full volume (the timeout below still applies).
+    if (subscription !== null && !player.isLoaded) return;
     if (cue === 0) {
       finish();
       return;
     }
-    if (subscription !== null && !player.isLoaded) return; // wait for the loaded status
     seeking = true;
     let pending: Promise<void> | undefined;
     try {
