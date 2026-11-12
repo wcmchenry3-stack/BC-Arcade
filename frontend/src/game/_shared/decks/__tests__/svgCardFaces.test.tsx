@@ -98,15 +98,6 @@ function inherited(node: TestInstance, prop: string): unknown {
   return undefined;
 }
 
-/** Opacity as drawn: the product of the node's and its ancestors' opacity. */
-function drawnOpacity(node: TestInstance): number {
-  let o = 1;
-  for (let n: TestInstance | null = node; n; n = n.parent) {
-    if (typeof n.props.opacity === "number") o *= n.props.opacity;
-  }
-  return o;
-}
-
 /** Counts of the visual primitives — what a consolidated SvgCardFace must still draw. */
 function primitives() {
   return {
@@ -117,39 +108,36 @@ function primitives() {
   };
 }
 
-/** The 16 lines of the diamond back grid on a 60 x 84 card, as a sorted set. */
-const GRID_LINES = Array.from({ length: 8 }, (_, i) => [
-  `M ${(i - 2) * 14} 0 L ${(i + 2) * 14} 84`,
-  `M 0 ${(i - 2) * 14} L 60 ${(i + 2) * 14}`,
-])
-  .flat()
-  .sort();
-const drawnLines = () =>
-  all("path")
-    .map((p) => p.props.d)
-    .sort();
-
 const background = () => one("rect", { x: 0, y: 0 });
 const cardBorder = () => one("rect", { x: 1, y: 1 });
 const centreLetter = () => one("text", { textAnchor: "middle" });
 const cornerTexts = () => all("text").filter((t) => t.props.x === 5);
 
 describe("ClassicCardFace", () => {
-  it("face-down: the back colour, an inset border and a 16-line diamond grid, no text", async () => {
-    await draw(ClassicCardFace, "spades", 1, { faceDown: true });
-    expect(primitives()).toEqual({ rect: 2, text: 0, path: 16, circle: 0 });
+  it("face-down: margin, teal field, lattice, inset line, medallion and the border edge, no text", async () => {
+    await draw(ClassicCardFace, "spades", 1, { faceDown: true, cardBackInk: "#ffffff" });
+    // rim + field + inset line + edge; lattice + medallion
+    expect(primitives()).toEqual({ rect: 4, text: 0, path: 2, circle: 0 });
     expect(background().props).toMatchObject({
       width: 60,
       height: 84,
       rx: 6,
-      fill: THEME.cardBgBack,
+      fill: THEME.cardBg,
     });
-    expect(cardBorder().props).toMatchObject({ rx: 5, stroke: THEME.border, fill: "none" });
-    expect(drawnLines()).toEqual(GRID_LINES);
-    for (const p of all("path")) {
-      expect(p.props.stroke).toBe(THEME.border);
-      expect(drawnOpacity(p)).toBe(0.25);
-    }
+    expect(one("rect", { x: 4, y: 4 }).props.fill).toBe(THEME.cardBgBack);
+    const [lattice, medallion] = all("path");
+    expect(lattice!.props).toMatchObject({ stroke: "#ffffff", opacity: 0.6 });
+    expect(medallion!.props).toMatchObject({ fill: THEME.cardBgBack, stroke: "#ffffff" });
+    expect(one("rect", { x: 0.5, y: 0.5 }).props).toMatchObject({
+      stroke: THEME.border,
+      fill: "none",
+    });
+  });
+
+  it("face-down: the same drawing with only the border prop changed (hint/selection edge)", async () => {
+    await draw(ClassicCardFace, "spades", 1, { faceDown: true, border: "#facc15" });
+    expect(one("rect", { x: 0.5, y: 0.5 }).props.stroke).toBe("#facc15");
+    expect(one("rect", { x: 4, y: 4 }).props.fill).toBe(THEME.cardBgBack);
   });
 
   it("face-up red pip card: corner rank + suit twice in the red suit colour, one centre path", async () => {
@@ -226,24 +214,21 @@ describe("ClassicCardFace", () => {
 describe("NeonCardFace", () => {
   const NEON = {
     bg: "#0f172a",
-    back: "#070d1a",
+    field: "#0b1b3a",
     border: "#334155",
-    grid: "#06b6d4",
+    rim: "#22d3ee",
     rank: "#f1f5f9",
     red: "#f43f5e",
     light: "#e2e8f0",
   };
 
-  it("face-down: its own dark back with a cyan grid, ignoring the theme colours", async () => {
+  it("face-down: a cyan margin, navy field and cyan lattice, ignoring the theme colours", async () => {
     await draw(NeonCardFace, "spades", 1, { faceDown: true });
-    expect(primitives()).toEqual({ rect: 2, text: 0, path: 16, circle: 0 });
-    expect(background().props).toMatchObject({ fill: NEON.back, rx: 8 });
-    expect(cardBorder().props).toMatchObject({ stroke: NEON.border, rx: 7 });
-    expect(drawnLines()).toEqual(GRID_LINES);
-    for (const p of all("path")) {
-      expect(p.props.stroke).toBe(NEON.grid);
-      expect(drawnOpacity(p)).toBe(0.35);
-    }
+    expect(primitives()).toEqual({ rect: 4, text: 0, path: 2, circle: 0 });
+    expect(background().props).toMatchObject({ fill: NEON.rim, rx: 8 });
+    expect(one("rect", { x: 4, y: 4 }).props.fill).toBe(NEON.field);
+    expect(all("path")[0]!.props.stroke).toBe(NEON.rim);
+    expect(one("rect", { x: 0.5, y: 0.5 }).props.stroke).toBe(NEON.border);
     expect(all("filter")).toHaveLength(0);
   });
 

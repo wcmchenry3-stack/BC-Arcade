@@ -38,11 +38,12 @@ jest.mock("react-native-svg", () => {
 // Placeholder colour names: the face only passes them through.
 const PALETTE: SvgCardPalette = {
   face: "face",
-  back: "back",
   border: "border",
   faceBorder: "faceBorder",
-  backGrid: "grid",
-  backGridOpacity: 0.5,
+  backRim: "rim",
+  backField: "field",
+  backLine: "line",
+  backAccent: "accent",
   blackSuit: "black",
   redSuit: "red",
 };
@@ -111,14 +112,31 @@ describe("SvgCardFace", () => {
     expect(all("rect").find((r) => r.props.x === 6)!.props.stroke).toBe("border");
   });
 
-  it("face-down: back fill, border inset, and the grid in its own colour and opacity", async () => {
+  it("face-down: margin, field, lattice, inset line, medallion and the border-prop edge, no text or filter", async () => {
     await draw({ faceDown: true, glowFilter: "halo" });
-    expect(all("rect")[0]!.props.fill).toBe("back");
-    expect(all("rect")[1]!.props.stroke).toBe("border");
-    expect(all("path")).toHaveLength(16);
-    expect(new Set(all("path").map((p) => p.props.stroke))).toEqual(new Set(["grid"]));
-    expect(all("g")[0]!.props.opacity).toBe(0.5);
+    const rects = all("rect");
+    expect(rects.map((r) => (r.props.fill !== "none" ? r.props.fill : r.props.stroke))).toEqual([
+      "rim",
+      "field",
+      "line",
+      "border",
+    ]);
+    const [lattice, medallion] = all("path");
+    expect(lattice!.props).toMatchObject({ stroke: "accent", opacity: 0.6 });
+    expect(medallion!.props).toMatchObject({ fill: "field", stroke: "line" });
     expect(all("text")).toHaveLength(0);
     expect(all("filter")).toHaveLength(0);
+    expect(all("g")).toHaveLength(0);
+  });
+
+  it("face-down on a narrow card: no medallion", async () => {
+    await draw({ faceDown: true, width: 30, height: 42 });
+    expect(all("path")).toHaveLength(1);
+  });
+
+  it("face-down: the frame design draws no lattice and no medallion", async () => {
+    await draw({ faceDown: true, backDesign: "frame" });
+    expect(all("path")).toHaveLength(0);
+    expect(all("rect")).toHaveLength(4);
   });
 });

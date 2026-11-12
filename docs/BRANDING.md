@@ -151,6 +151,20 @@ Stitch mockups are **guidelines, not truth**. They contain inconsistencies and r
 
 ## Card decks
 
+### The card back (Classic, Minimal, Neon)
+
+The always-available decks share one back (#3740, owner decision #3742): the **lattice**. A white margin (`cardFace`) round a BC teal field (`cardBack`, `#00737e`), a dense diamond lattice and an inset line in white (`cardBackInk`), a diamond medallion from 40 px card width, and a 1-px outer edge. Like the face, it is the same in light and dark: one physical deck. The tokens sit next to `cardFace` in `theme/ThemeContext.tsx`.
+
+| Deck    | Back                                                                                                                                         |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Classic | The lattice in `cardFace` / `cardBack` / `cardBackInk`.                                                                                      |
+| Neon    | The lattice in `NEON_DECK`: a cyan margin (`backRim`), a navy field (`backField`), a cyan inset line and lattice (`backLine`, `backAccent`). |
+| Minimal | The frame only (margin, field, inset line), drawn with Views, no pattern, no mark.                                                           |
+
+The back holds 3:1 (WCAG 1.4.11) against the Blackjack, Solitaire / FreeCell and Hearts felts in both themes, through its margin or its field (`theme/__tests__/cardBackContrast.test.ts`), so no table outlines it. The outer edge is the `border` prop, so the Solitaire and FreeCell hint and selection borders show on face-down cards.
+
+It is drawn by `decks/CardBack.tsx` from the pure shapes in `decks/cardBackShapes.ts`: 4-6 SVG elements per card (the lattice is one path clipped analytically), no filters, clip paths, gradients or per-card ids. The shapes are cached per (design, size, radius, colours) and the component is `React.memo`. The back is a function of (design, palette): a chosen back (#3429) overrides it by passing a different `backDesign` or palette to `SvgCardFace`; there is no cosmetics system yet.
+
 Besides Classic, Minimal and Neon, three original decks are drawn in code (SVG, no third-party art) in `frontend/src/game/_shared/decks/`. They share one face component (`bc/BcCardFace.tsx`) and a 250 x 350 card box; art colours live in `BC_DECK_ART` (`theme/theme.cards.ts`). They are listed in Settings only when `BC_DECK_ENABLED` is on (internal and dev builds, same rule as hidden games); in store builds a saved selection falls back to Classic.
 
 | Deck      | Look                                                                                                             | Colours                                                               | Index font    |

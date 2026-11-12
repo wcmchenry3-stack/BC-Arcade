@@ -16,6 +16,7 @@ export default function ClassicCardFace({
   faceDown,
   cardBg,
   cardBgBack,
+  cardBackInk,
   border,
   textColor,
   redSuitColor,
@@ -33,11 +34,12 @@ export default function ClassicCardFace({
       glyphs={CLASSIC_GLYPHS}
       palette={{
         face: cardBg,
-        back: cardBgBack,
         border,
         faceBorder: border,
-        backGrid: border,
-        backGridOpacity: 0.25,
+        backRim: cardBg,
+        backField: cardBgBack,
+        backLine: cardBackInk ?? cardBg,
+        backAccent: cardBackInk ?? cardBg,
         blackSuit: textColor,
         redSuit: redSuitColor,
       }}

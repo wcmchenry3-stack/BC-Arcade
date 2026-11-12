@@ -2,7 +2,10 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { rankLabel, suitEmoji, RED_SUITS } from "../cardId";
 import { compactMinimalLayout } from "../cornerIndex";
+import { backFrameMetrics } from "../cardBackShapes";
 import type { CardFaceProps } from "../types";
+
+const CARD_RADIUS = 8;
 
 export default function MinimalCardFace({
   suit,
@@ -12,18 +15,49 @@ export default function MinimalCardFace({
   height,
   cardBg,
   cardBgBack,
+  cardBackInk,
   border,
   textColor,
   redSuitColor,
   compactIndex,
 }: CardFaceProps) {
   if (faceDown) {
+    // The frame-only back (#3740): a margin, the field and an inset line, no pattern.
+    const { margin, fieldRadius, inset, lineWidth } = backFrameMetrics(width, CARD_RADIUS);
     return (
       <View
-        style={[styles.card, { width, height, backgroundColor: cardBgBack, borderColor: border }]}
+        testID="minimal-back"
+        style={[styles.card, { width, height, backgroundColor: cardBg, borderColor: border }]}
       >
-        <View style={[styles.backInner, { borderColor: border }]}>
-          <Text style={[styles.backMark, { color: border }]}>?</Text>
+        <View
+          testID="minimal-back-field"
+          style={[
+            styles.backField,
+            {
+              top: margin - 1,
+              left: margin - 1,
+              right: margin - 1,
+              bottom: margin - 1,
+              borderRadius: fieldRadius,
+              backgroundColor: cardBgBack,
+            },
+          ]}
+        >
+          <View
+            testID="minimal-back-line"
+            style={[
+              styles.backLine,
+              {
+                top: inset,
+                left: inset,
+                right: inset,
+                bottom: inset,
+                borderRadius: Math.max(1, fieldRadius - inset * 0.5),
+                borderWidth: lineWidth,
+                borderColor: cardBackInk ?? cardBg,
+              },
+            ]}
+          />
         </View>
       </View>
     );
@@ -57,21 +91,14 @@ export default function MinimalCardFace({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 8,
+    borderRadius: CARD_RADIUS,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: 2,
   },
-  backInner: {
-    width: "70%",
-    height: "70%",
-    borderRadius: 4,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backMark: { fontSize: 22, fontWeight: "700" },
+  backField: { position: "absolute" },
+  backLine: { position: "absolute" },
   rank: { fontSize: 16, fontWeight: "700", lineHeight: 20 },
   suit: { fontSize: 18, lineHeight: 22 },
   compactRow: { position: "absolute", flexDirection: "row", gap: 1 },
