@@ -1494,3 +1494,21 @@ npx playwright test --project=cross i18n-overflow
 Adding a game or screen: extend `STORE_GAMES` (or the tabs test) in the spec. Wait for the screen to finish loading before measuring (the game screens wait for the `nav-menu` testID); measuring early gives false passes because header controls mount late.
 
 The spec's `ALLOWLIST` entries are keyed by screen, locale, overflow kind, a selector-path substring and exact text, each with a reason. They hold the six game-header-title overflows tracked in #3211 (solitaire, freecell, sort in es and fr-CA) and one web-only false positive: the es Profile `profile-tile-favorite` value, which `adjustsFontSizeToFit` shrinks on iOS/Android but react-native-web ignores. Remove the #3211 entries when #3211 lands. A stale entry that no longer overflows fails the test, so the list can only shrink.
+
+## Cascade smoke spec (web, CanvasKit, #2960)
+
+`e2e/tests/cascade-smoke.spec.ts` (project `cascade`) is the base the Cascade design-review demos record from. Cascade draws through Skia's web runtime (CanvasKit) on web, so this spec also checks how it loads:
+
+- the lobby requests no `.wasm` and has no `CanvasKit`; opening Cascade requests `canvaskit.<hash>.wasm` once, from the app's own origin;
+- Mahjong and Star Swarm keep a Canvas 2D canvas and never load CanvasKit;
+- drop (`__cascade_dropAt`), merge (`__cascade_spawnTierAt` twice, score > 0) and game over (`__cascade_triggerGameOver`, the `cascade-result` card);
+- an aborted `.wasm` download shows `cascade-web-error` (an alert, not an endless spinner); Retry then loads the board.
+
+It needs the e2e web build (`EXPO_PUBLIC_TEST_HOOKS=1`) and no backend. `helpers/cascade.ts` has `openCascade` (to the header, while the route may still be loading CanvasKit), `waitForCascadeBoard` and `gotoCascade` (both).
+
+```bash
+cd frontend && EXPO_PUBLIC_API_URL=http://localhost:8000 EXPO_PUBLIC_TEST_HOOKS=1 EXPO_PUBLIC_SENTRY_DSN= npx expo export --platform web
+cd ../e2e && npx playwright test --project=cascade
+```
+
+Jest covers the parts Jest can run: the route's loading, error and Retry states (`screens/__tests__/CascadeRoute.web.test.tsx`), the loader's retry and timeout (`game/cascade/render/__tests__/loadCanvasKit.test.ts`), and that `canvaskit-wasm` matches Skia's version and is imported only by web files (`canvasKitWeb.test.ts`). Jest cannot run `import()`, so the screen chunk loading after CanvasKit is covered only here.

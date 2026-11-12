@@ -1174,6 +1174,22 @@ Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`)
 | Older iPhone (TBD)      | Settled board | TODO               | TODO (expect < 2) |
 | Older iPhone (TBD)      | 4-chain       | TODO               | TODO              |
 
+## Cascade on web (CanvasKit, #2960)
+
+On web Cascade draws with Skia's web runtime, CanvasKit (how and why: [games/cascade.md](games/cascade.md#rendering-2960)). Measured on the web export (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`, 2026-11-12, `canvaskit-wasm` 0.41.0 for `@shopify/react-native-skia` 2.14.0):
+
+| What                                                                   | Raw          | gzip -9      | When it downloads                                                                   |
+| ---------------------------------------------------------------------- | -----------: | -----------: | ----------------------------------------------------------------------------------- |
+| `canvaskit.<hash>.wasm` (`dist/assets/node_modules/canvaskit-wasm/...`) | 8,076,553 B | 3,246,406 B | The first time Cascade opens. Same origin, content-hashed name, so the browser caches it |
+| `CascadeRoute-<hash>.js` (route, loader, CanvasKit's JS glue)           |   124,717 B |    37,713 B | When Cascade opens, or in the lobby's background prefetch for a player who can play Cascade |
+| `CascadeScreen-<hash>.js` (screen, Matter.js, Skia's JS)                |   681,063 B |   166,321 B | After CanvasKit has loaded. No longer prefetched from the lobby: the prefetch now stops at the route chunk |
+
+- **Nothing else pays it.** The lobby, start-up and every other web game never request the `.wasm` and never evaluate Skia (checked by `e2e/tests/cascade-smoke.spec.ts`; in the export, Skia's JS appears only in the `CascadeScreen` chunk and CanvasKit's glue only in the `CascadeRoute` chunk).
+- **Compression is the host's.** The gzip column is what a compressing host sends; whether Render's static sites compress `.wasm` has not been checked. Uncompressed it is 8.1 MB on the first open.
+- **Load time.** Local, uncached: the board is up about 0.7 s after tapping Play (Chromium, loopback). On a slow 3G link the ~3.2 MB takes about a minute, which is why the load timeout is 60 s (`CANVASKIT_LOAD_TIMEOUT_MS`); past it the player gets an error with Try again, and the download keeps going.
+- **Cost.** Static files from the web host only: no API, database or Sentry volume, except one Sentry event per failed load attempt (`subsystem: cascade.canvaskit`), bounded by the player's own retries. Web is not a store platform; the store web build leaves Cascade out until #3703 (`metro/storeBundle.js`), so production web does not serve the `.wasm` to players yet.
+- **Native: unchanged.** iOS and Android do not get the loader or the `.wasm`: `CascadeRoute.tsx` is the screen itself there. An Android export with every game (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform android --no-bytecode`) has no `.wasm` asset and none of CanvasKit's loader code (`CanvasKitInit`, `locateFile`, `canvaskit.wasm` all absent; the `CanvasKit` identifiers it does contain are Skia's own `JsiSk*` JS classes, not from this change). The three new strings (loading, error, Try again) ship in the `cascade` translations on every platform, a few hundred bytes per locale.
+
 ## Star Swarm timeline diagnostics (#3396)
 
 Epic #3390 adds the wave timeline ([design](games/starswarm-diagnostics.md)): a short list of each
