@@ -21,8 +21,8 @@ export interface CardFaceProps {
   // ThemeContext colours injected by PlayingCard
   cardBg: string; // card face background (colors.cardFace)
   cardBgBack: string; // card back field (colors.cardBack, #3740)
-  /** The back's line and lattice (colors.cardBackInk); omitted, the face colour `cardBg`. */
-  cardBackInk?: string;
+  /** The back's line and lattice (colors.cardBackInk). */
+  cardBackInk: string;
   border: string; // normal border colour
   borderHighlight: string; // accent border when highlighted/selected
   textColor: string; // rank text + black suits (colors.cardInk)

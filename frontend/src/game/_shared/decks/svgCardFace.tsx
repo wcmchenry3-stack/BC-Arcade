@@ -3,7 +3,7 @@
  *
  * Both decks draw the same card: a rounded face with an inset border, the rank
  * and a small suit glyph in the top-left corner, a centre pip (or a framed J/Q/K
- * letter) and the corner repeated rotated 180°; face-down, a diamond-grid back.
+ * letter) and the corner repeated rotated 180°; face-down, the lattice back (`CardBack`, #3740).
  * A deck is a palette, a corner radius, its glyph set and, optionally, a glow
  * filter — see `classic/` and `neon/`.
  */

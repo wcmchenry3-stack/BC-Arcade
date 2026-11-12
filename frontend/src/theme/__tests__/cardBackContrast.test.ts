@@ -12,6 +12,7 @@ import {
   TABLE_FELT_EDGE_LIGHT,
 } from "../theme.table";
 import { HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE } from "../theme.hearts";
+import { LATTICE_OPACITY } from "../../game/_shared/decks/cardBackShapes";
 import { feltColor } from "../../components/blackjack/tableColors";
 
 function luminance(hex: string): number {
@@ -31,6 +32,17 @@ function contrast(a: string, b: string): number {
 /** The helper reads #rrggbb: expand the #rgb card tokens. */
 const expand = (hex: string) =>
   hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+
+/** `fg` over `bg` at `opacity`, as an opaque #rrggbb. */
+function blend(fg: string, bg: string, opacity: number): string {
+  const ch = (i: number) =>
+    Math.round(
+      opacity * parseInt(fg.slice(i, i + 2), 16) + (1 - opacity) * parseInt(bg.slice(i, i + 2), 16)
+    )
+      .toString(16)
+      .padStart(2, "0");
+  return `#${ch(1)}${ch(3)}${ch(5)}`;
+}
 
 /** The felts a card sits on, per theme. */
 const felts = (c: Colors, centre: string, edge: string): Record<string, string> => ({
@@ -61,13 +73,34 @@ describe.each([
     }
   });
 
-  it("the lattice and line are visible on the field (3:1)", () => {
-    expect(contrast(expand(colors.cardBackInk), expand(colors.cardBack))).toBeGreaterThanOrEqual(3);
+  it("the field itself reaches 3:1 where the white margin does not carry the back (light felts)", () => {
+    // The margin is white, so it carries every dark felt on its own; on a light felt the field must.
+    for (const felt of [feltColor(light), light.background]) {
+      expect(contrast(expand(colors.cardBack), felt)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("the lattice, as blended at its opacity, and the line are visible on the field", () => {
+    const ink = expand(colors.cardBackInk);
+    const field = expand(colors.cardBack);
+    expect(contrast(blend(ink, field, LATTICE_OPACITY), field)).toBeGreaterThanOrEqual(3.5);
+    expect(contrast(ink, field)).toBeGreaterThanOrEqual(3);
+    expect(
+      contrast(
+        blend(NEON_DECK.backAccent, NEON_DECK.backField, LATTICE_OPACITY),
+        NEON_DECK.backField
+      )
+    ).toBeGreaterThanOrEqual(3.5);
     expect(contrast(NEON_DECK.backLine, NEON_DECK.backField)).toBeGreaterThanOrEqual(3);
   });
 });
 
 describe("card back tokens", () => {
+  it("are pinned: BC teal field, white ink", () => {
+    expect(dark.cardBack).toBe("#00737e");
+    expect(dark.cardBackInk).toBe("#fff");
+  });
+
   it("are the same in light and dark, like the card face", () => {
     expect(light.cardBack).toBe(dark.cardBack);
     expect(light.cardBackInk).toBe(dark.cardBackInk);

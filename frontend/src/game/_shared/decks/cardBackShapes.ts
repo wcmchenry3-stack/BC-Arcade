@@ -53,6 +53,9 @@ export type Shape =
       readonly opacity?: number;
     };
 
+/** Opacity of the lattice. 0.75 of white over the teal field blends to 3.9:1 (the test blends it). */
+export const LATTICE_OPACITY = 0.75;
+
 const r1 = (v: number) => Math.round(v * 100) / 100;
 
 /** Margin, field radius and inset-line offset for a card of width `w` and corner `radius`. */
@@ -116,7 +119,7 @@ function build(
       d: latticePath(m + li, m + li, m + fw - li, m + fh - li, step, 1.6),
       stroke: p.accent,
       strokeWidth: lineWidth * 0.75,
-      opacity: 0.6,
+      opacity: LATTICE_OPACITY,
     });
   }
   shapes.push({
@@ -153,13 +156,13 @@ function build(
   return shapes;
 }
 
-const CACHE_LIMIT = 256;
+export const CACHE_LIMIT = 256;
 const cache = new Map<string, readonly Shape[]>();
 let builds = 0;
 
 /**
  * The back's shapes, memoised: a Solitaire deal draws ~22 backs of a few sizes, so the lattice
- * is computed once per (design, size, radius, colours). The cache is bounded.
+ * is computed once per (design, size, radius, colours). The cache is bounded: the oldest entry goes first.
  */
 export function cardBackShapes(
   design: CardBackDesign,
@@ -168,10 +171,21 @@ export function cardBackShapes(
   radius: number,
   p: CardBackPalette
 ): readonly Shape[] {
-  const key = [design, w, h, radius, p.edge, p.rim, p.field, p.line, p.accent].join("|");
+  const q = (v: number) => Math.round(v * 100) / 100;
+  const key = JSON.stringify([
+    design,
+    q(w),
+    q(h),
+    q(radius),
+    p.edge,
+    p.rim,
+    p.field,
+    p.line,
+    p.accent,
+  ]);
   const hit = cache.get(key);
   if (hit) return hit;
-  if (cache.size >= CACHE_LIMIT) cache.clear();
+  if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
   builds += 1;
   const shapes = build(design, w, h, radius, p);
   cache.set(key, shapes);

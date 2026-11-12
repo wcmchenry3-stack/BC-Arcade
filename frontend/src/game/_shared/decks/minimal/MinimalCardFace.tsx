@@ -54,7 +54,7 @@ export default function MinimalCardFace({
                 bottom: inset,
                 borderRadius: Math.max(1, fieldRadius - inset * 0.5),
                 borderWidth: lineWidth,
-                borderColor: cardBackInk ?? cardBg,
+                borderColor: cardBackInk,
               },
             ]}
           />

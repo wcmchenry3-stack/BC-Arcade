@@ -7,6 +7,7 @@
  * (`G`, `Defs`) is not part of the contract: #2983 may reorder or regroup the drawing, but it
  * has to keep these primitives and colours.
  */
+import { LATTICE_OPACITY } from "../cardBackShapes";
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import type { TestInstance } from "test-renderer";
@@ -49,6 +50,7 @@ jest.mock("react-native-svg", () => {
 const THEME: Omit<CardFaceProps, "suit" | "rank" | "width" | "height" | "faceDown"> = {
   cardBg: "#fffef8",
   cardBgBack: "#1e3a8a",
+  cardBackInk: "#ffffff",
   border: "#999999",
   borderHighlight: "#facc15",
   textColor: "#111111",
@@ -126,7 +128,7 @@ describe("ClassicCardFace", () => {
     });
     expect(one("rect", { x: 4, y: 4 }).props.fill).toBe(THEME.cardBgBack);
     const [lattice, medallion] = all("path");
-    expect(lattice!.props).toMatchObject({ stroke: "#ffffff", opacity: 0.6 });
+    expect(lattice!.props).toMatchObject({ stroke: "#ffffff", opacity: LATTICE_OPACITY });
     expect(medallion!.props).toMatchObject({ fill: THEME.cardBgBack, stroke: "#ffffff" });
     expect(one("rect", { x: 0.5, y: 0.5 }).props).toMatchObject({
       stroke: THEME.border,

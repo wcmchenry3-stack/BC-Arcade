@@ -2,6 +2,7 @@
  * #2983: SvgCardFace on its own — the options a deck passes (palette, radius, glyph set, glow).
  * The Classic and Neon decks' drawn output is pinned separately in svgCardFaces.test.tsx.
  */
+import { LATTICE_OPACITY } from "../cardBackShapes";
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
 
@@ -122,7 +123,7 @@ describe("SvgCardFace", () => {
       "border",
     ]);
     const [lattice, medallion] = all("path");
-    expect(lattice!.props).toMatchObject({ stroke: "accent", opacity: 0.6 });
+    expect(lattice!.props).toMatchObject({ stroke: "accent", opacity: LATTICE_OPACITY });
     expect(medallion!.props).toMatchObject({ fill: "field", stroke: "line" });
     expect(all("text")).toHaveLength(0);
     expect(all("filter")).toHaveLength(0);

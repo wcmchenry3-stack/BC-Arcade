@@ -77,6 +77,7 @@ jest.mock("react-native-svg", () => {
 const THEME: Omit<CardFaceProps, "suit" | "rank" | "width" | "height" | "faceDown"> = {
   cardBg: "#fffef8",
   cardBgBack: "#1e3a8a",
+  cardBackInk: "#ffffff",
   border: "#999999",
   borderHighlight: "#facc15",
   textColor: "#111111",

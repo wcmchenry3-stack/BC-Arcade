@@ -38,8 +38,8 @@ export default function ClassicCardFace({
         faceBorder: border,
         backRim: cardBg,
         backField: cardBgBack,
-        backLine: cardBackInk ?? cardBg,
-        backAccent: cardBackInk ?? cardBg,
+        backLine: cardBackInk,
+        backAccent: cardBackInk,
         blackSuit: textColor,
         redSuit: redSuitColor,
       }}
