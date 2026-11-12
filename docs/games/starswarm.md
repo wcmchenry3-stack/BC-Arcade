@@ -254,7 +254,8 @@ rock on its line: rocks are cover for the beam, as they are for every shot.
     pair at their angle.
   - **Instant overlap** when there is no previous pulse: the beam's first pulse, after the trigger
     is released or the beam was off (swoop-in, extraction, the dev toggle, Lightning expired or
-    banked), and after a resume. A move longer than `LIGHTNING_SWEEP_MAX_PX` (300 px, a 3000 px/s
+    banked), and after a resume: a restored save, or an in-app pause ending (both canvases call
+    `clearLightningSweep`, since arrow keys can move the ship while paused). A move longer than `LIGHTNING_SWEEP_MAX_PX` (300 px, a 3000 px/s
     sweep over the longest pulse gap the screens produce: 3 × the 33 ms dt cap) is a jump, not a
     sweep, and uses the instant overlap too (`lightningSweepDx`).
   - **Rocks block at the pulse instant.** The first rock on a beam's line now stops it along the

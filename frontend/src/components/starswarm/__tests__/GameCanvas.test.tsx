@@ -541,6 +541,18 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     expect(commits.count).toBe(before);
   });
 
+  it("a resume clears Lightning's sweep origin, so a move made while paused is not swept (#3709)", async () => {
+    const { ref, rerender } = await mount({
+      initialState: { ...seeded(), lightningPulseX: 40 },
+      isPaused: true,
+    });
+    await frames(1);
+    expect(ref.current!.getState().lightningPulseX).toBe(40); // paused: untouched
+    await rerender({ isPaused: false });
+    expect(mockEngine.clearLightningSweep).toHaveBeenCalled();
+    expect("lightningPulseX" in ref.current!.getState()).toBe(false);
+  });
+
   it("republishes a paused frame when a dev-panel injection changes the state", async () => {
     const { ref } = await mount({ initialState: seeded(), isPaused: true });
     await frames(2);

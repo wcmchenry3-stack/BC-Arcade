@@ -26,7 +26,12 @@ import {
   tick,
 } from "../engine";
 import { makeAsteroid } from "../engine/asteroids";
-import { beamSweepHitsAabb, lightningSweepDx, withLightningPulseX } from "../engine/lightningBeam";
+import {
+  beamSweepHitsAabb,
+  clearLightningSweep,
+  lightningSweepDx,
+  withLightningPulseX,
+} from "../engine/lightningBeam";
 import { tickCollisions } from "../engine/collisions";
 import { aabb } from "../engine/geometry";
 import {
@@ -511,6 +516,18 @@ describe("the swept hit test (#3709)", () => {
       });
     }
   );
+
+  it("a resume forgets the sweep origin, so a jump made while paused is not swept (review)", () => {
+    const s = arena(3);
+    const moved = swept(s, X, X + 200); // the ship was moved 200 px while paused
+    expect(lightningSweepDx(moved)).toBe(200);
+    const resumed = clearLightningSweep(moved);
+    expect("lightningPulseX" in resumed).toBe(false);
+    expect(lightningSweepDx(resumed)).toBe(0); // the first pulse after a resume is the instant overlap
+    expect(resumed.player.x).toBe(X + 200);
+    const bare = swept(s, undefined, X);
+    expect(clearLightningSweep(bare)).toBe(bare); // nothing to clear: same object, no new state
+  });
 
   it("a held beam is exactly the instant overlap: dx 0 is beamHitsAabb", () => {
     const s = arena(3);

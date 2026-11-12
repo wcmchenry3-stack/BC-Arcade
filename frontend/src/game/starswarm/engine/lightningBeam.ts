@@ -204,3 +204,15 @@ export function withLightningPulseX(
   const { lightningPulseX: _dropped, ...rest } = state;
   return rest;
 }
+
+/**
+ * #3709 (review): forget the sweep origin. The canvases call this when a paused game resumes: while
+ * paused no tick runs, but the commanded ship x can still move (arrow keys), and the ship jumps to
+ * it on the first tick, so the first pulse after a resume must fall back to the instant overlap
+ * instead of sweeping that jump.
+ */
+export function clearLightningSweep(state: StarSwarmState): StarSwarmState {
+  if (state.lightningPulseX === undefined) return state;
+  const { lightningPulseX: _dropped, ...rest } = state;
+  return rest;
+}
