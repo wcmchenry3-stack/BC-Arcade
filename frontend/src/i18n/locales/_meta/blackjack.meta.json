@@ -629,6 +629,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "rules.standardTitle": {
+    "component": "TableRules",
+    "description": "Heading for the fixed rules every table plays by, under the adjustable ones.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.standard": {
+    "component": "TableRules",
+    "description": "The fixed rules (#3741): a blackjack (natural) pays 3:2; the dealer checks for blackjack when showing an Ace or a ten-value card, and a dealer blackjack ends the hand for the original bet only (a push against the player's blackjack); a blackjack beats any other 21.",
+    "tone": "instructional",
+    "characterLimit": 320,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Keep 3:2 as written. 'Blackjack' as each locale already writes it in this namespace."
+  },
   "score.heroLabel": {
     "component": "BlackjackScorecard",
     "description": "Hero label above the primary scorecard stat (net chip profit/loss for the session).",

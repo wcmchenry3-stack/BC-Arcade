@@ -69,6 +69,8 @@
   "rules.soft17Tooltip": "S17: Der Dealer bleibt bei einer weichen 17 stehen — leicht besser für den Spieler. H17: Der Dealer zieht bei einer weichen 17 nach — leicht besser für das Haus.",
   "rules.decksTooltip": "Anzahl der Kartendecks, die in den Schuh gemischt werden. Mehr Decks erhöhen den Hausvorteil leicht und erschweren das Kartenzählen.",
   "rules.penetrationTooltip": "Wie viel des Schuhs ausgeteilt wird, bevor neu gemischt wird. 75 % bedeuten, dass 75 % der Karten gespielt werden, bevor neu gemischt wird. Höhere Penetration = mehr Varianz.",
+  "rules.standardTitle": "Standardregeln",
+  "rules.standard": "Blackjack zahlt 3:2. Zeigt der Dealer ein Ass oder eine Zehn, prüft er vor deinem Zug auf Blackjack. Ein Blackjack des Dealers beendet die Hand: Du verlierst nur deinen Einsatz, mit eigenem Blackjack ist es ein Remis. Ein Blackjack schlägt jede andere 21.",
   "score.heroLabel": "Sitzung",
   "score.plLine": "{{amount}} Chips",
   "score.subLine": "{{handsPlayed}} Hände · {{winRate}} % Gewinnrate",

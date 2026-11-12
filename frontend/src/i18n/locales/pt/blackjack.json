@@ -69,6 +69,8 @@
   "rules.soft17Tooltip": "S17: O dealer para no 17 suave — ligeiramente melhor para o jogador. H17: O dealer compra no 17 suave — ligeiramente melhor para a casa.",
   "rules.decksTooltip": "Número de baralhos embaralhados no shoe. Mais baralhos aumentam levemente a vantagem da casa e dificultam a contagem de cartas.",
   "rules.penetrationTooltip": "Quanto do shoe é distribuído antes de embaralhar novamente. 75% significa que 75% das cartas são jogadas antes de um novo embaralhamento. Maior penetração = mais variância.",
+  "rules.standardTitle": "Regras padrão",
+  "rules.standard": "O blackjack paga 3:2. Se o dealer mostrar um ás ou um dez, ele verifica se tem blackjack antes de você jogar. Um blackjack do dealer encerra a mão: você perde só a sua aposta, ou empata se também tiver blackjack. Um blackjack vence qualquer outro 21.",
   "score.heroLabel": "Sessão",
   "score.plLine": "{{amount}} fichas",
   "score.subLine": "{{handsPlayed}} mãos · {{winRate}}% de vitórias",
