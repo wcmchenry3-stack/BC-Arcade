@@ -602,7 +602,10 @@ describe("the result's detail after the dealer's peek", () => {
     expect(detail()).toBe("15 against the dealer's 18");
   });
 
-  it('a 3-card 21 that loses to a dealer natural (a save from before the peek) reads "Dealer Blackjack"', () => {
+  it('a 3-card 21 that loses to a dealer natural reads "Dealer Blackjack"', () => {
+    // A hand-built state: no game reaches it now. The peek settles a dealer natural at the deal,
+    // and a save from before it is settled on load with its two dealt cards. This holds
+    // `feltResultFor`'s rule (any loss to a two-card dealer 21) should such a state appear.
     const settled = stand(hit(savedAgainstNatural([card("10"), card("6", "♥")], [card("5")])));
     expect(settled.outcome).toBe("lose");
     const t = ((key: string) => i18n.t(key)) as unknown as Parameters<typeof feltResultFor>[1];

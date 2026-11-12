@@ -16,7 +16,7 @@
  * See docs/games/blackjack.md ("Motion and sound timing") and the design log,
  * docs/games/arcade-sound-design.md.
  */
-import { handValue, isSoftHand } from "../../game/blackjack/engine";
+import { handValue, isNaturalBlackjack, isSoftHand } from "../../game/blackjack/engine";
 import { showsResult } from "../../game/blackjack/layout";
 import type { BlackjackState, CardResponse, HandResponse } from "../../game/blackjack/types";
 import { cubicBezier, type Point } from "../cards/cardMotion";
@@ -225,8 +225,11 @@ export function fullStage(v: BlackjackState): Stage {
   };
 }
 
-/** Two cards that make 21: the engine's own test (`isNaturalBlackjack`), on a settled hand. */
-const isNatural = (h: HandResponse): boolean => h.cards.length === 2 && h.value === 21;
+/**
+ * A shown hand is a natural: two cards that make 21, the engine's own test (`isNaturalBlackjack`)
+ * on its cards. Shared with the result's detail line (`feltResultFor`, #3741).
+ */
+export const isNaturalHand = (h: HandResponse): boolean => isNaturalBlackjack(h.cards);
 
 /**
  * The naturals a settled round marks (#3621, owner decisions in #3739). One hand only: a split
@@ -241,8 +244,9 @@ export function naturalEdges(v: BlackjackState): NaturalEdges {
   if (!showsResult(v.phase) || v.player_hands.length !== 1 || hand === undefined) {
     return NO_NATURALS;
   }
-  const player = isNatural(hand);
-  const dealer = isNatural(v.dealer_hand) && (player || (v.outcome === "lose" && hand.value <= 21));
+  const player = isNaturalHand(hand);
+  const dealer =
+    isNaturalHand(v.dealer_hand) && (player || (v.outcome === "lose" && hand.value <= 21));
   return player || dealer ? { player, dealer } : NO_NATURALS;
 }
 
