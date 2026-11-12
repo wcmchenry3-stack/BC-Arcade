@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, Pressable, StyleSheet } from "react-native";
+import { Text, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
 import { typography } from "../../theme/typography";
 
@@ -12,6 +12,39 @@ interface ChipButtonProps {
   sublabel?: string;
   /** Diameter in px (default 64). The table dock uses smaller chips. */
   size?: number;
+}
+
+/**
+ * A chip's face: the round, filled disc the tray's chips are drawn with. Shared by the tray
+ * (ChipButton), the stake beside a hand's total and the chips moving on the felt (#3720), so they
+ * all look alike. Chip styles (#3429's "Gold Chip Set" unlock) are not drawn anywhere yet; this is
+ * the default face.
+ */
+export function chipShape(size: number, color: string): ViewStyle {
+  return { width: size, height: size, borderRadius: size / 2, backgroundColor: color };
+}
+
+/** A chip's face, decorative: hidden from screen readers (the amount beside it is read). */
+export function ChipFace({
+  size,
+  color,
+  testID,
+  style,
+}: {
+  readonly size: number;
+  readonly color: string;
+  readonly testID?: string;
+  readonly style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View
+      testID={testID}
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[chipShape(size, color), style]}
+    />
+  );
 }
 
 export default function ChipButton({
@@ -28,11 +61,7 @@ export default function ChipButton({
   return (
     <Pressable
       testID={`blackjack-chip-${amount}`}
-      style={[
-        styles.chip,
-        { width: size, height: size, borderRadius: size / 2 },
-        { backgroundColor: chipColor, opacity: disabled ? 0.35 : 1 },
-      ]}
+      style={[styles.chip, chipShape(size, chipColor), { opacity: disabled ? 0.35 : 1 }]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"

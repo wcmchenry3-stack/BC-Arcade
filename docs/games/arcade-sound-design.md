@@ -184,11 +184,11 @@ New sounds, so they add 32,837 B (32.1 KB). The old flip stays only until Hearts
 - **Why it works.**
   - The snap marks the moment the card is dealt, the whoosh carries the eye across the table, and the landing confirms where it went.
   - It tells a dealt card (snap and travel) apart from a card you place yourself (card place's slide and settle), and from the hole-card flip (a turning whoosh).
-- **Not wired yet.** In today's game cards appear instantly, so a landing at 240 ms would trail the card. `blackjack.cardDeal` switches to these files together with the deal motion in #3571. The old file is removed then.
+- **Wired in #3581,** with the deal motion: each card's sound plays as it is launched and lands with it at 240 ms. The old file is removed (see [Blackjack: card and chip motion](#blackjack-card-and-chip-motion-timed-to-the-sounds-3581)).
 
 | File                      | Old size | New size           | Old length | New length |
 | ------------------------- | -------- | ------------------ | ---------- | ---------- |
-| `blackjack-card-deal.ogg` | 8.6 KB   | removed with #3571 | 0.60 s     | —          |
+| `blackjack-card-deal.ogg` | 8.6 KB   | removed with #3581 | 0.60 s     | —          |
 | `card-deal-1/2/3.ogg`     | —        | 21.3 KB (21,805 B) | —          | 0.32 s     |
 
 ### Blackjack chips and results: designed with the chip and result motion (#3571)
@@ -216,7 +216,7 @@ New sounds, so they add 32,837 B (32.1 KB). The old flip stays only until Hearts
   - The chime says the outcome and the chips show the money, so the two never compete.
   - Felt-thud chips are quieter and warmer than clay clacks, which suits frequent bets.
   - A plain loss now gets a gentle sound, not a "fail" sting.
-- **Not wired yet.** The chips need the chip motion, and plain loss is a new trigger, so they go live together in #3581. The old `blackjack-win/push/bust.ogg` and Blackjack's use of `hearts-moon-shot.mp3` are retired then.
+- **Wired in #3581,** with the chip and result motion (see [Blackjack: card and chip motion](#blackjack-card-and-chip-motion-timed-to-the-sounds-3581)). The old `blackjack-win/push/bust.ogg` are deleted and Blackjack no longer plays `hearts-moon-shot.mp3`.
 
 | File                                                    | Size                   | Length      |
 | ------------------------------------------------------- | ---------------------- | ----------- |
@@ -448,6 +448,50 @@ No file is removed yet: `hearts-moon-shot.mp3` (moon shot, other games), `freece
     - **A turning slide's flip goes with its card** (Solitaire, Draw 3). The slide stays its owner's, but its flip is cued by the action that launched it. A third action that takes the card over (plays it, or recycles the waste) now calls that action's turn off too (`Shown.turnCuedBy`, set while the turn is still ahead), and owes the flip itself if the card still turns face up. In the probe (a draw at 0, its top card played at 40 ms, the slid card taken over at 60 ms) the flip moves from 92 ms to 102 ms when the card is played, and does not play when the waste is recycled: the card never shows its face. The Solitaire fuzz test now checks that a flip plays only while a card in the air is turning face up within the flip's lead.
     - A FreeCell drop always counts as moved, even let go right on its slot, so it keeps its card place.
 - **Checked.** Jest covers each moment's cue against the motion (fake timers, the flights' end callbacks timed by `timeReanimatedEnds`), the top-row scale, Undo mid-flight and re-targeting, Auto-Complete's first-step wait, riffle, settle, win hold and single foundation effect, input during the win hold, New Game, unmount and leaving mid-flight and mid-hold, Reduce Motion (also turned on mid-flight), a restore, the backstops, and Large cards with the fallback flip. The on-device check on iOS and Android, frame by frame against the sounds (touch mid-flight and Android's drawing order included), is part of the story's acceptance.
+
+### Blackjack: card and chip motion, timed to the sounds (#3581)
+
+- **Brief.** Give Blackjack's cards and chips motion (#3571, epic #3570), with the sounds designed for it (above) each on its moment. The decisions are in #3575: cards come from **just off the felt's top-right** (no shoe drawn, so no layout cost on small phones), **input stays live** (a tap completes the motion at once), and the dealer plays at **about 600 ms a card** ("a beat of suspense").
+- **Before.** Cards appeared at once. The engine's events played the old sounds at the state change: two deal sounds for the four cards of a deal (and none for a split's two cards), the result before the dealer's cards were seen, a plain loss silent, and the 10 s `hearts-moon-shot.mp3` for a natural. The win flash waited 300 ms to suggest suspense.
+- **Approved.** The owner approved the animated mockup over the approved layout (recordings of a win, a loss, a push and a 3-hand split; the mockup's cue timings are the timings below). The full table is in [blackjack.md](blackjack.md#motion-and-sound-timing-3581).
+
+  | Moment | Motion | Sound |
+  | --- | --- | --- |
+  | Tray chip | into the circle, 100 ms | `chip-bet` at launch (its thud lands at ~90 ms) |
+  | Opening deal | 4 cards 180 ms apart, each 240 ms from off the top-right, −18° → 0°, `cubic-bezier(.15,.75,.25,1)`; the hand re-fans in 240 ms | `card-deal` at each launch (it lands at 240 ms) |
+  | Split | the pair slides apart (300 ms), a second stake slides in at 300 ms, then only the hand to play gets its second card (~720 ms); each other hand gets its own when it becomes the hand to play (owner, #3720) | `chip-bet`, then `card-deal` |
+  | Dealer's turn | the hole card turns (320 ms, rotate Y, 1.08 lift), draws ~600 ms apart | `card-flip` at its start, `card-deal` per draw |
+  | Result | ~300 ms after the last landing, the banner pops (260 ms) | `result-*` |
+  | Chips | ~420 ms after the result: payout (360 ms), sweep (380 ms) or nudge (300 ms); the chip count after it | `chip-payout` / `chip-collect` / `chip-nudge` |
+  | Split result | one **net** chime with a summary strip under the dealer ("Won: 1 · Lost: 2", the net payout), then each hand's WIN / LOSE / PUSH tag and chips 300 ms apart | net chime, then each hand's chip sound |
+
+- **How the sound follows the motion.** The engine stays instant and settles the round at once; the felt replays it from the settled state as a timeline of stages (`blackjackMotion.ts`). The sounds are cues on the same timeline, so each is at its moment by construction: a deal at the card's launch, the flip at the turn's start, the chime with the banner, the chips with their slide.
+- **Implementation choices.**
+  - **A timeline, not flights.** Solitaire's and FreeCell's planners turn one move into flights of the cards that changed pile. Blackjack's action can be a whole dealer's turn and a payout, so its planner returns stages (what the felt shows from when) and cues; each card view animates itself when a stage first draws it (dealt), moves it (slides, from where it is shown) or turns it (the hole card). The cards are one flat list keyed by card id, so a split's second card slides to its new hand.
+  - **Shared code.** The cue clock (`useCueClock`, now grouped: the motion's cues and the tray's chips are cancelled apart), `FLIGHT_BACKSTOP_MS` and a new shared worklet easing, `cubicBezier` (`cardMotion.ts`): the same curve eases on the UI thread and tells JS where a card is shown, with no UI-thread read.
+  - **Input stays live.** A tap on the felt, and every action, lands the motion first, so it is never dropped. Sounds still due are dropped, but a result that had not shown yet shows with its chime, once (no flash or celebration), and holds 400 ms before the next action (owner decisions on PR #3720, below).
+  - **Reduce Motion:** each sound of the action once, at the instant (four deal sounds at one instant would be noise). Turned on mid-motion, everything lands as for a tap; the setting is read when an action lands, never captured (#3712's Codex finding).
+  - **Avoided from the start**, from #3676 and #3712: no hold blocks input or the result (the dock is live throughout; the victory screen and the out-of-chips card wait for the round to settle, but no input waits); no alpha-0 view (no card is ever hidden: a card is drawn when its stage shows it); no stale flight on Reduce Motion (everything lands); no cue while away (`usePauseWhileAway` lands silently), after New Game or after unmount (the clock is cancelled); no duplicate cue (each cue is scheduled once per timeline and a landing cancels the rest; the fuzz tests check the counts).
+  - **Events.** The engine's events no longer play sounds (they were incomplete: a split emitted no deal events, a split hand's last bust no result). The motion owns the sounds and the result's flashes and celebration; the milestone and comeback toasts wait for the round to settle; a restored state's events replay nothing.
+  - The natural's lift and glint (#3621) is left for its own story; only its sound changed here (`result-blackjack`, 1.08 s, instead of the 10 s moon-shot fanfare).
+- **Review round 2 (PR #3720).**
+  - The hole card stayed lifted after its flip and covered the dealer's up card through the result: a card is lifted only while it flies or turns.
+  - The split result now follows the spec: a summary strip under the dealer ("Won: 1 · Lost: 2", localised in every shipped locale as a label and a number) with the net payout, then each hand's WIN / LOSE / PUSH tag popping with its chips, 300 ms apart.
+  - The skip's beat is only for a result not yet shown; Reduce Motion turned on draws a held-back split card; the felt's tap target is hidden from accessibility focus.
+  - Tests: motion decks of 78+ cards and a seeded shoe (a next hand no longer deals from a random reshuffle); the Playwright full-game spec waits for an enabled Hit; the fuzz test keeps bounds that do not come from the plan (a round's deal sounds never outnumber its cards; every settled round heard).
+- **Final recording (PR #3720).** The split rows jumped 46 px as the summary strip mounted (rows keep no result band while the player plays): the band is now kept free from the dealer's turn on, so the strip appears in place.
+- **Owner decisions on PR #3720.**
+  - **The dock follows the mockup:** Hit and Stand stay greyed while a result plays out, and the result's dock appears with the banner, so the dock never gives the result away (it showed the engine's phase, which told a natural or the dealer's turn ~1.4 s early).
+  - **A skip shows the result, then deals:** a tap that cuts a result short lands the dealer's cards, the banner with its chime (once, never without its banner), the chips and the count, and holds 400 ms (`SKIP_HOLD_MS`) before the next action runs. The player always sees how the hand ended.
+  - **Split deal as the mockup:** only the hand to play is dealt its second card (~720 ms); each other hand's is dealt when its turn comes. Display only: the engine already holds the cards; the felt holds them back (`Timeline.held`), with the totals, the labels and the off-table geometry following what is drawn.
+- **Review round 1 (PR #3720).**
+  - **The out-of-chips card showed for one commit at the Stand**, firing its haptic and announcement ~1.5 s early (and again once settled): "settled" was state the motion set in a layout effect, still true in the render that applied the action. It is now derived in render (nothing moving and the felt showing the current game), for the card, the victory screen and the toasts.
+  - A card dealt to hand 1 drew under hand 2's (the cards are one list): a card being dealt, and the turning hole card, are lifted above the later hands.
+  - A landing also shows a pop-in still running; chip ids are unique for the app's life; the Reduce Motion setting is read before the motion plans the action that commits with it.
+  - From the recordings: a dealt card showed at its place for one frame before flying in (its start pose was set in an effect after mount): each motion is now a view mounted at its start pose. The split's net banner counted up hand by hand: it shows the net from the start, matching the chime. Totals counted a card at its launch and the dealer's showed as the flip began: a card counts on its landing, the dealer's total after the flip.
+  - The fuzz test now checks the exact sounds due, from each action's own plan (a chime cut short by a tap: once, at the tap), so a duplicate or missing chime, flip or deal fails it.
+- **Size.** The 14 Blackjack files (106,826 B) are now bundled; the four old files (37,404 B) are deleted: **+69,422 B (67.8 KB)** packaged. `hearts-moon-shot.mp3` stays for the other games until #3578.
+- **Checked.** Jest on the fake clock: each moment and its sound in `BlackjackTableScreen.motion.test.tsx` (deal order and timings, the flip before the draws, the dealer's pace, the result after the last card, the chips and the chip count after the result, a split's net chime then hands 300 ms apart, input mid-motion, Reduce Motion and toggling it mid-flight, no replay on restore, leaving, unmount and New Game); the card views and their backstops in `FeltCards.test.tsx`; the planner, with a seeded fuzz over random rounds, in `blackjackMotion.test.ts`; random play with taps mid-motion in `BlackjackTableScreen.motionFuzz.test.tsx`. Not yet checked on a device: the timing and smoothness on a mid-tier Android phone and an iPhone, and Android's drawing order of a card in flight over the other hands (the manual checklist in blackjack.md, item 10).
 
 ### Solitaire and FreeCell: invalid move, multi-card move, no moves left (#3572, #3573)
 

@@ -245,3 +245,77 @@ describe.each(PHONES)("the table at $name", (phone) => {
     }
   });
 });
+
+// #3720: each hand's stake is a chip (decorative) beside its amount, in place of the "●" text.
+// The widest row labels are a 4-hand split's, at 375×667.
+describe("the stake at 375×667 with 4 split hands in play", () => {
+  it("is a chip beside the amount, which shrinks to fit; the labels stay on the felt, apart", async () => {
+    mockWindow.width = 375;
+    mockWindow.height = 667;
+    const two = (r: string) => [c(r), c("9", "♥")];
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...base(),
+      phase: "player",
+      bet: 25,
+      chips: 140,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("6", "♦"), c("10", "♣")],
+      split_count: 3,
+      player_hands: [two("8"), two("8"), two("8"), two("8")],
+      hand_bets: [25, 25, 25, 25],
+      hand_outcomes: [null, null, null, null],
+      hand_payouts: [0, 0, 0, 0],
+      split_from_aces: [false, false, false, false],
+      active_hand_index: 2,
+    } as EngineState);
+    await render(
+      <ThemeProvider>
+        <BlackjackGameProvider>
+          <BlackjackTableScreen
+            navigation={
+              {
+                navigate: jest.fn(),
+                replace: jest.fn(),
+                popToTop: jest.fn(),
+                goBack: jest.fn(),
+              } as never
+            }
+          />
+        </BlackjackGameProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryAllByText(/●/)).toHaveLength(0);
+    const bets = screen.getAllByTestId("hand-bet");
+    expect(bets.map((b) => b.props.children)).toEqual([25, 25, 25, 25]);
+    for (const b of bets) {
+      expect(b.props.numberOfLines).toBe(1);
+      expect(b.props.adjustsFontSizeToFit).toBe(true);
+    }
+    // The chip is decorative: hidden from screen readers; the label still says the bet.
+    const chips = screen.getAllByTestId("hand-stake-chip", { includeHiddenElements: true });
+    expect(chips).toHaveLength(4);
+    for (const chip of chips) expect(chip.props.accessibilityElementsHidden).toBe(true);
+    expect(screen.getByLabelText(/^Hand 1, Player score 17, Bet 25 chips$/)).toBeTruthy();
+    // The labels stay on the felt and apart (their rects come from the geometry, unchanged).
+    const labels = screen.getAllByTestId(/^hand-label-\d$/).map((n) => boxOf(n.props.testID));
+    const inner = estimateFeltSize({
+      screenWidth: 375,
+      screenHeight: 667,
+      insetTop: 0,
+      insetBottom: 0,
+      headerHeight: APP_HEADER_HEIGHT,
+    });
+    for (const l of labels) {
+      expect(l.x).toBeGreaterThanOrEqual(0);
+      expect(l.x + l.width).toBeLessThanOrEqual(inner.width + 0.001);
+    }
+    for (let i = 0; i < labels.length; i++) {
+      for (let j = i + 1; j < labels.length; j++) {
+        expect(overlaps(labels[i]!, labels[j]!)).toBe(false);
+      }
+    }
+  });
+});
