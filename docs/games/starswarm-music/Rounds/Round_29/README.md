@@ -1,6 +1,6 @@
 # Round 29 — isolate and replace the fantasy-sounding foreground voice
 
-**Status:** owner audition pending (November 11, 2026).
+**Status:** B is a promising but musically clashy contender; neither is approved as final (November 11, 2026).
 
 This is a **controlled diagnostic of the original Round 28 22-second arrangement**, not a new full musical foundation. Owner liked the increased force toward the end of Round 28 but rejected the exposed instrument that reminded them of a Renaissance fair.
 
@@ -29,3 +29,9 @@ Neither version is final soundtrack material, nor has anything in production cha
 | `starswarm_round29_lead_diagnostic.py` | 5507 | `8da2c827d949705bb525d31dedde8007faf07c79dfc66ccc167628db5633610a` |
 
 **Repository media/source status:** the exact audio and script are packaged in the ChatGPT Round 29 ZIP, but binary uploads and local file transfer to GitHub remain unsupported by this connection. Add the three files to this folder before describing Round 29 as fully archived.
+
+## Owner feedback — November 11, 2026
+
+**Both A and B are promising**, and **B is the stronger contender**. The owner hears more of the sought-after sci-fi force and no longer focuses on a Renaissance-fair instrument. However, **B is still not convincingly musical**: it feels somewhat **clashy/dissonant**, even though its timbral identity and energy may be right. **This is a promising direction, not final approval.**
+
+**Next focused experiment:** retain B's underlying dynamic growth, electromagnetic timbre, and sense of power, but **rewrite/refine the pitches, chord voicings, voice-leading and articulation** so the foreground and backing form a coherent musical statement. Check whether the apparent clash is intentional unresolved tension or unintended beating between inharmonic partials. Do not merely low-pass/filter the clash away or cover it with more layers; do not reintroduce conventional horn/fantasy timbres. Audition a short refined version at matched loudness against current 29B, with a clear phrase, purposeful tension and partial release while remaining ominous and futuristic. Preserve A as the no-lead comparison.
