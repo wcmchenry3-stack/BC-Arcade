@@ -786,3 +786,99 @@ def test_events_without_a_unit_group_by_position() -> None:
     ]
     out = rounds(events)
     assert len(out) == 1 and len(out[0].results) == 1
+
+
+# ---------------------------------------------------------------------------
+# #3741: standard rules (the dealer peeks; a natural beats any other 21)
+# ---------------------------------------------------------------------------
+#
+# The server never works an outcome out again: it checks each event's shape and
+# stores it as sent, and the replay prints the recorded outcome. So rounds from
+# builds before #3741 and after it validate and replay alike, with no rules
+# version in the events.
+
+
+def _rules_round(unit: int, played: dict[str, Any], *resolved: dict[str, Any]) -> list:
+    env = {"v": 1, "unit": unit, "t_ms": 10 * unit}
+    return [("round_played", {**played, **env})] + [
+        ("hand_resolved", {**h, **env}) for h in resolved
+    ]
+
+
+# A new build: the dealer's K (hole) and A (up) are a natural; the peek ends the round at the
+# deal. No actions, no dealer play; the original bet lost.
+PEEKED = _rules_round(
+    1,
+    {"b": [10, 100], "p": ["TS", "8H"], "d": ["KC", "AD"], "sh": 312, "rem": 308},
+    {"i": 0, "o": "lose", "p": -10, "ch": 90, "c": ["TS", "8H"]},
+)
+# A new build: natural against natural, a push at the deal.
+PEEKED_PUSH = _rules_round(
+    2,
+    {"b": [10, 90], "p": ["AS", "KH"], "d": ["AC", "KD"], "sh": 312, "rem": 304},
+    {"i": 0, "o": "push", "p": 0, "ch": 90, "c": ["AS", "KH"]},
+)
+# A build before #3741: no peek; the player hit to a 3-card 21 against the dealer's natural and
+# the round was recorded as a push, the dealer's play with it (it stood on 21).
+OLD_RULES_21 = _rules_round(
+    3,
+    {
+        "b": [10, 90],
+        "p": ["TS", "6H"],
+        "d": ["KC", "AD"],
+        "sh": 312,
+        "rem": 300,
+        "a": [["h", 0, "5C"], ["s", 0]],
+        "dl": {"d": [], "t": 21},
+    },
+    {"i": 0, "o": "push", "p": 0, "ch": 90, "c": ["TS", "6H", "5C"]},
+)
+
+
+@pytest.mark.parametrize("events", [PEEKED, PEEKED_PUSH, OLD_RULES_21], ids=["peek", "push", "old"])
+def test_rounds_under_either_rules_validate_and_are_stored_as_sent(events: list) -> None:
+    module = get_module("blackjack")
+    for name, data in events:
+        assert module.validate_event(name, copy.deepcopy(data)) == data, (name, data)
+
+
+def test_a_peeked_dealer_natural_replays_as_ended_at_the_deal() -> None:
+    lines = render_rounds(PEEKED)
+    text = "\n".join(lines)
+    assert "deal     you TS 8H | dealer hole KC up AD" in text
+    assert "dealer   hole KC -> KC AD = 21 BLACKJACK" in text
+    assert "hand 1 TS 8H = 18 LOSE -10" in text
+    assert "chips    100 -> 90" in text
+    assert not any(line.strip().startswith(("hit", "stand", "double", "split")) for line in lines)
+
+
+def test_natural_against_natural_replays_as_a_push_at_the_deal() -> None:
+    text = "\n".join(render_rounds(PEEKED_PUSH))
+    assert "dealer   hole AC -> AC KD = 21 BLACKJACK" in text
+    assert "hand 1 AS KH = 21 PUSH 0" in text
+
+
+def test_an_old_rules_round_replays_as_recorded() -> None:
+    """A 3-card 21 that pushed a dealer natural before #3741 still reads as the push it was."""
+    text = "\n".join(render_rounds(OLD_RULES_21))
+    assert "hit      hand 1 draws 5C -> TS 6H 5C = 21" in text
+    assert "dealer   hole KC stands -> KC AD = 21" in text
+    assert "hand 1 TS 6H 5C = 21 PUSH 0" in text
+    assert "BLACKJACK" not in text
+
+
+def test_a_players_natural_against_an_ordinary_dealer_adds_no_dealer_line() -> None:
+    events = _rules_round(
+        4,
+        {"b": [10, 100], "p": ["AS", "KH"], "d": ["7C", "9D"], "sh": 312, "rem": 308},
+        {"i": 0, "o": "blackjack", "p": 15, "ch": 115, "c": ["AS", "KH"]},
+    )
+    text = "\n".join(render_rounds(events))
+    assert "dealer   " not in text
+    assert "hand 1 AS KH = 21 BLACKJACK +15" in text
+
+
+def test_a_run_mixing_both_rules_rebuilds_its_chips() -> None:
+    out = rounds(PEEKED + PEEKED_PUSH + OLD_RULES_21)
+    assert [r.unit for r in out] == [1, 2, 3]
+    assert [r.chips_after for r in out] == [90, 90, 90]
