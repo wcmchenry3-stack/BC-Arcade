@@ -34,3 +34,15 @@ Synthesized ambient / electronic-classical character; **slow legato hymn-like me
 The audio and script were generated and ZIP verified in the ChatGPT environment, but the GitHub connector cannot upload local binary artifacts. The owner must upload the ZIP to this folder in draft PR #3734. No production game files changed. Full signature orchestration remains deferred until the base is accepted.
 
 Related [music epic #3635](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3635), [auditions #3642](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3642), [Round 41 roadmap](../Round_41/STORYBOARD.md).
+
+## Owner listening feedback — Round 42.6 (November 12, 2026)
+
+**Round 42.6 is a promising direction, but not an approved palette yet.** The owner compares it with the original atmospheric BG-1/BG-2/BG-3 beds and identifies a major mismatch:
+
+- **Too dense, acoustic and polyphonic.** Its closely voiced sustained string/organ-like counterpoint contrasts with originals' **deep evolving electronic drones, sweeping cosmic pads, electromagnetic expansiveness and shimmering spatial trails**.
+- **Too traditionally melancholic / liturgical.** Its resolved modal/classical harmony feels like a reflective church or film lament, rather than **open-ended sci-fi suspense and mysterious cosmic scale**.
+- **Too processional / marching.** Pronounced harmonic arrivals impart a heavy forward-marching gravity, whereas the original beds sustain a **steady evolving ambient current** with softer, less conclusive arrivals.
+
+**Retain:** the more expressive legato lead direction and sense of spaciousness, subject to making the voice more unmistakably electronic. **Revise:** reduce simultaneous counterpoint and conventional organ/string-ensemble impression; place a single melodic lead over synthesized swirling pads and continuously evolving drone; use unresolved/suspended/modal harmonic tension without heavy cadences; subtle oscillator and spatial trails instead of additional instrument layers; remove march-like emphasis and favor persistent but floating motion. Do not equate richness with many competing voices, urgency with fast notes, or minor-key emotion with grieving. Maintain sparse, legato expressiveness from owner brief.
+
+**Suggested Round 42.7 listening gate (foundation only, no signatures):** Does it sound *more like sci-fi ambient electronic classical* and **less like an acoustic organ/string liturgy**, while keeping melodic warmth, cosmic space, purposeful background motion and no sadness-dominant emotional read? Create a short comparative clip rather than rewrite all 7 minutes until the palette is approved.
