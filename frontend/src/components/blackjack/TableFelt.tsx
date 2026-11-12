@@ -249,7 +249,7 @@ function HandLabel({
             fromScale={0.8}
             style={styles.shrink}
           >
-            <View style={styles.labelLine}>
+            <View style={[styles.labelLine, styles.shrink]}>
               {outcome !== null && <HandTag outcome={outcome} />}
               <PayoutText payout={payout} text={payoutText} compact={compact} />
             </View>
@@ -270,8 +270,15 @@ function HandTag({ outcome }: { outcome: string }) {
   return (
     <Text
       testID="hand-tag"
-      style={[styles.tag, { color, borderColor: color, fontFamily: typography.heading }]}
+      style={[
+        styles.tag,
+        styles.shrink,
+        { color, borderColor: color, fontFamily: typography.heading },
+      ]}
+      // A longer word (a translation) shrinks to fit the row's label column, never overflows it.
       numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.7}
     >
       {t(`tag.${key}` as Parameters<typeof t>[0])}
     </Text>

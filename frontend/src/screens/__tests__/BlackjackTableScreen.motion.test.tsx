@@ -9,7 +9,7 @@
  * leaving cancel what is still due.
  */
 import React from "react";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, StyleSheet } from "react-native";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
 
@@ -626,6 +626,56 @@ describe("input stays live", () => {
     await settle();
     expect(named(at, "blackjack.cardDeal")).toEqual([]);
     expect(screen.getByText("Rebet")).toBeTruthy();
+  });
+});
+
+// #3720: as the split summary strip mounted, every hand jumped down (rows keep no result band while
+// the player plays). The band is kept free from the dealer's turn on, so the strip moves nothing.
+describe("the split summary strip moves no hand", () => {
+  /** 8s to split twice: hands 8♠ 10♦ (18), 8♦ 9♣ (17), 8♥ 5♣ (13) against the dealer's 17. */
+  const THREE = [
+    card("8"),
+    card("10", "♣"),
+    card("8", "♥"),
+    card("7", "♦"),
+    card("8", "♦"),
+    card("5", "♣"),
+    card("10", "♦"),
+    card("9", "♣"),
+  ];
+  /** Each drawn card's place, by testID. */
+  const places = () =>
+    Object.fromEntries(
+      screen.queryAllByTestId(/^(dealer|hand-\d)-card-\d+$/).map((n) => {
+        const st = StyleSheet.flatten(n.props.style) as { left: number; top: number };
+        return [n.props.testID as string, [st.left, st.top]];
+      })
+    );
+
+  it("a 3-hand split's cards are where they were when the strip shows", async () => {
+    await mountOn(betting(THREE));
+    await dealTen();
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    await press(/^Stand/);
+    await settle();
+    await press(/^Stand/);
+    await settle();
+    expect(screen.getAllByTestId(/^hand-label-\d$/)).toHaveLength(3);
+    // The last Stand plays the dealer: 17, no draw; the result 300 ms after the flip ends.
+    await press(/^Stand/);
+    await advance(619);
+    expect(resultShown()).toBe(false);
+    const before = places();
+    await advance(1);
+    expect(resultShown()).toBe(true);
+    expect(screen.getByTestId("result-outcome").props.children).toBe("Won: 1 · Lost: 1 · Push: 1");
+    expect(places()).toEqual(before);
+    await settle();
+    expect(places()).toEqual(before);
   });
 });
 

@@ -68,7 +68,7 @@ import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { loadRuns, type RunRecord } from "../game/blackjack/storage";
 import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
 import {
-  computeTableGeometry,
+  tableGeometryForTurn,
   DOCK_HEIGHT,
   DOCK_PADDING_BOTTOM,
   DOCK_PADDING_TOP,
@@ -363,18 +363,26 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     [window.width, window.height, insets.top, insets.bottom]
   );
   const felt = feltSize ?? feltEstimate;
+  // The dealer's turn is playing out (every hand played, the result still to show): the result's
+  // band is kept free already, so the banner appearing moves no hand (#3720).
+  const handCount = handCards.length;
+  const dealerTurn =
+    !feltShowsResult && showResult && activeHandIndex !== null && activeHandIndex >= handCount;
   const geometry = useMemo(
     () =>
-      computeTableGeometry({
-        feltWidth: felt.width,
-        feltHeight: felt.height,
-        screenWidth: window.width,
-        screenHeight: window.height,
-        dealerCards,
-        handCards: handCardsKey ? handCardsKey.split(",").map(Number) : [],
-        activeHandIndex,
-        showResult: feltShowsResult,
-      }),
+      tableGeometryForTurn(
+        {
+          feltWidth: felt.width,
+          feltHeight: felt.height,
+          screenWidth: window.width,
+          screenHeight: window.height,
+          dealerCards,
+          handCards: handCardsKey ? handCardsKey.split(",").map(Number) : [],
+          activeHandIndex,
+          showResult: feltShowsResult,
+        },
+        dealerTurn
+      ),
     [
       felt.width,
       felt.height,
@@ -384,6 +392,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       handCardsKey,
       activeHandIndex,
       feltShowsResult,
+      dealerTurn,
     ]
   );
   // Cards off the felt (#3653): the dealer's and the player's fans against the measured felt,

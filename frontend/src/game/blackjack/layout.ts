@@ -269,6 +269,23 @@ export function minStackedHeight(handCount: number): number {
 }
 
 /**
+ * The table while a round's result is still to show (the dealer's turn, #3581): with
+ * `reserveResult`, the result's band is already kept free, so its banner appearing moves no hand
+ * (#3720: the split rows jumped 46 px as the summary strip mounted). The band is left empty
+ * (`result` null) until the result shows. Not kept when keeping it would leave the dealer no room
+ * for its cards (the smallest phones, where the dealer collapses beside the result): the dealer's
+ * draws must show.
+ */
+export function tableGeometryForTurn(
+  input: TableGeometryInput,
+  reserveResult: boolean
+): TableGeometry {
+  if (input.showResult || !reserveResult) return computeTableGeometry(input);
+  const kept = computeTableGeometry({ ...input, showResult: true });
+  return kept.dealer.collapsed ? computeTableGeometry(input) : { ...kept, result: null };
+}
+
+/**
  * The whole table: dealer at the top, the player's hand(s) low near the dock,
  * the result band between them; on a short felt (landscape) the dealer, the
  * result and the hands side by side. Hands never overlap each other, the
