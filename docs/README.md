@@ -130,6 +130,7 @@ Preserve these because they contain evidence and rationale, but use the canonica
 | [YACHT_ORACLE.md](research/YACHT_ORACLE.md)                           | Yacht optimal-play oracle design/reference                                                                        |
 | [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md)             | Cascade asset investigation                                                                                       |
 | [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md)                     | Cascade physics design/reference                                                                                  |
+| [CASCADE_PHYSICS_SPIKE.md](research/CASCADE_PHYSICS_SPIKE.md)         | Cascade spike (#3696): tuned Matter.js vs planck.js, measured with the sim harness                                |
 | [CASCADE-THEMING.md](research/CASCADE-THEMING.md)                     | Cascade theming design/reference                                                                                  |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
 | [animation-lab.html](research/animation-lab.html)                     | Dev-only animation/sound preview page (serve from the repo root; see its header)                                  |
