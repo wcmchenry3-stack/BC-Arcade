@@ -1,0 +1,48 @@
+# Round 46 — Seven-minute Star Swarm signature orchestration
+
+**Status: creative audition ready, owner feedback pending (November 12, 2026).** Full seven-minute mix arranged from **owner-approved Round 44 ambient foundation** and **owner-approved Round 45 first two-minute treatment**. This is *not* the final loop, master or actual gameplay mix.
+
+## Arrangement / audible signatures
+
+The first 120 seconds are taken from the approved Round 45B MP3 (re-encoded with a 0.7-second boundary blend). The musical score from Round 44 continues unbroken underneath all added features. Multiple returning signature families are **varied in segment selection, pitch/register, duration and foreground level**, rather than identical pasted samples. The project-owned generator code synthesizes the stems from scratch with the old demo backing nulled; no Pixabay/other licensed BG recordings are read or sampled.
+
+| Time | Foreground feature |
+|---|---|
+| **0:10–0:27** | Astronomical rise, approved first-minute treatment |
+| **0:42–1:00** | Varied robotic gestures |
+| **1:16–1:33** | Gathering Swarm Chorus |
+| **1:49–1:59** | Electromagnetic Choir |
+| **2:16–2:29** | Distinct audible descending Shepard, over continued bed |
+| **2:46–3:01** | Restrained distant organ color |
+| **3:18–3:34** | Robotic gestures, altered/higher-register |
+| **3:53–4:10** | Astronomical rise, different arc |
+| **4:26–4:42** | Gathering Swarm, darker/shorter reprise |
+| **5:00–5:15** | Electromagnetic Choir, different register |
+| **5:33–5:47** | Descending Shepard, lower start and altered descent rate |
+| **6:04–6:19** | Robotic gestures, fragmented reprise |
+| **6:34–6:47** | Gathering Swarm, shortened return |
+| **6:47–7:00** | Foundation only; no dramatic final impact |
+
+**Breathing room:** approximately 15–19 s of uninterrupted foundation between added featured events. The first four signatures preserve Round 45's approved pacing. The rise and Shepard descent are not adjacent. The user-approved Round 40 Shepard octave illusion is embedded with continuing music and temporary backing clearance.
+
+## Render and reproducibility
+
+- MP3: `starswarm-round46-seven-minute-signature-mix.mp3`
+- Duration **420.048 seconds**, **24 kHz stereo**, **128 kbps**, **6,721,196 bytes**.
+- Integrated loudness **−24.0 LUFS**, loudness range **6.4 LU**, true peak **−9.9 dBTP**, no clipping.
+- MP3 SHA-256: `29b0a1604e458fa1b0cb92d0502c283b836d1b1f9b2a63a3f012fd3c815f442a`.
+- Generator SHA-256: `777de55dbf1eff9fbe8f85c3bcfa6b9be96dfce03a59bbd32d2839e874702e4f`.
+- First 2-minute fidelity: decoded correlation to approved Round 45B **over 0.99997** in windows before 119s (not byte-identical, due to MP3 re-encoding).
+- Reproducible local ZIP: `StarSwarm_Round46_Seven_Minute_Signature_Mix.zip` includes the render, complete Python generator, exact event cue JSON, accepted Round 44 and Round 45 MP3 inputs, plus original synth generation source files from Rounds 18/19/20. ZIP integrity test passed. **The binary files need manual upload to this existing draft PR branch**; only this README was committed by the GitHub connector.
+
+## Review gate
+
+1. Does the music remain an **ambient-first gameplay bed** under each signature?
+2. Do the seven minutes sustain enough variation and sufficient **15–19s breathing room**?
+3. Is **Shepard** clear and audible within the music (twice), not adjacent to the astronomical rise?
+4. Are repeated choruses/robotic events distinct yet recognizably part of the same composition?
+5. Are the sounds too present, too sparse, or balanced?
+
+After creative approval, test with the actual game's laser/explosion SFX at true BGM playback gain; verify device codec/loop, master level, filesize, local phrase-safe entry/reentry and cross-game carry-over. **The current Round 44-based rough fades at the beginning and end, so it is NOT seamless-loop-ready. No production assets have changed.**
+
+Related: [music epic #3635](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3635), [audition log #3642](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3642), and [draft PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734).
