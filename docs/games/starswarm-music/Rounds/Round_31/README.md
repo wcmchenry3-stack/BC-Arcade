@@ -29,3 +29,11 @@ Does Round 31 feel more *alive, urgent and emotionally performed* without losing
 | `starswarm_round31_expressive_lead.py` | 7855 | `e9cb95b06842e8bf7037348d40362823e5ea6f73399a037777f516570818f0de` |
 
 **Archival status:** the MP3 and exact generator are present in the ChatGPT Round 31 ZIP, but are **not yet committed** to GitHub. This connector cannot transfer binary bytes or local source files directly. Add both files to this directory through the repo uploader before calling the round fully archived. The README is committed to the ongoing draft PR #3734; no production game files were changed.
+
+## Owner response — November 11, 2026
+
+**Round 31 is close and heading in the right direction.** The newly expressive performance is a meaningful improvement. The primary remaining critique is that the sound **needs somewhat stronger science-fiction identity**. Do not undo the improved phrasing, harmonic coherence, urgency and emotional expression simply to restore futuristic timbre.
+
+**Round 32 design target:** keep Round 31's notes, phrasing, dynamic contour, bass, harmony, and number of musical voices as the control. Test **one small, targeted, clearly futuristic lead-timbre refinement** (evolving inharmonic spectral motion or controlled electronic formants/modulation), without adding a sci-fi effects layer, returning to the stagnant old ambient bed, or making the sound harsh/clashy like Round 29B. Keep the musical lead audible and expressive rather than converting it into an abstract effect. A/B at matched perceived loudness and against combat SFX, and consider testing both the opening and final ~10 seconds. Only after approving the core score should we develop contrasting phrase material and reintroduce the separately approved signature accents.
+
+**Status:** promising candidate, not yet full musical foundation or final production mix approval.
