@@ -29,3 +29,15 @@ The complete **`StarSwarm_Round42_5_Determined_Pursuit.zip`** includes the two r
 **Archive state:** this README is committed to existing draft PR #3734; ZIP and render files are available in ChatGPT but have **not** been uploaded to the PR branch through this connector. Owner can upload the ZIP to this folder. Production game audio remains untouched.
 
 Related: epic #3635, audition #3642, Round 42 README and Round 41 storyboard.
+
+## Owner's explicit sonic target — November 12, 2026 (supersedes the Round 42.5 B tonal experiment)
+
+The owner rejects Round 42.5B as **still not right**, and supplies the following clearer aesthetic direction for the foundation:
+
+> Synthesized ambient and electronic classical arrangement, evoking a cosmic, meditative, ethereal atmosphere. Lush, swirling synthesizer pads and electronic oscillator sweeps producing an expansive cosmic soundscape; a soaring, organ-like electronic lead with sustained hymn-like melody, rich vibrato and vintage warmth; immersive continuous drone integrated seamlessly with melodic phrasing; sparse, deliberate pacing where harmonies swell and decay, conveying profound space and introspection.
+
+**Crucial reconciliation with older constraints:** this is a *sound palette and phrasing aesthetic*, not a cancellation of prior owner approvals that Star Swarm's gameplay BGM needs **urgency, power, conviction, continuous propulsion and a dark sci-fi identity**. “Meditative” and “sparse” must not make the music static, sad, mournful or sleep-inducing. The desired paradox is **spacious textures above a persistent sense of forward motion**, not constant fast arpeggios or rigid beats. The warm, organ-like lead must sound electronically transformed and expansive—not the exposed traditional organ/horn that previously evoked fantasy, and not relentlessly hymn-like/sorrowful.
+
+**Suggested next isolated foundation test, no signature effects:** Compare the existing baseline with a newly *scored* 45–60-second passage emphasizing (a) an internally animated layered pad/drone, (b) a soaring, expressive organ-adjacent lead with musically controlled vibrato, (c) oscillator sweeps woven into harmonic phrase transitions rather than unrelated FX, and (d) slow chord breathing paired with an active but unobtrusive bass/harmonic undercurrent. Reassess the **emotional read** (cosmic conviction vs lament) and felt urgency before rewriting all seven minutes. Do not simply overlay these textures on the existing mournful Round 42 track, or count new layers as orchestral scale. Preserve its successful seven-minute nonrepetitive *structure* as the longer-form template.
+
+**Current status:** owner has supplied a target description; no new render or production change is authorized by this note alone.
