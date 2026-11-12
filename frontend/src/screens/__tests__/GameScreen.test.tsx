@@ -3,6 +3,7 @@ import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
 import i18n from "i18next";
 import DeYacht from "../../i18n/locales/de/yacht.json";
 import * as engineModule from "../../game/yacht/engine";
+import { tumbleTotalMs } from "../../game/yacht/motion";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
@@ -50,6 +51,13 @@ jest.mock("../../game/_shared/gameEventClient", () => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Waits for the rolled dice to land: input is locked while they tumble (#3749). */
+async function landDice() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, tumbleTotalMs(5)));
+  });
+}
 
 /** Lets the recorder's idle save (a macrotask, or requestIdleCallback) run. */
 async function flushIdle() {
@@ -137,6 +145,7 @@ describe("GameScreen", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     // After a roll, the button label includes the remaining rolls count (2)
     expect(getByRole("button", { name: /roll dice/i })).toBeTruthy();
   });
@@ -146,6 +155,7 @@ describe("GameScreen", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
@@ -576,6 +586,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
@@ -590,6 +601,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await flushIdle();
     expect(mockEnqueueEvents).not.toHaveBeenCalled();
     await act(async () => {
@@ -625,6 +637,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     for (const die of [1, 3, 3]) {
       await act(async () => {
         await fireEvent.press(getByTestId(`yacht-die-${die}`));
@@ -633,6 +646,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /chance/i }));
     });
@@ -660,6 +674,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       await act(async () => {
         await fireEvent.press(getByRole("button", { name: /roll dice/i }));
       });
+      await landDice();
       await act(async () => {
         await fireEvent.press(getByRole("button", { name: category }));
       });
@@ -778,6 +793,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const abandonCall = mockCompleteGame.mock.calls[0];
@@ -805,6 +821,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     mockStartGame.mockClear();
     mockStartGame.mockReturnValue("game-uuid-test-2");
     // Mid-game New Game opens the confirm modal; confirm it to trigger startNewGame.
@@ -835,6 +852,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
@@ -844,6 +862,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /twos/i }));
     });

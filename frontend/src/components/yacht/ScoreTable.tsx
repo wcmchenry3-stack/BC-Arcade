@@ -8,10 +8,14 @@
  * (teal) colour, 0s dimmed, and the best row boxed; a scored row shows its score in bold; the
  * Hint's row is tinted green with a bar; the row the computer just scored is tinted purple with
  * a bar. The upper subtotal is a band of its own (not a score row, not tappable).
+ *
+ * Motion (#3749, `scoreMotion.tsx`): a score's cell pops and the total counts up, for you and the
+ * computer; the "+35" pulses when the upper bonus is earned. None of it under Reduce Motion.
  */
 import React, { useCallback, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
-import type { LayoutChangeEvent } from "react-native";
+import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
+import Animated from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { useReduceMotion } from "../shared/useReduceMotion";
@@ -22,6 +26,39 @@ import {
 } from "../../game/yacht/categories";
 import { bestPotentialKey } from "../../game/yacht/scoreSummary";
 import { UPPER_BONUS_VALUE, bonusEarned, upperSum } from "../scorecard/yachtScorecardModel";
+import {
+  BONUS_PULSE_MS,
+  BONUS_PULSE_SCALE,
+  SCORE_POP_MS,
+  SCORE_POP_SCALE,
+} from "../../game/yacht/motion";
+import { CountUpText, usePop } from "./scoreMotion";
+
+/** A view that pops when `on` turns true (a score lands, a bonus is earned). */
+function Pop({
+  on,
+  peak,
+  ms,
+  reduceMotion,
+  style,
+  testID,
+  children,
+}: {
+  on: boolean;
+  peak: number;
+  ms: number;
+  reduceMotion: boolean;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+  children?: React.ReactNode;
+}) {
+  const popStyle = usePop(on, peak, ms, reduceMotion);
+  return (
+    <Animated.View style={[style, popStyle]} testID={testID}>
+      {children}
+    </Animated.View>
+  );
+}
 
 /** Row height (pt): 13 rows fit a 390 x 844 phone with the band, the total and the tray. */
 export const SCORE_ROW_HEIGHT = 29;
@@ -179,7 +216,11 @@ export default function ScoreTable({
             {label}
           </Text>
           <View style={styles.cell}>
-            <View
+            <Pop
+              on={filled}
+              peak={SCORE_POP_SCALE}
+              ms={SCORE_POP_MS}
+              reduceMotion={reduceMotion}
               testID={isBest ? "yacht-best-potential" : undefined}
               style={[
                 styles.valueBox,
@@ -193,10 +234,16 @@ export default function ScoreTable({
               <Text style={[styles.value, { color: playerColor, fontWeight: playerWeight }]}>
                 {playerText}
               </Text>
-            </View>
+            </Pop>
           </View>
           {isVs && (
-            <View style={styles.cell}>
+            <Pop
+              on={cpuScore !== null}
+              peak={SCORE_POP_SCALE}
+              ms={SCORE_POP_MS}
+              reduceMotion={reduceMotion}
+              style={styles.cell}
+            >
               <Text
                 style={[
                   styles.value,
@@ -207,7 +254,7 @@ export default function ScoreTable({
               >
                 {cpuScore !== null ? String(cpuScore) : "—"}
               </Text>
-            </View>
+            </Pop>
           )}
         </Pressable>
       </View>
@@ -247,16 +294,30 @@ export default function ScoreTable({
         </View>
         <View style={styles.cell}>
           <Text style={[styles.bandValue, { color: colors.text }]}>{playerUpper}</Text>
-          {playerEarned && (
-            <Text style={[styles.bandBonus, { color: colors.text }]}>+{UPPER_BONUS_VALUE}</Text>
-          )}
+          <Pop
+            on={playerEarned}
+            peak={BONUS_PULSE_SCALE}
+            ms={BONUS_PULSE_MS}
+            reduceMotion={reduceMotion}
+          >
+            {playerEarned && (
+              <Text style={[styles.bandBonus, { color: colors.text }]}>+{UPPER_BONUS_VALUE}</Text>
+            )}
+          </Pop>
         </View>
         {isVs && (
           <View style={styles.cell}>
             <Text style={[styles.bandValue, { color: cpuText }]}>{cpuUpper}</Text>
-            {cpuEarned && (
-              <Text style={[styles.bandBonus, { color: cpuText }]}>+{UPPER_BONUS_VALUE}</Text>
-            )}
+            <Pop
+              on={cpuEarned}
+              peak={BONUS_PULSE_SCALE}
+              ms={BONUS_PULSE_MS}
+              reduceMotion={reduceMotion}
+            >
+              {cpuEarned && (
+                <Text style={[styles.bandBonus, { color: cpuText }]}>+{UPPER_BONUS_VALUE}</Text>
+              )}
+            </Pop>
           </View>
         )}
       </View>
@@ -321,14 +382,15 @@ export default function ScoreTable({
             )}
           </View>
           <View style={styles.cell}>
-            <Text
+            <CountUpText
+              value={playerTotalScore}
+              reduceMotion={reduceMotion}
+              testID="yacht-total-you"
               style={[
                 styles.totalValue,
                 { color: playerLeading ? colors.outcomeWin : colors.text },
               ]}
-            >
-              {playerTotalScore}
-            </Text>
+            />
             {anyYachtBonus && (
               <Text style={[styles.bandBonus, { color: colors.textMuted }]}>
                 {playerYachtBonusTotal > 0 ? `+${playerYachtBonusTotal}` : "—"}
@@ -337,11 +399,12 @@ export default function ScoreTable({
           </View>
           {cpu !== null && (
             <View style={styles.cell}>
-              <Text
+              <CountUpText
+                value={cpu.totalScore}
+                reduceMotion={reduceMotion}
+                testID="yacht-total-cpu"
                 style={[styles.totalValue, { color: cpuLeading ? colors.outcomeWin : colors.text }]}
-              >
-                {cpu.totalScore}
-              </Text>
+              />
               {anyYachtBonus && (
                 <Text style={[styles.bandBonus, { color: colors.textMuted }]}>
                   {cpu.yachtBonusTotal > 0 ? `+${cpu.yachtBonusTotal}` : "—"}

@@ -37,8 +37,10 @@ interface DiceRowProps {
   gameOver: boolean;
   onRoll: () => void | Promise<void>;
   onToggleHold: (index: number) => void;
-  /** Indices of dice that are currently animating a roll. */
+  /** Indices of dice that are currently animating a roll, left to right (their tumbles are staggered in this order). */
   rollingIndices?: readonly number[];
+  /** How fast the tumble plays: 2 for the computer's fast last turn (#3749). */
+  tumbleSpeed?: number;
   /** The computer's turn: the dice shown are its dice, Roll reads "Computer's turn" and nothing is tappable. */
   locked?: boolean;
   /** The computer's rolls so far this turn (shown as "Roll n / 3" while it plays). */
@@ -61,6 +63,7 @@ export default function DiceRow({
   onRoll,
   onToggleHold,
   rollingIndices,
+  tumbleSpeed = 1,
   locked = false,
   computerRolls = 0,
   turnLabel = null,
@@ -162,6 +165,8 @@ export default function DiceRow({
             onPress={() => onToggleHold(i)}
             disabled={locked || rollsUsed === 0 || gameOver}
             rolling={rollingIndices?.includes(i) ?? false}
+            rollOrder={Math.max(0, rollingIndices?.indexOf(i) ?? 0)}
+            tumbleSpeed={tumbleSpeed}
             reduceMotion={reduceMotion}
             hinted={!locked && hintHold?.[i] === true}
             dimmed={gameOver}

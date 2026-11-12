@@ -5,6 +5,14 @@ import { useTranslation } from "react-i18next";
 import { AnimationOverlay } from "../shared/AnimationOverlay";
 import { useCelebration } from "../shared/useCelebration";
 import { BADGE_JOKER_BG, BADGE_TEXT, BADGE_YACHT_BG } from "../../theme/theme.constants";
+import {
+  JACKPOT_BADGE_FADE_OUT_MS,
+  JACKPOT_DONE_MS,
+  JACKPOT_EXIT_AT_MS,
+  JACKPOT_PARTICLE_FADE_OUT_MS,
+  JACKPOT_PARTICLE_STAGGER_MS,
+  JACKPOT_REDUCED_DONE_MS,
+} from "../../game/yacht/motion";
 
 interface Props {
   visible: boolean;
@@ -51,13 +59,13 @@ export function YachtCelebrationAnimation({ visible, onDismiss, variant = "yacht
     onDone: onDismiss,
     badgeSpring: { damping: 9, stiffness: 130 },
     particleSpring: { damping: 7, stiffness: 110 },
-    particleStaggerMs: 45,
-    exitAtMs: 2200,
-    doneAtMs: 2800,
-    badgeFadeOutMs: 500,
-    particleFadeOutMs: 400,
+    particleStaggerMs: JACKPOT_PARTICLE_STAGGER_MS,
+    exitAtMs: JACKPOT_EXIT_AT_MS,
+    doneAtMs: JACKPOT_DONE_MS,
+    badgeFadeOutMs: JACKPOT_BADGE_FADE_OUT_MS,
+    particleFadeOutMs: JACKPOT_PARTICLE_FADE_OUT_MS,
     // Reduce Motion: show the badge and dice still, then dismiss.
-    reducedMotion: { mode: "static", doneAfterMs: 1500 },
+    reducedMotion: { mode: "static", doneAfterMs: JACKPOT_REDUCED_DONE_MS },
   });
 
   return (

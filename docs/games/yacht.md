@@ -114,6 +114,58 @@ The shared result card. Solo shows the player's Upper / Lower / Bonus stats and 
 - All words are i18n (`locales/<lang>/yacht.json`), including the `YACHT!` and `JOKER!` celebration words (the game's name stays `YACHT!`; the font shrinks for a long word on a narrow phone). Layout is checked in en, fr-CA and es at 320 and 390 pt (`e2e/tests/yacht-layout.spec.ts`).
 - Text that was the accent is `colors.accentText` (a darker teal in light, ≥ 4.5:1 on cream); see [BRANDING.md](../BRANDING.md#accent-as-text-accenttext-3748).
 
+## Motion (#3749)
+
+Every timing is in `frontend/src/game/yacht/motion.ts`; `__tests__/motion.test.ts` holds the ceilings. The owner picked proposal 2, "tumble". Times are from the press (your roll or score) unless the row says otherwise.
+
+| What | Constant(s) | When / how long | Notes |
+| --- | --- | --- | --- |
+| Tumble (one die) | `TUMBLE_MS` 420 | 0 to 420 ms | turns 0 to 360° (ease-out over the first 85 %, `TUMBLE_SPIN_SHARE`), hops up to 18 pt (`TUMBLE_HOP_PX`, a sine over the first 80 %), flicks a random face every 70 ms (`TUMBLE_FACE_MS`); at 80 % (`TUMBLE_LAND_AT`, 336 ms) it shows its final face and lands with a squash to 1.07 (`TUMBLE_SQUASH_SCALE`) |
+| Stagger | `TUMBLE_STAGGER_MS` 35 | each rolled die 35 ms after the one to its left | only the dice rolled tumble; held dice stay still |
+| Dice at rest, input unlocks | `tumbleTotalMs(n)` | 420 + 35 × (n − 1): 560 ms for five, 455 ms for two | Roll, the dice, the score rows and Hint are inert until then (audit bug 8); the screen's `rollingIndices` ends on the same constant, and its timer is cleared on unmount, New Game and Reduce Motion (bug 9). The roll sound settles at about 0.42 s, with the first die |
+| Hold / release | `HOLD_MS` 150 | 0 to 150 ms | the 4 pt lift eases in and out; the ring fades in |
+| Score pop | `SCORE_POP_MS` 260, `SCORE_POP_SCALE` 1.2 | 0 to 260 ms, peak at 130 ms | the scored cell, yours and the computer's |
+| Total count-up | `TOTAL_COUNT_MS` 300 | 0 to 300 ms | ease-out; the text's accessibility label is always the final total |
+| Upper bonus pulse | `BONUS_PULSE_MS` 400, `BONUS_PULSE_SCALE` 1.3 | 0 to 400 ms | the band's "+35", when it is earned |
+| YACHT! / JOKER! celebration | `JACKPOT_EXIT_AT_MS` 2200, `JACKPOT_DONE_MS` 2800, `JACKPOT_PARTICLE_STAGGER_MS` 45, `JACKPOT_BADGE_FADE_OUT_MS` 500, `JACKPOT_PARTICLE_FADE_OUT_MS` 400, `JACKPOT_REDUCED_DONE_MS` 1500 | done at 2.8 s (1.5 s under Reduce Motion) | unchanged by this story, so the jackpot sounds keep their timing |
+| Computer: a roll | `cpuRollMs(n)` = `tumbleTotalMs(n)` + `CPU_SETTLE_MS` 150 | 710 ms for five dice | its dice tumble (the roll sound plays as they start), then settle |
+| Computer: a hold | `CPU_HOLD_MS` 500 | 500 ms | its held dice are shown before it re-rolls |
+| Computer: the score beat | `CPU_SCORE_BEAT_MS` 600 | 600 ms | then its score lands (pop, count-up, its row highlighted) |
+| Computer: longest turn | `cpuTurnMaxMs()` | 3.73 s (was 8 s) | a roll and two re-rolls of five, two holds, the score beat |
+| Computer: its last turn after yours (vs) | `CPU_LAST_TURN_SPEED` 2 | at most 1.87 s | everything at 2×, tumbles included, still shown step by step (owner) |
+| Computer: under Reduce Motion | `CPU_REDUCED_MOTION_SPEED` 2 | at most 1.87 s (its last turn 0.93 s) | every step halved, no tumbles, still step by step (owner); read at each step |
+| End beat | `WIN_BEAT_MS` 1000, `LOSS_BEAT_MS` 600, `TIE_BEAT_MS` 600 | from the game's last score | see below |
+
+### End beats and the moments for the end sounds (#3750)
+
+The result card waits for a beat (`components/yacht/useYachtEndBeat.ts`, as 2048's `useTwenty48Beat`, held through `components/yacht/useYachtMotion.ts`). The beat is started in the same handler as the `setState` of the game's last score (solo: yours, in `handleScore`; vs: the computer's, from `useYachtCpuOpponent`'s `onScored`, in one batch), so the card never flashes before it. The outcome: in vs, win, loss or tie from the totals; in solo, **win on a new personal best, otherwise tie** (owner).
+
+| Game ends with | Beat starts (end sound) | Card shows |
+| --- | --- | --- |
+| Solo, your last score | with the score (0 s) | 1.0 s on a new best, 0.6 s otherwise |
+| Solo, your last score a Yacht or a Joker | when the celebration ends: 2.8 s | 3.8 s (new best) or 3.4 s |
+| Vs, the computer's last score | with its score: up to 1.87 s after yours (its last turn at 2×) | +1.0 s (you win), +0.6 s (you lose or tie) |
+| Vs, your last score a Yacht or a Joker | when the celebration ends (2.8 s after your score), if it is still showing when the computer scores | +1.0 / +0.6 s |
+| Reduce Motion | with the last score (after a still celebration, 1.5 s) | at once |
+| A game reopened on the computer's last turn | never: no beat, no end sound | at once (that turn is scored on open) |
+
+For #3750: `useYachtMotion({ onStart })` (passed to `useYachtEndBeat`) calls `onStart(outcome, beatMs)` at the moment the beat starts, once per game and never on a restore; the card shows `beatMs` later (0 under Reduce Motion). `endOutcome` holds the outcome until a New Game. No sound is played by this story.
+
+- **The card never covers a celebration** (audit bug 1): a last score that is a Yacht or a Joker, or a celebration still showing when the computer scores, holds the card with no timer until the celebration's `onDone`; then the beat runs. A safety net (`JACKPOT_WAIT_MAX_MS`, 3.5 s) starts the beat if the celebration never reports that it is done.
+- **New Game and leaving** clear the beat, any wait and the tumble.
+- **The solo best** is local (owner): `game/yacht/bestScore.ts`, AsyncStorage key `yacht_best_score_v1` (a number), read when the screen mounts so the check at the end is synchronous, compared with `bestOf`, and stored when beaten. The first finished solo game counts as a new best. Vs games don't record it. It is a record of its own beside the game save, so older saves load unchanged; #3757 will replace it with a shared best-score module.
+- **A game reopened on the computer's last turn** (you had finished; `resumeInstantly`): that turn is played to its score at once, with no steps, no tumble and no sound (its score carries no events), and the card shows.
+
+### Reduce Motion
+
+Read live with `useReduceMotion` ([ACCESSIBILITY.md section 3](../ACCESSIBILITY.md)):
+
+- no tumble (the faces change in place, and input is not locked), no hold ease, no pop, no count-up, no bonus pulse, no end beat (the card shows at once);
+- turned on mid-tumble, the dice snap to rest and input unlocks; turned on mid-beat, the timer is cancelled and the card shows; turning it off again replays nothing;
+- the computer's turn: its pauses are halved and its dice don't tumble, still step by step.
+
+How it is built: the tumble runs on the UI thread (Reanimated): one shared value per die drives its transform and the pips' opacity (`Die.tsx`); nothing on the JS thread per frame except the total's count-up (one small text, about 18 frames).
+
 ## Computer opponent
 
 ### One engine, three handicaps
@@ -190,7 +242,7 @@ A special edge exists when the human has finished but the computer's final turn 
 
 ## Persistence and timing
 
-The local save contains the game state and, for vs mode, AI state/difficulty so an unfinished match can resume.
+The local save contains the game state and, for vs mode, AI state/difficulty so an unfinished match can resume. A game reopened with only the computer's last turn left has that turn scored at once and shows its card (#3749). The solo personal best is a separate local record (`yacht_best_score_v1`, see [Motion](#motion-3749)).
 
 Yacht does not maintain a separate engine play clock. `useGameSync` supplies active-play duration from foreground time on the game screen; long idle gaps are bounded by the shared play-window rules.
 

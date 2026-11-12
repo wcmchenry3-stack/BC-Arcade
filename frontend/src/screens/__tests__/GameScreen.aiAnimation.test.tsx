@@ -344,13 +344,29 @@ describe("GameScreen VS mode — resuming an interrupted AI turn (#2203)", () =>
   });
 
   it("shows round 13 during the computer's last turn after the player has finished (#3491)", async () => {
+    // Played live: a game reopened on that turn scores it at once (#3749), so it is never shown.
     const scores = { ...ALL_NULL_SCORES, ones: 1, twos: 2, threes: 3, fours: 4, fives: 5 };
-    const { getByText } = await renderVsGame(
+    const lastOpen = Object.fromEntries(
+      Object.keys(ALL_NULL_SCORES).map((k) => [k, k === "chance" ? null : (scores[k] ?? 0)])
+    ) as GameState["scores"];
+    const { getByText, getByRole } = await renderVsGame(
+      { round: 13, rolls_used: 1, scores: lastOpen },
+      { round: 13, rolls_used: 0, scores: lastOpen }
+    );
+    await act(async () => {
+      await fireEvent.press(getByRole("button", { name: /chance/i }));
+    });
+    expect(getByText("Computer's Turn")).toBeTruthy();
+    expect(getByText("Round 13 / 13")).toBeTruthy();
+  });
+
+  it("a game reopened on the computer's last turn scores it at once: no turn shown (#3749)", async () => {
+    const scores = { ...ALL_NULL_SCORES, ones: 1, twos: 2, threes: 3, fours: 4, fives: 5 };
+    const { queryByText } = await renderVsGame(
       { round: 14, game_over: true, rolls_used: 0, scores },
       { round: 13, rolls_used: 0, scores }
     );
-    expect(getByText("Computer's Turn")).toBeTruthy();
-    expect(getByText("Round 13 / 13")).toBeTruthy();
+    expect(queryByText("Computer's Turn")).toBeNull();
   });
 
   it("does not start an AI turn when the round is the player's", async () => {
