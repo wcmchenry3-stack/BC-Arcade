@@ -174,7 +174,7 @@ export function ModalSecondaryButton({
         style={[
           styles.secondaryText,
           accent ? styles.secondaryTextAccent : styles.secondaryTextMuted,
-          { color: accent ? colors.accent : colors.textMuted },
+          { color: accent ? colors.accentText : colors.textMuted },
         ]}
       >
         {label}

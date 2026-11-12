@@ -689,7 +689,7 @@ export default function Twenty48Screen({ navigation }: Props) {
           <View style={styles.boardArea} onLayout={onBoardAreaLayout} testID="twenty48-board-area">
             {noHintVisible && (
               <Text
-                style={[styles.noHintToast, { color: colors.accent }]}
+                style={[styles.noHintToast, { color: colors.accentText }]}
                 accessibilityLiveRegion="polite"
                 testID="twenty48-no-hint-toast"
               >
@@ -737,7 +737,7 @@ export default function Twenty48Screen({ navigation }: Props) {
                 icon: "refresh",
                 label: t("twenty48:actions.newGame"),
                 accessibilityLabel: t("twenty48:actions.newGameLabel"),
-                color: colors.accent,
+                color: colors.accentText,
                 onPress: handleNewGamePress,
                 testID: "twenty48-new-game-button",
               },

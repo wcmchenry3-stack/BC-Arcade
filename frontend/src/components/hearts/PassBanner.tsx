@@ -89,7 +89,7 @@ export default function PassBanner({
           numberOfLines={1}
           style={[
             styles.counter,
-            { color: canConfirm ? colors.accent : colors.textMuted },
+            { color: canConfirm ? colors.accentText : colors.textMuted },
             !showCounter && styles.srOnly,
           ]}
         >

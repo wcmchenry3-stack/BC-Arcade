@@ -90,7 +90,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       value: t("stats.comebackLow", {
         chips: formatNumber(t, comebackLow(biggestComebackRun)),
       }),
-      valueColor: colors.accent,
+      valueColor: colors.accentText,
     });
   }
 
@@ -102,7 +102,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
   }
 
   function outcomeColor(outcome: RunBadge): string {
-    if (outcome === "comeback") return colors.accent;
+    if (outcome === "comeback") return colors.accentText;
     if (outcome === "completed") return colors.bonus;
     if (outcome === "abandoned") return colors.textMuted;
     return colors.error;

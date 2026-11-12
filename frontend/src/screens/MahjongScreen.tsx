@@ -897,7 +897,7 @@ export default function MahjongScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={tResult("action.undoLastMove")}
               >
-                <Text style={[styles.resultUndoText, { color: colors.accent }]}>
+                <Text style={[styles.resultUndoText, { color: colors.accentText }]}>
                   {tResult("action.undoLastMove")}
                 </Text>
               </Pressable>
