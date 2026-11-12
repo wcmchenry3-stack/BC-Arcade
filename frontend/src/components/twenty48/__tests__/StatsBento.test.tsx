@@ -22,6 +22,11 @@ describe("formatTime", () => {
     expect(formatTime(3_599_000)).toBe("59:59");
   });
 
+  it("never shows a negative time (#3735)", () => {
+    expect(formatTime(-1_500)).toBe("00:00");
+    expect(formatTime(-61_000)).toBe("00:00");
+  });
+
   it("pads single-digit minutes and seconds", () => {
     expect(formatTime(9_000)).toBe("00:09");
     expect(formatTime(60_000)).toBe("01:00");
@@ -140,5 +145,37 @@ describe("StatsBento — rendering", () => {
         await i18n.changeLanguage("en");
       });
     }
+  });
+});
+
+describe("StatsBento — a clock that starts after the last tick (#3735)", () => {
+  afterEach(() => jest.useRealTimers());
+
+  it("shows the time so far, not a negative one, until the next tick", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1_000_000);
+    const r = await renderBento(makeState({ startedAt: null, accumulatedMs: 5_000 }));
+    // The first move starts the clock 1.5 s after the component last read the time.
+    await r.rerender(
+      <ThemeProvider>
+        <StatsBento state={makeState({ startedAt: 1_001_500, accumulatedMs: 5_000 })} />
+      </ThemeProvider>
+    );
+    expect(r.getByText("00:05")).toBeTruthy();
+    expect(r.queryByText(/-/)).toBeNull();
+  });
+
+  it("catches up at once when the clock starts, without waiting for the next tick", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1_000_000);
+    const r = await renderBento(makeState({ startedAt: null, accumulatedMs: 5_000 }));
+    // The clock started 3 s ago (a resume), long after the component last read the time.
+    jest.setSystemTime(1_010_000);
+    await r.rerender(
+      <ThemeProvider>
+        <StatsBento state={makeState({ startedAt: 1_007_000, accumulatedMs: 5_000 })} />
+      </ThemeProvider>
+    );
+    expect(r.getByText("00:08")).toBeTruthy();
   });
 });
