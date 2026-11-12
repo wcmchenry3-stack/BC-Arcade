@@ -56,6 +56,7 @@ Tokens live in `frontend/src/theme/ThemeContext.tsx`. Import via `useTheme()` �
 | `textMuted`    | `#a0a0ac` | Secondary text, labels                                                         |
 | `textOnAccent` | `#0e0e13` | Text on accent-filled buttons                                                  |
 | `accent`       | `#8ff5ff` | Cyan primary — CTAs, highlights                                                |
+| `accentText`   | `#8ff5ff` | The accent as the colour of text (the same as `accent` in dark)                |
 | `accentBright` | `#00eefc` | Accent gradient stop, neon glow                                                |
 | `secondary`    | `#d674ff` | Magenta secondary — combo, alt state                                           |
 | `tertiary`     | `#cafd00` | Lime tertiary — tertiary accents                                               |
@@ -77,6 +78,7 @@ Stitch only ships a dark mockup. The light theme is **first-class** and maintain
 | `text`         | `#1a1412` | Primary text                                                                   |
 | `textMuted`    | `#6b5e4a` | Secondary text                                                                 |
 | `accent`       | `#1bc5d4` | Teal — fills and decoration, not text                                          |
+| `accentText`   | `#006d77` | Teal for text: ≥ 4.5:1 on every cream surface (4.6–5.8:1)                      |
 | `accentBright` | `#00a8b8` | Accent-filled buttons (dark text on it)                                        |
 | `secondary`    | `#a34fc4` | Darkened magenta                                                               |
 | `tertiary`     | `#8fa800` | Darkened lime                                                                  |
@@ -86,6 +88,12 @@ Stitch only ships a dark mockup. The light theme is **first-class** and maintain
 The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 
 **Contrast rule:** all body and label text must achieve **≥ 4.5:1** against its surface (WCAG AA). Accent-on-surface pairs used for meaningful information (not decoration) must also meet 4.5:1.
+
+### Accent as text: `accentText` (#3748)
+
+The light accent `#1bc5d4` measures 1.6–2:1 on cream, so it can't colour text. **Any text (or thin stroke) that would be `colors.accent` is `colors.accentText`**: in dark it is the accent itself, in light a darker teal `#006d77` that reaches **≥ 4.5:1** on `background`, `surface`, `surfacePeer`, `surfaceAlt`, `surfaceHigh` and the held-die tint (`frontend/src/theme/__tests__/accentTextContrast.test.ts`). Backgrounds, button fills, bars and borders that carry no information stay `accent`. The light `potential` token (Yacht's potential scores) is `accentText`.
+
+Not switched, by design: icons and spinners (graphics need 3:1, not 4.5:1), text on a fixed dark surface (the dark header bar, the blackjack and solitaire felt, dev panels) where the bright accent is the readable one.
 
 ### Outcome tokens (end-of-game results)
 
@@ -141,7 +149,7 @@ Stitch mockups are **guidelines, not truth**. They contain inconsistencies and r
 | Screen        | Source of truth            | Notes                                                                                                             |
 | ------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **Cascade**   | Our implementation         | Tokens already match Stitch exactly. Do not regress Cascade to match the Stitch mockup layout.                    |
-| **Yacht**     | Stitch mockup              | `stitch_gaming_app/yatch_gameplay/` is the target layout.                                                         |
+| **Yacht**     | Our implementation         | The thumb tray (#3748, see [Yacht UI](games/yacht.md#ui)). The Stitch mockup is no longer the target.             |
 | **2048**      | Stitch mockup              | Rebuild from the Stitch layout, not a reskin.                                                                     |
 | **Blackjack** | Stitch mockup (priority)   | `stitch_gaming_app/blackjack_table/` and `blackjack_betting/` — this is the one we most want to faithfully match. |
 | **Lobby**     | Stitch mockup              | The shipped lobby came out squished; any rework must honor the Stitch layout's breathing room and proportions.    |

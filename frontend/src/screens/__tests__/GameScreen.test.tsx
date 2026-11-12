@@ -884,8 +884,8 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
       "Three of a Kind",
       "Four of a Kind",
       "Full House",
-      "Sm. Straight",
-      "Lg. Straight",
+      "Small Straight",
+      "Large Straight",
       "Yacht!",
       "Chance",
     ]) {
@@ -903,8 +903,8 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
       const soloBtn = queryByRole("button", { name: /^solo$/i });
       if (soloBtn) fireEvent.press(soloBtn);
     });
-    // After reset: upper_subtotal=0, upper_bonus=0 → progress display ("0 / 63")
-    expect(getByText("0 / 63")).toBeTruthy();
+    // After reset: upper_subtotal=0, upper_bonus=0 → the subtotal band reads "0 / 63 · +35 bonus"
+    expect(getByText(/^0 \/ 63/)).toBeTruthy();
     // The "achieved" check mark must not be visible after reset
     expect(queryByText(/\u2713/)).toBeNull();
   });

@@ -116,7 +116,7 @@ Run this before shipping any new game or screen.
 
 | Game        | Canvas?            | Known accessibility work                                              |
 | ----------- | ------------------ | --------------------------------------------------------------------- |
-| Yacht       | No                 | Dice faces need `accessibilityLabel` (e.g. "Die showing 4")           |
+| Yacht       | No                 | Done (#3748): dice say face and held; rows say score or potential     |
 | Hearts      | No                 | Card labels must include suit + rank (e.g. "Queen of Spades")         |
 | Blackjack   | No                 | Card labels must include suit + rank; chip count must use live region |
 | Solitaire   | No                 | Pile positions and card labels required                               |

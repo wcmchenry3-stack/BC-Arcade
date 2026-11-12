@@ -1,3 +1,7 @@
+/**
+ * The thumb tray (#3748): the card under the scorecard that holds everything a turn needs in
+ * thumb reach — the turn hint, the five dice, and a row with Roll and (the screen's) action bar.
+ */
 import React, { useState } from "react";
 import {
   View,
@@ -6,19 +10,25 @@ import {
   StyleSheet,
   Platform,
   ViewStyle,
+  LayoutChangeEvent,
   useWindowDimensions,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import Die from "./Die";
+import Die, { DIE_LIFT } from "./Die";
 import { useTheme } from "../theme/ThemeContext";
 import { useReduceMotion } from "./shared/useReduceMotion";
 
-// Below this viewport height, the dice row collapses its vertical padding,
-// hides the redundant rolls-left dot indicator (the ROLL button already
-// shows "ROLL (N LEFT)"), and tightens its roll button so the Yacht
-// scorecard gets more usable space. Catches Galaxy Fold landscape (~604dp),
-// Galaxy Fold portrait (~725dp), and smaller phones.
-const COMPACT_HEIGHT_BREAKPOINT = 780;
+/** The gap (pt) between dice. */
+const DIE_GAP = 8;
+const MAX_DIE = 60;
+const MIN_DIE = 36;
+/** Side gutter of the screen (16) and the tray's padding (12), each side: the dice row's width is the window's less these. */
+const TRAY_SIDE_INSET = 28;
+
+/** The largest die (pt) that fits five in a row `rowWidth` wide. */
+export function dieSizeFor(rowWidth: number): number {
+  return Math.max(MIN_DIE, Math.min(MAX_DIE, Math.floor((rowWidth - 4 * DIE_GAP) / 5)));
+}
 
 interface DiceRowProps {
   dice: number[];
@@ -29,8 +39,18 @@ interface DiceRowProps {
   onToggleHold: (index: number) => void;
   /** Indices of dice that are currently animating a roll. */
   rollingIndices?: readonly number[];
-  /** When true, disables the roll button but keeps dice at full opacity (used to show opponent dice). */
+  /** The computer's turn: the dice shown are its dice, Roll reads "Computer's turn" and nothing is tappable. */
   locked?: boolean;
+  /** The computer's rolls so far this turn (shown as "Roll n / 3" while it plays). */
+  computerRolls?: number;
+  /** "Your Turn" in a game against the computer; none in solo. */
+  turnLabel?: string | null;
+  /** The Hint's message (or its "no hint" one): replaces the turn hint while it is up. */
+  hintMessage?: { text: string; none: boolean } | null;
+  /** The dice the Hint suggests keeping. */
+  hintHold?: readonly boolean[] | null;
+  /** Rendered beside Roll: the shared action bar. */
+  actions?: React.ReactNode;
 }
 
 export default function DiceRow({
@@ -42,22 +62,24 @@ export default function DiceRow({
   onToggleHold,
   rollingIndices,
   locked = false,
+  computerRolls = 0,
+  turnLabel = null,
+  hintMessage = null,
+  hintHold = null,
+  actions,
 }: DiceRowProps) {
   const { t } = useTranslation("yacht");
   const { colors } = useTheme();
-  const { height } = useWindowDimensions();
-  const isCompact = height < COMPACT_HEIGHT_BREAKPOINT;
-  const [rolling, setRolling] = useState(false);
+  const { width: windowWidth } = useWindowDimensions();
   const reduceMotion = useReduceMotion();
-
-  async function handleRoll() {
-    setRolling(true);
-    try {
-      await onRoll();
-    } finally {
-      setRolling(false);
-    }
-  }
+  // The dice are sized from the width the row actually has: measured, with the window's less the
+  // screen gutter and tray padding until the first layout.
+  const [rowWidth, setRowWidth] = useState<number | null>(null);
+  const size = dieSizeFor(rowWidth ?? windowWidth - 2 * TRAY_SIDE_INSET);
+  const onRowLayout = (e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    setRowWidth((prev) => (prev === w ? prev : w));
+  };
 
   const canRoll = rollsUsed < 3 && !gameOver && !locked;
   const rollsLeft = 3 - rollsUsed;
@@ -67,134 +89,172 @@ export default function DiceRow({
     canRoll && Platform.OS === "web"
       ? ({
           backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-          boxShadow: `0 0 24px ${colors.accent}55`,
         } as ViewStyle)
       : { backgroundColor: canRoll ? colors.accentBright : colors.surfaceHigh };
 
+  const rollText = locked ? t("vsMode.computerTurn") : t("roll.button", { count: rollsLeft });
+
+  let hintLine: React.ReactNode;
+  if (locked) {
+    hintLine = (
+      <>
+        <Text style={[styles.hint, { color: colors.textMuted }]}>{t("dice.hintComputer")}</Text>
+        {computerRolls > 0 && (
+          <Text style={[styles.hint, { color: colors.textMuted }]}>
+            {t("vsMode.rollCounter", { n: computerRolls })}
+          </Text>
+        )}
+      </>
+    );
+  } else if (hintMessage) {
+    hintLine = (
+      <Text
+        style={[styles.hint, styles.hintStrong, { color: colors.accentText }]}
+        testID={hintMessage.none ? "yacht-no-hint-toast" : "yacht-hint-message"}
+      >
+        {hintMessage.text}
+      </Text>
+    );
+  } else {
+    hintLine = (
+      <>
+        {turnLabel ? (
+          <>
+            <Text style={[styles.hint, styles.hintStrong, { color: colors.accentText }]}>
+              {turnLabel}
+            </Text>
+            <Text
+              style={[styles.hint, { color: colors.textMuted }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
+              ·
+            </Text>
+          </>
+        ) : null}
+        <Text style={[styles.hint, { color: colors.textMuted }]}>
+          {rollsUsed > 0
+            ? t("dice.hintAfterRoll")
+            : turnLabel
+              ? t("dice.hintRollToStart")
+              : t("dice.hintBeforeRoll")}
+        </Text>
+      </>
+    );
+  }
+
   return (
-    <View style={[styles.container, isCompact && styles.containerCompact]}>
-      <View style={styles.diceRow}>
+    <View
+      style={[styles.tray, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+      testID="yacht-tray"
+    >
+      <View style={styles.hintRow} testID="yacht-hint-line">
+        {hintLine}
+      </View>
+      <View style={styles.diceRow} onLayout={onRowLayout}>
         {dice.map((val, i) => (
           <Die
             key={i}
             index={i}
+            size={size}
             value={val}
             held={held[i] ?? false}
             onPress={() => onToggleHold(i)}
             disabled={locked || rollsUsed === 0 || gameOver}
             rolling={rollingIndices?.includes(i) ?? false}
             reduceMotion={reduceMotion}
+            hinted={!locked && hintHold?.[i] === true}
+            dimmed={gameOver}
           />
         ))}
       </View>
-      <Text
-        style={[styles.hint, isCompact && styles.hintCompact, { color: colors.textMuted }]}
-        accessibilityLiveRegion="polite"
-      >
-        {rollsUsed > 0 ? t("dice.hintAfterRoll") : t("dice.hintBeforeRoll")}
-      </Text>
-      <Pressable
-        style={({ pressed }) => [
-          styles.rollButton,
-          isCompact && styles.rollButtonCompact,
-          rollButtonBg,
-          // Always emit a transform (identity when not pressed) so it never
-          // goes undefined → null between renders. RN's ReactNativeAttributePayload
-          // coerces undefined props to null, and processTransform(null) crashes
-          // in _validateTransforms (__DEV__ only) with "forEach of null".
-          { transform: [{ scale: pressed && canRoll && !rolling ? 0.95 : 1 }] },
-        ]}
-        onPress={handleRoll}
-        disabled={!canRoll || rolling}
-        accessibilityRole="button"
-        testID="yacht-roll-button"
-        accessibilityLabel={
-          // i18next picks the plural form (ar has six, ru four) from count.
-          rolling ? t("roll.rollingLabel") : t("roll.label", { count: rollsLeft })
-        }
-        accessibilityState={{ disabled: !canRoll || rolling, busy: rolling }}
-      >
-        <Text
-          style={[
-            styles.rollButtonText,
-            { color: canRoll ? colors.textOnAccent : colors.textMuted },
+      <View style={styles.actionRow}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.rollButton,
+            rollButtonBg,
+            // Always emit a transform (identity when not pressed) so it never
+            // goes undefined → null between renders. RN's ReactNativeAttributePayload
+            // coerces undefined props to null, and processTransform(null) crashes
+            // in _validateTransforms (__DEV__ only) with "forEach of null".
+            { transform: [{ scale: pressed && canRoll ? 0.95 : 1 }] },
           ]}
+          onPress={() => void onRoll()}
+          disabled={!canRoll}
+          accessibilityRole="button"
+          testID="yacht-roll-button"
+          accessibilityLabel={
+            // i18next picks the plural form (ar has six, ru four) from count.
+            locked ? t("vsMode.computerTurn") : t("roll.label", { count: rollsLeft })
+          }
+          accessibilityState={{ disabled: !canRoll }}
         >
-          {rolling ? t("roll.rolling") : t("roll.button", { count: rollsLeft })}
-        </Text>
-      </Pressable>
-      {/* Rolls-left dots are redundant with the button label ("ROLL (N LEFT)")
-          — hide them on short viewports to reclaim vertical space. */}
-      {!isCompact && (
-        <View style={styles.rollCounter} accessibilityElementsHidden importantForAccessibility="no">
-          {[0, 1, 2].map((i) => {
-            const filled = i < rollsLeft;
-            return (
-              <View
-                key={i}
-                style={[
-                  styles.rollDot,
-                  {
-                    backgroundColor: filled ? colors.accent : colors.surfaceHigh,
-                    ...(filled && Platform.OS === "web"
-                      ? { boxShadow: `0 0 6px ${colors.accent}` }
-                      : null),
-                  } as ViewStyle,
-                ]}
-              />
-            );
-          })}
-        </View>
-      )}
+          <Text
+            numberOfLines={2}
+            style={[
+              styles.rollButtonText,
+              { color: canRoll ? colors.textOnAccent : colors.textMuted },
+            ]}
+          >
+            {rollText}
+          </Text>
+        </Pressable>
+        {actions}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    marginVertical: 16,
+  tray: {
+    alignSelf: "stretch",
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
   },
-  containerCompact: {
-    marginVertical: 4,
-  },
-  diceRow: {
+  hintRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "center",
+    alignItems: "center",
+    columnGap: 6,
+    minHeight: 20,
   },
   hint: {
     fontSize: 13,
-    marginTop: 4,
-    marginBottom: 8,
+    textAlign: "center",
   },
-  hintCompact: {
-    fontSize: 12,
-    marginTop: 2,
-    marginBottom: 4,
+  hintStrong: {
+    fontWeight: "700",
+  },
+  diceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    // Room for a held die's lift, so it never leaves the row.
+    paddingTop: DIE_LIFT + 4,
+    paddingBottom: 6,
+  },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
   },
   rollButton: {
-    paddingHorizontal: 40,
-    paddingVertical: 14,
+    flex: 1,
+    minHeight: 52,
+    paddingHorizontal: 12,
     borderRadius: 999,
-  },
-  rollButtonCompact: {
-    paddingHorizontal: 28,
-    paddingVertical: 9,
+    alignItems: "center",
+    justifyContent: "center",
   },
   rollButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
-    letterSpacing: 1.5,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
-  },
-  rollCounter: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 10,
-  },
-  rollDot: {
-    width: 10,
-    height: 4,
-    borderRadius: 2,
+    textAlign: "center",
   },
 });

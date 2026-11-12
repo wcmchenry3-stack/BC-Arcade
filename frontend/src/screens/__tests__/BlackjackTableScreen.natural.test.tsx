@@ -344,7 +344,10 @@ describe("Reduce Motion", () => {
     expect(resultShown()).toBe(true);
     expect(screen.getByTestId("result-outcome").props.children).toBe("Blackjack! 3:2");
     expect(screen.queryByTestId(/^felt-chip-/, HIDDEN)).toBeNull();
-    expect(named(at, "blackjack.blackjack")).toEqual([0]);
+    // The sting follows the deal's sound by 100 ms (#3751).
+    expect(named(at, "blackjack.blackjack")).toEqual([]);
+    await advance(100);
+    expect(named(at, "blackjack.blackjack")).toEqual([100]);
     await settle();
     expect(stings()).toBe(1);
     expect(moving()).toBe(false);
