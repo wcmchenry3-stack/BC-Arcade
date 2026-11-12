@@ -129,7 +129,9 @@ export function useYachtCpuOpponent({
   const [isTurn, setIsTurn] = useState(resumeTurn);
   const [rollingIndices, setRollingIndices] = useState<readonly number[]>([]);
   const [tumbleSpeed, setTumbleSpeed] = useState(1);
-  const cancelledRef = useRef(false);
+  // Each turn run gets a token: a loop from an older run (ended, or a new game) sees it changed
+  // after its next await and stops, even once a new turn has started.
+  const runIdRef = useRef(0);
   // How the next turn is played: its last turn at 2x, or a restored last turn at once.
   const lastTurnRef = useRef(false);
   const instantRef = useRef(resumeTurn && resumeInstantly);
@@ -179,7 +181,8 @@ export function useYachtCpuOpponent({
   useEffect(() => {
     if (!isTurn || !difficultyRef.current || !stateRef.current) return;
 
-    cancelledRef.current = false;
+    const run = ++runIdRef.current;
+    const cancelled = () => runIdRef.current !== run;
     const log = turnLogRef.current;
     log.reset();
     const logging = onTurnRef.current !== undefined && (recordingRef.current?.() ?? true);
@@ -258,10 +261,10 @@ export function useYachtCpuOpponent({
       setTumbleSpeed(sp);
       setRollingIndices(rolled);
       await delay(tumbleTotalMs(rolled.length) / sp);
-      if (cancelledRef.current) return false;
+      if (cancelled()) return false;
       setRollingIndices([]);
       await delay(CPU_SETTLE_MS / speed());
-      return !cancelledRef.current;
+      return !cancelled();
     }
 
     /**
@@ -299,7 +302,7 @@ export function useYachtCpuOpponent({
         // them — and with all three rolls used, re-rolling would throw (#2203).
         // Settle pause: let the player read the dice values.
         await delay(CPU_SETTLE_MS / speed());
-        if (cancelledRef.current) return;
+        if (cancelled()) return;
       }
 
       // Up to two re-rolls using hold strategy
@@ -309,13 +312,13 @@ export function useYachtCpuOpponent({
         // Show hold decision on current values so the player sees the AI's choice
         setState({ ...s, held: holds });
         await delay(CPU_HOLD_MS / speed());
-        if (cancelledRef.current) return;
+        if (cancelled()) return;
         if (!(await rollStep(holds))) return;
       }
 
       // Beat before the AI locks in its category
       await delay(CPU_SCORE_BEAT_MS / speed());
-      if (cancelledRef.current) return;
+      if (cancelled()) return;
       const cat = scoreStrategy(s, diff);
       const scoredFrom = s;
       s = engineScore(s, cat);
@@ -329,7 +332,7 @@ export function useYachtCpuOpponent({
     // the VS result screen would never show (#2203).
     function fallback(e: unknown) {
       Sentry.captureException(e, { tags: { subsystem: "yacht.ai", op: "runAiTurn" } });
-      if (cancelledRef.current) return;
+      if (cancelled()) return;
       setRollingIndices([]);
       try {
         let rolledFrom = s;
@@ -361,7 +364,7 @@ export function useYachtCpuOpponent({
       runAiTurn().catch(fallback);
     }
     return () => {
-      cancelledRef.current = true;
+      runIdRef.current += 1;
     };
   }, [isTurn]);
 

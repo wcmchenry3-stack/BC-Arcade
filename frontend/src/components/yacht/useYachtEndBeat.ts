@@ -9,6 +9,9 @@
  *   showing, `start(outcome, { afterCelebration: true })` holds the card with no timer until the
  *   screen calls `celebrationDone()`; then the beat runs. The card never covers a celebration. A
  *   safety net (`JACKPOT_WAIT_MAX_MS`) starts the beat if the celebration never reports it is done.
+ *   A Reduce Motion change restarts the celebration (`useCelebration`), so it re-arms the net.
+ * - An outcome not known yet (the solo best still loading): `start` takes a promise and holds the
+ *   card until it settles, so the beat (and #3750's sound) always has the right outcome.
  * - Reduce Motion: no beat; the card shows as soon as the game ends (after a celebration, which
  *   is itself still and short under Reduce Motion). Read live: turning it on mid-beat cancels the
  *   timer and shows the card, and turning it off again never replays the beat.
@@ -27,7 +30,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { JACKPOT_WAIT_MAX_MS, endBeatMs, type YachtEndOutcome } from "../../game/yacht/motion";
 import { useReduceMotion } from "../shared/useReduceMotion";
 
-type Phase = "idle" | "celebration" | "beat";
+type Phase = "idle" | "waiting" | "celebration" | "beat";
 
 export interface YachtEndBeatOptions {
   /** The beat starts (the moment #3750's end sound plays): the card shows `beatMs` later. */
@@ -40,7 +43,10 @@ export interface YachtEndBeat {
   /** The outcome of the game whose beat has started (or is waiting for a celebration). */
   outcome: YachtEndOutcome | null;
   /** The game's last score has landed: begin the beat (after the celebration, if there is one). */
-  start: (outcome: YachtEndOutcome, options?: { afterCelebration?: boolean }) => void;
+  start: (
+    outcome: YachtEndOutcome | Promise<YachtEndOutcome>,
+    options?: { afterCelebration?: boolean }
+  ) => void;
   /** The celebration has finished: a beat waiting for it starts now. */
   celebrationDone: () => void;
   /** A new game: no beat, wait or outcome left over. */
@@ -90,23 +96,52 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
     onStartRef.current?.(kind, ms);
   }, []);
 
-  const start = useCallback(
-    (kind: YachtEndOutcome, options?: { afterCelebration?: boolean }) => {
-      clearTimer();
-      if (!options?.afterCelebration) {
+  /** A celebration that never reports it is done must not hold the card for good. */
+  const armNet = useCallback(() => {
+    clearTimer();
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      if (waiting.current) begin(waiting.current);
+    }, JACKPOT_WAIT_MAX_MS);
+  }, [begin]);
+
+  // Each start (and clear) is a new game end: a promise from an older one is ignored.
+  const generation = useRef(0);
+
+  /** The outcome is known: the beat now, or a wait for the celebration first. */
+  const startKnown = useCallback(
+    (kind: YachtEndOutcome, afterCelebration: boolean) => {
+      if (!afterCelebration) {
         begin(kind);
         return;
       }
       waiting.current = kind;
       setOutcome(kind);
       toPhase("celebration");
-      // A celebration that never reports it is done must not hold the card for good.
-      timer.current = setTimeout(() => {
-        timer.current = null;
-        if (waiting.current) begin(waiting.current);
-      }, JACKPOT_WAIT_MAX_MS);
+      armNet();
     },
-    [begin]
+    [begin, armNet]
+  );
+
+  const start = useCallback(
+    (
+      kind: YachtEndOutcome | Promise<YachtEndOutcome>,
+      options?: { afterCelebration?: boolean }
+    ) => {
+      clearTimer();
+      const gen = ++generation.current;
+      const after = options?.afterCelebration === true;
+      if (typeof kind === "string") {
+        startKnown(kind, after);
+        return;
+      }
+      // Not known yet: hold the card (no timer) until it is.
+      toPhase("waiting");
+      void kind.then((k) => {
+        if (gen === generation.current) startKnown(k, after);
+      });
+    },
+    [startKnown]
   );
 
   const celebrationDone = useCallback(() => {
@@ -116,6 +151,7 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
 
   const clear = useCallback(() => {
     clearTimer();
+    generation.current += 1;
     waiting.current = null;
     setOutcome(null);
     toPhase("idle");
@@ -123,15 +159,25 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
 
   // Reduce Motion turned on mid-beat (docs/ACCESSIBILITY.md section 3): stop the beat and show the
   // card now. Cleared, not just hidden (below, for the render before this runs), so turning it
-  // off again doesn't replay the beat under the card. A wait for a celebration stays: the
-  // celebration goes still and ends itself.
+  // off again doesn't replay the beat under the card. A wait for a celebration stays, and its
+  // safety net is re-armed: a change either way restarts the celebration (`useCelebration`).
+  const firstRun = useRef(true);
   useEffect(() => {
     reduceMotionRef.current = reduceMotion;
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    if (phaseRef.current === "celebration") {
+      armNet();
+      return;
+    }
     if (!reduceMotion || phaseRef.current !== "beat") return;
     clearTimer();
     toPhase("idle");
-  }, [reduceMotion]);
+  }, [reduceMotion, armNet]);
 
-  const holding = phase === "celebration" || (phase === "beat" && !reduceMotion);
+  const holding =
+    phase === "waiting" || phase === "celebration" || (phase === "beat" && !reduceMotion);
   return { holding, outcome, start, celebrationDone, clear };
 }

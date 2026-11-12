@@ -92,6 +92,46 @@ describe("useYachtEndBeat", () => {
     expect(hook.result.current.holding).toBe(false);
   });
 
+  it("a Reduce Motion change mid-celebration restarts it, so the safety net is re-armed (review round 1)", async () => {
+    const hook = await renderHook(() => useYachtEndBeat());
+    await act(() => hook.result.current.start("win", { afterCelebration: true }));
+    await act(() => jest.advanceTimersByTime(3000));
+    // useCelebration restarts the celebration (still, now) on the change.
+    mockReduceMotion = true;
+    await hook.rerender({});
+    // The old net (at 3.5 s from the start) would have fired by now; the card still waits.
+    await act(() => jest.advanceTimersByTime(JACKPOT_WAIT_MAX_MS - 1));
+    expect(hook.result.current.holding).toBe(true);
+    await act(() => hook.result.current.celebrationDone());
+    expect(hook.result.current.holding).toBe(false); // no beat under Reduce Motion
+  });
+
+  it("an outcome not known yet holds the card until it is, then its beat (review round 1)", async () => {
+    let settle: (o: "win") => void = () => undefined;
+    const outcome = new Promise<"win">((resolve) => (settle = resolve));
+    const onStart = jest.fn();
+    const hook = await renderHook(() => useYachtEndBeat({ onStart }));
+    await act(() => hook.result.current.start(outcome));
+    await act(() => jest.advanceTimersByTime(10_000));
+    expect(hook.result.current.holding).toBe(true);
+    expect(onStart).not.toHaveBeenCalled();
+    await act(async () => settle("win"));
+    expect(onStart).toHaveBeenCalledWith("win", WIN_BEAT_MS);
+    await act(() => jest.advanceTimersByTime(WIN_BEAT_MS));
+    expect(hook.result.current.holding).toBe(false);
+  });
+
+  it("an outcome that comes after a New Game starts nothing", async () => {
+    let settle: (o: "tie") => void = () => undefined;
+    const onStart = jest.fn();
+    const hook = await renderHook(() => useYachtEndBeat({ onStart }));
+    await act(() => hook.result.current.start(new Promise<"tie">((r) => (settle = r))));
+    await act(() => hook.result.current.clear());
+    await act(async () => settle("tie"));
+    expect(onStart).not.toHaveBeenCalled();
+    expect(hook.result.current.holding).toBe(false);
+  });
+
   it("a celebration done with no game ending starts nothing", async () => {
     const onStart = jest.fn();
     const hook = await renderHook(() => useYachtEndBeat({ onStart }));

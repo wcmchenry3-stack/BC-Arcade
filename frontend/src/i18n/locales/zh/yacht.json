@@ -70,6 +70,7 @@
   "error.generic": "出了点问题，请重试。",
   "dice.hintRollToStart": "按下掷骰开始",
   "dice.hintComputer": "电脑正在掷骰…",
+  "dice.hintGameOver": "游戏结束",
   "hint.hold": "提示：保留高亮的骰子",
   "hint.holdNone": "提示：重掷全部五颗骰子",
   "hint.score": "提示：计入{{category}}",

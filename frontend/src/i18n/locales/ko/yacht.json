@@ -70,6 +70,7 @@
   "error.generic": "문제가 발생했습니다. 다시 시도해 주세요.",
   "dice.hintRollToStart": "굴리기를 눌러 시작",
   "dice.hintComputer": "컴퓨터가 굴리는 중…",
+  "dice.hintGameOver": "게임 종료",
   "hint.hold": "힌트: 강조된 주사위를 고정하세요",
   "hint.holdNone": "힌트: 주사위 5개 모두 다시 굴리세요",
   "hint.score": "힌트: {{category}}에 기록하세요",

@@ -70,6 +70,7 @@
   "error.generic": "問題が発生しました。もう一度お試しください。",
   "dice.hintRollToStart": "ロールを押して開始",
   "dice.hintComputer": "コンピュータがロール中…",
+  "dice.hintGameOver": "ゲーム終了",
   "hint.hold": "ヒント：ハイライトされたサイコロを保持",
   "hint.holdNone": "ヒント：5個すべてを振り直し",
   "hint.score": "ヒント：{{category}}に記入",

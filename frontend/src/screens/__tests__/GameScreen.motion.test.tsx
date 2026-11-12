@@ -14,13 +14,16 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
+import * as Reanimated from "react-native-reanimated";
 import {
   CPU_SCORE_BEAT_MS,
+  INPUT_LOCK_FALLBACK_MS,
   JACKPOT_DONE_MS,
   LOSS_BEAT_MS,
   TIE_BEAT_MS,
   WIN_BEAT_MS,
   cpuRollMs,
+  inputLockMaxMs,
   tumbleTotalMs,
 } from "../../game/yacht/motion";
 
@@ -209,12 +212,26 @@ describe("your roll: the tumble locks input until the dice land (audit bugs 8 an
     expect(r.queryByTestId("yacht-no-hint-toast")).toBeNull();
   });
 
-  it("everything works again the moment the last die lands", async () => {
+  it("everything works again the moment the last die reports it has landed", async () => {
+    // Each die's tumble reports its end: kept here, to land them by hand.
+    const landings: Array<(finished: boolean) => void> = [];
+    jest.spyOn(Reanimated, "withTiming").mockImplementation(((
+      value: number,
+      _config?: unknown,
+      done?: (finished: boolean) => void
+    ) => {
+      if (done) landings.push(done);
+      return value;
+    }) as never);
     const r = await rolled();
-    await advance(tumbleTotalMs(5) - 1);
+    expect(landings).toHaveLength(5);
+    // Four have landed, one is still in the air (a tumble that started late): still locked.
+    await act(async () => landings.slice(0, 4).forEach((land) => land(true)));
     await press(r, "yacht-die-0");
     expect(isHeld(r, 0)).toBe(false);
-    await advance(1);
+    expect(r.getByTestId("yacht-roll-button").props.accessibilityState.disabled).toBe(true);
+    // The last lands: everything takes a press again, with no time having passed.
+    await act(async () => landings[4]!(true));
     for (const id of ["yacht-roll-button", "score-row-sixes", "yacht-hint-button"]) {
       expect(r.getByTestId(id).props.accessibilityState.disabled).toBe(false);
     }
@@ -224,27 +241,29 @@ describe("your roll: the tumble locks input until the dice land (audit bugs 8 an
     expect(r.getByText("Roll (0 left)")).toBeTruthy();
   });
 
-  it("the tumble ends from the motion constant for the dice rolled, not at 400 ms (bug 9)", async () => {
+  it("the lock's safety net ends from the motion constant for the dice rolled (bug 9)", async () => {
+    // No animation runs here, so no die reports its landing: the safety net releases the lock.
     const r = await renderGame({ initialState: state({ rolls_used: 1, dice: [6, 6, 6, 2, 3] }) });
     await press(r, "yacht-die-0");
     await press(r, "yacht-die-1");
     await press(r, "yacht-die-2");
     await press(r, "yacht-roll-button");
-    // Two dice rolled: they land after one tumble and one stagger.
+    // Two dice rolled: one tumble and one stagger, then the net's margin.
     expect(hintDisabled(r)).toBe(true);
     await advance(400);
     expect(hintDisabled(r)).toBe(true);
-    await advance(tumbleTotalMs(2) - 401);
+    await advance(inputLockMaxMs(2) - 401);
     expect(hintDisabled(r)).toBe(true);
     await advance(1);
     expect(hintDisabled(r)).toBe(false);
+    expect(inputLockMaxMs(2)).toBe(tumbleTotalMs(2) + INPUT_LOCK_FALLBACK_MS);
   });
 
   it("its timer is cleared when the screen goes away mid-tumble (bug 9)", async () => {
     const setSpy = jest.spyOn(global, "setTimeout");
     const clearSpy = jest.spyOn(global, "clearTimeout");
     const r = await rolled();
-    const i = setSpy.mock.calls.findIndex((c) => c[1] === tumbleTotalMs(5));
+    const i = setSpy.mock.calls.findIndex((c) => c[1] === inputLockMaxMs(5));
     expect(i).toBeGreaterThanOrEqual(0);
     const timer = setSpy.mock.results[i]!.value;
     await act(async () => r.unmount());
@@ -464,5 +483,66 @@ describe("the end beat (vs): after the computer's last score", () => {
     });
     expect(r.queryByText("Computer's Turn")).toBeNull();
     expect(cardShown(r)).toBe(true);
+  });
+});
+
+describe("the tray during the end beat (owner, review round 1)", () => {
+  /** The die faces the tray shows, from their labels. */
+  const faces = (r: Rendered) =>
+    [0, 1, 2, 3, 4].map((i) =>
+      Number(/showing (\d)/.exec(r.getByTestId(`yacht-die-${i}`).props.accessibilityLabel)?.[1])
+    );
+
+  it("solo: the final dice stay, the hint reads 'Game over' and Roll is disabled", async () => {
+    const r = await renderGame({
+      initialState: lastRound("chance", 100, { dice: [2, 3, 4, 5, 6] }),
+    });
+    await press(r, "score-row-chance");
+    expect(cardShown(r)).toBe(false);
+    expect(faces(r)).toEqual([2, 3, 4, 5, 6]);
+    expect(r.getByTestId("yacht-game-over-hint")).toHaveTextContent("Game over");
+    expect(r.queryByText(/Press Roll/)).toBeNull();
+    expect(r.queryByText("Roll (3 left)")).toBeNull();
+    expect(r.getByTestId("yacht-roll-button").props.accessibilityState.disabled).toBe(true);
+  });
+
+  it("vs: after the computer's last score its final dice stay, with 'Game over'", async () => {
+    const r = await renderGame({
+      initialState: lastRound("chance", 100, { dice: [2, 2, 2, 2, 2] }),
+      aiDifficulty: "easy" as const,
+      aiState: lastRound("chance", 0, { rolls_used: 0, dice: [0, 0, 0, 0, 0] }),
+    });
+    await press(r, "score-row-chance");
+    // Its turn: "Computer is rolling…", not "Game over".
+    expect(r.queryByTestId("yacht-game-over-hint")).toBeNull();
+    for (let t = 0; t < 5000 && r.queryByText("Computer's Turn"); t += 5) await advance(5);
+    expect(cardShown(r)).toBe(false);
+    expect(faces(r)).toEqual([6, 6, 6, 6, 6]);
+    expect(r.getByTestId("yacht-game-over-hint")).toBeTruthy();
+    expect(r.getByTestId("yacht-roll-button").props.accessibilityState.disabled).toBe(true);
+  });
+});
+
+describe("the solo best not read yet (review round 1)", () => {
+  it("the beat waits for it, so its outcome is right: a new best is still a win", async () => {
+    let answer: (v: string | null) => void = () => undefined;
+    jest
+      .spyOn(AsyncStorage, "getItem")
+      .mockImplementation((key: string) =>
+        key === BEST_KEY ? new Promise((resolve) => (answer = resolve)) : Promise.resolve(null)
+      );
+    const setItem = jest.spyOn(AsyncStorage, "setItem");
+    const r = await renderGame({ initialState: lastRound("chance", 100) });
+    await press(r, "score-row-chance");
+    // However long the read takes, the card waits for it.
+    await advance(5000);
+    expect(cardShown(r)).toBe(false);
+    // 130 beats 10: the win beat, then the card.
+    await act(async () => answer("10"));
+    await advance(WIN_BEAT_MS - 1);
+    expect(cardShown(r)).toBe(false);
+    await advance(1);
+    expect(cardShown(r)).toBe(true);
+    expect(setItem).toHaveBeenCalledWith(BEST_KEY, "130");
   });
 });

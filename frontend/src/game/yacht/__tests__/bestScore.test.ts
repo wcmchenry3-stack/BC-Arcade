@@ -43,6 +43,11 @@ describe("the stored best", () => {
     expect(await loadBestScore()).toBe(0);
     await AsyncStorage.setItem("yacht_best_score_v1", "-5");
     expect(await loadBestScore()).toBe(0);
+    // Above the most a game can score (1575): corrupt.
+    await AsyncStorage.setItem("yacht_best_score_v1", "1576");
+    expect(await loadBestScore()).toBe(0);
+    await AsyncStorage.setItem("yacht_best_score_v1", "1575");
+    expect(await loadBestScore()).toBe(1575);
   });
 
   it("is its own record: a game saved before it still loads, and has no best", async () => {

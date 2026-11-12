@@ -11,6 +11,7 @@ import {
   CPU_SCORE_BEAT_MS,
   CPU_SETTLE_MS,
   HOLD_MS,
+  INPUT_LOCK_FALLBACK_MS,
   JACKPOT_BADGE_FADE_OUT_MS,
   JACKPOT_DONE_MS,
   JACKPOT_EXIT_AT_MS,
@@ -35,6 +36,7 @@ import {
   cpuTurnMaxMs,
   cpuTurnSpeed,
   endBeatMs,
+  inputLockMaxMs,
   tumbleTotalMs,
 } from "../motion";
 
@@ -75,12 +77,20 @@ describe("Yacht motion", () => {
     expect(TUMBLE_SPIN_SHARE).toBeGreaterThan(TUMBLE_LAND_AT);
     expect(TUMBLE_SPIN_SHARE).toBeLessThanOrEqual(1);
     expect(TUMBLE_HOP_SHARE).toBeLessThanOrEqual(TUMBLE_LAND_AT);
-    expect(TUMBLE_HOP_PX).toBeLessThanOrEqual(20);
+    expect(TUMBLE_HOP_PX).toBeLessThanOrEqual(8);
+    expect(TUMBLE_HOP_PX).toBeGreaterThanOrEqual(4);
     // A few faces flick past, never faster than about 15 a second.
     expect(TUMBLE_FACE_MS).toBeGreaterThanOrEqual(60);
     expect((TUMBLE_MS * TUMBLE_LAND_AT) / TUMBLE_FACE_MS).toBeGreaterThanOrEqual(3);
     expect(TUMBLE_SQUASH_SCALE).toBeGreaterThan(1);
     expect(TUMBLE_SQUASH_SCALE).toBeLessThanOrEqual(1.1);
+  });
+
+  it("the input lock's safety net ends shortly after the tumble should have", () => {
+    expect(inputLockMaxMs(0)).toBe(0);
+    expect(inputLockMaxMs(5)).toBe(tumbleTotalMs(5) + INPUT_LOCK_FALLBACK_MS);
+    expect(INPUT_LOCK_FALLBACK_MS).toBeGreaterThan(0);
+    expect(inputLockMaxMs(5)).toBeLessThanOrEqual(900);
   });
 
   it("a hold is quick", () => {

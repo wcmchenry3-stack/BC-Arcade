@@ -165,6 +165,21 @@ describe("the computer's pacing (#3749)", () => {
     expect(rest).toBe(CPU_SETTLE_MS + 600 / 2);
   });
 
+  it("a turn ended (New Game) never resumes when a new turn starts before its pause is up (review round 1)", async () => {
+    mockHold.mockReturnValue(ALL_HELD);
+    const onScored = jest.fn();
+    const { result } = await render({ onScored });
+    await act(async () => result.current.startTurn());
+    await advance(100); // the old turn waits out its tumble
+    await act(async () => result.current.endTurn());
+    await act(async () => result.current.startTurn());
+    await turnLength(result);
+    await advance(5000);
+    // Only the new turn scored: the old loop stopped at its next step.
+    expect(onScored).toHaveBeenCalledTimes(1);
+    expect(mockScore).toHaveBeenCalledTimes(1);
+  });
+
   it("tells the screen when it scores, in the same batch as the score (not restored)", async () => {
     mockHold.mockReturnValue(ALL_HELD);
     const onScored = jest.fn();

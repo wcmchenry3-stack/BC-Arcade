@@ -1,7 +1,7 @@
 /**
  * One die (#3748, motion #3749). Every time is in `game/yacht/motion.ts`.
  *
- *  - Tumble: while `rolling`, the whole die turns once (ease-out), hops up to 18 pt and flicks
+ *  - Tumble: while `rolling`, the whole die turns once (ease-out), hops up to 6 pt and flicks
  *    through random faces; at 80 % it shows its final face and lands with a small squash. Rolled
  *    dice start `TUMBLE_STAGGER_MS` apart (`rollOrder`); held dice stay still. All on the UI
  *    thread: one shared value drives the transform and the pips.
@@ -17,6 +17,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withDelay,
+  withSequence,
+  runOnJS,
   withTiming,
   cancelAnimation,
   Easing,
@@ -55,6 +57,8 @@ interface DieProps {
   rollOrder?: number;
   /** How fast the tumble plays (2 for the computer's fast last turn). */
   tumbleSpeed?: number;
+  /** Called with its index when its tumble has landed (the input lock waits for every rolled die). */
+  onTumbleEnd?: (index: number) => void;
   /** When true, skip all animations (accessibility reduce-motion). */
   reduceMotion?: boolean;
   /** The Hint suggests keeping this die: a green ring. */
@@ -79,41 +83,67 @@ const CELLS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
 
 /** Tumble progress at rest (and the value a tumble ends on). */
 const AT_REST = 1;
+/** Tumble progress while a rolled die waits for its stagger: still, showing its old face. */
+const WAITING = -1;
 
 /**
- * The face a die shows at tumble progress `p` (0 to 1): a new random-looking face every
- * `TUMBLE_FACE_MS`, then its final face from `TUMBLE_LAND_AT` on. Deterministic per die, so a test
- * (or a frame strip) sees the same flicks every time.
+ * The face a die shows at tumble progress `p`: before its own tumble starts (`p` < 0, its
+ * stagger) the face it had (`fromFace`); then a new random-looking face every `TUMBLE_FACE_MS`;
+ * then its final face from `TUMBLE_LAND_AT` on. Deterministic per die, so a test (or a frame
+ * strip) sees the same flicks every time.
  */
-export function tumbleFace(p: number, finalFace: number, index: number): number {
+export function tumbleFace(p: number, finalFace: number, index: number, fromFace = 0): number {
   "worklet";
   if (p >= TUMBLE_LAND_AT) return finalFace;
-  const k = Math.floor((p * TUMBLE_MS) / TUMBLE_FACE_MS);
+  if (p < 0 && fromFace > 0) return fromFace;
+  const k = Math.floor((Math.max(0, p) * TUMBLE_MS) / TUMBLE_FACE_MS);
   return 1 + ((index * 7 + k * 13 + index * k * 3) % 6);
 }
 
-/** The die's transform at tumble progress `p`, on top of its hold lift. */
-export function tumbleTransform(p: number, lift: number) {
+/** The hop (pt, up is negative), turn (degrees) and squash at tumble progress `p`. */
+function tumblePose(p: number): { hop: number; deg: number; scale: number } {
   "worklet";
-  if (p >= AT_REST) {
-    return [{ translateY: lift }, { rotate: "0deg" }, { scale: 1 }];
-  }
+  if (p >= AT_REST || p <= 0) return { hop: 0, deg: 0, scale: 1 };
   const spin = Math.min(1, p / TUMBLE_SPIN_SHARE);
   const eased = 1 - Math.pow(1 - spin, 3);
   const hop = -TUMBLE_HOP_PX * Math.sin(Math.PI * Math.min(1, p / TUMBLE_HOP_SHARE));
-  const squash =
+  const scale =
     p > TUMBLE_LAND_AT
       ? 1 +
         (TUMBLE_SQUASH_SCALE - 1) *
           Math.sin(((p - TUMBLE_LAND_AT) / (1 - TUMBLE_LAND_AT)) * Math.PI)
       : 1;
-  return [{ translateY: lift + hop }, { rotate: `${360 * eased}deg` }, { scale: squash }];
+  return { hop, deg: 360 * eased, scale };
+}
+
+/** The die's transform at tumble progress `p`, on top of its hold lift. */
+export function tumbleTransform(p: number, lift: number) {
+  "worklet";
+  const { hop, deg, scale } = tumblePose(p);
+  return [{ translateY: lift + hop }, { rotate: `${deg}deg` }, { scale }];
+}
+
+/**
+ * How far (pt) above its place a tumbling die of side `size` reaches at most: its hop plus the
+ * corners of the turning square. The dice row keeps this much room above the dice, so a roll
+ * never covers the hint line or leaves the tray (review round 1).
+ */
+export function tumbleRise(size: number): number {
+  let rise = 0;
+  for (let i = 0; i <= 400; i++) {
+    const { hop, deg, scale } = tumblePose(i / 400);
+    const a = ((deg % 90) * Math.PI) / 180;
+    const half = (size / 2) * scale * (Math.cos(a) + Math.sin(a));
+    rise = Math.max(rise, -hop + half - size / 2);
+  }
+  return Math.ceil(rise);
 }
 
 /** One pip cell: its pip shows when the face at the current tumble progress has one there. */
-function Pip({
+const Pip = React.memo(function Pip({
   cell,
   progress,
+  fromFace,
   value,
   index,
   size,
@@ -121,13 +151,14 @@ function Pip({
 }: {
   cell: number;
   progress: SharedValue<number>;
+  fromFace: SharedValue<number>;
   value: number;
   index: number;
   size: number;
   color: string;
 }) {
   const style = useAnimatedStyle(() => {
-    const face = tumbleFace(progress.value, value, index);
+    const face = tumbleFace(progress.value, value, index, fromFace.value);
     return { opacity: (PIP_PATTERNS[face] ?? []).includes(cell) ? 1 : 0 };
   }, [value, index, cell]);
   return (
@@ -140,7 +171,7 @@ function Pip({
       />
     </View>
   );
-}
+});
 
 export default function Die({
   value,
@@ -152,6 +183,7 @@ export default function Die({
   rolling = false,
   rollOrder = 0,
   tumbleSpeed = 1,
+  onTumbleEnd,
   reduceMotion = false,
   hinted = false,
   dimmed = false,
@@ -168,8 +200,11 @@ export default function Die({
 
   const pipColor = held ? colors.accentText : colors.text;
 
-  // Tumble progress: 0 at the start of a roll, AT_REST (1) once the die is at rest.
+  // Tumble progress: WAITING during its stagger, 0 at the start of its tumble, AT_REST (1) at rest.
   const progress = useSharedValue(AT_REST);
+  // The face shown before this roll: kept while the die waits for its stagger.
+  const fromFace = useSharedValue(value);
+  const lastValue = useRef(value);
   // The hold's lift (pt, negative is up) and the ring's fade-in.
   const lift = useSharedValue(held ? -DIE_LIFT : 0);
   const ringIn = useSharedValue(1);
@@ -184,13 +219,27 @@ export default function Die({
       return;
     }
     const speed = tumbleSpeed > 0 ? tumbleSpeed : 1;
-    progress.value = 0;
+    const landed = onTumbleEnd;
+    const at = index;
+    fromFace.value = lastValue.current;
+    progress.value = WAITING;
     progress.value = withDelay(
       (rollOrder * TUMBLE_STAGGER_MS) / speed,
-      withTiming(AT_REST, { duration: TUMBLE_MS / speed, easing: Easing.linear })
+      withSequence(
+        withTiming(0, { duration: 0 }),
+        // It reports its landing, so the input lock covers the tumble as it really ran.
+        withTiming(AT_REST, { duration: TUMBLE_MS / speed, easing: Easing.linear }, (done) => {
+          "worklet";
+          if (done && landed) runOnJS(landed)(at);
+        })
+      )
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rolling]);
+  // After the tumble effect: the face this render shows becomes the next roll's old face.
+  useEffect(() => {
+    lastValue.current = value;
+  }, [value]);
 
   // Reduce Motion turned on mid-tumble (docs/ACCESSIBILITY.md section 3): the die snaps to rest,
   // showing its final face, and its hold is shown at once. Turning it off again changes nothing.
@@ -265,6 +314,7 @@ export default function Die({
                   key={cell}
                   cell={cell}
                   progress={progress}
+                  fromFace={fromFace}
                   value={value}
                   index={index}
                   size={pipSize}

@@ -110,6 +110,15 @@ describe("the score pop", () => {
     ]);
   });
 
+  it("a still card (a reopened computer last turn, under the result card) pops and counts nothing", async () => {
+    const r = await render(table({ still: true }));
+    const seq = jest.spyOn(Reanimated, "withSequence");
+    const cpu = { scores: { ...EMPTY, chance: 20 }, totalScore: 20, yachtBonusTotal: 0 };
+    await r.rerender(table({ still: true, cpu }));
+    expect(seq).not.toHaveBeenCalled();
+    expect(r.getByTestId("yacht-total-cpu")).toHaveTextContent("20");
+  });
+
   it("under Reduce Motion nothing pops", async () => {
     mockReduceMotion = true;
     const r = await render(table());

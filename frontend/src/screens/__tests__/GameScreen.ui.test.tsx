@@ -5,7 +5,7 @@ import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
-import { JACKPOT_WAIT_MAX_MS, WIN_BEAT_MS, tumbleTotalMs } from "../../game/yacht/motion";
+import { JACKPOT_WAIT_MAX_MS, WIN_BEAT_MS, inputLockMaxMs } from "../../game/yacht/motion";
 
 // The thumb-tray UI (#3748): one scorecard, the action bar with New Game and the solo Hint, the
 // computer's-turn display and the end card for both players.
@@ -302,8 +302,8 @@ describe("the Hint (solo)", () => {
     expect(r.getByTestId("yacht-hint-message")).toBeTruthy();
     await fireEvent.press(r.getByTestId("yacht-roll-button"));
     expect(r.queryByTestId("yacht-hint-message")).toBeNull();
-    // score, once the dice have landed (#3749)
-    await advance(tumbleTotalMs(5));
+    // score, once the dice have landed (#3749: here, the lock's safety net: no animation runs)
+    await advance(inputLockMaxMs(5));
     await fireEvent.press(r.getByTestId("yacht-hint-button"));
     expect(r.getByTestId("yacht-hint-message")).toBeTruthy();
     await fireEvent.press(r.getByTestId("score-row-sixes"));
@@ -321,8 +321,8 @@ describe("the Hint (solo)", () => {
       await fireEvent.press(r.getByTestId("yacht-hint-button"));
       expect(r.queryByTestId("yacht-hint-message")).toBeNull();
       expect(r.queryByTestId("yacht-no-hint-toast")).toBeNull();
-      // Until the last die lands (#3749).
-      await advance(tumbleTotalMs(5));
+      // Until the dice land (#3749: here, the lock's safety net: no animation runs).
+      await advance(inputLockMaxMs(5));
       expect(r.getByTestId("yacht-hint-button").props.accessibilityState.disabled).toBe(false);
     });
 

@@ -89,6 +89,8 @@ export interface ScoreTableProps {
   cpuLastScored?: string | null;
   /** Your dice are still tumbling (#3749): no row takes a press, though the rows keep their look. */
   inputLocked?: boolean;
+  /** Scores land with no pop or count-up: the computer's last turn scored on reopening, under the card. */
+  still?: boolean;
 }
 
 export default function ScoreTable({
@@ -104,10 +106,12 @@ export default function ScoreTable({
   hintCategory = null,
   cpuLastScored = null,
   inputLocked = false,
+  still = false,
 }: ScoreTableProps) {
   const { t } = useTranslation("yacht");
   const { colors, theme } = useTheme();
-  const reduceMotion = useReduceMotion();
+  // `still`: scores land with no pop or count-up (a reopened computer last turn, under the card).
+  const reduceMotion = useReduceMotion() || still;
   const isVs = cpu !== null;
   const canScore = playerRollsUsed > 0 && !playerGameOver && !isAiTurn;
 

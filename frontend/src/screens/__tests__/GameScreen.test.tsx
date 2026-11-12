@@ -3,7 +3,7 @@ import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
 import i18n from "i18next";
 import DeYacht from "../../i18n/locales/de/yacht.json";
 import * as engineModule from "../../game/yacht/engine";
-import { tumbleTotalMs } from "../../game/yacht/motion";
+import * as Reanimated from "react-native-reanimated";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
@@ -52,11 +52,13 @@ jest.mock("../../game/_shared/gameEventClient", () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Waits for the rolled dice to land: input is locked while they tumble (#3749). */
+/**
+ * The rolled dice land: input is locked until each die reports the end of its tumble (#3749).
+ * In this file every animation ends at once (`withTiming` below calls its end callback), so this
+ * only lets the landing's state update settle; no real time passes.
+ */
 async function landDice() {
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, tumbleTotalMs(5)));
-  });
+  await act(async () => {});
 }
 
 /** Lets the recorder's idle save (a macrotask, or requestIdleCallback) run. */
@@ -132,6 +134,15 @@ async function renderScreen(stateOverrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Animations end at once and say so: a die's tumble reports its landing (#3749).
+  jest.spyOn(Reanimated, "withTiming").mockImplementation(((
+    value: number,
+    _config?: unknown,
+    done?: (f: boolean) => void
+  ) => {
+    done?.(true);
+    return value;
+  }) as never);
 });
 
 describe("GameScreen", () => {

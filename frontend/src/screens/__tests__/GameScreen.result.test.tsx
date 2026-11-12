@@ -6,7 +6,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
 import { newGame } from "../../game/yacht/engine";
-import { JACKPOT_WAIT_MAX_MS, WIN_BEAT_MS, tumbleTotalMs } from "../../game/yacht/motion";
+import { JACKPOT_WAIT_MAX_MS, WIN_BEAT_MS, inputLockMaxMs } from "../../game/yacht/motion";
 import * as storage from "../../game/yacht/storage";
 import { gameEventClient } from "../../game/_shared/gameEventClient";
 import {
@@ -143,7 +143,7 @@ async function playLastTurn(r: Rendered, categoryLabel: RegExp) {
   });
   // Input is locked until the dice land (#3749).
   await act(async () => {
-    await jest.advanceTimersByTimeAsync(tumbleTotalMs(5));
+    await jest.advanceTimersByTimeAsync(inputLockMaxMs(5));
   });
   await act(async () => {
     await fireEvent.press(r.getAllByRole("button", { name: categoryLabel })[0]!);

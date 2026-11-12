@@ -70,6 +70,7 @@
   "error.generic": "कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।",
   "dice.hintRollToStart": "शुरू करने के लिए रोल दबाएं",
   "dice.hintComputer": "कंप्यूटर रोल कर रहा है…",
+  "dice.hintGameOver": "खेल समाप्त",
   "hint.hold": "संकेत: हाइलाइट किए गए पासे पकड़ें",
   "hint.holdNone": "संकेत: पाँचों पासे फिर से रोल करें",
   "hint.score": "संकेत: {{category}} में स्कोर करें",

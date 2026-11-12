@@ -71,6 +71,7 @@
   "error.generic": "Algo deu errado. Tente novamente.",
   "dice.hintRollToStart": "Pressione Rolar",
   "dice.hintComputer": "O computador está rolando…",
+  "dice.hintGameOver": "Fim de jogo",
   "hint.hold": "Dica: retenha os dados destacados",
   "hint.holdNone": "Dica: role os cinco dados de novo",
   "hint.score": "Dica: pontue {{category}}",

@@ -59,13 +59,25 @@ const gameSlot = createJsonSlot<SavedGame>({
   },
 });
 
+function withoutEvents(state: GameState): GameState {
+  if (state.events === undefined) return state;
+  const { events: _events, ...rest } = state;
+  return rest;
+}
+
 export function saveGame(
   state: GameState,
   aiDifficulty: AiDifficulty | null = null,
   aiState: GameState | null = null,
   finishedGameId: string | null = null
 ): Promise<void> {
-  const payload: SavedGame = { state, aiDifficulty, aiState };
+  // The last action's events stay in the screen's state (fired once, by identity) and are never
+  // stored: a reopened game must not replay a roll or a celebration (#3749).
+  const payload: SavedGame = {
+    state: withoutEvents(state),
+    aiDifficulty,
+    aiState: aiState && withoutEvents(aiState),
+  };
   if (finishedGameId) payload.finishedGameId = finishedGameId;
   return gameSlot.save(payload);
 }

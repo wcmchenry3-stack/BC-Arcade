@@ -118,28 +118,56 @@ async function cardDelayAfterScore(
   );
 }
 
-interface Box {
-  t: number;
-  top: number;
-  width: number;
+interface Frame {
+  /** Frames drawn since the Roll press (null before it). */
+  sincePress: number | null;
+  /** Each die's box. */
+  dice: { top: number; width: number }[];
+  /** The bottom of the hint line above the dice. */
+  hintBottom: number;
+  /** Whether Roll says it takes no press (the input lock). */
+  rollLocked: boolean;
 }
 
-/** Samples die 0's box every frame for `ms`, starting now. */
-function sampleDie(page: Page, ms: number): Promise<Box[]> {
+/**
+ * Samples the tray every frame for `ms`, starting now: the dice's boxes, the hint line's bottom,
+ * Roll's lock, and how many frames have passed since Roll was pressed (a capture listener in the
+ * page notes the press, so the count is the page's own, #3725).
+ */
+function sampleTray(page: Page, ms: number): Promise<Frame[]> {
   return page.evaluate(
     (duration) =>
-      new Promise<Box[]>((resolve) => {
-        const out: Box[] = [];
+      new Promise<Frame[]>((resolve) => {
+        const out: Frame[] = [];
+        let pressedAt: number | null = null;
+        let frame = 0;
+        const roll = () =>
+          document.querySelector('[data-testid="yacht-roll-button"]');
+        document.addEventListener(
+          "click",
+          (e) => {
+            if (roll()?.contains(e.target as Node) && pressedAt === null)
+              pressedAt = frame;
+          },
+          true,
+        );
         const t0 = performance.now();
         const tick = () => {
-          const el = document.querySelector('[data-testid="yacht-die-0"]');
-          const b = el?.getBoundingClientRect();
-          if (b)
-            out.push({
-              t: performance.now() - t0,
-              top: b.top,
-              width: b.width,
-            });
+          frame += 1;
+          const dice = [0, 1, 2, 3, 4].map((i) => {
+            const b = document
+              .querySelector(`[data-testid="yacht-die-${i}"]`)!
+              .getBoundingClientRect();
+            return { top: b.top, width: b.width };
+          });
+          out.push({
+            sincePress: pressedAt === null ? null : frame - pressedAt,
+            dice,
+            hintBottom: document
+              .querySelector('[data-testid="yacht-hint-line"]')!
+              .getBoundingClientRect().bottom,
+            rollLocked: roll()?.getAttribute("aria-disabled") === "true",
+          });
           if (performance.now() - t0 < duration) requestAnimationFrame(tick);
           else resolve(out);
         };
@@ -150,7 +178,7 @@ function sampleDie(page: Page, ms: number): Promise<Box[]> {
 }
 
 test.describe("Yacht — motion (#3749)", () => {
-  test("a rolled die tumbles: it hops, turns and lands where it started", async ({
+  test("a roll tumbles: it starts at once, stays inside the tray, and input waits for the last die", async ({
     page,
   }) => {
     await page.setViewportSize(PHONE);
@@ -160,27 +188,65 @@ test.describe("Yacht — motion (#3749)", () => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
     await page.getByRole("button", { name: /^Solo$/i }).click();
     await page.getByText("Round 1 / 13").waitFor();
+    await page.waitForTimeout(300);
 
-    const rest = await page
-      .getByTestId("yacht-die-0")
-      .evaluate((el) => el.getBoundingClientRect().toJSON());
-    const sampling = sampleDie(page, 900);
+    const rest = await page.evaluate(() =>
+      [0, 1, 2, 3, 4].map((i) => {
+        const b = document
+          .querySelector(`[data-testid="yacht-die-${i}"]`)!
+          .getBoundingClientRect();
+        return { top: b.top, width: b.width };
+      }),
+    );
+    const sampling = sampleTray(page, 1400);
     await page.getByTestId("yacht-roll-button").click();
-    const samples = await sampling;
+    const frames = (await sampling).filter((f) => f.sincePress !== null);
+    expect(frames.length).toBeGreaterThan(10);
 
-    expect(samples.length).toBeGreaterThan(10);
-    // The hop: it rises well above its place (up to 18 px), frame by frame.
-    const highest = Math.min(...samples.map((s) => s.top));
-    expect(rest.top - highest).toBeGreaterThan(8);
-    const midAir = samples.filter((s) => s.top < rest.top - 3);
-    expect(midAir.length).toBeGreaterThan(3);
-    // The turn: a rotated square's box is wider than the die.
-    const widest = Math.max(...samples.map((s) => s.width));
-    expect(widest - rest.width).toBeGreaterThan(8);
-    // It lands where it started.
-    const last = samples.at(-1)!;
-    expect(Math.abs(last.top - rest.top)).toBeLessThan(1);
-    expect(Math.abs(last.width - rest.width)).toBeLessThan(1);
+    const moved = (f: Frame) =>
+      f.dice.some(
+        (d, i) =>
+          Math.abs(d.top - rest[i].top) > 0.5 ||
+          Math.abs(d.width - rest[i].width) > 0.5,
+      );
+    // It starts at once: the first moved frame comes within a few frames of the press (review
+    // round 1: it used to sit still for about 160 ms).
+    const first = frames.find(moved);
+    expect(first).toBeDefined();
+    expect(first!.sincePress).toBeLessThanOrEqual(4);
+
+    // It hops and turns (die 0, the first to go).
+    const highest = Math.min(...frames.map((f) => f.dice[0].top));
+    expect(rest[0].top - highest).toBeGreaterThan(4);
+    const widest = Math.max(...frames.map((f) => f.dice[0].width));
+    expect(widest - rest[0].width).toBeGreaterThan(8);
+
+    // Every die stays below the hint line, every frame (it once covered the hint text).
+    for (const f of frames)
+      for (const d of f.dice)
+        expect(d.top).toBeGreaterThanOrEqual(f.hintBottom);
+
+    // Roll is locked while any die is still moving, and is free once they have all landed.
+    for (const f of frames) if (moved(f)) expect(f.rollLocked).toBe(true);
+    const last = frames.at(-1)!;
+    expect(moved(last)).toBe(false);
+    expect(last.rollLocked).toBe(false);
+  });
+
+  test("during the end beat the tray shows the final dice and 'Game over', with Roll disabled", async ({
+    page,
+  }) => {
+    await open(page, { ...lastRound(100), dice: [2, 3, 4, 5, 6] });
+    await page.getByTestId("score-row-chance").click();
+    await expect(page.getByTestId("yacht-game-over-hint")).toHaveText(
+      "Game over",
+    );
+    await expect(page.getByTestId("yacht-result-title")).toHaveCount(0);
+    await expect(page.getByTestId("yacht-die-4")).toHaveAccessibleName(
+      /showing 6/,
+    );
+    await expect(page.getByTestId("yacht-roll-button")).toBeDisabled();
+    await expect(page.getByText(/Press Roll/)).toHaveCount(0);
   });
 
   test("the win card follows the end beat by about a second", async ({

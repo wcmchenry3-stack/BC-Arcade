@@ -70,6 +70,7 @@
   "error.generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
   "dice.hintRollToStart": "Drücke Wurf",
   "dice.hintComputer": "Computer würfelt …",
+  "dice.hintGameOver": "Spiel vorbei",
   "hint.hold": "Tipp: Halte die markierten Würfel",
   "hint.holdNone": "Tipp: Würfle alle fünf Würfel neu",
   "hint.score": "Tipp: Trage {{category}} ein",

@@ -120,9 +120,9 @@ Every timing is in `frontend/src/game/yacht/motion.ts`; `__tests__/motion.test.t
 
 | What | Constant(s) | When / how long | Notes |
 | --- | --- | --- | --- |
-| Tumble (one die) | `TUMBLE_MS` 420 | 0 to 420 ms | turns 0 to 360° (ease-out over the first 85 %, `TUMBLE_SPIN_SHARE`), hops up to 18 pt (`TUMBLE_HOP_PX`, a sine over the first 80 %), flicks a random face every 70 ms (`TUMBLE_FACE_MS`); at 80 % (`TUMBLE_LAND_AT`, 336 ms) it shows its final face and lands with a squash to 1.07 (`TUMBLE_SQUASH_SCALE`) |
+| Tumble (one die) | `TUMBLE_MS` 420 | 0 to 420 ms | turns 0 to 360° (ease-out over the first 85 %, `TUMBLE_SPIN_SHARE`), hops up to 6 pt (`TUMBLE_HOP_PX`, a sine over the first 80 %; with the turning corners it rises about 18 pt, and the dice row keeps that room above the dice, `tumbleRise`, so it never covers the hint line), until its stagger starts it shows its old face, then flicks a random face every 70 ms (`TUMBLE_FACE_MS`); at 80 % (`TUMBLE_LAND_AT`, 336 ms) it shows its final face and lands with a squash to 1.07 (`TUMBLE_SQUASH_SCALE`) |
 | Stagger | `TUMBLE_STAGGER_MS` 35 | each rolled die 35 ms after the one to its left | only the dice rolled tumble; held dice stay still |
-| Dice at rest, input unlocks | `tumbleTotalMs(n)` | 420 + 35 × (n − 1): 560 ms for five, 455 ms for two | Roll, the dice, the score rows and Hint are inert until then (audit bug 8): disabled to a screen reader, though Roll, the dice and the rows keep their look (no grey flash on every roll); the screen's `rollingIndices` ends on the same constant, and its timer is cleared on unmount, New Game and Reduce Motion (bug 9). The roll sound settles at about 0.42 s, with the first die |
+| Dice at rest, input unlocks | `tumbleTotalMs(n)`; safety net `inputLockMaxMs(n)` = + `INPUT_LOCK_FALLBACK_MS` 250 | 420 + 35 × (n − 1): 560 ms for five, 455 ms for two | Roll, the dice, the score rows and Hint are inert until every rolled die reports its landing (its animation's end callback, so the lock covers the tumble as it really ran), or at the latest at the safety net (audit bug 8). They are disabled to a screen reader, though Roll, the dice and the rows keep their look (no grey flash on every roll). The net's timer is cleared on landing, unmount, New Game and Reduce Motion (bug 9). The roll sound settles at about 0.42 s, with the first die |
 | Hold / release | `HOLD_MS` 150 | 0 to 150 ms | the 4 pt lift eases in and out; the ring fades in |
 | Score pop | `SCORE_POP_MS` 260, `SCORE_POP_SCALE` 1.2 | 0 to 260 ms, peak at 130 ms | the scored cell, yours and the computer's |
 | Total count-up | `TOTAL_COUNT_MS` 300 | 0 to 300 ms | ease-out; the text's accessibility label is always the final total |
@@ -153,6 +153,9 @@ For #3750: `useYachtMotion({ onStart })` (passed to `useYachtEndBeat`) calls `on
 
 - **The card never covers a celebration** (audit bug 1): a last score that is a Yacht or a Joker, or a celebration still showing when the computer scores, holds the card with no timer until the celebration's `onDone`; then the beat runs. A safety net (`JACKPOT_WAIT_MAX_MS`, 3.5 s) starts the beat if the celebration never reports that it is done.
 - **New Game and leaving** clear the beat, any wait and the tumble.
+- **The tray during the beat** (owner): the final dice stay on the table (in vs, the computer's last roll), the hint reads "Game over" (`dice.hintGameOver`) and Roll is disabled ("Roll (0 left)"); it never looks like a fresh turn.
+- **Solo best not read yet** (rare: it is read at mount): the card waits for the read, then the beat with the right outcome.
+- **A Reduce Motion change mid-celebration** restarts the celebration (`useCelebration`), so the beat's safety net is re-armed and the card still never covers it.
 - **The solo best** is local (owner): `game/yacht/bestScore.ts`, AsyncStorage key `yacht_best_score_v1` (a number), read when the screen mounts so the check at the end is synchronous, compared with `bestOf`, and stored when beaten. The first finished solo game counts as a new best. Vs games don't record it. It is a record of its own beside the game save, so older saves load unchanged; #3757 will replace it with a shared best-score module.
 - **A game reopened on the computer's last turn** (you had finished; `resumeInstantly`): that turn is played to its score at once, with no steps, no tumble and no sound (its score carries no events), and the card shows.
 
@@ -164,7 +167,7 @@ Read live with `useReduceMotion` ([ACCESSIBILITY.md section 3](../ACCESSIBILITY.
 - turned on mid-tumble, the dice snap to rest and input unlocks; turned on mid-beat, the timer is cancelled and the card shows; turning it off again replays nothing;
 - the computer's turn: its pauses are halved and its dice don't tumble, still step by step.
 
-How it is built: the tumble runs on the UI thread (Reanimated): one shared value per die drives its transform and the pips' opacity (`Die.tsx`); nothing on the JS thread per frame except the total's count-up (one small text, about 18 frames).
+How it is built: the tumble runs on the UI thread (Reanimated): one shared value per die drives its transform and the pips' opacity (`Die.tsx`); nothing on the JS thread per frame except the total's count-up (one small text, about 18 frames). A rolled die waiting for its stagger keeps showing its old face. Between the press and the tumble's first frame there is one render: `possibleScores` is a `useMemo`, events are not cleared from state (each action's are a new array, fired once; the save leaves them out), a roll is saved once its dice land, the scorecard context is updated only when the card changes, and the pips are memoized. The e2e test checks the first moved frame comes within 4 frames of the press.
 
 ## Computer opponent
 

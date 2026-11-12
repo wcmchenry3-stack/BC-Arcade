@@ -26,8 +26,12 @@ export const TUMBLE_MS = 420;
 export const TUMBLE_STAGGER_MS = 35;
 /** The die turns 0 to 360 degrees (ease-out) over this share of the tumble. */
 export const TUMBLE_SPIN_SHARE = 0.85;
-/** The hop: up to this many pt (a sine), over `TUMBLE_HOP_SHARE` of the tumble. */
-export const TUMBLE_HOP_PX = 18;
+/**
+ * The hop: up to this many pt (a sine), over `TUMBLE_HOP_SHARE` of the tumble. Small, so the die
+ * stays inside the tray: with the corners of the turning die it rises about 18 pt, and the dice
+ * row keeps that much room above the dice (`tumbleRise` in Die.tsx, review round 1).
+ */
+export const TUMBLE_HOP_PX = 6;
 export const TUMBLE_HOP_SHARE = 0.8;
 /** While it tumbles, the die shows a random face, a new one about this often. */
 export const TUMBLE_FACE_MS = 70;
@@ -43,6 +47,17 @@ export const TUMBLE_SQUASH_SCALE = 1.07;
 export function tumbleTotalMs(count: number): number {
   if (count <= 0) return 0;
   return TUMBLE_MS + (Math.min(count, 5) - 1) * TUMBLE_STAGGER_MS;
+}
+
+/**
+ * The input lock ends when every rolled die reports it has landed (its animation's end, so the
+ * lock covers the real tumble even if it started a frame or two late). As a safety net it ends
+ * anyway this long after the tumble should have.
+ */
+export const INPUT_LOCK_FALLBACK_MS = 250;
+/** The longest the input lock can last for a roll of `count` dice. */
+export function inputLockMaxMs(count: number): number {
+  return count <= 0 ? 0 : tumbleTotalMs(count) + INPUT_LOCK_FALLBACK_MS;
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
 import React from "react";
 import { render } from "@testing-library/react-native";
 import * as Reanimated from "react-native-reanimated";
-import Die, { tumbleFace, tumbleTransform } from "../Die";
+import Die, { tumbleFace, tumbleRise, tumbleTransform } from "../Die";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import {
   HOLD_MS,
@@ -34,6 +34,12 @@ describe("tumbleFace", () => {
     }
   });
 
+  it("while a die waits for its stagger it shows its old face, not a frozen flick", () => {
+    expect(tumbleFace(-1, 6, 3, 2)).toBe(2);
+    // A die blank before (the first roll) flicks from the start.
+    expect(tumbleFace(-1, 6, 3, 0)).toBe(tumbleFace(0, 6, 3));
+  });
+
   it("shows the final face from the landing on", () => {
     for (const p of [TUMBLE_LAND_AT, 0.9, 1]) expect(tumbleFace(p, 5, 0)).toBe(5);
   });
@@ -59,6 +65,19 @@ describe("tumbleTransform", () => {
     expect(squash.scale).toBeLessThanOrEqual(TUMBLE_SQUASH_SCALE);
     // Back on the table by the landing.
     expect(parts(TUMBLE_LAND_AT).y).toBeCloseTo(0);
+  });
+});
+
+describe("tumbleRise: the room a tumbling die needs above it (review round 1)", () => {
+  it("is the hop plus the corners of the turning die: about 18 pt for a 60 pt die", () => {
+    expect(tumbleRise(60)).toBeGreaterThanOrEqual(12.5 + TUMBLE_HOP_PX / 2);
+    expect(tumbleRise(60)).toBeLessThanOrEqual(20);
+    // A smaller die needs less.
+    expect(tumbleRise(36)).toBeLessThan(tumbleRise(60));
+  });
+
+  it("a waiting die (its stagger) and a die at rest are still", () => {
+    expect(parts(-1, -4)).toEqual({ y: -4, deg: 0, scale: 1 });
   });
 });
 
@@ -90,7 +109,11 @@ describe("Die", () => {
       </ThemeProvider>
     );
     expect(withDelay).toHaveBeenCalledWith(2 * TUMBLE_STAGGER_MS, expect.anything());
-    expect(withTiming).toHaveBeenCalledWith(1, expect.objectContaining({ duration: TUMBLE_MS }));
+    expect(withTiming).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ duration: TUMBLE_MS }),
+      expect.any(Function)
+    );
   });
 
   it("at 2x (the computer's last turn) the stagger and the tumble are halved", async () => {
@@ -105,8 +128,35 @@ describe("Die", () => {
     expect(withDelay).toHaveBeenCalledWith(TUMBLE_STAGGER_MS / 2, expect.anything());
     expect(withTiming).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ duration: TUMBLE_MS / 2 })
+      expect.objectContaining({ duration: TUMBLE_MS / 2 }),
+      expect.any(Function)
     );
+  });
+
+  it("reports its landing (its index) when its tumble ends, so the input lock covers it", async () => {
+    const ends: Array<(finished: boolean) => void> = [];
+    jest.spyOn(Reanimated, "withTiming").mockImplementation(((
+      value: number,
+      _config?: unknown,
+      done?: (finished: boolean) => void
+    ) => {
+      if (done) ends.push(done);
+      return value;
+    }) as never);
+    const onTumbleEnd = jest.fn();
+    const r = await renderDie({ onTumbleEnd });
+    await r.rerender(
+      <ThemeProvider>
+        <Die {...props} rolling onTumbleEnd={onTumbleEnd} />
+      </ThemeProvider>
+    );
+    expect(ends).toHaveLength(1);
+    expect(onTumbleEnd).not.toHaveBeenCalled();
+    // Cut short (Reduce Motion snapping it): no report; the screen releases the lock itself.
+    ends[0]!(false);
+    expect(onTumbleEnd).not.toHaveBeenCalled();
+    ends[0]!(true);
+    expect(onTumbleEnd).toHaveBeenCalledWith(2);
   });
 
   it("under Reduce Motion it never tumbles: the face changes in place", async () => {

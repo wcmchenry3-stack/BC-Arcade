@@ -13,14 +13,19 @@ import { bestOf } from "../_shared/bestOf";
 import { createRecord } from "../_shared/storageSlot";
 import type { YachtEndOutcome } from "./motion";
 
+/** The most a Yacht game can score (every row at its best, twelve Yacht bonuses). */
+const MAX_YACHT_SCORE = 1575;
+
 export const { save: saveBestScore, load: loadBestScore } = createRecord<number>({
   key: "yacht_best_score_v1",
   subsystem: "yacht.storage",
   ops: { load: "loadBest", save: "saveBest" },
   fallback: () => 0,
+  // Anything that can't be a real score (not a number, negative, above the most a game can score)
+  // is a corrupt record: no best.
   read: (raw) => {
     const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : 0;
+    return Number.isFinite(n) && n > 0 && n <= MAX_YACHT_SCORE ? n : 0;
   },
   write: String,
 });

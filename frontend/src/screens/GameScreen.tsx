@@ -31,7 +31,7 @@
  *      for a YACHT! / JOKER! celebration. Reduce Motion is read live.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { AppState, View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -54,7 +54,7 @@ import { saveGame, clearGame } from "../game/yacht/storage";
 import { useYachtCpuOpponent } from "../game/yacht/useYachtCpuOpponent";
 import { useYachtModePicker } from "../game/yacht/useYachtModePicker";
 import { isPremiumLevel } from "../entitlements/premiumLevels";
-import { useYachtScorecard } from "../game/yacht/ScorecardContext";
+import { useSyncYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import {
   createTurnLog,
@@ -95,7 +95,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { isAwayStatus } from "../hooks/usePauseWhileAway";
-import { useYachtMotion } from "../components/yacht/useYachtMotion";
+import { useTrayDice, useYachtMotion } from "../components/yacht/useYachtMotion";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
@@ -129,15 +129,23 @@ export default function GameScreen({ navigation, route }: Props) {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const [gameState, setGameState] = useState<GameState>(route.params.initialState);
-  const [possibleScores, setPossibleScores] = useState<Record<string, number>>({});
+  // Computed in the render, not set by an effect: a roll is one render, not two (#3749).
+  const possibleScores = useMemo(() => enginePossibleScores(gameState), [gameState]);
   const [gameKey, setGameKey] = useState(0);
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
-  const [showYachtCelebration, setShowYachtCelebration] = useState(false);
-  const [showJokerCelebration, setShowJokerCelebration] = useState(false);
   const [devOpen, setDevOpen] = useState(false);
-  // Your roll's tumble and its input lock, the end beat the card waits for, the solo best (#3749).
-  const motion = useYachtMotion();
-  const { reduceMotion, rollingIndices, startTumble, isLocked, reset: resetMotion } = motion;
+  // Keep a ref in sync for callbacks.
+  const gameStateRef = useRef(gameState);
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+  // Your roll's tumble and its input lock, the celebration, the end beat the card waits for and
+  // the solo best (#3749); its `cpuOptions` tie the computer's last score to the beat.
+  const motion = useYachtMotion({
+    player: () => gameStateRef.current,
+    reopenedFinished: route.params.initialState.game_over,
+  });
+  const { rollingIndices, startTumble, isLocked, reset: resetMotion } = motion;
   // The player's turn as it is played (memory only); the computer's lives in its hook.
   const turnLogRef = useRef(createTurnLog());
   // Set below, once the recorder exists: the computer's finished turn goes to it.
@@ -190,12 +198,6 @@ export default function GameScreen({ navigation, route }: Props) {
     isRecording,
   } = useGameRecorder("yacht");
 
-  // Keep a ref in sync for callbacks.
-  const gameStateRef = useRef(gameState);
-  useEffect(() => {
-    gameStateRef.current = gameState;
-  }, [gameState]);
-
   // The computer's scorecard and turn loop. A restored game may have been
   // killed mid-AI-turn: resume it (#2203). If you had finished, its last turn
   // is scored at once and the card shows (#3749).
@@ -215,17 +217,14 @@ export default function GameScreen({ navigation, route }: Props) {
     // With the recorder off nothing is built for the replay (no turn, no EVs):
     // `recording` is the recorder's own per-session decision.
     onTurn: onCpuTurn,
-    // Its last score in vs ends the game: the end beat starts in the same batch (no flash of the
-    // card). A game reopened on that last turn has no beat (owner, #3749).
-    onScored: (cpu, { restored }) => motion.cpuScored(gameStateRef.current, cpu, restored),
     recording: isRecording,
-    reduceMotion,
     initialState: route.params.aiState ?? null,
     resumeTurn:
       !!route.params.aiDifficulty &&
       !!route.params.aiState &&
       isAiTurnPending(route.params.initialState, route.params.aiState),
-    resumeInstantly: route.params.initialState.game_over,
+    // Reduce Motion, its last score starting the end beat, a reopened last turn scored at once.
+    ...motion.cpuOptions,
   });
   // The row the computer scored last: highlighted until you roll (#3748).
   const { lastScored: cpuLastScored, clear: clearCpuLastScored } = useLastScored(
@@ -236,6 +235,9 @@ export default function GameScreen({ navigation, route }: Props) {
   // dice roll, on the computer's turn and once the game is over (#3748).
   const hintAvailable = !aiDifficulty;
   const hintDisabled = isAiTurn || gameState.game_over || rollingIndices.length > 0;
+  // A finished game's tray keeps its final dice through the end beat (owner, #3749).
+  const shownDice = isAiTurn && aiGameState ? aiGameState.dice : gameState.dice;
+  const trayDice = useTrayDice(shownDice, gameState.game_over && !isAiTurn);
   const {
     onHint,
     clearHint,
@@ -336,27 +338,15 @@ export default function GameScreen({ navigation, route }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist state after every change (includes AI difficulty and AI state for VS mode).
+  // Persist state after every change (includes AI difficulty and AI state for VS mode). A roll is
+  // saved once its dice land: no JSON or storage write between the press and the tumble (#3749).
+  const tumbling = rollingIndices.length > 0;
   useEffect(() => {
-    saveGame(gameState, aiDifficulty, aiGameState, finishedGameId);
-  }, [gameState, aiDifficulty, aiGameState, finishedGameId]);
+    if (!tumbling) saveGame(gameState, aiDifficulty, aiGameState, finishedGameId);
+  }, [gameState, aiDifficulty, aiGameState, finishedGameId, tumbling]);
 
-  // Sync snapshot to shared scorecard context (read by ScorecardScreen).
-  const { setSnapshot: setScorecardSnapshot } = useYachtScorecard();
-  useEffect(() => {
-    setScorecardSnapshot({
-      scores: gameState.scores,
-      upperSubtotal: gameState.upper_subtotal,
-      upperBonus: gameState.upper_bonus,
-      yachtBonusCount: gameState.yacht_bonus_count,
-      totalScore: gameState.total_score,
-    });
-  }, [gameState, setScorecardSnapshot]);
-
-  // Recompute possibleScores locally from state
-  useEffect(() => {
-    setPossibleScores(enginePossibleScores(gameState));
-  }, [gameState]);
+  // The shared scorecard snapshot (read by ScorecardScreen), only when the card changes.
+  useSyncYachtScorecard(gameState);
 
   // The computer's rolls play the same dice roll as the player's (#3578). Keyed on its tumble
   // starting (a new non-empty rollingIndices array per roll), not on its engine events, so a
@@ -391,27 +381,23 @@ export default function GameScreen({ navigation, route }: Props) {
     zero: playCpuScoreZero,
   });
 
-  // Process game events — play sounds, trigger animations, then clear
-  useGameEvents(
-    gameState.events,
-    {
-      // The tumble itself starts in handleRoll, with the roll (#3749).
-      diceRoll: () => playDiceRoll(),
-      dieHold: () => playDieHold(),
-      dieRelease: () => playDieRelease(),
-      yacht: () => {
-        playYacht();
-        motion.celebrationStarted();
-        setShowYachtCelebration(true);
-      },
-      joker: () => {
-        playJoker();
-        motion.celebrationStarted();
-        setShowJokerCelebration(true);
-      },
+  // Process game events: play sounds, start the celebration. Not cleared from state afterwards
+  // (each action's events are a new array, fired once by identity): clearing them was a second
+  // render, and a save, after every roll (#3749). The save leaves them out (storage.ts).
+  useGameEvents(gameState.events, {
+    // The tumble itself starts in handleRoll, with the roll (#3749).
+    diceRoll: () => playDiceRoll(),
+    dieHold: () => playDieHold(),
+    dieRelease: () => playDieRelease(),
+    yacht: () => {
+      playYacht();
+      motion.celebrate("yacht");
     },
-    () => setGameState((prev) => (prev === null ? prev : { ...prev, events: undefined }))
-  );
+    joker: () => {
+      playJoker();
+      motion.celebrate("joker");
+    },
+  });
 
   // Single mount-time AppState listener — clears animation state on background.
   // The async AI turn keeps running; no cancellation or replay needed.
@@ -807,12 +793,13 @@ export default function GameScreen({ navigation, route }: Props) {
           hintCategory={activeHint?.kind === "score" ? activeHint.category : null}
           cpuLastScored={cpuLastScored}
           inputLocked={rollingIndices.length > 0}
+          still={motion.still}
         />
       </View>
 
       {/* The thumb tray: turn hint, the dice (the computer's on its turn), Roll and the action bar */}
       <DiceRow
-        dice={isAiTurn && aiGameState ? aiGameState.dice : gameState.dice}
+        dice={trayDice}
         held={isAiTurn && aiGameState ? aiGameState.held : gameState.held}
         rollsUsed={isAiTurn && aiGameState ? aiGameState.rolls_used : gameState.rolls_used}
         gameOver={gameState.game_over}
@@ -821,6 +808,7 @@ export default function GameScreen({ navigation, route }: Props) {
         rollingIndices={isAiTurn ? aiRollingIndices : rollingIndices}
         tumbleSpeed={isAiTurn ? aiTumbleSpeed : 1}
         inputLocked={!isAiTurn && rollingIndices.length > 0}
+        onTumbleEnd={isAiTurn ? undefined : motion.onTumbleEnd}
         locked={isAiTurn}
         computerRolls={aiGameState?.rolls_used ?? 0}
         turnLabel={aiDifficulty && difficultyChosen ? t("vsMode.yourTurn") : null}
@@ -839,20 +827,13 @@ export default function GameScreen({ navigation, route }: Props) {
       />
 
       <YachtCelebrationAnimation
-        visible={showYachtCelebration}
-        onDismiss={() => {
-          setShowYachtCelebration(false);
-          motion.celebrationEnded();
-        }}
+        visible={motion.celebration === "yacht"}
+        onDismiss={motion.celebrationEnded}
       />
-
       <YachtCelebrationAnimation
         variant="joker"
-        visible={showJokerCelebration}
-        onDismiss={() => {
-          setShowJokerCelebration(false);
-          motion.celebrationEnded();
-        }}
+        visible={motion.celebration === "joker"}
+        onDismiss={motion.celebrationEnded}
       />
 
       {/* The card waits for the end beat (#3749); a game reopened on the computer's last turn has none. */}
