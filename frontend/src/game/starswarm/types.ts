@@ -604,6 +604,14 @@ export interface StarSwarmState {
    * lost life and a pause (saved with a paused run); dropped with the run. Null when none.
    */
   readonly bankedPowerUp: BankablePowerUp | null;
+  /**
+   * #3709: the ship's x at the last Lightning pulse, while the beam has stayed on with the trigger
+   * held since. The next pulse sweeps each beam from there to the ship's x now (see
+   * engine/lightningBeam.ts). Absent before a beam's first pulse, and whenever the beam is off or
+   * the trigger released; set only then, so the key never enters a state without Lightning. A
+   * restore drops it (the first pulse after a resume uses the beam's instant overlap).
+   */
+  readonly lightningPulseX?: number;
 }
 
 /** Input snapshot consumed by each `tick` call. */

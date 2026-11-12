@@ -177,6 +177,54 @@ describe("HomeScreen — game cards", () => {
     }
   });
 
+  describe("Star Swarm tile icon (#3599)", () => {
+    it("shows the generated hex badge instead of the 👾 emoji", async () => {
+      const { getByTestId, queryByText } = await renderScreen();
+      const icon = getByTestId("game-icon-starswarm");
+      expect(icon.type).not.toBe("Text");
+      expect(icon.props.source).toBeTruthy();
+      const style = StyleSheet.flatten(icon.props.style);
+      expect([style.width, style.height]).toEqual([56, 56]); // the emoji's footprint
+      expect(queryByText("👾")).toBeNull();
+    });
+
+    it("keeps the emoji on every other tile", async () => {
+      const { getByTestId } = await renderScreen();
+      const emojis: Record<string, string> = {
+        yacht: "🎲",
+        cascade: "🍉",
+        blackjack: "🃏",
+        twenty48: "🔢",
+        solitaire: "♠",
+        freecell: "🂡",
+        hearts: "♥",
+        sudoku: "🧩",
+        mahjong: "🀄",
+        sort: "🍾",
+        daily_word: "📝",
+      };
+      for (const [slug, emoji] of Object.entries(emojis)) {
+        const icon = getByTestId(`game-icon-${slug}`);
+        expect(icon.props.children).toBe(emoji);
+      }
+    });
+
+    it("keeps the tile's accessibility label and hint, and hides the image from readers", async () => {
+      const { getByTestId } = await renderScreen();
+      const tile = getByTestId("game-tile-starswarm");
+      expect(tile.props.accessibilityLabel).toBe("Play Star Swarm");
+      expect(tile.props.accessibilityHint).toBeTruthy();
+      expect(getByTestId("game-icon-starswarm").props.accessible).toBe(false);
+    });
+
+    it("labels a locked Star Swarm tile as before", async () => {
+      mockCanPlay.mockReturnValue(false);
+      const { getByTestId } = await renderScreen();
+      expect(getByTestId("game-tile-starswarm").props.accessibilityLabel).toMatch(/Star Swarm/);
+      expect(getByTestId("game-icon-starswarm").props.source).toBeTruthy();
+    });
+  });
+
   describe("store build — premium games hidden (#2390)", () => {
     beforeEach(() => {
       // Real isGameVisible, answering as a store build (Jest itself is a dev build).

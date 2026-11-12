@@ -10,6 +10,7 @@
     "test": "jest",
     "test:ci": "jest --coverage",
     "lint": "eslint .",
+    "sim:cascade": "tsx ../tools/sim/simulate-cascade.ts",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.tooling.json",
     "format:check": "prettier --check .",
     "translate": "node scripts/translate.js",

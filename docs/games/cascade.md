@@ -120,6 +120,30 @@ Nothing per frame goes through React state. The screen's RAF loop steps the engi
 
 A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TICKS` (120 ticks, ~2 s). The combo counter resets on each drop. The window is counted in fixed physics steps, so it is 2 s of simulated time at any frame rate (it used to be counted per frame: 2 s at 60 Hz, 1 s at 120 Hz).
 
+### Sim harness (`sim/`, #2893)
+
+A seeded, headless sim in `frontend/src/game/cascade/sim/` plays the real `CascadeEngine`, spawn selector and queue (`createPieceQueue` / `advanceQueue`, fed by the shared seeded RNG) the way `CascadeScreen` does: taps are gated by `canDrop()`, `isInDanger` comes from the pile height. It is the measuring tool for the physics spike (#3696), the physics story (#3697), the lid (#3694) and the tier ladder (#3695). Same seed, bot, frame rate and engine give the same metrics (step cost aside).
+
+- **Bots** (`bots.ts`): `heuristic` (waits for a calm board, drops where it lands on a same-tier piece, else lowest), `random` (600-1200 ms, random x), `spam` (200-250 ms, random x; the lid test's bot).
+- **Frame rates:** every run is done at 60 and 120 Hz frame deltas.
+- **Metrics** (`runGame.ts`, `suite.ts`): piece frequency per tier; drought (longest run of drops without a tier); game length (simulated s), score, score by tier, top-tier reached rate; win rate and time to win (read 0 / n/a until #3699: an engine event `{ type: "win" }` is picked up with no sim change); physics feel: packing density, visible gap between touching neighbours (drawn radius), settle time after a drop and after a 3+ merge chain, jitter of settled pieces (px/s), guard-rail events per game (`guardRailFired`, counted, never acted on: #1716); step cost (wall clock, printed but not in the baseline). The lid check is that the spam bot always reaches game over inside 120 simulated seconds.
+- **1 px-contact spawn helper** (`contactSpawn.ts`): `contactPair(tier, x)` places two same-tier pieces overlapped by 1 px (plus the polygon-facet allowance: Matter draws a circle with at most 25 sides, so a plain 1 px overlap is no contact for the large tiers 9 and 10), for merge tests. Deep overlaps can separate before `collisionStart` fires and the merge silently fails (#1296, #1302, #1418).
+- **Comparing a candidate** (#3696): `runGame` / `runSuite` take a `SimConfig`: `createEngine` (a factory for any engine with the `SimEngine` surface) and `constants` (overrides for what the sim and its metrics read: world size, lid y, physics and drawn radius per tier, score per tier, droppable tiers). The real engine reads its tuning from `constants.ts` at import time, so a candidate engine brings its own numbers and the same numbers go in `constants`.
+- **Run it:** `cd frontend && npm run sim:cascade` (smoke, 3 seeds, about 5 s) or `npm run sim:cascade -- --full` (100 seeds x 3 bots x 60/120 Hz, about 2.5 min). `--gate` checks `sim/baseline.json` and exits 1 on a violation; `--update-baseline` rewrites the baseline for that suite (then `npx prettier --write` the file); `--md PATH` / `--json PATH` write the table / raw result.
+- **Baseline and bands:** `sim/baseline.json` holds today's deterministic metrics with a band per metric (relative plus an absolute floor per unit; rates never tighter than one game of n). Bands are drift guards around today's physics, not targets; #3695 / #3697 re-baseline. The smoke suite is a coarse guard: it bands only game length, score and guard-rail rate with wide tolerances (checked with the seed set shifted), and the lid and step budget are hard gates; per-tier rates, shares, droughts and settle are banded in the full suite only, which assumes 100 seeds (a run with another seed count prints the table and skips the bands).
+- **Settle time is survivor-biased.** A drop that arrives before the board calms cuts that episode off, and it never reaches the mean. The table prints the cut-off fraction next to it (`settle episodes cut off by the next drop`): about 0.5 for the heuristic and random bots, 0.99 for spam. So the **spam bot's settle numbers are not comparable** (they come from a few unusual episodes) and are never banded; the heuristic and random settle means are banded only when 20 or more episodes finished. Compare settle between engines for the same bot and read it with its cut-off fraction. Speed thresholds (calm 18 px/s, settled 30 px/s) are per second, so 60 and 120 Hz compare.
+- **CI:** the smoke runs in every PR's Jest run (`sim/__tests__/sim.test.ts`, about 8 s); the long run is `.github/workflows/cascade-sim-gate.yml` (nightly, on demand, and on PRs that touch the engine, its constants, the queue or the sim).
+
+Baseline today (the 12-tier ladder, #3695; 100 seeds, 180 s cap per game). Every heuristic game reaches the cap and about 30 % of random games do, so their game length and score are cap-limited; the capstone (tier 11) was not reached in any game, and tier 9 was reached in 19 % of heuristic games:
+
+| metric                       | heuristic 60 / 120 Hz | random 60 / 120 Hz | spam 60 / 120 Hz |
+| ---------------------------- | --------------------: | -----------------: | ---------------: |
+| game length (s)              |             180 / 180 |          160 / 160 |          59 / 59 |
+| score (mean)                 |           3386 / 3392 |        2590 / 2581 |      2313 / 2281 |
+| packing density              |           0.68 / 0.68 |        0.71 / 0.70 |      0.73 / 0.73 |
+| settle after a drop (ms)     |             760 / 739 |          642 / 640 |        492 / 414 |
+| guard-rail events per minute |           1855 / 1865 |        2119 / 2128 |      4717 / 4683 |
+
 ### Persistence (`storage.ts`)
 
 - Saved state is versioned (`SavedState` v4, key `cascade_game_v4`) — includes pieces, score, and queue state
