@@ -1,6 +1,6 @@
 # Round 37 — Does quiet music still carry us forward?
 
-**Status: owner listening pending, November 12, 2026.** Both tracks are audition-only, with no production audio changes.
+**Status: Round 37B approved for maintaining movement through the quiet passage, November 12, 2026.** Both tracks are audition-only, with no production audio changes.
 
 ## Why
 
@@ -33,3 +33,11 @@ Measurements are diagnostic only. **Equal integrated loudness is not equal perce
 **Archive status:** exact MP3s and scripts are packaged in `StarSwarm_Round37_Audio_and_Source.zip` in ChatGPT. README is committed to [draft PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734); the audio and source still require uploading through the repository's binary-capable workflow, since the current GitHub connector cannot transfer the local files. No production game asset changed.
 
 See [audition issue #3642](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3642) and [music epic #3635](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3635).
+
+## Owner feedback — November 12, 2026
+
+**Round 37B passes the focused test.** After listening to the quiet middle passage, the owner confirms that the music **sustains forward movement** when the lead recedes. Preserve the coordinated expressive handoffs between existing bass and supporting voices as an approved arrangement technique, alongside the previously favored Round 34B dynamic force and Round 35B faster phrase pacing.
+
+**Scope of approval:** this confirms the quieter passage maintains musical flow. It does **not** yet approve the entire 48-second composition, a full-length score, mastering, the loop, or production integration. Do not add unrelated layers or equate this with louder music.
+
+**Recommended next creative gate:** work on a longer connected musical arc with a genuinely different section that uses this moving undercurrent while keeping urgency and power. Explore variation without repeating the same motif or depending on approved special effects to mask weak underlying music. Subsequently audition integration with swarm, astronomical rises, Shepard descents and robotic signals, and revalidate actual game-volume balance and entry points.
