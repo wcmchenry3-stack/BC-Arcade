@@ -20,7 +20,7 @@ import {
   PENETRATION_MIN,
   PENETRATION_STEP,
 } from "../../game/blackjack/constants";
-import RuleRow from "./RuleRow";
+import RuleRow, { ruleRowStyles } from "./RuleRow";
 import Stepper from "./Stepper";
 
 interface Props {
@@ -181,11 +181,11 @@ export default function TableRules({ rules, onRulesChange }: Props) {
               </RuleRow>
 
               {/* The rules every table plays by, not adjustable (#3741: standard rules). */}
-              <View testID="blackjack-rules-standard" accessible style={styles.standard}>
-                <Text style={[styles.label, { color: colors.text }]}>
+              <View testID="blackjack-rules-standard" accessible style={ruleRowStyles.section}>
+                <Text style={[ruleRowStyles.label, { color: colors.text }]}>
                   {t("rules.standardTitle")}
                 </Text>
-                <Text style={[styles.standardText, { color: colors.textMuted }]}>
+                <Text style={[ruleRowStyles.tooltip, { color: colors.textMuted }]}>
                   {t("rules.standard")}
                 </Text>
               </View>
@@ -269,17 +269,5 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: 13,
     fontWeight: "600",
-  },
-  // As RuleRow's label and tooltip, so the fixed rules read as one more row.
-  standard: {
-    gap: 6,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  standardText: {
-    fontSize: 12,
-    lineHeight: 17,
   },
 });

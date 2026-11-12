@@ -26,10 +26,10 @@ export default function RuleRow({
 }: Props) {
   const { colors } = useTheme();
   return (
-    <View style={styles.section}>
-      <View style={styles.row}>
-        <View style={styles.labelRow}>
-          <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+    <View style={ruleRowStyles.section}>
+      <View style={ruleRowStyles.row}>
+        <View style={ruleRowStyles.labelRow}>
+          <Text style={[ruleRowStyles.label, { color: colors.text }]}>{label}</Text>
           <Pressable
             onPress={onToggleTooltip}
             accessibilityRole="button"
@@ -42,12 +42,18 @@ export default function RuleRow({
         </View>
         {children}
       </View>
-      {expanded && <Text style={[styles.tooltip, { color: colors.textMuted }]}>{tooltip}</Text>}
+      {expanded && (
+        <Text style={[ruleRowStyles.tooltip, { color: colors.textMuted }]}>{tooltip}</Text>
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+/**
+ * The row's styles, shared with the rules sheet's fixed rules (TableRules, #3741) so they read as
+ * one more row: `section`, `label` and `tooltip`.
+ */
+export const ruleRowStyles = StyleSheet.create({
   section: {
     gap: 6,
   },
