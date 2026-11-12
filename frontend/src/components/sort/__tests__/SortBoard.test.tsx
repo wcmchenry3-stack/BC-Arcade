@@ -58,6 +58,25 @@ describe("SortBoard", () => {
     expect(getByLabelText("Sort Puzzle board")).toBeTruthy();
   });
 
+  it("rings only the hint's destination bottle, inside its own cell (#3658)", async () => {
+    const state = mkState([["red"], ["blue"], []]);
+    const { getAllByTestId, queryByTestId, getByTestId, rerender } = await render(
+      withTheme(
+        <SortBoard state={state} onBottleTap={jest.fn()} availableHeight={500} hintTo={2} />
+      )
+    );
+    const ring = getByTestId("hint-dst-ring", { includeHiddenElements: true });
+    expect(getAllByTestId("hint-dst-ring", { includeHiddenElements: true })).toHaveLength(1);
+    expect(getByTestId("bottle-cell-2")).toContainElement(ring);
+    expect(ring.props.pointerEvents).toBe("none");
+    await rerender(
+      withTheme(
+        <SortBoard state={state} onBottleTap={jest.fn()} availableHeight={500} hintTo={null} />
+      )
+    );
+    expect(queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+  });
+
   it("renders one BottleView per bottle", async () => {
     const state = mkState([["red"], ["blue"], []]);
     const { getAllByLabelText } = await render(

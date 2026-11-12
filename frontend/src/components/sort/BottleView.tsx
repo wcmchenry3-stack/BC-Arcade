@@ -63,7 +63,13 @@ const FLASK_OUTLINE = `M 18 0 L 18 36 Q 6 52 6 154 Q 6 ${BODY_BOTTOM} 18 ${BODY_
 // Per-theme liquid color map — subscribers select by theme key.
 export const LIQUID_COLORS: Record<Theme, Record<Color, string>> = BOTTLE_LIQUID_COLORS;
 
-const COLORBLIND_SYMBOLS: Record<Color, string> = {
+/**
+ * One glyph per colour for Colorblind Mode. Every one must draw as a text glyph,
+ * never a colour emoji (#3658): a symbol that is emoji-capable (such as the heart)
+ * carries the text presentation selector U+FE0E, and none may be emoji by default
+ * (the lightning bolt was, so maroon uses a triangle).
+ */
+export const COLORBLIND_SYMBOLS: Record<Color, string> = {
   red: "▲",
   blue: "●",
   green: "■",
@@ -73,9 +79,9 @@ const COLORBLIND_SYMBOLS: Record<Color, string> = {
   pink: "✦",
   teal: "✚",
   brown: "↑",
-  lime: "♥",
+  lime: "♥\uFE0E",
   navy: "△",
-  maroon: "⚡",
+  maroon: "▼",
   gold: "◎",
   indigo: "⊕",
 };

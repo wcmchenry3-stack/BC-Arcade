@@ -68,6 +68,12 @@ export interface SortBoardProps {
   readonly onBottleTap: (index: number) => void;
   readonly pouringFrom?: number | null;
   readonly pouringTo?: number | null;
+  /**
+   * The bottle a Hint says to pour into (#3658): ringed as the pour's destination
+   * is, until the screen clears it. Its cell draws the ring, so it follows the
+   * bottle at any size with no measured position.
+   */
+  readonly hintTo?: number | null;
   /** Height of the board container in pixels — used to scale bottles to fit. */
   readonly availableHeight?: number;
   /** Total flow duration in ms (POUR_PER_UNIT_MS × unitCount); computed by SortScreen. */
@@ -111,12 +117,13 @@ export default function SortBoard({
   onBottleTap,
   pouringFrom = null,
   pouringTo = null,
+  hintTo = null,
   availableHeight,
   pourHoldMs = POUR_PER_UNIT_MS,
   onPourComplete,
 }: SortBoardProps) {
   const { t } = useTranslation("sort");
-  const { theme } = useTheme();
+  const { theme, colors } = useTheme();
   const liquidColors = LIQUID_COLORS[theme];
   const { width: screenW } = useWindowDimensions();
 
@@ -505,6 +512,24 @@ export default function SortBoard({
                     hitSlop={hitSlop}
                     onTap={handlers[idx]}
                   />
+                  {idx === hintTo && (
+                    <View
+                      testID="hint-dst-ring"
+                      style={[
+                        styles.dstRing,
+                        {
+                          left: bottleInsetX - 4,
+                          top: -4,
+                          width: bottleW + 8,
+                          height: bottleH + 8,
+                          borderColor: colors.bonus,
+                        },
+                      ]}
+                      pointerEvents="none"
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    />
+                  )}
                 </View>
               );
             })}

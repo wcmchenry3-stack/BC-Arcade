@@ -5,7 +5,7 @@
  * badge (Mahjong's shuffles left) and a spoken value.
  */
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
@@ -21,6 +21,8 @@ export interface GameBarAction {
   readonly accessibilityLabel: string;
   readonly color: string;
   readonly disabled?: boolean;
+  /** A long action is running (Sort's Hint solver, #3658): a spinner replaces the icon and the button is inert. */
+  readonly busy?: boolean;
   readonly onPress: () => void;
   readonly testID: string;
   readonly badge?: number;
@@ -33,29 +35,40 @@ function Action({
   accessibilityLabel,
   color,
   disabled = false,
+  busy,
   onPress,
   testID,
   badge,
   accessibilityValue,
 }: Omit<GameBarAction, "key">) {
   const { colors } = useTheme();
+  const inactive = disabled || busy === true;
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={inactive}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
+      accessibilityState={busy === undefined ? { disabled } : { disabled: inactive, busy }}
       accessibilityValue={accessibilityValue ? { text: accessibilityValue } : undefined}
       testID={testID}
       hitSlop={4}
       style={({ pressed }) => [
         styles.action,
-        { opacity: disabled ? PILL_DISABLED_OPACITY : pressed ? 0.7 : 1 },
+        { opacity: inactive ? PILL_DISABLED_OPACITY : pressed ? 0.7 : 1 },
       ]}
     >
       <View>
-        <MaterialIcons name={icon} size={26} color={color} />
+        {busy ? (
+          <ActivityIndicator
+            size="small"
+            color={color}
+            style={styles.spinner}
+            testID={`${testID}-busy`}
+          />
+        ) : (
+          <MaterialIcons name={icon} size={26} color={color} />
+        )}
         {badge !== undefined && (
           <View style={[styles.badge, { backgroundColor: color }]} testID={`${testID}-badge`}>
             <Text
@@ -114,6 +127,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
+  // The spinner takes the icon box so the bar does not shift while busy.
+  spinner: { width: 26, height: 26 },
   label: {
     fontFamily: typography.label,
     fontSize: 11,

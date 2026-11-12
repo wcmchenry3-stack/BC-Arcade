@@ -38,13 +38,36 @@ export function computeGridShape(numBottles: number): GridShape {
   return { numCols, numRows, rowCounts };
 }
 
-/** Padding inside SortScreen's board container, on each side and top/bottom. */
+/** Padding inside SortScreen's board container, left and right. */
 export const BOARD_PADDING = 16;
+/**
+ * Padding inside SortScreen's board container, top and bottom (#3658). The bars
+ * (Hint/Undo at the foot) take height from the board, so the vertical padding is
+ * tighter than the horizontal one to keep the 16-bottle grid at least as large
+ * as before. The selected bottle's bounce and the pour lift are not clipped.
+ */
+export const BOARD_VERTICAL_PADDING = 8;
+/** Height of Sort's bottom bar (Hint, Undo): the shared bar's 52pt buttons plus a little air (#3658). */
+export const SORT_ACTION_BAR_H = 56;
 /** Total horizontal padding around the board (both sides). */
 export const BOARD_HORIZONTAL_PAD = 2 * BOARD_PADDING;
 
-/** Default space between neighbouring bottles, in both directions. */
+/** Least space between neighbouring bottles, side to side. */
 export const BOTTLE_GAP = 12;
+/** Space between bottle rows (#3658: 8, so tall grids give the height to the bottles). */
+export const ROW_GAP = 8;
+/**
+ * Bottles scale up to fill the board (#3658) but never past this multiple of
+ * the default 52x156 bottle (so at most 104x312), which keeps a 4-bottle level
+ * on a tablet from drawing giant flasks.
+ */
+export const MAX_BOTTLE_SCALE = 2;
+/**
+ * When a row has room to spare, the gap between bottles grows with the bottle
+ * (12 / 52 of its width at the default size, more as bottles scale up) so large
+ * bottles are not crowded. It never takes width from the bottles.
+ */
+export const BOTTLE_GAP_RATIO = 0.2;
 /** Lowest height a bottle is shrunk to when vertical space runs out. */
 export const MIN_BOTTLE_HEIGHT = 60;
 /**
@@ -85,8 +108,8 @@ export interface BoardLayout extends GridShape {
  * Sizes the board for `numBottles` bottles in a content box of
  * contentW × contentH (the board's area inside its padding).
  *
- * Bottles keep their aspect ratio and scale to fit the height first, then the
- * width. Each bottle then gets a cell at least MIN_TOUCH_TARGET wide whenever
+ * Bottles keep their aspect ratio and scale to fill the board: to the height
+ * first, then the width, up to MAX_BOTTLE_SCALE times the default size (#3658). Each bottle then gets a cell at least MIN_TOUCH_TARGET wide whenever
  * the row's width allows it, so dense levels (the 16-bottle 4×4 grid) keep
  * full-size tap areas even where the bottles themselves are narrow (#2207).
  * Bottles are always far taller than MIN_TOUCH_TARGET (see the tests), so no
@@ -100,7 +123,7 @@ export function computeBoardLayout(
 ): BoardLayout {
   const shape = computeGridShape(numBottles);
   const { numCols, numRows } = shape;
-  const rowGap = BOTTLE_GAP;
+  const rowGap = ROW_GAP;
   if (numCols === 0) {
     return {
       ...shape,
@@ -115,7 +138,7 @@ export function computeBoardLayout(
   const aspect = bottle.width / bottle.height;
 
   const maxBottleH = Math.max(MIN_BOTTLE_HEIGHT, (contentH - rowGap * (numRows - 1)) / numRows);
-  const bottleHFromHeight = Math.min(bottle.height, maxBottleH);
+  const bottleHFromHeight = Math.min(bottle.height * MAX_BOTTLE_SCALE, maxBottleH);
 
   // The widest a cell may be without the row overflowing the content width.
   // A bottle always keeps at least the default gap to its neighbours.
@@ -123,7 +146,8 @@ export function computeBoardLayout(
   const bottleW = Math.max(0, Math.min(bottleHFromHeight * aspect, maxSlotW - BOTTLE_GAP));
   const bottleH = bottleW / aspect;
 
-  const slotW = Math.min(maxSlotW, Math.max(bottleW + BOTTLE_GAP, MIN_TOUCH_TARGET));
+  const gap = Math.max(BOTTLE_GAP, bottleW * BOTTLE_GAP_RATIO);
+  const slotW = Math.min(maxSlotW, Math.max(bottleW + gap, MIN_TOUCH_TARGET));
   const bottleInsetX = (slotW - bottleW) / 2;
   return {
     ...shape,

@@ -110,12 +110,12 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 
 ### Reference implementations
 
-| Game        | Layout Function                                                     | Notes                                                         |
-| ----------- | ------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Solitaire   | `computeTableGeometry()` in `game/_shared/cards/tableLayout.ts`     | Felt table (#3606): card width and steps from the felt's size |
-| FreeCell    | `freeCellGeometry()` in `game/freecell/layout.ts`                   | Same felt helper, 8 columns, top row at 0.92 (#3607)          |
-| Bottle Sort | Inline in `SortBoard.tsx`                                           | `bottleH = min(defaultH, maxBottleH)` from `availableHeight`  |
-| Mahjong     | `calculateMahjongLayout()` in `frontend/src/game/mahjong/layout.ts` | Responsive layout with tested fit/clamp behavior              |
+| Game        | Layout Function                                                     | Notes                                                             |
+| ----------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Solitaire   | `computeTableGeometry()` in `game/_shared/cards/tableLayout.ts`     | Felt table (#3606): card width and steps from the felt's size     |
+| FreeCell    | `freeCellGeometry()` in `game/freecell/layout.ts`                   | Same felt helper, 8 columns, top row at 0.92 (#3607)              |
+| Bottle Sort | `computeBoardLayout()` in `components/sort/gridGeometry.ts`         | Fills the board: height and width fit, at most 2x default (#3658) |
+| Mahjong     | `calculateMahjongLayout()` in `frontend/src/game/mahjong/layout.ts` | Responsive layout with tested fit/clamp behavior                  |
 
 The card games (Solitaire, FreeCell, Hearts, Blackjack) report a measured layout whose cards run off the table to Sentry, with a screenshot: see [Cards off the table (#3653)](#cards-off-the-table-3653).
 

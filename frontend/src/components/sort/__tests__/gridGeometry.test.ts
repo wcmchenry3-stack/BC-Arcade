@@ -1,5 +1,9 @@
 import {
+  BOARD_HORIZONTAL_PAD,
+  BOARD_VERTICAL_PADDING,
   BOTTLE_GAP,
+  BOTTLE_GAP_RATIO,
+  MAX_BOTTLE_SCALE,
   computeBoardLayout,
   computeGridShape,
   MIN_BOTTLE_HEIGHT,
@@ -127,24 +131,75 @@ describe("computeBoardLayout (#2207)", () => {
     // 320pt-wide phone; a ~400pt-tall board once header, HUD and toggle are out.
     const l = computeBoardLayout(16, 288, 400, BOTTLE);
     expect(l.rowCounts).toEqual([4, 4, 4, 4]);
-    // Height-limited: (400 - 3×12) / 4 = 91 tall, so ~30.3 wide. That width
+    // Height-limited: (400 - 3×ROW_GAP) / 4 = 94 tall, so ~31.3 wide. That width
     // used to be the whole tap area; now each bottle's cell is 48 wide.
-    expect(l.bottleH).toBeCloseTo(91, 6);
-    expect(l.bottleW).toBeCloseTo(91 / 3, 6);
+    expect(l.bottleH).toBeCloseTo(94, 6);
+    expect(l.bottleW).toBeCloseTo(94 / 3, 6);
     expect(l.slotW).toBe(MIN_TOUCH_TARGET);
-    expect(l.hitSlop.left).toBeCloseTo((48 - 91 / 3) / 2, 6);
+    expect(l.hitSlop.left).toBeCloseTo((48 - 94 / 3) / 2, 6);
     expect(l.hitSlop.right).toBe(l.hitSlop.left);
     expect(l.bottleInsetX).toBe(l.hitSlop.left);
     expect(4 * l.slotW).toBeLessThanOrEqual(288);
     expect(4 * l.bottleH + 3 * l.rowGap).toBeCloseTo(400, 6);
   });
 
-  it("leaves roomy boards as before: full-size bottles 12 apart", () => {
+  it("scales bottles up on a roomy board, to at most twice the default, gap growing with them (#3658)", () => {
     const l = computeBoardLayout(4, 718, 480, BOTTLE);
-    expect(l.bottleW).toBe(DEFAULT_BOTTLE_WIDTH);
-    expect(l.bottleH).toBe(DEFAULT_BOTTLE_HEIGHT);
-    expect(l.slotW).toBe(DEFAULT_BOTTLE_WIDTH + BOTTLE_GAP);
-    expect(l.hitSlop).toEqual({ left: 6, right: 6, top: 0, bottom: 0 });
+    expect(l.bottleW).toBe(DEFAULT_BOTTLE_WIDTH * MAX_BOTTLE_SCALE);
+    expect(l.bottleH).toBe(DEFAULT_BOTTLE_HEIGHT * MAX_BOTTLE_SCALE);
+    expect(l.slotW - l.bottleW).toBeCloseTo(l.bottleW * BOTTLE_GAP_RATIO, 6);
+    expect(l.hitSlop.left).toBeCloseTo((l.slotW - l.bottleW) / 2, 6);
+    expect(l.hitSlop.top + l.hitSlop.bottom).toBe(0);
+  });
+
+  // #3658 — the board on a 390x844 phone. The board container is 614 tall
+  // (SortScreen's 639 before the move, plus the 31pt colorblind row, minus the
+  // 56pt action bar), so with 8pt vertical padding the content box is 358 x 598.
+  describe("390x844 phone (#3658)", () => {
+    const CONTENT_W = 390 - BOARD_HORIZONTAL_PAD;
+    const CONTENT_H = 614 - 2 * BOARD_VERTICAL_PADDING;
+    // Measured before this change at the old 639pt board (16pt padding, 12pt row gap).
+    const BEFORE = { 4: [52, 156], 8: [52, 156], 12: [52, 156], 16: [47.6, 142.8] } as const;
+    const layout = (n: number) => computeBoardLayout(n, CONTENT_W, CONTENT_H, BOTTLE);
+
+    it.each([4, 8, 12, 16] as const)("%i bottles are at least as big as before", (n) => {
+      const l = layout(n);
+      expect(l.bottleW).toBeGreaterThanOrEqual(BEFORE[n][0] - 0.05);
+      expect(l.bottleH).toBeGreaterThanOrEqual(BEFORE[n][1] - 0.15);
+    });
+
+    it.each([4, 8, 12, 16] as const)(
+      "%i bottles keep the 1:3 shape, fit the board and keep a full tap cell",
+      (n) => {
+        const l = layout(n);
+        expect(l.bottleH / l.bottleW).toBeCloseTo(3, 6);
+        expect(l.numCols * l.slotW).toBeLessThanOrEqual(CONTENT_W + 1e-9);
+        expect(l.numRows * l.bottleH + (l.numRows - 1) * l.rowGap).toBeLessThanOrEqual(
+          CONTENT_H + 1e-9
+        );
+        expect(l.slotW).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET);
+        expect(l.hitSlop.left + l.bottleW + l.hitSlop.right).toBeCloseTo(l.slotW, 6);
+        expect(l.slotW - l.bottleW).toBeGreaterThanOrEqual(BOTTLE_GAP - 1e-9);
+      }
+    );
+
+    it("pins the sizes recorded in docs/games/sort.md", () => {
+      const sizes = [4, 8, 12, 16].map((n) => {
+        const l = layout(n);
+        return [n, +l.bottleW.toFixed(1), +l.bottleH.toFixed(1), +l.slotW.toFixed(1)];
+      });
+      expect(sizes).toEqual([
+        [4, 77.5, 232.5, 89.5],
+        [8, 77.5, 232.5, 89.5],
+        [12, 64.7, 194, 77.6],
+        [16, 47.8, 143.5, 59.8],
+      ]);
+    });
+
+    it("never draws a 4-bottle level wider than the board", () => {
+      const l = layout(4);
+      expect(l.numCols * l.slotW).toBeLessThanOrEqual(CONTENT_W);
+    });
   });
 
   it("returns an empty layout for zero bottles instead of NaN", () => {

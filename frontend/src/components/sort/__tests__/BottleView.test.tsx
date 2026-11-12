@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
-import BottleView from "../BottleView";
+import BottleView, { COLORBLIND_SYMBOLS } from "../BottleView";
 import type { Color } from "../../../game/sort/types";
 
 function withTheme(children: React.ReactNode) {
@@ -49,5 +49,27 @@ describe("BottleView", () => {
     expect(getByLabelText("Red")).toBeTruthy();
     expect(getByLabelText("Blue")).toBeTruthy();
     expect(getByLabelText("Green")).toBeTruthy();
+  });
+});
+
+// #3658: Colorblind Mode symbols must draw as text glyphs on iOS and Android,
+// never as colour emoji.
+describe("COLORBLIND_SYMBOLS (#3658)", () => {
+  const entries = Object.entries(COLORBLIND_SYMBOLS);
+
+  it("has a symbol for every colour, all different", () => {
+    expect(entries).toHaveLength(14);
+    expect(new Set(Object.values(COLORBLIND_SYMBOLS)).size).toBe(entries.length);
+  });
+
+  it.each(entries)("%s: a text glyph, not a colour emoji", (_color, symbol) => {
+    // Emoji by default (the old lightning bolt): never allowed.
+    expect(symbol).not.toMatch(/\p{Emoji_Presentation}/u);
+    // Emoji-capable (such as the heart): must carry the text selector U+FE0E.
+    if (/\p{Extended_Pictographic}/u.test(symbol)) {
+      expect(symbol.endsWith("︎")).toBe(true);
+    }
+    // Never the emoji selector U+FE0F.
+    expect(symbol).not.toContain("️");
   });
 });

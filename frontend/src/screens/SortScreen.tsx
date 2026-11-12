@@ -26,7 +26,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutChangeEvent, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -34,7 +34,6 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { useTheme } from "../theme/ThemeContext";
-import { typography } from "../theme/typography";
 import {
   applyPour,
   initState,
@@ -48,7 +47,11 @@ import SortBoard, { POUR_PER_UNIT_MS } from "../components/sort/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../components/sort/BottleView";
 import HintNotice, { type HintNoticeKind } from "../components/sort/HintNotice";
 import LevelSelectScreen from "../components/sort/LevelSelectScreen";
-import { BOARD_PADDING } from "../components/sort/gridGeometry";
+import {
+  BOARD_PADDING,
+  BOARD_VERTICAL_PADDING,
+  SORT_ACTION_BAR_H,
+} from "../components/sort/gridGeometry";
 import {
   applyLevelSolve,
   highestSolvedLevel,
@@ -67,7 +70,7 @@ import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { HudStatRow } from "../components/shared/HudStatRow";
-import { PillButton } from "../components/shared/PillButton";
+import GameActionBar from "../components/shared/GameActionBar";
 import { useSortAudio } from "../game/sort/useSortAudio";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
@@ -192,6 +195,12 @@ export default function SortScreen() {
 
   /** A Hint (or the search back to the last good move) is running. */
   const [isHinting, setIsHinting] = useState(false);
+  /**
+   * The bottle the last Hint said to pour into (#3658), ringed on the board while
+   * the hint's source is still selected. Cleared by any tap, pour, undo, restart
+   * or level change.
+   */
+  const [hintTo, setHintTo] = useState<{ from: number; to: number } | null>(null);
   /** The notice in the play area after a Hint with no pour to offer (#2768). */
   const [hintNotice, setHintNotice] = useState<{
     kind: HintNoticeKind;
@@ -212,6 +221,7 @@ export default function SortScreen() {
   function boardChanged() {
     levelGenRef.current += 1;
     setHintNotice(null);
+    setHintTo(null);
     setIsHinting(false);
   }
 
@@ -351,6 +361,7 @@ export default function SortScreen() {
 
   function handleBottleTap(index: number) {
     if (!gameState || gameState.isComplete || isPouring) return;
+    setHintTo(null);
     const { selectedBottleIndex } = gameState;
 
     if (selectedBottleIndex === null) {
@@ -404,6 +415,7 @@ export default function SortScreen() {
         setHintNotice(null);
         const first = result.moves[0];
         if (first) {
+          setHintTo({ from: first.from, to: first.to });
           setGameState((cur) =>
             cur && !cur.isComplete ? { ...cur, selectedBottleIndex: first.from } : cur
           );
@@ -469,6 +481,7 @@ export default function SortScreen() {
         ({ state, history: rest } = undoState(state, rest));
       }
       setHintNotice(null);
+      setHintTo(null);
       setGameState(state);
       setHistory(rest);
     } finally {
@@ -483,6 +496,7 @@ export default function SortScreen() {
    */
   function leaveBoard() {
     setHintNotice(null);
+    setHintTo(null);
     setIsHinting(false);
     cancelPour();
     abandonSession();
@@ -492,6 +506,7 @@ export default function SortScreen() {
   function enterPlay() {
     setHistory([]);
     setHintNotice(null);
+    setHintTo(null);
     setIsHinting(false);
     setShowWinModal(false);
     setWinSummary(null);
@@ -611,22 +626,14 @@ export default function SortScreen() {
       onNewGame={handleResetLevel}
       onLevelSelect={handleBackToSelect}
       onOpenLeaderboard={openLeaderboard}
-      rightSlot={
-        <View style={styles.headerBtnRow}>
-          <PillButton
-            label={t("action.hint")}
-            onPress={handleHint}
-            busy={isHinting}
-            disabled={isPouring || !!gameState?.isComplete}
-            color={colors.bonus}
-          />
-          <PillButton
-            label={t("action.undo")}
-            onPress={handleUndo}
-            disabled={history.length === 0}
-          />
-        </View>
-      }
+      // Colorblind Mode lives in the ⋯ menu (#3658); Hint and Undo are in the bar under the
+      // board, so the header holds only back, the title and ⋯.
+      menuToggle={{
+        label: t("settings.colorblindMode"),
+        value: colorblindMode,
+        onToggle: setColorblindMode,
+        testID: "sort-colorblind-toggle",
+      }}
     >
       <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
 
@@ -659,9 +666,10 @@ export default function SortScreen() {
             colorblindMode={colorblindMode}
             onBottleTap={handleBottleTap}
             {...boardPourProps(pour)}
+            hintTo={gameState.selectedBottleIndex === hintTo?.from ? (hintTo?.to ?? null) : null}
             // onLayout reports the container's full height, padding included;
             // the board itself only gets the space inside the padding (#2207).
-            availableHeight={Math.max(0, boardHeight - 2 * BOARD_PADDING)}
+            availableHeight={Math.max(0, boardHeight - 2 * BOARD_VERTICAL_PADDING)}
             onPourComplete={completePour}
           />
         )}
@@ -683,20 +691,35 @@ export default function SortScreen() {
         )}
       </View>
 
-      {/* Colorblind toggle */}
-      <Pressable
-        onPress={() => setColorblindMode((m) => !m)}
-        style={styles.colorblindToggle}
-        accessibilityRole="switch"
-        accessibilityLabel={t("action.colorblindToggle")}
-        accessibilityState={{ checked: colorblindMode }}
-        // RN Web 0.21 drops accessibilityState; aria-checked reaches the DOM.
-        aria-checked={colorblindMode}
-      >
-        <Text style={[styles.colorblindToggleText, { color: colors.textMuted }]}>
-          {t("settings.colorblindMode")}
-        </Text>
-      </Pressable>
+      {/* Hint and Undo in thumb reach, after the board in reading order (#3658). The labels
+          are the header pills' (the e2e specs find the buttons by name). */}
+      <GameActionBar
+        testID="sort-action-bar"
+        height={SORT_ACTION_BAR_H}
+        actions={[
+          {
+            key: "hint",
+            icon: "lightbulb",
+            label: t("action.hint"),
+            accessibilityLabel: t("action.hint"),
+            color: colors.bonus,
+            busy: isHinting,
+            disabled: isPouring || !!gameState?.isComplete,
+            onPress: handleHint,
+            testID: "sort-hint-button",
+          },
+          {
+            key: "undo",
+            icon: "undo",
+            label: t("action.undo"),
+            accessibilityLabel: t("action.undo"),
+            color: colors.accent,
+            disabled: history.length === 0,
+            onPress: handleUndo,
+            testID: "sort-undo-button",
+          },
+        ]}
+      />
 
       {gameState !== null && currentLevelId !== null ? (
         <GameResultModal
@@ -729,16 +752,13 @@ export default function SortScreen() {
 
 const styles = StyleSheet.create({
   offlineBannerWrap: { paddingHorizontal: 12, paddingTop: 4 },
-  headerBtnRow: { flexDirection: "row", gap: 6 },
   hud: { paddingHorizontal: 12 },
 
   boardContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: BOARD_PADDING,
+    paddingHorizontal: BOARD_PADDING,
+    paddingVertical: BOARD_VERTICAL_PADDING,
   },
-
-  colorblindToggle: { alignItems: "center", paddingVertical: 8 },
-  colorblindToggleText: { fontFamily: typography.body, fontSize: 11 },
 });
