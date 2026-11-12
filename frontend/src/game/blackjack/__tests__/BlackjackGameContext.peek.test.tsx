@@ -32,11 +32,17 @@ const mockSaves: Saved[][] = [];
 const mockComplete = jest.fn();
 const mockStart = jest.fn();
 const mockResume = jest.fn(() => true);
+// The progress snapshot each markStarted persists (useGameSync's ping), as a killed
+// process would leave it for the sweep (#2745).
+let mockSnapshotGetter: (() => ProgressSnapshot) | undefined;
+const mockSnapshots: ProgressSnapshot[] = [];
 jest.mock("../../_shared/useGameSync", () => ({
   useGameSync: () => ({
     start: (...a: unknown[]) => mockStart(...a),
     resume: () => mockResume(),
-    markStarted: jest.fn(),
+    markStarted: () => {
+      if (mockSnapshotGetter) mockSnapshots.push(mockSnapshotGetter());
+    },
     enqueue: jest.fn(),
     enqueueMany: (events: Saved[]) => {
       mockSaves.push([...events]);
@@ -44,7 +50,9 @@ jest.mock("../../_shared/useGameSync", () => ({
     },
     complete: (...a: unknown[]) => mockComplete(...a),
     close: jest.fn(),
-    setProgressSnapshot: (_g: () => ProgressSnapshot) => undefined,
+    setProgressSnapshot: (g: () => ProgressSnapshot) => {
+      mockSnapshotGetter = g;
+    },
     getGameId: () => "game-1",
     resetPlayWindow: jest.fn(),
   }),
@@ -104,6 +112,7 @@ const recorded = () => mockSaves.flat();
 beforeEach(() => {
   jest.clearAllMocks();
   mockSaves.length = 0;
+  mockSnapshots.length = 0;
   idleTasks.length = 0;
   mockResume.mockReturnValue(true);
   (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = (cb: () => void) => {
@@ -167,6 +176,14 @@ describe("a save from before the peek, chips left", () => {
     expect(rows[0]!.data).not.toHaveProperty("a");
     expect(rows[0]!.data).not.toHaveProperty("dl");
     expect(rows[1]!.data).toMatchObject({ unit: 4, i: 0, o: "lose", p: -10, ch: 90 });
+  });
+
+  it("the progress snapshot persisted while it plays out carries the settled chips", async () => {
+    await mountWith(oldSave(100, 4));
+    expect(mockSnapshots.length).toBeGreaterThan(0);
+    for (const snap of mockSnapshots) {
+      expect(snap.result).toMatchObject({ final_chips: 90 });
+    }
   });
 
   it("a save from before #3284 (no round count) is round 1, so the next bet is round 2", async () => {

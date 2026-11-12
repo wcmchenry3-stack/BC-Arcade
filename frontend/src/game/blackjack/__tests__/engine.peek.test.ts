@@ -213,7 +213,9 @@ describe("settleUnpeekedDealerNatural", () => {
 
   it("the player's natural against the dealer's natural (a guard; no real save holds it): a push", () => {
     const s = settleUnpeekedDealerNatural(savedAgainstNatural([c("♠", "A"), c("♥", "K")]));
+    expect(s.phase).toBe("result");
     expect(s.outcome).toBe("push");
+    expect(s.payout).toBe(0);
     expect(s.chips).toBe(1000);
   });
 

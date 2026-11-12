@@ -487,6 +487,11 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
    */
   const playOutSettledOnLoad = useCallback(
     (loaded: EngineState, next: EngineState) => {
+      // A hidden game (#3328) starts no session, so it records and ends nothing.
+      if (!isGameVisible("blackjack")) return;
+      // Ahead of the render's effect, as apply() does (#2745): the progress
+      // snapshots the resume and the play-out persist carry the settled chips.
+      engineRef.current = next;
       void startSession(loaded.chips, true, hasReachedGoal(loaded));
       const dealt: EngineState = {
         ...next,
@@ -498,7 +503,11 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         hitLowChips: loaded.hitLowChips,
         comebackEmitted: loaded.comebackEmitted,
       };
-      emitTransitionEvents(dealt, next, null);
+      try {
+        emitTransitionEvents(dealt, next, null);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     },
     [startSession, emitTransitionEvents]
   );
