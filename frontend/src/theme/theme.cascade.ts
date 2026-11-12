@@ -12,20 +12,23 @@
  */
 
 /**
- * Debug-only placeholder colour per physics tier, indexed by `PIECE_DEFS` tier (0-9). Each is
- * distinct from its neighbours so stacked circles stay readable.
+ * Debug-only placeholder colour per tier of the ladder (`game/cascade/tiers.ts`, tiers 0-11).
+ * Each is distinct from its neighbours so stacked circles stay readable. Tier 11 (the capstone,
+ * Pumpkin / Milky Way) is drawn with this colour until its art lands (#3698).
  */
 export const CASCADE_PIECE_COLORS = [
-  "#e63946", // 0 Cherry
-  "#f4a261", // 1 Strawberry
-  "#6a0572", // 2 Grape
-  "#f77f00", // 3 Orange
-  "#c1121f", // 4 Apple (distinct from Cherry)
-  "#a7c957", // 5 Pear
-  "#ffb347", // 6 Peach
-  "#ffd166", // 7 Pineapple
-  "#06d6a0", // 8 Melon
-  "#2d6a4f", // 9 Watermelon
+  "#e63946", // 0 Cherry / Moon
+  "#4361ee", // 1 Blueberry / Pluto
+  "#f9c80e", // 2 Lemon / Mercury
+  "#6a0572", // 3 Grape / Mars
+  "#f77f00", // 4 Orange / Venus
+  "#c1121f", // 5 Apple / Earth
+  "#ffb347", // 6 Peach / Neptune
+  "#6f4e37", // 7 Coconut / Uranus
+  "#ff4d9d", // 8 Dragonfruit / Saturn
+  "#ffd166", // 9 Pineapple / Jupiter
+  "#2d6a4f", // 10 Watermelon / Sun
+  "#e76f00", // 11 Pumpkin / Milky Way (capstone)
 ] as const;
 
 /** The lid and danger-state colours for one theme (#3694). All `#rrggbb`: the screen mixes them. */

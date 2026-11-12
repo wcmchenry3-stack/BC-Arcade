@@ -4,6 +4,7 @@ pytest suite for draw_starswarm_art.py (#3591).
 Renders the real recipes (they are small), but writes only into tmp_path.
 """
 
+import itertools
 import shutil
 import subprocess
 import sys
@@ -32,7 +33,7 @@ BUDDY_SIZE = (34 * art.SCALE + 2 * art.PAD,) * 2  # 102 px box + padding (same b
 # the budget rather than pin Pillow.
 BUDGET_BASE = 4000
 BUDGET_LAYER = 2000
-BUDGET_GRUNT = 2000
+BUDGET_GRUNT = 2000  # #3708: 1,560 (the bolder Wasp; was 1,464)
 BUDGET_BUDDY = 2800
 BUDGET_SHIP = 9000  # all five layers of one ship; the target is about 8 KB (measured 5.9-7.4 KB)
 # #3593: the rest of the hive, measured 2026-11-08 (bytes in the comments), ~25% headroom; the
@@ -79,6 +80,7 @@ BUDGET_PICKUP = {
     "pickup-hull": 2010,  # 1,612
 }
 PICKUP_NAMES = list(BUDGET_PICKUP)
+BUDGET_TILE_BADGE = 3400  # #3599: the home tile icon, 2,698 measured 2026-11-11
 ROCK_SIZE = {
     "large": (44 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 132 px box (2 x r22) + padding
     "small": (24 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 72 px box (2 x r12) + padding
@@ -98,6 +100,8 @@ def _tier(name: str) -> str:
 
 
 def _budget(name: str) -> int:
+    if name == "home-tile-badge":
+        return BUDGET_TILE_BADGE
     if name == "grunt-wasp":
         return BUDGET_GRUNT
     if name == "buddy-escort":
@@ -114,6 +118,8 @@ def _budget(name: str) -> int:
 
 
 def _size(name: str) -> tuple[int, int]:
+    if name == "home-tile-badge":
+        return (art.TILE_ICON_SIZE,) * 2
     if name == "buddy-escort":
         return BUDDY_SIZE
     if name in ENEMY_NAMES:
@@ -139,6 +145,7 @@ def test_registry_has_five_layers_per_ship_the_hive_buddy_the_rocks_shots_and_pi
         | set(ROCK_NAMES)
         | set(SHOT_NAMES)
         | set(PICKUP_NAMES)
+        | {"home-tile-badge"}
     )
 
 
@@ -416,9 +423,13 @@ def test_every_enemy_look_keeps_three_to_one_contrast_on_space(look):
 
 
 def test_the_old_dark_shell_would_fail_the_contrast_guard(monkeypatch):
-    """The guard bites: the pre-#3593 shell stops make the Grunt too dark to pass."""
+    """The guard bites: the pre-#3593 shell stops make the Grunt too dark to pass. Measured on
+    the pre-#3708 Grunt, whose thin rims and faint wings left the shell to carry the contrast
+    (the bolder Wasp's rims and wings lift even the old shell to 3.66:1)."""
     old = [(0, art.hexrgb("#7a4aa0")), (0.5, art.hexrgb("#4b2470")), (1, art.hexrgb("#1f0d33"))]
     monkeypatch.setattr(art, "CARAPACE", old)
+    for k, v in OLD_GRUNT.items():
+        monkeypatch.setattr(art, k, v)
     assert median_contrast(art.decode_webp(art.to_webp(art.render("grunt-wasp")))) < 3.0
 
 
@@ -530,7 +541,8 @@ def test_carrier_has_its_hangar_bay_under_the_abdomen():
 def test_contact_sheet_shows_every_enemy_look(tmp_path):
     art.main(tmp_path, [], sheet=True)
     sheet = Image.open(tmp_path / "contact-sheet.png")
-    rows_before = 2 * -(-len(art.RECIPES) // 9) + 2 * len(SHIP_NAMES)
+    sprites = [n for n in art.RECIPES if n not in art.ICON_RECIPES]  # icons are not on the sheet
+    rows_before = 2 * -(-len(sprites) // 9) + 2 * len(SHIP_NAMES)
     rows_looks = 2 * -(-len(art.ENEMY_LOOKS) // 9)
     rows_rocks = 2 * len(art.ROCK_PALETTES)  # #3596: every rock in each palette, then game 2x
     assert sheet.height == (rows_before + rows_looks + rows_rocks) * (art.CELL + 16)
@@ -1002,3 +1014,185 @@ def test_pickup_fallback_colours_mirror_the_runtime_palette():
     assert f"SALVAGE_BAND: PackedColor = {packed(art.CRATE_BAND)};" in src
     assert f"SALVAGE_EDGE: PackedColor = {packed(art.CRATE_EDGE)};" in src
     assert f"HULL_PLATE: PackedColor = {packed(art.ARMOR[1][1])};" in src
+
+
+# --------------------------------------------------------------------------------------------
+# #3708: the bolder Wasp Grunt (owner decision, option A) and the hive's wings
+
+REPO = Path(__file__).resolve().parents[3]
+SHIPPED_ENEMIES = REPO / "frontend/assets/starswarm/enemy"
+SHIPPED_ENEMY_FILES = {  # recipe -> shipped file
+    "grunt-wasp": "grunt.webp",
+    "elite-mantis": "elite.webp",
+    "elite-mantis-attack": "elite-attack.webp",
+    "elite-mantis-hurt": "elite-hurt.webp",
+    "guardian-scarab": "guardian.webp",
+    "guardian-scarab-plate": "guardian-plate.webp",
+    "guardian-scarab-cracks": "guardian-cracks.webp",
+    "guardian-scarab-plate2": "guardian-plate2.webp",
+    "carrier-queen": "carrier.webp",
+    "carrier-queen-cracks": "carrier-cracks.webp",
+}
+# The pre-#3708 Grunt, to measure the change against
+OLD_GRUNT = {
+    "GRUNT_WING_RIM": 0.4,
+    "GRUNT_SEGMENT_RIM": 0.45,
+    "GRUNT_WING_ALPHA": 0.35,
+    "GRUNT_WING": [(0.08, 0.3), (0.46, 0.14), (0.42, 0.34), (0.1, 0.44)],
+    "GRUNT_SEGMENTS": ((0.26, 0.13), (0.48, 0.15), (0.68, 0.11)),
+    "GRUNT_SEGMENT_SQUASH": 0.85,
+    "GRUNT_STINGER": [(0.45, 0.76), (0.55, 0.76), (0.5, 0.98)],
+}
+
+
+def test_the_bolder_wasp_parameters_are_the_approved_ones():
+    assert art.GRUNT_WING_RIM == 0.8
+    assert art.GRUNT_SEGMENT_RIM == 0.7
+    assert art.GRUNT_WING_ALPHA == 0.6
+    assert art.HIVE_WING_RIM == 0.6
+    assert art.HIVE_WING_ALPHA == 0.45
+    # the segments touch: each one reaches the next one's top edge
+    sq = art.GRUNT_SEGMENT_SQUASH
+    for (y0, r0), (y1, r1) in itertools.pairwise(art.GRUNT_SEGMENTS):
+        assert y0 + r0 * sq >= y1 - r1 * sq
+
+    def width(tri):
+        return max(x for x, _ in tri) - min(x for x, _ in tri)
+
+    assert width(art.GRUNT_STINGER) > width(OLD_GRUNT["GRUNT_STINGER"])
+
+
+def _violet_peak(w: int = 390, h: int = 844) -> np.ndarray:
+    """The violet cloud's brightest colour (the nebula's violet blobs only), where grunts blurred."""
+    yy, xx = np.mgrid[0:h:4, 0:w:4].astype(float)
+    out = np.zeros((*xx.shape, 3)) + np.array(SPACE, float)
+    for cx, cy, r, rgb, alpha in NEBULA_BLOBS[:3]:
+        d = np.hypot(xx - cx * w, yy - cy * h) / (r * w)
+        a = (alpha * np.clip(1 - d, 0, 1))[..., None]
+        out = np.array(rgb, float) * a + out * (1 - a)
+    flat = out.reshape(-1, 3)
+    return flat[int(np.argmax(_luminance(flat)))]
+
+
+def _light_mass_and_area(im) -> tuple[float, float]:
+    """(luminance added over the violet peak, opaque area), both in game px^2 (3x / 9)."""
+    s = np.asarray(im).astype(float)
+    a = s[..., 3:4] / 255
+    bg = _violet_peak()
+    over = s[..., :3] * a + bg * (1 - a)
+    light = np.clip(_luminance(over.reshape(-1, 3)) - _luminance(bg), 0, None).sum() / 9
+    return float(light), float((s[..., 3] >= 128).sum() / 9)
+
+
+def test_the_bolder_wasp_carries_more_light_and_more_body_than_before(monkeypatch):
+    """Design pass (#3708): light mass on the violet cloud 25 -> 38.8 and opaque area 116 -> 198
+    gpx^2. The floors keep a later tweak from thinning the Grunt back into the cloud."""
+    new_light, new_area = _light_mass_and_area(art.decode_webp(art.to_webp(art.grunt_wasp())))
+    for k, v in OLD_GRUNT.items():
+        monkeypatch.setattr(art, k, v)
+    old_light, old_area = _light_mass_and_area(art.decode_webp(art.to_webp(art.grunt_wasp())))
+    assert new_light >= 1.4 * old_light, (old_light, new_light)
+    assert new_area >= 1.5 * old_area, (old_area, new_area)
+
+
+def test_the_hive_wings_are_more_solid_on_the_elite_and_the_carrier(monkeypatch):
+    new = {n: art.render(n) for n in ("elite-mantis", "carrier-queen")}
+    monkeypatch.setattr(art, "HIVE_WING_RIM", 0.4)
+    monkeypatch.setattr(art, "HIVE_WING_ALPHA", 0.3)
+    for n, im in new.items():
+        old_light, old_area = _light_mass_and_area(art.render(n))
+        new_light, new_area = _light_mass_and_area(im)
+        assert new_light > old_light and new_area > old_area, n
+
+
+def test_the_guardian_has_no_wings_so_it_does_not_change(monkeypatch):
+    before = np.asarray(art.render("guardian-scarab"))
+    monkeypatch.setattr(art, "HIVE_WING_RIM", 0.4)
+    monkeypatch.setattr(art, "HIVE_WING_ALPHA", 0.3)
+    assert np.array_equal(before, np.asarray(art.render("guardian-scarab")))
+
+
+def test_shipped_enemy_files_are_the_generator_output():
+    """`grunt-wasp` ships as `enemy/grunt.webp`, decoded pixel for pixel (Pillow 13, as in CI)."""
+    assert sorted(p.name for p in SHIPPED_ENEMIES.glob("*.webp")) == sorted(
+        SHIPPED_ENEMY_FILES.values()
+    )
+    assert set(SHIPPED_ENEMY_FILES) == set(ENEMY_NAMES)
+    for n, f in SHIPPED_ENEMY_FILES.items():
+        want = np.asarray(art.decode_webp(art.to_webp(art.render(n))))
+        got = np.asarray(Image.open(SHIPPED_ENEMIES / f).convert("RGBA"))
+        assert np.array_equal(want, got), n
+
+
+def test_the_enemy_set_shrinks_with_the_bolder_wasp():
+    """#3708 measured -136 B net under Pillow 13 (grunt +96, Elite -20/-64/-76, Carrier -82,
+    Carrier cracks +10), then +8 B re-encoding the Guardian under Pillow 13: 20,338 -> 20,210 B.
+    The cap keeps the set under its pre-#3708 size."""
+    total = sum((SHIPPED_ENEMIES / f).stat().st_size for f in SHIPPED_ENEMY_FILES.values())
+    assert total < 20_338, total
+
+
+# --------------------------------------------------------------------------------------------
+# #3599: the home tile icon (owner pick I3, the Wasp Grunt in a hex badge)
+
+SHIPPED_TILE = REPO / "frontend/assets/home/starswarm-tile.webp"
+
+
+def test_the_badge_geometry_is_the_approved_one():
+    assert art.TILE_ICON_SIZE == 168
+    assert (art.TILE_BEVEL_R, art.TILE_FACE_R, art.TILE_GRUNT) == (80, 66, 104)
+    assert [c for _, c in art.TILE_FACE] == [art.hexrgb("#3a1f5c"), art.hexrgb("#120826")]
+    im = np.asarray(art.render("home-tile-badge")).astype(int)
+    mid = art.TILE_ICON_SIZE // 2
+    # hex vertices at k x 60 degrees: points left and right, flat top and bottom
+    assert im[mid, mid + 74, 3] == 255 and im[mid, mid + 83, 3] == 0  # vertex at r 80
+    assert im[mid - 67, mid, 3] == 255 and im[mid - 73, mid, 3] == 0  # flat top at 80 sin 60
+    for corner in (im[0, 0], im[0, -1], im[-1, 0], im[-1, -1]):
+        assert corner[3] == 0
+    bevel = im[mid, mid + 72]  # between the face (r 66) and the bevel's edge (r 80): silver
+    face = im[mid, 34]  # inside the face, left of the Grunt's canvas
+    assert bevel[:3].min() >= 110 and abs(int(bevel[0]) - int(bevel[2])) <= 30  # light grey
+    t = (mid + 0.5) / art.TILE_ICON_SIZE  # the face's vertical gradient at mid height
+    top, bottom = np.array([0x3A, 0x1F, 0x5C]), np.array([0x12, 0x08, 0x26])
+    assert np.abs(face[:3] - (top + (bottom - top) * t)).max() <= 2
+    assert face[3] == 255
+
+
+def test_the_badge_is_deterministic(tmp_path):
+    assert np.array_equal(
+        np.asarray(art.render("home-tile-badge")), np.asarray(art.render("home-tile-badge"))
+    )
+    for d in ("a", "b"):
+        art.main(tmp_path / d, ["home-tile-badge"])
+    a, b = ((tmp_path / d / "starswarm-home-tile-badge.webp").read_bytes() for d in ("a", "b"))
+    assert a == b
+
+
+def test_the_badge_embeds_the_grunt_recipe(monkeypatch):
+    """The badge is built from `grunt_wasp`, so a Grunt change re-renders the tile with it."""
+    mid = art.TILE_ICON_SIZE // 2
+    real = np.asarray(art.render("home-tile-badge")).astype(int)
+    grunt = np.asarray(
+        art.grunt_wasp().resize((art.TILE_GRUNT,) * 2, Image.LANCZOS)
+    )  # the Grunt as placed
+    off = (art.TILE_ICON_SIZE - art.TILE_GRUNT) // 2
+    solid = grunt[..., 3] == 255
+    region = real[off : off + art.TILE_GRUNT, off : off + art.TILE_GRUNT]
+    assert solid.sum() > 500
+    assert np.array_equal(region[solid], grunt[solid].astype(int))
+    red = art.Image.new("RGBA", art.grunt_wasp().size, (255, 0, 0, 255))
+    monkeypatch.setattr(art, "grunt_wasp", lambda: red)
+    swapped = np.asarray(art.render("home-tile-badge"))
+    assert tuple(swapped[mid, mid]) == (255, 0, 0, 255)
+
+
+def test_the_shipped_tile_icon_is_the_generator_output():
+    want = np.asarray(art.decode_webp(art.to_webp(art.render("home-tile-badge"))))
+    got = np.asarray(Image.open(SHIPPED_TILE).convert("RGBA"))
+    assert np.array_equal(want, got)
+    assert SHIPPED_TILE.stat().st_size <= BUDGET_TILE_BADGE
+
+
+def test_the_badge_is_left_off_the_sprite_contact_sheet():
+    assert "home-tile-badge" in art.RECIPES
+    assert set(art.ICON_RECIPES) == {"home-tile-badge"}

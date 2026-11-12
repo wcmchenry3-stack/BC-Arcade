@@ -10,9 +10,31 @@ Cascade is a physics-based piece-drop game. Pieces fall from the top of the scre
 
 ### Piece Progression
 
-Pieces evolve through 10 fixed tiers. The lowest-tier pieces are droppable (tiers 0–4); higher tiers are only reachable via merging. The highest tier is the **Watermelon**; two Watermelons do not merge (`MAX_TIER`). Definitions are in `frontend/src/game/cascade/pieceDefs.ts`.
+Pieces evolve through **12 fixed tiers** (0-11). The lowest-tier pieces are droppable (tiers 0-4); higher tiers are only reachable via merging. Two pieces of tier n (n < 11) merge into tier n + 1; two tier-10 pieces make the **capstone** (tier 11, Pumpkin / Milky Way), which is never dropped and never merges (`MAX_TIER` = 11). The win itself is a separate story (#3699).
 
-A merge scores the new piece's `scoreValue` (`pieceDefs.ts`). The values follow the triangular numbers 1, 3, 6, 10, 15, 21, 28, 36, 45, 55 for tiers 0–9, so a merge into the Watermelon scores 55. There is no jackpot bonus.
+**One table.** `frontend/src/game/cascade/tiers.ts` is the only place a tier's radius, score, density, droppable flag and name keys are defined. The engine (`pieceDefs.ts`), the board renderer, the spawner and its lid ring, the next-piece preview, the theme selector, the dev panel and the i18n keys all read it. `theme/fruitSets.ts` keeps only per-set names, emoji, colours and sprite references. `tiers.test.ts` fails if any other module defines a per-tier radius, score or density.
+
+| Tier | Fruits      | Cosmos    | Radius | Score | Droppable |
+| ---- | ----------- | --------- | ------ | ----- | --------- |
+| 0    | Cherry      | Moon      | 22     | 1     | yes       |
+| 1    | Blueberry   | Pluto     | 25     | 2     | yes       |
+| 2    | Lemon       | Mercury   | 29     | 4     | yes       |
+| 3    | Grape       | Mars      | 33     | 8     | yes       |
+| 4    | Orange      | Venus     | 38     | 16    | yes       |
+| 5    | Apple       | Earth     | 44     | 32    | no        |
+| 6    | Peach       | Neptune   | 51     | 64    | no        |
+| 7    | Coconut     | Uranus    | 58     | 128   | no        |
+| 8    | Dragonfruit | Saturn    | 67     | 256   | no        |
+| 9    | Pineapple   | Jupiter   | 77     | 512   | no        |
+| 10   | Watermelon  | Sun       | 88     | 1024  | no        |
+| 11   | Pumpkin     | Milky Way | 101    | 2048  | no        |
+
+- **Radii** are geometric: `radius(n) = round(22 * 4^(n / 10))` (r0 = 22, r10 = 88, ratio about 1.149), continued to the capstone (101). The bin is 400 wide with 20 px walls, so 360 px inside: two tier-10 pieces side by side need 352 px, so they fit and can touch; the 202 px capstone fits. Physics size = drawn size: the collider and the visible fruit both use this radius (a baked sprite is drawn into a square of half-size `bakedClipR * radius`, `spriteHalfSize`). The spawner ring shows the queued piece at most 24 px in radius so the ring fits above the lid. A first try with r0 = 15 (r10 = 85) made games twice as long (the spam bot needed 100-123 s to lose), so it was not used.
+- **Droppable tiers** stay 0-4. The largest (Orange, r = 38) spawns with its top edge at y = -1, on the canvas.
+- **Scores** double per tier: a merge into tier n scores `2^n`. These values are provisional: the final ones are set with the time-bonus story (#3700), so a win dominates a long losing run. There is no jackpot bonus.
+- **Density** is a multiplier on Matter's default body density (0.001), 1 on every tier for now. The field lives in `tiers.ts` for the physics story (#3697) to tune.
+- **Art.** Tiers 0-10 use the existing sprites (`theme/fruitSets.ts`); tier 11 has none yet and is drawn as a plain circle in its placeholder colour until the art story (#3698).
+- **Names** are `cascade:pieces.<set>.<key>` in every locale (24 keys, English copy in locales still to be translated, tracked in `scripts/i18n-english-copies.json`).
 
 ### Gameplay
 
@@ -28,7 +50,7 @@ The lid is the line at `OVERFLOW_LINE_Y` (y = 80 of the 600-unit world). The rul
 
 - **Overflow.** A piece counts when it is _settled_ (Matter's `body.speed` at most `OVERFLOW_SETTLED_SPEED` = 8 px per step) and its **top edge** (y − radius) is above the lid. A dropped piece still falling from the spawner never counts, until it first touches another piece or the floor. While at least one piece counts, a counter rises by one each step; a step with none resets it to 0. At `OVERFLOW_TICKS_THRESHOLD` (180 steps, 3 s) the game ends (`gameOver`, reason `overflow`).
 - **Merge grace.** A merge involving a piece whose top edge is in the danger band (at or above `OVERFLOW_LINE_Y + DANGER_STACK_MARGIN`, y = 160) resets the counter and pauses it for `OVERFLOW_IGNORE_MERGE_TICKS` (60 steps, 1 s). A merge lower in the bin does nothing. There is no other grace or cooldown. (Before #3694 any merge anywhere reset the counter, so fast play never lost.)
-- **Hard stop.** A settled piece whose top edge reaches the top of the board (y ≤ `HARD_STOP_Y` = 0) ends the game at once (reason `hardStop`), so the pile is never drawn off-screen. The last dropped piece gets a short grace: a large piece spawns with its top edge above the canvas (tier 4 and up) and can touch a pile that reaches just under the lid while still near spawn height, so it must stay settled with its top edge at or above y = 0 for `HARD_STOP_SETTLE_TICKS` (30 steps, 0.5 s) before the hard stop fires. If it really rests there, the game still ends (and the overflow count runs meanwhile).
+- **Hard stop.** A settled piece whose top edge reaches the top of the board (y ≤ `HARD_STOP_Y` = 0) ends the game at once (reason `hardStop`), so the pile is never drawn off-screen. The last dropped piece gets a short grace: a large piece spawns with its top edge above the canvas (a tier-4 piece is at the edge, a dev-panel piece of tier 5 and up is clear above it) and can touch a pile that reaches just under the lid while still near spawn height, so it must stay settled with its top edge at or above y = 0 for `HARD_STOP_SETTLE_TICKS` (30 steps, 0.5 s) before the hard stop fires. If it really rests there, the game still ends (and the overflow count runs meanwhile).
 - **Drop gating.** `canDrop()` is false from a drop until that piece is below the lid (its top edge at or under the line), or merges into a piece that is. The screen ignores taps until then (on top of its 200 ms tap debounce). It cannot deadlock: once the piece lands it counts like any other, so a piece that comes to rest over the lid ends the game through the overflow rule. `drop()` itself is not gated, so the dev panel and the `__cascade_*` test seams can still place pieces.
 - **Restore.** A restored game gets the merge grace once (1 s while the pieces settle), then the counter runs as normal. It is one grace per restore: a later restore starts a fresh grace, but does not extend a count already running. The hard stop applies at once to restored pieces that are part of the pile. A saved piece whose top edge is over the lid and that touches no other piece was most likely mid-air (velocities are not saved), so it is treated as falling again (no hard stop or overflow count until its first contact); if exactly one such piece exists it is the last drop for `canDrop()` and the hard-stop settle run.
 - **Danger state.** `getState().dangerRatio` is the counter over the threshold (0..1) and `getState().canDrop` the gate. The board draws them (`components/cascade/LidOverlay.tsx`, mappings in `lidVisuals.ts`, colours `CASCADE_LID_PALETTE` in `theme/theme.cascade.ts`): a solid lid line that reddens as the counter runs; a clock ring around the spawner piece (above the lid) that drains clockwise from cyan to red, with a glow from 0.7; a red wash and outline on pieces over the lid while the counter runs; and the spawner piece as a dashed, faded ghost while a drop is not allowed.
@@ -40,16 +62,17 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 
 ### Module Map
 
-| File               | Purpose                                                                      |
-| ------------------ | ---------------------------------------------------------------------------- |
-| `engine.ts`        | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)           |
-| `pieceDefs.ts`     | 10-tier piece definitions: label, color, score, shape (`circle` or `convex`) |
-| `constants.ts`     | All tunable physics & gameplay parameters                                    |
-| `pieceQueue.ts`    | Current + next piece queue (preview UI data)                                 |
-| `spawnSelector.ts` | Weighted random tier selection with drought correction & danger suppression  |
-| `storage.ts`       | AsyncStorage save/load — versioned `SavedState` (v3)                         |
-| `layout.ts`        | `calculateCascadeLayout()`: world-to-screen scale for the measured board     |
-| `testHooks.ts`     | `__cascade_*` E2E hooks through the shared `registerTestHooks`               |
+| File               | Purpose                                                                     |
+| ------------------ | --------------------------------------------------------------------------- |
+| `engine.ts`        | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)          |
+| `tiers.ts`         | The tier ladder: the one table of radius, score, density, droppable, names  |
+| `pieceDefs.ts`     | Engine piece definitions built from `tiers.ts`: color, score, shape         |
+| `constants.ts`     | All tunable physics & gameplay parameters                                   |
+| `pieceQueue.ts`    | Current + next piece queue (preview UI data)                                |
+| `spawnSelector.ts` | Weighted random tier selection with drought correction & danger suppression |
+| `storage.ts`       | AsyncStorage save/load — versioned `SavedState` (v4), discards v3           |
+| `layout.ts`        | `calculateCascadeLayout()`: world-to-screen scale for the measured board    |
+| `testHooks.ts`     | `__cascade_*` E2E hooks through the shared `registerTestHooks`              |
 
 ### Physics
 
@@ -73,9 +96,34 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 
 A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TICKS` (120 ticks, ~2 s). The combo counter resets on each drop. The window is counted in fixed physics steps, so it is 2 s of simulated time at any frame rate (it used to be counted per frame: 2 s at 60 Hz, 1 s at 120 Hz).
 
+### Sim harness (`sim/`, #2893)
+
+A seeded, headless sim in `frontend/src/game/cascade/sim/` plays the real `CascadeEngine`, spawn selector and queue (`createPieceQueue` / `advanceQueue`, fed by the shared seeded RNG) the way `CascadeScreen` does: taps are gated by `canDrop()`, `isInDanger` comes from the pile height. It is the measuring tool for the physics spike (#3696), the physics story (#3697), the lid (#3694) and the tier ladder (#3695). Same seed, bot, frame rate and engine give the same metrics (step cost aside).
+
+- **Bots** (`bots.ts`): `heuristic` (waits for a calm board, drops where it lands on a same-tier piece, else lowest), `random` (600-1200 ms, random x), `spam` (200-250 ms, random x; the lid test's bot).
+- **Frame rates:** every run is done at 60 and 120 Hz frame deltas.
+- **Metrics** (`runGame.ts`, `suite.ts`): piece frequency per tier; drought (longest run of drops without a tier); game length (simulated s), score, score by tier, top-tier reached rate; win rate and time to win (read 0 / n/a until #3699: an engine event `{ type: "win" }` is picked up with no sim change); physics feel: packing density, visible gap between touching neighbours (drawn radius), settle time after a drop and after a 3+ merge chain, jitter of settled pieces (px/s), guard-rail events per game (`guardRailFired`, counted, never acted on: #1716); step cost (wall clock, printed but not in the baseline). The lid check is that the spam bot always reaches game over inside 120 simulated seconds.
+- **1 px-contact spawn helper** (`contactSpawn.ts`): `contactPair(tier, x)` places two same-tier pieces overlapped by 1 px (plus the polygon-facet allowance: Matter draws a circle with at most 25 sides, so a plain 1 px overlap is no contact for the large tiers 9 and 10), for merge tests. Deep overlaps can separate before `collisionStart` fires and the merge silently fails (#1296, #1302, #1418).
+- **Comparing a candidate** (#3696): `runGame` / `runSuite` take a `SimConfig`: `createEngine` (a factory for any engine with the `SimEngine` surface) and `constants` (overrides for what the sim and its metrics read: world size, lid y, physics and drawn radius per tier, score per tier, droppable tiers). The real engine reads its tuning from `constants.ts` at import time, so a candidate engine brings its own numbers and the same numbers go in `constants`.
+- **Run it:** `cd frontend && npm run sim:cascade` (smoke, 3 seeds, about 5 s) or `npm run sim:cascade -- --full` (100 seeds x 3 bots x 60/120 Hz, about 2.5 min). `--gate` checks `sim/baseline.json` and exits 1 on a violation; `--update-baseline` rewrites the baseline for that suite (then `npx prettier --write` the file); `--md PATH` / `--json PATH` write the table / raw result.
+- **Baseline and bands:** `sim/baseline.json` holds today's deterministic metrics with a band per metric (relative plus an absolute floor per unit; rates never tighter than one game of n). Bands are drift guards around today's physics, not targets; #3695 / #3697 re-baseline. The smoke suite is a coarse guard: it bands only game length, score and guard-rail rate with wide tolerances (checked with the seed set shifted), and the lid and step budget are hard gates; per-tier rates, shares, droughts and settle are banded in the full suite only, which assumes 100 seeds (a run with another seed count prints the table and skips the bands).
+- **Settle time is survivor-biased.** A drop that arrives before the board calms cuts that episode off, and it never reaches the mean. The table prints the cut-off fraction next to it (`settle episodes cut off by the next drop`): about 0.5 for the heuristic and random bots, 0.99 for spam. So the **spam bot's settle numbers are not comparable** (they come from a few unusual episodes) and are never banded; the heuristic and random settle means are banded only when 20 or more episodes finished. Compare settle between engines for the same bot and read it with its cut-off fraction. Speed thresholds (calm 18 px/s, settled 30 px/s) are per second, so 60 and 120 Hz compare.
+- **CI:** the smoke runs in every PR's Jest run (`sim/__tests__/sim.test.ts`, about 8 s); the long run is `.github/workflows/cascade-sim-gate.yml` (nightly, on demand, and on PRs that touch the engine, its constants, the queue or the sim).
+
+Baseline today (the 12-tier ladder, #3695; 100 seeds, 180 s cap per game). Every heuristic game reaches the cap and about 30 % of random games do, so their game length and score are cap-limited; the capstone (tier 11) was not reached in any game, and tier 9 was reached in 19 % of heuristic games:
+
+| metric                       | heuristic 60 / 120 Hz | random 60 / 120 Hz | spam 60 / 120 Hz |
+| ---------------------------- | --------------------: | -----------------: | ---------------: |
+| game length (s)              |             180 / 180 |          160 / 160 |          59 / 59 |
+| score (mean)                 |           3386 / 3392 |        2590 / 2581 |      2313 / 2281 |
+| packing density              |           0.68 / 0.68 |        0.71 / 0.70 |      0.73 / 0.73 |
+| settle after a drop (ms)     |             760 / 739 |          642 / 640 |        492 / 414 |
+| guard-rail events per minute |           1855 / 1865 |        2119 / 2128 |      4717 / 4683 |
+
 ### Persistence (`storage.ts`)
 
-- Saved state is versioned (`SavedState` v3) — includes pieces, score, and queue state
+- Saved state is versioned (`SavedState` v4, key `cascade_game_v4`) — includes pieces, score, and queue state
+- A v3 save (the old 10-tier ladder, key `cascade_game_v3`) is **discarded**, not migrated (#3695): the new radii are mostly larger than the old ones (Cherry 16 to 22, Strawberry 22 to 29, Grape 28 to 33, Pear 52 to 58, Melon 82 to 88; only Peach and Watermelon shrink) and three old names do not exist in the new ladder, so a restored full bin would overlap and be ejected or end the game. Cascade has not shipped, so only dev and test builds hold one. The old key is removed on load; a present but invalid v4 save is discarded and never falls back to it
 - `looksValid()` type guard runs strict validation on load; corrupt saves are wiped cleanly
 - Sentry is notified on any storage error
 
@@ -89,7 +137,7 @@ A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TI
 
 ## Scoring (Persistence)
 
-- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/cascade/module.py`; `BOARDS.cascade` in `frontend/src/api/vocab.ts`). It is the points at game over: for each merge the engine (`engine.ts`) adds the new piece's `scoreValue` from `pieceDefs.ts`.
+- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/cascade/module.py`; `BOARDS.cascade` in `frontend/src/api/vocab.ts`). It is the points at game over: for each merge the engine (`engine.ts`) adds the new piece's `score` from `tiers.ts`.
 - **Tie-break:** none declared. Equal scores go to the entry the server received first (`received_at`), the last tie-break on every board.
 - **Partitions:** none: one board.
 - **Recorded, not partitioned:** the result block from `progressResult` in `frontend/src/screens/CascadeScreen.tsx`: `final_score`, `duration_ms`, `theme`, `total_drops`, `total_merges`, and `outcome` on a finish. The fruit set is in the `game_started` event (`fruit_set`, `theme`), not in metadata.
