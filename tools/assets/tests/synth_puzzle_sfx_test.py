@@ -183,6 +183,24 @@ def _onsets(x: np.ndarray, rise_db: float = 9.0) -> list[float]:
     return out
 
 
+def _first_at_pitch(x: np.ndarray, semis: float, frac: float = 0.3) -> float:
+    """When (s) a note first sounds: its pitch's energy (40 ms frames, +-4%) reaches `frac` of its peak.
+
+    Reads up to ~5 ms late (the frame centre)."""
+    n, hop = int(0.04 * SR), int(0.005 * SR)
+    f = np.fft.rfftfreq(n, 1 / SR)
+    hz = synth_puzzle_sfx.hz(semis)
+    band = (f > hz * 0.96) & (f < hz * 1.04)
+    w = np.hanning(n)
+    e = np.array(
+        [
+            (np.abs(np.fft.rfft(x[i : i + n] * w))[band] ** 2).sum()
+            for i in range(0, len(x) - n, hop)
+        ]
+    )
+    return (np.nonzero(e >= e.max() * frac)[0][0] * hop + n / 2) / SR
+
+
 def test_twenty48_timings_follow_the_motion():
     # game/twenty48/motion.ts (#3689): SLIDE_MS 100, SPAWN_AT_MS 60, the 2048 tile pops at the
     # end of the slide, WIN_BEAT_MS 1000, GAME_OVER_DIM_AT_MS 220, GAME_OVER_BEAT_MS 600 (#3690).
@@ -219,8 +237,13 @@ def test_twenty48_game_over_lands_then_falls_then_settles_on_the_card():
     assert np.max(np.abs(x[: int(land * SR)])) == 0
     hits = _onsets(x)
     assert land - 0.005 <= hits[0] <= land + 0.01, hits
-    # The falling line is inside the dim and shake (220-520 ms); the chord is on the card.
-    line = [t for t in hits if land + 0.05 < t < card - 0.03]
-    assert line and all(synth_puzzle_sfx.GAME_OVER_DIM_AT - 0.03 <= t <= 0.52 for t in line), hits
+    # The falling line, G5 E5 D5 C5 100 ms apart, is inside the dim and shake (220-520 ms): each
+    # note found by its own pitch, since the line's later notes ring over each other.
+    m = synth_puzzle_sfx
+    line = [_first_at_pitch(x, n) for n in (m.G5, m.E5, m.D5, m.C5)]
+    start = m.GAME_OVER_DIM_AT - 0.02
+    for k, t in enumerate(line):
+        assert start + 0.1 * k <= t <= start + 0.1 * k + 0.015, line
+    # The chord is on the card.
     assert any(card - 0.005 <= t <= card + 0.02 for t in hits), hits
     assert len(x) / SR <= 2.2

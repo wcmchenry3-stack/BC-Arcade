@@ -199,7 +199,7 @@ Adds 51,027 B now. The fanfare can only go once 2048, Sudoku, Mahjong and Daily 
 
 - **Brief.** The owner wanted merge and spawn designed together, since they play on nearly every swipe, and asked to hear samples.
 - **Constraints.**
-  - A slide takes 100 ms, the merge pop starts at 90 ms (1.15×, 150 ms), and a new tile scales in from 60 ms (`AnimatedTile.tsx`). Both sounds fire at the swipe, so each file puts its accent on its animation: the merge at 90 ms, the spawn at 60 ms.
+  - A slide takes 100 ms, the merge pop starts at 90 ms (1.15×, 150 ms), and a new tile scales in from 60 ms (`AnimatedTile.tsx`). Both sounds fire at the swipe, so each file puts its accent on its animation: the merge at 90 ms, the spawn at 60 ms. (As first designed; #3690 below moved the merge to 100 ms for the sliding merges.)
   - Swipes come up to ~4–5 a second, and merge and spawn usually play together, so both are short with three variations each.
   - The old spawn rang 0.68 s on every swipe with 91% of its energy under 300 Hz (mostly lost on phone speakers); the old merge sat at about −27.5 dBFS after its 0.3 volume.
 - **Options**, each previewed as 8 swipes ~0.4 s apart and a fast burst of 6 at 0.22 s:
@@ -244,7 +244,7 @@ Six files where there were two: 18,437 B more, for variations on the two sounds 
 | `game-over-2048.ogg`                 | —                        | 17.3 KB            | 2.0 s (rings ~1.5 s) |
 | **Total**                            | —                        | 43.7 KB (44,757 B) |                      |
 
-Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
+Sizes and lengths as first shipped; #3690 below re-timed both (win 2.6 s, 22.0 KB; game over 2.1 s, 17.1 KB). Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
 
 ### 2048 sounds re-timed to the new motion (#3690)
 
