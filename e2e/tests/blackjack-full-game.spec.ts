@@ -102,12 +102,15 @@ test.describe("Blackjack — full happy-path game journey", () => {
       await bj.chipButton(5).click();
       await bj.dealButton().click();
 
-      // Player or result phase
-      const hitOrResult = page.getByText("Hit").or(page.getByRole("button", { name: /change bet/i }));
+      // Player or result phase. On a natural, Hit and Stand show greyed while the deal and the
+      // hole card play out, then the result's dock replaces them (#3720): wait for an enabled Hit
+      // or for the result, never for a greyed Hit.
+      const enabledHit = page.getByRole("button", { name: /^hit/i, disabled: false });
+      const hitOrResult = enabledHit.or(page.getByRole("button", { name: /change bet/i }));
       await expect(hitOrResult).toBeVisible({ timeout: 5000 });
 
       // If player phase, stand to reach result
-      if (await page.getByText("Hit").isVisible()) {
+      if (await enabledHit.isVisible()) {
         await page.getByRole("button", { name: /stand/i }).click();
         await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({
           timeout: 5000,

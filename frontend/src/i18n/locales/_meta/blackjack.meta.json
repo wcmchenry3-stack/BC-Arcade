@@ -314,6 +314,60 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "tag.win": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag, shown on the hand after the round (\"WIN\"; drawn in capitals).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tag.lose": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag when it lost (\"LOSE\"; drawn in capitals).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tag.push": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag when it tied the dealer (\"PUSH\"; drawn in capitals).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.splitWon": {
+    "component": "ResultBanner",
+    "description": "Split round summary under the dealer: how many hands won, e.g. \"Won: 1\". Joined with the losses and pushes by \" · \".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
+  },
+  "result.splitLost": {
+    "component": "ResultBanner",
+    "description": "Split round summary: how many hands lost, e.g. \"Lost: 2\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
+  },
+  "result.splitPush": {
+    "component": "ResultBanner",
+    "description": "Split round summary: how many hands tied the dealer, e.g. \"Push: 1\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
+  },
   "gameOver.title": {
     "component": "BlackjackTableScreen (GameResultModal)",
     "description": "Title of the game-over modal when the player runs out of chips.",

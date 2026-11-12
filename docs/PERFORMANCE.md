@@ -159,7 +159,7 @@ The free tier shuts down after ~15 minutes of inactivity. Cold starts add 20–4
 
 ### Matter.js runtime performance
 
-Lighthouse measures initial load quality (LCP, CLS, TBT) on the static export. It does **not** measure frame rate or physics jank during gameplay. Runtime performance of the Matter.js physics engine requires a Playwright trace or browser DevTools recording — not covered by this setup.
+Lighthouse measures initial load quality (LCP, CLS, TBT) on the static export. It does **not** measure frame rate or physics jank during gameplay. Runtime performance of the Matter.js physics engine requires a Playwright trace or browser DevTools recording — not covered by this setup. On native, Cascade's frame time and React commits are read from its dev panel ([Cascade renderer (#2960)](#cascade-renderer-2960)).
 
 ---
 
@@ -326,7 +326,7 @@ A build counts as a store build when `!context.dev && EXPO_PUBLIC_TEST_HOOKS !==
 **What remains in the store bundle (known limitation).**
 
 - Small shared modules that free surfaces import: hidden games' i18n namespaces (all locales), the `GameDetail` Hearts and Star Swarm sections, Hearts and Blackjack scorecards and models, the Blackjack and Hearts contexts and storage, and the Star Swarm engine (reached through `scoreLedger`, `GameDetail` and `LeaderboardScreen`). All pure JS, no large assets.
-- Four sounds that look premium by name (`hearts-moon-shot.mp3`, `blackjack-win.ogg`, `cascade-fruit-merge.ogg`, `cascade-game-over.ogg`) are required by free games through the shared sound registry. The guard deliberately does not flag SFX.
+- Three sounds that look premium by name (`hearts-moon-shot.mp3`, `cascade-fruit-merge.ogg`, `cascade-game-over.ogg`) are required by free games through the shared sound registry (`blackjack-win.ogg` was deleted with #3581). The guard deliberately does not flag SFX.
 - The Blackjack and Hearts providers stay mounted at startup (about 26 KB of source).
 - No premium-only native dependency exists (`matter-js` is pure JS), so native size is unchanged by #2830.
 
@@ -343,7 +343,7 @@ Measured 2026-11-11 on `dev`, before the dead files were deleted. Part of epic #
 | `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Used; replaced (#3698)                                                        |
 | `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Used; replaced (#3698)                                                        |
 | `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Used; replaced by the sound story                                             |
-| **Cascade assets that ship (44 images + 3 sounds = 47 files)**                                                  |                                          **1,322,143** | Budget: art 0 image bytes, sounds <= 120 KB                                   |
+| **Cascade assets that ship (44 images + 3 sounds = 47 files)**                                                           |                                          **1,322,143** | Budget: art 0 image bytes, sounds <= 120 KB                                   |
 | Cascade JS, minified (`CascadeScreen` 14,945, `engine2` 5,650, `constants` 2,131, other modules and locale JSON ~11,464) |                                                 34,190 | Stays                                                                         |
 | `matter-js` (`matter.js`, minified in the bundle)                                                                        |                                                 83,492 | Stays; excluded from the budget (physics engine; `matter.min.js` is 83,476 B) |
 | `assets/fruit-vertices.json` + `cosmos-vertices.json`                                                                    |                                                 99,365 | Dead, deleted in #3692                                                        |
@@ -390,7 +390,7 @@ The share barely moves because #2830 shrank the denominator in the same period. 
 
 ### Images (#2833)
 
-Two tiers per Cascade theme: 256 px WebP UI thumbnails (`fruit-icons/`, `celestial-icons/`, drawn by `FruitGlyph` at up to 32 pt) and 512 px palette PNG sprites (`fruits-baked/`, `cosmos-baked/`, drawn by Skia in `PieceRenderer`). They are not duplicates. The full-resolution processed icons moved to `cascade_icon_masters/` so Metro no longer bundles them. Rendered-size reasoning, the pipeline and the regeneration commands are in [ASSETS.md](ASSETS.md#rendered-sizes-2833), [Prebuild optimization](ASSETS.md#prebuild-optimization) and [Regenerating the runtime icon thumbnails](ASSETS.md#regenerating-the-runtime-icon-thumbnails). Not repeated here.
+Two tiers per Cascade theme: 256 px WebP UI thumbnails (`fruit-icons/`, `celestial-icons/`, drawn by `FruitGlyph` at up to 32 pt) and 512 px palette PNG sprites (`fruits-baked/`, `cosmos-baked/`, drawn by Skia in `CascadeBoard`'s Picture). They are not duplicates. The full-resolution processed icons moved to `cascade_icon_masters/` so Metro no longer bundles them. Rendered-size reasoning, the pipeline and the regeneration commands are in [ASSETS.md](ASSETS.md#rendered-sizes-2833), [Prebuild optimization](ASSETS.md#prebuild-optimization) and [Regenerating the runtime icon thumbnails](ASSETS.md#regenerating-the-runtime-icon-thumbnails). Not repeated here.
 
 Bytes of bundled files, 2026-10-10 (all-games config; Cascade is a hidden game, so none of this is in the store bundle):
 
@@ -1150,6 +1150,29 @@ unchanged (`mapKeep` / `mapFilterKeep` live in `engine/roster.ts`). An interleav
 same benchmark (three rounds, `dev`'s `engine.ts` swapped in and out on the same loaded
 container) measured 929–1022 µs/tick before the split and 824–892 µs/tick after it, with the GC
 pass count unchanged (179 vs 179–180); on the idle container `dev` measured 632–721 µs/tick.
+
+## Cascade renderer (#2960)
+
+Before #2960 Cascade's RAF loop called `setScore`, `setPieces`, `setDangerRatio` and `setCanDrop` every frame, and the engine built a new pieces array per `getState()`, so the whole screen committed 60 times a second even with every piece asleep. Now the loop reads the engine into a reused state, publishes a packed frame to a shared value only when something drawn changed, and the board's Skia Picture records on the UI thread (see [games/cascade.md](games/cascade.md#rendering-2960)). A headless CanvasKit comparison of the old and new renderers on real engine states was pixel-identical; it ran on one thread, so device rendering is still unverified (owner follow-up, with the device numbers below).
+
+React commits of the Cascade screen, counted with React's `Profiler` in `src/screens/__tests__/CascadeScreen.frames.test.tsx` (engine stand-in, one `act()` per frame, so each frame commits as it would on a device):
+
+| Scenario (60 frames, 1 s at 60 Hz)                       | Before #2960 | After #2960 |
+| -------------------------------------------------------- | -----------: | ----------: |
+| Every piece asleep (settled board)                       |           60 |           0 |
+| Pieces moving, danger and `canDrop` changing every frame |           60 |           0 |
+| Score changes once, then holds (30 frames)               |           30 |           1 |
+
+Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`); a frame that changes allocates one `Float64Array` of 4 + 6 x pieces numbers (about 2 KB for a 40-piece board) for the copy handed to the UI thread; a settled frame allocates nothing and publishes nothing. The post-physics pass skips bodies that stay asleep.
+
+**Device numbers: owner follow-up.** Open the dev panel (`DEV`) during play; its _Frame_ line shows `avg / p95 ms · frames · commits/s` over the last second, counting every commit of the screen, `ScoreDisplay`'s alone included (dev builds only, like the panel: React runs in development mode there, so read the frame times as an upper bound and the commit counts as exact). Record a settled board and a 4-chain on a mid-range Android and an older iPhone:
+
+| Device                  | Scenario      | avg / p95 frame ms | commits/s         |
+| ----------------------- | ------------- | ------------------ | ----------------- |
+| Mid-range Android (TBD) | Settled board | TODO               | TODO (expect < 2) |
+| Mid-range Android (TBD) | 4-chain       | TODO               | TODO              |
+| Older iPhone (TBD)      | Settled board | TODO               | TODO (expect < 2) |
+| Older iPhone (TBD)      | 4-chain       | TODO               | TODO              |
 
 ## Star Swarm timeline diagnostics (#3396)
 
