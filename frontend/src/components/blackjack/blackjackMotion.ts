@@ -230,10 +230,11 @@ const isNatural = (h: HandResponse): boolean => h.cards.length === 2 && h.value 
 
 /**
  * The naturals a settled round marks (#3621, owner decisions in #3739). One hand only: a split
- * hand's ace and ten make 21, not a natural (it pays 1:1 under the house rules, #3741). The
- * player's natural gets a gold edge (a 3:2 win, or a push against the dealer's natural). The
- * dealer's natural gets a silver edge when it decided the round: it beat a player who had not
- * bust, or it pushed the player's natural.
+ * hand's ace and ten make 21, not a natural (it pays 1:1). The player's natural gets a gold edge
+ * (a 3:2 win, or a push against the dealer's natural). The dealer's natural gets a silver edge
+ * when it decided the round: it beat a player who had not bust, or it pushed the player's
+ * natural. Under the standard rules (#3741) the dealer peeks, so its natural settles the round at
+ * the deal and always decides it (the player has no turn to bust in); it beats any other 21.
  */
 export function naturalEdges(v: BlackjackState): NaturalEdges {
   const hand = v.player_hands[0];
@@ -508,6 +509,9 @@ function planPlay(
  * after the last, the result ~300 ms after the last card lands, and the chips after it (a split
  * round: one chime for the net, then each hand's tag and chips in turn). Returns when the result
  * shows.
+ *
+ * A deal that settles at once (a natural: the player's, or the dealer's found by the peek, #3741)
+ * starts the turn as the dealer's up card lands: the hole card turns right after the deal.
  *
  * A natural (#3621): the dealer's natural shows its silver edge as the hole card's turn ends. On
  * the player's natural the result shows at the flip's end (no 300 ms wait) and, when it wins 3:2,

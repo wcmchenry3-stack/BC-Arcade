@@ -9,6 +9,7 @@
 import {
   doubleDown,
   hit,
+  isNaturalBlackjack,
   newGame,
   newHand,
   placeBet,
@@ -244,24 +245,44 @@ describe("the natural", () => {
     chips.forEach((chip) => expect(chip).toMatchObject({ kind: "payout", natural: true }));
   });
 
-  it("the dealer's natural: a silver edge as the hole card's turn ends, and the normal loss", () => {
-    const s0 = placeBet(betting(c("10"), c("K", "♣"), c("8", "♥"), c("A", "♦")), 10);
-    expect(s0.phase).toBe("player");
-    const s1 = stand(s0);
+  it("the dealer's natural, found by the peek (#3741): the deal, the flip at once, a silver edge as it turns, then the loss", () => {
+    const s0 = betting(c("10"), c("K", "♣"), c("8", "♥"), c("A", "♦"));
+    const s1 = placeBet(s0, 10);
+    expect(s1.phase).toBe("result");
     expect(s1.outcome).toBe("lose");
     const t = planMotion(view(s0), view(s1))!;
+    // The hole card turns as the up card lands (780 ms), then the result 300 ms after the turn.
+    const flipAt = 3 * 180 + DEAL_FLIGHT_MS;
     expect(cuesOf(t)).toEqual([
-      ["flip", 0],
-      ["lose", FLIP_MS + RESULT_DELAY_MS],
-      ["collect", FLIP_MS + RESULT_DELAY_MS + CHIP_DELAY_MS],
+      ["deal", 0],
+      ["deal", 180],
+      ["deal", 360],
+      ["deal", 540],
+      ["flip", flipAt],
+      ["lose", flipAt + FLIP_MS + RESULT_DELAY_MS],
+      ["collect", flipAt + FLIP_MS + RESULT_DELAY_MS + CHIP_DELAY_MS],
     ]);
+    expect(t.flips).toBe(true);
+    expect(t.resultAt).toBe(flipAt + FLIP_MS + RESULT_DELAY_MS);
     expect(t.chimeAt).toBe(t.resultAt);
     expect(t.momentAt).toBeNull();
     expect(edges(t)).toEqual([
       [0, false, false],
-      [FLIP_MS, false, true],
+      [flipAt + FLIP_MS, false, true],
     ]);
     t.frames.flatMap((f) => f.stage.chips).forEach((chip) => expect(chip.natural).toBeUndefined());
+    // Only the original bet is swept: one collect chip, for the one hand.
+    expect(t.cues.filter((q) => q.sound === "collect")).toHaveLength(1);
+    expect(s1.payout).toBe(-10);
+  });
+
+  it("the dealer's natural with the ace in the hole and a ten up is peeked the same way", () => {
+    const s0 = betting(c("10"), c("A", "♣"), c("8", "♥"), c("Q", "♦"));
+    const s1 = placeBet(s0, 10);
+    expect(s1.outcome).toBe("lose");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(t.cues.find((q) => q.sound === "flip")?.at).toBe(3 * 180 + DEAL_FLIGHT_MS);
+    expect(naturalEdges(view(s1))).toEqual({ player: false, dealer: true });
   });
 
   it("natural against natural: the gold edge only (no sting), the silver at the flip, then the push", () => {
@@ -304,14 +325,26 @@ describe("the natural", () => {
     expect(naturalEdges(view(s1))).toEqual(NO_NATURALS);
   });
 
-  it("the dealer's natural against a bust or a 3-card 21 is not marked", () => {
-    const bust = placeBet(betting(c("10"), c("K", "♣"), c("6", "♥"), c("A", "♦"), c("K", "♦")), 10);
+  /**
+   * A round saved mid-hand by a build from before the peek (#3741): the player still to act
+   * against a dealer natural. The peek makes this unreachable in play; a restored save can hold it.
+   */
+  const savedAgainstNatural = (...player: Card[]): EngineState => {
+    const s = placeBet(
+      betting(player[0]!, c("9", "♣"), player[1]!, c("7", "♦"), ...player.slice(2)),
+      10
+    );
+    expect(s.phase).toBe("player");
+    return { ...s, dealer_hand: [c("K", "♣"), c("A", "♦")] };
+  };
+
+  it("the dealer's natural against a bust is not marked; against a 3-card 21 it wins and is (#3741)", () => {
+    const bust = savedAgainstNatural(c("10"), c("6", "♥"), c("K", "♦"));
     expect(naturalEdges(view(hit(bust)))).toEqual(NO_NATURALS);
-    // House rule (#3741): a 3-card 21 against the dealer's natural is a push.
-    const s = placeBet(betting(c("10"), c("K", "♣"), c("6", "♥"), c("A", "♦"), c("5", "♦")), 10);
-    const settled = stand(hit(s));
-    expect(settled.outcome).toBe("push");
-    expect(naturalEdges(view(settled))).toEqual(NO_NATURALS);
+    // Standard rules (#3741): the dealer's natural beats a 3-card 21, so it decided the round.
+    const settled = stand(hit(savedAgainstNatural(c("10"), c("6", "♥"), c("5", "♦"))));
+    expect(settled.outcome).toBe("lose");
+    expect(naturalEdges(view(settled))).toEqual({ player: false, dealer: true });
   });
 
   it("a settled round marks its naturals; a round in play or betting marks none", () => {
@@ -319,7 +352,9 @@ describe("the natural", () => {
     expect(naturalEdges(view(s1))).toEqual({ player: true, dealer: false });
     expect(fullStage(view(s1)).natural).toEqual({ player: true, dealer: false });
     expect(naturalEdges(view(newHand(s1)))).toEqual(NO_NATURALS);
-    const playing = placeBet(betting(c("10"), c("K", "♣"), c("8", "♥"), c("A", "♦")), 10);
+    // The dealer peeks under an ace and finds 20, not a natural: the round goes on.
+    const playing = placeBet(betting(c("10"), c("9", "♣"), c("8", "♥"), c("A", "♦")), 10);
+    expect(playing.phase).toBe("player");
     expect(naturalEdges(view(playing))).toEqual(NO_NATURALS);
   });
 });
@@ -523,6 +558,25 @@ function check(
   chips.forEach((q) => expect(q.at).toBeGreaterThanOrEqual(t.resultAt! + CHIP_DELAY_MS));
 }
 
+/**
+ * The peek's invariant (#3741): a dealer natural settles the round at the deal, for the original
+ * bet only: lost, or pushed by the player's natural.
+ */
+function expectPeek(s: EngineState) {
+  if (!isNaturalBlackjack(s.dealer_hand)) return;
+  expect(s.phase).not.toBe("player");
+  expect(s.dealer_hand).toHaveLength(2);
+  expect(s.doubled).toBe(false);
+  expect(s.split_count).toBe(0);
+  if (isNaturalBlackjack(s.player_hand)) {
+    expect(s.outcome).toBe("push");
+    expect(s.payout).toBe(0);
+  } else {
+    expect(s.outcome).toBe("lose");
+    expect(s.payout).toBe(-s.bet);
+  }
+}
+
 describe("fuzz: random rounds", () => {
   it.each(Array.from({ length: 40 }, (_, i) => i + 1))("seed %i", (seed) => {
     const rng = createSeededRng(seed * 7919);
@@ -533,6 +587,7 @@ describe("fuzz: random rounds", () => {
     for (let round = 0; round < 12; round++) {
       let prev = toViewState(s);
       s = placeBet(s, 10);
+      expectPeek(s);
       let next = toViewState(s);
       let nextIds = assignCardIds({ view: prev, ids }, next, fresh);
       const deal = planMotion(prev, next)!;
@@ -540,6 +595,8 @@ describe("fuzz: random rounds", () => {
       let held = deal.held;
       ids = nextIds;
       while (s.phase === "player") {
+        // The peek (#3741): the player never acts against a dealer natural.
+        expect(isNaturalBlackjack(s.dealer_hand.slice(0, 2))).toBe(false);
         const action = pick(s, rng);
         prev = toViewState(s);
         s = action(s);
@@ -555,14 +612,15 @@ describe("fuzz: random rounds", () => {
     }
   });
 
-  it("covers splits, resplits to four hands, doubles and naturals over the seeds", () => {
-    const seen = { split: 0, four: 0, double: 0, natural: 0 };
+  it("covers splits, resplits to four hands, doubles, naturals and peeked dealer naturals over the seeds", () => {
+    const seen = { split: 0, four: 0, double: 0, natural: 0, peeked: 0 };
     for (let seed = 1; seed <= 40; seed++) {
       const rng = createSeededRng(seed * 7919);
       let s = newGame(shoe(rng), { startingChips: 5000, runGoal: null, betMin: 5, betMax: 25 });
       for (let round = 0; round < 12; round++) {
         s = placeBet(s, 10);
         if (s.outcome === "blackjack") seen.natural++;
+        if (isNaturalBlackjack(s.dealer_hand)) seen.peeked++;
         while (s.phase === "player") {
           const action = pick(s, rng);
           if (action === split) seen.split++;
@@ -577,5 +635,6 @@ describe("fuzz: random rounds", () => {
     expect(seen.four).toBeGreaterThan(0);
     expect(seen.double).toBeGreaterThan(10);
     expect(seen.natural).toBeGreaterThan(0);
+    expect(seen.peeked).toBeGreaterThan(0);
   });
 });

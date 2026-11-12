@@ -7,7 +7,8 @@
  * stays until the next deal; input is never locked (no overlay). Reduce Motion shows the static
  * edge, the banner and the chips at once with the sting once; nothing replays on restore; away,
  * New Game and unmount play nothing more. The dealer's natural gets a static silver edge as it
- * turns, with the normal loss; natural against natural the gold edge only, then the push.
+ * turns right after the deal (the peek ends the hand, #3741), with the normal loss; natural against
+ * natural the gold edge only, then the push.
  */
 import React from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
@@ -71,7 +72,7 @@ const BEGINNER = { startingChips: 100, runGoal: 250, betMin: 5, betMax: 25 };
 const NATURAL = [card("A"), card("7", "♣"), card("K", "♥"), card("9", "♥")];
 /** A natural against the dealer's natural: a push. */
 const BOTH = [card("A"), card("A", "♣"), card("K", "♥"), card("K", "♦")];
-/** 18 against the dealer's K (hole) and A (up): the dealer's natural beats a Stand. */
+/** 18 against the dealer's K (hole) and A (up): the dealer peeks and its natural wins at the deal. */
 const DEALER = [card("10"), card("K", "♣"), card("8", "♥"), card("A", "♦")];
 /** 15 against 16, who draws a 2 (a plain loss): the next round after a natural. */
 const LOSE = [card("10"), card("7", "♣"), card("5", "♥"), card("9", "♥")];
@@ -441,24 +442,60 @@ describe("nothing replays", () => {
   });
 });
 
-describe("the dealer's natural", () => {
-  it("a static silver edge as the hole card's turn ends, and the normal loss", async () => {
+describe("the dealer's natural, found by the peek (#3741)", () => {
+  const disabled = (label: RegExp) =>
+    screen.getByLabelText(label).props.accessibilityState?.disabled === true;
+
+  it("the hole card turns right after the deal, a static silver edge as it ends, then the loss", async () => {
     await mountOn(betting(DEALER));
-    await dealTen();
-    await settle();
-    expect(anyEdge()).toBe(false);
-    const at = Date.now();
-    await press(/^Stand/);
+    const at = await dealTen();
+    // The up card lands at 780 ms; the hole card turns then, with no player turn.
+    await advance(779);
+    expect(named(at, "blackjack.cardFlip")).toEqual([]);
+    await advance(1);
+    expect(named(at, "blackjack.cardFlip")).toEqual([780]);
     await advance(319);
     expect(silverEdge()).toBe(false);
     await advance(1);
     expect(silverEdge()).toBe(true);
     expect(goldEdge()).toBe(false);
     expect(moving()).toBe(false);
+    expect(resultShown()).toBe(false);
+    await advance(299);
+    expect(resultShown()).toBe(false);
+    await advance(1);
+    expect(resultShown()).toBe(true);
+    expect(screen.getByTestId("result-outcome").props.children).toBe("You Lose");
     await settle();
-    expect(named(at, "blackjack.lose")).toEqual([620]);
+    expect(named(at, "blackjack.lose")).toEqual([1400]);
+    expect(named(at, "blackjack.chipCollect")).toEqual([1820]);
     expect(stings()).toBe(0);
     expect(silverEdge()).toBe(true);
+  });
+
+  it("the dock: greyed actions until the banner shows (none can be taken), then the result's dock", async () => {
+    await mountOn(betting(DEALER));
+    await dealTen();
+    expect(disabled(/^Hit/)).toBe(true);
+    expect(disabled(/^Stand/)).toBe(true);
+    await advance(1399);
+    expect(disabled(/^Hit/)).toBe(true);
+    expect(screen.queryByText("Rebet")).toBeNull();
+    await advance(1);
+    expect(screen.getByText("Rebet")).toBeTruthy();
+    expect(screen.queryByLabelText(/^Hit/)).toBeNull();
+  });
+
+  it("a tap lands the flip and the result, with the silver edge, and holds the beat", async () => {
+    await mountOn(betting(DEALER));
+    const at = await dealTen();
+    await advance(300);
+    await tapFelt();
+    expect(resultShown()).toBe(true);
+    expect(silverEdge()).toBe(true);
+    await settle();
+    expect(named(at, "blackjack.lose")).toEqual([300]);
+    expect(stings()).toBe(0);
   });
 });
 
