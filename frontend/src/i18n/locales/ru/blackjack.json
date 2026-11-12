@@ -27,6 +27,7 @@
   "card.suit.diamonds": "Бубны",
   "card.suit.clubs": "Трефы",
   "outcome.blackjack": "Blackjack!",
+  "outcome.blackjackNatural": "Blackjack! 3:2",
   "outcome.win": "Победа!",
   "outcome.push": "Ничья",
   "outcome.lose": "Поражение",

@@ -251,6 +251,15 @@
     "doNotTranslate": ["Blackjack"],
     "notes": null
   },
+  "outcome.blackjackNatural": {
+    "component": "ResultBanner",
+    "description": "Result banner on the table when the player's natural blackjack wins; says it pays 3 to 2 (#3621).",
+    "tone": "celebratory",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": ["Blackjack", "3:2"],
+    "notes": "Keep the ratio written as 3:2."
+  },
   "outcome.win": {
     "component": "ResultBanner",
     "description": "Result banner when player wins.",

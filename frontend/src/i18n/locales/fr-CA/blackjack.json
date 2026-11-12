@@ -27,6 +27,7 @@
   "card.suit.diamonds": "Carreaux",
   "card.suit.clubs": "Trèfles",
   "outcome.blackjack": "Blackjack!",
+  "outcome.blackjackNatural": "Blackjack! 3:2",
   "outcome.win": "Gagné!",
   "outcome.push": "Égalité",
   "outcome.lose": "Perdu",

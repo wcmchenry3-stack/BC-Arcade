@@ -27,6 +27,7 @@
   "card.suit.diamonds": "Karo",
   "card.suit.clubs": "Kreuz",
   "outcome.blackjack": "Blackjack!",
+  "outcome.blackjackNatural": "Blackjack! 3:2",
   "outcome.win": "Gewonnen!",
   "outcome.push": "Remis",
   "outcome.lose": "Verloren",

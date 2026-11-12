@@ -21,6 +21,7 @@ import { APP_HEADER_HEIGHT } from "../../components/shared/AppHeader";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import { createSeededRng } from "../../game/_shared/seededRng";
 import {
+  naturalEdges,
   planMotion,
   RESULT_CUES,
   SKIP_HOLD_MS,
@@ -135,6 +136,18 @@ function expectTableMatches(engine: EngineState) {
       expect(placeOf(`hand-${k}-card-${i}`)).toEqual([f.x + i * f.step, f.y]);
     })
   );
+  // A natural's moment (#3621) has ended, nothing of it left moving, and its edges are exactly the
+  // settled round's (the gold on a one-hand natural, the silver on the dealer's that decided it).
+  const hidden = { includeHiddenElements: true };
+  expect(screen.queryByTestId("natural-sweep", hidden)).toBeNull();
+  expect(screen.queryAllByTestId(/-natural-sheen$/, hidden)).toHaveLength(0);
+  const edges = naturalEdges(v);
+  expect(screen.queryAllByTestId(/^hand-\d-card-\d+-natural-gold$/, hidden)).toHaveLength(
+    edges.player ? 2 : 0
+  );
+  expect(screen.queryAllByTestId(/^dealer-card-\d+-natural-silver$/, hidden)).toHaveLength(
+    edges.dealer && dealerShown > 0 ? 2 : 0
+  );
   // The result shows exactly when the engine settled the round; no chip is left moving.
   expect(screen.queryByTestId("blackjack-felt-result") !== null).toBe(showsResult(v.phase));
   expect(screen.queryByTestId(/^felt-chip-/, { includeHiddenElements: true })).toBeNull();
@@ -229,7 +242,8 @@ describe("fuzz: random play with taps mid-motion", () => {
       if (pending === null) return;
       const { plan } = pending;
       for (const c of plan.cues) if (c.at <= cutoff) expected.push(KEY[c.sound]);
-      const chime = plan.cues.find((c) => c.at === plan.resultAt && RESULT_CUES.includes(c.sound));
+      // The result's chime: a natural's sting comes before its result (`chimeAt`, #3621).
+      const chime = plan.cues.find((c) => c.at === plan.chimeAt && RESULT_CUES.includes(c.sound));
       if (tapped && chime !== undefined && chime.at > cutoff) expected.push(KEY[chime.sound]);
       pending = null;
     };

@@ -200,7 +200,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-blackjack.ogg
 
-- **Event:** Blackjack natural (`blackjack.blackjack`), with the result banner and the celebration; it replaced Blackjack's use of `hearts-moon-shot.mp3` (#3581).
+- **Event:** Blackjack natural (`blackjack.blackjack`): the player's natural, as its second card lands, with the gold edge and the lift; it is the round's result chime (#3621). It replaced Blackjack's use of `hearts-moon-shot.mp3` (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-blackjack`), fixed seeds, so the decoded audio is reproducible.

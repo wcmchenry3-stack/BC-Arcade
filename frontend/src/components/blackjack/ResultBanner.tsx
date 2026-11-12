@@ -18,6 +18,13 @@ interface Props {
   summary?: string | null;
 }
 
+/** The outcome's words. On the felt a natural says what it pays: "Blackjack! 3:2" (#3621). */
+function outcomeKeyOf(outcome: string, variant: "card" | "felt"): string {
+  return variant === "felt" && outcome === "blackjack"
+    ? "outcome.blackjackNatural"
+    : `outcome.${outcome}`;
+}
+
 export default function ResultBanner({
   outcome,
   payout,
@@ -29,8 +36,7 @@ export default function ResultBanner({
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
-  const outcomeKey = `outcome.${outcome}` as const;
-  const outcomeText = t(outcomeKey as Parameters<typeof t>[0]);
+  const outcomeText = t(outcomeKeyOf(outcome, variant) as Parameters<typeof t>[0]);
 
   // Per-outcome accent color: blackjack=tertiary lime, win=bonus green,
   // lose=error red, push=textMuted

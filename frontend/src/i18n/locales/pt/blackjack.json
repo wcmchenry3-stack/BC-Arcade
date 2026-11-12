@@ -27,6 +27,7 @@
   "card.suit.diamonds": "Ouros",
   "card.suit.clubs": "Paus",
   "outcome.blackjack": "Blackjack!",
+  "outcome.blackjackNatural": "Blackjack! 3:2",
   "outcome.win": "Venceu!",
   "outcome.push": "Empate",
   "outcome.lose": "Perdeu",

@@ -40,7 +40,8 @@ import {
   type CardIds,
   type ChipShown,
 } from "./blackjackMotion";
-import type { CardMotion } from "./useBlackjackMotion";
+import type { CardMotion, FeltNatural } from "./useBlackjackMotion";
+import { NaturalSweep } from "./NaturalMoment";
 
 export interface FeltResult {
   outcome: string;
@@ -80,11 +81,14 @@ interface Props {
   chipColor?: string;
   /** The motion is running: a result shown now pops in. */
   animating?: boolean;
+  /** The naturals marked, and the player's natural moment (#3621); left out: none. */
+  natural?: FeltNatural;
   onLayout?: (e: LayoutChangeEvent) => void;
   children?: React.ReactNode;
 }
 
 const STILL: CardMotion = { dealing: new Set(), flipping: new Set(), slideMs: 0, epoch: 0 };
+const NO_NATURAL: FeltNatural = { player: false, dealer: false, since: null };
 
 type Tone = "plain" | "active" | "bust" | "win" | "lose" | "push";
 
@@ -351,6 +355,63 @@ function HandBox({ rect, active, rows }: { rect: Rect; active: boolean; rows: bo
   );
 }
 
+/**
+ * The cards FeltCards draws: the dealer's (unless collapsed beside the result), then each hand's,
+ * with a natural's edges (#3621): the dealer's silver, and one hand's gold with its moment.
+ */
+function feltHandsOf(p: {
+  readonly geometry: TableGeometry;
+  readonly dealerHand: HandResponse;
+  readonly hands: readonly HandResponse[];
+  readonly cardIds: CardIds | undefined;
+  readonly isPlayed: (i: number) => boolean;
+  readonly natural: FeltNatural;
+}): FeltHand[] {
+  const { geometry, dealerHand, hands, cardIds, isPlayed, natural } = p;
+  const gold = natural.player && hands.length === 1;
+  return [
+    ...(dealerHand.cards.length > 0 && !geometry.dealer.collapsed
+      ? [
+          {
+            id: "dealer",
+            cards: dealerHand.cards,
+            ids: cardIds?.dealer ?? [],
+            fan: geometry.dealer.fan,
+            natural: natural.dealer ? ("silver" as const) : null,
+          },
+        ]
+      : []),
+    ...hands.flatMap((hand, i) => {
+      const g = geometry.hands[i];
+      if (!g) return [];
+      return [
+        {
+          id: `hand-${i}`,
+          cards: hand.cards,
+          ids: cardIds?.hands[i] ?? [],
+          fan: g.fan,
+          dimmed: isPlayed(i),
+          natural: gold ? ("gold" as const) : null,
+          moment: gold ? natural.since : null,
+        },
+      ];
+    }),
+  ];
+}
+
+/** The player's natural moment's light sweep, while it plays (#3621). */
+function sweepOf(natural: FeltNatural, geometry: TableGeometry) {
+  if (natural.since === null) return null;
+  return (
+    <NaturalSweep
+      key={natural.since}
+      since={natural.since}
+      feltWidth={geometry.feltWidth}
+      feltHeight={geometry.feltHeight}
+    />
+  );
+}
+
 export default function TableFelt({
   geometry,
   phase,
@@ -368,6 +429,7 @@ export default function TableFelt({
   chips = [],
   chipColor,
   animating = false,
+  natural = NO_NATURAL,
   onLayout,
   children,
 }: Props) {
@@ -381,32 +443,7 @@ export default function TableFelt({
   const revealed = revealedHands ?? hands.length;
   // While the dealer plays every hand is played: none is outlined, all are dimmed.
   const isPlayed = (i: number) => playing && split && i < activeHandIndex;
-
-  const feltHands: FeltHand[] = [
-    ...(dealerHand.cards.length > 0 && !geometry.dealer.collapsed
-      ? [
-          {
-            id: "dealer",
-            cards: dealerHand.cards,
-            ids: cardIds?.dealer ?? [],
-            fan: geometry.dealer.fan,
-          },
-        ]
-      : []),
-    ...hands.flatMap((hand, i) => {
-      const g = geometry.hands[i];
-      if (!g) return [];
-      return [
-        {
-          id: `hand-${i}`,
-          cards: hand.cards,
-          ids: cardIds?.hands[i] ?? [],
-          fan: g.fan,
-          dimmed: isPlayed(i),
-        },
-      ];
-    }),
-  ];
+  const feltHands = feltHandsOf({ geometry, dealerHand, hands, cardIds, isPlayed, natural });
   return (
     <View
       testID="blackjack-felt"
@@ -493,6 +530,8 @@ export default function TableFelt({
         );
       })}
 
+      {/* A natural's light sweep across the felt, under the cards (#3621). */}
+      {sweepOf(natural, geometry)}
       {/* The cards, above the labels and the result: a dealt card flies in over them. */}
       <FeltCards hands={feltHands} motion={cardMotion} origin={dealOrigin(geometry.feltWidth)} />
       <FeltChips

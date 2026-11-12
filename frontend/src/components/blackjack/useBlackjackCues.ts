@@ -2,8 +2,9 @@
  * Blackjack's sounds, one per moment of the motion (#3581, the approved table on the issue): the
  * deal, the hole card's flip, a chip into the circle, the result's chime and the chips after it.
  * The motion (useBlackjackMotion) says when; this plays the sound, and hands the result's own
- * effect (a flash, the celebration) to the screen. A result the player cut short (`skipped`)
- * still sounds, once, with no effect over the next hand.
+ * effect (a flash) to the screen. A result the player cut short (`skipped`) still sounds, once,
+ * with no effect over the next hand. A natural's sting has no effect of its own here: its moment
+ * is on the felt, drawn by the motion (#3621; the old overlay is gone).
  */
 import { useCallback, useLayoutEffect, useRef } from "react";
 
@@ -21,7 +22,6 @@ import type { SoundCue } from "./blackjackMotion";
 export interface CueEffects {
   readonly onWin: () => void;
   readonly onBust: () => void;
-  readonly onBlackjack: () => void;
 }
 
 export function useBlackjackCues(effects: CueEffects): (cue: SoundCue, skipped: boolean) => void {
@@ -65,6 +65,5 @@ export function useBlackjackCues(effects: CueEffects): (cue: SoundCue, skipped: 
     if (skipped) return;
     if (cue === "win") effectsRef.current.onWin();
     else if (cue === "bust") effectsRef.current.onBust();
-    else if (cue === "blackjack") effectsRef.current.onBlackjack();
   }, []);
 }

@@ -13,7 +13,8 @@
  * - Every pending cue is cancelled on New Game (`reset()`) and on unmount (`useCueClock`).
  *
  * JS runs only at a stage's start (a handful per action), never per frame: the cards' and
- * chips' motion runs on the UI thread (FeltCard, ChipSprite).
+ * chips' motion runs on the UI thread (FeltCard, ChipSprite), and so does a natural's moment
+ * (#3621, NaturalMoment.tsx), handed the time it started; any landing makes it static.
  */
 import type React from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -26,12 +27,15 @@ import {
   SKIP_HOLD_MS,
   CHIP_BET_MS,
   feltSignature,
+  naturalEdges,
   nextChipId,
+  NO_NATURALS,
   planMotion,
   RESULT_CUES,
   stageView,
   type CardIds,
   type ChipShown,
+  type NaturalEdges,
   type SoundCue,
   type Stage,
   type Timeline,
@@ -47,6 +51,15 @@ export interface CardMotion {
   readonly slideMs: number;
   /** Bumped when everything lands at once: a card still moving jumps to its place. */
   readonly epoch: number;
+}
+
+/** The naturals the felt marks, and the player's natural moment while it plays (#3621). */
+export interface FeltNatural extends NaturalEdges {
+  /**
+   * When the player's natural moment (lift, glint, sweep) started, on the JS clock; null: none is
+   * playing, the edges are static (Reduce Motion, a tap that landed it, a restore, the player away).
+   */
+  readonly since: number | null;
 }
 
 export interface BlackjackMotionInput {
@@ -82,6 +95,8 @@ export interface BlackjackMotion {
   readonly revealedHands: number | undefined;
   /** The dealer's total is "?" (the hole card has not finished turning); undefined: as drawn. */
   readonly dealerConcealed: boolean | undefined;
+  /** The naturals marked, and the natural moment playing (#3621). */
+  readonly natural: FeltNatural;
   /**
    * Runs the player's action `run`, and replays the change it makes. Anything still moving lands
    * at once first (input stays live). A result still playing out is shown first (owner decision,
@@ -117,6 +132,8 @@ interface Shown {
   readonly rest: Stage | null;
   /** The felt signature of `final` (null before a game). */
   readonly sig: string | null;
+  /** When the player's natural moment started (JS clock), while the motion runs; else null. */
+  readonly momentSince: number | null;
 }
 
 const NO_IDS: CardIds = { dealer: [], hands: [] };
@@ -210,6 +227,7 @@ const NOTHING_SHOWN: Shown = {
   cards: STILL,
   sig: null,
   rest: null,
+  momentSince: null,
 };
 
 /** A ref to the latest `value`, updated before paint (and before later layout effects). */
@@ -324,6 +342,8 @@ function useTimelineRunner(input: {
         stage: null,
         rest: always ? null : s.rest,
         cards: { ...STILL, epoch: s.cards.epoch + 1 },
+        // A natural's moment lands too: its edges stay, static (#3621).
+        momentSince: null,
       }));
     },
     [clock, cue, runSettled, setShown, stageRef]
@@ -335,15 +355,23 @@ function useTimelineRunner(input: {
       const lastFrame = plan.frames[plan.frames.length - 1]!;
       for (const f of plan.frames.slice(1)) {
         const isLast = f === lastFrame;
+        // The player's natural moment starts with its stage, in the same render (#3621).
+        const moment = f.at === plan.momentAt;
         const show = () => {
           stageRef.current = isLast ? null : f.stage;
-          setShown((s) => ({ ...s, stage: stageRef.current }));
+          const since = moment && !isLast ? Date.now() : null;
+          setShown((s) => ({
+            ...s,
+            stage: stageRef.current,
+            momentSince: isLast ? null : (since ?? s.momentSince),
+          }));
           if (isLast) runSettled();
         };
         clock.schedule(show, f.at, MOTION);
       }
       for (const c of plan.cues) {
-        const isChime = RESULT_CUES.includes(c.sound) && c.at === plan.resultAt;
+        // The result's chime: a natural's sting before the result counts (`chimeAt`, #3621).
+        const isChime = RESULT_CUES.includes(c.sound) && c.at === plan.chimeAt;
         if (isChime) chimeRef.current = c.sound;
         const play = () => {
           if (isChime) chimeRef.current = null;
@@ -429,6 +457,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
         cards: { ...STILL, epoch: s.cards.epoch + 1 },
         sig,
         rest: null,
+        momentSince: null,
       }));
       runSettled();
       return;
@@ -446,6 +475,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
       cards: cardMotionOf(drawnIds(from.ids, heldBefore), ids, plan, s.cards.epoch),
       sig,
       rest,
+      momentSince: null,
     }));
     run(plan);
     if (settledNow) runSettled();
@@ -494,6 +524,13 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
   );
   const chips = useMemo(() => [...(stage?.chips ?? []), ...trayChips], [stage, trayChips]);
   const unsettled = stage !== null && !stage.settled;
+  // At rest, the settled round's naturals (a restore shows them static, with no motion).
+  const edges = drawn ? drawn.natural : final === null ? NO_NATURALS : naturalEdges(final);
+  const since = stage !== null && edges.player ? shown.momentSince : null;
+  const natural = useMemo<FeltNatural>(
+    () => ({ player: edges.player, dealer: edges.dealer, since }),
+    [edges.player, edges.dealer, since]
+  );
 
   return {
     view,
@@ -505,6 +542,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     animating: stage !== null,
     revealedHands: stage?.result ? stage.revealed : undefined,
     dealerConcealed: drawn ? !drawn.holeCounted : undefined,
+    natural,
     act,
     skip,
     leave,

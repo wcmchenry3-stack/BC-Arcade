@@ -27,6 +27,7 @@
   "card.suit.diamonds": "Diamantes",
   "card.suit.clubs": "Tréboles",
   "outcome.blackjack": "¡Blackjack!",
+  "outcome.blackjackNatural": "¡Blackjack! 3:2",
   "outcome.win": "¡Ganaste!",
   "outcome.push": "Empate",
   "outcome.lose": "Perdiste",

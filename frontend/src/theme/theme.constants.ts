@@ -39,6 +39,15 @@ export const SCORE_ROW_GLOW_LOWER = "rgba(214,116,255,0.45)";
 /** Blackjack HUD warning amber — chips below 30% of the starting stack. */
 export const BLACKJACK_CHIPS_LOW = "#ffb547";
 
+/** Blackjack's natural (#3621, owner decisions in #3739): the player's gold edge (and the 3:2
+ *  payout chip's rim), the dealer's cool-silver edge, the sheen band that crosses each card and
+ *  the light sweep across the felt. Light on a card or the felt, never text, so the same in both
+ *  themes. */
+export const BLACKJACK_NATURAL_GOLD = "#f5c542";
+export const BLACKJACK_NATURAL_SILVER = "#b9c6d6";
+export const BLACKJACK_NATURAL_SHEEN = "rgba(255,240,190,0.75)";
+export const BLACKJACK_NATURAL_SWEEP = "#fff6d8";
+
 /** 2048 board drop shadow: web `boxShadow`, and the native `shadowColor`. */
 export const TWENTY48_BOARD_SHADOW_CSS = "0 8px 40px #00000099";
 export const TWENTY48_BOARD_SHADOW_COLOR = "#000";

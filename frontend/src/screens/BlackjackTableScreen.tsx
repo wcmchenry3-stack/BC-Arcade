@@ -21,8 +21,8 @@
  *   3. Motion, sounds and feedback (#3581) — `useBlackjackMotion` replays
  *      each action from the settled round: the deal, the hole-card flip, the
  *      dealer's turn, the result and the chips, with each sound at its moment
- *      (and the bust/win flashes and the blackjack celebration with the
- *      result). Input stays live: an action lands any motion at once first.
+ *      (and the bust/win flashes with the result; a natural's moment on the
+ *      felt, #3621). Input stays live: an action lands any motion at once first.
  *      `useGameEvents` drives the milestone and comeback toasts (once the
  *      round settles) and the all-in badge.
  *   4. Navigation — the run's goal opens BlackjackVictory; the run history opens
@@ -98,7 +98,6 @@ import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import { BlackjackCelebrationAnimation } from "../components/blackjack/BlackjackCelebrationAnimation";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackTable" | "BlackjackBetting">;
@@ -165,7 +164,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     sessionStats,
     runResult,
   } = useBlackjackGame();
-  const [celebrationVisible, setCelebrationVisible] = useState(false);
   const [milestoneChips, setMilestoneChips] = useState<number | null>(null);
   const [comebackVisible, setComebackVisible] = useState(false);
   const [allInVisible, setAllInVisible] = useState(false);
@@ -241,7 +239,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
           : withSequence(withTiming(1, { duration: 80 }), withTiming(0, { duration: 400 }))
       );
     },
-    onBlackjack: () => setCelebrationVisible(true),
   });
 
   // The player away (another screen, the background, the ⋯ menu): the motion lands, silently.
@@ -552,6 +549,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                 chips={motion.chips}
                 chipColor={tableAccentColor}
                 animating={motion.animating}
+                natural={motion.natural}
                 onLayout={onFeltLayout}
               >
                 {feltBetting && geometry.betSpot && (
@@ -738,10 +736,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         />
       )}
 
-      <BlackjackCelebrationAnimation
-        visible={celebrationVisible}
-        onDismiss={() => setCelebrationVisible(false)}
-      />
       <BlackjackDevPanel />
     </GameShell>
   );

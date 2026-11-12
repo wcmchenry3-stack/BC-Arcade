@@ -1,6 +1,6 @@
 /**
- * BlackjackTableScreen game events and actions (#2957): the sound and overlay
- * each engine event raises, the player's Stand / Double Down / Split buttons,
+ * BlackjackTableScreen game events and actions (#2957): the sound each engine
+ * event raises, the player's Stand / Double Down / Split buttons,
  * the New Game confirmation (in the ⋯ menu since #3580), and the result of a
  * split hand. Each test
  * resumes a hand-built engine state through the mocked storage.
@@ -150,10 +150,10 @@ describe("event sounds", () => {
   });
 });
 
-describe("blackjack celebration", () => {
-  // The overlay stays mounted while hidden; it takes touches only while it shows.
-  const celebration = () =>
-    screen.getByTestId(/^animation-overlay/, { includeHiddenElements: true });
+// #3621 (owner decision, #3739): the natural's moment is on the felt. The old "BLACKJACK!" overlay
+// is gone: its backdrop took touches for ~2 s, so a Rebet tapped then only dismissed it.
+describe("blackjack natural", () => {
+  const HIDDEN = { includeHiddenElements: true };
 
   /** Deals a natural (A K against 7 9) and plays the deal out to its result (#3581). */
   async function dealNatural() {
@@ -172,26 +172,20 @@ describe("blackjack celebration", () => {
     await advance(1400);
   }
 
-  it("plays the sound and shows the celebration, until it is skipped", async () => {
+  it("plays the sting once, with no overlay over the table", async () => {
     await dealNatural();
     expect(played("blackjack.blackjack")).toBe(1);
-    expect(celebration().props.pointerEvents).toBe("auto");
-
-    await pressLabel("Skip celebration");
-    expect(celebration().props.pointerEvents).toBe("none");
-  });
-
-  it("ends by itself", async () => {
-    await dealNatural();
-    expect(celebration().props.pointerEvents).toBe("auto");
+    expect(screen.queryByTestId(/^animation-overlay/, HIDDEN)).toBeNull();
+    expect(screen.queryByLabelText("Skip celebration")).toBeNull();
     await advance(2500);
-    expect(celebration().props.pointerEvents).toBe("none");
+    expect(played("blackjack.blackjack")).toBe(1);
   });
 
   it("is not replayed by a restored state's blackjack event", async () => {
     await mountOn(withEvents({ type: "blackjack" }));
     expect(played("blackjack.blackjack")).toBe(0);
-    expect(celebration().props.pointerEvents).toBe("none");
+    expect(screen.queryByTestId(/^animation-overlay/, HIDDEN)).toBeNull();
+    expect(screen.queryByTestId("natural-sweep", HIDDEN)).toBeNull();
   });
 });
 
