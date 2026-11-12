@@ -178,8 +178,12 @@ describe("FeltCards", () => {
     stall = true;
     const m = motion({ flipping: new Set(["c1"]) });
     await show(hand(20, { ...NINE, face_down: true }), m);
-    expect(screen.getByTestId("hand-0-card-0-outline")).toBeTruthy();
+    // The face-down card is the deck's back, with no table-level outline (#3740).
+    expect(screen.getAllByTestId("minimal-back")).toHaveLength(1);
+    expect(screen.queryByTestId("hand-0-card-0-outline")).toBeNull();
     await show(hand(20, NINE), m);
+    // The turn's back face is the deck's back too, over the face.
+    expect(screen.getAllByTestId("minimal-back", { includeHiddenElements: true })).toHaveLength(1);
     // The turn and the back over the face, each on the flip's clock.
     expect(timings).toEqual([
       { to: 1, duration: FLIP_MS },

@@ -30,12 +30,10 @@ import Reanimated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { useTheme } from "../../theme/ThemeContext";
 import type { CardResponse } from "../../game/blackjack/types";
 import type { FanGeometry } from "../../game/blackjack/layout";
 import { FLIGHT_BACKSTOP_MS, type Point } from "../cards/cardMotion";
 import PlayingCard from "./PlayingCard";
-import { holeCardOutline } from "./tableColors";
 import {
   DEAL_FLIGHT_MS,
   DEAL_ROTATE_DEG,
@@ -46,9 +44,6 @@ import {
   FLIP_MS,
 } from "./blackjackMotion";
 import type { CardMotion } from "./useBlackjackMotion";
-
-/** Width of the outline around a face-down card, drawn just outside its edge. */
-const OUTLINE = 1.5;
 
 /** One hand's cards as the felt draws them. */
 export interface FeltHand {
@@ -244,7 +239,6 @@ function nextMotion(st: CardMotionState, p: CardProps, t: number): CardMotionSta
 
 const FeltCard = React.memo(function FeltCard(props: CardProps) {
   const { testID, card, dimmed, x, y, width, height } = props;
-  const { colors } = useTheme();
   const [state, setState] = useState<CardMotionState>(() => {
     const first: CardMotionState = {
       x,
@@ -279,22 +273,6 @@ const FeltCard = React.memo(function FeltCard(props: CardProps) {
               <PlayingCard card={{ ...card, face_down: true }} width={width} height={height} />
             </TurnBack>
           ) : null}
-          {card.face_down && (
-            // The hole card: a table-level outline so the deck's back reads
-            // against the felt whatever the deck (#3580).
-            <View
-              testID={`${testID}-outline`}
-              pointerEvents="none"
-              style={[
-                styles.outline,
-                {
-                  width: width + 2 * OUTLINE,
-                  height: height + 2 * OUTLINE,
-                  borderColor: holeCardOutline(colors),
-                },
-              ]}
-            />
-          )}
         </CardTurn>
       </CardPose>
     </View>
@@ -439,12 +417,5 @@ const styles = StyleSheet.create({
   fill: {
     width: "100%",
     height: "100%",
-  },
-  outline: {
-    position: "absolute",
-    left: -OUTLINE,
-    top: -OUTLINE,
-    borderWidth: OUTLINE,
-    borderRadius: 7,
   },
 });

@@ -492,11 +492,12 @@ describe("the felt", () => {
       ...placeBet(newGame(knownDeck(), BEGINNER), 10),
     });
     expect(screen.getByLabelText("Dealer score hidden")).toBeTruthy();
-    // The hole card is a real card back from the shared PlayingCard, outlined
-    // by the table so it reads against the felt (review round 1, #6).
+    // The hole card is a real card back from the shared PlayingCard; the back
+    // reads against the felt by itself, so the table draws no outline (#3740).
     expect(screen.getByLabelText("Face-down card")).toBeTruthy();
-    expect(screen.getByTestId("dealer-card-0-outline")).toBeTruthy();
-    expect(screen.queryByTestId("dealer-card-1-outline")).toBeNull();
+    expect(within(screen.getByTestId("dealer-card-0")).getByTestId("minimal-back")).toBeTruthy();
+    expect(screen.queryByTestId("dealer-card-0-outline")).toBeNull();
+    expect(within(screen.getByTestId("dealer-card-1")).queryByTestId("minimal-back")).toBeNull();
   });
 
   // Review round 1, #3: one show-result predicate; the victory felt shows the result too.

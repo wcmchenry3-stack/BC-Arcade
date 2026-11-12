@@ -9,7 +9,7 @@
  */
 import React, { useEffect } from "react";
 import { AccessibilityInfo, Dimensions, StyleSheet } from "react-native";
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider, useBlackjackGame } from "../../game/blackjack/BlackjackGameContext";
@@ -139,7 +139,10 @@ function expectTableMatches(engine: EngineState) {
   expect(screen.queryByTestId("blackjack-felt-result") !== null).toBe(showsResult(v.phase));
   expect(screen.queryByTestId(/^felt-chip-/, { includeHiddenElements: true })).toBeNull();
   // The hole card is face down exactly while the player plays.
-  expect(screen.queryByTestId("dealer-card-0-outline") !== null).toBe(v.phase === "player");
+  expect(within(screen.getByTestId("dealer-card-0")).queryByTestId("minimal-back") !== null).toBe(
+    v.phase === "player"
+  );
+  expect(screen.queryByTestId("dealer-card-0-outline")).toBeNull();
 }
 
 beforeEach(() => {
