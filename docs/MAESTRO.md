@@ -86,10 +86,10 @@ Visual and audio stories must show the owner the change running on iOS and Andro
 | `demo-open.yaml` | Home → Cascade board | `cascade-demo-open` | `cascade-demo-open` |
 | `demo-drop.yaml` | one drop down the middle | `cascade-demo-drop-before`, `cascade-demo-drop-after` | `cascade-demo-drop` |
 | `demo-merge.yaml` | drops until the score container (`cascade-score`, label "Score: N") leaves 0, i.e. a merge | `cascade-demo-merge-before`, `cascade-demo-merge-after` | `cascade-demo-merge` |
-| `demo-loss.yaml` | drops down the middle until the stack overflows and the result card shows | `cascade-demo-loss` | `cascade-demo-loss` |
 
 Not covered yet, and why:
 
+- **Loss**: dropping down the middle mostly makes merges, so the pile rarely reaches the lid. In the 2026-11-12 dispatch, 150 taps took about 21 minutes on each platform. iOS lost (111 merges) and left a 1.35 GB video; Android never lost. Tapping can't make a dependable loss demo. `demo-loss.yaml` comes back with #3719's test-build control that fills the bin.
 - **Win**: Cascade has no win state yet (#3699). Add `demo-win.yaml` with it.
 - **Chain** and **danger**: there is no visible danger state yet (the overflow line is always drawn the same way), and a chain needs a known piece sequence. The queue is random in test builds.
 - **Test hooks**: Maestro cannot call the `__cascade_*` hooks (`game/cascade/testHooks.ts`). They live on the app's JavaScript `globalThis`, and Maestro's `runScript`/`evalScript` run in Maestro's own JavaScript engine on the host, not in the app. No Maestro flow in this repo calls a hook. Solitaire and FreeCell get fixed deals from the `EXPO_PUBLIC_TEST_HOOKS=1` build flag and a test-build-only button instead. So the loss is reached by play, and seeding the queue (for a chain) would need a similar test-build-only control on the Cascade screen.
@@ -107,7 +107,7 @@ gh run download <run-id> -n maestro-android-media
 
 Or in the GitHub UI: Actions → **Mobile Smoke — Android** (or **— iOS**) → **Run workflow** → pick the branch and `cascade-demo`. A dispatched run is not attached to the PR's checks, so it neither gates nor replaces the PR's own smoke run. It uses the workflow file **on that branch**, so the branch needs this change (from `dev` on).
 
-Expected run time (estimates from each job's recent step times, not yet measured for the demo set): Android about 20 to 25 minutes (setup and APK build about 10, emulator boot about 3, the four demos about 6 to 12; `demo-loss` is most of that). iOS about 40 to 55 minutes (setup, CocoaPods and the Release build about 27, warm-up about 2, the demos about 10 to 20). Android's screen recorder stops at 3 minutes, so a long `demo-loss` video can end before the result card; its final screenshot always shows it.
+Expected run time (from the 2026-11-12 run, without `demo-loss`): Android about 15 minutes (setup and APK build about 10, emulator boot about 3, the three demos about 2). iOS about 40 to 55 minutes (setup, CocoaPods and the Release build about 27, warm-up about 2, the demos about 3). Android's screen recorder stops at 3 minutes, so a demo that runs longer loses the end of its video; keep each demo well under that.
 
 Can a Claude session start the dispatch? Unverified. The session's GitHub integration got 403 "Resource not accessible by integration" when re-running jobs (#3674); a dispatch needs the same `actions: write` access, so expect the same until it has been tried. If it fails, the owner starts the run (command or UI above) and the design-review demo step says so.
 
