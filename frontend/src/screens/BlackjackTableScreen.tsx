@@ -526,7 +526,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
               testID="blackjack-table-area"
               style={styles.feltArea}
               onPress={motion.skip}
-              disabled={motion.settled}
+              disabled={motion.settled && !motion.sounding}
               accessible={false}
               // Not a stop for TalkBack, the D-pad or web tab focus; its children stay reachable.
               focusable={false}
