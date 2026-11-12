@@ -208,6 +208,30 @@ options and is unchanged (a random track per game, from 0:00, at 0.2).
   #2923 self-heal sees the same sequence of calls and statuses as before.
 - **Loop.** `loop = true`; the file's own 3 s equal-power seam (it ends the file, 6:49.7 to 6:52.7) leads straight back into 0:00.
 
+## In-game review (owner-approved 2026-11-12)
+
+The owner approved the final in-game recording of Round 46 at 9335150f. It was a web build in
+headless Chromium, with every sound the game played logged and re-mixed from the real files at the
+logged times and volumes. It ran three clips: gameplay, game over then Play Again, and leave then
+return. The checks:
+
+- the music rests at 0.57 and fades in over 10 steps;
+- game over pauses it, and Play Again resumes from the same position;
+- leaving saved the next starting point (156.5 s), with no write during play;
+- the return sought there and faded in;
+- 190 effects played;
+- music alone measured about −27 LUFS against about −21 LUFS for the whole session.
+
+**Web loop (accepted by the owner).** The file itself loops seamlessly, and Chromium honours its
+gapless tag (412.700 s). But the HTMLMediaElement `loop` inserts about 15 ms of silence with a small
+click at every wrap, in 14 of 14 wraps, in the game's player and a plain `Audio` element alike.
+This is a browser loop artefact on the secondary platform, once every 6:52.7. iOS (AVQueuePlayer)
+and Android (ExoPlayer `REPEAT_MODE_ONE`) loop differently and still need the device check below.
+
+**Effects clipping (separate issue).** Stacked sound effects (3–6 within 60 ms) briefly reached
++0.39 dBFS in the mix while the music peaked at −15 dBFS. This is independent of the music and is
+tracked separately.
+
 ## Device checks
 
 **Pending (owner), on an iOS and an Android device**, after #3638:
