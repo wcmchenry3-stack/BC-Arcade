@@ -62,6 +62,58 @@ The human always moves first in a round. The `Round N / 13` header shows the rou
 
 The public Yacht leaderboard ranks **the human player's final score only**. Solo and vs games share one board; AI difficulty does not partition it.
 
+## UI
+
+The screen (`frontend/src/screens/GameScreen.tsx`) is a **thumb tray** (#3748): the scorecard on top, and below it one card with everything a turn needs in thumb reach. Solo and vs share one layout; the Hint exists in solo only.
+
+```
+Header      Back · Yacht · Round N / 13 · ⋯
+Scorecard   header (Category · You · CPU)
+            Ones … Sixes
+            ── Upper subtotal band ──
+            Three of a Kind … Chance
+            Total
+Tray        turn hint
+            five dice
+            [ Roll (N left) ]  Hint  New Game      (the shared GameActionBar)
+Tab bar     unchanged
+```
+
+### Scorecard (`components/yacht/ScoreTable.tsx`)
+
+- **One table for both modes**: one score column in solo, two (You, CPU) in vs. All 13 rows, the upper subtotal band and the total are visible on a **390 × 844 phone** with no tabs and no scrolling (rows 29 pt). Below the height that needs (a 320 × 568 phone) the table scrolls inside its card, and the row the computer just scored is scrolled into view.
+- **Rows are the tap target** (`score-row-<key>`; the whole row, 29 pt tall, not the 44 pt minimum: the owner chose 13 rows on one screen). A row is a button for a screen reader at all times, disabled unless it is open and it is your turn.
+- **Potentials look the same in both modes**: the points on the table in the potential (teal) colour, 0s dimmed, the best open row (most points, the first of equals) boxed. A scored row shows its score in bold; a scratched row (0) is dimmed. Before the first roll no row shows a potential.
+- **The upper subtotal is a band, not a score row**: its own background (surface high in dark, surface alt in light), a 2 pt top rule, a bold small-caps "Upper subtotal" label, and the bonus line `42 / 63 · +35 bonus` (`63 / 63 ✓ · +35 bonus` once earned) with each player's subtotal in its column and a `+35` under it when earned. It has no `score-row-*` testID, no press handler and no potential style (`yacht-upper-subtotal`).
+- **Labels are in full** ("Small Straight (30)", "Large Straight (40)") and may wrap to two lines; a longer label makes its row taller rather than truncating.
+- **The Yacht Bonus** is named under the total, with `+100` per player, only once someone has one.
+- **The computer's last row**: in vs, the row the computer just scored is tinted purple with a left bar (`yacht-cpu-row-bar`) from its score until you roll or start a new game. A game restored from a save highlights nothing.
+- **The Hint's row** is tinted green with a left bar (`yacht-hint-row-bar`) while the hint is up.
+- The computer's column and text are `outcomeDraw` (purple that reaches AA on cream), your header is `accentText`.
+
+### Tray (`components/DiceRow.tsx`)
+
+- **Turn hint**: solo, "Press Roll to start your turn" then "Tap dice to hold". Vs, "Your Turn" in front of it. On the computer's turn: "Computer is rolling…" and its roll counter ("Roll 2 / 3"); the dice shown are the computer's, at full opacity.
+- **Dice** are sized from the width the dice row measures (`dieSizeFor`: up to 60 pt, down to 36, five dice and four 8 pt gaps always fit), never from the window, so they can't overflow the card.
+- **Held** is a teal ring just outside the die (inside the gap) and a 4 pt lift, replacing the 1.12 × scale and the outside `HELD` badge. The ring's width, the lift and the die's label (", held") say it, not colour alone. Held pips are `accentText`.
+- **Roll** shows the rolls left; on the computer's turn it reads "Computer's Turn" and is disabled. (It has no "Rolling…" state: the roll is synchronous.)
+- **Action bar**: the shared `GameActionBar`, beside Roll: **New Game** (the old row of its own is gone; the ⋯ menu still has it) and, **in solo only**, **Hint**.
+
+### Hint (solo only)
+
+`game/yacht/hint.ts` asks the exact oracle (`ai.ts`, λ = 1: optimal play, no slips) what to do with the dice on the table. Before the last roll it names the dice to keep (a green ring on each; all five dice rolled again if it keeps none). After the third roll, or when the best play is to stop and score, it names the best row (Joker rules included). The message ("Hint: keep the highlighted dice", "Hint: score Large Straight (40)") replaces the turn hint in the tray and is announced to a screen reader.
+
+It behaves like 2048's: up for **2 s** (`useTransientToast`), cleared by a roll, a hold or a score; with nothing to suggest (before the first roll) a 2 s "No hint available" message; **disabled** while the dice are rolling, on the computer's turn and once the game is over. It changes nothing in the game and is not recorded (the replay has no slot for it, and Yacht scores no cost for one). The first hint decodes the oracle table (tens of ms, once per session); nothing is loaded for a player who never asks.
+
+### End card
+
+The shared result card. Solo shows the player's Upper / Lower / Bonus stats and a subtitle for the rarest feat: Yacht bonuses, then a Yacht scored in its row, then the upper bonus (`game/yacht/scoreSummary.ts`). Vs drops those player-only stats and shows **both players'** upper and lower subtotals in `YachtFinalScorecard`, which also marks who won each row (green for you, purple for the computer, nothing on a tie; a screen reader gets "Ones: you 4, computer 1, you win the row") and the winner of the total.
+
+### Text, colour and languages
+
+- All words are i18n (`locales/<lang>/yacht.json`), including the `YACHT!` and `JOKER!` celebration words (the game's name stays `YACHT!`; the font shrinks for a long word on a narrow phone). Layout is checked in en, fr-CA and es at 320 and 390 pt (`e2e/tests/yacht-layout.spec.ts`).
+- Text that was the accent is `colors.accentText` (a darker teal in light, ≥ 4.5:1 on cream); see [BRANDING.md](../BRANDING.md#accent-as-text-accenttext-3748).
+
 ## Computer opponent
 
 ### One engine, three handicaps

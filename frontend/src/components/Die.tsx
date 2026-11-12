@@ -1,13 +1,5 @@
 import React, { useEffect } from "react";
-import {
-  Pressable,
-  View,
-  Text,
-  StyleSheet,
-  Platform,
-  useWindowDimensions,
-  ViewStyle,
-} from "react-native";
+import { Pressable, View, Text, StyleSheet } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -19,16 +11,27 @@ import Animated, {
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
 
+/** How far (pt) a held die lifts. The dice row reserves this much above the dice. */
+export const DIE_LIFT = 4;
+/** Thickness (pt) of the held / hint ring, drawn just outside the die. */
+const RING = 3;
+
 interface DieProps {
   value: number;
   held: boolean;
   onPress: () => void;
   disabled: boolean;
   index: number;
+  /** Side length (pt), from the width the dice row has (DiceRow). */
+  size: number;
   /** True while this die is part of an active roll animation. */
   rolling?: boolean;
   /** When true, skip all animations (accessibility reduce-motion). */
   reduceMotion?: boolean;
+  /** The Hint suggests keeping this die: a green ring. */
+  hinted?: boolean;
+  /** Draw the die faded (a finished game). Dice are not dimmed before the first roll or on the computer's turn. */
+  dimmed?: boolean;
 }
 
 // Pip positions in a 3x3 grid, indexed 0..8 (row-major)
@@ -50,26 +53,28 @@ export default function Die({
   onPress,
   disabled,
   index,
+  size,
   rolling = false,
   reduceMotion = false,
+  hinted = false,
+  dimmed = false,
 }: DieProps) {
   const { t } = useTranslation("yacht");
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
-  const dieSize = Math.min(60, (width - 80) / 5);
-  const pipSize = Math.max(6, Math.round(dieSize * 0.14));
+  const pipSize = Math.max(5, Math.round(size * 0.14));
 
   const displayValue = value > 0 ? value : t("dice.labelBlank");
+  // Held is said, not shown by colour alone: the label carries it (the ring and lift are visual).
   const heldSuffix = held ? t("dice.heldSuffix") : "";
   const label = t("dice.label", { index: index + 1, value: displayValue, heldSuffix });
 
   const pips = PIP_PATTERNS[value] ?? [];
-  const pipColor = held ? colors.accent : colors.text;
+  const pipColor = held ? colors.accentText : colors.text;
 
   // Rotation for roll tumble animation
   const rotation = useSharedValue(0);
-  // Scale for hold/release spring
-  const holdScale = useSharedValue(1);
+  // Lift for hold/release spring
+  const lift = useSharedValue(0);
 
   // Roll tumble: spin die when rolling prop turns true
   useEffect(() => {
@@ -82,33 +87,27 @@ export default function Die({
     );
   }, [rolling, reduceMotion, rotation]);
 
-  // Hold spring: pop scale when held state changes
+  // Hold spring: a held die lifts a few points (it replaces the 1.12x scale, which grew into its neighbour)
   useEffect(() => {
     if (reduceMotion) {
-      holdScale.value = 1;
+      lift.value = held ? -DIE_LIFT : 0;
       return;
     }
-    holdScale.value = withSpring(held ? 1.12 : 1, { damping: 8, stiffness: 200 });
-  }, [held, reduceMotion, holdScale]);
+    lift.value = withSpring(held ? -DIE_LIFT : 0, { damping: 8, stiffness: 200 });
+  }, [held, reduceMotion, lift]);
 
   const rollStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value}deg` }],
   }));
 
-  const holdStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: holdScale.value }],
+  const liftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: lift.value }],
   }));
 
-  // Web-only neon glow when held
-  const glowStyle: ViewStyle | null =
-    held && Platform.OS === "web"
-      ? ({
-          boxShadow: `0 0 14px ${colors.accent}66, 0 0 4px ${colors.accent}`,
-        } as ViewStyle)
-      : null;
+  const ringColor = hinted ? colors.outcomeWin : held ? colors.accentText : null;
 
   return (
-    <Animated.View style={holdStyle}>
+    <Animated.View style={[{ width: size, height: size }, liftStyle]}>
       <Pressable
         onPress={onPress}
         disabled={disabled}
@@ -120,23 +119,17 @@ export default function Die({
         style={({ pressed }) => [
           styles.die,
           {
-            width: dieSize,
-            height: dieSize,
+            width: size,
+            height: size,
+            padding: Math.round(size * 0.1),
             backgroundColor: held ? colors.heldBg : colors.dieBg,
-            borderColor: held ? colors.heldBorder : colors.dieBorder,
-            borderWidth: held ? 2 : 1,
+            borderColor: held ? colors.accentText : colors.dieBorder,
             transform: [{ scale: pressed && !disabled ? 0.95 : 1 }],
           },
-          glowStyle,
-          disabled && styles.disabled,
+          dimmed && styles.dimmed,
         ]}
       >
-        <Animated.View
-          style={[
-            { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
-            rollStyle,
-          ]}
-        >
+        <Animated.View style={[styles.face, rollStyle]}>
           {value > 0 ? (
             <View style={styles.grid}>
               {Array.from({ length: 9 }).map((_, i) => (
@@ -158,13 +151,13 @@ export default function Die({
             <Text style={[styles.blank, { color: colors.textMuted }]}>—</Text>
           )}
         </Animated.View>
-        {held && (
+        {ringColor !== null && (
           <View
-            style={[styles.heldBadge, { backgroundColor: colors.accent }]}
+            testID={`yacht-die-${index}-${hinted ? "hint" : "held"}-ring`}
+            pointerEvents="none"
             importantForAccessibility="no"
-          >
-            <Text style={[styles.heldBadgeText, { color: colors.textOnAccent }]}>HELD</Text>
-          </View>
+            style={[styles.ring, { borderColor: ringColor }]}
+          />
         )}
       </Pressable>
     </Animated.View>
@@ -174,13 +167,18 @@ export default function Die({
 const styles = StyleSheet.create({
   die: {
     borderRadius: 10,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    margin: 6,
-    padding: 6,
   },
-  disabled: {
+  dimmed: {
     opacity: 0.4,
+  },
+  face: {
+    flex: 1,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
   },
   grid: {
     flex: 1,
@@ -199,17 +197,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
   },
-  heldBadge: {
+  // The held / hint ring: just outside the die, inside the gap between dice (never past the row).
+  ring: {
     position: "absolute",
-    top: -6,
-    right: -6,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  heldBadgeText: {
-    fontSize: 8,
-    fontWeight: "900",
-    letterSpacing: 0.5,
+    top: -RING,
+    left: -RING,
+    right: -RING,
+    bottom: -RING,
+    borderWidth: RING,
+    borderRadius: 10 + RING,
   },
 });
