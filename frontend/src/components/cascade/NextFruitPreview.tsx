@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { FruitDefinition } from "../../theme/fruitSets";
@@ -10,7 +10,7 @@ interface Props {
   next: FruitDefinition;
 }
 
-export default function NextFruitPreview({ current, next }: Props) {
+function NextFruitPreview({ current, next }: Props) {
   const { t } = useTranslation("cascade");
   const pieceName = (f: FruitDefinition) => t(`pieces.${f.i18nKey}`, { defaultValue: f.name });
   const { colors } = useTheme();
@@ -39,6 +39,9 @@ export default function NextFruitPreview({ current, next }: Props) {
     </View>
   );
 }
+
+// Memoized (#2960): it re-renders only when the queue's pieces change.
+export default memo(NextFruitPreview);
 
 const styles = StyleSheet.create({
   row: {
