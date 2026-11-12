@@ -2124,14 +2124,16 @@ This replaces the old, incorrect statement that Star Swarm had no local resume s
 ## Sound
 
 Every Star Swarm sound effect is an **original sound synthesized in-house** by
-`tools/assets/synth_starswarm_sfx.py` (#3560); none uses Kenney audio. Only the background music
-(`starswarm-bg-1..4.mp3`) is third-party (Pixabay).
+`tools/assets/synth_starswarm_sfx.py` (#3560); none uses Kenney audio. The background music,
+`starswarm-bgm.mp3`, is one original, project-owned 6:52.7 track (Round 46, #3638), which replaced the
+four Pixabay tracks in #3638. **No third-party audio remains in Star Swarm.**
 Credits: `frontend/assets/sounds/SOUND_CREDITS.md`. Why each sound sounds the way it does (the
 owner's brief, the variants auditioned, the feedback) is in the
 [sound design log](starswarm-sound-design.md).
-The replacement original background track's provenance, starting points and originality check are in
-the [music design log](starswarm-music-design.md); every round's generator and render is archived in
-[`starswarm-music/`](starswarm-music/) (#3637).
+The background track's provenance, starting points, originality check and playback are in the
+[music design log](starswarm-music-design.md); every round's generator and render is archived in
+[`starswarm-music/`](starswarm-music/) (#3637). How it plays is under
+[Background music](#background-music) below.
 The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
 `src/hooks/useStarSwarmAudio.ts`; the screen hands the canvas the callbacks. Overhauled in #3526.
 
@@ -2139,41 +2141,42 @@ The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
 
 Default volumes are `DEFAULT_SFX_VOLUMES` in the hook. They are hand-tuned by ear in the dev panel
 mixer (every `SfxVolumes` key has a row there), not derived from anything. The mixer steps by 0.1
-(rounded to a tenth). Relative loudness between the parts of one effect is baked into the files
+(rounded to a tenth); its **Music** row (`music`, #3638) steps by 0.05, finer because the music sits
+under every effect. Relative loudness between the parts of one effect is baked into the files
 (`shield-on` is louder than the shield hum, the Buddy parts are quieter than the Shield's), so related
 keys share a default.
 
-| Key (`starswarm.`)                                                 | File                           | Trigger                                                                                                                | Default |
-| ------------------------------------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------: |
-| `poweruplightning`, `powerupshield`, `powerupbuddy`, `powerupbomb` | `starswarm-pickup.ogg`         | An ordinary power-up is collected, banked (#3512) or not                                                               |     0.8 |
-| `salvage`, `hullup`                                                | `starswarm-pickup.ogg`         | A salvage crate / hull plating is collected (also at the top of its ladder)                                            |     0.8 |
-| `bombblast`                                                        | `starswarm-bombblast.ogg`      | A Smart Bomb detonates (below)                                                                                         |     1.0 |
-| `shieldon`                                                         | `starswarm-shield-on.ogg`      | Once, on the tick the Shield becomes active (below)                                                                    |     0.8 |
-| `shieldloop` (loop)                                                | `starswarm-shield-loop.ogg`    | While the Shield power-up is active                                                                                    |     0.8 |
-| `shieldwarn`                                                       | `starswarm-shield-warn.ogg`    | Once per Shield, when `SHIELD_WARN_MS` (1 s) of it is left                                                             |     0.8 |
-| `shieldoff`                                                        | `starswarm-shield-off.ogg`     | Once, when an active Shield stops in-run (expiry, Lightning, wave boundary)                                            |     0.8 |
-| `buddyin`                                                          | `starswarm-buddy-in.ogg`       | A Buddy is launched (it starts `Entering`)                                                                             |     0.7 |
-| `buddyloop` (loop)                                                 | `starswarm-buddy-loop.ogg`     | While any Buddy is `OnStation`                                                                                         |     0.7 |
-| `buddyout`                                                         | `starswarm-buddy-out.ogg`      | A Buddy turns `Leaving` (peels off); not when it is shot down                                                          |     0.7 |
-| `buddydown`                                                        | `starswarm-buddy-down.ogg`     | A Buddy is shot down (`buddyJustLost`); replaces the generic sound for its own wreck                                   |     0.8 |
-| `lightningloop` (loop)                                             | `starswarm-lightning-loop.ogg` | While Lightning is active (replaced the per-shot laser, below)                                                         |     0.7 |
-| `rout` (loop)                                                      | `starswarm-rout-loop.ogg`      | While any grunt is `Fleeing` (the ROUT! banner's condition)                                                            |     0.5 |
-| `guns1`, `guns2`, `guns3` (one `guns` volume)                      | `starswarm-guns-{1,2,3}.ogg`   | `gunsUp`: the NEW level picks the file (one, two, three bright rising blips)                                           |     0.7 |
-| `gunsdown1`, `gunsdown2` (the same `guns` volume)                  | `starswarm-gunsdown-{1,2}.ogg` | `gunsDown`: the NEW level picks the file (one or two dull falling blips), so a loss never sounds like a reward (#3560) |     0.7 |
-| `hullhit`                                                          | `starswarm-hullhit.ogg`        | Hull plating absorbs a hit                                                                                             |     0.7 |
-| `beamcharge`                                                       | `starswarm-beamcharge.ogg`     | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                                                                    |     0.9 |
-| `attackrun`                                                        | `starswarm-attackrun.ogg`      | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail                                         |     0.9 |
-| `beamfire`                                                         | `starswarm-beamfire.ogg`       | Carrier beam released (0.9 s; a bolt crosses the lane in about 0.4 s, the rest is ring-out)                            |     0.9 |
-| `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier opens its bay for a reinforcement batch (#3561: the telegraph start; the Grunts launch 0.4 s later)            |     0.6 |
-| `bosswave`                                                         | `starswarm-bosswave.ogg`       | Boss wave sighted, and the Carrier's final stand                                                                       |     0.6 |
-| `waveclear`                                                        | `starswarm-waveclear.ogg`      | Wave cleared                                                                                                           |     0.8 |
-| `bonuslife`                                                        | `starswarm-bonuslife.ogg`      | Bonus life                                                                                                             |     0.9 |
-| `playerhit`                                                        | `starswarm-playerhit.ogg`      | A life is lost (not the fatal hit)                                                                                     |     0.7 |
-| `gameover`                                                         | `starswarm-gameover.ogg`       | Game over                                                                                                              |     0.8 |
-| `asteroidsplit` (one `asteroid` volume)                            | `starswarm-asteroid-split.ogg` | A large rock breaks (shot, bomb or contact); one sound per tick, the larger wins (below)                               |     0.5 |
-| `asteroidsmall` (the same `asteroid` volume)                       | `starswarm-asteroid-small.ogg` | A small rock breaks, including shattering on a hull (below)                                                            |     0.5 |
-| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion except rock breaks and a downed Buddy's wreck; not on a Smart Bomb tick                              |     0.2 |
-| `bg1`-`bg4`                                                        | `starswarm-bg-{1..4}.mp3`      | Background music (`BG_VOLUME` 0.2, not in the mixer)                                                                   |     n/a |
+| Key (`starswarm.`)                                                 | File                           | Trigger                                                                                                                                                                                                 | Default |
+| ------------------------------------------------------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------: |
+| `poweruplightning`, `powerupshield`, `powerupbuddy`, `powerupbomb` | `starswarm-pickup.ogg`         | An ordinary power-up is collected, banked (#3512) or not                                                                                                                                                |     0.8 |
+| `salvage`, `hullup`                                                | `starswarm-pickup.ogg`         | A salvage crate / hull plating is collected (also at the top of its ladder)                                                                                                                             |     0.8 |
+| `bombblast`                                                        | `starswarm-bombblast.ogg`      | A Smart Bomb detonates (below)                                                                                                                                                                          |     1.0 |
+| `shieldon`                                                         | `starswarm-shield-on.ogg`      | Once, on the tick the Shield becomes active (below)                                                                                                                                                     |     0.8 |
+| `shieldloop` (loop)                                                | `starswarm-shield-loop.ogg`    | While the Shield power-up is active                                                                                                                                                                     |     0.8 |
+| `shieldwarn`                                                       | `starswarm-shield-warn.ogg`    | Once per Shield, when `SHIELD_WARN_MS` (1 s) of it is left                                                                                                                                              |     0.8 |
+| `shieldoff`                                                        | `starswarm-shield-off.ogg`     | Once, when an active Shield stops in-run (expiry, Lightning, wave boundary)                                                                                                                             |     0.8 |
+| `buddyin`                                                          | `starswarm-buddy-in.ogg`       | A Buddy is launched (it starts `Entering`)                                                                                                                                                              |     0.7 |
+| `buddyloop` (loop)                                                 | `starswarm-buddy-loop.ogg`     | While any Buddy is `OnStation`                                                                                                                                                                          |     0.7 |
+| `buddyout`                                                         | `starswarm-buddy-out.ogg`      | A Buddy turns `Leaving` (peels off); not when it is shot down                                                                                                                                           |     0.7 |
+| `buddydown`                                                        | `starswarm-buddy-down.ogg`     | A Buddy is shot down (`buddyJustLost`); replaces the generic sound for its own wreck                                                                                                                    |     0.8 |
+| `lightningloop` (loop)                                             | `starswarm-lightning-loop.ogg` | While Lightning is active (replaced the per-shot laser, below)                                                                                                                                          |     0.7 |
+| `rout` (loop)                                                      | `starswarm-rout-loop.ogg`      | While any grunt is `Fleeing` (the ROUT! banner's condition)                                                                                                                                             |     0.5 |
+| `guns1`, `guns2`, `guns3` (one `guns` volume)                      | `starswarm-guns-{1,2,3}.ogg`   | `gunsUp`: the NEW level picks the file (one, two, three bright rising blips)                                                                                                                            |     0.7 |
+| `gunsdown1`, `gunsdown2` (the same `guns` volume)                  | `starswarm-gunsdown-{1,2}.ogg` | `gunsDown`: the NEW level picks the file (one or two dull falling blips), so a loss never sounds like a reward (#3560)                                                                                  |     0.7 |
+| `hullhit`                                                          | `starswarm-hullhit.ogg`        | Hull plating absorbs a hit                                                                                                                                                                              |     0.7 |
+| `beamcharge`                                                       | `starswarm-beamcharge.ogg`     | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                                                                                                                                                     |     0.9 |
+| `attackrun`                                                        | `starswarm-attackrun.ogg`      | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail                                                                                                                          |     0.9 |
+| `beamfire`                                                         | `starswarm-beamfire.ogg`       | Carrier beam released (0.9 s; a bolt crosses the lane in about 0.4 s, the rest is ring-out)                                                                                                             |     0.9 |
+| `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier opens its bay for a reinforcement batch (#3561: the telegraph start; the Grunts launch 0.4 s later)                                                                                             |     0.6 |
+| `bosswave`                                                         | `starswarm-bosswave.ogg`       | Boss wave sighted, and the Carrier's final stand                                                                                                                                                        |     0.6 |
+| `waveclear`                                                        | `starswarm-waveclear.ogg`      | Wave cleared                                                                                                                                                                                            |     0.8 |
+| `bonuslife`                                                        | `starswarm-bonuslife.ogg`      | Bonus life                                                                                                                                                                                              |     0.9 |
+| `playerhit`                                                        | `starswarm-playerhit.ogg`      | A life is lost (not the fatal hit)                                                                                                                                                                      |     0.7 |
+| `gameover`                                                         | `starswarm-gameover.ogg`       | Game over                                                                                                                                                                                               |     0.8 |
+| `asteroidsplit` (one `asteroid` volume)                            | `starswarm-asteroid-split.ogg` | A large rock breaks (shot, bomb or contact); one sound per tick, the larger wins (below)                                                                                                                |     0.5 |
+| `asteroidsmall` (the same `asteroid` volume)                       | `starswarm-asteroid-small.ogg` | A small rock breaks, including shattering on a hull (below)                                                                                                                                             |     0.5 |
+| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion except rock breaks and a downed Buddy's wreck; not on a Smart Bomb tick                                                                                                               |     0.2 |
+| `bgm`                                                              | `starswarm-bgm.mp3`            | Background music: one original 6:52.7 track (6.60 MB), looped; carried over between games, opens each visit at a starting point (below). Volume `music` (`STARSWARM_BGM_VOLUME`), the mixer's Music row |    0.57 |
 
 The only intentional file shares are the pickup sound (six keys, one file) and `bosswave` (boss
 sighted and final stand). `__tests__/sounds.test.ts` pins the registry: every key resolves, the six
@@ -2257,6 +2260,36 @@ player with idempotent `start` / `stop`, live volume sync, and mute stopping it)
   unmute while the condition holds.
 - Changing a loop's volume in the dev panel applies to the running loop.
 - The rout's one-shot handler keeps the spoken `a11y.rout` announcement; its old sting is gone.
+
+### Background music
+
+One original track, `starswarm.bgm` (`starswarm-bgm.mp3`, Round 46 with a loop edit, 6:52.7, −21.5 LUFS), played by the
+shared `useBackgroundMusic` hook with Star Swarm's options (#3638):
+
+- **Volume 0.57** (`STARSWARM_BGM_VOLUME`, the `music` key of `DEFAULT_SFX_VOLUMES`), not the shared
+  0.2: about +9 dB, which brings the quieter track level with the old tracks (about −12 LUFS). The
+  loop edit's +2.9 dB is in the file (owner option b); the game volume did not change. The dev
+  mixer's Music row tunes it live.
+- **Carry-over within a visit.** Game over pauses the music. The next game (New Game, play again, or
+  a new game from the pause screen) resumes the same player from the same position; it never picks
+  another track or restarts. Pause holds and resumes it as before.
+- **Starting points.** `src/game/starswarm/bgmCues.ts`: 0:00, 1:06.5, 2:36.5, 3:43.5, 4:50.5 (the owner's
+  Round 46 leads into the Gathering Swarm, the organ, the second rise and the choir). On leaving
+  the screen (unmount) or the app going inactive or to the background (an iOS app-switcher swipe
+  kills it from inactive), the first starting point strictly after
+  the current position is saved to AsyncStorage under `bgm.resume.starswarm` (wrapping to 0:00 after
+  4:50.5). One write per leave, never during play.
+- **Next visit.** The saved point is read once and validated (it must be one of the cues; anything
+  else, a first visit or a storage error starts at 0:00). The player seeks there on its first loaded
+  status (if none arrives within 3 s, the seek is skipped), then fades in from 0 to 0.57 over 1.5 s
+  in 10 steps. Pause, mute or game over during the fade ends it; muted, the music stays silent.
+  A resume after game over re-arms the #2923 self-heal, so a lost resume `play()` is retried.
+- **Loop.** The track loops 6:52.7 → 0:00 (`loop = true`; the file's last 3 s are an equal-power seam into its opening,
+  made by `tools/assets/make_starswarm_bgm_loop.py`).
+- **Device check pending (owner):** carry-over across 3 games, resume at the next starting point
+  after relaunch, no gap or click at the start, a seek or the loop seam, and the volume under the
+  effects, on an iOS and an Android device. Mahjong's music is unchanged (0.2, a random track per
+  game, from 0:00).
 
 ### Per-shot sounds must not play during normal fire
 

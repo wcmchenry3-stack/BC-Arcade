@@ -7,9 +7,14 @@
  *   hand's betting) is drawn at once, silently: nothing replays on restore, resume or return.
  * - Input stays live (#3575): `complete()` lands everything still moving at once, and the screen
  *   calls it before every action, so a tap is never dropped and never waits.
- * - With Reduce Motion, or while the player is away, nothing moves and each of the action's
- *   sounds plays once, at the instant (none while away). Reduce Motion turned on, or the player
- *   leaving (`leave()`), mid-motion lands everything at once.
+ * - With Reduce Motion nothing moves, but each of the action's sounds still plays once, in its
+ *   timeline order, `REDUCE_MOTION_SOUND_GAP_MS` apart (the first at the instant), so they do not
+ *   stack (owner decision, #3751). While the player is away nothing moves and nothing plays.
+ *   Reduce Motion turned on, or the player leaving (`leave()`), mid-motion lands everything at
+ *   once; the sounds still due then are dropped, but a result chime still due plays once, now.
+ * - A tap or the next action drops the spaced sounds not yet played, but a result chime still due
+ *   plays once at once (as for a motion, #3720). The round is settled at once, so the toasts, the
+ *   victory screen and the out-of-chips card do not wait for them.
  * - Every pending cue is cancelled on New Game (`reset()`) and on unmount (`useCueClock`).
  *
  * JS runs only at a stage's start (a handful per action), never per frame: the cards' and
@@ -89,6 +94,11 @@ export interface BlackjackMotion {
    * (#3720 review), so nothing keyed to it (the out-of-chips card, the victory screen) shows early.
    */
   readonly settled: boolean;
+  /**
+   * Reduce Motion's spaced sounds are still due (#3751). The round is settled already: only the
+   * felt's tap, which lands them, stays on for it.
+   */
+  readonly sounding: boolean;
   /** A stage is shown with motion (the banner and the tags pop in). */
   readonly animating: boolean;
   /** Split hands whose own result shows so far; undefined: every hand's. */
@@ -142,10 +152,14 @@ const MOTION = 1;
 const TRAY = 2;
 /** The beat after a result cut short, and the action that waits for it. */
 const HOLD = 3;
+/** The sounds of an action under Reduce Motion, spaced out (#3751). */
+const SPACED = 4;
+/** Under Reduce Motion, the gap between an action's sounds (owner decision, #3751). */
+export const REDUCE_MOTION_SOUND_GAP_MS = 100;
 const NONE: ReadonlySet<string> = new Set();
 const STILL: CardMotion = { dealing: NONE, flipping: NONE, slideMs: 0, epoch: 0 };
 
-/** Each sound of `cues` once, in order: an action's sounds at the instant (Reduce Motion). */
+/** Each sound of `cues` once, in order: an action's sounds under Reduce Motion (spaced, #3751). */
 function onceEach(cues: readonly { readonly sound: SoundCue }[]): SoundCue[] {
   return [...new Set(cues.map((c) => c.sound))];
 }
@@ -266,7 +280,11 @@ function useSkipHold(input: {
   /** Lands everything; a result shows with its chime, and holds. */
   const skip = useCallback(() => {
     const stage = stageRef.current;
-    if (stage === null) return;
+    if (stage === null) {
+      // Nothing moves, but spaced Reduce Motion sounds may be due (#3751).
+      land(true);
+      return;
+    }
     // A beat only for a result not yet shown: once the banner shows, the chips land and the
     // action runs at once (#3720 round 2).
     const result = resultRef.current && !stage.result;
@@ -321,6 +339,45 @@ function useTimelineRunner(input: {
   const { clock, cue, runSettled, setShown, stageRef } = input;
   /** The result's chime, while it is still due. */
   const chimeRef = useRef<SoundCue | null>(null);
+  /** The result's chime, while it is still due among the spaced sounds (Reduce Motion, #3751). */
+  const spacedChimeRef = useRef<SoundCue | null>(null);
+  /** Spaced sounds are still due: a tap on the felt lands them (#3751). */
+  const [sounding, setSounding] = useState(false);
+
+  /**
+   * Drops the spaced sounds not yet played. `chime`: a result chime still due among them plays
+   * once, now, with no effect (as a skipped motion's does, #3720).
+   */
+  const dropSpaced = useCallback(
+    (chime: boolean) => {
+      clock.cancelGroup(SPACED);
+      setSounding(false);
+      const due = spacedChimeRef.current;
+      spacedChimeRef.current = null;
+      if (chime && due !== null) cue(due, true);
+    },
+    [clock, cue]
+  );
+
+  /**
+   * Plays `sounds` in order, `REDUCE_MOTION_SOUND_GAP_MS` apart, the first at once (#3751).
+   * `chime`: the one among them that is the round's result chime, if any.
+   */
+  const spread = useCallback(
+    (sounds: readonly SoundCue[], chime: SoundCue | null) => {
+      spacedChimeRef.current = chime !== null && sounds.includes(chime) ? chime : null;
+      sounds.forEach((sound, i) => {
+        const play = () => {
+          if (sound === spacedChimeRef.current) spacedChimeRef.current = null;
+          if (i === sounds.length - 1) setSounding(false);
+          cue(sound);
+        };
+        clock.schedule(play, i * REDUCE_MOTION_SOUND_GAP_MS, SPACED);
+      });
+      if (sounds.length > 1) setSounding(true);
+    },
+    [clock, cue]
+  );
 
   /**
    * Lands everything at once. `chime`: the result's chime, if still due, plays now. `always`: a
@@ -328,6 +385,7 @@ function useTimelineRunner(input: {
    */
   const land = useCallback(
     (chime: boolean, always = false) => {
+      dropSpaced(chime);
       clock.cancelGroup(MOTION);
       const due = chimeRef.current;
       chimeRef.current = null;
@@ -346,7 +404,7 @@ function useTimelineRunner(input: {
         momentSince: null,
       }));
     },
-    [clock, cue, runSettled, setShown, stageRef]
+    [clock, cue, dropSpaced, runSettled, setShown, stageRef]
   );
 
   /** Runs an action's timeline: each stage and each sound at its time. */
@@ -382,7 +440,7 @@ function useTimelineRunner(input: {
     },
     [clock, cue, runSettled, setShown, stageRef]
   );
-  return { land, run };
+  return { land, run, spread, sounding };
 }
 
 export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion {
@@ -419,7 +477,13 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
 
   const { whenSettled, runSettled, dropSettled } = useSettledQueue(stageRef);
 
-  const { land, run } = useTimelineRunner({ clock, cue, runSettled, setShown, stageRef });
+  const { land, run, spread, sounding } = useTimelineRunner({
+    clock,
+    cue,
+    runSettled,
+    setShown,
+    stageRef,
+  });
 
   useLayoutEffect(() => {
     if (engine === null) {
@@ -444,9 +508,12 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     const plan = from === null ? null : planMotion(from.view, next, heldBefore);
     const prevChips = last?.view.chips ?? next.chips;
     if (from === null || plan === null || reduceMotionRef.current || awayRef.current) {
-      // At once, every card drawn. An action's sounds still play, each once, at the instant (none
-      // while away).
-      if (plan !== null) onceEach(plan.cues).forEach((sound) => cue(sound));
+      // At once, every card drawn. An action's sounds still play, each once, in order and
+      // `REDUCE_MOTION_SOUND_GAP_MS` apart (#3751); none while away.
+      if (plan !== null && !awayRef.current) {
+        const chime = plan.cues.find((c) => RESULT_CUES.includes(c.sound) && c.at === plan.chimeAt);
+        spread(onceEach(plan.cues), chime?.sound ?? null);
+      }
       heldRef.current = [];
       resultRef.current = false;
       setShown((s) => ({
@@ -479,7 +546,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     }));
     run(plan);
     if (settledNow) runSettled();
-  }, [engine, land, run, fresh, cue, awayRef, runSettled, reduceMotionRef]);
+  }, [engine, land, run, spread, fresh, awayRef, runSettled, reduceMotionRef]);
 
   // Reduce Motion turned on mid-motion: everything lands at once (a pop-in still running too).
   // Every card drawn too: a split hand's card held back for its turn shows (#3720 round 2).
@@ -539,6 +606,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     chips,
     shownChips: final === null ? null : unsettled ? shown.prevChips : final.chips,
     settled: stage === null && (engineSig === null || shown.sig === engineSig),
+    sounding,
     animating: stage !== null,
     revealedHands: stage?.result ? stage.revealed : undefined,
     dealerConcealed: drawn ? !drawn.holeCounted : undefined,

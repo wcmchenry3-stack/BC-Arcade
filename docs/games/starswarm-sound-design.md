@@ -13,7 +13,7 @@ The key → file → trigger → volume table is the
 
 - **One palette.** Every effect is synthesized in-house from the same building blocks: rounded
   sine-led tones, detuned saws through gentle filters, and dark filtered noise. So the game sounds
-  like one world rather than a mix of sample packs. Background music (`bg1`–`bg4`) is out of
+  like one world rather than a mix of sample packs. Background music (`bg1`–`bg4` then; one original track, `bgm`, since #3638) is out of
   scope. The owner moved off the Kenney picks shipped in #3559 because they didn't feel
   consistent.
 - **Smooth over gritty.** The owner rejected the first attack-run drafts as "too rough". The
