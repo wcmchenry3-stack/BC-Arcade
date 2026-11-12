@@ -25,7 +25,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { unstable_batchedUpdates } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import {
   roll as engineRoll,
@@ -230,19 +229,19 @@ export function useYachtCpuOpponent({
 
     /**
      * The score lands and the turn ends, in one batch with the screen's `onScored` (its end beat
-     * starts in the same render as the computer's last score: the card never flashes).
+     * starts in the same render as the computer's last score: the card never flashes). React 18
+     * batches every update made in the same tick, timers and promises included (the app runs on
+     * the concurrent root, native and web).
      */
     function finish(scored: GameState, restored: boolean) {
-      unstable_batchedUpdates(() => {
-        setRollingIndices([]);
-        setState(scored);
-        try {
-          onScoredRef.current?.(scored, { restored });
-        } catch (e: unknown) {
-          Sentry.captureException(e, { tags: { subsystem: "yacht.ai", op: "onScored" } });
-        }
-        setIsTurn(false);
-      });
+      setRollingIndices([]);
+      setState(scored);
+      try {
+        onScoredRef.current?.(scored, { restored });
+      } catch (e: unknown) {
+        Sentry.captureException(e, { tags: { subsystem: "yacht.ai", op: "onScored" } });
+      }
+      setIsTurn(false);
     }
 
     /** How much faster than normal this step plays: read per step, so Reduce Motion is live. */
@@ -255,11 +254,9 @@ export function useYachtCpuOpponent({
       if (logging) log.roll(s);
       const sp = speed();
       // Compute the result first so the tumble plays over the final values.
-      unstable_batchedUpdates(() => {
-        setState(s);
-        setTumbleSpeed(sp);
-        setRollingIndices(rolled);
-      });
+      setState(s);
+      setTumbleSpeed(sp);
+      setRollingIndices(rolled);
       await delay(tumbleTotalMs(rolled.length) / sp);
       if (cancelledRef.current) return false;
       setRollingIndices([]);
