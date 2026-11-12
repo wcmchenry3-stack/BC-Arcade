@@ -37,6 +37,14 @@ jest.mock("../../game/twenty48/storage", () => ({
   saveStats: jest.fn(),
 }));
 
+// Reduce Motion is on here (#3689): the result card follows a win or a game over at once, so these
+// tests, which are about recording, saving and the card's content, don't wait out the end-of-game
+// beat. The beat itself is in Twenty48Screen.beats.test.tsx.
+jest.mock("../../components/shared/useReduceMotion", () => ({
+  ...jest.requireActual("../../components/shared/useReduceMotion"),
+  useReduceMotion: () => true,
+}));
+
 // Mock the engine so individual tests can force a game_over transition.
 jest.mock("../../game/twenty48/engine", () => {
   const actual = jest.requireActual("../../game/twenty48/engine");
