@@ -239,6 +239,31 @@ rock on its line: rocks are cover for the beam, as they are for every shot.
   is the old cadence exactly, and needs no state. A test pins the total against the old rule
   over a 5 s Lightning; the same scenario on the bolt engine dealt the same total to the nearer
   ship (bolts in flight could miss a far ship that swayed away, which an instant beam cannot).
+- **Swept hit test (#3709).** A pulse damages every ship a beam **crossed since the previous
+  pulse**, not only what it overlaps at the pulse instant. The ship's x follows the finger, and
+  pulses land about 83 ms apart at 60 Hz, so an instant test let a sweep faster than about
+  480 px/s skip an Elite between two pulses (the owner swept one three or four times before it
+  died, in feedback on #3709). Each beam now slides horizontally from where it was at the last
+  pulse to where it is now, at its current width and length (`beamSweepHitsAabb`: the ship's box
+  widened by the move, which is exact). The pulse rate, the damage, piercing, the Carrier's armour
+  and the look are unchanged; a held beam behaves exactly as before.
+  - **State.** The ship's x at the last pulse is `state.lightningPulseX`, set on each pulse, kept
+    while the beam is on with the trigger held, and removed (the key itself) otherwise
+    (`withLightningPulseX`, after the collisions in `tick`). Every gun moves with the ship, so one
+    x gives every beam its span: at L3 each of the four beams sweeps its own span, the spread
+    pair at their angle.
+  - **Instant overlap** when there is no previous pulse: the beam's first pulse, after the trigger
+    is released or the beam was off (swoop-in, extraction, the dev toggle, Lightning expired or
+    banked), and after a resume: a restored save, or an in-app pause ending (both canvases call
+    `clearLightningSweep`, since arrow keys can move the ship while paused). A move longer than `LIGHTNING_SWEEP_MAX_PX` (300 px, a 3000 px/s
+    sweep over the longest pulse gap the screens produce: 3 × the 33 ms dt cap) is a jump, not a
+    sweep, and uses the instant overlap too (`lightningSweepDx`).
+  - **Rocks block at the pulse instant.** The first rock on a beam's line now stops it along the
+    whole span and alone takes the pulse; ships the span crossed beyond that height are not hit. A
+    rock the span crossed that the beam does not touch now neither blocks nor is hit. That keeps
+    rock damage as before (one rock per beam per pulse) and makes the beam's reach the one drawn.
+  - **No double hits.** A beam damages a ship at most once per pulse, however long its span. Two
+    beams whose spans both cross a ship each deal their pulse, as two held beams over it do.
 - **Hit test.** Each beam is a rectangle on its own axis (`BeamRect`: origin, unit direction,
   length, half-width). Against a ship it is a separating-axis test against the ship's box, the
   same box a bolt was tested against (`beamHitsAabb` in `engine/geometry.ts`; for a straight beam
@@ -267,9 +292,12 @@ rock on its line: rocks are cover for the beam, as they are for every shot.
   pulse, so `shotsHit <= shotsFired` and `shotsOnRocks <= shotsFired` hold. After the last kill
   (#3568) none of the three counts, as with `Bullet.postClear`; a rock the beam breaks counts in
   `rocks.broken.player` (and `runStats.rocksBrokenByPlayer`) whenever it breaks.
-- **No new state.** The beams are derived from the player, its guns and the rocks each tick, and
-  the clock is the existing `shootCooldown`, so the save shape, `clearTransientCombat` and the
-  wave timeline are unchanged. The geometry is written into a caller-owned scratch
+- **State.** The beams are derived from the player, its guns and the rocks each tick, and the
+  clock is the existing `shootCooldown`; the one stored field is #3709's `lightningPulseX`. It is
+  an `ADDED_STATE` field in `saveShape.ts` (out of `SAVE_FINGERPRINT`, so paused runs from before
+  it still load) and is always dropped on restore: on a resume the finger is elsewhere, so the
+  first pulse uses the instant overlap. `clearTransientCombat` and the wave timeline are
+  unchanged. The geometry is written into a caller-owned scratch
   (`lightningBeamAt`), so neither the engine nor the renderers allocate for it per tick or frame.
 - **Rendering** (`render/lightningBeam.ts`, `lightningBeamOps`): per beam, a soft blue glow, a
   blue-white body (a ribbon whose edges are jagged), that ribbon's outline stroked in pale blue as
@@ -306,6 +334,13 @@ Diving enemies score 2×. The Carrier and Guardians are excluded from the "non-l
 that drive Elite/Guardian escalation (`isLeaderTier`; state `startingNonLeaderCount`,
 `guardianThresholdCrossed`, `guardianDeepThresholdCrossed`). `isCarrierArmored(state)` is the renderer-facing
 helper for the armor state; the screen announces `a11y.carrierExposed` when it drops.
+
+**Enemy art** (`enemy/*.webp`, drawn by `tools/assets/draw_starswarm_art.py`; design notes in
+[`starswarm-art-design.md`](starswarm-art-design.md)): Grunt G2 Wasp, Elite E2 Mantis, Guardian
+GD1 Scarab, Carrier C1 Queen (#3593). Since #3708 the Grunt is the bolder Wasp, with heavier rims,
+more solid wings, a fuller body and a wider stinger so it does not blur into the violet nebula in
+motion, and the Elite's and the Carrier's membrane wings follow it. Art only: sizes, hitboxes and
+behaviour are unchanged. The same Wasp, in a hex badge, is the Star Swarm home tile icon (#3599).
 
 ## Wave Structure
 

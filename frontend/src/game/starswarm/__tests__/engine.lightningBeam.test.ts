@@ -2,7 +2,8 @@
  * #3562: Lightning fires a continuous beam per gun instead of bolts. The pulse damage model, the
  * hit test (beam box vs ship boxes, beam vs rock circles), piercing, armor-piercing, rocks, one
  * beam per gun, the lifecycle (expiry, replacement, banking, extraction, the dev toggle, the
- * pickup wait), and the stats mapping. See docs/games/starswarm.md → Temporary Power-Ups.
+ * pickup wait), and the stats mapping. #3709: the swept hit test (each pulse damages what the beams
+ * crossed since the last one). See docs/games/starswarm.md → Temporary Power-Ups.
  */
 import {
   CANVAS_H,
@@ -25,17 +26,26 @@ import {
   tick,
 } from "../engine";
 import { makeAsteroid } from "../engine/asteroids";
+import {
+  beamSweepHitsAabb,
+  clearLightningSweep,
+  lightningSweepDx,
+  withLightningPulseX,
+} from "../engine/lightningBeam";
 import { tickCollisions } from "../engine/collisions";
 import { aabb } from "../engine/geometry";
 import {
   BULLET_P_VY,
   DEFAULT_TUNING,
+  LIGHTNING_SWEEP_MAX_PX,
   SPREAD_OFFSET,
   SPREAD_VX,
   SUPER_DAMAGE,
   SUPER_SHOOT_COOLDOWN,
+  TIER_HP,
   TWIN_OFFSET,
 } from "../engine/tuning";
+import { SAVE_FINGERPRINT, fitsSaveShape, restoreSavedState } from "../saveShape";
 import type { Asteroid, Enemy, EnemyTier, GunsLevel, StarSwarmState } from "../types";
 import { advanceMs } from "./helpers/engineFixtures";
 
@@ -456,5 +466,239 @@ describe("stats mapping (#3562)", () => {
       expect(c.shotsOnRocks - c0.shotsOnRocks).toBeLessThanOrEqual(c.shotsFired - c0.shotsFired);
     }
     expect(s.waveStats.combat.shotsFired - c0.shotsFired).toBeGreaterThan(200);
+  });
+});
+
+describe("the swept hit test (#3709)", () => {
+  /** The state a pulse sees after the ship moved from `from` to `to` since the last pulse. */
+  const swept = (s: StarSwarmState, from: number | undefined, to: number): StarSwarmState => {
+    const { lightningPulseX: _old, ...rest } = s;
+    return {
+      ...rest,
+      player: { ...s.player, x: to },
+      ...(from === undefined ? {} : { lightningPulseX: from }),
+    };
+  };
+  const eliteOf = (s: StarSwarmState) => s.enemies.find((e) => e.tier === "Elite")!;
+  // half the Elite's hit window: half its width plus the beam's half-width
+  const window = (s: StarSwarmState) => eliteOf(s).width / 2 + LIGHTNING_BEAM_HALF_W;
+
+  describe.each([60, 120])(
+    "a fast sweep across an Elite kills it on the next pulse (%s Hz)",
+    (hz) => {
+      const dt = 1000 / hz;
+      it.each([700, 1000, 1500, 2500])("at %s px/s, at every pulse phase", (speed) => {
+        const s0 = place(arena(), [{ tier: "Elite", x: X, y: 120, hp: TIER_HP.Elite }]);
+        for (const phase of [0, 10, 25, 40, 55, 69]) {
+          // the beam already on and held at the left edge (it has pulsed there), the pulse due
+          // `phase` ms into the sweep
+          let s: StarSwarmState = {
+            ...s0,
+            player: { ...s0.player, x: 30, shootCooldown: phase },
+            lightningPulseX: 30,
+          };
+          let x = 30;
+          let checked = false;
+          // the finger stops at the right edge; tick on until the next pulse lands
+          for (let t = 0; t < 200 && !checked; t++) {
+            x = Math.min(CANVAS_W - 20, x + (speed * dt) / 1000);
+            s = tick(s, dt, { playerX: x, fire: true });
+            const pulsed = s.player.shootCooldown === SUPER_SHOOT_COOLDOWN;
+            const e = eliteOf(s);
+            // the first pulse once the beam has reached the Elite: it was crossed, so it is dead
+            if (pulsed && s.player.x > e.x - window(s) + 1) {
+              expect({ speed, phase, alive: e.isAlive }).toEqual({ speed, phase, alive: false });
+              checked = true;
+            }
+          }
+          expect(checked).toBe(true);
+        }
+      });
+    }
+  );
+
+  it("a resume forgets the sweep origin, so a jump made while paused is not swept (review)", () => {
+    const s = arena(3);
+    const moved = swept(s, X, X + 200); // the ship was moved 200 px while paused
+    expect(lightningSweepDx(moved)).toBe(200);
+    const resumed = clearLightningSweep(moved);
+    expect("lightningPulseX" in resumed).toBe(false);
+    expect(lightningSweepDx(resumed)).toBe(0); // the first pulse after a resume is the instant overlap
+    expect(resumed.player.x).toBe(X + 200);
+    const bare = swept(s, undefined, X);
+    expect(clearLightningSweep(bare)).toBe(bare); // nothing to clear: same object, no new state
+  });
+
+  it("a held beam is exactly the instant overlap: dx 0 is beamHitsAabb", () => {
+    const s = arena(3);
+    const b = newLightningBeam();
+    for (let i = 0; i < 4; i++) {
+      lightningBeamAt(s, i, [], b);
+      for (let bx = 100; bx <= 300; bx += 3.5)
+        for (let by = 40; by <= 560; by += 37)
+          expect(beamSweepHitsAabb(b, 0, bx, by, 28, 28)).toBe(beamHitsAabb(b, bx, by, 28, 28));
+    }
+    expect(lightningSweepDx(swept(s, X, X))).toBe(0);
+  });
+
+  it("a held beam plays exactly as the instant test did, tick by tick", () => {
+    const s0 = place(arena(2), [
+      { tier: "Carrier", x: X, y: 80, hp: 10_000 },
+      { tier: "Elite", x: X + 8, y: 160, hp: 10_000 },
+      { tier: "Grunt", x: X - 10, y: 260, hp: 10_000 },
+    ]);
+    let a: StarSwarmState = s0;
+    let b: StarSwarmState = s0;
+    for (let t = 0; t < 120; t++) {
+      a = tick(a, 16, { playerX: X, fire: true });
+      // b forgets the last pulse every tick: every pulse is the instant overlap
+      const { lightningPulseX: _forget, ...bare } = b;
+      b = tick(bare, 16, { playerX: X, fire: true });
+      expect(a.enemies.map((e) => e.hp)).toEqual(b.enemies.map((e) => e.hp));
+    }
+    expect(a.lightningPulseX).toBe(X);
+    expect(a.score).toBe(b.score);
+  });
+
+  it("the first pulse after activation uses the instant overlap", () => {
+    const s = place(arena(), [{ tier: "Grunt", x: X - 60, y: 200 }]);
+    // no previous pulse: the ship moved 60 px but nothing is swept
+    expect(hpAt(pulse(swept(s, undefined, X)), 200)).toBe(100);
+    // with the previous pulse 60 px back, the Grunt it crossed takes the pulse
+    expect(hpAt(pulse(swept(s, X - 60 - 30, X)), 200)).toBe(100 - SUPER_DAMAGE);
+    // through tick: the first pulse records the ship's x, the next sweeps from it
+    const a = tick(s, 16, { playerX: X, fire: true });
+    expect(hpAt(a, 200)).toBe(100);
+    expect(a.lightningPulseX).toBe(X);
+  });
+
+  it("the field lives only while the beam is on with the trigger held", () => {
+    const s = place(arena(), [{ tier: "Elite", x: X, y: 120, hp: 10_000 }]);
+    const a = tick(s, 16, { playerX: X, fire: true });
+    expect(a.lightningPulseX).toBe(X);
+    // between pulses it is kept, though the ship moves
+    const b = tick(a, 16, { playerX: X + 20, fire: true });
+    expect(b.lightningPulseX).toBe(X);
+    // the trigger released: gone (the key itself)
+    expect("lightningPulseX" in tick(b, 16, { playerX: X, fire: false })).toBe(false);
+    // the beam off: gone
+    expect(
+      "lightningPulseX" in withLightningPulseX({ ...b, activePowerUp: null }, false, track(b))
+    ).toBe(false);
+    // no Lightning ever: the key never appears
+    expect("lightningPulseX" in tick({ ...s, activePowerUp: null }, 16, track(s))).toBe(false);
+  });
+
+  it("a jump longer than LIGHTNING_SWEEP_MAX_PX is not a sweep: the instant overlap", () => {
+    const s = place(arena(), [{ tier: "Grunt", x: X - 150, y: 200 }]);
+    const to = X;
+    expect(lightningSweepDx(swept(s, to - LIGHTNING_SWEEP_MAX_PX, to))).toBe(
+      LIGHTNING_SWEEP_MAX_PX
+    );
+    expect(lightningSweepDx(swept(s, to - LIGHTNING_SWEEP_MAX_PX - 1, to))).toBe(0);
+    expect(hpAt(pulse(swept(s, to - LIGHTNING_SWEEP_MAX_PX, to)), 200)).toBe(100 - SUPER_DAMAGE);
+    expect(hpAt(pulse(swept(s, to - LIGHTNING_SWEEP_MAX_PX - 1, to)), 200)).toBe(100);
+  });
+
+  it("sweeps either way: leftwards as rightwards", () => {
+    const s = place(arena(), [{ tier: "Grunt", x: X + 60, y: 200 }]);
+    expect(hpAt(pulse(swept(s, X + 120, X)), 200)).toBe(100 - SUPER_DAMAGE);
+    expect(hpAt(pulse(swept(s, X - 120, X)), 200)).toBe(100);
+  });
+
+  it("at L3 each beam sweeps its own span: only the spread beam that crossed the ship hits it", () => {
+    const s = arena(3);
+    // a point on the right spread beam's line, 300 px along, then 30 px left of it
+    const b = lightningBeamAt(s, 3, [], newLightningBeam());
+    const gx = b.ox + b.ux * 300 - 30;
+    const gy = b.oy + b.uy * 300;
+    const placed = place(s, [{ tier: "Grunt", x: gx, y: gy }]);
+    // instant: no beam touches it
+    expect(pulse(swept(placed, undefined, X)).enemies.find((e) => e.isAlive)!.hp).toBe(100);
+    // swept from 60 px left: only the right spread beam's span crosses it (the twins' spans end
+    // at X + TWIN_OFFSET + 6, the left spread beam's further left still)
+    const from = swept(placed, X - 60, X);
+    const c0 = from.waveStats.combat;
+    const next = pulse(from);
+    expect(next.enemies.find((e) => e.isAlive)!.hp).toBe(100 - SUPER_DAMAGE);
+    expect(next.waveStats.combat.shotsHit - c0.shotsHit).toBe(1);
+    expect(next.waveStats.combat.shotsFired - c0.shotsFired).toBe(4);
+  });
+
+  it("no double hits: a beam damages a ship once per pulse; two beams as before", () => {
+    // one beam, a long span over two ships: each once
+    const one = place(arena(), [
+      { tier: "Grunt", x: X - 80, y: 200 },
+      { tier: "Grunt", x: X - 30, y: 300 },
+    ]);
+    const a = pulse(swept(one, X - 120, X));
+    expect([hpAt(a, 200), hpAt(a, 300)]).toEqual([100 - SUPER_DAMAGE, 100 - SUPER_DAMAGE]);
+    // twin beams: both cross the Carrier, as both cover it held (#3562's two pulses' worth)
+    const twin = place(arena(2), [{ tier: "Carrier", x: X - 50, y: 120 }]);
+    const t = pulse(swept(twin, X - 100, X));
+    expect(t.enemies.find((e) => e.tier === "Carrier")!.hp).toBe(100 - 2 * SUPER_DAMAGE);
+  });
+
+  it("rocks block at the pulse instant: the rock on the beam now stops the whole span", () => {
+    const s = {
+      ...place(arena(), [
+        { tier: "Elite", x: X - 60, y: 120 }, // crossed, but above the rock's height
+        { tier: "Grunt", x: X - 60, y: 420 }, // crossed, below it
+      ]),
+      asteroids: [rock(X, 250)],
+    };
+    const next = pulse(swept(s, X - 100, X));
+    expect(hpAt(next, 120)).toBe(100);
+    expect(hpAt(next, 420)).toBe(100 - SUPER_DAMAGE);
+    expect(next.asteroids[0]!.hp).toBe(6 - SUPER_DAMAGE);
+  });
+
+  it("a rock the span crossed but the beam does not touch now neither blocks nor is hit", () => {
+    const s = {
+      ...place(arena(), [{ tier: "Elite", x: X - 80, y: 120 }]),
+      asteroids: [rock(X - 80, 300)],
+    };
+    const next = pulse(swept(s, X - 120, X));
+    expect(hpAt(next, 120)).toBe(100 - SUPER_DAMAGE);
+    expect(next.asteroids[0]!.hp).toBe(6);
+    expect(next.waveStats.combat.shotsOnRocks).toBe(s.waveStats.combat.shotsOnRocks);
+  });
+
+  it("kills by the sweep count as shot kills, and the stats still balance", () => {
+    const s = place(arena(), [{ tier: "Elite", x: X - 60, y: 120, hp: TIER_HP.Elite }]);
+    const next = pulse(swept(s, X - 100, X));
+    expect(eliteOf(next).isAlive).toBe(false);
+    const c0 = s.waveStats.combat;
+    const c1 = next.waveStats.combat;
+    expect(c1.kills.Elite.shot).toBe(c0.kills.Elite.shot + 1);
+    expect(c1.shotsHit - c0.shotsHit).toBe(1);
+    expect(c1.shotsFired - c0.shotsFired).toBe(1);
+  });
+});
+
+describe("save and restore (#3709)", () => {
+  it("the field is saved but dropped on restore: the first pulse after a resume is instant", () => {
+    const s = tick(arena(), 16, { playerX: X, fire: true });
+    expect(s.lightningPulseX).toBe(X);
+    const saved: unknown = JSON.parse(JSON.stringify(s));
+    expect(fitsSaveShape(saved)).toBe(true);
+    const restored = restoreSavedState(saved as StarSwarmState);
+    expect(restored.lightningPulseX).toBeUndefined();
+    expect(lightningSweepDx({ ...restored, player: { ...restored.player, x: X + 100 } })).toBe(0);
+  });
+
+  it("an old save without the field still loads, and the fingerprint is unchanged", () => {
+    const { lightningPulseX: _gone, ...older } = tick(arena(), 16, { playerX: X, fire: true });
+    const saved: unknown = JSON.parse(JSON.stringify(older));
+    expect(fitsSaveShape(saved)).toBe(true);
+    const restored = restoreSavedState(saved as StarSwarmState);
+    expect(restored.lightningPulseX).toBeUndefined();
+    // played on: the first pulse records the ship's x again
+    const after = tick({ ...restored, player: { ...restored.player, shootCooldown: 0 } }, 16, {
+      playerX: X,
+      fire: true,
+    });
+    expect(after.lightningPulseX).toBe(X);
+    expect(SAVE_FINGERPRINT).not.toContain("lightningPulseX");
   });
 });

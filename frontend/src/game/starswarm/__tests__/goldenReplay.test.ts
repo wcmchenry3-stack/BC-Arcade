@@ -31,6 +31,11 @@
  * - #3594 re-recorded the hashes only (19 checkpoints): the Carrier's twin lasers now carry
  *   `source: "carrier"` (render-only, they draw as pink orbs). Every summary, counter and the waves
  *   fixture stayed identical.
+ * - #3709 re-recorded the hashes only (3 checkpoints of wave3-lieutenant-actions: ticks 1600,
+ *   1700, 1800): while Lightning's beam is on the state carries `lightningPulseX`, the ship's x at
+ *   the last pulse, for the swept hit test. The pilot's sweep (about 145 px/s) is slow enough that
+ *   the instant test already hit everything the swept one does: every summary, counter and the
+ *   waves and timelines fixtures stayed identical, and so does the state without that key.
  *
  * Per-wave stats (#3252): each scenario's closed waves (`state.closedWaves`, the `wave_completed`
  * wire form) and its end-of-replay leaderboard result (`final_score`, `wave_reached`,
