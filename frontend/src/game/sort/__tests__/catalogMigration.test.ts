@@ -177,6 +177,22 @@ describe("migrateToCatalog", () => {
     }
   );
 
+  it.each(["getMany", "setMany"] as const)(
+    "pauses progress writes after a failed %s, so the session can't overwrite the legacy save",
+    async (op) => {
+      await AsyncStorage.setItem("@sort/progress", '{"unlockedLevel":10}');
+      jest.spyOn(AsyncStorage, op).mockRejectedValueOnce(new Error("disk"));
+
+      await expect(migrateToCatalog()).resolves.toBe("failed");
+      await saveProgress({ unlockedLevel: 30, currentLevelId: null, currentState: null });
+
+      await expect(AsyncStorage.getItem("@sort/progress")).resolves.toBe('{"unlockedLevel":10}');
+      // The next load still migrates the untouched legacy save (old level 10, 7 colours).
+      await expect(migrateToCatalog()).resolves.toBe("current");
+      await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: firstWith(7) });
+    }
+  );
+
   it("still migrates when removing the old level cache fails", async () => {
     await saveProgress({ unlockedLevel: 10, currentLevelId: null, currentState: null });
     await AsyncStorage.setItem("@sort/levels_cache", "{}");

@@ -122,6 +122,9 @@ export async function migrateToCatalog(): Promise<CatalogMigration> {
     stored = await AsyncStorage.getMany([VERSION_KEY, PROGRESS_KEY, BEST_MOVES_KEY]);
   } catch (e) {
     report(e);
+    // Keep the legacy save as it is for the next load to migrate: a later
+    // progress write would store catalog numbers in an unversioned save.
+    pauseProgressWrites(true);
     return "failed";
   }
   const version = stored[VERSION_KEY];
@@ -151,6 +154,9 @@ export async function migrateToCatalog(): Promise<CatalogMigration> {
     });
   } catch (e) {
     report(e);
+    // Keep the legacy save as it is for the next load to migrate: a later
+    // progress write would store catalog numbers in an unversioned save.
+    pauseProgressWrites(true);
     return "failed";
   }
   try {
