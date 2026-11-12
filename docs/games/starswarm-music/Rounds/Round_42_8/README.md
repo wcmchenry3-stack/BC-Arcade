@@ -30,3 +30,17 @@ If B's **ambient hierarchy** works, apply the sound/arrangement principles to a 
 **Media archive note:** the ZIP `StarSwarm_Round42_8_Ambient_First.zip` contains both actual MP3s, standalone B Python source and listening README; ZIP integrity verified in ChatGPT. Binary files cannot be uploaded through the available GitHub connector; the owner must add that ZIP to this folder on the ongoing draft PR branch. This document is committed to [PR #3734](https://github.com/wcmchenry3-stack/BC-Arcade/pull/3734).
 
 Related [epic #3635](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3635), [auditions #3642](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3642).
+
+
+## Owner approval — Round 42.8 sound palette (November 12, 2026)
+
+**Round 42.8B is accepted as a working foundation / gameplay-bed direction**, not yet an approved final score, full-length arrangement, game mix or seamless loop. The owner reports: “I like the latest one — I think we can work with it.”
+
+The owner explicitly identifies why this succeeds relative to the previously licensed background tracks:
+- **Pacing / momentum:** a steadier driving pulse with continuous forward motion appropriate to a relentless arcade shooter, avoiding the ponderous, solemn gravity of earlier drafts.
+- **Textural density:** no heavy melodic foreground; useful space left in mid/high frequencies for laser/explosion SFX and later sci-fi signature features.
+- **Gameplay function:** hypnotic, tense and characteristically sci-fi yet subdued enough to sustain looping behind play without fatigue; closer to a *functional ambient bed* than a cinematic standalone piece.
+
+**Next gate:** use the approved Round 42.8 sound and foreground/background hierarchy to write a **new evolving 6:30–7:30 minute foundation-only score** with genuine motif/harmonic development and returning transformed textures (use Round 42's successful nonrepetitive long-form structure as an architectural reference, **not** its rejected mournful music). Do not stretch/repeat the 60-second audition seven times. Preserve continuous cosmic momentum with subtle variation, atmospheric drone and electronic texture as the center, sparse electronic lead as restrained punctuation, unresolved/suspended harmonic movement and enough mid/high spectrum room for gameplay. **Do not reintroduce signature sounds** before the full ambient foundation has been auditioned. Then arrange the previously approved astronomical rises, robotic signals, Gathering Swarm, electromagnetic choir and Shepard descents with ~10–20s foundation-only breathing spaces; especially avoid direct rise-to-Shepard transitions.
+
+No change to production game audio, mastering, live SFX mix, loop points or GitHub PR merge is authorized by this approval.
