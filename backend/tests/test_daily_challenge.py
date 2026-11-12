@@ -27,6 +27,8 @@ from daily_challenge.definitions import (
     Template,
     _at_least,
     game_facts,
+    goal_from_spec,
+    goal_to_spec,
     local_day,
     parse_salt,
     pick_games,
@@ -1177,3 +1179,49 @@ def test_upcoming_overlapping_offsets_share_frozen_days(
 def test_upcoming_rejects_out_of_range_timezone(client: TestClient, offset: int) -> None:
     r = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": offset})
     assert r.status_code == 422
+
+
+# --- Sort goals follow SORT_CATALOG_EDITION_ENFORCED (#3728) ------------------
+
+
+def _sort_goals_over(days: list[date]) -> list:
+    return [g for d in days for g in template_for(d).goals if g.game_type == "sort"]
+
+
+def test_sort_goals_are_the_old_levels_while_the_switch_is_off(sort_edition) -> None:
+    sort_edition(False)
+    goals = _sort_goals_over(_days(600))
+    assert {(g.tier, g.target) for g in goals} == {("easy", 3), ("medium", 8), ("hard", 15)}
+
+
+def test_sort_goals_are_the_catalog_levels_once_the_switch_is_on(sort_edition) -> None:
+    sort_edition(True)
+    goals = _sort_goals_over(_days(600))
+    assert {(g.tier, g.target) for g in goals} == {("easy", 10), ("medium", 30), ("hard", 60)}
+    assert all(g.kind == "final_score_at_least" for g in goals)
+
+
+def test_the_switch_leaves_other_games_goals_alone(sort_edition) -> None:
+    sort_edition(False)
+    off = {d: [g for g in template_for(d).goals if g.game_type != "sort"] for d in _days(60)}
+    sort_edition(True)
+    on = {d: [g for g in template_for(d).goals if g.game_type != "sort"] for d in _days(60)}
+    assert off == on
+
+
+def test_a_day_frozen_with_the_old_goals_keeps_them_after_the_flip(sort_edition) -> None:
+    """Frozen days store each goal's spec (target included) and rebuild through
+    ``goal_from_spec``, never the pool, so the flip only moves days not yet frozen."""
+    sort_edition(False)
+    day = next(d for d in _days(60) if any(g.game_type == "sort" for g in template_for(d).goals))
+    frozen = [goal_to_spec(g) for g in template_for(day).goals]
+    sort_edition(True)
+    rebuilt = [goal_from_spec(spec) for spec in frozen]
+    sort_goal = next(g for g in rebuilt if g.game_type == "sort")
+    old_target = next(s["target"] for s in frozen if s["game_type"] == "sort")
+    assert old_target in {3, 8, 15}
+    assert sort_goal.target == old_target
+    assert sort_goal.evaluate({"final_score": old_target}) is True
+    assert sort_goal.evaluate({"final_score": old_target - 1}) is False
+    # The same day computed fresh now differs: it is a new, unfrozen day.
+    assert [g.target for g in template_for(day).goals if g.game_type == "sort"] != [old_target]
