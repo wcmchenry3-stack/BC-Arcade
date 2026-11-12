@@ -154,5 +154,7 @@
   "result.playerBusts": "Te pasaste con {{value}}",
   "result.versus": "{{player}} contra {{dealer}} del crupier",
   "result.dealerHas": "El crupier tiene {{value}}",
+  "result.dealerBlackjack": "Blackjack del crupier",
+  "result.bothBlackjack": "Ambos con blackjack",
   "a11y.handBet": "Apuesta de {{amount}} fichas"
 }

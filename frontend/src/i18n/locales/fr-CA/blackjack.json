@@ -154,5 +154,7 @@
   "result.playerBusts": "Sauté avec {{value}}",
   "result.versus": "{{player}} contre {{dealer}} pour le croupier",
   "result.dealerHas": "Le croupier a {{value}}",
+  "result.dealerBlackjack": "Blackjack du croupier",
+  "result.bothBlackjack": "Deux blackjacks",
   "a11y.handBet": "Mise de {{amount}} jetons"
 }

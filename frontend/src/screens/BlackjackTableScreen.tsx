@@ -135,11 +135,19 @@ export function feltResultFor(state: BlackjackState, t: Translate): FeltResult |
   }
   if (state.outcome === null) return null;
   const player = state.player_hand.value;
+  // The dealer's natural (#3741): the peek settles it at the deal, so it decides the round.
+  const naturalOf = (h: BlackjackState["dealer_hand"]) => h.cards.length === 2 && h.value === 21;
+  const dealerNatural = naturalOf(state.dealer_hand);
   let detail: string | null;
   if (player > 21) detail = t("blackjack:result.playerBusts", { value: player });
   else if (dealer > 21) detail = t("blackjack:result.dealerBusts", { value: dealer });
   else if (state.outcome === "blackjack") detail = null;
-  else detail = t("blackjack:result.versus", { player, dealer });
+  // Any loss to the dealer's natural, a 21 of three cards included (it beats any other 21).
+  else if (dealerNatural && state.outcome === "lose")
+    detail = t("blackjack:result.dealerBlackjack");
+  else if (dealerNatural && state.outcome === "push" && naturalOf(state.player_hand)) {
+    detail = t("blackjack:result.bothBlackjack");
+  } else detail = t("blackjack:result.versus", { player, dealer });
   return { outcome: state.outcome, payout: state.payout, detail };
 }
 

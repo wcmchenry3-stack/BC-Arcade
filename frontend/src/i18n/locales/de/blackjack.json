@@ -154,5 +154,7 @@
   "result.playerBusts": "Überkauft mit {{value}}",
   "result.versus": "{{player}} gegen {{dealer}} des Gebers",
   "result.dealerHas": "Geber hat {{value}}",
+  "result.dealerBlackjack": "Dealer hat Blackjack",
+  "result.bothBlackjack": "Beide Blackjack",
   "a11y.handBet": "Einsatz {{amount}} Chips"
 }

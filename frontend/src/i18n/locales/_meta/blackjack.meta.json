@@ -1394,6 +1394,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "result.dealerBlackjack": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the dealer's two-card 21 (a natural, found by its peek) beat the player.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "'Blackjack' as each locale already writes it in this namespace."
+  },
+  "result.bothBlackjack": {
+    "component": "TableFelt",
+    "description": "Result detail under the Push banner: the player and the dealer both have a two-card 21 (a natural).",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "'Blackjack' as each locale already writes it in this namespace."
+  },
   "a11y.handBet": {
     "component": "TableFelt",
     "description": "Accessibility label part for a hand's bet.",

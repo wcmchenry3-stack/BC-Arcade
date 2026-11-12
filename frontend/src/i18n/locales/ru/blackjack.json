@@ -154,5 +154,7 @@
   "result.playerBusts": "Перебор: {{value}}",
   "result.versus": "{{player}} против {{dealer}} у дилера",
   "result.dealerHas": "У дилера {{value}}",
+  "result.dealerBlackjack": "У дилера Blackjack",
+  "result.bothBlackjack": "Blackjack у обоих",
   "a11y.handBet": "Ставка: {{amount}} фишек"
 }

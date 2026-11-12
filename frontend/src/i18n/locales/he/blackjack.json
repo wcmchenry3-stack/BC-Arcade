@@ -154,5 +154,7 @@
   "result.playerBusts": "התפוצצת עם {{value}}",
   "result.versus": "{{player}} מול {{dealer}} של הדילר",
   "result.dealerHas": "לדילר יש {{value}}",
+  "result.dealerBlackjack": "Blackjack לדילר",
+  "result.bothBlackjack": "Blackjack לשניהם",
   "a11y.handBet": "הימור {{amount}} אסימונים"
 }

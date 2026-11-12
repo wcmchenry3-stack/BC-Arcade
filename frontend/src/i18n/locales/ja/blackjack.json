@@ -154,5 +154,7 @@
   "result.playerBusts": "{{value}}でバースト",
   "result.versus": "{{player}} 対 ディーラーの{{dealer}}",
   "result.dealerHas": "ディーラーは{{value}}",
+  "result.dealerBlackjack": "ディーラーのブラックジャック",
+  "result.bothBlackjack": "両者ブラックジャック",
   "a11y.handBet": "ベット{{amount}}チップ"
 }

@@ -14,11 +14,21 @@ import React from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 
-import BlackjackTableScreen from "../BlackjackTableScreen";
+import i18n from "i18next";
+import BlackjackTableScreen, { feltResultFor } from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame } from "../../game/blackjack/storage";
-import { createSeededRng, newGame, placeBet, setRng } from "../../game/blackjack/engine";
+import {
+  createSeededRng,
+  hit,
+  newGame,
+  placeBet,
+  setRng,
+  stand,
+  toViewState,
+} from "../../game/blackjack/engine";
+import { savedAgainstNatural } from "../../game/blackjack/__tests__/helpers/engineFixtures";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import { NATURAL_CHIP_SCALE } from "../../components/blackjack/blackjackMotion";
@@ -560,5 +570,42 @@ describe("a split hand's ace and ten", () => {
       expect(moving()).toBe(false);
     }
     expect(stings()).toBe(0);
+  });
+});
+
+// #3741 review (owner-approved): the result's detail line for a hand the dealer's peek settled.
+describe("the result's detail after the dealer's peek", () => {
+  const detail = () => screen.getByTestId("result-detail").props.children;
+
+  it('the dealer\'s natural beats the player: "You Lose", detail "Dealer Blackjack"', async () => {
+    await mountOn(betting(DEALER));
+    await dealTen();
+    await settle();
+    expect(screen.getByTestId("result-outcome").props.children).toBe("You Lose");
+    expect(detail()).toBe("Dealer Blackjack");
+  });
+
+  it('natural against natural: "Push", detail "Both Blackjack"', async () => {
+    await mountOn(betting(BOTH));
+    await dealTen();
+    await settle();
+    expect(screen.getByTestId("result-outcome").props.children).toBe("Push");
+    expect(detail()).toBe("Both Blackjack");
+  });
+
+  it("any other loss keeps its totals", async () => {
+    await mountOn(betting(LOSE));
+    await dealTen();
+    await settle();
+    await press(/^Stand/);
+    await settle();
+    expect(detail()).toBe("15 against the dealer's 18");
+  });
+
+  it('a 3-card 21 that loses to a dealer natural (a save from before the peek) reads "Dealer Blackjack"', () => {
+    const settled = stand(hit(savedAgainstNatural([card("10"), card("6", "♥")], [card("5")])));
+    expect(settled.outcome).toBe("lose");
+    const t = ((key: string) => i18n.t(key)) as unknown as Parameters<typeof feltResultFor>[1];
+    expect(feltResultFor(toViewState(settled), t)?.detail).toBe("Dealer Blackjack");
   });
 });

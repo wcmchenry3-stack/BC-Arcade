@@ -154,5 +154,7 @@
   "result.playerBusts": "تجاوزت بـ {{value}}",
   "result.versus": "{{player}} مقابل {{dealer}} للموزع",
   "result.dealerHas": "لدى الموزع {{value}}",
+  "result.dealerBlackjack": "بلاك جاك للموزع",
+  "result.bothBlackjack": "بلاك جاك للطرفين",
   "a11y.handBet": "الرهان {{amount}} رقائق"
 }

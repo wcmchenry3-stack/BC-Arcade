@@ -154,5 +154,7 @@
   "result.playerBusts": "Gebust met {{value}}",
   "result.versus": "{{player}} tegen {{dealer}} van de dealer",
   "result.dealerHas": "Dealer heeft {{value}}",
+  "result.dealerBlackjack": "Dealer heeft blackjack",
+  "result.bothBlackjack": "Allebei blackjack",
   "a11y.handBet": "Inzet {{amount}} chips"
 }

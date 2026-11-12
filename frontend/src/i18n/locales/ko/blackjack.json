@@ -154,5 +154,7 @@
   "result.playerBusts": "{{value}}로 버스트",
   "result.versus": "{{player}} 대 딜러 {{dealer}}",
   "result.dealerHas": "딜러 {{value}}",
+  "result.dealerBlackjack": "딜러 블랙잭",
+  "result.bothBlackjack": "양쪽 모두 블랙잭",
   "a11y.handBet": "베팅 {{amount}}칩"
 }

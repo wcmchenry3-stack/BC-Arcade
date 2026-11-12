@@ -154,5 +154,7 @@
   "result.playerBusts": "{{value}} 点爆牌",
   "result.versus": "{{player}} 对庄家的 {{dealer}}",
   "result.dealerHas": "庄家 {{value}} 点",
+  "result.dealerBlackjack": "庄家 Blackjack",
+  "result.bothBlackjack": "双方 Blackjack",
   "a11y.handBet": "下注 {{amount}} 筹码"
 }

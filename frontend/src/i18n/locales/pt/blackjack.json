@@ -154,5 +154,7 @@
   "result.playerBusts": "Estourou com {{value}}",
   "result.versus": "{{player}} contra {{dealer}} do dealer",
   "result.dealerHas": "O dealer tem {{value}}",
+  "result.dealerBlackjack": "Blackjack do dealer",
+  "result.bothBlackjack": "Ambos com blackjack",
   "a11y.handBet": "Aposta de {{amount}} fichas"
 }

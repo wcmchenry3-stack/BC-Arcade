@@ -154,5 +154,7 @@
   "result.playerBusts": "{{value}} पर बस्ट",
   "result.versus": "{{player}} बनाम डीलर का {{dealer}}",
   "result.dealerHas": "डीलर के पास {{value}}",
+  "result.dealerBlackjack": "डीलर का ब्लैकजैक",
+  "result.bothBlackjack": "दोनों का ब्लैकजैक",
   "a11y.handBet": "दांव {{amount}} चिप्स"
 }
