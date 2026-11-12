@@ -21,7 +21,7 @@
  * new `epoch` lands every card at once.
  */
 import React, { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import Reanimated, {
   cancelAnimation,
   Easing,
@@ -44,6 +44,7 @@ import {
   FLIP_MS,
 } from "./blackjackMotion";
 import type { CardMotion } from "./useBlackjackMotion";
+import { CardPlace, NaturalEdge, type NaturalTone } from "./NaturalMoment";
 
 /** One hand's cards as the felt draws them. */
 export interface FeltHand {
@@ -55,6 +56,10 @@ export interface FeltHand {
   readonly fan: FanGeometry;
   /** Dim the cards (a split hand already played). */
   readonly dimmed?: boolean;
+  /** A natural's edge on the hand's two cards (#3621). */
+  readonly natural?: NaturalTone | null;
+  /** When the player's natural moment (lift, glint) started (JS clock); null: static. */
+  readonly moment?: number | null;
 }
 
 interface Props {
@@ -86,6 +91,9 @@ export default function FeltCards({ hands, motion, origin }: Props) {
               epoch={motion.epoch}
               originX={origin.x}
               originY={origin.y}
+              natural={i < 2 ? (hand.natural ?? null) : null}
+              moment={i < 2 ? (hand.moment ?? null) : null}
+              liftable={hand.id !== "dealer" && i < 2}
             />
           );
         })
@@ -162,6 +170,11 @@ interface CardProps {
   /** Where a dealt card's flight starts: numbers, so the card's memo holds across renders. */
   readonly originX: number;
   readonly originY: number;
+  /** A natural's edge (#3621), and when its moment started (null: static). */
+  readonly natural: NaturalTone | null;
+  readonly moment: number | null;
+  /** A player's first or second card: it can lift with a natural (the same for its life). */
+  readonly liftable: boolean;
 }
 
 /** What a card's motion is now: worked out in render from its props' changes. */
@@ -261,7 +274,10 @@ const FeltCard = React.memo(function FeltCard(props: CardProps) {
   // never covers the dealer's next card at rest (#3720 round 2).
   const lifted = useLift(liftEndOf(next));
   return (
-    <View
+    // A natural's two cards lift together (#3621), in their place.
+    <CardPlace
+      liftable={props.liftable}
+      moment={props.moment}
       testID={testID}
       style={[styles.card, { left: x, top: y, width, height }, lifted && styles.lifted]}
     >
@@ -275,7 +291,17 @@ const FeltCard = React.memo(function FeltCard(props: CardProps) {
           ) : null}
         </CardTurn>
       </CardPose>
-    </View>
+      {props.natural !== null && (
+        <NaturalEdge
+          key={props.moment ?? "still"}
+          tone={props.natural}
+          since={props.moment}
+          width={width}
+          height={height}
+          testID={testID}
+        />
+      )}
+    </CardPlace>
   );
 });
 

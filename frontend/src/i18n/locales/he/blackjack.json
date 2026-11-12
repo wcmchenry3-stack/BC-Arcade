@@ -27,6 +27,8 @@
   "card.suit.diamonds": "יהלומים",
   "card.suit.clubs": "תלתנים",
   "outcome.blackjack": "!Blackjack",
+  "outcome.blackjackNatural": "!Blackjack 3:2",
+  "outcome.blackjackNaturalLabel": "בלאק ג'ק, משלם 3 ל-2",
   "outcome.win": "!ניצחת",
   "outcome.push": "תיקו",
   "outcome.lose": "הפסדת",

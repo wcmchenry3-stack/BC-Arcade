@@ -28,6 +28,9 @@ import {
   DEALER_PACE_MS,
   FLIP_MS,
   fullStage,
+  NATURAL_AT_MS,
+  naturalEdges,
+  NO_NATURALS,
   planMotion,
   RESULT_CUES,
   RESULT_DELAY_MS,
@@ -199,6 +202,128 @@ describe("planMotion", () => {
   });
 });
 
+// #3621 (owner decisions, #3739): the natural's moment, its sting and the naturals' edges.
+describe("the natural", () => {
+  /** [at, player edge, dealer edge] at each stage where an edge changes. */
+  const edges = (t: Timeline) =>
+    t.frames
+      .filter(
+        (f, i) =>
+          i === 0 ||
+          f.stage.natural.player !== t.frames[i - 1]!.stage.natural.player ||
+          f.stage.natural.dealer !== t.frames[i - 1]!.stage.natural.dealer
+      )
+      .map((f) => [f.at, f.stage.natural.player, f.stage.natural.dealer]);
+
+  it("a player's natural: the sting as the second card lands, the result at the flip's end", () => {
+    const s0 = betting(c("A"), c("7", "♣"), c("K", "♥"), c("9", "♥"));
+    const s1 = placeBet(s0, 10);
+    expect(s1.outcome).toBe("blackjack");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(cuesOf(t)).toEqual([
+      ["deal", 0],
+      ["deal", 180],
+      ["deal", 360],
+      ["deal", 540],
+      ["blackjack", NATURAL_AT_MS],
+      ["flip", 780],
+      ["payout", 780 + FLIP_MS + CHIP_DELAY_MS],
+    ]);
+    expect(NATURAL_AT_MS).toBe(600);
+    // No +300 ms: the banner shows as the hole card's turn ends; no second chime there.
+    expect(t.resultAt).toBe(780 + FLIP_MS);
+    expect(t.chimeAt).toBe(NATURAL_AT_MS);
+    expect(t.momentAt).toBe(NATURAL_AT_MS);
+    expect(edges(t)).toEqual([
+      [0, false, false],
+      [600, true, false],
+    ]);
+    // The 3:2 payout chip is the larger one.
+    const chips = t.frames.flatMap((f) => f.stage.chips);
+    expect(chips.length).toBeGreaterThan(0);
+    chips.forEach((chip) => expect(chip).toMatchObject({ kind: "payout", natural: true }));
+  });
+
+  it("the dealer's natural: a silver edge as the hole card's turn ends, and the normal loss", () => {
+    const s0 = placeBet(betting(c("10"), c("K", "♣"), c("8", "♥"), c("A", "♦")), 10);
+    expect(s0.phase).toBe("player");
+    const s1 = stand(s0);
+    expect(s1.outcome).toBe("lose");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(cuesOf(t)).toEqual([
+      ["flip", 0],
+      ["lose", FLIP_MS + RESULT_DELAY_MS],
+      ["collect", FLIP_MS + RESULT_DELAY_MS + CHIP_DELAY_MS],
+    ]);
+    expect(t.chimeAt).toBe(t.resultAt);
+    expect(t.momentAt).toBeNull();
+    expect(edges(t)).toEqual([
+      [0, false, false],
+      [FLIP_MS, false, true],
+    ]);
+    t.frames.flatMap((f) => f.stage.chips).forEach((chip) => expect(chip.natural).toBeUndefined());
+  });
+
+  it("natural against natural: the gold edge only (no sting), the silver at the flip, then the push", () => {
+    const s0 = betting(c("A"), c("A", "♣"), c("K", "♥"), c("K", "♦"));
+    const s1 = placeBet(s0, 10);
+    expect(s1.outcome).toBe("push");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(cuesOf(t)).toEqual([
+      ["deal", 0],
+      ["deal", 180],
+      ["deal", 360],
+      ["deal", 540],
+      ["flip", 780],
+      ["push", 1100],
+      ["nudge", 1100 + CHIP_DELAY_MS],
+    ]);
+    expect(t.resultAt).toBe(1100);
+    expect(t.chimeAt).toBe(1100);
+    expect(t.momentAt).toBeNull();
+    expect(edges(t)).toEqual([
+      [0, false, false],
+      [600, true, false],
+      [1100, true, true],
+    ]);
+  });
+
+  it("a split hand's ace and ten is not a natural (it pays 1:1): no edge, no sting", () => {
+    const s0 = placeBet(
+      betting(c("A"), c("7", "♣"), c("A", "♥"), c("9", "♦"), c("K", "♦"), c("5", "♣")),
+      10
+    );
+    const s1 = split(s0);
+    expect(s1.player_hands[0]!.map((x) => x.rank)).toEqual(["A", "K"]);
+    expect(s1.hand_outcomes[0]).toBe("win");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(t.cues.some((q) => q.sound === "blackjack")).toBe(false);
+    expect(t.momentAt).toBeNull();
+    expect(t.chimeAt).toBe(t.resultAt);
+    t.frames.forEach((f) => expect(f.stage.natural).toEqual(NO_NATURALS));
+    expect(naturalEdges(view(s1))).toEqual(NO_NATURALS);
+  });
+
+  it("the dealer's natural against a bust or a 3-card 21 is not marked", () => {
+    const bust = placeBet(betting(c("10"), c("K", "♣"), c("6", "♥"), c("A", "♦"), c("K", "♦")), 10);
+    expect(naturalEdges(view(hit(bust)))).toEqual(NO_NATURALS);
+    // House rule (#3741): a 3-card 21 against the dealer's natural is a push.
+    const s = placeBet(betting(c("10"), c("K", "♣"), c("6", "♥"), c("A", "♦"), c("5", "♦")), 10);
+    const settled = stand(hit(s));
+    expect(settled.outcome).toBe("push");
+    expect(naturalEdges(view(settled))).toEqual(NO_NATURALS);
+  });
+
+  it("a settled round marks its naturals; a round in play or betting marks none", () => {
+    const s1 = placeBet(betting(c("A"), c("7", "♣"), c("K", "♥"), c("9", "♥")), 10);
+    expect(naturalEdges(view(s1))).toEqual({ player: true, dealer: false });
+    expect(fullStage(view(s1)).natural).toEqual({ player: true, dealer: false });
+    expect(naturalEdges(view(newHand(s1)))).toEqual(NO_NATURALS);
+    const playing = placeBet(betting(c("10"), c("K", "♣"), c("8", "♥"), c("A", "♦")), 10);
+    expect(naturalEdges(view(playing))).toEqual(NO_NATURALS);
+  });
+});
+
 describe("stageView", () => {
   it("draws the cards shown, the hole card face down, and no result before it shows", () => {
     const s1 = stand(placeBet(betting(c("10"), c("7", "♣"), c("5", "♥"), c("9", "♥")), 10));
@@ -355,17 +480,39 @@ function check(
   const all = [...ids.dealer, ...ids.hands.flat()];
   expect(new Set(all).size).toBe(all.length);
   expect(all).toHaveLength(totalCards(next));
-  const chimes = cues.filter((q) => RESULT_CUES.includes(q.sound) && q.at === t.resultAt);
+  // The natural (#3621): the sting only on a deal that makes a 3:2 natural, once, as the second
+  // card lands, with its moment and its larger payout chip; an edge once marked stays; a split
+  // round never marks one.
+  const stung = prev.phase !== "player" && next.outcome === "blackjack";
+  expect(cues.filter((q) => q.sound === "blackjack")).toEqual(
+    stung ? [{ at: NATURAL_AT_MS, sound: "blackjack" }] : []
+  );
+  expect(t.momentAt).toBe(stung ? NATURAL_AT_MS : null);
+  for (let i = 1; i < frames.length; i++) {
+    const a = frames[i - 1]!.stage.natural;
+    const b = frames[i]!.stage.natural;
+    if (a.player) expect(b.player).toBe(true);
+    if (a.dealer) expect(b.dealer).toBe(true);
+  }
+  for (const f of frames) {
+    if (f.stage.hands.length > 1) expect(f.stage.natural).toEqual(NO_NATURALS);
+    if (f.stage.natural.dealer) expect(f.stage.holeCounted).toBe(true);
+    f.stage.chips.forEach((chip) => expect(chip.natural ?? false).toBe(stung));
+  }
+  const chimes = cues.filter((q) => RESULT_CUES.includes(q.sound) && q.at === t.chimeAt);
   if (t.resultAt === null) {
     expect(t.flips).toBe(false);
+    expect(t.chimeAt).toBeNull();
     return;
   }
-  // One chime, after the last card lands; the flip before every dealer draw.
+  // One chime, after the last card lands; the flip before every dealer draw. A player's natural
+  // (#3621) shows its result at the flip's end, its chime (the sting) as its second card lands.
   expect(chimes).toHaveLength(1);
+  const playerNatural = prev.phase !== "player" && naturalEdges(next).player;
   const lastDeal = Math.max(-1, ...cues.filter((q) => q.sound === "deal").map((q) => q.at));
   const flip = cues.find((q) => q.sound === "flip")!;
   expect(t.resultAt).toBeGreaterThanOrEqual(
-    Math.max(lastDeal + DEAL_FLIGHT_MS, flip.at + FLIP_MS) + RESULT_DELAY_MS
+    Math.max(lastDeal + DEAL_FLIGHT_MS, flip.at + FLIP_MS) + (playerNatural ? 0 : RESULT_DELAY_MS)
   );
   cues
     .filter((q) => q.sound === "deal" && q.at > flip.at)

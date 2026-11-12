@@ -27,6 +27,8 @@
   "card.suit.diamonds": "다이아몬드",
   "card.suit.clubs": "클럽",
   "outcome.blackjack": "블랙잭!",
+  "outcome.blackjackNatural": "블랙잭! 3:2",
+  "outcome.blackjackNaturalLabel": "블랙잭, 3대 2 배당",
   "outcome.win": "승리!",
   "outcome.push": "무승부",
   "outcome.lose": "패배",

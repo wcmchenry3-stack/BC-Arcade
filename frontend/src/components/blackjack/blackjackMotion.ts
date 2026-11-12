@@ -10,7 +10,8 @@
  * the felt draws the settled round cut to it (`stageView`). Each stage starts at its time on the
  * action's clock; a card a stage adds is dealt (it flies in from just off the felt's top-right),
  * a card a stage moves slides, and the hole card a stage turns flips. The sounds are cues on the
- * same clock.
+ * same clock. A natural (#3621) is planned with its deal: its moment and sting as the second card
+ * lands (`momentAt`, `chimeAt`), and the naturals' edges as stages (`Stage.natural`).
  *
  * See docs/games/blackjack.md ("Motion and sound timing") and the design log,
  * docs/games/arcade-sound-design.md.
@@ -74,6 +75,32 @@ export const SKIP_HOLD_MS = 400;
 /** How far a push's nudge moves the stake (toward the player) before it settles back. */
 export const NUDGE_PX = 14;
 
+// ── The natural (owner decisions, #3739: direction B, "glint + sweep"; #3621) ──
+
+/** The player's second card lands: the natural's moment starts (2 × stagger + flight). */
+export const NATURAL_AT_MS = 2 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS;
+/** The two cards lift this far: up (ease-out), hold, then down. */
+export const NATURAL_LIFT_PX = 7;
+export const NATURAL_LIFT_UP_MS = 160;
+export const NATURAL_LIFT_HOLD_MS = 520;
+export const NATURAL_LIFT_DOWN_MS = 240;
+/** The gold edge (2 px, an 8 px glow) fades in; it stays until the next deal. */
+export const NATURAL_EDGE_IN_MS = 120;
+export const NATURAL_EDGE_PX = 2;
+export const NATURAL_GLOW_PX = 8;
+/** A sheen band crosses each card once. */
+export const NATURAL_GLINT_DELAY_MS = 60;
+export const NATURAL_GLINT_MS = 380;
+/** One diagonal light sweep crosses the felt, at about this peak opacity. */
+export const NATURAL_SWEEP_DELAY_MS = 60;
+export const NATURAL_SWEEP_MS = 560;
+export const NATURAL_SWEEP_DEG = 18;
+export const NATURAL_SWEEP_PEAK = 0.14;
+/** The whole moment, from the second card's landing (the lift is its longest part). */
+export const NATURAL_MOMENT_MS = NATURAL_LIFT_UP_MS + NATURAL_LIFT_HOLD_MS + NATURAL_LIFT_DOWN_MS;
+/** The 3:2 payout chip is drawn this much larger, with a gold rim. */
+export const NATURAL_CHIP_SCALE = 1.4;
+
 /** Where a dealt card's flight starts: just off the felt's top-right corner (its top-left). */
 export function dealOrigin(feltWidth: number): Point {
   return { x: feltWidth + 30, y: -140 };
@@ -90,7 +117,19 @@ export interface ChipShown {
   /** The hand whose stake it moves to or from (the betting circle for "bet"). */
   readonly hand: number;
   readonly durationMs: number;
+  /** A natural's 3:2 payout: drawn larger, with a gold rim (#3621). */
+  readonly natural?: boolean;
 }
+
+/** The naturals the felt marks (#3621): each a static edge on its hand's two cards. */
+export interface NaturalEdges {
+  /** The player's natural: a gold edge, until the next deal. */
+  readonly player: boolean;
+  /** The dealer's natural that beat (or pushed) the player: a cool-silver edge, once turned. */
+  readonly dealer: boolean;
+}
+
+export const NO_NATURALS: NaturalEdges = { player: false, dealer: false };
 
 /** How much of the settled round the felt shows. */
 export interface Stage {
@@ -118,6 +157,8 @@ export interface Stage {
   /** The chip count shows the settled chips (after the payout). */
   readonly settled: boolean;
   readonly chips: readonly ChipShown[];
+  /** The naturals marked so far (#3621). */
+  readonly natural: NaturalEdges;
 }
 
 export type SoundCue =
@@ -151,6 +192,14 @@ export interface Timeline {
   readonly flips: boolean;
   /** When the result shows, or null (the round goes on). */
   readonly resultAt: number | null;
+  /**
+   * When the result's chime plays, or null (none). Usually `resultAt`; a player's natural sounds
+   * its sting as the second card lands, before the result shows (#3621). A tap that lands the
+   * motion before then still plays it, once.
+   */
+  readonly chimeAt: number | null;
+  /** When the player's natural moment (lift, glint, sweep) starts, or null (#3621). */
+  readonly momentAt: number | null;
   /** When the last stage starts (the round is settled from then). */
   readonly endMs: number;
   /** The cards each hand still holds back after it (a split's second card), by hand. */
@@ -172,7 +221,28 @@ export function fullStage(v: BlackjackState): Stage {
     revealed: result ? v.player_hands.length : 0,
     settled: true,
     chips: [],
+    natural: naturalEdges(v),
   };
+}
+
+/** Two cards that make 21: the engine's own test (`isNaturalBlackjack`), on a settled hand. */
+const isNatural = (h: HandResponse): boolean => h.cards.length === 2 && h.value === 21;
+
+/**
+ * The naturals a settled round marks (#3621, owner decisions in #3739). One hand only: a split
+ * hand's ace and ten make 21, not a natural (it pays 1:1 under the house rules, #3741). The
+ * player's natural gets a gold edge (a 3:2 win, or a push against the dealer's natural). The
+ * dealer's natural gets a silver edge when it decided the round: it beat a player who had not
+ * bust, or it pushed the player's natural.
+ */
+export function naturalEdges(v: BlackjackState): NaturalEdges {
+  const hand = v.player_hands[0];
+  if (!showsResult(v.phase) || v.player_hands.length !== 1 || hand === undefined) {
+    return NO_NATURALS;
+  }
+  const player = isNatural(hand);
+  const dealer = isNatural(v.dealer_hand) && (player || (v.outcome === "lose" && hand.value <= 21));
+  return player || dealer ? { player, dealer } : NO_NATURALS;
 }
 
 const counts = (v: BlackjackState) => v.player_hands.map((h) => h.cards.length);
@@ -235,8 +305,14 @@ class TimelineBuilder {
   }
 
   /** A chip moving from `ms` for its duration (it goes when it arrives). */
-  chip(ms: number, kind: ChipKind, hand: number, durationMs: number): void {
-    const chip: ChipShown = { id: nextChipId(), kind, hand, durationMs };
+  chip(ms: number, kind: ChipKind, hand: number, durationMs: number, natural = false): void {
+    const chip: ChipShown = {
+      id: nextChipId(),
+      kind,
+      hand,
+      durationMs,
+      ...(natural ? { natural } : {}),
+    };
     this.at(ms, (s) => ({ ...s, chips: [...s.chips, chip] }));
     this.at(ms + durationMs, (s) => ({ ...s, chips: s.chips.filter((c) => c !== chip) }));
   }
@@ -246,7 +322,7 @@ class TimelineBuilder {
     end: Stage,
     slideMs: number,
     flips: boolean,
-    resultAt: number | null,
+    times: Pick<Timeline, "resultAt" | "chimeAt" | "momentAt">,
     held: readonly number[]
   ): Timeline {
     const sorted = [...this.ops].sort((a, b) => a.at - b.at || a.seq - b.seq);
@@ -262,7 +338,7 @@ class TimelineBuilder {
     const endMs = frames[frames.length - 1]!.at;
     frames[frames.length - 1] = { at: endMs, stage: end };
     const cues = [...this.cueList].sort((a, b) => a.at - b.at);
-    return { frames, cues, slideMs, flips, resultAt, endMs, held };
+    return { frames, cues, slideMs, flips, ...times, endMs, held };
   }
 }
 
@@ -274,6 +350,8 @@ interface PlayerPart {
   readonly slideMs: number;
   /** The cards each hand holds back after it. */
   readonly held: number[];
+  /** A deal: when the player's second card lands (a natural's moment starts there, #3621). */
+  readonly secondLanded?: number;
 }
 
 /** A new deal: player, dealer hole (face down), player, dealer up, 180 ms apart. */
@@ -294,6 +372,7 @@ function planDeal(b: TimelineBuilder, next: BlackjackState): PlayerPart | null {
     revealed: 0,
     settled: false,
     chips: [],
+    natural: NO_NATURALS,
   };
   b.cue(0, "deal");
   b.at(DEAL_STAGGER_MS, (s) => ({ ...s, dealer: 1 }));
@@ -305,9 +384,12 @@ function planDeal(b: TimelineBuilder, next: BlackjackState): PlayerPart | null {
   // Each card counts in its hand's total as it lands.
   b.at(DEAL_FLIGHT_MS, countHand(0, 1));
   b.at(DEAL_STAGGER_MS + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: 1 }));
-  b.at(2 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, countHand(0, 2));
+  // The player's second card lands: the one time the deal's total and a natural share (#3621).
+  const secondLanded = NATURAL_AT_MS;
+  b.at(secondLanded, countHand(0, 2));
   b.at(3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: 2 }));
-  return { start, landed: 3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS, slideMs: REFAN_MS, held: [0] };
+  const landed = 3 * DEAL_STAGGER_MS + DEAL_FLIGHT_MS;
+  return { start, landed, slideMs: REFAN_MS, held: [0], secondLanded };
 }
 
 /**
@@ -426,12 +508,18 @@ function planPlay(
  * after the last, the result ~300 ms after the last card lands, and the chips after it (a split
  * round: one chime for the net, then each hand's tag and chips in turn). Returns when the result
  * shows.
+ *
+ * A natural (#3621): the dealer's natural shows its silver edge as the hole card's turn ends. On
+ * the player's natural the result shows at the flip's end (no 300 ms wait) and, when it wins 3:2,
+ * its chime has already played (the sting, as the second card landed: `stung`) and its payout
+ * chip is the larger, gold-rimmed one.
  */
 function planDealerTurn(
   b: TimelineBuilder,
   start: number,
   next: BlackjackState,
-  held: number[]
+  held: number[],
+  natural: { readonly edges: NaturalEdges; readonly stung: boolean }
 ): number {
   // A card still held back (none in play: every hand is played first) is dealt before the turn.
   let t0 = start;
@@ -443,6 +531,9 @@ function planDealerTurn(
   b.cue(t0, "flip");
   // The dealer's total shows once the hole card's face is up (its turn ended).
   b.at(t0 + FLIP_MS, (s) => ({ ...s, holeCounted: true }));
+  if (natural.edges.dealer) {
+    b.at(t0 + FLIP_MS, (s) => ({ ...s, natural: { ...s.natural, dealer: true } }));
+  }
   const draws = next.dealer_hand.cards.length - shown;
   for (let j = 1; j <= draws; j++) {
     const at = t0 + j * DEALER_PACE_MS;
@@ -451,17 +542,17 @@ function planDealerTurn(
     b.at(at + DEAL_FLIGHT_MS, (s) => ({ ...s, dealerCounted: shown + j }));
   }
   const lastLanding = draws > 0 ? t0 + draws * DEALER_PACE_MS + DEAL_FLIGHT_MS : t0 + FLIP_MS;
-  const r = lastLanding + RESULT_DELAY_MS;
+  const r = lastLanding + (natural.edges.player ? 0 : RESULT_DELAY_MS);
   const hands = next.player_hands.length;
   const split = hands > 1;
   b.at(r, (s) => ({ ...s, result: true, revealed: split ? 0 : hands }));
-  b.cue(r, resultCue(next));
+  if (!natural.stung) b.cue(r, resultCue(next));
   let settleAt = r;
   for (let i = 0; i < hands; i++) {
     const at = r + CHIP_DELAY_MS + i * HAND_STAGGER_MS;
     const c = chipFor(split ? next.hand_outcomes[i] : next.outcome);
     if (split) b.at(at, (s) => ({ ...s, revealed: i + 1 }));
-    b.chip(at, c.kind, i, c.durationMs);
+    b.chip(at, c.kind, i, c.durationMs, natural.stung);
     b.cue(at, c.sound);
     settleAt = Math.max(settleAt, at + c.durationMs);
   }
@@ -513,9 +604,24 @@ export function planMotion(
   if (part === null) return null;
   const settles = showsResult(next.phase);
   const nextHeld = settles ? nextCounts.map(() => 0) : part.held;
-  const resultAt = settles ? planDealerTurn(b, part.landed, next, [...part.held]) : null;
   const end = withHeld(fullStage(next), nextHeld);
-  return b.build(part.start, end, part.slideMs, settles, resultAt, nextHeld);
+  if (!settles) {
+    const times = { resultAt: null, chimeAt: null, momentAt: null };
+    return b.build(part.start, end, part.slideMs, false, times, nextHeld);
+  }
+  // The natural (#3621). Only the opening deal makes the player's (it is the one part with a
+  // `secondLanded`): a split hand's 21 is not one.
+  const edges = naturalEdges(next);
+  const at = edges.player ? (part.secondLanded ?? null) : null;
+  // The sting lands with the second card, and is the round's chime (owner decision, #3739).
+  const stingAt = at !== null && next.outcome === "blackjack" ? at : null;
+  if (at !== null) b.at(at, (s) => ({ ...s, natural: { ...s.natural, player: true } }));
+  if (stingAt !== null) b.cue(stingAt, "blackjack");
+  const stung = stingAt !== null;
+  const natural = { edges: { player: at !== null, dealer: edges.dealer }, stung };
+  const resultAt = planDealerTurn(b, part.landed, next, [...part.held], natural);
+  const times = { resultAt, chimeAt: stingAt ?? resultAt, momentAt: stingAt };
+  return b.build(part.start, end, part.slideMs, true, times, nextHeld);
 }
 
 // ── What the felt draws ───────────────────────────────────────────────────────

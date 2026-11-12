@@ -6,6 +6,7 @@
         "betting.tableLimitsRange",
         "hand.playerHand",
         "outcome.blackjack",
+        "outcome.blackjackNatural",
         "payout.negative",
         "payout.positive",
         "rules.deckCount",
@@ -23,17 +24,24 @@
         "tableSelect.startChips"
       ],
       "es": ["rules.h17", "rules.s17", "score.blackjacks"],
-      "pt": ["outcome.blackjack", "rules.h17", "rules.s17", "score.blackjacks"],
-      "ru": ["outcome.blackjack", "rules.h17", "rules.s17"],
+      "pt": [
+        "outcome.blackjack",
+        "outcome.blackjackNatural",
+        "rules.h17",
+        "rules.s17",
+        "score.blackjacks"
+      ],
+      "ru": ["outcome.blackjack", "outcome.blackjackNatural", "rules.h17", "rules.s17"],
       "ja": ["rules.h17", "rules.s17"],
       "ko": ["rules.h17", "rules.s17"],
-      "zh": ["outcome.blackjack", "rules.h17", "rules.s17"],
+      "zh": ["outcome.blackjack", "outcome.blackjackNatural", "rules.h17", "rules.s17"],
       "ar": ["rules.h17", "rules.s17"],
       "he": ["rules.h17", "rules.s17"],
       "hi": ["rules.h17", "rules.s17"],
       "de": [
         "hand.playerHand",
         "outcome.blackjack",
+        "outcome.blackjackNatural",
         "rules.deckCount",
         "rules.h17",
         "rules.penetration",
@@ -46,6 +54,7 @@
       ],
       "fr-CA": [
         "outcome.blackjack",
+        "outcome.blackjackNatural",
         "rules.h17",
         "rules.s17",
         "score.blackjacks",

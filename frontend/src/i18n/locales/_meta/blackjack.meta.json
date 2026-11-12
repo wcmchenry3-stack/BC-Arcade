@@ -251,6 +251,24 @@
     "doNotTranslate": ["Blackjack"],
     "notes": null
   },
+  "outcome.blackjackNatural": {
+    "component": "ResultBanner",
+    "description": "Result banner on the table when the player's natural blackjack wins; says it pays 3 to 2 (#3621).",
+    "tone": "celebratory",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": ["Blackjack", "3:2"],
+    "notes": "Keep the ratio written as 3:2."
+  },
+  "outcome.blackjackNaturalLabel": {
+    "component": "ResultBanner",
+    "description": "Screen-reader label for the table's \"Blackjack! 3:2\" banner: says the 3:2 payout in words, so it is not read as \"3 colon 2\" (#3621).",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": ["Blackjack"],
+    "notes": "Spoken, not shown. Use the natural way to say a 3-to-2 payout in the language."
+  },
   "outcome.win": {
     "component": "ResultBanner",
     "description": "Result banner when player wins.",

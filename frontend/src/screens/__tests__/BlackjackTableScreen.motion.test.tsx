@@ -363,27 +363,25 @@ describe("the dealer's turn", () => {
     ]);
   });
 
-  it("a natural: the deal, the flip as the last card lands, the blackjack chime and its payout", async () => {
+  // #3621 (owner decisions, #3739): the sting lands with the second card, and the result shows at
+  // the flip's end (no 300 ms wait), with no overlay.
+  it("a natural: the deal, the sting as the second card lands, the flip, the result at its end and the payout", async () => {
     await mountOn(betting(NATURAL));
     const at = await dealTen();
-    await advance(1399);
+    await advance(1099);
     expect(resultShown()).toBe(false);
-    expect(screen.queryByTestId("animation-overlay", HIDDEN_TOO)?.props.pointerEvents).not.toBe(
-      "auto"
-    );
     await advance(1);
     expect(resultShown()).toBe(true);
-    // The celebration shows with the result.
-    expect(screen.getByTestId(/^animation-overlay/, HIDDEN_TOO).props.pointerEvents).toBe("auto");
+    expect(screen.queryByTestId(/^animation-overlay/, HIDDEN_TOO)).toBeNull();
     await settle();
     expect(soundsSince(at).filter(([n]) => n !== "blackjack.chipBet")).toEqual([
       ["blackjack.cardDeal", 0],
       ["blackjack.cardDeal", 180],
       ["blackjack.cardDeal", 360],
       ["blackjack.cardDeal", 540],
+      ["blackjack.blackjack", 600],
       ["blackjack.cardFlip", 780],
-      ["blackjack.blackjack", 1400],
-      ["blackjack.chipPayout", 1820],
+      ["blackjack.chipPayout", 1520],
     ]);
   });
 });
@@ -685,7 +683,7 @@ describe("the dock during a result's motion (owner decision, #3720)", () => {
   const NATURAL_PUSH = [card("A"), card("A", "♣"), card("K", "♥"), card("K", "♦")];
 
   it.each([
-    ["a natural", NATURAL, "Blackjack!"],
+    ["a natural", NATURAL, "Blackjack! 3:2"],
     ["a natural against the dealer's natural", NATURAL_PUSH, "Push"],
   ])(
     "%s: greyed actions until the banner shows, then the result's dock",
@@ -694,7 +692,8 @@ describe("the dock during a result's motion (owner decision, #3720)", () => {
       await dealTen();
       expect(disabled(/^Hit/)).toBe(true);
       expect(disabled(/^Stand/)).toBe(true);
-      await advance(1399);
+      // A player's natural shows its result at the flip's end (#3621).
+      await advance(1099);
       expect(resultShown()).toBe(false);
       expect(screen.queryByText("Rebet")).toBeNull();
       expect(disabled(/^Hit/)).toBe(true);

@@ -20,7 +20,13 @@ import Reanimated, {
 import type { Rect } from "../../game/blackjack/layout";
 import { FLIGHT_BACKSTOP_MS, type Point } from "../cards/cardMotion";
 import { chipShape } from "./ChipButton";
-import { easeSlide, NUDGE_PX, type ChipKind, type ChipShown } from "./blackjackMotion";
+import {
+  easeSlide,
+  NATURAL_CHIP_SCALE,
+  NUDGE_PX,
+  type ChipKind,
+  type ChipShown,
+} from "./blackjackMotion";
 
 /** A moving chip's diameter. */
 export const CHIP_SPRITE = 22;
@@ -59,9 +65,19 @@ interface ChipProps {
   readonly stakeOf: (chip: ChipShown) => Rect | null;
   readonly color: string;
   readonly rim: string;
+  /** A natural's 3:2 payout chip's rim (gold, per theme; #3621). */
+  readonly naturalRim: string;
 }
 
-export function FeltChips({ chips, feltWidth, feltHeight, stakeOf, color, rim }: ChipProps) {
+export function FeltChips({
+  chips,
+  feltWidth,
+  feltHeight,
+  stakeOf,
+  color,
+  rim,
+  naturalRim,
+}: ChipProps) {
   if (chips.length === 0) return null;
   return (
     <View
@@ -79,8 +95,9 @@ export function FeltChips({ chips, feltWidth, feltHeight, stakeOf, color, rim }:
             from={from}
             to={to}
             durationMs={chip.durationMs}
+            natural={chip.natural ?? false}
             color={color}
-            rim={rim}
+            rim={chip.natural ? naturalRim : rim}
           />
         );
       })}
@@ -93,6 +110,7 @@ const ChipSprite = React.memo(function ChipSprite({
   from,
   to,
   durationMs,
+  natural,
   color,
   rim,
 }: {
@@ -100,6 +118,8 @@ const ChipSprite = React.memo(function ChipSprite({
   readonly from: Point;
   readonly to: Point;
   readonly durationMs: number;
+  /** A natural's 3:2 payout (#3621): larger, with a gold rim. */
+  readonly natural: boolean;
   readonly color: string;
   readonly rim: string;
 }) {
@@ -112,6 +132,7 @@ const ChipSprite = React.memo(function ChipSprite({
   }, []);
   const nudge = kind === "nudge";
   const fades = kind === "collect";
+  const scale = natural ? NATURAL_CHIP_SCALE : 1;
   const style = useAnimatedStyle(() => {
     const t = p.value;
     const e = easeSlide(t);
@@ -124,13 +145,20 @@ const ChipSprite = React.memo(function ChipSprite({
             ? from.y + NUDGE_PX * Math.sin(Math.PI * t)
             : from.y + (to.y - from.y) * e,
         },
+        { scale },
       ],
     };
   });
   return (
     <Reanimated.View
       testID={`felt-chip-${kind}`}
-      style={[styles.chip, chipShape(CHIP_SPRITE, color), { borderColor: rim }, style]}
+      style={[
+        styles.chip,
+        chipShape(CHIP_SPRITE, color),
+        { borderColor: rim },
+        natural && styles.naturalRim,
+        style,
+      ]}
     />
   );
 });
@@ -203,5 +231,8 @@ const styles = StyleSheet.create({
     top: 0,
     // The tray's chip face (chipShape), with a thin rim so it reads over the cards.
     borderWidth: 1,
+  },
+  naturalRim: {
+    borderWidth: 2,
   },
 });

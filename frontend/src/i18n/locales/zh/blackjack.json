@@ -27,6 +27,8 @@
   "card.suit.diamonds": "方块",
   "card.suit.clubs": "梅花",
   "outcome.blackjack": "Blackjack!",
+  "outcome.blackjackNatural": "Blackjack! 3:2",
+  "outcome.blackjackNaturalLabel": "二十一点，赔率 3 比 2",
   "outcome.win": "你赢了!",
   "outcome.push": "平局",
   "outcome.lose": "你输了",

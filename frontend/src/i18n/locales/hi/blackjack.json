@@ -27,6 +27,8 @@
   "card.suit.diamonds": "डायमंड्स",
   "card.suit.clubs": "क्लब्स",
   "outcome.blackjack": "ब्लैकजैक!",
+  "outcome.blackjackNatural": "ब्लैकजैक! 3:2",
+  "outcome.blackjackNaturalLabel": "ब्लैकजैक, 3 के बदले 2 भुगतान",
   "outcome.win": "आप जीते!",
   "outcome.push": "बराबरी",
   "outcome.lose": "आप हारे",
