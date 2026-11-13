@@ -16,10 +16,12 @@
  *   plays once at once (as for a motion, #3720). The round is settled at once, so the toasts, the
  *   victory screen and the out-of-chips card do not wait for them.
  * - Every pending cue is cancelled on New Game (`reset()`) and on unmount (`useCueClock`).
- * - The run's cues (#3582, `runCue`): one per round, comeback over milestone, played with their
- *   toast as the round settles (after every hand's chips), or under Reduce Motion 100 ms after the
- *   last spaced sound. A round cut short (a tap, Rebet, leaving, New Game) drops it: its toast
- *   still shows, but the cue would stack on the chime played at once or on the next deal.
+ * - The run's cues (#3582, #3812): one per round, comeback over milestone, handed in with the
+ *   toast (`whenSettled(toast, { cue })`) so one queue owns both: the cue plays from the very
+ *   callback that shows the toast, as the round settles (after every hand's chips), or under Reduce
+ *   Motion 100 ms after the last spaced sound. A round cut short (a tap, Rebet, leaving, New Game)
+ *   drops it: its toast still shows, but the cue would stack on the chime played at once or on the
+ *   next deal. A plan with one frame settles at once: the toast and the cue play together, then.
  *
  * JS runs only at a stage's start (a handful per action), never per frame: the cards' and
  * chips' motion runs on the UI thread (FeltCard, ChipSprite), and so does a natural's moment
@@ -127,14 +129,13 @@ export interface BlackjackMotion {
   reset(): void;
   /** A chip from the tray into the betting circle, with its sound. */
   betChip(): void;
-  /** Runs `fn` once the round is settled (at once when it is). */
-  whenSettled(fn: () => void): void;
   /**
-   * The round just played crossed a milestone or made a comeback (#3582): its cue plays with the
-   * toast as the round settles. One per round, comeback over milestone; dropped when the round is
-   * cut short, and for a round no action played (a restore).
+   * Runs `fn` (a toast) once the round is settled (at once when it is). `cue` (#3582, #3812): the
+   * round just played crossed a milestone or made a comeback; its sound plays from the same
+   * callback as `fn`, as the round settles. One per round, comeback over milestone; dropped when
+   * the round is cut short (`fn` still runs), and for a round no action played (a restore).
    */
-  runCue(sound: RunCue): void;
+  whenSettled(fn: () => void, opts?: { readonly cue?: RunCue }): void;
 }
 
 interface Shown {
@@ -227,7 +228,7 @@ function useTrayChips(
 }
 
 /** Callbacks waiting for the round to settle (the run's toasts): run at once when it is. */
-function useSettledQueue(stageRef: { readonly current: Stage | null }) {
+function useSettledFns(stageRef: { readonly current: Stage | null }) {
   const fnsRef = useRef<(() => void)[]>([]);
   const whenSettled = useCallback(
     (fn: () => void) => {
@@ -346,11 +347,11 @@ interface Last {
 function useTimelineRunner(input: {
   readonly clock: CueClock;
   readonly cue: (sound: SoundCue, skipped?: boolean) => void;
-  readonly runSettled: () => void;
   readonly setShown: React.Dispatch<React.SetStateAction<Shown>>;
   readonly stageRef: { current: Stage | null };
 }) {
-  const { clock, cue, runSettled, setShown, stageRef } = input;
+  const { clock, cue, setShown, stageRef } = input;
+  const { whenSettled: queueSettled, runSettled, dropSettled } = useSettledFns(stageRef);
   /** The result's chime, while it is still due. */
   const chimeRef = useRef<SoundCue | null>(null);
   /** The result's chime, while it is still due among the spaced sounds (Reduce Motion, #3751). */
@@ -431,10 +432,10 @@ function useTimelineRunner(input: {
   );
 
   /**
-   * The round's run cue (#3582): one per round, comeback over milestone. It plays as the motion
-   * settles, with its toast, or under Reduce Motion as the next spaced sound after the chips.
+   * Arms the round's run cue (#3582): one per round, comeback over milestone. It plays as the
+   * motion settles (`settle`), or under Reduce Motion as the next spaced sound after the chips.
    */
-  const runCue = useCallback(
+  const armRunCue = useCallback(
     (sound: RunCue) => {
       const slot = runSlotRef.current;
       const due = runCueRef.current;
@@ -444,6 +445,28 @@ function useTimelineRunner(input: {
     },
     [spaceNext, playRunCue]
   );
+
+  /**
+   * Runs `fn` once the round is settled, and plays the run cue handed in with it from the same
+   * callback (#3812): the settled queue owns the cue, so the two cannot drift apart. A round that
+   * has settled already (a one-frame plan, #3812) plays the cue now, with `fn`; a round no action
+   * played (a restore) has no slot, so it plays none. Playing now takes the first cue handed in:
+   * a second event on the same one-frame plan finds the slot spent (not reachable today).
+   */
+  const whenSettled = useCallback(
+    (fn: () => void, opts?: { readonly cue?: RunCue }) => {
+      if (opts?.cue !== undefined) armRunCue(opts.cue);
+      queueSettled(fn);
+      const now = opts?.cue !== undefined && stageRef.current === null;
+      if (now && runSlotRef.current === "motion") playRunCue();
+    },
+    [armRunCue, queueSettled, playRunCue, stageRef]
+  );
+  /** The motion settled on its own: the toasts, then the run's cue with them (#3582). */
+  const settle = useCallback(() => {
+    runSettled();
+    playRunCue();
+  }, [runSettled, playRunCue]);
 
   /**
    * Lands everything at once. `chime`: the result's chime, if still due, plays now. `always`: a
@@ -492,11 +515,8 @@ function useTimelineRunner(input: {
             stage: stageRef.current,
             momentSince: isLast ? null : (since ?? s.momentSince),
           }));
-          if (isLast) {
-            runSettled();
-            // The run's cue with its toast (#3582): after every hand's chips.
-            playRunCue();
-          }
+          // The toasts, and the run's cue with them (#3582): after every hand's chips.
+          if (isLast) settle();
         };
         clock.schedule(show, f.at, MOTION);
       }
@@ -511,9 +531,9 @@ function useTimelineRunner(input: {
         clock.schedule(play, c.at, MOTION);
       }
     },
-    [clock, cue, runSettled, setShown, stageRef, playRunCue]
+    [clock, cue, setShown, stageRef, settle]
   );
-  return { land, run, spread, runCue, sounding };
+  return { land, run, spread, whenSettled, runSettled, dropSettled, sounding };
 }
 
 export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion {
@@ -548,10 +568,8 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
   const playChip = useCallback(() => cue("chipBet"), [cue]);
   const { trayChips, betChip, clearTray } = useTrayChips(clock, reduceMotionRef, playChip);
 
-  const { whenSettled, runSettled, dropSettled } = useSettledQueue(stageRef);
-
-  const runner = useTimelineRunner({ clock, cue, runSettled, setShown, stageRef });
-  const { land, run, spread, runCue, sounding } = runner;
+  const runner = useTimelineRunner({ clock, cue, setShown, stageRef });
+  const { land, run, spread, whenSettled, runSettled, dropSettled, sounding } = runner;
 
   useLayoutEffect(() => {
     if (engine === null) {
@@ -685,6 +703,5 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     reset,
     betChip,
     whenSettled,
-    runCue,
   };
 }
