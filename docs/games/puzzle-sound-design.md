@@ -442,7 +442,8 @@ Adds 35,883 B now; nothing is deleted, since the fanfare is shared. Daily Word n
   - B, scorepad: pencil taps tallying the card (quickening for the win, slow for the loss, two even ones for the tie), then a marimba roll, a low minor third or a plain octave.
   - C, small and sweet: a quick light run then a "ding-ding"; a two-note sigh; the same note twice then a level chord. The shortest (1.5 to 1.9 s).
 - **Pick: A, for all three** (owner). It continues the dice, scoring and jackpot sounds Yacht already has, so the win reads as the top of that ladder, and the tie's open chord is clearly neither a win nor a loss.
-- **Levels** (dBFS over the loudest 50 ms, peak at most -1): win -15 (1 dB over the jackpot: the top of the ladder), tie -19, loss -21 (gentle, level with 2048's game over). So win > tie > loss. Nothing below 300 Hz beyond 0.2 %.
+- **Levels** (dBFS over the loudest 50 ms, peak at most -1): win -15 (1 dB over the jackpot: the top of the ladder), tie -19, loss -21 (gentle, level with 2048's game over). So win > tie > loss. Under 0.1 % of the energy is below 300 Hz (tested), so they carry on phone speakers.
+- **One sound at a time.** The computer's last score a yacht or a joker plays its own 0.7 s sound (`cpu-jackpot-*`); the end beat then starts after it (`CPU_JACKPOT_SOUND_MS`), so the end sound never stacks on it.
 - **Timing.** The chord's strike is within 10 ms of the card moment (`tools/assets/tests/synth_puzzle_sfx_test.py`). Under Reduce Motion the beat is 0, so the card shows at once and the chord lands about 1.0 s (win) or 0.6 s after it: the sound is audio, not motion, and still plays.
 - **Gameplay audition.** Four games in the web build (a vs win, loss and tie, and a solo game), every `play()` logged and laid over the video; each chord lands as the card appears. See the story's thread for the approval.
 - **Why it works.**

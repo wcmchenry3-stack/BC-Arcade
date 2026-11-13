@@ -145,6 +145,7 @@ The result card waits for a beat (`components/yacht/useYachtEndBeat.ts`, as 2048
 | Solo, your last score | with the score (0 s) | 1.0 s on a new best, 0.6 s otherwise |
 | Solo, your last score a Yacht or a Joker | when the celebration ends: 2.8 s | 3.8 s (new best) or 3.4 s |
 | Vs, the computer's last score | with its score: up to 1.87 s after yours (its last turn at 2×) | +1.0 s (you win), +0.6 s (you lose or tie) |
+| Vs, the computer's last score a Yacht or a Joker | after its own 0.7 s sound (`CPU_JACKPOT_SOUND_MS`), so the end sound never stacks on it; the card is held meanwhile, also under Reduce Motion | +1.0 / +0.6 s (at once under Reduce Motion) |
 | Vs, your last score a Yacht or a Joker | when the celebration ends (2.8 s after your score), if it is still showing when the computer scores | +1.0 / +0.6 s |
 | Reduce Motion | with the last score (after a still celebration, 1.5 s) | at once |
 | A game reopened on the computer's last turn | never: no beat, no end sound | at once (that turn is scored on open) |

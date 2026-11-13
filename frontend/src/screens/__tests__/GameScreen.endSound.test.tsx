@@ -13,7 +13,12 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
-import { JACKPOT_DONE_MS, TIE_BEAT_MS, WIN_BEAT_MS } from "../../game/yacht/motion";
+import {
+  CPU_JACKPOT_SOUND_MS,
+  JACKPOT_DONE_MS,
+  TIE_BEAT_MS,
+  WIN_BEAT_MS,
+} from "../../game/yacht/motion";
 
 const mockShellNavigate = jest.fn();
 jest.mock("@react-navigation/native", () =>
@@ -249,6 +254,26 @@ describe("the end sound (solo): a new best is a win, otherwise a tie", () => {
   });
 });
 
+describe("the end sound: a restore and a remount", () => {
+  it("a game reopened finished (a restore) is silent, and so is a remount", async () => {
+    const finished = lastRound("chance", 130);
+    const params = {
+      initialState: {
+        ...finished,
+        scores: { ...finished.scores, chance: 30 },
+        game_over: true,
+        round: 14,
+      },
+    };
+    const r = await renderGame(params);
+    expect(cardShown(r)).toBe(true);
+    await r.unmount();
+    await renderGame(params);
+    await advance(5000);
+    expect(mockPlays.filter((k) => END.includes(k))).toEqual([]);
+  });
+});
+
 describe("the end sound (vs): the outcome decides", () => {
   async function finishVs(playerTotal: number, cpuTotal: number) {
     const r = await renderGame({
@@ -289,6 +314,54 @@ describe("the end sound (vs): the outcome decides", () => {
     expect(endPlays()).toEqual(["yacht.win"]);
   });
 
+  describe("the computer's last score is a yacht: one sound at a time", () => {
+    /** You finish ahead with Chance; the computer's only open row is Yacht, with five 6s. */
+    async function finishWithCpuYacht() {
+      const r = await renderGame({
+        initialState: lastRound("chance", 100),
+        aiDifficulty: "easy" as const,
+        aiState: lastRound("yacht", 0, { rolls_used: 3 }),
+      });
+      await press(r, "score-row-chance");
+      for (let t = 0; r.queryByText("Computer's Turn") && t < 20_000; t += 5) await advance(5);
+      return r;
+    }
+
+    it("its yacht sound plays first; the end sound only after it", async () => {
+      const r = await finishWithCpuYacht();
+      expect(mockPlays).toContain("yacht.cpuYacht");
+      expect(endPlays()).toEqual([]);
+      expect(cardShown(r)).toBe(false);
+      await advance(CPU_JACKPOT_SOUND_MS - 1);
+      expect(endPlays()).toEqual([]);
+      await advance(1);
+      expect(endPlays()).toEqual(["yacht.win"]);
+      expect(mockPlays.indexOf("yacht.cpuYacht")).toBeLessThan(mockPlays.indexOf("yacht.win"));
+      expect(cardShown(r)).toBe(false);
+      await advance(WIN_BEAT_MS + 5000);
+      expect(cardShown(r)).toBe(true);
+      expect(endPlays()).toEqual(["yacht.win"]);
+    });
+
+    it("under Reduce Motion it still waits for the sound, then shows the card", async () => {
+      const r = await renderGame({
+        initialState: lastRound("chance", 100),
+        aiDifficulty: "easy" as const,
+        aiState: lastRound("yacht", 0, { rolls_used: 3 }),
+      });
+      await setReduceMotion(true);
+      await press(r, "score-row-chance");
+      for (let t = 0; r.queryByText("Computer's Turn") && t < 20_000; t += 5) await advance(5);
+      expect(mockPlays).toContain("yacht.cpuYacht");
+      expect(endPlays()).toEqual([]);
+      expect(cardShown(r)).toBe(false);
+      await advance(CPU_JACKPOT_SOUND_MS);
+      expect(endPlays()).toEqual(["yacht.win"]);
+      await advance(0);
+      expect(cardShown(r)).toBe(true);
+    });
+  });
+
   it("a game reopened on the computer's last turn is silent", async () => {
     const finished = lastRound("chance", 130);
     const r = await renderGame({
@@ -304,26 +377,5 @@ describe("the end sound (vs): the outcome decides", () => {
     expect(cardShown(r)).toBe(true);
     await advance(5000);
     expect(endPlays()).toEqual([]);
-  });
-});
-
-// Last: unmounting a finished game leaves state behind that the vs tests above must not see.
-describe("the end sound: a restore and a remount", () => {
-  it("a game reopened finished (a restore) is silent, and so is a remount", async () => {
-    const finished = lastRound("chance", 130);
-    const params = {
-      initialState: {
-        ...finished,
-        scores: { ...finished.scores, chance: 30 },
-        game_over: true,
-        round: 14,
-      },
-    };
-    const r = await renderGame(params);
-    expect(cardShown(r)).toBe(true);
-    r.unmount();
-    await renderGame(params);
-    await advance(5000);
-    expect(mockPlays.filter((k) => END.includes(k))).toEqual([]);
   });
 });

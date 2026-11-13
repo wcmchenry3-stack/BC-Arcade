@@ -1,6 +1,7 @@
 /** #3578: Yacht's sound registry. The dice roll is three synthesized variations. */
 import * as fs from "fs";
 import * as path from "path";
+import { CPU_JACKPOT_SOUND_MS, LOSS_BEAT_MS, TIE_BEAT_MS, WIN_BEAT_MS } from "../motion";
 import { YACHT_DICE_ROLL, YACHT_DIE_HOLD, YACHT_DIE_RELEASE, YACHT_SOUNDS } from "../sounds";
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../sounds.ts"), "utf8");
@@ -99,5 +100,28 @@ describe("Yacht sound registry", () => {
       expect(SCREEN).toContain(`useSound("yacht.${k}", YACHT_SOUNDS)`);
     }
     expect(SCREEN).toContain("onStart:");
+  });
+
+  describe("the generator's timings are the motion's (#3750)", () => {
+    const GENERATOR = fs.readFileSync(
+      path.join(__dirname, "../../../../../tools/assets/synth_puzzle_sfx.py"),
+      "utf8"
+    );
+    const constant = (name: string): number =>
+      Number(new RegExp(`^${name} = ([0-9.]+)$`, "m").exec(GENERATOR)![1]);
+
+    it("the win chord is at the win beat, the loss and tie chords at their beats", () => {
+      expect(constant("YACHT_WIN_CARD_AT") * 1000).toBe(WIN_BEAT_MS);
+      expect(constant("YACHT_END_CARD_AT") * 1000).toBe(LOSS_BEAT_MS);
+      expect(constant("YACHT_END_CARD_AT") * 1000).toBe(TIE_BEAT_MS);
+    });
+
+    it("the computer's jackpot sounds are as long as the end beat waits for them", () => {
+      for (const fn of ["cpu_jackpot_yacht", "cpu_jackpot_joker"]) {
+        const body = GENERATOR.slice(GENERATOR.indexOf(`def ${fn}(`));
+        const secs = Number(/mix\(\s*([0-9.]+),/.exec(body)![1]);
+        expect(secs * 1000).toBe(CPU_JACKPOT_SOUND_MS);
+      }
+    });
   });
 });

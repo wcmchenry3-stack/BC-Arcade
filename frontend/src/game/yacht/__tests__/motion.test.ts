@@ -6,6 +6,7 @@ import {
   BONUS_PULSE_MS,
   BONUS_PULSE_SCALE,
   CPU_HOLD_MS,
+  CPU_JACKPOT_SOUND_MS,
   CPU_LAST_TURN_SPEED,
   CPU_REDUCED_MOTION_SPEED,
   CPU_SCORE_BEAT_MS,
@@ -54,6 +55,8 @@ const CEILING = {
   cpuTurn: 5000,
   winBeat: 1000,
   lossBeat: 600,
+  // The computer's yacht / joker sound (0.7 s), which a last-score end beat waits for.
+  cpuJackpotSound: 700,
 };
 
 describe("Yacht motion", () => {
@@ -147,6 +150,7 @@ describe("Yacht motion", () => {
     expect(WIN_BEAT_MS).toBe(CEILING.winBeat);
     expect(LOSS_BEAT_MS).toBe(CEILING.lossBeat);
     expect(TIE_BEAT_MS).toBe(CEILING.lossBeat);
+    expect(CPU_JACKPOT_SOUND_MS).toBeLessThanOrEqual(CEILING.cpuJackpotSound);
     expect(endBeatMs("win")).toBe(WIN_BEAT_MS);
     expect(endBeatMs("loss")).toBe(LOSS_BEAT_MS);
     expect(endBeatMs("tie")).toBe(TIE_BEAT_MS);

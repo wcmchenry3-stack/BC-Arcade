@@ -142,6 +142,13 @@ export const WIN_BEAT_MS = 1000;
 export const LOSS_BEAT_MS = 600;
 export const TIE_BEAT_MS = 600;
 
+/**
+ * The computer's yacht / joker sound (`cpu-jackpot-*.ogg`, 0.7 s, from the recipe in
+ * tools/assets/synth_puzzle_sfx.py). When it is the game's last score, the end beat (and its
+ * sound) starts after it, so only one sound plays at a time (#3750). Also under Reduce Motion.
+ */
+export const CPU_JACKPOT_SOUND_MS = 700;
+
 export function endBeatMs(outcome: YachtEndOutcome): number {
   return outcome === "win" ? WIN_BEAT_MS : outcome === "loss" ? LOSS_BEAT_MS : TIE_BEAT_MS;
 }

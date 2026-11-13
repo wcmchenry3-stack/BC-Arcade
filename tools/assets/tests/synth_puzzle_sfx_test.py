@@ -279,7 +279,7 @@ def test_yacht_end_sounds_are_silent_before_the_beat_and_carry_on_phones():
         x = level(recipe())
         spec = np.abs(np.fft.rfft(x)) ** 2
         f = np.fft.rfftfreq(len(x), 1 / SR)
-        assert spec[f < 300].sum() / spec.sum() < 0.05, n
+        assert spec[f < 300].sum() / spec.sum() < 0.001, n  # under 0.1 %
     # Each sound is generated from silence: nothing before the first note (sample 0 is zero).
     for fn in (synth_puzzle_sfx.yacht_win, synth_puzzle_sfx.yacht_loss, synth_puzzle_sfx.yacht_tie):
         assert fn()[0] == 0

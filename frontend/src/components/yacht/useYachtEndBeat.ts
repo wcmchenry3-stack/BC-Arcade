@@ -76,7 +76,14 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
     phaseRef.current = next;
     setPhase(next);
   };
-  useEffect(() => clearTimer, []);
+  const generation = useRef(0);
+  // Unmounting ends any wait for an outcome: its beat never starts (and plays no sound).
+  useEffect(() => {
+    return () => {
+      generation.current += 1;
+      clearTimer();
+    };
+  }, []);
 
   /** The beat itself, now: the card waits `endBeatMs(kind)`, or nothing under Reduce Motion. */
   const begin = useCallback((kind: YachtEndOutcome) => {
@@ -106,7 +113,6 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
   }, [begin]);
 
   // Each start (and clear) is a new game end: a promise from an older one is ignored.
-  const generation = useRef(0);
 
   /** The outcome is known: the beat now, or a wait for the celebration first. */
   const startKnown = useCallback(
