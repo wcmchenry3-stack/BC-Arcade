@@ -90,9 +90,24 @@ const live = (label: RegExp) => {
   return node !== null && node.props.accessibilityState?.disabled !== true;
 };
 
-/** Every card the engine holds is drawn, at its place in the geometry (the felt's estimate). */
-function expectTableMatches(engine: EngineState) {
+/**
+ * Every card the engine holds is drawn, at its place in the geometry (the felt's estimate), except
+ * the cards `held` (the motion's own count per hand, `Timeline.held`): a split hand's second card
+ * stays back until that hand is the one to play (owner decision, #3720). The exemption is exact: a
+ * held card is only ever the last card of a split hand that comes after the active one, in the
+ * player's phase, at most one per hand. Every other card must be drawn.
+ */
+function expectTableMatches(engine: EngineState, held: readonly number[]) {
   const v = toViewState(engine);
+  const heldOf = (k: number) => held[k] ?? 0;
+  v.player_hands.forEach((h, k) => {
+    if (heldOf(k) === 0) return;
+    expect(v.phase).toBe("player");
+    expect(k).toBeGreaterThan(v.active_hand_index);
+    expect(heldOf(k)).toBe(1);
+    expect(h.cards.length).toBeGreaterThanOrEqual(2);
+  });
+  expect(held.length).toBeLessThanOrEqual(v.player_hands.length);
   const window = Dimensions.get("window");
   const felt = estimateFeltSize({
     screenWidth: window.width,
@@ -102,13 +117,14 @@ function expectTableMatches(engine: EngineState) {
     headerHeight: APP_HEADER_HEIGHT,
   });
   const betting = v.phase === "betting";
+  const drawnCards = (k: number) => v.player_hands[k]!.cards.length - heldOf(k);
   const geometry = computeTableGeometry({
     feltWidth: felt.width,
     feltHeight: felt.height,
     screenWidth: window.width,
     screenHeight: window.height,
     dealerCards: betting ? 0 : v.dealer_hand.cards.length,
-    handCards: betting ? [] : v.player_hands.map((h) => h.cards.length),
+    handCards: betting ? [] : v.player_hands.map((_, k) => drawnCards(k)),
     activeHandIndex: v.phase === "player" ? v.active_hand_index : null,
     showResult: showsResult(v.phase),
   });
@@ -125,17 +141,22 @@ function expectTableMatches(engine: EngineState) {
     return;
   }
   const dealerShown = geometry.dealer.collapsed ? 0 : v.dealer_hand.cards.length;
-  expect(drawn).toBe(dealerShown + v.player_hands.reduce((a, h) => a + h.cards.length, 0));
+  expect(drawn).toBe(dealerShown + v.player_hands.reduce((a, _, k) => a + drawnCards(k), 0));
   for (let i = 0; i < dealerShown; i++) {
     const f = geometry.dealer.fan;
     expect(placeOf(`dealer-card-${i}`)).toEqual([f.x + i * f.step, f.y]);
   }
-  v.player_hands.forEach((h, k) =>
-    h.cards.forEach((_, i) => {
+  v.player_hands.forEach((h, k) => {
+    for (let i = 0; i < h.cards.length; i++) {
+      if (i >= drawnCards(k)) {
+        // The held card is not on the table.
+        expect(screen.queryByTestId(`hand-${k}-card-${i}`)).toBeNull();
+        continue;
+      }
       const f = geometry.hands[k]!.fan;
       expect(placeOf(`hand-${k}-card-${i}`)).toEqual([f.x + i * f.step, f.y]);
-    })
-  );
+    }
+  });
   // A natural's moment (#3621) has ended, nothing of it left moving, and its edges are exactly the
   // settled round's (the gold on a one-hand natural, the silver on the dealer's that decided it).
   const hidden = { includeHiddenElements: true };
@@ -179,8 +200,13 @@ afterEach(() => {
   (loadGame as jest.Mock).mockResolvedValue(null);
 });
 
+/**
+ * Seeds 1-12, plus ones that end mid-split with a card held back (#3747: 40, 64, 74, 79, 85) and
+ * ones where a Rebet's deal is decided at once by the dealer's peek (#3741: 41, 49, 50). All of
+ * 13-87 pass; the full range takes ~70 s, so only these run in CI.
+ */
 describe("fuzz: random play with taps mid-motion", () => {
-  it.each(Array.from({ length: 12 }, (_, i) => i + 1))(
+  it.each([...Array.from({ length: 12 }, (_, i) => i + 1), 40, 41, 49, 50, 64, 74, 79, 85])(
     "seed %i",
     async (seed) => {
       const mine = ++seedRun;
@@ -230,6 +256,12 @@ describe("fuzz: random play with taps mid-motion", () => {
       let queued = false;
       let held: readonly number[] = [];
       let settledRounds = 0;
+      /**
+       * An action that leaves the engine at a result settles a round, also from a result: a Rebet
+       * whose deal is decided at once (the dealer's peek, #3741) goes result -> result.
+       */
+      const settles = (before: EngineState, after: EngineState) =>
+        showsResult(after.phase) && (!showsResult(before.phase) || after !== before);
       /** Cards the engine dealt (a split's second card moves; it is not dealt again). */
       let dealt = 0;
       // Per round too: a round's deal sounds never outnumber the cards it dealt (a skip only drops
@@ -330,7 +362,7 @@ describe("fuzz: random play with taps mid-motion", () => {
           queued = false;
           const after = spied.ctx!.engine!;
           const plan = planMotion(toViewState(before), toViewState(after), held);
-          if (showsResult(after.phase) && !showsResult(before.phase)) settledRounds++;
+          if (settles(before, after)) settledRounds++;
           count(before, after);
           finish(Infinity, false);
           pending = plan === null ? null : { plan, start: startsAt };
@@ -348,16 +380,17 @@ describe("fuzz: random play with taps mid-motion", () => {
         const after = spied.ctx!.engine!;
         if (after !== before) {
           const plan = planMotion(toViewState(before), toViewState(after), held);
-          if (showsResult(after.phase) && !showsResult(before.phase)) settledRounds++;
+          if (settles(before, after)) settledRounds++;
           count(before, after);
           finish(Infinity, false);
           pending = plan === null ? null : { plan, start: holdUntil };
+          held = plan === null ? [] : plan.held;
         }
       }
       await advance(6000);
       alive();
       finish(Infinity, false);
-      expectTableMatches(spied.ctx!.engine!);
+      expectTableMatches(spied.ctx!.engine!, held);
       // Each settled round sounds its result once, whether it played out or was cut short.
       // Bounds that do not come from the plan (no Reduce Motion, never away): no more deal sounds
       // than cards dealt, and every settled round heard (a split hand's own bust aside).
