@@ -12,6 +12,8 @@ interface Props {
   variant: Variant;
   notesMode: boolean;
   onDigit: (digit: CellValue) => void;
+  /** The puzzle is solved (#3774): every key is inert until a new game. */
+  disabled?: boolean;
   /** Key height in points (at least 44; the screen shrinks it on a short phone). */
   keyHeight?: number;
   /** Gap between keys, in points. */
@@ -23,6 +25,10 @@ interface Props {
    */
   message?: string;
 }
+
+/** A pressed key's scale and opacity (#3774). */
+const KEY_PRESSED_SCALE = 0.96;
+const KEY_PRESSED_OPACITY = 0.8;
 
 function countValue(grid: Grid, digit: CellValue): number {
   let n = 0;
@@ -39,6 +45,7 @@ export default function NumberPad({
   variant,
   notesMode,
   onDigit,
+  disabled: allDisabled = false,
   keyHeight = 52,
   gap = 4,
   message,
@@ -89,7 +96,7 @@ export default function NumberPad({
         >
           {row.map((d) => {
             const remaining = Math.max(0, size - (counts.get(d) ?? 0));
-            const disabled = remaining <= 0;
+            const disabled = remaining <= 0 || allDisabled;
             return (
               <Pressable
                 key={d}
@@ -99,8 +106,10 @@ export default function NumberPad({
                 accessibilityRole="button"
                 accessibilityLabel={t("numberPad.digit", { digit: d, remaining })}
                 accessibilityState={{ disabled }}
-                style={[
+                style={({ pressed }) => [
                   styles.key,
+                  // The pressed dip (#3774): press feedback, not motion, so Reduce Motion keeps it.
+                  pressed && !disabled && styles.keyPressed,
                   {
                     height: keyHeight,
                     backgroundColor: colors.surfaceHigh,
@@ -108,7 +117,7 @@ export default function NumberPad({
                     borderColor: notesMode ? colors.accentText : colors.border,
                     borderStyle: notesMode ? "dashed" : "solid",
                     borderWidth: notesMode ? 1.5 : 1,
-                    opacity: disabled ? 0.32 : 1,
+                    opacity: disabled ? 0.32 : pressed ? KEY_PRESSED_OPACITY : 1,
                   },
                 ]}
               >
@@ -154,6 +163,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+  },
+  // A key pressed in: a little smaller and dimmer, back as the finger lifts.
+  keyPressed: {
+    transform: [{ scale: KEY_PRESSED_SCALE }],
   },
   digit: {
     fontFamily: typography.heading,

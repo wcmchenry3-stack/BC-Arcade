@@ -120,14 +120,40 @@ A hint:
 - places the digit even in Notes mode (it never toggles a pencil mark, and Notes mode stays on);
 - does **not** add an error or carry a separate score penalty.
 
+## Motion (#3774)
+
+The owner picked proposal 1, "Calm". Every timing is in [`frontend/src/game/sudoku/motion.ts`](../../frontend/src/game/sudoku/motion.ts); `__tests__/motion.test.ts` holds the ceilings. Every animation is a single run: no loops, no timer left running, nothing on the frame path for data collection. Times are from the move that caused them.
+
+| What | Constant(s) | When / how long | Notes |
+| --- | --- | --- | --- |
+| Place (a digit or a hint landing) | `PLACE_MS` 150, `PLACE_FROM_SCALE` 0.9 | 0 to 150 ms | the cell's digit fades in and scales 0.9 to 1 (`PlaceIn`, Reanimated) |
+| Error (an illegal digit) | `ERROR_PULSE_MS` 380, `ERROR_PULSE_PEAK` 0.55 | 0 to 380 ms | the cell pulses red once; replaces the full-screen red flash. The resting conflict and mistake styles (see UI) are unchanged |
+| Clash ring | `CLASH_BLINK_DELAY_MS` 100, `CLASH_BLINK_OFF_MS` 120, `CLASH_BLINK_DIM` 0.15, `CLASH_BLINK_EDGE_MS` 20 | 100 to 260 ms | the red ring of each clashing cell blinks once (dims, then back) |
+| Unit complete | `UNIT_SWEEP_START_MS` 50, `UNIT_SWEEP_MS` 450, `UNIT_CELL_MS` 200, `UNIT_PEAK` 0.34, `UNIT_SWEEP_TOTAL_MS` 550 | 50 to 500 ms, over by 550 ms | a soft teal glow passes along the completed row (left to right), column (top to bottom) or box (reading order), cell by cell; replaces the full-screen glow. The cells come from the engine event's `unit` and `index` (`unitCells`; a box's `index` is its top-left cell's `row * size + col`), so Mini's 2 × 3 boxes work |
+| Solved wave | `WAVE_CELL_MS` 300, `WAVE_STAGGER_MS` 600, `WAVE_TOTAL_MS` 900, `WAVE_PEAK` 0.3 | 0 to 900 ms | a teal brighten along the diagonals: each cell 300 ms, starting up to 600 ms after the top-left one. The solving move's unit sweeps are not drawn: the wave stands in for them |
+| **Result card** | `SOLVED_BEAT_MS` 1000 | **+1.0 s after the solving entry** | held until then (`useSolveBeat`) |
+| Key press | none (a style) | while the finger is down | digit keys and the action bar's buttons dip (scale 0.96 and 0.94) and dim; this is press feedback, not motion, so it stays under Reduce Motion |
+
+**The moment the card shows, for the sound story #3775.** The solving entry lands at t = 0: that render has the last digit, the wave and the card held. `useGameEvents` runs the `puzzleComplete` handler (`playPuzzleComplete`) in the effect of that same commit, so a sound played from it starts at t = 0 and the card comes **1.0 s later** (`SOLVED_BEAT_MS`), after the 0.9 s wave. A sound that should land with the card is started 1.0 s after t = 0 (the hook has no `onStart` yet: add one as `useYachtEndBeat` has if the sound needs it). Under Reduce Motion the card shows at t = 0. A game restored already solved shows the card at once and has no beat (and no `puzzleComplete` event, since a save drops its events).
+
+**How the card is held.** `components/sudoku/useSolveBeat.ts` derives `holding = solved && !over && !reduceMotion` in the render itself, and the screen shows the card when `isComplete && !holding` and the wave while `holding`. Sudoku's moves run inside `setState` updaters, so a handler cannot know a move solved the puzzle; but the render that commits the solved state also reads `holding`, so the board, the wave and the held card land together and the card never flashes before the beat. The timer starts in that commit's effect. Unmounting clears it; a new game (solved turns false) clears the beat; a restore that finds the game solved calls `skip()` in the restore handler, in the same batch as the state.
+
+**Only the affected cells re-render.** `SudokuScreen` derives the move's motion from `state.events` (`deriveMotion`, memoised on the events array, which each digit or hint replaces and a selection or an erase keeps), and `SudokuGrid` turns it into primitive per-cell props (`placeId`, `errorId`, `blinkId`, `sweepId` / `sweepDelay`, `waveDelay`) that are `undefined` for every cell the move does not touch, so the memoised cells skip their render. An effect's views (`cellMotion.tsx`) are mounted only on the cells it reaches and play once when they mount, keyed by the move's id; an idle board has no animated views. The test ids are `sudoku-cell-<row>-<col>-error`, `-sweep`, `-wave` and the board's `sudoku-solved-wave` mark (up while the wave runs).
+
+**Reduce Motion** (read live with `useReduceMotion`, [ACCESSIBILITY §3](../ACCESSIBILITY.md)): nothing moves. Digits appear at once, an error shows only its static style (the red digit and wash, and the clash ring), there is no sweep and no wave, and the card shows the moment the puzzle is solved. Turning it on mid-beat cancels the beat and shows the card; turning it on mid-sweep or mid-pulse unmounts the overlays, so the cells snap to rest. Turning it off again replays nothing.
+
+### Alternatives considered
+
+The owner also saw proposals 2 · Pop (a pop on place, a shake on error, a per-cell pop along a unit, a ripple from the last cell, the card at +1.2 s) and 3 · Ink (a wipe on place, an underline and tint on error, a line drawn through a unit, the boxes filling in turn). They were not chosen and are kept for a later story: their timings are recorded in the [owner comment on #3774](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3774#issuecomment-6843435443) (find "Alternatives kept for future reference"). Pop's shake could be a "lively" motion setting later.
+
 ## Errors and completion
 
 Only **illegal moves** are errors (#2943). A digit is illegal when it duplicates a digit already in its row, column or box (givens included). The check is against the board, not the stored solution:
 
-- an illegal digit stays on the board, is drawn as a conflict (see UI), increments `errorCount` and flashes the screen. Entering the same illegal digit again in that cell does nothing, so it is counted once;
-- a **legal but incorrect** digit (one that breaks no rule but is not the solution digit) is not an error: it is not counted, does not flash, costs no score and is not coloured, unless Show mistakes is on (below);
+- an illegal digit stays on the board, is drawn as a conflict (see UI), increments `errorCount` and pulses its cell (see Motion). Entering the same illegal digit again in that cell does nothing, so it is counted once;
+- a **legal but incorrect** digit (one that breaks no rule but is not the solution digit) is not an error: it is not counted, shows no pulse, costs no score and is not coloured, unless Show mistakes is on (below);
 - the error colour follows the current board: erasing or changing the conflicting digit clears the highlight, and both cells of a conflict between two player digits are highlighted. `errorCount` counts illegal **entries** made, so removing the duplicate afterwards does not refund the error (undo does);
-- a row, column or box completes (the `unitComplete` event, and so the sweep and sound) only when it **matches the solution** (#3785): a full unit with a wrong digit, even one without duplicates, does not. Accepted side effect: a full unit that gets no completion feedback hints at a mistake even with Show mistakes off. The event is still raised only for a legal placement;
+- a row, column or box completes (the `unitComplete` event, and so the sweep (see Motion) and sound) only when it **matches the solution** (#3785): a full unit with a wrong digit, even one without duplicates, does not. Accepted side effect: a full unit that gets no completion feedback hints at a mistake even with Show mistakes off. The event is still raised only for a legal placement;
 - the puzzle finishes only when every cell matches the solution (completion stays solution-based).
 
 Undo restores the previous error count, so undoing an illegal placement removes that error from the eventual score.
@@ -138,7 +164,7 @@ When every cell is filled but the grid is not the solution, a message says that 
 
 ### Show mistakes
 
-A checkable item in the ⋯ header menu (it adds no height to the play layout) colours legal-but-incorrect digits as mistakes. It is visual only: no count, no flash, no score effect. Illegal digits are always highlighted regardless of it. The default is **on for Easy, off for Medium and Hard**; once the player flips it, that choice is stored on the device (`sudoku_show_mistakes`) and applies to every puzzle, whatever its difficulty.
+A checkable item in the ⋯ header menu (it adds no height to the play layout) colours legal-but-incorrect digits as mistakes. It is visual only: no count, no pulse, no score effect. Illegal digits are always highlighted regardless of it. The default is **on for Easy, off for Medium and Hard**; once the player flips it, that choice is stored on the device (`sudoku_show_mistakes`) and applies to every puzzle, whatever its difficulty.
 
 ### Old saves
 
@@ -277,7 +303,7 @@ The heavy hard game above (315 entries) over the real GameEventClient → EventS
 - Replay recording: `frontend/src/game/sudoku/replay.ts` (entries, `applyRecorded`, the chunked entry log); backend `backend/sudoku/models.py` (`validate_entries`), migration `backend/alembic/versions/0043_sudoku_replay_events.py`
 - Engine: `frontend/src/game/sudoku/engine.ts`
 - Types/config: `frontend/src/game/sudoku/types.ts`
-- Board UI: `frontend/src/components/sudoku/` (`SudokuGrid`, `SudokuCell`, `NumberPad`, `NewGameModal`, `cellStyle.ts`), palette `frontend/src/theme/theme.sudoku.ts`
+- Board UI: `frontend/src/components/sudoku/` (`SudokuGrid`, `SudokuCell`, `NumberPad`, `NewGameModal`, `cellStyle.ts`); motion: `frontend/src/game/sudoku/motion.ts`, `components/sudoku/cellMotion.tsx`, `components/sudoku/useSolveBeat.ts`, palette `frontend/src/theme/theme.sudoku.ts`
 - Screen: [`frontend/src/screens/SudokuScreen.tsx`](../../frontend/src/screens/SudokuScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Storage: `frontend/src/game/sudoku/storage.ts`
 - Classic bank: `frontend/src/game/sudoku/puzzles.json`

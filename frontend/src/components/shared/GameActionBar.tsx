@@ -86,6 +86,8 @@ function Action({
           selected && { backgroundColor: `${color}26`, borderColor: color },
         ],
         { opacity: inactive ? PILL_DISABLED_OPACITY : pressed ? 0.7 : 1 },
+        // The pressed dip (#3774): press feedback, not motion, so Reduce Motion keeps it.
+        pressed && !inactive && styles.pressed,
       ]}
     >
       <View>
@@ -178,6 +180,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
+  pressed: { transform: [{ scale: 0.94 }] },
   // A toggle keeps a transparent ring when off, so switching it does not move the button.
   toggle: { borderRadius: 12, borderWidth: 1.5, borderColor: "transparent" },
   // The spinner takes the icon box so the bar does not shift while busy.
