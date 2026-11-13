@@ -18,7 +18,7 @@ import * as solitaireEngine from "../../game/solitaire/engine";
 import seedsJson from "../../game/solitaire/seeds.json";
 import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
 import type { SolitaireState } from "../../game/solitaire/types";
-import { loadStats, saveStats } from "../../game/solitaire/storage";
+import { getBest, recordResult, storageKey } from "../../game/_shared/personalBest";
 import { WIN_CASCADE_MS } from "../../components/solitaire/SolitaireWinCascade";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
@@ -1002,7 +1002,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
   it("plays the win cascade, then reveals the card and records the win once", async () => {
     reduceMotion.mockResolvedValue(false);
     await AsyncStorage.setItem("player_display_name", "Alice");
-    await saveStats({ bestTimeMs: 90000 });
+    await recordResult("solitaire", 90000);
     const api = await mountOneMoveFromWin();
     await playWinningMove(api);
 
@@ -1024,7 +1024,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
     expect(card.getByText("New best")).toBeTruthy();
     expect(card.getByText("Moves")).toBeTruthy();
     await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledTimes(1));
-    expectAbout61s((await loadStats()).bestTimeMs);
+    expectAbout61s(await getBest("solitaire"));
   });
 
   // #2636: as in Sudoku, Cascade and 2048, a first win has no best to beat.
@@ -1033,7 +1033,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
     const card = within(api.getByTestId("solitaire-result"));
     expect(card.queryByText("New best")).toBeNull();
     expect(card.getByText("Best")).toBeTruthy();
-    await waitFor(async () => expectAbout61s((await loadStats()).bestTimeMs));
+    await waitFor(async () => expectAbout61s(await getBest("solitaire")));
   });
 
   it("shows no New best and writes nothing when the win is slower than the best", async () => {
@@ -1052,7 +1052,15 @@ describe("SolitaireScreen — result card (#2509)", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    expect(await AsyncStorage.getItem("solitaire_stats_v1")).toBe(stored);
+    // The old record is moved into the shared personal best (#3757) with its best unchanged.
+    expect(await getBest("solitaire")).toBe(50000);
+  });
+
+  it("reads the best from the shared personal best and records a new one there (#3757)", async () => {
+    await AsyncStorage.setItem(storageKey("solitaire"), JSON.stringify({ v: 1, b: { _: 90000 } }));
+    const api = await winNow();
+    expect(within(api.getByTestId("solitaire-result")).getByText("New best")).toBeTruthy();
+    await waitFor(async () => expectAbout61s(await getBest("solitaire")));
   });
 
   it("Play Again deals a new game in the same draw mode, skipping the picker", async () => {
@@ -1366,7 +1374,7 @@ describe("SolitaireScreen — local best cache", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    expect(await AsyncStorage.getItem("solitaire_stats_v1")).toBeNull();
+    expect(await AsyncStorage.getItem(storageKey("solitaire"))).toBeNull();
   });
 
   it("resuming an already-won game leaves the stored record alone", async () => {
@@ -1405,7 +1413,8 @@ describe("SolitaireScreen — local best cache", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    expect(await AsyncStorage.getItem("solitaire_stats_v1")).toBe(stored);
+    // The old record is moved into the shared personal best (#3757) with its best unchanged.
+    expect(await getBest("solitaire")).toBe(95000);
   });
 });
 
