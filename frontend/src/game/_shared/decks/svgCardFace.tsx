@@ -3,7 +3,7 @@
  *
  * Both decks draw the same card: a rounded face with an inset border, the rank
  * and a small suit glyph in the top-left corner, a centre pip (or a framed J/Q/K
- * letter) and the corner repeated rotated 180°; face-down, a diamond-grid back.
+ * letter) and the corner repeated rotated 180°; face-down, the lattice back (`CardBack`, #3740).
  * A deck is a palette, a corner radius, its glyph set and, optionally, a glow
  * filter — see `classic/` and `neon/`.
  */
@@ -22,21 +22,23 @@ import {
 } from "react-native-svg";
 import { rankLabel, RED_SUITS } from "./cardId";
 import { compactSvgCornerLayout, stackedCornerIndex } from "./cornerIndex";
+import CardBack from "./CardBack";
+import type { CardBackDesign } from "./cardBackShapes";
 import type { CanonicalSuit, CardFaceProps } from "./types";
 
 /** Every colour a face draws, resolved by the deck (from theme props or its own palette). */
 export interface SvgCardPalette {
   /** Face-up fill. */
   readonly face: string;
-  /** Face-down fill. */
-  readonly back: string;
-  /** The back's inset border and the frame around a J/Q/K letter. */
+  /** The back's outer edge (so hint and selection borders show face-down) and the frame round a J/Q/K letter. */
   readonly border: string;
   /** The face-up card's inset border. */
   readonly faceBorder: string;
-  /** Stroke and opacity of the back's diamond grid. */
-  readonly backGrid: string;
-  readonly backGridOpacity: number;
+  /** The back (#3740): the margin, the field, the inset line and medallion outline, the lattice. */
+  readonly backRim: string;
+  readonly backField: string;
+  readonly backLine: string;
+  readonly backAccent: string;
   /** Spades/clubs and hearts/diamonds: corner glyphs, the pip and the J/Q/K letter. */
   readonly blackSuit: string;
   readonly redSuit: string;
@@ -62,6 +64,8 @@ export interface SvgCardFaceProps extends Pick<
   readonly glyphs: SvgCardGlyphs;
   /** SVG filter id: defines a blur-halo glow and applies it to the centre pip/letter. */
   readonly glowFilter?: string;
+  /** The back's design; a chosen back (#3429) can pass another. Default "lattice". */
+  readonly backDesign?: CardBackDesign;
 }
 
 const FACE_LETTERS: Record<number, string> = { 11: "J", 12: "Q", 13: "K" };
@@ -123,37 +127,21 @@ export default function SvgCardFace({
   glyphs,
   glowFilter,
   compactIndex,
+  backDesign,
 }: SvgCardFaceProps) {
   if (faceDown) {
     return (
-      <Svg width={width} height={height}>
-        <Frame
-          width={width}
-          height={height}
-          radius={radius}
-          fill={palette.back}
-          stroke={palette.border}
-        />
-        {/* Diamond-grid back pattern */}
-        <G opacity={palette.backGridOpacity}>
-          {Array.from({ length: 8 }, (_, i) => (
-            <Path
-              key={i}
-              d={`M ${(i - 2) * 14} 0 L ${(i + 2) * 14} ${height}`}
-              stroke={palette.backGrid}
-              strokeWidth={1}
-            />
-          ))}
-          {Array.from({ length: 8 }, (_, i) => (
-            <Path
-              key={`h${i}`}
-              d={`M 0 ${(i - 2) * 14} L ${width} ${(i + 2) * 14}`}
-              stroke={palette.backGrid}
-              strokeWidth={1}
-            />
-          ))}
-        </G>
-      </Svg>
+      <CardBack
+        design={backDesign}
+        width={width}
+        height={height}
+        radius={radius}
+        rim={palette.backRim}
+        field={palette.backField}
+        line={palette.backLine}
+        accent={palette.backAccent}
+        edge={palette.border}
+      />
     );
   }
 

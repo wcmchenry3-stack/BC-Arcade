@@ -182,6 +182,30 @@ describe("the round log", () => {
     expect(data).not.toHaveProperty("r");
   });
 
+  it("a dealer natural found by the peek (#3741): the deal and the chips before it, no actions, no dealer play", () => {
+    const game = gameWith(["TS", "KC", "8H", "AD"]);
+    const settled = placeBet(game, 10);
+    expect(settled.outcome).toBe("lose");
+    const log = openRoundLog(game, settled);
+    logDealer(log, game, settled);
+    expect(roundPlayedData(log)).toEqual({
+      b: [10, 100],
+      p: ["TS", "8H"],
+      d: ["KC", "AD"],
+      sh: 312,
+      rem: 100,
+    });
+    expect(
+      handResolvedData(0, settled.outcome!, settled.payout, settled.chips, settled.player_hand)
+    ).toEqual({
+      i: 0,
+      o: "lose",
+      p: -10,
+      ch: 90,
+      c: ["TS", "8H"],
+    });
+  });
+
   it("a round found mid-hand after a kill has no deal and is marked resumed", () => {
     const s = { ...placeBet(gameWith(["8S", "6C", "8H", "TD"]), 10), round: 7 };
     expect(roundPlayedData(resumedRoundLog(s))).toEqual({

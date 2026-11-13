@@ -27,6 +27,8 @@
   "card.suit.diamonds": "ألماس",
   "card.suit.clubs": "زهور",
   "outcome.blackjack": "بلاك جاك!",
+  "outcome.blackjackNatural": "بلاك جاك! 3:2",
+  "outcome.blackjackNaturalLabel": "بلاك جاك، يدفع 3 مقابل 2",
   "outcome.win": "فزت!",
   "outcome.push": "تعادل",
   "outcome.lose": "خسرت",
@@ -67,6 +69,8 @@
   "rules.soft17Tooltip": "S17: الموزع يقف على 17 لينة — أفضل قليلاً للاعب. H17: الموزع يسحب على 17 لينة — أفضل قليلاً للبيت.",
   "rules.decksTooltip": "عدد الرزم التي تُخلط معًا في الحذاء. زيادة عدد الرزم تزيد قليلاً من أفضلية البيت وتجعل عدّ الأوراق أصعب.",
   "rules.penetrationTooltip": "مقدار ما يُوزَّع من الحذاء قبل إعادة الخلط. 75% تعني أن 75% من الأوراق تُلعب قبل خلط جديد. زيادة الاختراق = تباين أكبر.",
+  "rules.standardTitle": "القواعد القياسية",
+  "rules.standard": "بلاك جاك يدفع 3:2. إذا كانت ورقة الموزع المكشوفة آسًا أو عشرة، يتحقق من وجود بلاك جاك قبل أن تلعب. بلاك جاك الموزع ينهي اليد فورًا: تخسر رهانك الأصلي فقط، أو تعادل إذا كان لديك بلاك جاك أيضًا. بلاك جاك يتغلب على أي 21 أخرى.",
   "score.heroLabel": "الجلسة",
   "score.plLine": "{{amount}} شريحة",
   "score.subLine": "{{handsPlayed}} أيدي · نسبة الفوز {{winRate}}%",
@@ -150,5 +154,7 @@
   "result.playerBusts": "تجاوزت بـ {{value}}",
   "result.versus": "{{player}} مقابل {{dealer}} للموزع",
   "result.dealerHas": "لدى الموزع {{value}}",
+  "result.dealerBlackjack": "بلاك جاك للموزع",
+  "result.bothBlackjack": "بلاك جاك للطرفين",
   "a11y.handBet": "الرهان {{amount}} رقائق"
 }

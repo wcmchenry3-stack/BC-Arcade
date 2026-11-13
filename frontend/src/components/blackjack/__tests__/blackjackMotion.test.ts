@@ -9,6 +9,7 @@
 import {
   doubleDown,
   hit,
+  isNaturalBlackjack,
   newGame,
   newHand,
   placeBet,
@@ -19,6 +20,7 @@ import {
   type EngineState,
 } from "../../../game/blackjack/engine";
 import { createSeededRng } from "../../../game/_shared/seededRng";
+import { savedAgainstNatural } from "../../../game/blackjack/__tests__/helpers/engineFixtures";
 import type { BlackjackState } from "../../../game/blackjack/types";
 import { cubicBezier } from "../../cards/cardMotion";
 import {
@@ -28,6 +30,9 @@ import {
   DEALER_PACE_MS,
   FLIP_MS,
   fullStage,
+  NATURAL_AT_MS,
+  naturalEdges,
+  NO_NATURALS,
   planMotion,
   RESULT_CUES,
   RESULT_DELAY_MS,
@@ -199,6 +204,150 @@ describe("planMotion", () => {
   });
 });
 
+// #3621 (owner decisions, #3739): the natural's moment, its sting and the naturals' edges.
+describe("the natural", () => {
+  /** [at, player edge, dealer edge] at each stage where an edge changes. */
+  const edges = (t: Timeline) =>
+    t.frames
+      .filter(
+        (f, i) =>
+          i === 0 ||
+          f.stage.natural.player !== t.frames[i - 1]!.stage.natural.player ||
+          f.stage.natural.dealer !== t.frames[i - 1]!.stage.natural.dealer
+      )
+      .map((f) => [f.at, f.stage.natural.player, f.stage.natural.dealer]);
+
+  it("a player's natural: the sting as the second card lands, the result at the flip's end", () => {
+    const s0 = betting(c("A"), c("7", "♣"), c("K", "♥"), c("9", "♥"));
+    const s1 = placeBet(s0, 10);
+    expect(s1.outcome).toBe("blackjack");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(cuesOf(t)).toEqual([
+      ["deal", 0],
+      ["deal", 180],
+      ["deal", 360],
+      ["deal", 540],
+      ["blackjack", NATURAL_AT_MS],
+      ["flip", 780],
+      ["payout", 780 + FLIP_MS + CHIP_DELAY_MS],
+    ]);
+    expect(NATURAL_AT_MS).toBe(600);
+    // No +300 ms: the banner shows as the hole card's turn ends; no second chime there.
+    expect(t.resultAt).toBe(780 + FLIP_MS);
+    expect(t.chimeAt).toBe(NATURAL_AT_MS);
+    expect(t.momentAt).toBe(NATURAL_AT_MS);
+    expect(edges(t)).toEqual([
+      [0, false, false],
+      [600, true, false],
+    ]);
+    // The 3:2 payout chip is the larger one.
+    const chips = t.frames.flatMap((f) => f.stage.chips);
+    expect(chips.length).toBeGreaterThan(0);
+    chips.forEach((chip) => expect(chip).toMatchObject({ kind: "payout", natural: true }));
+  });
+
+  it("the dealer's natural, found by the peek (#3741): the deal, the flip at once, a silver edge as it turns, then the loss", () => {
+    const s0 = betting(c("10"), c("K", "♣"), c("8", "♥"), c("A", "♦"));
+    const s1 = placeBet(s0, 10);
+    expect(s1.phase).toBe("result");
+    expect(s1.outcome).toBe("lose");
+    const t = planMotion(view(s0), view(s1))!;
+    // The hole card turns as the up card lands (780 ms), then the result 300 ms after the turn.
+    const flipAt = 3 * 180 + DEAL_FLIGHT_MS;
+    expect(cuesOf(t)).toEqual([
+      ["deal", 0],
+      ["deal", 180],
+      ["deal", 360],
+      ["deal", 540],
+      ["flip", flipAt],
+      ["lose", flipAt + FLIP_MS + RESULT_DELAY_MS],
+      ["collect", flipAt + FLIP_MS + RESULT_DELAY_MS + CHIP_DELAY_MS],
+    ]);
+    expect(t.flips).toBe(true);
+    expect(t.resultAt).toBe(flipAt + FLIP_MS + RESULT_DELAY_MS);
+    expect(t.chimeAt).toBe(t.resultAt);
+    expect(t.momentAt).toBeNull();
+    expect(edges(t)).toEqual([
+      [0, false, false],
+      [flipAt + FLIP_MS, false, true],
+    ]);
+    t.frames.flatMap((f) => f.stage.chips).forEach((chip) => expect(chip.natural).toBeUndefined());
+    // Only the original bet is swept: one collect chip, for the one hand.
+    expect(t.cues.filter((q) => q.sound === "collect")).toHaveLength(1);
+    expect(s1.payout).toBe(-10);
+  });
+
+  it("the dealer's natural with the ace in the hole and a ten up is peeked the same way", () => {
+    const s0 = betting(c("10"), c("A", "♣"), c("8", "♥"), c("Q", "♦"));
+    const s1 = placeBet(s0, 10);
+    expect(s1.outcome).toBe("lose");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(t.cues.find((q) => q.sound === "flip")?.at).toBe(3 * 180 + DEAL_FLIGHT_MS);
+    expect(naturalEdges(view(s1))).toEqual({ player: false, dealer: true });
+  });
+
+  it("natural against natural: the gold edge only (no sting), the silver at the flip, then the push", () => {
+    const s0 = betting(c("A"), c("A", "♣"), c("K", "♥"), c("K", "♦"));
+    const s1 = placeBet(s0, 10);
+    expect(s1.outcome).toBe("push");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(cuesOf(t)).toEqual([
+      ["deal", 0],
+      ["deal", 180],
+      ["deal", 360],
+      ["deal", 540],
+      ["flip", 780],
+      ["push", 1100],
+      ["nudge", 1100 + CHIP_DELAY_MS],
+    ]);
+    expect(t.resultAt).toBe(1100);
+    expect(t.chimeAt).toBe(1100);
+    expect(t.momentAt).toBeNull();
+    expect(edges(t)).toEqual([
+      [0, false, false],
+      [600, true, false],
+      [1100, true, true],
+    ]);
+  });
+
+  it("a split hand's ace and ten is not a natural (it pays 1:1): no edge, no sting", () => {
+    const s0 = placeBet(
+      betting(c("A"), c("7", "♣"), c("A", "♥"), c("9", "♦"), c("K", "♦"), c("5", "♣")),
+      10
+    );
+    const s1 = split(s0);
+    expect(s1.player_hands[0]!.map((x) => x.rank)).toEqual(["A", "K"]);
+    expect(s1.hand_outcomes[0]).toBe("win");
+    const t = planMotion(view(s0), view(s1))!;
+    expect(t.cues.some((q) => q.sound === "blackjack")).toBe(false);
+    expect(t.momentAt).toBeNull();
+    expect(t.chimeAt).toBe(t.resultAt);
+    t.frames.forEach((f) => expect(f.stage.natural).toEqual(NO_NATURALS));
+    expect(naturalEdges(view(s1))).toEqual(NO_NATURALS);
+  });
+
+  it("the dealer's natural against a bust is not marked; against a 3-card 21 it wins and is (#3741)", () => {
+    // A save from before the peek (savedAgainstNatural): the player still to act against it.
+    const bust = savedAgainstNatural([c("10"), c("6", "♥")], [c("K", "♦")]);
+    expect(naturalEdges(view(hit(bust)))).toEqual(NO_NATURALS);
+    // Standard rules (#3741): the dealer's natural beats a 3-card 21, so it decided the round.
+    const settled = stand(hit(savedAgainstNatural([c("10"), c("6", "♥")], [c("5", "♦")])));
+    expect(settled.outcome).toBe("lose");
+    expect(naturalEdges(view(settled))).toEqual({ player: false, dealer: true });
+  });
+
+  it("a settled round marks its naturals; a round in play or betting marks none", () => {
+    const s1 = placeBet(betting(c("A"), c("7", "♣"), c("K", "♥"), c("9", "♥")), 10);
+    expect(naturalEdges(view(s1))).toEqual({ player: true, dealer: false });
+    expect(fullStage(view(s1)).natural).toEqual({ player: true, dealer: false });
+    expect(naturalEdges(view(newHand(s1)))).toEqual(NO_NATURALS);
+    // The dealer peeks under an ace and finds 20, not a natural: the round goes on.
+    const playing = placeBet(betting(c("10"), c("9", "♣"), c("8", "♥"), c("A", "♦")), 10);
+    expect(playing.phase).toBe("player");
+    expect(naturalEdges(view(playing))).toEqual(NO_NATURALS);
+  });
+});
+
 describe("stageView", () => {
   it("draws the cards shown, the hole card face down, and no result before it shows", () => {
     const s1 = stand(placeBet(betting(c("10"), c("7", "♣"), c("5", "♥"), c("9", "♥")), 10));
@@ -355,17 +504,39 @@ function check(
   const all = [...ids.dealer, ...ids.hands.flat()];
   expect(new Set(all).size).toBe(all.length);
   expect(all).toHaveLength(totalCards(next));
-  const chimes = cues.filter((q) => RESULT_CUES.includes(q.sound) && q.at === t.resultAt);
+  // The natural (#3621): the sting only on a deal that makes a 3:2 natural, once, as the second
+  // card lands, with its moment and its larger payout chip; an edge once marked stays; a split
+  // round never marks one.
+  const stung = prev.phase !== "player" && next.outcome === "blackjack";
+  expect(cues.filter((q) => q.sound === "blackjack")).toEqual(
+    stung ? [{ at: NATURAL_AT_MS, sound: "blackjack" }] : []
+  );
+  expect(t.momentAt).toBe(stung ? NATURAL_AT_MS : null);
+  for (let i = 1; i < frames.length; i++) {
+    const a = frames[i - 1]!.stage.natural;
+    const b = frames[i]!.stage.natural;
+    if (a.player) expect(b.player).toBe(true);
+    if (a.dealer) expect(b.dealer).toBe(true);
+  }
+  for (const f of frames) {
+    if (f.stage.hands.length > 1) expect(f.stage.natural).toEqual(NO_NATURALS);
+    if (f.stage.natural.dealer) expect(f.stage.holeCounted).toBe(true);
+    f.stage.chips.forEach((chip) => expect(chip.natural ?? false).toBe(stung));
+  }
+  const chimes = cues.filter((q) => RESULT_CUES.includes(q.sound) && q.at === t.chimeAt);
   if (t.resultAt === null) {
     expect(t.flips).toBe(false);
+    expect(t.chimeAt).toBeNull();
     return;
   }
-  // One chime, after the last card lands; the flip before every dealer draw.
+  // One chime, after the last card lands; the flip before every dealer draw. A player's natural
+  // (#3621) shows its result at the flip's end, its chime (the sting) as its second card lands.
   expect(chimes).toHaveLength(1);
+  const playerNatural = prev.phase !== "player" && naturalEdges(next).player;
   const lastDeal = Math.max(-1, ...cues.filter((q) => q.sound === "deal").map((q) => q.at));
   const flip = cues.find((q) => q.sound === "flip")!;
   expect(t.resultAt).toBeGreaterThanOrEqual(
-    Math.max(lastDeal + DEAL_FLIGHT_MS, flip.at + FLIP_MS) + RESULT_DELAY_MS
+    Math.max(lastDeal + DEAL_FLIGHT_MS, flip.at + FLIP_MS) + (playerNatural ? 0 : RESULT_DELAY_MS)
   );
   cues
     .filter((q) => q.sound === "deal" && q.at > flip.at)
@@ -374,6 +545,25 @@ function check(
   const chips = cues.filter((q) => ["payout", "collect", "nudge"].includes(q.sound));
   expect(chips).toHaveLength(next.player_hands.length);
   chips.forEach((q) => expect(q.at).toBeGreaterThanOrEqual(t.resultAt! + CHIP_DELAY_MS));
+}
+
+/**
+ * The peek's invariant (#3741): a dealer natural settles the round at the deal, for the original
+ * bet only: lost, or pushed by the player's natural.
+ */
+function expectPeek(s: EngineState) {
+  if (!isNaturalBlackjack(s.dealer_hand)) return;
+  expect(s.phase).not.toBe("player");
+  expect(s.dealer_hand).toHaveLength(2);
+  expect(s.doubled).toBe(false);
+  expect(s.split_count).toBe(0);
+  if (isNaturalBlackjack(s.player_hand)) {
+    expect(s.outcome).toBe("push");
+    expect(s.payout).toBe(0);
+  } else {
+    expect(s.outcome).toBe("lose");
+    expect(s.payout).toBe(-s.bet);
+  }
 }
 
 describe("fuzz: random rounds", () => {
@@ -386,6 +576,7 @@ describe("fuzz: random rounds", () => {
     for (let round = 0; round < 12; round++) {
       let prev = toViewState(s);
       s = placeBet(s, 10);
+      expectPeek(s);
       let next = toViewState(s);
       let nextIds = assignCardIds({ view: prev, ids }, next, fresh);
       const deal = planMotion(prev, next)!;
@@ -393,6 +584,8 @@ describe("fuzz: random rounds", () => {
       let held = deal.held;
       ids = nextIds;
       while (s.phase === "player") {
+        // The peek (#3741): the player never acts against a dealer natural.
+        expect(isNaturalBlackjack(s.dealer_hand.slice(0, 2))).toBe(false);
         const action = pick(s, rng);
         prev = toViewState(s);
         s = action(s);
@@ -408,14 +601,15 @@ describe("fuzz: random rounds", () => {
     }
   });
 
-  it("covers splits, resplits to four hands, doubles and naturals over the seeds", () => {
-    const seen = { split: 0, four: 0, double: 0, natural: 0 };
+  it("covers splits, resplits to four hands, doubles, naturals and peeked dealer naturals over the seeds", () => {
+    const seen = { split: 0, four: 0, double: 0, natural: 0, peeked: 0 };
     for (let seed = 1; seed <= 40; seed++) {
       const rng = createSeededRng(seed * 7919);
       let s = newGame(shoe(rng), { startingChips: 5000, runGoal: null, betMin: 5, betMax: 25 });
       for (let round = 0; round < 12; round++) {
         s = placeBet(s, 10);
         if (s.outcome === "blackjack") seen.natural++;
+        if (isNaturalBlackjack(s.dealer_hand)) seen.peeked++;
         while (s.phase === "player") {
           const action = pick(s, rng);
           if (action === split) seen.split++;
@@ -430,5 +624,6 @@ describe("fuzz: random rounds", () => {
     expect(seen.four).toBeGreaterThan(0);
     expect(seen.double).toBeGreaterThan(10);
     expect(seen.natural).toBeGreaterThan(0);
+    expect(seen.peeked).toBeGreaterThan(0);
   });
 });

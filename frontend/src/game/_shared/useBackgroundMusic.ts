@@ -3,16 +3,21 @@ import { AppState } from "react-native";
 import { createAudioPlayer, AudioPlayer, type AudioStatus } from "expo-audio";
 import { useSoundSettings } from "./SoundContext";
 import { GAME_AUDIO_PLAYER_OPTIONS, retainAudioSession } from "./audioSession";
-
-const BG_VOLUME = 0.2;
+import { useMusicVisit, type BackgroundMusicOptions } from "./useMusicVisit";
 
 // Self-heal (#2923): how long after a "loaded but not playing" status to re-check the player,
 // and how many extra play() calls one player may get before we give up on it.
 export const SELF_HEAL_DELAY_MS = 500;
 export const SELF_HEAL_MAX_ATTEMPTS = 3;
 
-// Picks a random track from keys on each active→true transition (new game session).
-// Volume is kept low (BG_VOLUME) to sit behind SFX.
+// Two modes, chosen by options.cuesMs:
+//   - No options (Mahjong): as before #3638. A random track from keys on each new game session
+//     (an active false→true edge or a newGameTick), from 0:00, at 0.2.
+//   - With cues (Star Swarm, #3638; see useMusicVisit.ts): one player per visit. Game over pauses
+//     it and the next game resumes it from the same position (carry-over). On leaving, the next
+//     starting point is saved; the next visit seeks there on first load and fades in to
+//     options.volume.
+// Either way the volume sits behind SFX (0.2, or options.volume).
 //
 // newGameTick: increment this on every new-game start (e.g. resetTick from the parent
 // screen) to guarantee a fresh session even when active stays true (e.g. new game
@@ -29,7 +34,8 @@ export function useBackgroundMusic(
   registry: Record<string, number>,
   active: boolean,
   newGameTick?: number,
-  paused = false
+  paused = false,
+  options?: BackgroundMusicOptions
 ): void {
   const { muted } = useSoundSettings();
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -45,6 +51,30 @@ export function useBackgroundMusic(
   const shouldPlayRef = useRef(
     () => prevActiveRef.current === true && !pausedRef.current && !mutedRef.current
   );
+  const visit = useMusicVisit(playerRef, shouldPlayRef, options);
+
+  // Stops and frees the current player, with its fade-in and pending seek.
+  const release = () => {
+    visit.dispose();
+    releasePlayer(playerRef, disposeHealRef);
+  };
+  // A new track; with carry-over (#3638) it starts silent and the visit seeks and fades it in.
+  const startTrack = () => {
+    release();
+    const silent = mutedRef.current || pausedRef.current;
+    const player = pickAndPlay(playerRef, disposeHealRef, keysRef, registryRef, silent, {
+      shouldPlay: shouldPlayRef.current,
+      volume: visit.initialVolume(),
+    });
+    if (player) visit.begin(player);
+  };
+  // #3638 carry-over resume: the old self-heal disarmed once the player first played, so a lost
+  // resume play() would never be retried. A fresh one (same limits) checks the resume too.
+  const resumeCarryOver = (player: AudioPlayer) => {
+    disposeHealRef.current?.();
+    disposeHealRef.current = attachSelfHeal(player, shouldPlayRef.current, { checkNow: true });
+    playSafely(player);
+  };
 
   // Hold the shared audio session while this screen is mounted; the release on unmount hands
   // it back to other apps on iOS (see audioSession.ts).
@@ -69,15 +99,12 @@ export function useBackgroundMusic(
     const player = playerRef.current;
     if (!player) return;
     if (paused) {
+      visit.cancelFade();
       player.pause();
     } else if (prevActiveRef.current && !mutedRef.current) {
-      try {
-        player.play();
-      } catch {
-        // web AudioContext suspended — fail silently
-      }
+      playSafely(player);
     }
-  }, [paused]);
+  }, [paused, visit]); // visit is stable (useState)
 
   // Force a new session on every new-game tick.
   // IMPORTANT: keep this effect declared before [active]. When both deps change in the
@@ -89,18 +116,22 @@ export function useBackgroundMusic(
     if (newGameTick == null || newGameTick <= 0) return;
     // Sync prevActiveRef now so [active] (running next in this flush) skips new-session logic.
     prevActiveRef.current = active;
-    if (!active) {
-      releasePlayer(playerRef, disposeHealRef);
+    const player = playerRef.current;
+    if (visit.carryOver() && player) {
+      // #3638 carry-over: the same player, from where it is — never a new track or a restart.
+      if (!active) {
+        visit.cancelFade();
+        player.pause();
+      } else if (!mutedRef.current && !pausedRef.current) {
+        resumeCarryOver(player);
+      }
       return;
     }
-    pickAndPlay(
-      playerRef,
-      disposeHealRef,
-      keysRef,
-      registryRef,
-      mutedRef.current || pausedRef.current,
-      shouldPlayRef.current
-    );
+    if (!active) {
+      release();
+      return;
+    }
+    startTrack();
     // active intentionally omitted: we read its value at call-time when newGameTick fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newGameTick]);
@@ -111,31 +142,27 @@ export function useBackgroundMusic(
     prevActiveRef.current = active;
 
     if (!active) {
+      visit.cancelFade();
       playerRef.current?.pause();
       return;
     }
 
-    if (wasActive === true) {
+    const player = playerRef.current;
+    if (wasActive === true || (visit.carryOver() && player)) {
       // Resuming (e.g. unpause) or continuing after a newGameTick session — play existing.
-      if (!mutedRef.current && !pausedRef.current && playerRef.current) {
-        try {
-          playerRef.current.play();
-        } catch {
-          // web AudioContext suspended — fail silently
-        }
+      // #3638 carry-over: a false→true edge (new game after game over) also resumes the same
+      // player, from where game over paused it, with a re-armed self-heal.
+      if (!mutedRef.current && !pausedRef.current && player) {
+        if (wasActive !== true) resumeCarryOver(player);
+        else playSafely(player);
       }
       return;
     }
 
     // New session (null→true on mount, or false→true after game over): pick a new track.
-    pickAndPlay(
-      playerRef,
-      disposeHealRef,
-      keysRef,
-      registryRef,
-      mutedRef.current || pausedRef.current,
-      shouldPlayRef.current
-    );
+    startTrack();
+    // startTrack only reads refs and the stable visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   // React to mute toggle independently of active.
@@ -143,22 +170,30 @@ export function useBackgroundMusic(
     const player = playerRef.current;
     if (!player) return;
     if (muted) {
+      visit.cancelFade();
       player.pause();
     } else if (prevActiveRef.current && !pausedRef.current) {
-      try {
-        player.play();
-      } catch {
-        // web AudioContext suspended — fail silently
-      }
+      playSafely(player);
     }
-  }, [muted]);
+  }, [muted, visit]); // visit is stable (useState)
 
-  // Cleanup on unmount — stops the music before the player is freed (see releasePlayer).
+  // Cleanup on unmount — saves the resume point (#3638) while the position is still readable,
+  // then stops the music before the player is freed (see releasePlayer).
   useEffect(() => {
     return () => {
+      visit.saveResumePoint();
+      visit.dispose();
       releasePlayer(playerRef, disposeHealRef);
     };
-  }, []);
+  }, [visit]);
+}
+
+function playSafely(player: AudioPlayer): void {
+  try {
+    player.play();
+  } catch {
+    // web AudioContext suspended — fail silently
+  }
 }
 
 // Stops and frees the current player. pause() comes first: remove() only drops the player from
@@ -196,7 +231,14 @@ function releasePlayer(
 // pause, a phone call, headphones unplugged, and is left alone); at most SELF_HEAL_MAX_ATTEMPTS
 // play() calls per player; one pending check at a time; never while paused, muted, inactive or
 // backgrounded; disposed together with the player.
-export function attachSelfHeal(player: AudioPlayer, shouldPlay: () => boolean): () => void {
+//
+// checkNow (#3638): also schedule one check right away, for a carry-over resume. A resumed player
+// is already loaded, so a lost play() may bring no new status to react to.
+export function attachSelfHeal(
+  player: AudioPlayer,
+  shouldPlay: () => boolean,
+  { checkNow = false }: { checkNow?: boolean } = {}
+): () => void {
   let confirmed = false;
   let attempts = 0;
   let disposed = false;
@@ -244,6 +286,7 @@ export function attachSelfHeal(player: AudioPlayer, shouldPlay: () => boolean): 
   } catch {
     // no status events on this platform — the music just isn't self-healed
   }
+  if (checkNow) schedule();
 
   return () => {
     disposed = true;
@@ -262,27 +305,22 @@ function pickAndPlay(
   keysRef: { current: string[] },
   registryRef: { current: Record<string, number> },
   silent: boolean,
-  shouldPlay: () => boolean
-): void {
+  { shouldPlay, volume }: { shouldPlay: () => boolean; volume: number }
+): AudioPlayer | null {
   releasePlayer(playerRef, disposeHealRef);
 
   const currentKeys = keysRef.current;
   const key = currentKeys[Math.floor(Math.random() * currentKeys.length)];
   const source = key != null ? registryRef.current[key] : undefined;
-  if (!source) return;
+  if (!source) return null;
 
   // keepAudioSessionActive: see GAME_AUDIO_PLAYER_OPTIONS in audioSession.ts.
   const player = createAudioPlayer(source, GAME_AUDIO_PLAYER_OPTIONS);
   player.loop = true;
-  player.volume = BG_VOLUME;
+  player.volume = volume;
   playerRef.current = player;
   disposeHealRef.current = attachSelfHeal(player, shouldPlay);
 
-  if (!silent) {
-    try {
-      player.play();
-    } catch {
-      // web AudioContext suspended — fail silently
-    }
-  }
+  if (!silent) playSafely(player);
+  return player;
 }

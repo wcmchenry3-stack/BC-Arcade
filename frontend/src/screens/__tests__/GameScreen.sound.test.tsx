@@ -204,7 +204,7 @@ describe("GameScreen dice roll sound (#3578)", () => {
   it("a milestone replaces your commit", async () => {
     const { getByRole } = await renderVsGame({ dice: [1, 2, 3, 4, 5], rolls_used: 1 }, {});
     await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /Lg\. Straight/ }));
+      await fireEvent.press(getByRole("button", { name: /Large Straight/ }));
     });
     expect(mockPlays[0]).toBe("yacht.largeStraight");
     expect(mockPlays).not.toContain("yacht.scoreCommit");

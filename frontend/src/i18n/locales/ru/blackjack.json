@@ -27,6 +27,8 @@
   "card.suit.diamonds": "Бубны",
   "card.suit.clubs": "Трефы",
   "outcome.blackjack": "Blackjack!",
+  "outcome.blackjackNatural": "Blackjack! 3:2",
+  "outcome.blackjackNaturalLabel": "Блэкджек, выплата 3 к 2",
   "outcome.win": "Победа!",
   "outcome.push": "Ничья",
   "outcome.lose": "Поражение",
@@ -67,6 +69,8 @@
   "rules.soft17Tooltip": "S17: дилер стоит на мягких 17 — немного выгоднее для игрока. H17: дилер берёт на мягких 17 — немного выгоднее для казино.",
   "rules.decksTooltip": "Количество колод, перемешанных в башмаке. Больше колод немного увеличивает преимущество казино и усложняет подсчёт карт.",
   "rules.penetrationTooltip": "Какая часть башмака раздаётся до перетасовки. 75% означает, что 75% карт разыгрывается перед новой тасовкой. Выше пенетрация = больше вариативность.",
+  "rules.standardTitle": "Стандартные правила",
+  "rules.standard": "Blackjack оплачивается 3:2. Если у дилера открыт туз или десятка, он проверяет blackjack до вашего хода. Blackjack дилера сразу завершает раздачу: вы теряете только ставку, а при вашем blackjack — ничья. Blackjack бьёт любые другие 21.",
   "score.heroLabel": "Сессия",
   "score.plLine": "{{amount}} фишек",
   "score.subLine": "{{handsPlayed}} рук · процент побед {{winRate}}%",
@@ -150,5 +154,7 @@
   "result.playerBusts": "Перебор: {{value}}",
   "result.versus": "{{player}} против {{dealer}} у дилера",
   "result.dealerHas": "У дилера {{value}}",
+  "result.dealerBlackjack": "У дилера Blackjack",
+  "result.bothBlackjack": "Blackjack у обоих",
   "a11y.handBet": "Ставка: {{amount}} фишек"
 }

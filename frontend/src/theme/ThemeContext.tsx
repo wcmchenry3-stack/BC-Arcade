@@ -23,6 +23,13 @@ export interface Colors {
   /** Error-state text sitting on the accent color (e.g. a wrong Sudoku digit in a selected cell). */
   errorOnAccent: string;
   accent: string;
+  /**
+   * The accent as the colour of TEXT (and thin strokes) on the page surfaces. Dark: the accent
+   * itself. Light: a darker teal that reaches WCAG AA (>= 4.5:1) on every cream surface, which the
+   * accent fill (1.6-2:1) does not. Use it wherever the accent colours text; backgrounds, button
+   * fills and borders stay `accent`.
+   */
+  accentText: string;
   accentBright: string;
   secondary: string;
   tertiary: string;
@@ -70,6 +77,13 @@ export interface Colors {
   cardFace: string;
   cardInk: string;
   cardRedSuit: string;
+  /**
+   * The card back (#3740): the field colour (BC teal) and the line and lattice drawn on it. The
+   * margin is `cardFace`. Same in both themes, like the face. The back holds 3:1 against every
+   * felt through the margin or the field (theme/__tests__/cardBackContrast.test.ts).
+   */
+  cardBack: string;
+  cardBackInk: string;
   fruitContainer: string;
   fruitBackground: string;
 }
@@ -95,6 +109,8 @@ const TOKENS = {
   accentLight: "#1bc5d4",
   accentBrightDark: "#00eefc",
   accentBrightLight: "#00a8b8",
+  // Accent as text on cream: 4.6:1 on the darkest cream surface, 5.1-5.8:1 on the rest
+  accentTextLight: "#006d77",
   secondaryDark: "#d674ff",
   secondaryLight: "#a34fc4",
   tertiaryDark: "#cafd00",
@@ -116,6 +132,9 @@ const TOKENS = {
   cardFace: "#fff",
   cardInk: "#0e0e13",
   cardRedSuit: CARD_RED_SUIT,
+  // Card back (#3740): BC teal field, white line and lattice
+  cardBack: "#00737e",
+  cardBackInk: "#fff",
 } as const;
 
 export const dark: Colors = {
@@ -135,6 +154,7 @@ export const dark: Colors = {
   // WCAG AA: 4.79:1 on the selected-cell background (accent "AA" over surface)
   errorOnAccent: "#631b18",
   accent: TOKENS.accentDark,
+  accentText: TOKENS.accentDark,
   accentBright: TOKENS.accentBrightDark,
   secondary: TOKENS.secondaryDark,
   tertiary: TOKENS.tertiaryDark,
@@ -167,6 +187,8 @@ export const dark: Colors = {
   cardFace: TOKENS.cardFace,
   cardInk: TOKENS.cardInk,
   cardRedSuit: TOKENS.cardRedSuit,
+  cardBack: TOKENS.cardBack,
+  cardBackInk: TOKENS.cardBackInk,
   fruitContainer: TOKENS.darkSurface,
   fruitBackground: TOKENS.darkBg,
 };
@@ -187,10 +209,11 @@ export const light: Colors = {
   // WCAG AA: 7.11:1 on the selected-cell background (accent "AA" over surface)
   errorOnAccent: "#631b18",
   accent: TOKENS.accentLight,
+  accentText: TOKENS.accentTextLight,
   accentBright: TOKENS.accentBrightLight,
   secondary: TOKENS.secondaryLight,
   tertiary: TOKENS.tertiaryLight,
-  potential: TOKENS.accentLight, // desaturated teal on cream
+  potential: TOKENS.accentTextLight, // potential scores are text: the AA teal on cream
   heldBg: "#d7eff2", // cream-compatible light teal tint for highlighted dice
   heldBorder: TOKENS.accentLight,
   dieBg: TOKENS.lightSurface,
@@ -220,6 +243,8 @@ export const light: Colors = {
   cardFace: TOKENS.cardFace,
   cardInk: TOKENS.cardInk,
   cardRedSuit: TOKENS.cardRedSuit,
+  cardBack: TOKENS.cardBack,
+  cardBackInk: TOKENS.cardBackInk,
   fruitContainer: TOKENS.lightSurfaceAlt,
   fruitBackground: TOKENS.lightSurfaceHigh,
 };

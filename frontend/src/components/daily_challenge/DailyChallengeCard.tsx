@@ -95,7 +95,7 @@ export default function DailyChallengeCard() {
           <View style={styles.headerRow}>
             <Text style={[styles.title, { color: colors.text }]}>{t("daily_challenge:title")}</Text>
             <Text
-              style={[styles.progress, { color: allDone ? colors.accent : colors.textMuted }]}
+              style={[styles.progress, { color: allDone ? colors.accentText : colors.textMuted }]}
               testID="daily-challenge-progress"
             >
               {t("daily_challenge:progress", { done, total })}

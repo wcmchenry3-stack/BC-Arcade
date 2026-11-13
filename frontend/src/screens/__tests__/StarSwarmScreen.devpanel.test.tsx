@@ -284,6 +284,24 @@ describe("sound mixer", () => {
     expect(latestVolumes().shieldon).toBe(0);
   });
 
+  it("#3638: a Music row steps the music volume by 0.05 from 0.57, kept between 0 and 1", async () => {
+    await renderRun();
+    await openPanel();
+    expect(latestVolumes().music).toBe(0.57);
+    expect(screen.getByText("0.57")).toBeTruthy();
+
+    await press("Increase Music volume");
+    expect(latestVolumes().music).toBe(0.62);
+    await press("Decrease Music volume");
+    await press("Decrease Music volume");
+    expect(latestVolumes().music).toBe(0.52);
+
+    for (let i = 0; i < 12; i++) await press("Increase Music volume");
+    expect(latestVolumes().music).toBe(1);
+    for (let i = 0; i < 25; i++) await press("Decrease Music volume");
+    expect(latestVolumes().music).toBe(0);
+  });
+
   it("leaves the other sounds alone", async () => {
     await renderRun();
     await openPanel();

@@ -27,6 +27,8 @@
   "card.suit.diamonds": "יהלומים",
   "card.suit.clubs": "תלתנים",
   "outcome.blackjack": "!Blackjack",
+  "outcome.blackjackNatural": "!Blackjack 3:2",
+  "outcome.blackjackNaturalLabel": "בלאק ג'ק, משלם 3 ל-2",
   "outcome.win": "!ניצחת",
   "outcome.push": "תיקו",
   "outcome.lose": "הפסדת",
@@ -67,6 +69,8 @@
   "rules.soft17Tooltip": "S17: הדילר עומד על 17 רך — מעט טוב יותר לשחקן. H17: הדילר שולף על 17 רך — מעט טוב יותר לבית.",
   "rules.decksTooltip": "מספר החפיסות המעורבבות יחד לתוך הנעל. יותר חפיסות מגדילות מעט את יתרון הבית ומקשות על ספירת קלפים.",
   "rules.penetrationTooltip": "כמה מהנעל מחולק לפני ערבוב מחדש. 75% אומר ש-75% מהקלפים משוחקים לפני ערבוב חדש. חדירה גבוהה יותר = שונות גדולה יותר.",
+  "rules.standardTitle": "חוקים סטנדרטיים",
+  "rules.standard": "Blackjack משלם 3:2. כשלדילר אס או עשר גלויים, הוא בודק אם יש לו Blackjack לפני תורך. Blackjack של הדילר מסיים את היד מיד: אתה מפסיד רק את ההימור המקורי, או תיקו אם גם לך יש Blackjack. Blackjack מנצח כל 21 אחר.",
   "score.heroLabel": "מושב",
   "score.plLine": "{{amount}} ז׳יטונים",
   "score.subLine": "{{handsPlayed}} ידיים · אחוז ניצחון {{winRate}}%",
@@ -150,5 +154,7 @@
   "result.playerBusts": "התפוצצת עם {{value}}",
   "result.versus": "{{player}} מול {{dealer}} של הדילר",
   "result.dealerHas": "לדילר יש {{value}}",
+  "result.dealerBlackjack": "Blackjack לדילר",
+  "result.bothBlackjack": "Blackjack לשניהם",
   "a11y.handBet": "הימור {{amount}} אסימונים"
 }

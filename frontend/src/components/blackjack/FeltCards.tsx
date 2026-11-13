@@ -21,7 +21,7 @@
  * new `epoch` lands every card at once.
  */
 import React, { useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import Reanimated, {
   cancelAnimation,
   Easing,
@@ -30,12 +30,10 @@ import Reanimated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { useTheme } from "../../theme/ThemeContext";
 import type { CardResponse } from "../../game/blackjack/types";
 import type { FanGeometry } from "../../game/blackjack/layout";
 import { FLIGHT_BACKSTOP_MS, type Point } from "../cards/cardMotion";
 import PlayingCard from "./PlayingCard";
-import { holeCardOutline } from "./tableColors";
 import {
   DEAL_FLIGHT_MS,
   DEAL_ROTATE_DEG,
@@ -46,9 +44,7 @@ import {
   FLIP_MS,
 } from "./blackjackMotion";
 import type { CardMotion } from "./useBlackjackMotion";
-
-/** Width of the outline around a face-down card, drawn just outside its edge. */
-const OUTLINE = 1.5;
+import { CardPlace, NaturalEdge, type NaturalTone } from "./NaturalMoment";
 
 /** One hand's cards as the felt draws them. */
 export interface FeltHand {
@@ -60,6 +56,10 @@ export interface FeltHand {
   readonly fan: FanGeometry;
   /** Dim the cards (a split hand already played). */
   readonly dimmed?: boolean;
+  /** A natural's edge on the hand's two cards (#3621). */
+  readonly natural?: NaturalTone | null;
+  /** When the player's natural moment (lift, glint) started (JS clock); null: static. */
+  readonly moment?: number | null;
 }
 
 interface Props {
@@ -91,6 +91,9 @@ export default function FeltCards({ hands, motion, origin }: Props) {
               epoch={motion.epoch}
               originX={origin.x}
               originY={origin.y}
+              natural={i < 2 ? (hand.natural ?? null) : null}
+              moment={i < 2 ? (hand.moment ?? null) : null}
+              liftable={hand.id !== "dealer" && i < 2}
             />
           );
         })
@@ -167,6 +170,11 @@ interface CardProps {
   /** Where a dealt card's flight starts: numbers, so the card's memo holds across renders. */
   readonly originX: number;
   readonly originY: number;
+  /** A natural's edge (#3621), and when its moment started (null: static). */
+  readonly natural: NaturalTone | null;
+  readonly moment: number | null;
+  /** A player's first or second card: it can lift with a natural (the same for its life). */
+  readonly liftable: boolean;
 }
 
 /** What a card's motion is now: worked out in render from its props' changes. */
@@ -244,7 +252,6 @@ function nextMotion(st: CardMotionState, p: CardProps, t: number): CardMotionSta
 
 const FeltCard = React.memo(function FeltCard(props: CardProps) {
   const { testID, card, dimmed, x, y, width, height } = props;
-  const { colors } = useTheme();
   const [state, setState] = useState<CardMotionState>(() => {
     const first: CardMotionState = {
       x,
@@ -267,7 +274,10 @@ const FeltCard = React.memo(function FeltCard(props: CardProps) {
   // never covers the dealer's next card at rest (#3720 round 2).
   const lifted = useLift(liftEndOf(next));
   return (
-    <View
+    // A natural's two cards lift together (#3621), in their place.
+    <CardPlace
+      liftable={props.liftable}
+      moment={props.moment}
       testID={testID}
       style={[styles.card, { left: x, top: y, width, height }, lifted && styles.lifted]}
     >
@@ -279,25 +289,19 @@ const FeltCard = React.memo(function FeltCard(props: CardProps) {
               <PlayingCard card={{ ...card, face_down: true }} width={width} height={height} />
             </TurnBack>
           ) : null}
-          {card.face_down && (
-            // The hole card: a table-level outline so the deck's back reads
-            // against the felt whatever the deck (#3580).
-            <View
-              testID={`${testID}-outline`}
-              pointerEvents="none"
-              style={[
-                styles.outline,
-                {
-                  width: width + 2 * OUTLINE,
-                  height: height + 2 * OUTLINE,
-                  borderColor: holeCardOutline(colors),
-                },
-              ]}
-            />
-          )}
         </CardTurn>
       </CardPose>
-    </View>
+      {props.natural !== null && (
+        <NaturalEdge
+          key={props.moment ?? "still"}
+          tone={props.natural}
+          since={props.moment}
+          width={width}
+          height={height}
+          testID={testID}
+        />
+      )}
+    </CardPlace>
   );
 });
 
@@ -439,12 +443,5 @@ const styles = StyleSheet.create({
   fill: {
     width: "100%",
     height: "100%",
-  },
-  outline: {
-    position: "absolute",
-    left: -OUTLINE,
-    top: -OUTLINE,
-    borderWidth: OUTLINE,
-    borderRadius: 7,
   },
 });

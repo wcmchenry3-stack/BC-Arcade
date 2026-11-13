@@ -82,7 +82,9 @@ function Action({
       </View>
       <Text
         style={[styles.label, { color }]}
-        numberOfLines={1}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
         maxFontSizeMultiplier={MAX_FONT_SCALE}
       >
         {label}
@@ -95,13 +97,24 @@ export interface GameActionBarProps {
   readonly actions: readonly GameBarAction[];
   readonly height: number;
   readonly testID: string;
+  /** A hairline above the bar (default). Off when the bar sits inside a card beside other controls (Yacht's tray). */
+  readonly bordered?: boolean;
 }
 
-export default function GameActionBar({ actions, height, testID }: GameActionBarProps) {
+export default function GameActionBar({
+  actions,
+  height,
+  testID,
+  bordered = true,
+}: GameActionBarProps) {
   const { colors } = useTheme();
   return (
     <View
-      style={[styles.bar, { height, borderTopColor: colors.border }]}
+      style={[
+        styles.bar,
+        { height },
+        bordered && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+      ]}
       testID={testID}
       accessibilityRole="toolbar"
     >
@@ -117,7 +130,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "stretch",
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   action: {
     flex: 1,
@@ -134,6 +146,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.9,
     textTransform: "uppercase",
+    textAlign: "center",
   },
   badge: {
     position: "absolute",

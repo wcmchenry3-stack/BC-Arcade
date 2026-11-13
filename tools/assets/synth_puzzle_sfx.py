@@ -35,12 +35,14 @@ Sounds:
   same a whole step higher, with a double "again!" bell). cpu-jackpot-yacht.ogg /
   cpu-jackpot-joker.ogg: the computer's, 0.7 s: a fast falling minor run into a low minor chord.
 - 2048 "wooden tiles": tile-merge-1/2/3.ogg (0.22 s: a faint slide of air, then two wooden tiles
-  clacking together at 90 ms, on the merge pop) and tile-spawn-1/2/3.ogg (0.16 s: a small tile set
+  clacking together at 100 ms, as the sliding tiles meet and pop) and tile-spawn-1/2/3.ogg (0.16 s: a small tile set
   down at 60 ms, as the new tile scales in). Three variations each; the spawn, on every swipe, is
   the quietest sound in the game.
-- 2048 win-2048.ogg (~2.7 s: the Yacht jackpot's rising mallet run and rolled chord, then a final
-  "ta-da" mallet chord with a high glass bell) and game-over-2048.ogg (~1.5 s: a last wooden tile
-  clack, a gentle falling mallet line G E D C, settling on a soft low A minor chord).
+- 2048 win-2048.ogg (~2.5 s: from the 2048 tile's pop, the Yacht jackpot's rising mallet run and
+  rolled chord, then a final "ta-da" mallet chord with a high glass bell as the win card shows at
+  1.0 s) and game-over-2048.ogg (~2.0 s: a last wooden tile clack as the move lands, a gentle
+  falling mallet line G E D C over the dim and shake, settling on a soft low A minor chord as the
+  card shows at 0.6 s). Timed to the motion (#3690).
 - Mahjong "real tiles", "crisp clack": mahjong-select-1/2/3.ogg (0.12 s: a bright fingertip tick
   on a dense tile, with a breath of cloth, on the tap) and mahjong-match-1/2/3.ogg (0.5 s: a tap
   on the second tile, the pair flying, a crisp clack and its double as they meet face to face at
@@ -62,6 +64,11 @@ Sounds:
   C E G C E, a glass shimmer over the sparks, then a rolled C major "ta-da" with a bell as the
   result card shows at 1.1 s) and daily-word-loss.ogg (1.9 s: a soft falling marimba line, one note
   as each answer tile shows, G E D C A, then a low A minor chord as the card shows at 0.78 s).
+- Yacht end of game, "mallet fanfare" (#3750), each starting with the end beat and landing its
+  chord as the result card shows: yacht-win.ogg (2.6 s: a two-octave mallet run, a rolled C
+  major, then a "ta-da" chord with a high glass bell at 1.0 s), yacht-loss.ogg (2.0 s: a gentle
+  falling line G E D C into a soft low A minor chord at 0.6 s) and yacht-tie.ogg (2.0 s: two
+  level notes, E and G, into an open C-G-D chord at 0.6 s).
 """
 
 from __future__ import annotations
@@ -439,10 +446,18 @@ def cpu_jackpot_joker() -> np.ndarray:
 
 # --- 2048 -------------------------------------------------------------------------------------
 
-# AnimatedTile.tsx: a slide takes 100 ms, the merge pop starts at 90 ms, a new tile scales in from
-# 60 ms. The sounds fire at the swipe, so each puts its accent on its animation.
-TILE_MERGE_AT = 0.09
+# game/twenty48/motion.ts (#3689). Every sound fires as the move lands, so each puts its accent on
+# its moment: the merge's two tiles meet at SLIDE_MS (100 ms) and the merged tile pops; a new tile
+# shows from SPAWN_AT_MS (60 ms); the 2048 tile pops at 100 ms and the win card shows at
+# WIN_BEAT_MS (1.0 s); a stuck board dims and shakes from GAME_OVER_DIM_AT_MS (220 ms) and the
+# game-over card shows at GAME_OVER_BEAT_MS (0.6 s) (#3690).
+TILE_MERGE_AT = 0.10
 TILE_SPAWN_AT = 0.06
+WIN_POP_AT = 0.10
+WIN_CARD_AT = 1.0
+GAME_OVER_LAND_AT = 0.10
+GAME_OVER_DIM_AT = 0.22
+GAME_OVER_CARD_AT = 0.6
 
 
 def swish(seed: int, dur: float, lo: float, hi: float, g: float) -> np.ndarray:
@@ -478,24 +493,31 @@ def tile_spawn(i: int) -> np.ndarray:
 
 
 def win_2048() -> np.ndarray:
-    """2048 reached, 3.1 s: the jackpot's run and roll, then a final "ta-da" chord and a bell."""
+    """2048 reached, 2.6 s: the jackpot's run and roll from the 2048 tile's pop, then a final
+    "ta-da" chord and a bell as the win card shows."""
     run = seq([C5, E5, G5, C6, E6, G6], marimba, 0.05, 0.8, [0.8, 0.85, 0.9, 0.95, 1, 1.1])
     final = seq([C5, G5, C6, E6], lambda n: marimba(n, 1.5, 0.32), 0.008, 1.5)
     return mix(
-        3.1,
-        (run, 0.0),
-        (roll_chord([C5, E5, G5, C6, E6], 1.1, 9001), 0.3),
-        (sparkle([G6 + 5, E6 + 12, C6 + 12, G6], 0.38, 0.1), 0.0),
-        (final * 1.2, 1.5),
-        (glass(C7, 1.5, 0.4) * 0.25, 1.5),
+        2.6,
+        (run, WIN_POP_AT),
+        (roll_chord([C5, E5, G5, C6, E6], 1.1, 9001), WIN_POP_AT + 0.3),
+        (sparkle([G6 + 5, E6 + 12, C6 + 12, G6], 0.38, 0.1), WIN_POP_AT),
+        (final * 1.2, WIN_CARD_AT),
+        (glass(C7, 1.5, 0.4) * 0.25, WIN_CARD_AT),
     )
 
 
 def game_over_2048() -> np.ndarray:
-    """No moves left, 2.0 s: a last tile clack, a gentle falling line, a soft low A minor chord."""
-    line = seq([G5, E5, D5, C5], lambda n: marimba(n, 0.6, 0.2), 0.11, 0.9, [0.9, 0.8, 0.75, 0.7])
+    """No moves left, 2.1 s: a last tile clack as the move lands, a gentle falling line over the
+    dim and shake, a soft low A minor chord as the game-over card shows."""
+    line = seq([G5, E5, D5, C5], lambda n: marimba(n, 0.6, 0.2), 0.1, 0.9, [0.9, 0.8, 0.75, 0.7])
     settle = seq([A4, C5, E5], lambda n: marimba(n, 1.5, 0.35), 0.01, 1.5)
-    return mix(2.0, (block_clack(9010, 0.6), 0.0), (line, 0.05), (settle * 0.8, 0.5))
+    return mix(
+        2.1,
+        (block_clack(9010, 0.6), GAME_OVER_LAND_AT),
+        (line, GAME_OVER_DIM_AT - 0.02),
+        (settle * 0.8, GAME_OVER_CARD_AT),
+    )
 
 
 # --- Mahjong ----------------------------------------------------------------------------------
@@ -725,6 +747,51 @@ def daily_word_loss() -> np.ndarray:
     return fade(x, 0.0, 0.25)
 
 
+# --- Yacht end of game (#3750): option A, "mallet fanfare" -------------------------------------
+
+# From game/yacht/motion.ts (#3749): WIN_BEAT_MS 1000 and LOSS_BEAT_MS 600. Each sound starts with
+# the end beat, and its chord lands as the result card shows.
+YACHT_WIN_CARD_AT = 1.0
+YACHT_END_CARD_AT = 0.6
+
+
+def yacht_win() -> np.ndarray:
+    """Win, 2.6 s: a two-octave mallet run (C E G C E G), a rolled C major from 0.45 s, then a
+    final "ta-da" chord with a high glass bell as the card shows (1.0 s). A step above the jackpot.
+    """
+    x = np.zeros(int(2.6 * SR))
+    for k, n in enumerate([C5, E5, G5, C6, E6, G6]):
+        place(x, marimba(n, 0.6, 0.18) * (0.75 + 0.06 * k), 0.06 * k)
+    place(x, roll_chord([C5, E5, G5, C6], 0.5, 15301) * 0.55, 0.42)
+    for k, n in enumerate([C5, G5, C6, E6]):
+        place(x, marimba(n, 1.5, 0.4), YACHT_WIN_CARD_AT + 0.01 * k)
+    place(x, glass(C7, 1.4, 0.45) * 0.28, YACHT_WIN_CARD_AT + 0.02)
+    return fade(x, 0.0, 0.3)
+
+
+def yacht_loss() -> np.ndarray:
+    """Loss, 2.0 s: a gentle falling mallet line (G E D C, 110 ms apart) into a soft low A minor
+    chord as the card shows (0.6 s); gentle, like 2048's game over."""
+    x = np.zeros(int(2.0 * SR))
+    for k, n in enumerate([G5, E5, D5, C5]):
+        place(x, marimba(n, 0.55, 0.18) * (0.8 - 0.06 * k), 0.11 * k)
+    for k, n in enumerate([A4, C5, E5]):
+        place(x, marimba(n, 1.3, 0.38) * 0.75, YACHT_END_CARD_AT + 0.015 * k)
+    return fade(x, 0.0, 0.3)
+
+
+def yacht_tie() -> np.ndarray:
+    """Tie, 2.0 s: two level mallet notes (E then G, neither rising to C nor falling to A) into
+    an open, unresolved chord (C G D) as the card shows (0.6 s): "even"."""
+    x = np.zeros(int(2.0 * SR))
+    place(x, marimba(E5, 0.6, 0.2) * 0.8, 0.0)
+    place(x, marimba(G5, 0.6, 0.2) * 0.8, 0.22)
+    for k, n in enumerate([C5, G5, D5 + 12]):
+        place(x, marimba(n, 1.3, 0.38) * 0.75, YACHT_END_CARD_AT + 0.015 * k)
+    place(x, glass(G6, 1.0, 0.3) * 0.12, YACHT_END_CARD_AT + 0.03)
+    return fade(x, 0.0, 0.3)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -822,6 +889,9 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "daily-word-refused": (daily_word_refused, rms50(-24.0, -3.0)),  # level with a green tile
     "daily-word-win": (daily_word_win, rms50(-17.0, -1.0)),  # once a day: 1 dB under Mahjong's
     "daily-word-loss": (daily_word_loss, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
+    "yacht-win": (yacht_win, rms50(-15.0, -1.0)),  # 1 dB over the jackpot: the top of the ladder
+    "yacht-loss": (yacht_loss, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
+    "yacht-tie": (yacht_tie, rms50(-19.0, -1.0)),  # between the win and the loss
 }
 
 

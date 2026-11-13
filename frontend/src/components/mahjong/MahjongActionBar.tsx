@@ -43,7 +43,7 @@ export default function MahjongActionBar({
           icon: "undo",
           label: t("action.undo"),
           accessibilityLabel: t("action.undoLabel"),
-          color: colors.accent,
+          color: colors.accentText,
           disabled: undoDisabled,
           onPress: onUndo,
           testID: "mahjong-undo-button",

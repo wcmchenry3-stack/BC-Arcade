@@ -38,10 +38,10 @@ def test_cues_mirror_the_typescript_file():
 def test_clip_names():
     assert [r.clip_name(i, c) for i, c in enumerate(r.CUES_MS, 1)] == [
         "cue-1-0m00s.mp3",
-        "cue-2-1m12s.mp3",
-        "cue-3-2m35s.mp3",
-        "cue-4-4m29s.mp3",
-        "cue-5-5m26s.mp3",
+        "cue-2-1m06s.mp3",
+        "cue-3-2m36s.mp3",
+        "cue-4-3m43s.mp3",
+        "cue-5-4m50s.mp3",
     ]
 
 

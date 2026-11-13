@@ -24,8 +24,8 @@ const CATEGORY_LABELS_IN_ORDER = [
   "Three of a Kind",
   "Four of a Kind",
   "Full House (25)",
-  "Sm. Straight (30)",
-  "Lg. Straight (40)",
+  "Small Straight (30)",
+  "Large Straight (40)",
   "Yacht! (50)",
   "Chance",
 ];
@@ -130,8 +130,8 @@ test.describe("Yacht — full 13-round game journey", () => {
       "Three of a Kind",
       "Four of a Kind",
       "Full House (25)",
-      "Sm. Straight (30)",
-      "Lg. Straight (40)",
+      "Small Straight (30)",
+      "Large Straight (40)",
       "Yacht! (50)",
       "Chance",
     ];

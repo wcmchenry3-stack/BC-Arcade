@@ -13,6 +13,10 @@ export const YACHT_SOUNDS: Record<string, number> = {
   // jackpot, the top of the ladder ("mallet fanfare"), with its celebration (#3578)
   "yacht.yacht": require("../../../assets/sounds/jackpot-yacht.ogg"),
   "yacht.joker": require("../../../assets/sounds/jackpot-joker.ogg"),
+  // the end of the game, "mallet fanfare": its chord lands as the result card shows (#3750)
+  "yacht.win": require("../../../assets/sounds/yacht-win.ogg"),
+  "yacht.loss": require("../../../assets/sounds/yacht-loss.ogg"),
+  "yacht.tie": require("../../../assets/sounds/yacht-tie.ogg"),
   // scoring ladder, "wood and mallet": one sound per score, a milestone replaces the commit (#3578)
   "yacht.scoreCommit": require("../../../assets/sounds/score-commit.ogg"),
   "yacht.scoreZero": require("../../../assets/sounds/score-zero.ogg"),

@@ -27,6 +27,8 @@
   "card.suit.diamonds": "ダイヤ",
   "card.suit.clubs": "クラブ",
   "outcome.blackjack": "ブラックジャック!",
+  "outcome.blackjackNatural": "ブラックジャック! 3:2",
+  "outcome.blackjackNaturalLabel": "ブラックジャック、配当は3対2",
   "outcome.win": "勝利!",
   "outcome.push": "引き分け",
   "outcome.lose": "敗北",
@@ -67,6 +69,8 @@
   "rules.soft17Tooltip": "S17: ディーラーはソフト17でスタンド — プレイヤーにやや有利です。H17: ディーラーはソフト17でヒット — ハウスにやや有利です。",
   "rules.decksTooltip": "シューに使われるデッキの枚数。デッキ数が多いほど、ハウスエッジがわずかに上がり、カードカウンティングも難しくなります。",
   "rules.penetrationTooltip": "次のシャッフルまでにシューから配られる割合。75%は、新しくシャッフルされるまでにカードの75%が使われることを意味します。ペネトレーションが高いほど分散が大きくなります。",
+  "rules.standardTitle": "標準ルール",
+  "rules.standard": "ブラックジャックの配当は3:2。ディーラーのアップカードがエースか10点札のとき、プレイヤーの行動前にブラックジャックを確認します。ディーラーのブラックジャックで手札は即終了し、失うのは最初のベットのみ。プレイヤーもブラックジャックなら引き分けです。ブラックジャックは他のどの21にも勝ちます。",
   "score.heroLabel": "セッション",
   "score.plLine": "{{amount}} チップ",
   "score.subLine": "{{handsPlayed}} ハンド · 勝率 {{winRate}}%",
@@ -150,5 +154,7 @@
   "result.playerBusts": "{{value}}でバースト",
   "result.versus": "{{player}} 対 ディーラーの{{dealer}}",
   "result.dealerHas": "ディーラーは{{value}}",
+  "result.dealerBlackjack": "ディーラーのブラックジャック",
+  "result.bothBlackjack": "両者ブラックジャック",
   "a11y.handBet": "ベット{{amount}}チップ"
 }

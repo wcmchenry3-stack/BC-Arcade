@@ -7,13 +7,19 @@
  *   hand's betting) is drawn at once, silently: nothing replays on restore, resume or return.
  * - Input stays live (#3575): `complete()` lands everything still moving at once, and the screen
  *   calls it before every action, so a tap is never dropped and never waits.
- * - With Reduce Motion, or while the player is away, nothing moves and each of the action's
- *   sounds plays once, at the instant (none while away). Reduce Motion turned on, or the player
- *   leaving (`leave()`), mid-motion lands everything at once.
+ * - With Reduce Motion nothing moves, but each of the action's sounds still plays once, in its
+ *   timeline order, `REDUCE_MOTION_SOUND_GAP_MS` apart (the first at the instant), so they do not
+ *   stack (owner decision, #3751). While the player is away nothing moves and nothing plays.
+ *   Reduce Motion turned on, or the player leaving (`leave()`), mid-motion lands everything at
+ *   once; the sounds still due then are dropped, but a result chime still due plays once, now.
+ * - A tap or the next action drops the spaced sounds not yet played, but a result chime still due
+ *   plays once at once (as for a motion, #3720). The round is settled at once, so the toasts, the
+ *   victory screen and the out-of-chips card do not wait for them.
  * - Every pending cue is cancelled on New Game (`reset()`) and on unmount (`useCueClock`).
  *
  * JS runs only at a stage's start (a handful per action), never per frame: the cards' and
- * chips' motion runs on the UI thread (FeltCard, ChipSprite).
+ * chips' motion runs on the UI thread (FeltCard, ChipSprite), and so does a natural's moment
+ * (#3621, NaturalMoment.tsx), handed the time it started; any landing makes it static.
  */
 import type React from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -26,12 +32,15 @@ import {
   SKIP_HOLD_MS,
   CHIP_BET_MS,
   feltSignature,
+  naturalEdges,
   nextChipId,
+  NO_NATURALS,
   planMotion,
   RESULT_CUES,
   stageView,
   type CardIds,
   type ChipShown,
+  type NaturalEdges,
   type SoundCue,
   type Stage,
   type Timeline,
@@ -49,13 +58,22 @@ export interface CardMotion {
   readonly epoch: number;
 }
 
+/** The naturals the felt marks, and the player's natural moment while it plays (#3621). */
+export interface FeltNatural extends NaturalEdges {
+  /**
+   * When the player's natural moment (lift, glint, sweep) started, on the JS clock; null: none is
+   * playing, the edges are static (Reduce Motion, a tap that landed it, a restore, the player away).
+   */
+  readonly since: number | null;
+}
+
 export interface BlackjackMotionInput {
   readonly engine: EngineState | null;
   readonly reduceMotion: boolean;
   /** The player is away (`usePauseWhileAway`): no cue plays. */
   readonly awayRef: { readonly current: boolean };
   /**
-   * Plays a sound (and its moment's effect: a flash, the celebration). `skipped`: the result's
+   * Plays a sound (and its moment's effect: a flash). `skipped`: the result's
    * chime of a motion the player cut short, played at once with no effect.
    */
   readonly playCue: (cue: SoundCue, skipped: boolean) => void;
@@ -76,12 +94,19 @@ export interface BlackjackMotion {
    * (#3720 review), so nothing keyed to it (the out-of-chips card, the victory screen) shows early.
    */
   readonly settled: boolean;
+  /**
+   * Reduce Motion's spaced sounds are still due (#3751). The round is settled already: only the
+   * felt's tap, which lands them, stays on for it.
+   */
+  readonly sounding: boolean;
   /** A stage is shown with motion (the banner and the tags pop in). */
   readonly animating: boolean;
   /** Split hands whose own result shows so far; undefined: every hand's. */
   readonly revealedHands: number | undefined;
   /** The dealer's total is "?" (the hole card has not finished turning); undefined: as drawn. */
   readonly dealerConcealed: boolean | undefined;
+  /** The naturals marked, and the natural moment playing (#3621). */
+  readonly natural: FeltNatural;
   /**
    * Runs the player's action `run`, and replays the change it makes. Anything still moving lands
    * at once first (input stays live). A result still playing out is shown first (owner decision,
@@ -117,6 +142,8 @@ interface Shown {
   readonly rest: Stage | null;
   /** The felt signature of `final` (null before a game). */
   readonly sig: string | null;
+  /** When the player's natural moment started (JS clock), while the motion runs; else null. */
+  readonly momentSince: number | null;
 }
 
 const NO_IDS: CardIds = { dealer: [], hands: [] };
@@ -125,10 +152,14 @@ const MOTION = 1;
 const TRAY = 2;
 /** The beat after a result cut short, and the action that waits for it. */
 const HOLD = 3;
+/** The sounds of an action under Reduce Motion, spaced out (#3751). */
+const SPACED = 4;
+/** Under Reduce Motion, the gap between an action's sounds (owner decision, #3751). */
+export const REDUCE_MOTION_SOUND_GAP_MS = 100;
 const NONE: ReadonlySet<string> = new Set();
 const STILL: CardMotion = { dealing: NONE, flipping: NONE, slideMs: 0, epoch: 0 };
 
-/** Each sound of `cues` once, in order: an action's sounds at the instant (Reduce Motion). */
+/** Each sound of `cues` once, in order: an action's sounds under Reduce Motion (spaced, #3751). */
 function onceEach(cues: readonly { readonly sound: SoundCue }[]): SoundCue[] {
   return [...new Set(cues.map((c) => c.sound))];
 }
@@ -210,6 +241,7 @@ const NOTHING_SHOWN: Shown = {
   cards: STILL,
   sig: null,
   rest: null,
+  momentSince: null,
 };
 
 /** A ref to the latest `value`, updated before paint (and before later layout effects). */
@@ -248,7 +280,11 @@ function useSkipHold(input: {
   /** Lands everything; a result shows with its chime, and holds. */
   const skip = useCallback(() => {
     const stage = stageRef.current;
-    if (stage === null) return;
+    if (stage === null) {
+      // Nothing moves, but spaced Reduce Motion sounds may be due (#3751).
+      land(true);
+      return;
+    }
     // A beat only for a result not yet shown: once the banner shows, the chips land and the
     // action runs at once (#3720 round 2).
     const result = resultRef.current && !stage.result;
@@ -303,6 +339,45 @@ function useTimelineRunner(input: {
   const { clock, cue, runSettled, setShown, stageRef } = input;
   /** The result's chime, while it is still due. */
   const chimeRef = useRef<SoundCue | null>(null);
+  /** The result's chime, while it is still due among the spaced sounds (Reduce Motion, #3751). */
+  const spacedChimeRef = useRef<SoundCue | null>(null);
+  /** Spaced sounds are still due: a tap on the felt lands them (#3751). */
+  const [sounding, setSounding] = useState(false);
+
+  /**
+   * Drops the spaced sounds not yet played. `chime`: a result chime still due among them plays
+   * once, now, with no effect (as a skipped motion's does, #3720).
+   */
+  const dropSpaced = useCallback(
+    (chime: boolean) => {
+      clock.cancelGroup(SPACED);
+      setSounding(false);
+      const due = spacedChimeRef.current;
+      spacedChimeRef.current = null;
+      if (chime && due !== null) cue(due, true);
+    },
+    [clock, cue]
+  );
+
+  /**
+   * Plays `sounds` in order, `REDUCE_MOTION_SOUND_GAP_MS` apart, the first at once (#3751).
+   * `chime`: the one among them that is the round's result chime, if any.
+   */
+  const spread = useCallback(
+    (sounds: readonly SoundCue[], chime: SoundCue | null) => {
+      spacedChimeRef.current = chime !== null && sounds.includes(chime) ? chime : null;
+      sounds.forEach((sound, i) => {
+        const play = () => {
+          if (sound === spacedChimeRef.current) spacedChimeRef.current = null;
+          if (i === sounds.length - 1) setSounding(false);
+          cue(sound);
+        };
+        clock.schedule(play, i * REDUCE_MOTION_SOUND_GAP_MS, SPACED);
+      });
+      if (sounds.length > 1) setSounding(true);
+    },
+    [clock, cue]
+  );
 
   /**
    * Lands everything at once. `chime`: the result's chime, if still due, plays now. `always`: a
@@ -310,6 +385,7 @@ function useTimelineRunner(input: {
    */
   const land = useCallback(
     (chime: boolean, always = false) => {
+      dropSpaced(chime);
       clock.cancelGroup(MOTION);
       const due = chimeRef.current;
       chimeRef.current = null;
@@ -324,9 +400,11 @@ function useTimelineRunner(input: {
         stage: null,
         rest: always ? null : s.rest,
         cards: { ...STILL, epoch: s.cards.epoch + 1 },
+        // A natural's moment lands too: its edges stay, static (#3621).
+        momentSince: null,
       }));
     },
-    [clock, cue, runSettled, setShown, stageRef]
+    [clock, cue, dropSpaced, runSettled, setShown, stageRef]
   );
 
   /** Runs an action's timeline: each stage and each sound at its time. */
@@ -335,15 +413,23 @@ function useTimelineRunner(input: {
       const lastFrame = plan.frames[plan.frames.length - 1]!;
       for (const f of plan.frames.slice(1)) {
         const isLast = f === lastFrame;
+        // The player's natural moment starts with its stage, in the same render (#3621).
+        const moment = f.at === plan.momentAt;
         const show = () => {
           stageRef.current = isLast ? null : f.stage;
-          setShown((s) => ({ ...s, stage: stageRef.current }));
+          const since = moment && !isLast ? Date.now() : null;
+          setShown((s) => ({
+            ...s,
+            stage: stageRef.current,
+            momentSince: isLast ? null : (since ?? s.momentSince),
+          }));
           if (isLast) runSettled();
         };
         clock.schedule(show, f.at, MOTION);
       }
       for (const c of plan.cues) {
-        const isChime = RESULT_CUES.includes(c.sound) && c.at === plan.resultAt;
+        // The result's chime: a natural's sting before the result counts (`chimeAt`, #3621).
+        const isChime = RESULT_CUES.includes(c.sound) && c.at === plan.chimeAt;
         if (isChime) chimeRef.current = c.sound;
         const play = () => {
           if (isChime) chimeRef.current = null;
@@ -354,7 +440,7 @@ function useTimelineRunner(input: {
     },
     [clock, cue, runSettled, setShown, stageRef]
   );
-  return { land, run };
+  return { land, run, spread, sounding };
 }
 
 export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion {
@@ -391,7 +477,13 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
 
   const { whenSettled, runSettled, dropSettled } = useSettledQueue(stageRef);
 
-  const { land, run } = useTimelineRunner({ clock, cue, runSettled, setShown, stageRef });
+  const { land, run, spread, sounding } = useTimelineRunner({
+    clock,
+    cue,
+    runSettled,
+    setShown,
+    stageRef,
+  });
 
   useLayoutEffect(() => {
     if (engine === null) {
@@ -416,9 +508,12 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     const plan = from === null ? null : planMotion(from.view, next, heldBefore);
     const prevChips = last?.view.chips ?? next.chips;
     if (from === null || plan === null || reduceMotionRef.current || awayRef.current) {
-      // At once, every card drawn. An action's sounds still play, each once, at the instant (none
-      // while away).
-      if (plan !== null) onceEach(plan.cues).forEach((sound) => cue(sound));
+      // At once, every card drawn. An action's sounds still play, each once, in order and
+      // `REDUCE_MOTION_SOUND_GAP_MS` apart (#3751); none while away.
+      if (plan !== null && !awayRef.current) {
+        const chime = plan.cues.find((c) => RESULT_CUES.includes(c.sound) && c.at === plan.chimeAt);
+        spread(onceEach(plan.cues), chime?.sound ?? null);
+      }
       heldRef.current = [];
       resultRef.current = false;
       setShown((s) => ({
@@ -429,6 +524,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
         cards: { ...STILL, epoch: s.cards.epoch + 1 },
         sig,
         rest: null,
+        momentSince: null,
       }));
       runSettled();
       return;
@@ -446,10 +542,11 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
       cards: cardMotionOf(drawnIds(from.ids, heldBefore), ids, plan, s.cards.epoch),
       sig,
       rest,
+      momentSince: null,
     }));
     run(plan);
     if (settledNow) runSettled();
-  }, [engine, land, run, fresh, cue, awayRef, runSettled, reduceMotionRef]);
+  }, [engine, land, run, spread, fresh, awayRef, runSettled, reduceMotionRef]);
 
   // Reduce Motion turned on mid-motion: everything lands at once (a pop-in still running too).
   // Every card drawn too: a split hand's card held back for its turn shows (#3720 round 2).
@@ -494,6 +591,13 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
   );
   const chips = useMemo(() => [...(stage?.chips ?? []), ...trayChips], [stage, trayChips]);
   const unsettled = stage !== null && !stage.settled;
+  // At rest, the settled round's naturals (a restore shows them static, with no motion).
+  const edges = drawn ? drawn.natural : final === null ? NO_NATURALS : naturalEdges(final);
+  const since = stage !== null && edges.player ? shown.momentSince : null;
+  const natural = useMemo<FeltNatural>(
+    () => ({ player: edges.player, dealer: edges.dealer, since }),
+    [edges.player, edges.dealer, since]
+  );
 
   return {
     view,
@@ -502,9 +606,11 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     chips,
     shownChips: final === null ? null : unsettled ? shown.prevChips : final.chips,
     settled: stage === null && (engineSig === null || shown.sig === engineSig),
+    sounding,
     animating: stage !== null,
     revealedHands: stage?.result ? stage.revealed : undefined,
     dealerConcealed: drawn ? !drawn.holeCounted : undefined,
+    natural,
     act,
     skip,
     leave,

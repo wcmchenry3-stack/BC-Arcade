@@ -58,10 +58,7 @@ const EXPECTED_KEYS = [
   "attackrun",
   "beamfire",
   "reinforce",
-  "bg1",
-  "bg2",
-  "bg3",
-  "bg4",
+  "bgm",
 ].map((k) => `starswarm.${k}`);
 
 const REMOVED_FILES = [
@@ -71,6 +68,11 @@ const REMOVED_FILES = [
   "starswarm-powerup-shield.ogg",
   "starswarm-powerup-bomb.ogg",
   "starswarm-powerup-lightning.ogg",
+  // #3638: the four Pixabay music tracks, replaced by starswarm-bgm.mp3
+  "starswarm-bg-1.mp3",
+  "starswarm-bg-2.mp3",
+  "starswarm-bg-3.mp3",
+  "starswarm-bg-4.mp3",
 ];
 
 describe("Star Swarm sound registry (#3526)", () => {
@@ -78,6 +80,11 @@ describe("Star Swarm sound registry (#3526)", () => {
     for (const key of EXPECTED_KEYS) expect(STARSWARM_SOUNDS[key]).toBeDefined();
     expect(Object.keys(STARSWARM_SOUNDS).sort()).toEqual([...EXPECTED_KEYS].sort());
     expect(Object.keys(keyToFile()).sort()).toEqual([...EXPECTED_KEYS].sort());
+  });
+
+  it("the music is one original track under one key (#3638)", () => {
+    expect(keyToFile()["starswarm.bgm"]).toBe("starswarm-bgm.mp3");
+    for (const n of [1, 2, 3, 4]) expect(STARSWARM_SOUNDS[`starswarm.bg${n}`]).toBeUndefined();
   });
 
   it("the unused chargeshot key is gone", () => {

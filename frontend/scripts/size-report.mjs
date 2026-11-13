@@ -46,12 +46,13 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * Metro flattens `assets/sounds/starswarm-bg-1.mp3` to `assets_sounds_starswarmbg1.mp3`
+ * Metro flattens `assets/sounds/mahjong-bg-1.mp3` to `assets_sounds_mahjongbg1.mp3`
  * (lowercased, non-alphanumerics other than `_` dropped) and Android groups it under
  * `drawable-*` (images) or `raw/` (everything else). Fonts keep their file name.
  */
 export const HIDDEN_PREMIUM_PATTERNS = [
-  { name: "Star Swarm / Mahjong BGM", re: /(?:^|_)(?:starswarm|mahjong)bg\d*\./ },
+  // `bgm?`: Star Swarm's one track is `starswarm-bgm.mp3` (#3638), Mahjong's `mahjong-bg-N.mp3`.
+  { name: "Star Swarm / Mahjong BGM", re: /(?:^|_)(?:starswarm|mahjong)bgm?\d*\./ },
   { name: "celestial-icons", re: /(?:^|_)celestialicons_/ },
   { name: "fruit-icons", re: /(?:^|_)fruiticons_/ },
   { name: "cosmos-baked", re: /(?:^|_)cosmosbaked_/ },

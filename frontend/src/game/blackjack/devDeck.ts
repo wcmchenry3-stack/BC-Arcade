@@ -98,7 +98,8 @@ export const BLACKJACK_DEV_PRESETS: readonly BlackjackDevPreset[] = [
     cards: [c("A", "♠"), c("9", "♥"), c("K", "♦"), c("7", "♣")],
   },
   {
-    // Player 10,9 (19) vs dealer A,K natural (21).
+    // Player 10,9 (19) vs dealer A (hole), K (up): a natural. The dealer peeks and the
+    // hand ends at the deal, the bet lost (#3741).
     label: "Dealer natural",
     cards: [c("10", "♠"), c("A", "♥"), c("9", "♦"), c("K", "♣")],
   },

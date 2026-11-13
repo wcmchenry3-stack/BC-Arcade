@@ -50,6 +50,11 @@ function restore(parsed: Twenty48State): Twenty48State {
         .filter((t): t is NonNullable<typeof t> => t !== null)
     );
   }
+  // A saved board opens at rest: the last move's merge (#3689) is not slid again. `mergedFrom` is
+  // absent from saves made before it, and those load as they always did.
+  if (parsed.tiles.some((tile) => tile.mergedFrom !== undefined)) {
+    parsed.tiles = parsed.tiles.map(({ mergedFrom: _slid, ...tile }) => tile);
+  }
   if (typeof parsed.scoreDelta !== "number") {
     parsed.scoreDelta = 0;
   }
@@ -73,6 +78,20 @@ function restore(parsed: Twenty48State): Twenty48State {
   return clockOnLoad(parsed, parsed.game_over);
 }
 
+/**
+ * The state as it is stored: without `mergedFrom` (#3689). It is for the slide of the move just
+ * made, which a reopened game does not replay, so it never reaches storage and the stored format
+ * (and its size) is what it was.
+ */
+function forStorage(state: Twenty48State): Twenty48State {
+  const withClock = clockForSave(state);
+  if (!withClock.tiles.some((tile) => tile.mergedFrom !== undefined)) return withClock;
+  return {
+    ...withClock,
+    tiles: withClock.tiles.map(({ mergedFrom: _slid, ...tile }) => tile),
+  };
+}
+
 export const {
   save: saveGame,
   load: loadGame,
@@ -90,7 +109,7 @@ export const {
   keepInvalid: true,
   corruptExtra: "keyAndRaw",
   onLoad: restore,
-  beforeSave: clockForSave,
+  beforeSave: forStorage,
 });
 
 export const { save: saveBestScore, load: loadBestScore } = createRecord<number>({

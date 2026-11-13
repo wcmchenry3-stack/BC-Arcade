@@ -27,6 +27,8 @@
   "card.suit.diamonds": "Diamonds",
   "card.suit.clubs": "Clubs",
   "outcome.blackjack": "Blackjack!",
+  "outcome.blackjackNatural": "Blackjack! 3:2",
+  "outcome.blackjackNaturalLabel": "Blackjack, pays 3 to 2",
   "outcome.win": "You Win!",
   "outcome.push": "Push",
   "outcome.lose": "You Lose",
@@ -67,6 +69,8 @@
   "rules.soft17Tooltip": "S17: Dealer stands on soft 17 — slightly better for the player. H17: Dealer hits on soft 17 — slightly better for the house.",
   "rules.decksTooltip": "Number of decks shuffled into the shoe. More decks increase the house edge slightly and make card counting harder.",
   "rules.penetrationTooltip": "How much of the shoe is dealt before reshuffling. 75% means 75% of cards are played before a new shuffle. Higher penetration = more variance.",
+  "rules.standardTitle": "Standard rules",
+  "rules.standard": "Blackjack pays 3:2. With an Ace or a ten showing, the dealer checks for blackjack before you act. A dealer blackjack ends the hand: you lose only your bet, or push with a blackjack of your own. A blackjack beats any other 21.",
   "score.heroLabel": "Session",
   "score.plLine": "{{amount}} chips",
   "score.subLine": "{{handsPlayed}} hands · {{winRate}}% win rate",
@@ -150,5 +154,7 @@
   "result.playerBusts": "Bust with {{value}}",
   "result.versus": "{{player}} against the dealer's {{dealer}}",
   "result.dealerHas": "Dealer has {{value}}",
+  "result.dealerBlackjack": "Dealer Blackjack",
+  "result.bothBlackjack": "Both Blackjack",
   "a11y.handBet": "Bet {{amount}} chips"
 }

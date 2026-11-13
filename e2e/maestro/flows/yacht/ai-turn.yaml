@@ -22,15 +22,18 @@ appId: com.buffingchi.games
     visible:
       text: "Tap dice to hold"
     timeout: 5000
-# Score Ones (always visible in the default upper tab; may score 0 but is always legal).
+# Score Ones (every row is on screen at once, no tabs; may score 0 but is always legal).
 # This triggers setIsAiTurn(true) and the AI autonomous turn loop begins.
 - tapOn:
     id: "score-row-ones"
-# Assert the AI's autonomous turn is running, then that it completes.
+# Assert the AI's autonomous turn ran and completed: its scored row is highlighted
+# (yacht-cpu-row-bar, #3748) and play returns to you. The turn now takes at most ~3.7 s
+# (#3749 pacing), shorter than an emulator's polling can reliably catch the transient
+# "Computer's Turn" label, so the flow checks the turn's result instead of that label.
 - extendedWaitUntil:
     visible:
-      text: "Computer's Turn"
-    timeout: 10000
+      id: "yacht-cpu-row-bar"
+    timeout: 15000
 - extendedWaitUntil:
     visible:
       text: "Your Turn"

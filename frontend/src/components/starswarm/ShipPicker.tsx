@@ -70,7 +70,7 @@ export default function ShipPicker({ value, onChange }: ShipPickerProps) {
                 importantForAccessibility="no"
               />
               <Text
-                style={[styles.name, { color: selected ? colors.accent : colors.text }]}
+                style={[styles.name, { color: selected ? colors.accentText : colors.text }]}
                 maxFontSizeMultiplier={1.1}
                 numberOfLines={2}
               >
