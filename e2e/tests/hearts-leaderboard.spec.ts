@@ -42,7 +42,10 @@ interface Traffic {
 }
 
 /** Intercepts the game sync, rank and player routes, and records any `/hearts/` call. */
-async function routeApi(page: Page): Promise<Traffic> {
+async function routeApi(
+  page: Page,
+  playerName: string | null = null,
+): Promise<Traffic> {
   const traffic: Traffic = {
     hearts: [],
     creates: [],
@@ -60,11 +63,14 @@ async function routeApi(page: Page): Promise<Traffic> {
   });
   // /players/me as the server behaves since #2778: a join (PUT, no body)
   // assigns a generated name, GET reads it, DELETE leaves. The name is
-  // "Tester" so a device that already holds that name keeps it.
-  let boardName: string | null = null;
+  // "Tester" so a device that already holds that name keeps it. The board
+  // starts with `playerName` so the server agrees with a name the test planted
+  // on the device: the launch refresh treats the server as the source of truth
+  // (#3813, #3790).
+  let boardName: string | null = playerName;
   await page.route("**/players/me", async (route) => {
     const method = route.request().method();
-    if (method === "PUT") boardName = "Tester";
+    if (method === "PUT") boardName ??= "Tester";
     if (method === "DELETE") boardName = null;
     await route.fulfill(json({ display_name: boardName }));
   });
@@ -123,7 +129,7 @@ test.describe("Hearts — result card + leaderboard", () => {
   test("shows the game's rank under the saved display name with no name entry", async ({
     page,
   }) => {
-    const traffic = await routeApi(page);
+    const traffic = await routeApi(page, "Tester");
     await finishGame(page, "Tester");
 
     const card = page.getByTestId("hearts-result");
@@ -183,7 +189,7 @@ test.describe("Hearts — result card + leaderboard", () => {
   test("a finished game resumed from storage shows the card without sending anything", async ({
     page,
   }) => {
-    const traffic = await routeApi(page);
+    const traffic = await routeApi(page, "Tester");
     await openGame(page, GAME_OVER_STATE, "Tester");
 
     await expect(page.getByTestId("hearts-result")).toBeVisible({
