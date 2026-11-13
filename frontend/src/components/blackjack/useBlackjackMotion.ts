@@ -450,13 +450,15 @@ function useTimelineRunner(input: {
    * Runs `fn` once the round is settled, and plays the run cue handed in with it from the same
    * callback (#3812): the settled queue owns the cue, so the two cannot drift apart. A round that
    * has settled already (a one-frame plan, #3812) plays the cue now, with `fn`; a round no action
-   * played (a restore) has no slot, so it plays none.
+   * played (a restore) has no slot, so it plays none. Playing now takes the first cue handed in:
+   * a second event on the same one-frame plan finds the slot spent (not reachable today).
    */
   const whenSettled = useCallback(
     (fn: () => void, opts?: { readonly cue?: RunCue }) => {
       if (opts?.cue !== undefined) armRunCue(opts.cue);
       queueSettled(fn);
-      if (stageRef.current === null && runSlotRef.current === "motion") playRunCue();
+      const now = opts?.cue !== undefined && stageRef.current === null;
+      if (now && runSlotRef.current === "motion") playRunCue();
     },
     [armRunCue, queueSettled, playRunCue, stageRef]
   );

@@ -544,6 +544,8 @@ describe("fuzz: the run's cues and the all-in", () => {
 
   it("the seeds reach a milestone, a comeback and an all-in", () => {
     // A filtered run (`-t "seed 3"`) has not played them all: nothing to require then.
+    // The seeds are deterministic (milestone 1, comeback 2, all-in 12 today). If an engine or
+    // planner change moves their paths and this fails, re-pick seeds rather than loosen it.
     if (reached.seeds < RUN_CUE_SEEDS.length) return;
     expect(reached.milestone).toBeGreaterThanOrEqual(1);
     expect(reached.comeback).toBeGreaterThanOrEqual(1);
