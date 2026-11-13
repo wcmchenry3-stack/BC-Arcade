@@ -50,6 +50,15 @@ export interface PlanckTuning {
   radiusInsetPx?: number;
   /** Friction coefficient for pieces and walls (default: the production 0.5). */
   friction?: number;
+  /**
+   * Linear damping in 1/s (default: today's air friction, 0.01 per step = 0.606 / s). Damps a
+   * fall as much as a shuffle, so a large value makes drops floaty.
+   */
+  linearDamping?: number;
+  /** Box2D's own angular damping in 1/s (default 0), on top of the engine's per-step damping. */
+  angularDamping?: number;
+  /** Multiplier on today's gravity (default 1). Everything falls and settles faster above 1. */
+  gravityScale?: number;
 }
 
 type UserData = ContactSide;
@@ -58,7 +67,8 @@ export function createPlanckBackend(tuning: PlanckTuning): PhysicsBackend {
   const m = (px: number): number => px / PX_PER_M;
   const friction = tuning.friction ?? PIECE_FRICTION;
   const collider = (r: number): number => m(Math.max(1, r - (tuning.radiusInsetPx ?? 0)));
-  const world = new World({ gravity: Vec2(0, m(GRAVITY_PX_S2)), allowSleep: true });
+  const gravity = m(GRAVITY_PX_S2 * (tuning.gravityScale ?? 1));
+  const world = new World({ gravity: Vec2(0, gravity), allowSleep: true });
   const T = tuning.boundaryThickness;
   const top = -tuning.wallsAbove;
   const bottom = WORLD_HEIGHT - FLOOR_THICKNESS + T;
@@ -88,7 +98,8 @@ export function createPlanckBackend(tuning: PlanckTuning): PhysicsBackend {
 
   // Matter's frictionAir multiplies velocity by (1 - 0.01) per step; Box2D damps by
   // 1 / (1 + h * c) per step, so c = (1 / (1 - 0.01) - 1) / h.
-  const linearDamping = (1 / (1 - PIECE_FRICTION_AIR) - 1) / STEP_S;
+  const linearDamping = tuning.linearDamping ?? (1 / (1 - PIECE_FRICTION_AIR) - 1) / STEP_S;
+  const angularDamping = tuning.angularDamping ?? 0;
   const bodies = new Map<number, Body>();
   let nextId = 1;
   let onBegin: ((a: ContactSide, b: ContactSide) => void) | null = null;
@@ -106,6 +117,7 @@ export function createPlanckBackend(tuning: PlanckTuning): PhysicsBackend {
         type: "dynamic",
         position: Vec2(m(x), m(y)),
         linearDamping,
+        angularDamping,
         allowSleep: true,
       });
       b.createFixture({

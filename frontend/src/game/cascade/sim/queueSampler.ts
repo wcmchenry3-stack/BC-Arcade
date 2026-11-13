@@ -21,18 +21,26 @@ export function sampleQueue(
   draws: number,
   inDanger: boolean,
   tiers: number = DEFAULT_CONSTANTS.maxTier + 1,
-  droppable: readonly number[] = DEFAULT_CONSTANTS.droppableTiers
+  droppable: readonly number[] = DEFAULT_CONSTANTS.droppableTiers,
+  select?: (history: number[], isInDanger: boolean, rng: () => number) => number
 ): QueueSample {
   const counts = new Array<number>(tiers).fill(0);
   const maxDrought = new Array<number>(tiers).fill(0);
   for (let seed = 1; seed <= seeds; seed++) {
     const rng = streamRng(seed, "queue");
-    let queue = createPieceQueue([], rng);
+    let queue = select
+      ? (() => {
+          const current = select([], false, rng);
+          return { current, next: select([current], false, rng) };
+        })()
+      : createPieceQueue([], rng);
     let history = [queue.current, queue.next];
     const runs = new Array<number>(tiers).fill(0);
     for (let i = 0; i < draws; i++) {
       const tier = queue.current;
-      queue = advanceQueue(queue, history, inDanger, rng);
+      queue = select
+        ? { current: queue.next, next: select(history, inDanger, rng) }
+        : advanceQueue(queue, history, inDanger, rng);
       history = [...history, queue.next].slice(-DROUGHT_WINDOW);
       counts[tier]!++;
       for (const d of droppable) {

@@ -1,4 +1,4 @@
-> **Spike record (#3696), not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the physics change is carried out in #3697.
+> **Spike record (#3696), not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the physics change is carried out in #3697. Follow-up: [`CASCADE_FEEL_PROPOSALS.md`](CASCADE_FEEL_PROPOSALS.md) (#3697 phase 1) pins planck at 1.4.2 (bit-identical to 1.5.1 here) and shows that most of B's wall penetration below was measured at a growing piece's full radius rather than its collider's.
 
 # Cascade physics spike: tuned Matter.js vs planck.js
 

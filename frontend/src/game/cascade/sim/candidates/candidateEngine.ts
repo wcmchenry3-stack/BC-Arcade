@@ -65,6 +65,32 @@ export interface CandidateTuning {
   mergeGapPx?: number;
   /** Count same-tier near misses (an O(n^2) scan per step); the spike CLI turns it on. */
   measureNearMiss?: boolean;
+  // ---- #3697 feel proposals (all optional; unset = the spike's behaviour) ----
+  /** Radius per tier (default: the ladder via `PIECE_DEFS`). The lid, spawn and merges use it. */
+  radius?: (tier: number) => number;
+  /** Angular damping applied per fixed step on top of the backend (default 0.3, production). */
+  angularDamping?: number;
+  /** Upward kick of a merged piece, px per fixed step (default `MERGE_POP_IMPULSE`, 0.4). */
+  mergePopImpulse?: number;
+  /**
+   * Create a merged piece where its FULL radius is inside the walls and above the floor (the
+   * parents' midpoint, clamped), so growing in never pushes it into a wall.
+   */
+  growInClamp?: boolean;
+  /**
+   * Chain reach: a piece still growing in also merges with a same-tier piece that its full
+   * radius would touch (gap at full size <= this many px), without waiting to grow into it.
+   */
+  chainReachPx?: number;
+  /** Emit `{ type: "win" }` when a merge makes the capstone (#3699 is the real rule). */
+  emitWin?: boolean;
+  /**
+   * Settle assist: a piece that is not falling from the spawner and moves slower than
+   * `belowPxPerStep` loses `factor` of its velocity each fixed step. Gravity adds 0.69 px/step
+   * per step, more than this takes from a slow piece, so nothing hovers: it only takes the
+   * slow creep out of a resting pile, which is what keeps a board from calming after a chain.
+   */
+  restDamping?: { belowPxPerStep: number; factor: number };
 }
 
 export interface CandidateStats {
@@ -85,7 +111,19 @@ export interface CandidateStats {
    * look like they touch, and on a contact-only merge rule they never merge.
    */
   nearMissPairSteps: number;
+  /**
+   * Chain merge latency: for a merged piece that, at full size, touches a same-tier piece when
+   * it is made (gap <= 1 px), the fixed steps until it merges again. `chainMisses` counts those
+   * that had not merged 60 steps (1 s) later.
+   */
+  chainLatencySteps: number[];
+  chainMisses: number;
 }
+
+/** A merge product watched for a prompt chain merge is a miss after this many fixed steps. */
+const CHAIN_WATCH_STEPS = 60;
+/** A merge product "touches" a same-tier piece when the gap at full size is at most this (px). */
+const CHAIN_TOUCH_PX = 1;
 
 export interface BenchOptions {
   noMerges?: boolean;
@@ -106,7 +144,12 @@ export class CandidateEngine {
     escapes: 0,
     maxPieces: 0,
     nearMissPairSteps: 0,
+    chainLatencySteps: [],
+    chainMisses: 0,
   };
+  /** Merge products touching a same-tier piece when made: id -> step made. */
+  private readonly _chainWatch = new Map<number, number>();
+  private readonly _r: (tier: number) => number;
   private readonly _pieces = new Map<number, { tier: number }>();
   /** Pieces still growing in: id -> [startRadius, stepsDone]. */
   private readonly _growing = new Map<number, [number, number]>();
@@ -127,7 +170,9 @@ export class CandidateEngine {
     private readonly _backend: PhysicsBackend,
     private readonly _tuning: CandidateTuning,
     private readonly _bench: BenchOptions = {}
-  ) {}
+  ) {
+    this._r = _tuning.radius ?? ((tier) => pieceRadius(PIECE_DEFS[tier]!));
+  }
 
   private readonly _onBegin = (a: ContactSide, b: ContactSide): void => {
     if (this._falling.size > 0) {
@@ -170,9 +215,17 @@ export class CandidateEngine {
         continue;
       }
       g[1]++;
-      const full = pieceRadius(PIECE_DEFS[piece.tier]!);
+      const full = this._r(piece.tier);
       const r = g[1] >= steps ? full : g[0] + ((full - g[0]) * g[1]) / steps;
       this._backend.setRadius(id, r);
+      if (this._tuning.growInClamp) {
+        // Grow away from a wall or the floor: the piece fell a little while it was small, so
+        // keep the grown circle inside (a shift of at most one grow step, never a velocity change).
+        const b = this._backend.get(id);
+        const x = Math.max(WALL_THICKNESS + r, Math.min(WORLD_WIDTH - WALL_THICKNESS - r, b.x));
+        const y = Math.min(WORLD_HEIGHT - FLOOR_THICKNESS - r, b.y);
+        if (x !== b.x || y !== b.y) this._backend.setPosition(id, x, y);
+      }
       if (g[1] >= steps) this._growing.delete(id);
     }
   }
@@ -186,12 +239,26 @@ export class CandidateEngine {
     const be = this._backend;
     for (const [id, { tier }] of this._pieces) {
       const body = be.get(id);
-      const damped = body.angularVelocity * (1 - PIECE_ANGULAR_DAMPING);
+      const damped =
+        body.angularVelocity * (1 - (this._tuning.angularDamping ?? PIECE_ANGULAR_DAMPING));
+      const rest = this._tuning.restDamping;
+      if (
+        rest &&
+        !body.isSleeping &&
+        body.speed > 0 &&
+        body.speed < rest.belowPxPerStep &&
+        !this._falling.has(id)
+      ) {
+        be.setVelocity(id, body.vx * (1 - rest.factor), body.vy * (1 - rest.factor));
+      }
       const clamped =
         Math.abs(damped) > MAX_ANGULAR_VELOCITY ? Math.sign(damped) * MAX_ANGULAR_VELOCITY : damped;
       be.setAngularVelocity(id, clamped);
 
-      const r = pieceRadius(PIECE_DEFS[tier]!);
+      // The collider's radius right now: a piece still growing in is measured at its current
+      // size (#3697; the spike measured it at full size, which counted part of a grow-in near a
+      // wall or the floor as penetration). Equal to the full radius without grow-in.
+      const r = this._growing.has(id) ? this.currentRadius(id) : this._r(tier);
       const minX = WALL_THICKNESS + r;
       const maxX = WORLD_WIDTH - WALL_THICKNESS - r;
       const maxY = WORLD_HEIGHT - FLOOR_THICKNESS - r;
@@ -244,6 +311,15 @@ export class CandidateEngine {
     if (this._tuning.mergeGapPx !== undefined || this._tuning.measureNearMiss) {
       this._scanSameTierPairs();
     }
+    if (this._tuning.chainReachPx !== undefined && this._growing.size > 0) this._chainReach();
+    if (this._chainWatch.size > 0) {
+      for (const [id, made] of this._chainWatch) {
+        if (this.stats.fixedSteps - made > CHAIN_WATCH_STEPS) {
+          this.stats.chainMisses++;
+          this._chainWatch.delete(id);
+        }
+      }
+    }
     this._processMerges(events);
     if (!this._bench.noLid) this._applyLid(events);
 
@@ -282,6 +358,66 @@ export class CandidateEngine {
     }
   }
 
+  /** Same-tier pieces a growing piece would touch at full size join the pending merges. */
+  private _chainReach(): void {
+    const be = this._backend;
+    const reach = this._tuning.chainReachPx ?? 0;
+    for (const id of this._growing.keys()) {
+      const piece = this._pieces.get(id);
+      if (!piece || piece.tier >= MAX_TIER) continue;
+      const g = be.get(id);
+      const full = this._r(piece.tier);
+      for (const [oid, other] of this._pieces) {
+        if (oid === id || other.tier !== piece.tier) continue;
+        const o = be.get(oid);
+        const gap = Math.hypot(g.x - o.x, g.y - o.y) - full - this.currentRadius(oid);
+        if (gap <= reach) {
+          this._pendingMerges.add(id < oid ? `${id}:${oid}` : `${oid}:${id}`);
+        }
+      }
+    }
+  }
+
+  /** True if a piece of `tier` with its full radius at (x, y) touches another of that tier. */
+  private _touchesSameTier(tier: number, x: number, y: number, self: number): boolean {
+    const r = this._r(tier);
+    for (const [oid, other] of this._pieces) {
+      if (oid === self || other.tier !== tier) continue;
+      const o = this._backend.get(oid);
+      if (Math.hypot(x - o.x, y - o.y) - r - this.currentRadius(oid) <= CHAIN_TOUCH_PX) return true;
+    }
+    return false;
+  }
+
+  /** Where a merge makes its piece: the parents' midpoint, clamped inside with `growInClamp`. */
+  private _mergePoint(newTier: number, mx: number, my: number): [number, number] {
+    if (!this._tuning.growInClamp) return [mx, my];
+    const full = this._r(newTier);
+    return [
+      Math.max(WALL_THICKNESS + full, Math.min(WORLD_WIDTH - WALL_THICKNESS - full, mx)),
+      Math.min(WORLD_HEIGHT - FLOOR_THICKNESS - full, my),
+    ];
+  }
+
+  /** A watched merge product merged again: record its chain latency. */
+  private _unwatchChain(id: number): void {
+    const made = this._chainWatch.get(id);
+    if (made === undefined) return;
+    this.stats.chainLatencySteps.push(this.stats.fixedSteps - made);
+    this._chainWatch.delete(id);
+  }
+
+  /** Watch a new merge product for a prompt chain merge; emit the win for a capstone. */
+  private _afterMerge(id: number, tier: number, x: number, y: number, events: EngineEvent[]): void {
+    if (tier < MAX_TIER && this._touchesSameTier(tier, x, y, id)) {
+      this._chainWatch.set(id, this.stats.fixedSteps);
+    }
+    if (tier === MAX_TIER && this._tuning.emitWin) {
+      // Not an `EngineEvent` yet (#3699); the harness picks `{ type: "win" }` up.
+      events.push({ type: "win" } as unknown as EngineEvent);
+    }
+  }
+
   private _processMerges(events: EngineEvent[]): void {
     const merged = new Set<number>();
     const be = this._backend;
@@ -298,9 +434,10 @@ export class CandidateEngine {
       const newTier = tier + 1;
       const a = be.get(idA);
       const b = be.get(idB);
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
-      const highestTop = Math.min(a.y, b.y) - pieceRadius(PIECE_DEFS[tier]!);
+      const [mx, my] = this._mergePoint(newTier, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      this._unwatchChain(idA);
+      this._unwatchChain(idB);
+      const highestTop = Math.min(a.y, b.y) - this._r(tier);
       const nearLid = highestTop <= OVERFLOW_LINE_Y + DANGER_STACK_MARGIN;
 
       be.removePiece(idA);
@@ -315,10 +452,8 @@ export class CandidateEngine {
       this._falling.delete(idB);
 
       const mergedVx = (a.vx + b.vx) / 2;
-      const mergedVy = (a.vy + b.vy) / 2 - MERGE_POP_IMPULSE;
-      const newDef = PIECE_DEFS[newTier]!;
-      const startR =
-        this._tuning.growInSteps > 0 ? pieceRadius(PIECE_DEFS[tier]!) : pieceRadius(newDef);
+      const mergedVy = (a.vy + b.vy) / 2 - (this._tuning.mergePopImpulse ?? MERGE_POP_IMPULSE);
+      const startR = this._tuning.growInSteps > 0 ? this._r(tier) : this._r(newTier);
       const newId = be.addPiece(newTier, mx, my, startR);
       be.setVelocity(
         newId,
@@ -327,6 +462,7 @@ export class CandidateEngine {
       );
       this._pieces.set(newId, { tier: newTier });
       if (this._tuning.growInSteps > 0) this._growing.set(newId, [startR, 0]);
+      this._afterMerge(newId, newTier, mx, my, events);
       if (this._dropId === idA || this._dropId === idB) {
         this._dropId = newId;
         this._dropHardStopRun = 0;
@@ -346,10 +482,7 @@ export class CandidateEngine {
     const be = this._backend;
     if (this._dropId !== null) {
       const drop = this._pieces.get(this._dropId);
-      if (
-        !drop ||
-        be.get(this._dropId).y - pieceRadius(PIECE_DEFS[drop.tier]!) >= OVERFLOW_LINE_Y
-      ) {
+      if (!drop || be.get(this._dropId).y - this._r(drop.tier) >= OVERFLOW_LINE_Y) {
         this._dropId = null;
       }
     }
@@ -362,7 +495,7 @@ export class CandidateEngine {
       if (this._falling.has(id)) continue;
       const body = be.get(id);
       if (body.speed > OVERFLOW_SETTLED_SPEED) continue;
-      const top = body.y - pieceRadius(PIECE_DEFS[tier]!);
+      const top = body.y - this._r(tier);
       if (top <= HARD_STOP_Y) {
         if (id === this._dropId) {
           dropAtTop = true;
@@ -407,12 +540,14 @@ export class CandidateEngine {
     this._pieces.clear();
     this._growing.clear();
     this._falling.clear();
+    this._chainWatch.clear();
   }
 
   restore(pieces: ReadonlyArray<{ tier: number; x: number; y: number }>, score: number): void {
     for (const id of this._pieces.keys()) this._backend.removePiece(id);
     this._pieces.clear();
     this._growing.clear();
+    this._chainWatch.clear();
     this._pendingMerges.clear();
     this._score = score;
     this._gameOver = false;
@@ -428,7 +563,7 @@ export class CandidateEngine {
     for (const { tier, x, y } of pieces) {
       const def = PIECE_DEFS[tier];
       if (!def) continue;
-      const id = this._backend.addPiece(tier, x, y, pieceRadius(def));
+      const id = this._backend.addPiece(tier, x, y, this._r(tier));
       this._pieces.set(id, { tier });
     }
     const placed = Array.from(this._pieces, ([id, { tier }]) => ({
@@ -437,12 +572,10 @@ export class CandidateEngine {
       ...this._backend.get(id),
     }));
     const airborne = placed.filter((p) => {
-      const r = pieceRadius(PIECE_DEFS[p.tier]!);
+      const r = this._r(p.tier);
       if (p.y - r >= OVERFLOW_LINE_Y) return false;
       return !placed.some(
-        (o) =>
-          o.id !== p.id &&
-          Math.hypot(o.x - p.x, o.y - p.y) <= r + pieceRadius(PIECE_DEFS[o.tier]!) + 2
+        (o) => o.id !== p.id && Math.hypot(o.x - p.x, o.y - p.y) <= r + this._r(o.tier) + 2
       );
     });
     for (const p of airborne) this._falling.add(p.id);
@@ -453,8 +586,8 @@ export class CandidateEngine {
     if (this._gameOver) return;
     const def = PIECE_DEFS[tier];
     if (!def) return;
-    const y = OVERFLOW_LINE_Y - pieceRadius(def) - DROP_SPAWN_INSET;
-    const id = this._backend.addPiece(tier, x, y, pieceRadius(def));
+    const y = OVERFLOW_LINE_Y - this._r(tier) - DROP_SPAWN_INSET;
+    const id = this._backend.addPiece(tier, x, y, this._r(tier));
     this._pieces.set(id, { tier });
     this._dropId = id;
     this._dropHardStopRun = 0;
@@ -469,7 +602,7 @@ export class CandidateEngine {
     const piece = this._pieces.get(id);
     if (!piece) return 0;
     const g = this._growing.get(id);
-    const full = pieceRadius(PIECE_DEFS[piece.tier]!);
+    const full = this._r(piece.tier);
     if (!g) return full;
     return g[0] + ((full - g[0]) * g[1]) / this._tuning.growInSteps;
   }

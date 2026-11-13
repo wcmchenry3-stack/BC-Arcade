@@ -71,6 +71,11 @@ export const DEFAULT_CONSTANTS: SimConstants = {
 export interface SimConfig {
   createEngine?: () => SimEngine;
   constants?: Partial<SimConstants>;
+  /**
+   * Replaces the spawn selector (`selectNextTier`) for a difficulty proposal (#3697). The queue
+   * keeps the screen's shape: current + next, advanced on each drop.
+   */
+  selectNextTier?: (history: number[], isInDanger: boolean, rng: () => number) => number;
 }
 
 export function resolveConstants(config?: SimConfig): SimConstants {

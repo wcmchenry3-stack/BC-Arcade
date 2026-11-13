@@ -185,7 +185,8 @@ export function runSuite(params: SuiteParams, config?: SimConfig): SuiteResult {
       params.queueDraws,
       danger,
       c.maxTier + 1,
-      c.droppableTiers
+      c.droppableTiers,
+      config?.selectNextTier
     );
     const flat: FlatMetrics = { draws: s.draws };
     for (let t = 0; t <= c.maxTier; t++) {

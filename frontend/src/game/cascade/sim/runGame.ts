@@ -58,6 +58,8 @@ export interface GameMetrics {
   /** Win event (#3699): the engine does not emit one yet, so this stays false / null. */
   won: boolean;
   timeToWinMs: number | null;
+  /** Simulated ms at which each tier first existed (dropped or merged), null if never. */
+  tierFirstMs: (number | null)[];
   feel: {
     /** Mean packing density over calm samples with 3+ pieces; null if none. */
     packingDensity: number | null;
@@ -97,6 +99,8 @@ export interface RunOptions {
   bot: Bot;
   maxSimMs?: number;
   config?: SimConfig;
+  /** End the run at the first win event (time-to-capstone runs). */
+  stopOnWin?: boolean;
 }
 
 const nowMs = (): number =>
@@ -120,13 +124,20 @@ export function runGame(opts: RunOptions): GameMetrics {
   // Engine velocities are px per fixed step; the thresholds are px per second.
   const speedPxS = (p: PieceSnapshot): number => Math.hypot(p.vx, p.vy) * (1000 / c.fixedStepMs);
 
-  let queue = createPieceQueue([], queueRng);
+  const select = opts.config?.selectNextTier;
+  let queue = select
+    ? (() => {
+        const current = select([], false, queueRng);
+        return { current, next: select([current], false, queueRng) };
+      })()
+    : createPieceQueue([], queueRng);
   let history = [queue.current, queue.next];
 
   const dropsByTier = new Array<number>(tiers).fill(0);
   const mergesByTier = new Array<number>(tiers).fill(0);
   const scoreByTier = new Array<number>(tiers).fill(0);
   const dropSeq: number[] = [];
+  const tierFirstMs = new Array<number | null>(tiers).fill(null);
   let drops = 0;
   let merges = 0;
   let topTier = 0;
@@ -230,12 +241,15 @@ export function runGame(opts: RunOptions): GameMetrics {
         if (view.canDrop) {
           const isInDanger = pieces.some((p) => p.y < c.lidY + c.dangerMargin);
           const tier = queue.current;
-          queue = advanceQueue(queue, history, isInDanger, queueRng);
+          queue = select
+            ? { current: queue.next, next: select(history, isInDanger, queueRng) }
+            : advanceQueue(queue, history, isInDanger, queueRng);
           history = [...history, queue.next].slice(-DROUGHT_WINDOW);
           engine.drop(tier, bot.chooseX(view));
           drops++;
           dropsByTier[tier]!++;
           dropSeq.push(tier);
+          if (tierFirstMs[tier] === null) tierFirstMs[tier] = t;
           topTier = Math.max(topTier, tier);
           if (episode) censored++;
           episode = { dropT: t, merges: 0, lastMergeT: t };
@@ -264,6 +278,7 @@ export function runGame(opts: RunOptions): GameMetrics {
         mergesByTier[e.result]!++;
         scoreByTier[e.result]! += c.scoreValue(e.result);
         topTier = Math.max(topTier, e.result);
+        if (tierFirstMs[e.result] === null) tierFirstMs[e.result] = t;
         if (episode) {
           episode.merges++;
           episode.lastMergeT = t;
@@ -284,7 +299,7 @@ export function runGame(opts: RunOptions): GameMetrics {
       sample();
       nextSampleAt += SAMPLE_MS;
     }
-    if (over) break;
+    if (over || (won && opts.stopOnWin)) break;
   }
 
   const score = engine.getState().score;
@@ -320,6 +335,7 @@ export function runGame(opts: RunOptions): GameMetrics {
     maxDroughtByTier,
     won,
     timeToWinMs,
+    tierFirstMs,
     feel: {
       packingDensity: mean(densitySum, densityN),
       gapMeanPx: mean(gapSum, gapN),
