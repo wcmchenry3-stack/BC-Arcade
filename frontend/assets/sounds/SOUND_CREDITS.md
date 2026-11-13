@@ -358,6 +358,10 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ## FreeCell (#844)
 
+### freecell-game-win.mp3 (deleted, #3871)
+
+This was the only CC BY 4.0 sound ("Victory fanfare" by humanoide9000 on Freesound, https://freesound.org/people/humanoide9000/sounds/466133/). No game used it after #3661 and it was not bundled, so the file was deleted in #3871 and no attribution duty remains.
+
 ---
 
 ## Star Swarm (#803)

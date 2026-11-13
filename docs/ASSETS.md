@@ -97,9 +97,9 @@ rows name the recipe, and the
 design log is [`games/starswarm-art-design.md`](games/starswarm-art-design.md). Its explosions,
 Smart Bomb flash and nebula background have no image files: they are drawn in code (#3597).
 
-### Required attribution (shipped in v1.0)
+### Required attribution
 
-None. The one CC BY 4.0 sound (`freecell-game-win.mp3`, humanoide9000) was deleted from the repo; no shipped asset requires attribution. Font and icon-font license notices are below.
+None for audio or sprites. The only CC BY 4.0 file, `sounds/freecell-game-win.mp3` ("Victory fanfare" by humanoide9000 on Freesound), stopped shipping in #3661 and was deleted in #3871, so the app needs no credit screen for it. Fonts and icon fonts still carry the license notices below.
 
 ### License notices to carry with bundled fonts and icon fonts
 

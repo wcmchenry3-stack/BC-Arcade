@@ -56,7 +56,6 @@ describe("Sudoku sound registry (#3775)", () => {
   it("the screen plays the place tick through useSoundVariants", () => {
     expect(HOOK).toContain("useSoundVariants(SUDOKU_DIGIT_PLACE, SUDOKU_SOUNDS)");
   });
-
 });
 
 describe("one sound per move (#3775)", () => {

@@ -135,7 +135,7 @@ script's own rules. The answer lists are filtered by hand (`answers_blocklist_fr
 
 ## Audio
 
-No audio currently requires attribution. The one CC BY 4.0 sound ("Victory fanfare" by humanoide9000) was deleted from the repo with the asset cleanup (#3578 follow-up).
+No audio in the repo requires attribution. The one CC BY 4.0 sound, "Victory fanfare" by humanoide9000 on Freesound (`freecell-game-win.mp3`), was deleted in #3871.
 
 All **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
 Star Swarm's sound effects are original sounds synthesized in-house (generator
