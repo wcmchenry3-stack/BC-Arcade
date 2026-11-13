@@ -21,6 +21,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { GameRecorder } from "../../game/_shared/gameRecorder";
 import { SORT_MAX_UNITS } from "../../game/_shared/eventQueueConfig";
+import { ORPHAN_GAME_ID_KEY } from "../../game/_shared/pendingGamesStore";
 import { applyPour, initState } from "../../game/sort/engine";
 import { rebuild, SORT_REPLAY_ENGINE_VERSION, type Action } from "../../game/sort/replay";
 import type { CatalogLevel } from "../../game/sort/catalog";
@@ -645,6 +646,26 @@ describe("SortScreen — replay across restarts (#3386)", () => {
       currentState: afterOnePour,
       ...extra,
     });
+
+  it("Continue asks to resume only the session the board was saved with, never another level's (#3876)", async () => {
+    // Level 5's session A is still an orphan; the save holds level 7's board and its session.
+    restore({ replayUnit: 0, replayPending: 0, replayGameId: "level-7-session" });
+    const r = await renderScreen();
+    await continueLevel(r);
+    expect(mockResumeGame).toHaveBeenCalledTimes(1);
+    expect(mockResumeGame).toHaveBeenCalledWith("sort", {
+      [ORPHAN_GAME_ID_KEY]: "level-7-session",
+    });
+    await r.unmount();
+  });
+
+  it("Continue on a board with no saved session matches no orphan (#3876)", async () => {
+    restore({});
+    const r = await renderScreen();
+    await continueLevel(r);
+    expect(mockResumeGame).toHaveBeenCalledWith("sort", { [ORPHAN_GAME_ID_KEY]: "" });
+    await r.unmount();
+  });
 
   it("a resumed session carries the saved unit count on", async () => {
     restore({ replayUnit: 3, replayPending: 0, replayGameId: "killed-session" });
