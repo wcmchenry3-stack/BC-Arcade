@@ -96,7 +96,15 @@ test.describe("Mahjong — web demo screenshots for the Maestro comparison (#380
   }) => {
     const board = page.getByRole("img", { name: /Mahjong Solitaire/i });
     const fit = (await board.boundingBox())!;
-    await page.mouse.dblclick(fit.x + fit.width * 0.25, fit.y + fit.height / 2);
+    // The centre of the board viewport, as Maestro's `doubleTapOn: id: mahjong-board-viewport`
+    // does (demo-zoom.yaml): the zoom centres on the tap, so the two shots frame the same tiles.
+    const viewport = (await page
+      .getByTestId("mahjong-board-viewport")
+      .boundingBox())!;
+    await page.mouse.dblclick(
+      viewport.x + viewport.width / 2,
+      viewport.y + viewport.height / 2,
+    );
     // The zoom is a CSS transform, so the canvas pixels don't show it: check the box grew.
     await expect
       .poll(async () => (await board.boundingBox())!.width)
