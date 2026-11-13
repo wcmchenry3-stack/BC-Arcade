@@ -55,6 +55,11 @@ export interface Colors {
   error: string;
   bonus: string;
   /**
+   * Bottle Sort's hint destination ring (#3660), a 2 px border on `background`: reaches the
+   * 3:1 non-text minimum (WCAG 1.4.11) in both themes, which `bonus` does not on cream.
+   */
+  hintRing: string;
+  /**
    * End-of-game outcome colours (#2501). Each foreground reaches WCAG AA
    * (≥ 4.5:1) on `surfaceHigh` in its theme; the matching `*Tint` is a
    * low-alpha wash of the same hue for icon discs and badges.
@@ -175,6 +180,7 @@ export const dark: Colors = {
   chromeShadowOpacity: 0.08,
   error: TOKENS.errorDark,
   bonus: TOKENS.bonusDark,
+  hintRing: TOKENS.bonusDark,
   outcomeWin: TOKENS.bonusDark,
   outcomeWinTint: "rgba(74,222,128,0.14)",
   outcomeLoss: "#a0a0ac",
@@ -231,6 +237,7 @@ export const light: Colors = {
   chromeShadowOpacity: 0.06,
   error: TOKENS.errorLight,
   bonus: TOKENS.bonusLight,
+  hintRing: TOKENS.outcomeWinLight,
   outcomeWin: TOKENS.outcomeWinLight,
   outcomeWinTint: "rgba(31,122,60,0.12)",
   outcomeLoss: "#6b5e4a",

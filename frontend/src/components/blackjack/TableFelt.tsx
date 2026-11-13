@@ -6,6 +6,9 @@
  *   - Two split hands: fans side by side; the active one outlined.
  *   - Three or four: one full-width row per hand (number, total and bet on the
  *     left), the active row larger and outlined; hands already played dimmed.
+ *   - A split hand's result (total, tag, payout as a signed number) on a one-line
+ *     label (fans, the grid) takes the name's place (`splitResultLabel`, #3771);
+ *     a row keeps it.
  *
  * All positions come from `computeTableGeometry` (game/blackjack/layout.ts),
  * which keeps every corner index readable and the result band clear of the
@@ -24,7 +27,13 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { HandResponse } from "../../game/blackjack/types";
-import { showsResult, type TableGeometry, type Rect } from "../../game/blackjack/layout";
+import {
+  showsResult,
+  splitResultLabel,
+  type TableGeometry,
+  type Rect,
+  type SplitResultLabel,
+} from "../../game/blackjack/layout";
 import FeltCards, { type FeltHand } from "./FeltCards";
 import { FeltChips, PopIn } from "./FeltChips";
 import { ChipFace } from "./ChipButton";
@@ -169,9 +178,11 @@ interface HandLabelProps {
   hand: HandResponse;
   index: number;
   rect: Rect;
-  rows: boolean;
-  /** Rows and the grid: the payout as a signed number, so the label stays one line. */
-  compact: boolean;
+  /**
+   * How the label is drawn (`splitResultLabel`, #3771): a column or one line, whether a split
+   * hand's name stays at the result, and its payout as a signed number.
+   */
+  layout: SplitResultLabel;
   split: boolean;
   active: boolean;
   played: boolean;
@@ -188,12 +199,42 @@ interface HandLabelProps {
   epoch: number;
 }
 
+/**
+ * A hand label's accessibility name: the hand, its total and bet, and once a split hand's result
+ * shows its tag and payout ("Hand 1, Player score 21, Bet 25 chips, Win, +25 chips"), whether or
+ * not its name is drawn (#3771).
+ */
+function handA11yLabel(
+  t: Translate,
+  name: string,
+  valueText: string,
+  bet: number | undefined,
+  outcome: string | null,
+  payoutText: string | null
+): string {
+  return [
+    name,
+    t("a11y.playerScore", { score: valueText }),
+    bet != null ? t("a11y.handBet", { amount: bet }) : null,
+    outcome !== null ? t(tagKeyOf(outcome)) : null,
+    payoutText,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** A player hand's total pill: bust, the hand being played, then its outcome. */
+function handTone(value: number, active: boolean, outcome: string | null): Tone {
+  if (value > 21) return "bust";
+  if (active) return "active";
+  return outcome !== null ? toneForOutcome(outcome) : "plain";
+}
+
 function HandLabel({
   hand,
   index,
   rect,
-  rows,
-  compact,
+  layout,
   split,
   active,
   played,
@@ -208,38 +249,39 @@ function HandLabel({
   const { colors } = useTheme();
   const name = split ? t("hand.playerHand", { number: index + 1 }) : t("hand.player");
   const valueText = hand.soft ? `${hand.value}*` : String(hand.value);
-  let tone: Tone = "plain";
-  if (hand.value > 21) tone = "bust";
-  else if (active) tone = "active";
-  else if (outcome !== null) tone = toneForOutcome(outcome);
+  const tone = handTone(hand.value, active, outcome);
   const payoutText = payout === null ? null : payoutTextFor(payout, t);
-  const a11y = [
+  const named = payoutText === null || layout.named;
+  const a11y = handA11yLabel(
+    t,
     name,
-    t("a11y.playerScore", { score: valueText }),
-    bet != null ? t("a11y.handBet", { amount: bet }) : null,
-    payoutText,
-  ]
-    .filter(Boolean)
-    .join(", ");
+    valueText,
+    bet,
+    payoutText === null ? null : outcome,
+    payoutText
+  );
 
   return (
     <View
       testID={`hand-label-${index}`}
-      style={[styles.abs, abs(rect), rows ? styles.rowLabel : styles.fanLabel]}
+      style={[styles.abs, abs(rect), layout.column ? styles.rowLabel : styles.fanLabel]}
       accessible
       accessibilityLabel={a11y}
     >
-      <Text
-        style={[
-          styles.zoneLabel,
-          { color: active ? colors.accent : colors.textMuted, fontFamily: typography.label },
-          styles.shrink,
-          played && styles.dimmed,
-        ]}
-        numberOfLines={1}
-      >
-        {name}
-      </Text>
+      {named && (
+        <Text
+          testID="hand-name"
+          style={[
+            styles.zoneLabel,
+            { color: active ? colors.accent : colors.textMuted, fontFamily: typography.label },
+            styles.shrink,
+            played && styles.dimmed,
+          ]}
+          numberOfLines={1}
+        >
+          {name}
+        </Text>
+      )}
       <View style={[styles.labelLine, played && styles.dimmed]}>
         <TotalPill
           text={valueText}
@@ -277,7 +319,7 @@ function HandLabel({
           >
             <View style={[styles.labelLine, styles.shrink]}>
               {outcome !== null && <HandTag outcome={outcome} />}
-              <PayoutText payout={payout} text={payoutText} compact={compact} />
+              <PayoutText payout={payout} text={payoutText} compact={layout.compactPayout} />
             </View>
           </PopIn>
         )}
@@ -290,9 +332,9 @@ function HandLabel({
 function HandTag({ outcome }: { outcome: string }) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
-  const key =
-    outcome === "win" || outcome === "blackjack" ? "win" : outcome === "lose" ? "lose" : "push";
-  const color = key === "win" ? colors.bonus : key === "lose" ? colors.error : colors.textMuted;
+  const key = tagKeyOf(outcome);
+  const color =
+    key === "tag.win" ? colors.bonus : key === "tag.lose" ? colors.error : colors.textMuted;
   return (
     <Text
       testID="hand-tag"
@@ -306,9 +348,15 @@ function HandTag({ outcome }: { outcome: string }) {
       adjustsFontSizeToFit
       minimumFontScale={0.7}
     >
-      {t(`tag.${key}` as Parameters<typeof t>[0])}
+      {t(key)}
     </Text>
   );
+}
+
+/** A split hand's tag key for its outcome: its tag, and the word its accessibility label says. */
+function tagKeyOf(outcome: string): "tag.win" | "tag.lose" | "tag.push" {
+  if (outcome === "win" || outcome === "blackjack") return "tag.win";
+  return outcome === "lose" ? "tag.lose" : "tag.push";
 }
 
 function PayoutText({ payout, text, compact }: { payout: number; text: string; compact: boolean }) {
@@ -439,6 +487,7 @@ export default function TableFelt({
   const split = hands.length > 1;
   const rows = geometry.mode === "rows";
   const compact = rows || geometry.mode === "grid";
+  const labelLayout = splitResultLabel(geometry.mode);
   const concealed = dealerConcealed ?? (playing && dealerHand.cards.some((c) => c.face_down));
   const revealed = revealedHands ?? hands.length;
   // While the dealer plays every hand is played: none is outlined, all are dimmed.
@@ -518,8 +567,7 @@ export default function TableFelt({
             hand={hand}
             index={i}
             rect={g.label}
-            rows={rows}
-            compact={compact}
+            layout={labelLayout}
             split={split}
             active={playing && i === activeHandIndex}
             played={played}
