@@ -15,6 +15,7 @@ import {
   LCG_MODULUS,
   type RandomSource,
 } from "../_shared/seededRng";
+import { areTestHooksEnabled } from "../_shared/envFlags";
 import { pushCapped } from "../_shared/undoStack";
 import type {
   Layout,
@@ -537,10 +538,18 @@ function computeDealId(tiles: readonly SlotTile[]): string {
 // ---------------------------------------------------------------------------
 
 /**
+ * The one seed every deal uses in a test build (`EXPO_PUBLIC_TEST_HOOKS=1`,
+ * #3803), for every layout, so Maestro/Playwright screenshots show the same
+ * tiles. Any seed works: `createGame` deals a solvable board by construction.
+ */
+export const E2E_DEAL_SEED = 3803;
+
+/**
  * Draw the seed for the next deal (#3281) so the caller can record it, then
  * pass it to `createGame`. A 32-bit seed (the LCG's state space).
  */
 export function drawDealSeed(): number {
+  if (areTestHooksEnabled()) return E2E_DEAL_SEED;
   return Math.floor(rngSlot.rng() * LCG_MODULUS);
 }
 
