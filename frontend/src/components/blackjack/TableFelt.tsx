@@ -8,7 +8,7 @@
  *     left), the active row larger and outlined; hands already played dimmed.
  *   - A split hand's result (total, tag, payout as a signed number) on a one-line
  *     label (fans, the grid) takes the name's place (`splitResultLabel`, #3771);
- *     a row keeps it.
+ *     a row keeps it, the name and total over the tag and payout (#3782).
  *
  * All positions come from `computeTableGeometry` (game/blackjack/layout.ts),
  * which keeps every corner index readable and the result band clear of the
@@ -110,7 +110,17 @@ function toneForOutcome(outcome: string | null | undefined): Tone {
   return "plain";
 }
 
-function TotalPill({ text, tone, label }: { text: string; tone: Tone; label: string }) {
+function TotalPill({
+  text,
+  tone,
+  label,
+  testID,
+}: {
+  text: string;
+  tone: Tone;
+  label: string;
+  testID?: string;
+}) {
   const { colors } = useTheme();
   const bg =
     tone === "active"
@@ -124,6 +134,7 @@ function TotalPill({ text, tone, label }: { text: string; tone: Tone; label: str
   const border = tone === "plain" ? colors.border : tone === "push" ? colors.textMuted : bg;
   return (
     <View
+      testID={testID}
       style={[styles.pill, { backgroundColor: bg, borderColor: border }]}
       accessibilityLabel={label}
     >
@@ -180,7 +191,7 @@ interface HandLabelProps {
   rect: Rect;
   /**
    * How the label is drawn (`splitResultLabel`, #3771): a column or one line, whether a split
-   * hand's name stays at the result, and its payout as a signed number.
+   * hand's name stays at the result, and whether its total sits beside the name there (#3782).
    */
   layout: SplitResultLabel;
   split: boolean;
@@ -261,6 +272,45 @@ function HandLabel({
     payoutText
   );
 
+  const twoLines = payoutText !== null && layout.totalBesideName;
+  const nameText = (dimmed: boolean) => (
+    <Text
+      testID="hand-name"
+      style={[
+        styles.zoneLabel,
+        { color: active ? colors.accent : colors.textMuted, fontFamily: typography.label },
+        styles.shrink,
+        dimmed && styles.dimmed,
+      ]}
+      numberOfLines={1}
+    >
+      {name}
+    </Text>
+  );
+  const total = (
+    <TotalPill
+      testID="hand-total"
+      text={valueText}
+      tone={tone}
+      label={t("a11y.playerScore", { score: valueText })}
+    />
+  );
+  // A split hand's own result: it pops in as the hands are revealed in turn (#3581).
+  const resultTag = payout !== null && (
+    <PopIn
+      animate={pops}
+      epoch={epoch}
+      durationMs={TAG_POP_MS}
+      fromScale={0.8}
+      style={styles.shrink}
+    >
+      <View testID="hand-result" style={[styles.labelLine, styles.shrink]}>
+        {outcome !== null && <HandTag outcome={outcome} />}
+        <PayoutText payout={payout} />
+      </View>
+    </PopIn>
+  );
+
   return (
     <View
       testID={`hand-label-${index}`}
@@ -268,62 +318,50 @@ function HandLabel({
       accessible
       accessibilityLabel={a11y}
     >
-      {named && (
-        <Text
-          testID="hand-name"
-          style={[
-            styles.zoneLabel,
-            { color: active ? colors.accent : colors.textMuted, fontFamily: typography.label },
-            styles.shrink,
-            played && styles.dimmed,
-          ]}
-          numberOfLines={1}
-        >
-          {name}
-        </Text>
-      )}
-      <View style={[styles.labelLine, played && styles.dimmed]}>
-        <TotalPill
-          text={valueText}
-          tone={tone}
-          label={t("a11y.playerScore", { score: valueText })}
-        />
-        {bet != null && payoutText === null && (
-          // The stake: a chip (decorative) beside the amount (#3720, as the mockup). The amount
-          // shrinks to fit a tight row label; the label's accessibility name says the bet.
-          <View style={[styles.stake, styles.shrink]}>
-            <ChipFace testID="hand-stake-chip" size={STAKE_CHIP} color={chipColor} />
-            <Text
-              testID="hand-bet"
-              style={[
-                styles.bet,
-                styles.shrink,
-                { color: colors.celebration, fontFamily: typography.heading },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-            >
-              {bet}
-            </Text>
+      {twoLines ? (
+        <>
+          <View style={[styles.labelLine, played && styles.dimmed]}>
+            {nameText(false)}
+            {total}
           </View>
-        )}
-        {payoutText !== null && payout !== null && (
-          // A split hand's own result: it pops in as the hands are revealed in turn (#3581).
-          <PopIn
-            animate={pops}
-            epoch={epoch}
-            durationMs={TAG_POP_MS}
-            fromScale={0.8}
-            style={styles.shrink}
-          >
-            <View style={[styles.labelLine, styles.shrink]}>
-              {outcome !== null && <HandTag outcome={outcome} />}
-              <PayoutText payout={payout} text={payoutText} compact={layout.compactPayout} />
-            </View>
-          </PopIn>
-        )}
-      </View>
+          <View style={[styles.labelLine, played && styles.dimmed]}>{resultTag}</View>
+        </>
+      ) : (
+        <>
+          {named && nameText(played)}
+          <View style={[styles.labelLine, played && styles.dimmed]}>
+            {total}
+            {bet != null && payoutText === null && <HandStake bet={bet} chipColor={chipColor} />}
+            {resultTag}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+/**
+ * The stake: a chip (decorative) beside the amount (#3720, as the mockup). The amount shrinks to
+ * fit a tight row label; the label's accessibility name says the bet.
+ */
+function HandStake({ bet, chipColor }: { bet: number; chipColor: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.stake, styles.shrink]}>
+      <ChipFace testID="hand-stake-chip" size={STAKE_CHIP} color={chipColor} />
+      <Text
+        testID="hand-bet"
+        style={[
+          styles.bet,
+          styles.shrink,
+          { color: colors.celebration, fontFamily: typography.heading },
+        ]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
+        {bet}
+      </Text>
     </View>
   );
 }
@@ -343,7 +381,7 @@ function HandTag({ outcome }: { outcome: string }) {
         styles.shrink,
         { color, borderColor: color, fontFamily: typography.heading },
       ]}
-      // A longer word (a translation) shrinks to fit the row's label column, never overflows it.
+      // Every locale's tag fits its line (#3782, tableGeometry.test.ts); the shrink is a backstop.
       numberOfLines={1}
       adjustsFontSizeToFit
       minimumFontScale={0.7}
@@ -359,7 +397,11 @@ function tagKeyOf(outcome: string): "tag.win" | "tag.lose" | "tag.push" {
   return outcome === "lose" ? "tag.lose" : "tag.push";
 }
 
-function PayoutText({ payout, text, compact }: { payout: number; text: string; compact: boolean }) {
+/**
+ * A split hand's payout, always a signed number ("+25", "-400", "0"; #3779): its words ("+25
+ * chips") are in the label's accessibility name.
+ */
+function PayoutText({ payout }: { payout: number }) {
   const { colors } = useTheme();
   return (
     <Text
@@ -373,7 +415,7 @@ function PayoutText({ payout, text, compact }: { payout: number; text: string; c
       adjustsFontSizeToFit
       minimumFontScale={0.75}
     >
-      {compact ? (payout > 0 ? `+${payout}` : String(payout)) : text}
+      {payout > 0 ? `+${payout}` : String(payout)}
     </Text>
   );
 }
