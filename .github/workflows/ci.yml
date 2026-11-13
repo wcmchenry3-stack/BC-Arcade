@@ -886,6 +886,7 @@ jobs:
             --max-js 8388608 \
             --warn-js 6291456 \
             --max-assets 4194304 \
+            --warn-assets 3932160 \
             --forbid-hidden-assets \
             --forbid-hidden-locales \
             --sources \
@@ -924,6 +925,7 @@ jobs:
           BUNDLE_SIZE_BYTES: ${{ steps.size.outputs.js_bytes }}
           ASSET_BYTES: ${{ steps.size.outputs.asset_bytes }}
           ASSET_FILES: ${{ steps.size.outputs.asset_files }}
+          SIZE_STATUS: ${{ steps.size.outputs.status }}
         run: |
           # Store-bundle JS baseline: 2026-10-10, after #3150 (was 6,544,825 after #2830 + #2832).
           BASELINE_BYTES=5818990
@@ -935,13 +937,20 @@ jobs:
           else
             DELTA_STR="$(awk "BEGIN {printf \"%.0f\", $DELTA_BYTES / 1024}") KB"
           fi
+          # status=warn means a warn line was crossed (JS 6.0 MiB or assets 3.75 MiB); the hard limits fail the step before this one.
+          WARN_NOTE=""
+          if [ "$SIZE_STATUS" = "warn" ]; then
+            WARN_NOTE=":warning: **Warning:** a size warn line was crossed (JS 6.0 MiB or packaged assets 3.75 MiB). CI still passes; see the Size budgets step and PERFORMANCE.md for the owner-decision rule."
+          fi
           COMMENT="<!-- bundle-size -->
           ### Bundle size report (store config)
           | | Size | Limit |
           |---|---|---|
           | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.0 MiB warn |
           | Delta vs 5.55 MiB store baseline (2026-10-10) | ${DELTA_STR} | |
-          | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard |
+          | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard, 3.75 MiB warn |
+
+          ${WARN_NOTE}
 
           _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games and non-launch locales excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
           # Find this report's own comment (marker, or the heading on reports posted before
