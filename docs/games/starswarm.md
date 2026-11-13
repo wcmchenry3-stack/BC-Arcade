@@ -1440,7 +1440,8 @@ passed to `makePickup`), and its life is counted by type:
   stats counts the pickups already falling as spawned.
 - **Saves.** `source` is optional in a saved pickup and kept out of `SAVE_FINGERPRINT` (the
   `POWER_UP` spec omits it), so paused runs survive; a pickup without one reads as `kill`. The
-  golden-replay hash leaves `source` out, like `waveStats`.
+  golden-replay hash leaves `source` out, like `waveStats`. (#3710 does the same for an enemy
+  bullet's `tier`.)
 - The `[StarSwarm analytics]` `__DEV__` logs are gone; the dev panel's Run stats section shows the
   current wave's table.
 
@@ -1552,7 +1553,9 @@ anything invalid. #3510: a saved `waveStats` from a build before `pacing.gunsPea
 started over: `withSavedGunsPeak` fills the field in as the higher of the wave's `start.guns` and
 the restored ship's guns (a high reached and lost before the save is not recoverable). #3535: one
 from a build before `damage.deathPhase` is kept too, the field filled in as null by
-`withSavedDeathPhase` (exact: a saved run hasn't died). A v1 save's `closedWaves` restores as `[]`
+`withSavedDeathPhase` (exact: a saved run hasn't died). #3710: one from before `damage.hitsByTier`
+is kept as well, the table filled in as zeros by `withSavedHitsByTier` (nothing was tiered before,
+so zeros are exact); a saved `closedWaves` entry without it is valid (it is sparse). A v1 save's `closedWaves` restores as `[]`
 (the general older-save rule; the app was not live on v1). The run's
 `devAffected` is saved too (`ADDED_STATE`); see [Dev-affected runs](#dev-affected-runs-3510).
 
@@ -1775,7 +1778,23 @@ reaching production raises a Sentry warning; the server never rejects it.
 - **Store builds.** `DEV_TOOLS` (`__DEV__ || isPreLaunchApiBuild()`) gates the DEV button, the
   panel and the canvas's dev options, so in a store build no handler can set the flag
   (`StarSwarmScreen.devAffected.store.test.tsx`).
-- **Volume, caps, dial (epic #3273).** `gunsPeak`: 13 B a wave on the existing `wave_completed`,
+- **Volume, caps, dial (epic #3273), `damage.hitsByTier` (#3710).** On the existing
+  `wave_completed`, which is a keep-list type: **never pruned** and uploaded from every session
+  whatever the replay sample rate, in the same single batch at session end (never during play;
+  counting is at hit time, a handful a wave, nothing on the frame path). Measured by
+  `waveStats.hitsByTier.test.ts` and `backend/tests/test_starswarm_hits_by_tier.py`: the worst case
+  (all 12 cells at 99,999) adds **236 B** (`,"hitsByTier":{...}` compact), a hit on one tier 34 B,
+  a typical damaged wave about 60-100 B. Estimate (assumptions, not measured in the field: 8
+  waves a run, half the waves damaged, 1,000 runs a day): about 30 B a wave, 0.25 KB a run, 0.25 MB
+  a day, about 7.5 MB a month, about 90 MB a year unpruned (18% of the 500 MB Free plan a year at
+  that volume; negligible at today's). **Cap:** the 4 KB per-wave (`WAVE_STATS_MAX_BYTES`) and 64
+  KB per-run caps are unchanged and bound it (the worst-case wave test still fits; at worst a run
+  keeps one wave fewer). **Dial:** the server env var `STARSWARM_HITS_BY_TIER` (default `true`;
+  Render env, redeploy, no app release): `false` strips `damage.hitsByTier` at
+  `validate_wave_completed` before storage, the rest of the event unchanged (the bytes still arrive
+  but are tiny and capped). `game_types.replay_enabled = false` is still the coarse switch and stops
+  the whole wave. Deploy order: **backend first** (`WaveDamage.hitsByTier`; before that the field
+  would be silently dropped as an unknown key). `gunsPeak`: 13 B a wave on the existing `wave_completed`,
   under its 4 KB per-wave and 64 KB per-run caps, uploaded only by the on-session-end recorder and
   turned off with the rest of the wave by the replay dial's kill switch
   (`game_types.replay_enabled = false`). `dev_affected`: 20 B (`,"dev_affected":true`) on the
@@ -1853,6 +1872,23 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
   projectiles that landed on that tick are spent but count no hit (a rock among them still counts
   as a `contact` break). The shield never takes a ram, so `ram` × `shield` can't happen.
   (`powerUps.shieldAbsorbed` counts bullets and rocks only, so it is Σ `shield` less the beams.)
+- `damage.hitsByTier[tier][result]` (#3710, additive on `v` 2) — the same grid by the enemy tier
+  that landed the hit (`ENEMY_TIERS` × `HIT_RESULTS`, no new vocabulary), counted beside `hits` in
+  `countPlayerHit`. **Attribution:** an enemy bullet is charged to the tier of the ship that fired
+  it (`Bullet.tier`, stamped where a shot enters play: the `fireShipShots` funnel in
+  `engine/enemies.ts`, which also covers the Carrier's twin lasers and its flak, and the fighters'
+  flak in `engine/asteroids.ts`; a restored Carrier laser with no stamp reads as Carrier through
+  its `source`); a ram to the rammer; a beam to Carrier; a rock to no one (rocks stay in
+  `hits.rock` only). The shield charges each soaked bullet to its own tier. A plate or life is one
+  hit per tick (rule above), so when several bullets land on one tick it goes to the **first in
+  array (firing) order**. A bullet restored from a save from before #3710 has no tier and is
+  counted in none. So, per result, `Σ hitsByTier + hits.rock = Σ hits` for a run made on this
+  build (`expectPairedCounters`); a run that spans the update can fall short by that one paused
+  run's pre-update bullets. `Bullet.tier` is never read by play, is left out of the save spec and
+  `SAVE_FINGERPRINT` (like pickup `source`) and out of the golden `sha()`: no hash moved. Wire:
+  sparse like every table, inside `damage` (a wave with no hits sends nothing). Surface: the dev
+  panel's Run stats "hits on you this wave, by tier" table only (no end-of-run card, no new locale
+  keys). Volume below.
 - `damage.deathCause` — the cause of the hit that took the last life, set when it lands; a
   same-tick bonus life that rescues the ship clears it again. Null on a wave closed `cleared`.
 - `damage.deathPhase` (#3535, `v` 2) — when that hit landed: `combat` (`Playing`), `pickupWait`
@@ -1916,7 +1952,11 @@ has a test that fails until it is done:
 6. **Golden fixtures** — re-record the golden replay (`UPDATE_GOLDEN=1`, see
    `goldenReplay.test.ts`) if the change moves a counter in it
    (`__fixtures__/golden-replay-seed42.waves.json`, the replay's closed waves and leaderboard
-   result) or alters play (`golden-replay-seed42.json`), and say which in the PR.
+   result) or alters play (`golden-replay-seed42.json`), and say which in the PR. A new field on a
+   bullet, pickup or other state object that only labels the stats (like `Bullet.tier`, #3710, or a
+   pickup's `source`) stays out of the gameplay hash: strip it in `sha()`
+   (`__tests__/helpers/goldenRuns.ts`) and out of the save spec (`saveShape.ts`, `Omit` plus an
+   optional fit check), so no hash and no paused run is lost.
 7. **`v` bump — only if the shape changes.** A new value in an existing keyed table is not a shape
    change (the backend keeps unknown table keys). A new section, field or table, a rename, or a
    changed meaning is: bump `WAVE_STATS_VERSION` on both sides in the same release (see

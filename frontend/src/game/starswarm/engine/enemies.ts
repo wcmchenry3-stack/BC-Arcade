@@ -643,7 +643,8 @@ function fireShipShots(
   for (let bi = -1; bi < shots; bi++) {
     const raw = bi < 0 ? result.bullet : volley![bi]!;
     if (!raw) continue;
-    let b = divertShotToBuddy(raw, enemy, state, fw.buddyIncoming, tuning); // #2845
+    // #3710: label the shot with its shooter's tier (read only by the hit stats)
+    let b = divertShotToBuddy({ ...raw, tier: enemy.tier }, enemy, state, fw.buddyIncoming, tuning); // #2845
     if (evading && !b.flak) {
       // #2844 evasion degrades player-directed aim only. A shot at Buddy keeps its
       // BUDDY_TARGETING aim, but the rng draws are still taken so the seeded stream is the same
