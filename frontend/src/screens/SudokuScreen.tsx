@@ -50,6 +50,7 @@ import SudokuGrid from "../components/sudoku/SudokuGrid";
 import { boardFit } from "../components/sudoku/cellStyle";
 import NumberPad from "../components/sudoku/NumberPad";
 import { useSolveBeat } from "../components/sudoku/useSolveBeat";
+import { useLiveMotion } from "../components/sudoku/useLiveMotion";
 import PreGame from "../components/sudoku/PreGame";
 import NewGameModal from "../components/sudoku/NewGameModal";
 import { isFullButWrong, loadPuzzle, selectCell, toggleNotesMode } from "../game/sudoku/engine";
@@ -240,11 +241,13 @@ export default function SudokuScreen() {
   // hint makes a new array, a selection or an erase keeps it, so nothing replays and the board
   // re-renders only the cells this changes. The selection is the one that came with the events:
   // a digit and a hint both land in the selected cell.
-  const motion = useMemo(
+  const moveMotion = useMemo(
     () => (state ? deriveMotion(state) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state?.events]
   );
+  // Played once, then gone: no replay when Reduce Motion is turned off later.
+  const motion = useLiveMotion(moveMotion, reduceMotion);
 
   const { play: playPuzzleComplete } = useSound("sudoku.puzzleComplete", SUDOKU_SOUNDS);
 
@@ -577,17 +580,21 @@ export default function SudokuScreen() {
 
   const handleCellPress = useCallback(
     (row: number, col: number) => {
+      // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+      if (stateRef.current?.isComplete) return;
       // Selecting a cell starts the clock but not the sync session: a puzzle
       // that was only looked at is discarded, not abandoned (#2942).
       startClockRef();
       syncClockActivity(); // an event handler: tell the HUD directly
       setState((s) => (s ? selectCell(s, row, col) : s));
     },
-    [startClockRef, syncClockActivity, setState]
+    [startClockRef, syncClockActivity, setState, stateRef]
   );
 
   const handleDigit = useCallback(
     (digit: CellValue) => {
+      // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+      if (stateRef.current?.isComplete) return;
       // Any number pad press is a first interaction, even one that changes
       // nothing (no cell selected): it starts the clock. Done here, not in the
       // updater, because a no-op leaves the state (and the [state] effect) alone.
@@ -604,30 +611,36 @@ export default function SudokuScreen() {
         return recordEntry(s, applied.next, applied.entry);
       });
     },
-    [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState]
+    [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState, stateRef]
   );
 
   const handleErase = useCallback(() => {
+    // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+    if (stateRef.current?.isComplete) return;
     setState((s) => {
       if (!s) return s;
       const applied = applyRecorded(s, { kind: "erase" });
       if (!applied) return s;
       return recordEntry(s, applied.next, applied.entry);
     });
-  }, [recordEntry, setState]);
+  }, [recordEntry, setState, stateRef]);
 
   const handleToggleNotes = useCallback(() => {
+    // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+    if (stateRef.current?.isComplete) return;
     setState((s) => (s ? toggleNotesMode(s) : s));
-  }, [setState]);
+  }, [setState, stateRef]);
 
   const handleUndo = useCallback(() => {
+    // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+    if (stateRef.current?.isComplete) return;
     setState((s) => {
       if (!s) return s;
       const applied = applyRecorded(s, { kind: "undo" });
       if (!applied) return s;
       return recordEntry(s, applied.next, applied.entry);
     });
-  }, [recordEntry, setState]);
+  }, [recordEntry, setState, stateRef]);
 
   const handleChangeDifficulty = useCallback(() => {
     // #2690: close this puzzle's session now, while the snapshot still reads
@@ -646,6 +659,8 @@ export default function SudokuScreen() {
   }, [resetScore, syncClose, flushEntries, resetEntries, clearSavedGame, setState]);
 
   const handleHint = useCallback(() => {
+    // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+    if (stateRef.current?.isComplete) return;
     // Like a number pad press, a hint press is a first interaction even when
     // it does nothing (no cell selected): it starts the clock, here and not in
     // the updater because a no-op leaves the state alone.
@@ -660,7 +675,7 @@ export default function SudokuScreen() {
       ensureSyncStarted(s);
       return recordEntry(s, applied.next, applied.entry);
     });
-  }, [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState]);
+  }, [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState, stateRef]);
 
   const showMistakes = showMistakesLoaded && (showMistakesPref ?? state?.difficulty === "easy");
   const fullButWrong = state !== null && isFullButWrong(state);
@@ -796,7 +811,7 @@ export default function SudokuScreen() {
                 label: t("action.undo"),
                 accessibilityLabel: t("action.undo"),
                 color: colors.accentText,
-                disabled: state.undoStack.length === 0,
+                disabled: state.undoStack.length === 0 || isComplete,
                 onPress: handleUndo,
                 testID: "sudoku-undo",
               },
@@ -806,6 +821,7 @@ export default function SudokuScreen() {
                 label: t("numberPad.eraseShort"),
                 accessibilityLabel: t("numberPad.erase"),
                 color: colors.accentText,
+                disabled: isComplete,
                 onPress: handleErase,
                 testID: "sudoku-erase",
               },
@@ -816,6 +832,7 @@ export default function SudokuScreen() {
                 accessibilityLabel: t("numberPad.toggleNotes"),
                 color: colors.accentText,
                 selected: state.notesMode,
+                disabled: isComplete,
                 onPress: handleToggleNotes,
                 testID: "sudoku-notes",
               },
@@ -825,6 +842,7 @@ export default function SudokuScreen() {
                 label: t("action.hint"),
                 accessibilityLabel: t("action.hint"),
                 color: colors.outcomeWin, // the AA green on cream, as Yacht's Hint
+                disabled: isComplete,
                 onPress: handleHint,
                 testID: "sudoku-hint",
               },
@@ -847,6 +865,7 @@ export default function SudokuScreen() {
             variant={state.variant}
             notesMode={state.notesMode}
             onDigit={handleDigit}
+            disabled={isComplete}
             keyHeight={compact ? KEY_H_COMPACT : KEY_H}
             gap={compact ? KEY_GAP_COMPACT : KEY_GAP}
             message={fullButWrong ? t("fullWrong.message") : undefined}

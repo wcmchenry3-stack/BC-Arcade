@@ -97,6 +97,18 @@ export function waveDelayMs(row: number, col: number, size: number): number {
   return ((row + col) / (2 * (size - 1))) * WAVE_STAGGER_MS;
 }
 
+/**
+ * A move's motion is shown at most once and expires: after this long (the longest of the above:
+ * the wave) or when Reduce Motion was on for it, the board gets no motion for that move.
+ */
+export const MOTION_TOTAL_MS = Math.max(
+  PLACE_MS,
+  ERROR_PULSE_MS,
+  CLASH_BLINK_TOTAL_MS,
+  UNIT_SWEEP_TOTAL_MS,
+  WAVE_TOTAL_MS
+);
+
 // ---------------------------------------------------------------------------
 // Which cells
 // ---------------------------------------------------------------------------

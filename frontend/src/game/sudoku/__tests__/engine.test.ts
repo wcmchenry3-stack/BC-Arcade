@@ -1148,3 +1148,36 @@ describe("undo restores the board only (#3785)", () => {
     expect(undone.grid[4]![2]!.value).toBe(0);
   });
 });
+
+describe("a solved puzzle is final (#3774)", () => {
+  function solved() {
+    let s = loadPuzzle("easy", "classic", () => 0);
+    for (let i = 0; i < 81; i++) {
+      const r = Math.floor(i / 9);
+      const c = i % 9;
+      if (s.grid[r]![c]!.given) continue;
+      s = enterDigit(selectCell(s, r, c), (s.solution.charCodeAt(i) - 48) as CellValue);
+    }
+    expect(s.isComplete).toBe(true);
+    return s;
+  }
+  const entered = (s: ReturnType<typeof solved>) => {
+    for (let i = 0; i < 81; i++) {
+      if (!s.grid[Math.floor(i / 9)]![i % 9]!.given) return [Math.floor(i / 9), i % 9] as const;
+    }
+    throw new Error("none");
+  };
+
+  it("undo, erase, hint, digits, notes mode and selection return the state unchanged", () => {
+    const s = solved();
+    expect(s.undoStack.length).toBeGreaterThan(0);
+    const [r, c] = entered(s);
+    const sel = { ...s, selectedRow: r, selectedCol: c };
+    expect(undo(s)).toBe(s);
+    expect(eraseCell(sel)).toBe(sel);
+    expect(applyHint(sel)).toBe(sel);
+    expect(enterDigit(sel, 1)).toBe(sel);
+    expect(toggleNotesMode(s)).toBe(s);
+    expect(selectCell(s, 0, 0)).toBe(s);
+  });
+});

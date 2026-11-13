@@ -194,6 +194,28 @@ describe("SudokuScreen motion (#3774) — error", () => {
     expect(testIds(r, "clash").length).toBeGreaterThan(0);
   });
 
+  it("Reduce Motion on, an illegal digit, then Reduce Motion off: the old pulse does not play", async () => {
+    mockReduceMotion = true;
+    const s = illegalScenario();
+    const r = await resume(s.state);
+    await pressDigit(r, s.digit);
+    expect(testIds(r, "error")).toEqual([]);
+    mockReduceMotion = false;
+    await r.rerender(ui());
+    expect(testIds(r, "error")).toEqual([]);
+    expect(testIds(r, "sweep")).toEqual([]);
+    // The static clash ring is still there.
+    expect(testIds(r, "clash").length).toBeGreaterThan(0);
+  });
+
+  it("an effect's views are gone once it has had its time", async () => {
+    const s = illegalScenario();
+    const r = await resume(s.state);
+    await pressDigit(r, s.digit);
+    expect(testIds(r, "error")).toHaveLength(1);
+    await waitFor(() => expect(testIds(r, "error")).toEqual([]), { timeout: 3000 });
+  });
+
   it("a later legal digit leaves no pulse behind", async () => {
     const s = illegalScenario();
     const r = await resume(s.state);
@@ -289,6 +311,32 @@ describe("SudokuScreen motion (#3774) — solved", () => {
     await waitFor(() => expect(r.getByTestId("sudoku-result-title")).toBeTruthy());
     expect(Date.now() - t0).toBeGreaterThanOrEqual(SOLVED_BEAT_MS - 100);
     expect(r.queryByTestId("sudoku-solved-wave")).toBeNull();
+  });
+
+  it("Undo, Erase, Hint, Notes, digits and cell taps do nothing during the beat; the card still shows", async () => {
+    const { state, digit } = almostSolved();
+    const r = await resume(state);
+    await pressDigit(r, digit);
+    expect(r.queryByTestId("sudoku-result-title")).toBeNull();
+    for (const id of ["sudoku-undo", "sudoku-erase", "sudoku-hint", "sudoku-notes"]) {
+      expect(r.getByTestId(id).props.accessibilityState.disabled).toBe(true);
+      await act(async () => {
+        await fireEvent.press(r.getByTestId(id));
+      });
+    }
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-cell-0-0"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-digit-1"));
+    });
+    // Still solved: the wave is running and no cell was emptied.
+    expect(r.getByTestId("sudoku-solved-wave")).toBeTruthy();
+    expect(r.queryAllByLabelText(/empty/)).toHaveLength(0);
+    // New Game stays available.
+    expect(r.getByTestId("sudoku-new-game").props.accessibilityState.disabled).toBeFalsy();
+    await waitFor(() => expect(r.getByTestId("sudoku-result-title")).toBeTruthy());
+    expect(r.queryAllByLabelText(/empty/)).toHaveLength(0);
   });
 
   it("under Reduce Motion the card shows at once, with no wave", async () => {

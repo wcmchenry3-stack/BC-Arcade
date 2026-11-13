@@ -14,8 +14,10 @@
  * `holding === true`, so the board, the wave and the held card land in one render and the card
  * never flashes before the beat. The timer starts in the effect of that commit.
  *
- * A game restored already solved calls `skip()` in the restore handler (the same batch as the
- * state), so its card shows at once with no beat. A new game (solved turns false) clears the beat,
+ * A game restored already solved calls `skip()` in the restore handler, so its card shows at once
+ * with no beat. This relies on `skip()` landing in the same batch as the loaded state: the load's
+ * `.then` sets the state and runs the restore handler together (`usePersistedGameState.ts`, the
+ * load's `setState` then `restoredRef`), so the first render with `solved` already has `over` set. A new game (solved turns false) clears the beat,
  * its timer and the skip; unmounting clears the timer.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -37,11 +39,13 @@ export function useSolveBeat(solved: boolean): SolveBeat {
   // The beat is over (its timer ran out, Reduce Motion cut it, or a restore skipped it).
   const [over, setOver] = useState(false);
   const overRef = useRef(false);
+  const reduceMotionRef = useRef(reduceMotion);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useLayoutEffect(() => {
     overRef.current = over;
-  }, [over]);
+    reduceMotionRef.current = reduceMotion;
+  }, [over, reduceMotion]);
 
   const clearTimer = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -56,7 +60,8 @@ export function useSolveBeat(solved: boolean): SolveBeat {
       setOver(false);
       return;
     }
-    if (overRef.current) return;
+    // Over already (skipped), or Reduce Motion (no beat, below): no timer.
+    if (overRef.current || reduceMotionRef.current) return;
     timer.current = setTimeout(() => {
       timer.current = null;
       setOver(true);

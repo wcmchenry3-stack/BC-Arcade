@@ -12,6 +12,8 @@ interface Props {
   variant: Variant;
   notesMode: boolean;
   onDigit: (digit: CellValue) => void;
+  /** The puzzle is solved (#3774): every key is inert until a new game. */
+  disabled?: boolean;
   /** Key height in points (at least 44; the screen shrinks it on a short phone). */
   keyHeight?: number;
   /** Gap between keys, in points. */
@@ -43,6 +45,7 @@ export default function NumberPad({
   variant,
   notesMode,
   onDigit,
+  disabled: allDisabled = false,
   keyHeight = 52,
   gap = 4,
   message,
@@ -93,7 +96,7 @@ export default function NumberPad({
         >
           {row.map((d) => {
             const remaining = Math.max(0, size - (counts.get(d) ?? 0));
-            const disabled = remaining <= 0;
+            const disabled = remaining <= 0 || allDisabled;
             return (
               <Pressable
                 key={d}
