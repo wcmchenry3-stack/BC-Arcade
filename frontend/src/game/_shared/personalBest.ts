@@ -27,6 +27,8 @@
  *   can't be read at all, nothing is written either, so a best it couldn't see is never
  *   overwritten.
  *
+ * Every failure is reported to Sentry at most once per app session per game and kind (`report`).
+ *
  * Cost: no server I/O at all. Storage: one small key per game played; a write only when a best
  * improves.
  */
@@ -34,6 +36,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
 import { bestOf, type BestResult } from "./bestOf";
+import { captureThrottledMessage, sentryThrottle } from "./sentryThrottle";
 import {
   PERSONAL_BEST_GAMES,
   type PersonalBestGame,
@@ -56,8 +59,14 @@ export function storageKey(game: PersonalBestGame): string {
   return `personal_best_v1:${game}`;
 }
 
-function report(e: unknown, op: string): void {
-  Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op } });
+/**
+ * A failed storage call, reported at most once per app session per game and kind of failure
+ * (`sentryThrottle`, #3293): 2048 records on every move that raises its best, so broken storage
+ * must not send an event per move.
+ */
+function report(e: unknown, game: PersonalBestGame, op: string): void {
+  if (!sentryThrottle.allow(`${SUBSYSTEM}:${op}:${game}`, "error")) return;
+  Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op, game } });
 }
 
 /** `value` can be a best for `spec`'s game (a real number, and plausible for that game). */
@@ -157,7 +166,7 @@ async function write(game: PersonalBestGame, bests: Bests): Promise<boolean> {
     await AsyncStorage.setItem(storageKey(game), JSON.stringify({ v: FORMAT_VERSION, b: bests }));
     return true;
   } catch (e) {
-    report(e, "save");
+    report(e, game, "save");
     return false;
   }
 }
@@ -171,7 +180,7 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
   try {
     stored = await AsyncStorage.getMany([key, ...legacyKeys]);
   } catch (e) {
-    report(e, "load");
+    report(e, game, "load");
     return { bests: {}, readable: false };
   }
 
@@ -186,11 +195,12 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
       // Left as stored, and nothing may be written over it.
       readable = false;
     } else {
-      Sentry.captureMessage(`${SUBSYSTEM}: corrupt record, reading as no best`, {
-        level: "warning",
-        tags: { subsystem: SUBSYSTEM, op: "load" },
-        extra: { key },
-      });
+      // Once per session per game, even if removing the record keeps failing.
+      captureThrottledMessage(
+        `${SUBSYSTEM}:corrupt:${game}`,
+        `${SUBSYSTEM}: corrupt record, reading as no best`,
+        { level: "warning", tags: { subsystem: SUBSYSTEM, op: "load", game }, extra: { key } }
+      );
       await AsyncStorage.removeItem(key).catch(() => {});
     }
   }
@@ -213,7 +223,7 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
       await AsyncStorage.removeMany(presentLegacy);
     } catch (e) {
       // The new record is written; the old key is merged in again (idempotently) next read.
-      report(e, "migrate");
+      report(e, game, "migrate");
     }
   }
   return { bests: merged, readable: true };

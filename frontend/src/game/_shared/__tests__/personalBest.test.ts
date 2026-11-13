@@ -18,6 +18,7 @@ import {
   storageKey,
 } from "../personalBest";
 import { MAX_YACHT_SCORE, sudokuVariant, type PersonalBestGame } from "../personalBestGames";
+import { resetSentryThrottle } from "../sentryThrottle";
 
 const record = (b: Record<string, number>) => JSON.stringify({ v: 1, b });
 
@@ -195,6 +196,7 @@ describe("fail-safe", () => {
   it("reads a corrupt record as no best, reports it once and removes it", async () => {
     for (const raw of ["{x", "null", "[1]", '{"b":{"_":5}}', '{"v":1,"b":[5]}']) {
       jest.clearAllMocks();
+      resetSentryThrottle();
       await AsyncStorage.setItem(storageKey("cascade"), raw);
       await expect(getBest("cascade")).resolves.toBe(0);
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
@@ -251,7 +253,7 @@ describe("fail-safe", () => {
     setItem.mockRejectedValueOnce(new Error("full"));
     await expect(recordResult("cascade", 100)).resolves.toMatchObject({ improved: true });
     expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      tags: { subsystem: "personalBest", op: "save" },
+      tags: { subsystem: "personalBest", op: "save", game: "cascade" },
     });
   });
 });
@@ -351,13 +353,48 @@ describe.each(LEGACY)(
   }
 );
 
+describe("Sentry volume (#3757 review): each kind of failure is reported once per session", () => {
+  const reportsOf = (op: string) =>
+    jest
+      .mocked(Sentry.captureException)
+      .mock.calls.filter(([, ctx]) => (ctx as { tags?: { op?: string } })?.tags?.op === op);
+
+  it("50 failing writes in a row send one report", async () => {
+    for (let i = 1; i <= 50; i++) {
+      setItem.mockRejectedValueOnce(new Error("full"));
+      await recordResult("twenty48", i * 10);
+    }
+    expect(reportsOf("save")).toHaveLength(1);
+  });
+
+  it("50 failing reads in a row send one report, per game", async () => {
+    for (let i = 0; i < 50; i++) {
+      getMany.mockRejectedValueOnce(new Error("disk"));
+      await recordResult("twenty48", 100 + i);
+    }
+    getMany.mockRejectedValueOnce(new Error("disk"));
+    await getBest("cascade");
+    expect(reportsOf("load")).toHaveLength(2);
+  });
+
+  it("a corrupt record whose removal keeps failing is reported once", async () => {
+    const removeItem = jest.mocked(AsyncStorage.removeItem);
+    for (let i = 0; i < 50; i++) {
+      await AsyncStorage.setItem(storageKey("cascade"), "{x");
+      removeItem.mockRejectedValueOnce(new Error("disk"));
+      await getBest("cascade");
+    }
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("removing an older save fails", () => {
   it("keeps the moved best, reports it, and moves it in again (idempotently) next read", async () => {
     await AsyncStorage.setItem("cascade_best_score", "500");
     jest.mocked(AsyncStorage.removeMany).mockRejectedValueOnce(new Error("disk"));
     await expect(getBest("cascade")).resolves.toBe(500);
     expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      tags: { subsystem: "personalBest", op: "migrate" },
+      tags: { subsystem: "personalBest", op: "migrate", game: "cascade" },
     });
     await recordResult("cascade", 800);
     await expect(getBest("cascade")).resolves.toBe(800);

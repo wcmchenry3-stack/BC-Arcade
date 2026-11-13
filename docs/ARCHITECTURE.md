@@ -635,7 +635,10 @@ server (a one-off seed from the server's stats is #3802).
   as stored: nothing is written over it, and an older save still counts in
   memory but stays stored. A failed read writes nothing either, so a best it
   couldn't see is never overwritten. A game's reads and writes run in order.
-- **Cost.** No server I/O. Storage writes only when a best improves (plus the
+  Each kind of failure (read, write, moving an older save in, a corrupt
+  record) is reported to Sentry at most once per app session per game
+  (`sentryThrottle`), so broken storage can't send an event per move.
+- **Cost.** No server I/O; Sentry bounded as above. Storage writes only when a best improves (plus the
   one-off move of an older save); no work on the frame or gesture path: the
   best is read when a game starts and recorded once when it ends (2048
   records as the live score passes the best, as its old record did).
