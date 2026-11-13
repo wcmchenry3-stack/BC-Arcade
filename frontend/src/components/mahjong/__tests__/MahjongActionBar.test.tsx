@@ -7,6 +7,7 @@ import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 import MahjongActionBar from "../MahjongActionBar";
+import { dark } from "../../../theme/ThemeContext";
 
 const UNDO = "Undo last matched pair";
 const HINT = "Show a hint — highlights one valid pair for 2 seconds";
@@ -80,5 +81,12 @@ describe("MahjongActionBar", () => {
       expect(style.minHeight).toBeGreaterThanOrEqual(44);
       expect(style.minWidth).toBeGreaterThanOrEqual(44);
     }
+  });
+
+  it("colours the Hint label with the AA bonus text token, as 2048's Hint (#3754)", async () => {
+    await mount().view;
+    const label = within(screen.getByTestId("mahjong-action-bar")).getByText("HINT");
+    const { color } = StyleSheet.flatten(label.props.style) as { color: string };
+    expect(color).toBe(dark.bonusText);
   });
 });

@@ -63,6 +63,7 @@ Tokens live in `frontend/src/theme/ThemeContext.tsx`. Import via `useTheme()` �
 | `error`        | `#ff716c` | Errors, critical mass                                                          |
 | `errorText`    | `#ff9a95` | Error red for text: ≥ 4.5:1 on every surface and the Sudoku washes             |
 | `bonus`        | `#4ade80` | Positive confirmations                                                         |
+| `bonusText`    | `#4ade80` | The bonus green as the colour of text (the same as `bonus` in dark)            |
 
 ### Light theme
 
@@ -85,7 +86,8 @@ Stitch only ships a dark mockup. The light theme is **first-class** and maintain
 | `tertiary`     | `#8fa800` | Darkened lime                                                                  |
 | `error`        | `#d94a42` | Errors                                                                         |
 | `errorText`    | `#b52d26` | Error red for text: ≥ 4.5:1 on every cream surface and the Sudoku washes       |
-| `bonus`        | `#2da557` | Positive confirmations (large text/UI)                                         |
+| `bonus`        | `#2da557` | Positive confirmations (icons, rings, fills; not text)                         |
+| `bonusText`    | `#17692f` | Green for text: ≥ 4.5:1 on every cream surface (5.1–5.8:1)                     |
 
 The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 
@@ -94,6 +96,12 @@ The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 ### Accent as text: `accentText` (#3748)
 
 The light accent `#1bc5d4` measures 1.6–2:1 on cream, so it can't colour text. **Any text (or thin stroke) that would be `colors.accent` is `colors.accentText`**: in dark it is the accent itself, in light a darker teal `#006d77` that reaches **≥ 4.5:1** on `background`, `surface`, `surfacePeer`, `surfaceAlt`, `surfaceHigh` and the held-die tint (`frontend/src/theme/__tests__/accentTextContrast.test.ts`). Backgrounds, button fills, bars and borders that carry no information stay `accent`. The light `potential` token (Yacht's potential scores) is `accentText`.
+
+**Rule of thumb (#3755):** a `color:` style on a `<Text>` is `accentText`, never `accent`, on any themed surface (cream in light), including Blackjack's felt, which is `surface`. Text on a fixed dark or accent-filled surface may use another token (`textOnAccent`). Where an outlined button or pill has accent text _and_ an accent border, both are `accentText` so it doesn't show two teals. `frontend/src/theme/__tests__/lowContrastTextUses.test.ts` fails when a `color:` key names `colors.accent` or `colors.bonus`.
+
+### Bonus as text: `bonusText` (#3754)
+
+The light bonus green `#2da557` is ~3:1 on cream: fine for an icon, ring or border (3:1 non-text rule), too light for text. **Green text (Hint labels, winning totals and payouts, the Hearts moon, Blackjack outcome and P/L) is `colors.bonusText`**: the same as `bonus` in dark, `#17692f` in light, **≥ 4.5:1** on `background`, `surface`, `surfacePeer`, `surfaceAlt` and `surfaceHigh` (`accentTextContrast.test.ts`). Icons, rings and fills stay `bonus`. A `GameActionBar` Hint passes `color: colors.bonus` (icon) and `labelColor: colors.bonusText` (label).
 
 ### Error as text: `errorText` (#3773)
 

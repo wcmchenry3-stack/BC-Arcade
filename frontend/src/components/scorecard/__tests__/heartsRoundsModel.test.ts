@@ -8,6 +8,7 @@ import {
 
 const colors = {
   bonus: "BONUS",
+  bonusText: "BONUS",
   error: "ERROR",
   text: "TEXT",
   accent: "ACCENT",

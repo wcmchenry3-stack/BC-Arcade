@@ -1,5 +1,6 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import GameActionBar, { type GameBarAction } from "../GameActionBar";
 
@@ -82,5 +83,20 @@ describe("GameActionBar toggle (#3773)", () => {
     const { getByRole } = await renderBar({ selected: true });
     await fireEvent.press(getByRole("button", { name: "Hint" }));
     expect(base.onPress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GameActionBar labelColor (#3754)", () => {
+  const colorOf = (node: { props: { style?: unknown } }) =>
+    (StyleSheet.flatten(node.props.style as never) as { color?: string }).color;
+
+  it("colours the label with labelColor", async () => {
+    const { getByText } = await renderBar({ labelColor: "#654321" });
+    expect(colorOf(getByText("Hint"))).toBe("#654321");
+  });
+
+  it("defaults the label to color", async () => {
+    const { getByText } = await renderBar({});
+    expect(colorOf(getByText("Hint"))).toBe("#123456");
   });
 });

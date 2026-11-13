@@ -8,7 +8,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-import { MAHJONG_HINT_COLOR, MAHJONG_SHUFFLE_COLOR } from "../../theme/theme.mahjong";
+import { MAHJONG_SHUFFLE_COLOR } from "../../theme/theme.mahjong";
 import GameActionBar from "../shared/GameActionBar";
 import { MAHJONG_ACTION_BAR_H } from "../../game/mahjong/layout";
 
@@ -53,7 +53,8 @@ export default function MahjongActionBar({
           icon: "lightbulb",
           label: t("action.hint"),
           accessibilityLabel: t("action.hintLabel"),
-          color: MAHJONG_HINT_COLOR,
+          color: colors.bonus,
+          labelColor: colors.bonusText,
           disabled: hintDisabled,
           onPress: onHint,
           testID: "mahjong-hint-button",

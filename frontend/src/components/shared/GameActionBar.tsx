@@ -35,6 +35,11 @@ export interface GameBarAction {
   readonly label: string;
   readonly accessibilityLabel: string;
   readonly color: string;
+  /**
+   * The label's colour when `color` is too light to read as text on the light theme (a Hint's
+   * `bonus` green is ~3:1 on cream, fine for the icon, #3754). Defaults to `color`.
+   */
+  readonly labelColor?: string;
   readonly disabled?: boolean;
   /** A long action is running (Sort's Hint solver, #3658): a spinner replaces the icon and the button is inert. */
   readonly busy?: boolean;
@@ -55,6 +60,7 @@ function Action({
   label,
   accessibilityLabel,
   color,
+  labelColor = color,
   disabled = false,
   busy,
   onPress,
@@ -113,7 +119,7 @@ function Action({
         )}
       </View>
       <Text
-        style={[styles.label, narrow && styles.labelNarrow, { color }]}
+        style={[styles.label, narrow && styles.labelNarrow, { color: labelColor }]}
         numberOfLines={narrow ? 1 : 2}
         adjustsFontSizeToFit
         minimumFontScale={0.8}
