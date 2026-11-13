@@ -35,7 +35,7 @@ describe("Daily Word boardSize", () => {
 
   it.each([
     [288, 300, 9, "a long word on a 320 px phone"],
-    [600, 180, 5, "a landscape phone's short area"],
+    [600, 180, 5, "a short window's area (the old phone-landscape size)"],
     [100, 90, 7, "a tiny area"],
   ])("shrinks rather than overflow (%i x %i, %i letters: %s)", (w, h, len) => {
     const size = boardSize(w, h, len);
