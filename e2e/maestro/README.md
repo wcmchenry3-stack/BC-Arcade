@@ -189,6 +189,10 @@ or `drag-check: FAIL <kind> Δ(..)` after each drag; the subflow waits for
 dragged card leaves the finger, not only when the move ends up wrong. When you
 add a swipe (an Android/iOS pair of `runFlow` blocks, below), add the subflow
 after the pair and renumber the later ones.
+When `drag #N` never appears, the failure log's `drag-debug-touch` line
+(#3878; docs/TESTING.md) says how far the swipe got: no line means it never
+reached a card's pan, `active=0` that the pan didn't activate, `js=0` or a large
+`lag` that the JS thread was busy.
 
 Outcome checks use card testIDs (`solitaire-tableau-<c>-card-<i>`,
 `freecell-col-<c>-card-<i>`, `hearts-hand-card-<i>`) rather than the
