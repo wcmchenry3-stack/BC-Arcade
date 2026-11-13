@@ -57,14 +57,6 @@ describe("Sudoku sound registry (#3775)", () => {
     expect(HOOK).toContain("useSoundVariants(SUDOKU_DIGIT_PLACE, SUDOKU_SOUNDS)");
   });
 
-  it("the files the other games still use stay on disk", () => {
-    for (const f of [
-      "freecell-game-win.mp3",
-      "solitaire-invalid-move.ogg",
-    ]) {
-      expect(fs.existsSync(path.join(SOUNDS_DIR, f))).toBe(true);
-    }
-  });
 });
 
 describe("one sound per move (#3775)", () => {

@@ -133,13 +133,11 @@ The inflected forms in the valid lists (plurals, feminines, conjugations) are ge
 script's own rules. The answer lists are filtered by hand (`answers_blocklist_fr.txt`,
 `answers_blocklist_es.txt` and the exclusions in `backend/scripts/_romance_curation.py`).
 
-## Audio (CC BY 4.0)
+## Audio
 
-- **"Victory fanfare"** by humanoide9000 on Freesound, used as `frontend/assets/sounds/freecell-game-win.mp3` (FreeCell's and then Bottle Sort's win sound; no game uses it since #3661, so it is not bundled in the app; kept in the repo; re-encoded to MP3)
-  - Source: https://freesound.org/people/humanoide9000/sounds/466133/
-  - License: https://creativecommons.org/licenses/by/4.0/
+No audio currently requires attribution. The one CC BY 4.0 sound ("Victory fanfare" by humanoide9000) was deleted from the repo with the asset cleanup (#3578 follow-up).
 
-All other **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
+All **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
 Star Swarm's sound effects are original sounds synthesized in-house (generator
 `tools/assets/synth_starswarm_sfx.py`, design log `docs/games/starswarm-sound-design.md`, #3560); they
 use no third-party audio and need no credit. Its background music, `starswarm-bgm.mp3`, is an original,
