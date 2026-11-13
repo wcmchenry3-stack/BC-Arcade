@@ -82,6 +82,7 @@ gunsdown-2, waveclear, bonuslife, gameover, asteroid-split, asteroid-small.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -89,6 +90,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from synth_common import (  # shared building blocks (#3563)
     SR,
+    OptionTable,
     bell,
     echo,
     env,
@@ -103,6 +105,7 @@ from synth_common import (  # shared building blocks (#3563)
     mallet,
     noise,
     norm,
+    options_cli,
     phase,
     place,
     saw,
@@ -647,6 +650,19 @@ SOUNDS = {
 }
 
 
+# --- Runner-up options (#3673): never shipped ---------------------------------------------------
+
+# sound -> {option label: (recipe, level)}, the same shape as `SOUNDS`; A is the shipped pick.
+# Empty: the Star Swarm design log (docs/games/starswarm-sound-design.md) describes its
+# runner-ups in words only, with no recipe, and none has been recovered. TODO(#3673): add an entry
+# when an owner "try B again" needs one and the log's description is enough; don't invent recipes.
+OPTIONS: OptionTable = {}
+
+
+def _finish(recipe: Callable[[], np.ndarray], peak: float) -> np.ndarray:
+    return norm(recipe(), peak)
+
+
 def main(out_dir: Path, names: list[str]) -> None:
     unknown = [n for n in names if n not in SOUNDS]
     if unknown:
@@ -658,4 +674,5 @@ def main(out_dir: Path, names: list[str]) -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    main(Path(args[0]) if args else OUT_DEFAULT, args[1:])
+    if not options_cli(args, OPTIONS, _finish):
+        main(Path(args[0]) if args else OUT_DEFAULT, args[1:])
