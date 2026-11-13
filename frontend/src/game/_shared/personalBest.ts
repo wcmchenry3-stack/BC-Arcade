@@ -132,6 +132,25 @@ function inOrder<T>(game: PersonalBestGame, op: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/**
+ * Each game's bests as last read or written, so a game that records often (2048, on every move
+ * that raises its best) reads storage once per session rather than on every call. Kept only when
+ * the stored record is known: after a successful write, or a read that found a readable record
+ * and moved any older save in. A failed write or removal, and a missing, corrupt or unknown
+ * record, are not kept, so the next call reads storage again. One entry per game: games never
+ * share one. Only this module writes the key, so the cache can't go stale in the app.
+ */
+const cache = new Map<PersonalBestGame, Bests>();
+
+/**
+ * Test hook: forget the cache and the queues between tests (storage is cleared between them).
+ * @internal Exported for tests only; no production caller.
+ */
+export function __resetPersonalBestForTests(): void {
+  cache.clear();
+  queues.clear();
+}
+
 interface Loaded {
   bests: Bests;
   /** Storage was read, so writing `bests` back can't lose a best it didn't see. */
@@ -164,8 +183,10 @@ function parseRecord(spec: PersonalBestSpec, raw: string): Parsed {
 async function write(game: PersonalBestGame, bests: Bests): Promise<boolean> {
   try {
     await AsyncStorage.setItem(storageKey(game), JSON.stringify({ v: FORMAT_VERSION, b: bests }));
+    cache.set(game, bests);
     return true;
   } catch (e) {
+    cache.delete(game);
     report(e, game, "save");
     return false;
   }
@@ -173,6 +194,8 @@ async function write(game: PersonalBestGame, bests: Bests): Promise<boolean> {
 
 /** The stored bests, with any older save moved in (see the header). Never rejects. */
 async function load(game: PersonalBestGame): Promise<Loaded> {
+  const cached = cache.get(game);
+  if (cached) return { bests: cached, readable: true };
   const spec = PERSONAL_BEST_GAMES[game];
   const key = storageKey(game);
   const legacyKeys = spec.legacy?.keys ?? [];
@@ -186,11 +209,13 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
 
   let current: Bests = {};
   let readable = true;
+  let recordOk = false;
   const raw = stored[key];
   if (raw != null) {
     const parsed = parseRecord(spec, raw);
     if (parsed.kind === "ok") {
       current = parsed.bests;
+      recordOk = true;
     } else if (parsed.kind === "unknown") {
       // Left as stored, and nothing may be written over it.
       readable = false;
@@ -206,7 +231,10 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
   }
 
   const presentLegacy = legacyKeys.filter((k) => stored[k] != null);
-  if (presentLegacy.length === 0 || !spec.legacy) return { bests: current, readable };
+  if (presentLegacy.length === 0 || !spec.legacy) {
+    if (recordOk) cache.set(game, current);
+    return { bests: current, readable };
+  }
 
   let imported: Bests = {};
   try {
@@ -217,12 +245,15 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
   const merged = mergeBests(game, current, imported);
   // Over a record this build can't read, the older save counts in memory only, and stays stored.
   if (!readable) return { bests: merged, readable };
-  const saved = sameBests(merged, current) ? true : await write(game, merged);
+  const unchanged = sameBests(merged, current);
+  const saved = unchanged ? true : await write(game, merged);
   if (saved) {
     try {
       await AsyncStorage.removeMany(presentLegacy);
+      if (unchanged && recordOk) cache.set(game, merged);
     } catch (e) {
       // The new record is written; the old key is merged in again (idempotently) next read.
+      cache.delete(game);
       report(e, game, "migrate");
     }
   }

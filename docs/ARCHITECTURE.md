@@ -641,7 +641,10 @@ server (a one-off seed from the server's stats is #3802).
 - **Cost.** No server I/O; Sentry bounded as above. Storage writes only when a best improves (plus the
   one-off move of an older save); no work on the frame or gesture path: the
   best is read when a game starts and recorded once when it ends (2048
-  records as the live score passes the best, as its old record did).
+  records as the live score passes the best, as its old record did). Each
+  game's bests are cached in memory once read or written, so storage is read
+  about once per game per session: a 2048 move that raises the best costs one
+  small `setItem` and no read (it was one `getMany` plus one `setItem`).
 
 **Identity and leaderboard name (#2624, #2519 decisions 17–18, #2778).** A
 player is their player id: the app's `game_session_id`, sent as `X-Session-ID`

@@ -9,6 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
 import {
+  __resetPersonalBestForTests,
   DEFAULT_VARIANT,
   getBest,
   getBests,
@@ -192,6 +193,67 @@ describe("recordResult / getBest", () => {
   });
 });
 
+describe("cache (#3757 review): storage is read once per session per game", () => {
+  it("a second call doesn't read storage again, and an improvement still writes", async () => {
+    await AsyncStorage.setItem(storageKey("twenty48"), JSON.stringify({ v: 1, b: { _: 100 } }));
+    await expect(getBest("twenty48")).resolves.toBe(100);
+    expect(getMany).toHaveBeenCalledTimes(1);
+    setItem.mockClear();
+    for (const score of [120, 140, 160]) await recordResult("twenty48", score);
+    await expect(recordResult("twenty48", 150)).resolves.toMatchObject({ improved: false });
+    await expect(getBest("twenty48")).resolves.toBe(160);
+    expect(getMany).toHaveBeenCalledTimes(1);
+    expect(setItem.mock.calls).toEqual([
+      [storageKey("twenty48"), JSON.stringify({ v: 1, b: { _: 120 } })],
+      [storageKey("twenty48"), JSON.stringify({ v: 1, b: { _: 140 } })],
+      [storageKey("twenty48"), JSON.stringify({ v: 1, b: { _: 160 } })],
+    ]);
+  });
+
+  it("after the first write, a game with no record yet reads storage no more", async () => {
+    await getBest("twenty48");
+    await recordResult("twenty48", 8);
+    await recordResult("twenty48", 16);
+    // One read before the first best (none stored), none after it was written.
+    expect(getMany).toHaveBeenCalledTimes(2);
+    await expect(getBest("twenty48")).resolves.toBe(16);
+    expect(getMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("two games never share a cache", async () => {
+    await recordResult("cascade", 500);
+    await recordResult("starswarm", 900);
+    await expect(getBest("cascade")).resolves.toBe(500);
+    await expect(getBest("starswarm")).resolves.toBe(900);
+    await expect(getBests("twenty48")).resolves.toEqual({});
+  });
+
+  it("a failed write forgets the cache, so the next call reads storage again", async () => {
+    await recordResult("cascade", 500);
+    setItem.mockRejectedValueOnce(new Error("full"));
+    await recordResult("cascade", 700);
+    getMany.mockClear();
+    await expect(getBest("cascade")).resolves.toBe(500);
+    expect(getMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("a corrupt record is not cached", async () => {
+    await AsyncStorage.setItem(storageKey("cascade"), "{x");
+    await getBest("cascade");
+    await AsyncStorage.setItem(storageKey("cascade"), JSON.stringify({ v: 1, b: { _: 42 } }));
+    await expect(getBest("cascade")).resolves.toBe(42);
+  });
+
+  it("the older save is moved in once: later calls don't read or merge it again", async () => {
+    await AsyncStorage.setItem("cascade_best_score", "300");
+    await expect(getBest("cascade")).resolves.toBe(300);
+    getMany.mockClear();
+    await expect(recordResult("cascade", 400)).resolves.toMatchObject({ isNewBest: true });
+    expect(getMany).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBeNull();
+  });
+});
+
 describe("fail-safe", () => {
   it("reads a corrupt record as no best, reports it once and removes it", async () => {
     for (const raw of ["{x", "null", "[1]", '{"b":{"_":5}}', '{"v":1,"b":[5]}']) {
@@ -240,6 +302,7 @@ describe("fail-safe", () => {
 
   it("never rejects, and never writes when storage can't be read", async () => {
     await recordResult("cascade", 900);
+    __resetPersonalBestForTests(); // a new session: nothing cached
     getMany.mockRejectedValueOnce(new Error("disk")).mockRejectedValueOnce(new Error("disk"));
     setItem.mockClear();
     await expect(getBest("cascade")).resolves.toBe(0);
