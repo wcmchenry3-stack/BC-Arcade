@@ -12,8 +12,16 @@ describe("joinSentence (#3796)", () => {
     expect(joinSentence("Push", "Won: 1")).toBe("Push. Won: 1");
   });
 
-  it("handles fr-CA's space before the mark", () => {
+  it("handles fr-CA's outcome text, and a space before the mark", () => {
+    // The fr-CA locale writes "Gagné!" (no space before "!", see frCaTypography.test.ts).
+    expect(joinSentence("Gagné!", "Gagnées\u00a0: 2")).toBe("Gagné! Gagnées\u00a0: 2");
+    // A (no-break) space before the mark still counts as a closing mark.
     expect(joinSentence("Gagné !", "Gagnées : 2")).toBe("Gagné ! Gagnées : 2");
+  });
+
+  it("treats the Devanagari danda and the Arabic question mark as closing marks", () => {
+    expect(joinSentence("आप जीते।", "जीते: 2")).toBe("आप जीते। जीते: 2");
+    expect(joinSentence("حقا؟", "نعم")).toBe("حقا؟ نعم");
   });
 
   it("joins with no space after a full-width mark", () => {
