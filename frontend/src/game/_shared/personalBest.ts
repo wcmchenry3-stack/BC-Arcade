@@ -3,7 +3,8 @@
  *
  * One storage format and one API for every game that keeps a best: the result card's "Best" and
  * "New best", and end beats such as Yacht's solo win. The device is the source of truth: nothing
- * here reads or writes the server (a one-off seed from the server is #3802).
+ * here writes the server, and the only read is the one-off seed from `/stats/me`
+ * (`personalBestSeed.ts`, #3802).
  *
  * - **Format.** One AsyncStorage key per game, `personal_best_v1:<game>`, holding
  *   `{"v":1,"b":{"<variant>":<best>}}`. A game without variants uses the variant `"_"`; a game
@@ -29,7 +30,7 @@
  *
  * Every failure is reported to Sentry at most once per app session per game and kind (`report`).
  *
- * Cost: no server I/O at all. Storage: one small key per game played; a write only when a best
+ * Cost: no server I/O of its own. Storage: one small key per game played; a write only when a best
  * improves.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";

@@ -20,6 +20,7 @@ from db.models import Game
 from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
 from observability.client_sentry_dial import client_sentry_dial
+from observability.personal_best_seed_dial import personal_best_seed_enabled
 from rate_limits import (
     CATALOG_RATE_LIMIT,
     GAMES_COMPLETE_IP_RATE_LIMIT,
@@ -59,6 +60,7 @@ from .schemas import (
     GameTypeOut,
     LeaderboardEntryOut,
     LeaderboardResponse,
+    PersonalBestSeedDialOut,
     ReplayDialOut,
 )
 
@@ -121,6 +123,8 @@ async def get_catalog(
         items=[_gt_to_out(gt) for gt in game_types],
         # The app's Sentry dial (#3437): env-only, so it rides on this response.
         client_sentry=ClientSentryDialOut(enabled=enabled, sample_rate=sample_rate),
+        # The personal-best seed switch (#3802): env-only, so it rides on this response too.
+        personal_best_seed=PersonalBestSeedDialOut(enabled=personal_best_seed_enabled()),
     )
     return JSONResponse(
         content=body.model_dump(),
