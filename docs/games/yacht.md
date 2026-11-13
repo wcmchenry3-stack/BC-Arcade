@@ -157,7 +157,7 @@ For #3750: `useYachtMotion({ onStart })` (passed to `useYachtEndBeat`) calls `on
 - **The tray during the beat** (owner): the final dice stay on the table (in vs, the computer's last roll), the hint reads "Game over" (`dice.hintGameOver`) and Roll is disabled ("Roll (0 left)"); it never looks like a fresh turn.
 - **Solo best not read yet** (rare: it is read at mount): the card waits for the read, then the beat with the right outcome.
 - **A Reduce Motion change mid-celebration** restarts the celebration (`useCelebration`), so the beat's safety net is re-armed and the card still never covers it.
-- **The solo best** is local (owner): `game/yacht/bestScore.ts`, AsyncStorage key `yacht_best_score_v1` (a number), read when the screen mounts so the check at the end is synchronous, compared with `bestOf`, and stored when beaten. The first finished solo game counts as a new best. Vs games don't record it. It is a record of its own beside the game save, so older saves load unchanged; #3757 will replace it with a shared best-score module.
+- **The solo best** is local (owner): the shared personal best (#3757, `game/_shared/personalBest.ts`, key `personal_best_v1:yacht`; the old `yacht_best_score_v1` is moved in on the first read), read when the screen mounts so the check at the end is synchronous (`soloEndOutcome` in `game/yacht/bestScore.ts`), and stored only when beaten. The first finished solo game counts as a new best; a score above 1575 (the most a game can score) is never one. Vs games don't record it. It is a record of its own beside the game save, so older saves load unchanged. No server I/O.
 - **A game reopened on the computer's last turn** (you had finished; `resumeInstantly`): that turn is played to its score at once, with no steps, no tumble and no sound (its score carries no events), and the card shows.
 
 ### Reduce Motion
@@ -246,7 +246,7 @@ A special edge exists when the human has finished but the computer's final turn 
 
 ## Persistence and timing
 
-The local save contains the game state and, for vs mode, AI state/difficulty so an unfinished match can resume. A game reopened with only the computer's last turn left has that turn scored at once and shows its card (#3749). The solo personal best is a separate local record (`yacht_best_score_v1`, see [Motion](#motion-3749)).
+The local save contains the game state and, for vs mode, AI state/difficulty so an unfinished match can resume. A game reopened with only the computer's last turn left has that turn scored at once and shows its card (#3749). The solo personal best is a separate local record (`personal_best_v1:yacht`, see [Motion](#motion-3749)).
 
 Yacht does not maintain a separate engine play clock. `useGameSync` supplies active-play duration from foreground time on the game screen; long idle gaps are bounded by the shared play-window rules.
 

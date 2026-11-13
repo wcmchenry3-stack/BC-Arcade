@@ -598,6 +598,45 @@ replays saves recorded from the pre-#2987 modules).
 - When a game saves is the screen's decision (most after every move;
   Mahjong debounced, #2961), not the slot's.
 
+**Personal best (#3757, owner decision #3798).** Every game that keeps a best
+keeps it through one module, `game/_shared/personalBest.ts`, not its own
+record. The device is the source of truth; nothing reads or writes the
+server (a one-off seed from the server's stats is #3802).
+
+- **API.** `getBest(game, variant?)` (0: none), `getBests(game)` (by
+  variant), `recordResult(game, variant?, value)` → `{ best, improved,
+  isNewBest }`, and `judgeResult(game, prior, value)` for screens that read
+  the best when a game starts and decide its end synchronously. The "new
+  best" rule stays `bestOf`: the first result sets the best but is never a new
+  best (Yacht's solo end beat counts the first game as a win itself).
+- **What "best" means** is each game's metric from before #3757
+  (`personalBestGames.ts`): highest score (Cascade, Star Swarm, 2048, Yacht
+  solo, at most 1575), fewest moves in a win (FreeCell), fastest win
+  (Solitaire), fastest solve per mode and difficulty (Sudoku,
+  `"classic.easy"`), fastest clear per layout, never under the 36 s floor
+  (Mahjong). A value that can't be a best (a 0 score, a broken clock) is never
+  stored. Sort's best moves per level are not in it yet (still
+  `@sort/best_moves`, `game/sort/storage.ts`); Blackjack, Hearts and Daily
+  Word keep no best.
+- **Format.** One AsyncStorage key per game, `personal_best_v1:<game>`:
+  `{"v":1,"b":{"<variant>":<best>}}`, variant `"_"` for a game with none; a
+  few dozen bytes per variant.
+- **Older saves** (`cascade_best_score`, `starswarm.bestScore`,
+  `twenty48_best_score_v1`, `yacht_best_score_v1`, `freecell_stats_v1`,
+  `solitaire_stats_v1`, `sudoku_stats_v1`, `mahjong_stats_v1`) are moved in on
+  the game's first read: merged with any new-format best (the better one wins,
+  so nothing is lowered or lost), written once, and the old key removed only
+  after that write lands. A failed write leaves the old key for the next read;
+  the move is idempotent.
+- **Fail-safe.** Nothing rejects. A corrupt record reads as no best (a Sentry
+  warning, and the record is removed); a value that can't be a best is
+  dropped; a failed read writes nothing, so a best it couldn't see is never
+  overwritten. A game's reads and writes run in order.
+- **Cost.** No server I/O. Storage writes only when a best improves (plus the
+  one-off move of an older save); no work on the frame or gesture path: the
+  best is read when a game starts and recorded once when it ends (2048
+  records as the live score passes the best, as its old record did).
+
 **Identity and leaderboard name (#2624, #2519 decisions 17–18, #2778).** A
 player is their player id: the app's `game_session_id`, sent as `X-Session-ID`
 (one per install; a reinstall or a new device is a new player until accounts,
