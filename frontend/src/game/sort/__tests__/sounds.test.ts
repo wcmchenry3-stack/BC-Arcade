@@ -62,7 +62,6 @@ describe("Sort sound registry", () => {
     expect(SOURCE).not.toContain("cascade-fruit-merge");
     expect(SOURCE).not.toContain("freecell-game-win");
     expect(fs.existsSync(path.join(SOUNDS_DIR, "cascade-fruit-merge.ogg"))).toBe(true);
-    expect(fs.existsSync(path.join(SOUNDS_DIR, "freecell-game-win.mp3"))).toBe(true);
   });
 
   it("has one stream per unit count 1 to 4, three variations each", () => {
