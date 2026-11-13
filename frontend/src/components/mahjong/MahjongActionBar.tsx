@@ -8,7 +8,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-import { MAHJONG_HINT_COLOR } from "../../theme/theme.mahjong";
+import { MAHJONG_BORDER_SELECTED, MAHJONG_HINT_COLOR } from "../../theme/theme.mahjong";
 import GameActionBar from "../shared/GameActionBar";
 import { MAHJONG_ACTION_BAR_H } from "../../game/mahjong/layout";
 
@@ -76,6 +76,9 @@ export default function MahjongActionBar({
           onPress: onShuffle,
           testID: "mahjong-shuffle-button",
           badge: shufflesLeft,
+          // The badge keeps the bright gold in both themes: its dark numeral is 13.7:1 on it, but
+          // only 2.9:1 on the light `goldText` brown (#3819).
+          badgeColor: MAHJONG_BORDER_SELECTED,
         },
       ]}
     />

@@ -8,7 +8,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react-native
 import { StyleSheet } from "react-native";
 import MahjongActionBar from "../MahjongActionBar";
 import * as ThemeModule from "../../../theme/ThemeContext";
-import { light } from "../../../theme/ThemeContext";
+import { dark, light } from "../../../theme/ThemeContext";
 import { MAHJONG_BORDER_SELECTED, MAHJONG_HINT_COLOR } from "../../../theme/theme.mahjong";
 
 const UNDO = "Undo last matched pair";
@@ -47,6 +47,18 @@ function iconColor(buttonTestID: string): string {
     return walk(node.children, here);
   };
   return walk(screen.toJSON(), false) as string;
+}
+
+function lum(hex: string): number {
+  const f = (i: number) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * f(1) + 0.7152 * f(3) + 0.0722 * f(5);
+}
+function ratio(a: string, b: string): number {
+  const [x, y] = [lum(a), lum(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
 describe("MahjongActionBar", () => {
@@ -161,4 +173,32 @@ describe("MahjongActionBar", () => {
     expect(iconColor("mahjong-shuffle-button")).toBe(light.goldText);
     expect(light.goldText).not.toBe(MAHJONG_BORDER_SELECTED);
   });
+
+  it.each([
+    ["dark", dark],
+    ["light", light],
+  ])(
+    "the shuffles-left numeral reads at 4.5:1 on its badge fill in %s (#3819)",
+    async (name, palette) => {
+      if (name === "light") {
+        jest.spyOn(ThemeModule, "useTheme").mockReturnValue({
+          theme: "light",
+          themeMode: "light",
+          colors: light,
+          toggle: () => undefined,
+          setThemeMode: () => undefined,
+        });
+      }
+      await mount({ shufflesLeft: 3 }).view;
+      const badge = screen.getByTestId("mahjong-shuffle-button-badge");
+      const fill = (StyleSheet.flatten(badge.props.style) as { backgroundColor: string })
+        .backgroundColor;
+      const numeral = (
+        StyleSheet.flatten(within(badge).getByText("3").props.style) as { color: string }
+      ).color;
+      expect(fill).toBe(MAHJONG_BORDER_SELECTED);
+      expect(numeral).toBe(palette.textOnAccent);
+      expect(ratio(numeral, fill)).toBeGreaterThanOrEqual(4.5);
+    }
+  );
 });
