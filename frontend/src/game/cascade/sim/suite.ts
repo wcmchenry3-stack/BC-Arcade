@@ -382,6 +382,49 @@ export function makeBaselineSuite(result: SuiteResult): BaselineSuite {
   return { params: result.params, runs, queue };
 }
 
+/**
+ * The baseline for a run whose capstone runs play `capstoneSeeds` games instead of the baseline's
+ * (the PR runs play 50, the nightly 100): the same suite with the capstone runs' bands widened
+ * around their value by sqrt(baselineGames / capstoneSeeds), the growth of a mean's sampling
+ * error when the games are fewer (50 vs 100: x1.41). The seeds 1..N are a prefix of the baseline's,
+ * so the result is the baseline's own games, fewer; the wider band absorbs that subset's
+ * drift, while a real physics change (a win rate or time to the capstone moving by tens of
+ * percent) still leaves it. Every other run keeps its bands.
+ * @public Used by tools/sim/simulate-cascade.ts, outside the knip workspace.
+ */
+export function baselineForCapstoneSeeds(
+  baseline: BaselineSuite,
+  capstoneSeeds: number
+): BaselineSuite {
+  const base = baseline.params.capstone;
+  if (!base || base.seeds === capstoneSeeds) return baseline;
+  const factor = Math.sqrt(base.seeds / capstoneSeeds);
+  const runs: BaselineSuite["runs"] = {};
+  for (const [k, bands] of Object.entries(baseline.runs)) {
+    if (!k.startsWith("capstone:")) {
+      runs[k] = bands;
+      continue;
+    }
+    const wide: BandSet = {};
+    for (const [key, b] of Object.entries(bands)) {
+      wide[key] =
+        b.value === null || b.min === null || b.max === null
+          ? b
+          : {
+              value: b.value,
+              min: b.value - (b.value - b.min) * factor,
+              max: b.value + (b.max - b.value) * factor,
+            };
+    }
+    runs[k] = wide;
+  }
+  return {
+    ...baseline,
+    params: { ...baseline.params, capstone: { ...base, seeds: capstoneSeeds } },
+    runs,
+  };
+}
+
 export interface Violation {
   where: string;
   key: string;

@@ -11,7 +11,7 @@
  * step with ~90 pieces on this device, mean and p95, for the owner's device check
  * (docs/PERFORMANCE.md). It runs only when pressed, off the game's frame loop.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeContext";
 import { DEV_ACCENT_DIM } from "../../theme/theme.constants";
@@ -64,9 +64,21 @@ function FrameStatsLine({ read }: { read: () => FrameStatsSummary | null }) {
 function StepBench() {
   const { colors } = useTheme();
   const [line, setLine] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The panel can close before the 50 ms is up: no bench run, no state set after unmount.
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    []
+  );
   const run = () => {
     setLine("running…");
-    setTimeout(() => setLine(formatStepBench(runStepBench({ pieces: STEP_BENCH_PIECES }))), 50);
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setLine(formatStepBench(runStepBench({ pieces: STEP_BENCH_PIECES })));
+    }, 50);
   };
   return (
     <>

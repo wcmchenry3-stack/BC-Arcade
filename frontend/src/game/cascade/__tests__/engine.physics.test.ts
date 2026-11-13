@@ -1,6 +1,7 @@
 /**
  * The physics of #3697 (planck.js 1.4.2, the owner's "3 lively" tuning): grow-in, the merge gap,
- * chain reach, per-tier density, the win event, no teleports, and determinism at 60 and 120 Hz.
+ * chain reach, per-tier density, the win event, no teleports, and replays (the same frame deltas
+ * replay the same board, at 60 and at 120 Hz; 60 and 120 Hz are not bit-identical to each other).
  */
 import type { Fixture } from "planck";
 import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
@@ -164,9 +165,38 @@ describe("the merge gap and chain reach", () => {
     expect(steps).toBeLessThanOrEqual(2);
   });
 
-  it(`chain reach is ${CHAIN_REACH_PX} px at full size, from a piece still growing in`, () => {
-    expect(CHAIN_REACH_PX).toBeGreaterThan(0);
-    expect(GROW_IN_STEPS).toBeGreaterThan(1);
+  describe(`chain reach (${CHAIN_REACH_PX} px at full size, from a piece still growing in)`, () => {
+    /**
+     * Two tier-7 pieces touching on the floor merge on step 1 into a tier 8 that starts at their
+     * radius (40 px, 5 px short of its own 45), at their midpoint, resting on the floor. A second
+     * tier 8 hangs straight above it, its circle `extra` px beyond touching the product's FULL
+     * circle at the start (it falls about 2 px in two steps). While the product is still small its
+     * CURRENT circle is not within MERGE_GAP_PX of that piece, so only chain reach (or the
+     * product growing in, a few steps later) can merge them.
+     */
+    function chainAt(extra: number): CascadeEngine {
+      const full = tierRadius(8);
+      const engine = new CascadeEngine({});
+      engine.restore(
+        [...pair(7), { tier: 8, x: 200, y: FLOOR_TOP - full - (2 * full + extra) }],
+        0
+      );
+      return engine;
+    }
+    /** The 1-based step each merge happened on, over `n` steps. */
+    function mergeSteps(engine: CascadeEngine, n: number): number[] {
+      return run(engine, n).flatMap((r, i) => (merges([r]).length > 0 ? [i + 1] : []));
+    }
+
+    it("merges a same-tier piece the full circle reaches, the step after the product appears", () => {
+      // 3 px beyond touching at full size, inside the 2 px reach after the ~2 px fall. Without chain
+      // reach it merges on step 4 (checked with CHAIN_REACH_PX = 0).
+      expect(mergeSteps(chainAt(3), 6)).toEqual([1, 2]);
+    });
+
+    it("leaves a same-tier piece beyond the reach alone in the first steps of the grow-in", () => {
+      expect(mergeSteps(chainAt(5), 2)).toEqual([1]);
+    });
   });
 });
 
@@ -255,7 +285,7 @@ describe("no teleports in normal play", () => {
   });
 });
 
-describe("determinism (replays, #3858)", () => {
+describe("replays (#3858): the same frame deltas replay the same board", () => {
   /**
    * Drops every 40th frame, fed at a frame rate. (Across frame rates the rules run the same
    * fixed steps, so a game plays the same up to frame-boundary rounding: `engine.lid.test.ts`.)
@@ -276,7 +306,7 @@ describe("determinism (replays, #3858)", () => {
     return JSON.stringify({ score: s.score, pieces: s.pieces });
   }
 
-  it("the same drops stepped by the same deltas replay the same board, bit for bit", () => {
+  it("the same drops stepped by the same frame deltas replay the same board, at 60 and at 120 Hz, bit for bit", () => {
     expect(play(HZ60)).toEqual(play(HZ60));
     expect(play(HZ120)).toEqual(play(HZ120));
   });

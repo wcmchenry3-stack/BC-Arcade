@@ -19,6 +19,7 @@ import {
   ROBUST_KEYS,
   SMOKE_PARAMS,
   SPAM_GAME_OVER_BOUND_MS,
+  baselineForCapstoneSeeds,
   checkSuite,
   formatTable,
   makeBaselineSuite,
@@ -362,6 +363,7 @@ describe("pure physics-feel measures", () => {
     angle: 0,
     shapeKind: "circle" as const,
     isSleeping: true,
+    scale: 1,
   });
   const c = DEFAULT_CONSTANTS;
 
@@ -592,5 +594,19 @@ describe("baseline.json", () => {
       expect(bands["win.rate"]!.min).not.toBeNull();
       expect(bands["win.timeToWinS.median"]!.min).not.toBeNull();
     }
+  });
+
+  it("widens the capstone bands, and only those, for a smaller capstone seed count (PR gate: 50)", () => {
+    const full = baseline.suites["full"]!;
+    const half = baselineForCapstoneSeeds(full, 50);
+    expect(half.params.capstone!.seeds).toBe(50);
+    expect(baselineForCapstoneSeeds(full, 100)).toBe(full);
+    const wide = half.runs["capstone:skilled@60"]!["win.timeToWinS.median"]!;
+    const orig = full.runs["capstone:skilled@60"]!["win.timeToWinS.median"]!;
+    expect(wide.value).toBe(orig.value);
+    expect(wide.value! - wide.min!).toBeCloseTo((orig.value! - orig.min!) * Math.SQRT2, 9);
+    expect(wide.max! - wide.value!).toBeCloseTo((orig.max! - orig.value!) * Math.SQRT2, 9);
+    expect(half.runs["heuristic@60"]).toBe(full.runs["heuristic@60"]);
+    expect(half.queue).toBe(full.queue);
   });
 });

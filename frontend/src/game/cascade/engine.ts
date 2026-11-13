@@ -9,9 +9,16 @@
  * Determinism and RNG (docs/ARCHITECTURE.md section 3.2, #2985 / #2999; replays #3858):
  *   - This module holds no RNG slot and calls no `Math.random`, and neither does planck's solver.
  *     Time enters only as the `deltaMs` passed to `step`, consumed in fixed `FIXED_STEP_MS`
- *     substeps (at most `MAX_SUBSTEPS`), so the same drops stepped by the same deltas replay the
- *     same board, at 60 Hz or 120 Hz. A long frame is clamped by the caller (100 ms) and by
- *     `MAX_SUBSTEPS`, so replays must feed the same deltas.
+ *     substeps (at most `MAX_SUBSTEPS`), so the same frame deltas replay the same board, at 60
+ *     and at 120 Hz (each rate against itself; the two rates match within a frame, not bit for
+ *     bit). A long frame is clamped by the caller (100 ms) and by `MAX_SUBSTEPS`, so replays must
+ *     feed the same deltas. Bit-exact replay holds on ONE JS engine only: planck uses
+ *     `Math.sin` / `Math.cos` / `Math.atan2`, which can differ in the last bit between Hermes,
+ *     JavaScriptCore and V8, so a replay on another device or on a server can diverge on a
+ *     chaotic pile.
+ *   - Allocation: this module's own step path allocates nothing per piece; planck's internals do
+ *     (about 0.4 KB per frame settled, about 2 KB with 90 awake pieces, measured in review). The
+ *     device bench (`stepBench.ts`, the dev panel) is the check.
  *   - The only randomness in a game is which tier comes next. It lives in `spawnSelector.ts` and
  *     `pieceQueue.ts`, which take the source as a parameter; the screen passes a seeded one when a
  *     test seeds the queue (`__cascade_setSeed`). Live play uses `Math.random`.
