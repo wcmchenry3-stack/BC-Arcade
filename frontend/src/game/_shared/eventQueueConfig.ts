@@ -328,6 +328,35 @@ export const MAHJONG_SESSION_MAX_BYTES = 20 * 1024;
 export const MAHJONG_MAX_UNITS = 20;
 
 /**
+ * Sort (#3384, epic #3383): the cap on one `moves` event's JSON length. A chunk is
+ * up to 25 actions, each a number tuple: the longest honest one is a pour or a
+ * hint between bottles 15 and 14, `[0,15,14],` (10 characters), so a worst honest
+ * chunk is about 250 B plus the recorder's envelope (~60 B). 1 KB never bites it
+ * and still bounds a bad one (a chunk over it is split on `m`, not dropped). The
+ * backend's `MAX_MOVES_BYTES` holds the same figure.
+ */
+export const SORT_MOVES_MAX_BYTES = 1024;
+
+/**
+ * Sort (#3384): the most a level's `moves` events add up to on the device (JSON
+ * lengths), the byte half of the cost bound (SORT_MAX_UNITS below is the row
+ * half). The row cap allows 300 actions at 10 B, about 3 KB, plus 12 envelopes
+ * of ~60 B; 8 KB leaves headroom and stops a runaway at a clean prefix (cost
+ * before data).
+ */
+export const SORT_SESSION_MAX_BYTES = 8 * 1024;
+
+/**
+ * Sort (#3384): the most `moves` events (recorder units) a level records, the
+ * row-count half of the cost bound (each stored row costs about 200 B beyond its
+ * JSON). 12 rows of 25 actions is 300 actions; the longest level's par is 63, so
+ * an honest level, with undos and hints, is a few rows. Counted by the unit
+ * number, which the save carries, so a resume does not reset it. Worst case,
+ * stored: 12 x (1,024 + 200) B, about 15 KB a level.
+ */
+export const SORT_MAX_UNITS = 12;
+
+/**
  * Hearts (#3283): the cap on one event's JSON length, per replay type. The worst
  * honest event (hand 60, a 10-digit `t_ms`) is 232 B (`hand_opened`) / 264 B (`hand_played`)
  * (frontend and backend tests pin both), so each cap leaves a third
@@ -579,9 +608,12 @@ export const gameEventRegistry = {
     },
   },
   sort: {
+    sessionMaxBytes: SORT_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to ACTIONS_PER_CHUNK (game/sort/replay.ts) pours, undos, hints and rewinds per event
+      moves: { tier: Priority.REPLAY, maxBytes: SORT_MOVES_MAX_BYTES, chunkField: "m" },
     },
   },
   daily_word: {
