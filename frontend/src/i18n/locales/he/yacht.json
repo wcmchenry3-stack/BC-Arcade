@@ -71,6 +71,7 @@
   "error.generic": "משהו השתבש. נסו שוב.",
   "dice.hintRollToStart": "לחץ על גלגול להתחלה",
   "dice.hintComputer": "המחשב מגלגל…",
+  "dice.hintGameOver": "המשחק נגמר",
   "hint.hold": "רמז: החזק את הקוביות המסומנות",
   "hint.holdNone": "רמז: גלגל שוב את כל חמש הקוביות",
   "hint.score": "רמז: רשום ב{{category}}",

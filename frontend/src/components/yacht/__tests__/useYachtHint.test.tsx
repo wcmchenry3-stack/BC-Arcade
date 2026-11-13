@@ -50,6 +50,20 @@ describe("the Hint's oracle warm-up", () => {
     expect(mockPreload).not.toHaveBeenCalled();
   });
 
+  it("waits for the dice to land: never during the tumble (#3749)", async () => {
+    type Live = Props & { disabled: boolean };
+    const { rerender } = await renderHook(
+      ({ available, gameState, disabled }: Live) =>
+        useYachtHint({ available, gameState, disabled }),
+      { initialProps: { available: true, gameState: state({ rolls_used: 0 }), disabled: false } }
+    );
+    const rolled = state({ rolls_used: 1, dice: [1, 2, 3, 4, 5] });
+    await rerender({ available: true, gameState: rolled, disabled: true });
+    expect(mockPreload).not.toHaveBeenCalled();
+    await rerender({ available: true, gameState: rolled, disabled: false });
+    expect(mockPreload).toHaveBeenCalledTimes(1);
+  });
+
   it("pressing Hint does not start it", async () => {
     const { result } = await setup({ available: true, gameState: state({ rolls_used: 0 }) });
     await act(async () => result.current.onHint());

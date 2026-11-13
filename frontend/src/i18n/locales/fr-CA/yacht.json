@@ -71,6 +71,7 @@
   "error.generic": "Une erreur s'est produite. Veuillez réessayer.",
   "dice.hintRollToStart": "Appuyez sur Lancer",
   "dice.hintComputer": "L'ordinateur lance les dés…",
+  "dice.hintGameOver": "Partie terminée",
   "hint.hold": "Indice : gardez les dés surlignés",
   "hint.holdNone": "Indice : relancez les cinq dés",
   "hint.score": "Indice : marquez {{category}}",

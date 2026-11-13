@@ -638,6 +638,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "dice.hintGameOver": {
+    "component": "DiceRow",
+    "description": "Hint line over the final dice in the short pause between the game's last score and the result card (#3749).",
+    "tone": "neutral, brief",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "hint.hold": {
     "component": "GameScreen",
     "description": "Message shown for 2 seconds when the hint button highlights the dice to keep.",

@@ -2,7 +2,7 @@
  * The thumb tray (#3748): the card under the scorecard that holds everything a turn needs in
  * thumb reach — the turn hint, the five dice, and a row with Roll and (the screen's) action bar.
  */
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Pressable,
@@ -14,7 +14,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import Die, { DIE_LIFT } from "./Die";
+import Die, { DIE_LIFT, tumbleRise } from "./Die";
 import { useTheme } from "../theme/ThemeContext";
 import { useReduceMotion } from "./shared/useReduceMotion";
 
@@ -37,8 +37,17 @@ interface DiceRowProps {
   gameOver: boolean;
   onRoll: () => void | Promise<void>;
   onToggleHold: (index: number) => void;
-  /** Indices of dice that are currently animating a roll. */
+  /** Indices of dice that are currently animating a roll, left to right (their tumbles are staggered in this order). */
   rollingIndices?: readonly number[];
+  /** How fast the tumble plays: 2 for the computer's fast last turn (#3749). */
+  tumbleSpeed?: number;
+  /**
+   * Your dice are still tumbling (#3749): Roll and the dice take no press until they land. They
+   * keep their look (no grey flash on every roll); only the press and the disabled state change.
+   */
+  inputLocked?: boolean;
+  /** A rolled die has landed (its index): the screen's input lock waits for every one. */
+  onTumbleEnd?: (index: number) => void;
   /** The computer's turn: the dice shown are its dice, Roll reads "Computer's turn" and nothing is tappable. */
   locked?: boolean;
   /** The computer's rolls so far this turn (shown as "Roll n / 3" while it plays). */
@@ -61,6 +70,9 @@ export default function DiceRow({
   onRoll,
   onToggleHold,
   rollingIndices,
+  tumbleSpeed = 1,
+  inputLocked = false,
+  onTumbleEnd,
   locked = false,
   computerRolls = 0,
   turnLabel = null,
@@ -76,13 +88,16 @@ export default function DiceRow({
   // screen gutter and tray padding until the first layout.
   const [rowWidth, setRowWidth] = useState<number | null>(null);
   const size = dieSizeFor(rowWidth ?? windowWidth - 2 * TRAY_SIDE_INSET);
+  // Room above the dice for a held die's lift and a tumbling die's rise (#3749).
+  const roomAbove = useMemo(() => Math.max(DIE_LIFT, tumbleRise(size)) + 2, [size]);
   const onRowLayout = (e: LayoutChangeEvent) => {
     const w = Math.round(e.nativeEvent.layout.width);
     setRowWidth((prev) => (prev === w ? prev : w));
   };
 
   const canRoll = rollsUsed < 3 && !gameOver && !locked;
-  const rollsLeft = 3 - rollsUsed;
+  // A finished game has no rolls left: in the end beat the tray shows its final dice, not a turn.
+  const rollsLeft = gameOver ? 0 : 3 - rollsUsed;
 
   // Web gradient for roll button; native falls back to flat accentBright
   const rollButtonBg: ViewStyle =
@@ -95,7 +110,17 @@ export default function DiceRow({
   const rollText = locked ? t("vsMode.computerTurn") : t("roll.button", { count: rollsLeft });
 
   let hintLine: React.ReactNode;
-  if (locked) {
+  if (gameOver && !locked) {
+    // The pause before the result card (#3749, owner): "Game over", over the final dice.
+    hintLine = (
+      <Text
+        style={[styles.hint, styles.hintStrong, { color: colors.text }]}
+        testID="yacht-game-over-hint"
+      >
+        {t("dice.hintGameOver")}
+      </Text>
+    );
+  } else if (locked) {
     hintLine = (
       <>
         <Text style={[styles.hint, { color: colors.textMuted }]}>{t("dice.hintComputer")}</Text>
@@ -151,7 +176,11 @@ export default function DiceRow({
       <View style={styles.hintRow} testID="yacht-hint-line">
         {hintLine}
       </View>
-      <View style={styles.diceRow} onLayout={onRowLayout}>
+      <View
+        style={[styles.diceRow, { paddingTop: roomAbove }]}
+        onLayout={onRowLayout}
+        testID="yacht-dice-row"
+      >
         {dice.map((val, i) => (
           <Die
             key={i}
@@ -160,8 +189,11 @@ export default function DiceRow({
             value={val}
             held={held[i] ?? false}
             onPress={() => onToggleHold(i)}
-            disabled={locked || rollsUsed === 0 || gameOver}
+            disabled={locked || inputLocked || rollsUsed === 0 || gameOver}
             rolling={rollingIndices?.includes(i) ?? false}
+            rollOrder={Math.max(0, rollingIndices?.indexOf(i) ?? 0)}
+            tumbleSpeed={tumbleSpeed}
+            onTumbleEnd={onTumbleEnd}
             reduceMotion={reduceMotion}
             hinted={!locked && hintHold?.[i] === true}
             dimmed={gameOver}
@@ -180,14 +212,14 @@ export default function DiceRow({
             { transform: [{ scale: pressed && canRoll ? 0.95 : 1 }] },
           ]}
           onPress={() => void onRoll()}
-          disabled={!canRoll}
+          disabled={!canRoll || inputLocked}
           accessibilityRole="button"
           testID="yacht-roll-button"
           accessibilityLabel={
             // i18next picks the plural form (ar has six, ru four) from count.
             locked ? t("vsMode.computerTurn") : t("roll.label", { count: rollsLeft })
           }
-          accessibilityState={{ disabled: !canRoll }}
+          accessibilityState={{ disabled: !canRoll || inputLocked }}
         >
           <Text
             numberOfLines={2}
@@ -232,8 +264,8 @@ const styles = StyleSheet.create({
   diceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    // Room for a held die's lift, so it never leaves the row.
-    paddingTop: DIE_LIFT + 4,
+    // Room above the dice (set in the render from the die size): a held die's lift and a tumbling
+    // die's rise both stay below the hint line (#3749).
     paddingBottom: 6,
   },
   actionRow: {

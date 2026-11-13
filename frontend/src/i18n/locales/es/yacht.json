@@ -71,6 +71,7 @@
   "error.generic": "Algo salió mal. Inténtalo de nuevo.",
   "dice.hintRollToStart": "Presiona Tirar",
   "dice.hintComputer": "La CPU está tirando…",
+  "dice.hintGameOver": "Fin del juego",
   "hint.hold": "Pista: retén los dados resaltados",
   "hint.holdNone": "Pista: tira los cinco dados otra vez",
   "hint.score": "Pista: anota {{category}}",

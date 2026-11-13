@@ -70,6 +70,7 @@
   "error.generic": "Er ging iets mis. Probeer het opnieuw.",
   "dice.hintRollToStart": "Druk op Roll",
   "dice.hintComputer": "Computer gooit…",
+  "dice.hintGameOver": "Spel voorbij",
   "hint.hold": "Tip: houd de gemarkeerde dobbelstenen vast",
   "hint.holdNone": "Tip: gooi alle vijf dobbelstenen opnieuw",
   "hint.score": "Tip: score {{category}}",

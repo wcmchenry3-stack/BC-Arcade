@@ -70,6 +70,7 @@
   "error.generic": "Something went wrong. Please try again.",
   "dice.hintRollToStart": "Press Roll to start",
   "dice.hintComputer": "Computer is rolling…",
+  "dice.hintGameOver": "Game over",
   "hint.hold": "Hint: keep the highlighted dice",
   "hint.holdNone": "Hint: roll all five dice again",
   "hint.score": "Hint: score {{category}}",

@@ -5,6 +5,7 @@ import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
+import { JACKPOT_WAIT_MAX_MS, WIN_BEAT_MS, inputLockMaxMs } from "../../game/yacht/motion";
 
 // The thumb-tray UI (#3748): one scorecard, the action bar with New Game and the solo Hint, the
 // computer's-turn display and the end card for both players.
@@ -116,6 +117,11 @@ async function advance(ms: number) {
 
 async function finishCpuTurn() {
   for (let i = 0; i < 20; i++) await advance(1000);
+}
+
+/** The card waits for the end beat, after any celebration (#3749). */
+async function finishEndBeat() {
+  await advance(JACKPOT_WAIT_MAX_MS + WIN_BEAT_MS);
 }
 
 beforeEach(() => {
@@ -296,8 +302,8 @@ describe("the Hint (solo)", () => {
     expect(r.getByTestId("yacht-hint-message")).toBeTruthy();
     await fireEvent.press(r.getByTestId("yacht-roll-button"));
     expect(r.queryByTestId("yacht-hint-message")).toBeNull();
-    // score
-    await advance(500);
+    // score, once the dice have landed (#3749: here, the lock's safety net: no animation runs)
+    await advance(inputLockMaxMs(5));
     await fireEvent.press(r.getByTestId("yacht-hint-button"));
     expect(r.getByTestId("yacht-hint-message")).toBeTruthy();
     await fireEvent.press(r.getByTestId("score-row-sixes"));
@@ -315,7 +321,8 @@ describe("the Hint (solo)", () => {
       await fireEvent.press(r.getByTestId("yacht-hint-button"));
       expect(r.queryByTestId("yacht-hint-message")).toBeNull();
       expect(r.queryByTestId("yacht-no-hint-toast")).toBeNull();
-      await advance(500);
+      // Until the dice land (#3749: here, the lock's safety net: no animation runs).
+      await advance(inputLockMaxMs(5));
       expect(r.getByTestId("yacht-hint-button").props.accessibilityState.disabled).toBe(false);
     });
 
@@ -456,6 +463,7 @@ describe("the end card (#3748)", () => {
     await act(async () => {
       await fireEvent.press(r.getByTestId("score-row-yacht"));
     });
+    await finishEndBeat();
     const card = within(r.getByTestId("yacht-result"));
     expect(card.getByText("Yacht! +50 points")).toBeTruthy();
     expect(card.queryByText("+35 Upper Bonus included!")).toBeNull();
@@ -468,6 +476,7 @@ describe("the end card (#3748)", () => {
     await act(async () => {
       await fireEvent.press(r.getByTestId("score-row-chance"));
     });
+    await finishEndBeat();
     expect(
       within(r.getByTestId("yacht-result")).getByText("+35 Upper Bonus included!")
     ).toBeTruthy();
@@ -478,6 +487,7 @@ describe("the end card (#3748)", () => {
     await act(async () => {
       await fireEvent.press(r.getByTestId("score-row-chance"));
     });
+    await finishEndBeat();
     const card = within(r.getByTestId("yacht-result"));
     expect(card.getByText("Upper")).toBeTruthy();
     expect(card.getByText("Lower")).toBeTruthy();

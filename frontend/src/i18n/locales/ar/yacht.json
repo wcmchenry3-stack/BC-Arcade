@@ -74,6 +74,7 @@
   "error.generic": "حدث خطأ ما. حاول مرة أخرى.",
   "dice.hintRollToStart": "اضغط على رمي للبدء",
   "dice.hintComputer": "الكمبيوتر يرمي النرد…",
+  "dice.hintGameOver": "انتهت اللعبة",
   "hint.hold": "تلميح: أمسك النرد المميز",
   "hint.holdNone": "تلميح: ارمِ النرد الخمسة كلها مجددًا",
   "hint.score": "تلميح: سجّل في {{category}}",
