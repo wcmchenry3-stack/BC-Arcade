@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from games.replay_caps import SORT_MAX_UNITS
 from sort.catalog import CATALOG_VERSION
 from sort.fast_solver import solve
 from sort.generate_levels import SOLVER_BUDGET
@@ -317,6 +318,19 @@ def test_a_lost_last_unit_the_recorder_counted_is_incomplete() -> None:
     # every unit the recorder counted arrived: complete
     ended = {**ended, "replay": {"m": "full", "u": 1, "n": 3}}
     assert run(log([[[0, 1, 4]]], ended=ended)).verdict == COMPLETE
+
+
+def test_a_log_at_the_recording_cap_is_incomplete() -> None:
+    # Codex on #3874: past SORT_MAX_UNITS the app records nothing more and says so nowhere,
+    # so 12 full units of hints cannot prove the level had no more actions
+    hints = [[[2, 1, 3]] * 25 for _ in range(SORT_MAX_UNITS)]
+    ended = {"level": 1, "moves": 0, "won": False, "replay": {"u": SORT_MAX_UNITS}}
+    r = run(log(hints, ended=ended))
+    assert r.verdict == INCOMPLETE and flags(r) == ["truncated"]
+    assert "recording cap (12 units)" in r.reason
+    # one unit fewer, everything accounted for: complete
+    ended = {**ended, "replay": {"u": SORT_MAX_UNITS - 1}}
+    assert run(log(hints[:-1], ended=ended)).verdict == COMPLETE
 
 
 def test_a_dropped_middle_part_is_a_gap_not_invalid() -> None:

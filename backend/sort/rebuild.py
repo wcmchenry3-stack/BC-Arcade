@@ -43,6 +43,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from games.replay_caps import SORT_MAX_UNITS
+
 CATALOG_PATH = Path(__file__).resolve().parents[2] / "frontend/src/game/sort/levels.catalog.json"
 
 BOTTLE_DEPTH = 4
@@ -403,6 +405,17 @@ def _check_tail(out: Rebuilt, ended: dict[str, Any], last_unit: int) -> None:
     """A lost last unit of hints only changes no count, so the counts alone cannot see it:
     ``game_ended``'s recorder summary (``replay.u``, the last unit the recorder handed
     over, from ``GameRecorder.stats()``) can, when the app sent it."""
+    if last_unit >= SORT_MAX_UNITS:
+        # the app records at most SORT_MAX_UNITS units a level and then stops without a
+        # marker: what came after (hints, say, that change no count) cannot be ruled out
+        out.flags.append(
+            Flag(
+                "truncated",
+                INCOMPLETE,
+                f"the log reached the recording cap ({SORT_MAX_UNITS} units): later actions may be missing",
+            )
+        )
+        return
     summary = ended.get("replay")
     u = summary.get("u") if isinstance(summary, dict) else None
     if _is_int(u) and u > last_unit:
