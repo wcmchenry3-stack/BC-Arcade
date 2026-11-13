@@ -204,6 +204,9 @@ export default function BottleView({
   useEffect(() => {
     if (isGhost || refusedSeq === seenRefusedSeq.current) return;
     seenRefusedSeq.current = refusedSeq;
+    // 0 means "another bottle was refused" (SortBoard passes the seq only to the
+    // destination): remember it, but don't shake.
+    if (refusedSeq === 0) return;
     cancelAnimation(shake);
     shake.value = 0;
     if (reduceMotion) return;

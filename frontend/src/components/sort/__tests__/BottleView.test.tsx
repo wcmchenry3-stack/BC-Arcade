@@ -249,6 +249,20 @@ describe("BottleView motion (#3660)", () => {
       expect(timing).toHaveBeenCalledTimes(2);
     });
 
+    it("does not shake when its seq resets to 0 because another bottle was refused", async () => {
+      const { rerender } = await render(
+        withTheme(<BottleView bottle={open} index={0} refusedSeq={0} />)
+      );
+      await rerender(withTheme(<BottleView bottle={open} index={0} refusedSeq={1} />));
+      timing.mockClear();
+      // Another bottle is refused: SortBoard passes this one 0.
+      await rerender(withTheme(<BottleView bottle={open} index={0} refusedSeq={0} />));
+      expect(timing).not.toHaveBeenCalled();
+      // A later refusal of this bottle shakes it again.
+      await rerender(withTheme(<BottleView bottle={open} index={0} refusedSeq={3} />));
+      expect(timing).toHaveBeenCalledTimes(1);
+    });
+
     it("a bottle that mounts with a seq (a remount) plays nothing", async () => {
       await render(withTheme(<BottleView bottle={open} index={0} refusedSeq={4} />));
       expect(timing).not.toHaveBeenCalled();
