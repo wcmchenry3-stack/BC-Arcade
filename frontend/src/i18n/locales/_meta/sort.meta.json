@@ -376,5 +376,41 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "levelSelect.chapter": {
+    "component": "LevelSelectScreen",
+    "description": "Heading above each group of 20 levels in the level grid.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["{{chapter}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "levelSelect.levelStars": {
+    "component": "LevelSelectScreen",
+    "description": "Accessibility label for a solved level tile: its number and best stars out of 3.",
+    "tone": "functional",
+    "characterLimit": 50,
+    "placeholders": ["{{level}}", "{{stars}}"],
+    "doNotTranslate": [],
+    "notes": "The 3 is the maximum, always 3."
+  },
+  "stars.summary": {
+    "component": "SolveStars",
+    "description": "Accessibility label for the result card's stars and move target.",
+    "tone": "functional",
+    "characterLimit": 80,
+    "placeholders": ["{{stars}}", "{{moves}}", "{{par}}"],
+    "doNotTranslate": [],
+    "notes": "par is the target move count."
+  },
+  "stars.movesTarget": {
+    "component": "SolveStars",
+    "description": "Result card line under the stars: moves used and the target.",
+    "tone": "neutral",
+    "characterLimit": 48,
+    "placeholders": ["{{moves}}", "{{par}}"],
+    "doNotTranslate": [],
+    "notes": "Target is the move count a 3-star solve meets."
   }
 }

@@ -14,7 +14,6 @@
   "stat.timeA11y": "זמן: {{time}}",
   "action.undo": "בטל",
   "action.hint": "רמז",
-  "action.autoComplete": "סיום אוטומטי",
   "action.dealAgain": "חלקו שוב",
   "stock.recycle": "מיחזור נוסף יעלה 50 נקודות.",
   "pile.stock.label": "משוך {{count}} מהקופה, נותרו {{remaining}} קלפים",

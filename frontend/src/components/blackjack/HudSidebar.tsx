@@ -5,7 +5,8 @@ import { useTheme } from "../../theme/ThemeContext";
 import { formatNumber } from "../../api/statsDisplay";
 import { BLACKJACK_CHIPS_LOW } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
-import { accentAsText } from "./tableAccentText";
+import { accentAsText, labelOnFill } from "./tableAccentText";
+import HudNotice, { GoalPulse, type HudNoticeData } from "./HudNotice";
 
 interface HudSidebarProps {
   chips: number;
@@ -16,6 +17,40 @@ interface HudSidebarProps {
   tableName: string;
   tableAccentColor: string;
   winStreak?: number;
+  /** A run notice: replaces the table tag (and the warning / streak) for its hold (#3797). */
+  notice?: HudNoticeData | null;
+}
+
+/** The table tag, or the run notice that takes its place for its hold (#3797). */
+function TagOrNotice({
+  notice,
+  tableName,
+  accent,
+}: {
+  notice: HudNoticeData | null;
+  tableName: string;
+  accent: string;
+}) {
+  const { colors, theme } = useTheme();
+  if (notice) {
+    // Dark keeps the surface text it always had; light picks the label that reads on the chip's
+    // fill (#3819): textOnBonus on the comeback fill, the secondary/accent labels on the rest.
+    const textColor =
+      theme === "dark"
+        ? colors.surface
+        : notice.kind === "comeback"
+          ? colors.textOnBonus
+          : labelOnFill(colors, theme, notice.background);
+    return <HudNotice notice={notice} textColor={textColor} />;
+  }
+  return (
+    <View style={styles.tableTag} accessibilityElementsHidden testID="blackjack-hud-tag">
+      <View style={[styles.dot, { backgroundColor: accent }]} />
+      <Text style={[styles.tagText, { color: colors.textMuted, fontFamily: typography.label }]}>
+        {tableName.toUpperCase()}
+      </Text>
+    </View>
+  );
 }
 
 export default function HudSidebar({
@@ -26,6 +61,7 @@ export default function HudSidebar({
   tableName,
   tableAccentColor,
   winStreak = 0,
+  notice = null,
 }: HudSidebarProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -52,14 +88,9 @@ export default function HudSidebar({
     >
       {/* One slim row (#3580): table tag | warning or streak | chips / goal */}
       <View style={styles.topRow}>
-        <View style={styles.tableTag} accessibilityElementsHidden>
-          <View style={[styles.dot, { backgroundColor: tableAccentColor }]} />
-          <Text style={[styles.tagText, { color: colors.textMuted, fontFamily: typography.label }]}>
-            {tableName.toUpperCase()}
-          </Text>
-        </View>
+        <TagOrNotice notice={notice} tableName={tableName} accent={tableAccentColor} />
 
-        {isCritical && (
+        {isCritical && !notice && (
           <Text
             style={[styles.warning, { color: colors.error, fontFamily: typography.label }]}
             numberOfLines={2}
@@ -68,7 +99,7 @@ export default function HudSidebar({
           </Text>
         )}
 
-        {showStreak && !isCritical && (
+        {showStreak && !isCritical && !notice && (
           <View style={[styles.streakBadge, { borderColor: tableAccentColor }]}>
             <Text
               style={[styles.streakText, { color: accentAsText(colors, tableAccentColor) }]}
@@ -131,6 +162,7 @@ export default function HudSidebar({
               ]}
             />
           ))}
+          <GoalPulse kind={notice?.kind} color={barColor} />
         </View>
       ) : (
         // Same height as the bar, so the felt does not shift when the goal clears (#3617).

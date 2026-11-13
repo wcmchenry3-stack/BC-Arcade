@@ -106,5 +106,6 @@
   "locked.back": "Volver a la sala",
   "locked.back_label": "Volver a la sala",
   "offline.windowExhausted": "Han pasado 3 días desde tu última conexión. Conéctate a internet para obtener el último acertijo.",
-  "offline.windowExhaustedStreak": "Conéctate para mantener tu racha."
+  "offline.windowExhaustedStreak": "Conéctate para mantener tu racha.",
+  "action.autoComplete": "Auto-Completar"
 }

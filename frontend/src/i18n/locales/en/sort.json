@@ -40,5 +40,9 @@
   "hint.unknown": "Couldn't find a hint",
   "hint.backToLastGoodMove": "Back to last good move",
   "hint.restartLevel": "Restart level",
-  "hint.dismiss": "Dismiss"
+  "hint.dismiss": "Dismiss",
+  "levelSelect.chapter": "Chapter {{chapter}}",
+  "levelSelect.levelStars": "Level {{level}}, {{stars}} of 3 stars",
+  "stars.summary": "{{stars}} of 3 stars. Moves {{moves}}, target {{par}}.",
+  "stars.movesTarget": "Moves {{moves}} · Target {{par}}"
 }

@@ -98,6 +98,7 @@ import { isNaturalHand } from "../components/blackjack/blackjackMotion";
 import GameResultModal from "../components/shared/GameResultModal";
 import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
+import { pickHudNotice, useHudNoticeHolds } from "../components/blackjack/HudNotice";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 
@@ -191,9 +192,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     sessionStats,
     runResult,
   } = useBlackjackGame();
-  const [milestoneChips, setMilestoneChips] = useState<number | null>(null);
-  const [comebackVisible, setComebackVisible] = useState(false);
-  const [allInVisible, setAllInVisible] = useState(false);
+  const holds = useHudNoticeHolds();
+  const { milestone: milestoneChips, comeback: comebackVisible, allIn: allInVisible } = holds;
   const [runs, setRuns] = useState<RunRecord[]>([]);
   // The bet being built in the dock (chips tapped so far). It only means
   // something while betting: once a hand is dealt (Deal, Rebet, 2×) it is
@@ -229,18 +229,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     ...StyleSheet.absoluteFill,
     backgroundColor: winFlashColor,
     opacity: winFlash.value * 0.35,
-    pointerEvents: "none",
-  }));
-  const milestoneStyle = useAnimatedStyle(() => ({
-    opacity: milestoneOpacity.value,
-    pointerEvents: "none",
-  }));
-  const comebackStyle = useAnimatedStyle(() => ({
-    opacity: comebackOpacity.value,
-    pointerEvents: "none",
-  }));
-  const allInStyle = useAnimatedStyle(() => ({
-    opacity: allInOpacity.value,
     pointerEvents: "none",
   }));
 
@@ -310,7 +298,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         const cue = wonRunRef.current ? undefined : "milestone";
         motion.whenSettled(
           () => {
-            setMilestoneChips(event.value);
+            holds.show("milestone", 1800, event.value); // 150+1400+250
             milestoneOpacity.value = withSequence(
               withTiming(1, { duration: 150 }),
               withDelay(1400, withTiming(0, { duration: 250 }))
@@ -323,24 +311,22 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         const cue = wonRunRef.current ? undefined : "comeback";
         motion.whenSettled(
           () => {
-            setComebackVisible(true);
+            holds.show("comeback", 2800); // 200+2200+400
             comebackOpacity.value = withSequence(
               withTiming(1, { duration: 200 }),
               withDelay(2200, withTiming(0, { duration: 400 }))
             );
-            setTimeout(() => setComebackVisible(false), 2800); // 200+2200+400
           },
           { cue }
         );
       },
       // The badge only: its sound is the deal's, planned with the motion (#3582).
       allIn: () => {
-        setAllInVisible(true);
+        holds.show("allIn", 1300); // 150+900+250
         allInOpacity.value = withSequence(
           withTiming(1, { duration: 150 }),
           withDelay(900, withTiming(0, { duration: 250 }))
         );
-        setTimeout(() => setAllInVisible(false), 1300); // 150+900+250
       },
     },
     clearEvents
@@ -361,17 +347,30 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   }, [loading, engine, navigation, motionSettled]);
 
   const resetMotion = motion.reset;
+  const resetHolds = holds.reset;
   const handleNewGame = useCallback(() => {
     setBet(0);
     resetMotion();
+    resetHolds();
     handlePlayAgain();
-  }, [handlePlayAgain, resetMotion]);
+  }, [handlePlayAgain, resetMotion, resetHolds]);
 
   // Table select: explicit context state, set for a fresh run until a table is picked.
   const showTableSelect = engine !== null && tablePickPending;
 
   const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableAccentColor = colors[activeTable.accentKey];
+  const hudNotice = pickHudNotice(
+    {
+      comebackVisible,
+      milestoneChips,
+      allInVisible,
+      opacities: { comeback: comebackOpacity, milestone: milestoneOpacity, allIn: allInOpacity },
+      accent: tableAccentColor,
+    },
+    t,
+    colors
+  );
   const phase = state?.phase ?? "betting";
   const betting = phase === "betting";
   const playing = phase === "player";
@@ -548,7 +547,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
           {/* Slim HUD strip: table, chips / goal, progress. Without a goal (Keep Playing) it keeps
               the table and chips (#3617). */}
           {state && engine && (
-            <View style={styles.hud}>
+            <View style={styles.hud} testID="blackjack-hud">
               <HudSidebar
                 // The settled count shows once the payout lands (#3581).
                 chips={motion.shownChips ?? engine.chips}
@@ -558,6 +557,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                 tableName={t(activeTable.labelKey as Parameters<typeof t>[0])}
                 tableAccentColor={tableAccentColor}
                 winStreak={sessionStats.winStreak}
+                notice={hudNotice}
               />
             </View>
           )}
@@ -658,43 +658,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                 )}
                 <Animated.View style={bustFlashStyle} />
                 <Animated.View style={winFlashStyle} />
-                {milestoneChips !== null && (
-                  <Animated.View
-                    style={[
-                      styles.milestoneToast,
-                      milestoneStyle,
-                      { backgroundColor: tableAccentColor },
-                    ]}
-                  >
-                    <Text style={[styles.toastText, { color: colors.surface }]}>
-                      {t("blackjack:milestone.toast", { chips: milestoneChips })}
-                    </Text>
-                  </Animated.View>
-                )}
-                {comebackVisible && (
-                  <Animated.View
-                    style={[
-                      styles.comebackBanner,
-                      comebackStyle,
-                      { backgroundColor: colors.bonus },
-                    ]}
-                    accessibilityLabel={t("blackjack:comeback.bannerAccessibilityLabel")}
-                  >
-                    <Text style={[styles.comebackText, { color: colors.textOnBonus }]}>
-                      {t("blackjack:comeback.banner")}
-                    </Text>
-                  </Animated.View>
-                )}
-                {allInVisible && (
-                  <Animated.View
-                    style={[styles.allInBadge, allInStyle, { backgroundColor: colors.secondary }]}
-                    accessibilityLabel={t("blackjack:allIn.badgeAccessibilityLabel")}
-                  >
-                    <Text style={[styles.allInText, { color: colors.textOnSecondary }]}>
-                      {t("blackjack:allIn.badge")}
-                    </Text>
-                  </Animated.View>
-                )}
               </TableFelt>
               {/* An engine error overlays the felt's foot, so the dock never moves. */}
               {!!error && (
@@ -856,47 +819,5 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     overflow: "hidden",
-  },
-  milestoneToast: {
-    position: "absolute",
-    top: 8,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  toastText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  comebackBanner: {
-    position: "absolute",
-    top: "35%",
-    alignSelf: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
-    zIndex: 10,
-  },
-  comebackText: {
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  allInBadge: {
-    position: "absolute",
-    bottom: 12,
-    alignSelf: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  allInText: {
-    fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
   },
 });

@@ -2,7 +2,8 @@
  * freecell-leaderboard.spec.ts — GH #2035, #2508, #2632
  *
  * Result card + leaderboard: inject a game one card from winning (the King
- * of Spades alone in column 0), which auto-completes on load. Verify the
+ * of Spades alone in column 0), and tap its Auto-Complete button (#3566: FreeCell
+ * never starts it by itself). Verify the
  * shared result card shows where the synced game ranks (GET /games/{id}/rank;
  * the win's move count is its score) under the player's display name with no
  * name entry (or asks for one once when none is set). Nothing goes to POST
@@ -74,9 +75,10 @@ async function openGame(
     .waitFor({ timeout: 10_000 });
 }
 
-/** Wins on load (the last card auto-completes) and waits out the celebration. */
+/** Wins with the Auto-Complete button (the last card) and waits out the celebration. */
 async function winGame(page: Page, displayName?: string): Promise<void> {
   await openGame(page, NEAR_WIN_STATE, displayName);
+  await page.getByRole("button", { name: "Auto-Complete" }).click();
   await expect(page.getByTestId("freecell-result")).toBeVisible({
     timeout: 10_000,
   });

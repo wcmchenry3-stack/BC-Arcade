@@ -22,7 +22,8 @@
         "table.beginner",
         "table.highRoller",
         "tableSelect.startChips",
-        "hud.chipsAccessibilityLabel"
+        "hud.chipsAccessibilityLabel",
+        "hud.comeback"
       ],
       "es": ["rules.h17", "rules.s17", "score.blackjacks"],
       "pt": [
@@ -37,7 +38,7 @@
       "ko": ["rules.h17", "rules.s17"],
       "zh": ["outcome.blackjack", "outcome.blackjackNatural", "rules.h17", "rules.s17"],
       "ar": ["rules.h17", "rules.s17"],
-      "he": ["rules.h17", "rules.s17"],
+      "he": ["outcome.blackjack", "outcome.blackjackNatural", "rules.h17", "rules.s17"],
       "hi": ["rules.h17", "rules.s17"],
       "de": [
         "hand.playerHand",
@@ -52,7 +53,8 @@
         "stats.runOutcome.comeback",
         "table.highRoller",
         "tableSelect.startChips",
-        "hud.chipsAccessibilityLabel"
+        "hud.chipsAccessibilityLabel",
+        "hud.comeback"
       ],
       "fr-CA": [
         "outcome.blackjack",

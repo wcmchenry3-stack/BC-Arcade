@@ -145,6 +145,10 @@ Each outcome also has a `*Tint` (same hue, 10–14% alpha) for icon discs and ba
 | ---------- | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `hintRing` | `#4ade80` | `#1f7a3c` | The ring on a hint's destination (Bottle Sort, #3660). A graphic, so it needs ≥ 3:1 on the board background (11.0:1 dark, 4.6:1 light); `bonus` is 2.7:1 on cream. Enforced by `frontend/src/theme/__tests__/hintRingContrast.test.ts`. |
 
+### Sort stars
+
+Sort's level stars (#3687) add no token: a filled star is `celebration` and an outlined one `textMuted`, the star shape (filled vs outlined) carrying the count so it never rests on colour. Each is a graphic on `surfaceHigh` (the level tile and the result card) and needs ≥ 3:1; enforced by `frontend/src/theme/__tests__/starsContrast.test.ts`.
+
 ### Modal scrim
 
 Use `colors.overlay` behind every modal card: `rgba(0,0,0,0.75)` in dark, `rgba(0,0,0,0.5)` in light (a 75% scrim over cream reads as an error state). Don't hardcode a scrim.

@@ -14,7 +14,6 @@
   "stat.timeA11y": "Tiempo: {{time}}",
   "action.undo": "Deshacer",
   "action.hint": "Pista",
-  "action.autoComplete": "Auto-Completar",
   "action.dealAgain": "Repartir",
   "stock.recycle": "Reciclar después cuesta 50 puntos.",
   "pile.stock.label": "Robar {{count}} del mazo, quedan {{remaining}} cartas",

@@ -1225,7 +1225,7 @@ describe("cancelled cues", () => {
     await dealTen();
     await settle();
     await press(/^Stand/);
-    const toast = () => screen.queryByText("Milestone reached: 105 chips!");
+    const toast = () => screen.queryByLabelText("Milestone reached: 105 chips!");
     await advance(2160 + PAYOUT_MS - 1);
     expect(toast()).toBeNull();
     await advance(1);
@@ -1253,8 +1253,8 @@ describe("cancelled cues", () => {
 describe("the run's cues (#3582)", () => {
   const GAP = REDUCE_MOTION_SOUND_GAP_MS;
   const milestoneToast = (chips: number) =>
-    screen.queryByText(`Milestone reached: ${chips} chips!`);
-  const comebackBanner = () => screen.queryByText("What a comeback!");
+    screen.queryByLabelText(`Milestone reached: ${chips} chips!`);
+  const comebackBanner = () => screen.queryByText("Comeback!");
   /** WIN settles (its payout landed) this long after the Stand. */
   const WIN_SETTLED = 2160 + PAYOUT_MS;
   /**
@@ -1366,9 +1366,9 @@ describe("the run's cues (#3582)", () => {
     await settle();
     const at = await standNow();
     await advance(WIN_SETTLED);
-    // Both toasts show; one cue sounds.
+    // Both notices come due, the HUD strip shows the comeback (#3797); one cue sounds.
     expect(comebackBanner()).toBeTruthy();
-    expect(milestoneToast(75)).toBeTruthy();
+    expect(milestoneToast(75)).toBeNull();
     await settle();
     expect(named(at, "blackjack.comeback")).toEqual([WIN_SETTLED]);
     expect(named(at, "blackjack.milestone")).toEqual([]);
@@ -1425,7 +1425,8 @@ describe("the run's cues (#3582)", () => {
       dealer_hand: [card("10", "♣"), card("4", "♦"), card("2", "♣"), card("2", "♣")],
       events: [{ type: "milestone", value: 105 }, { type: "comeback" }],
     });
-    expect(milestoneToast(105)).toBeTruthy();
+    // The comeback outranks the milestone in the HUD strip (#3797).
+    expect(comebackBanner()).toBeTruthy();
     await settle();
     expect(mockLog).toEqual([]);
   });
@@ -1510,9 +1511,9 @@ describe("the run's cues (#3582)", () => {
       const at = await standNow();
       await advance(3 * GAP + 50);
       await tapFelt();
+      expect(milestoneToast(105)).toBeTruthy();
       await settle();
       expect(named(at, "blackjack.milestone")).toEqual([]);
-      expect(milestoneToast(105)).toBeTruthy();
     });
 
     it("a Rebet before the cue's turn drops it: it never lands on the next deal", async () => {
