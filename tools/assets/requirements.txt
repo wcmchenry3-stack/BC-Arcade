@@ -1,6 +1,10 @@
-numpy>=1.26
-colour-science>=0.4.4
-Pillow>=13  # #3594: 12.x LANCZOS downscale differs; shipped sprites are generated with 13
-scipy
-pytest
+# Generator libraries are pinned exactly (#3672, #3816): the shipped sprites and sounds are their
+# output, and a release of any of them can move it (#3594: Pillow 12.x LANCZOS downscale differs from 13).
+# These versions install on Python 3.11 (CI, backend/.python-version) and 3.13 alike.
+# Upgrading one means regenerating every generated asset and reviewing the diff: docs/ASSETS.md.
+numpy==2.4.6
+scipy==1.17.1
+Pillow==13.0.0
+colour-science==0.4.7
+pytest==9.2.0
 pyyaml==6.0.3
