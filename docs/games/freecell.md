@@ -329,4 +329,4 @@ Triggers are in `frontend/src/screens/FreeCellScreen.tsx`, each timed to its car
 | `freecell.invalidMove`                                                                     | `card-invalid-move.ogg` (shared with Solitaire; synthesized)                   | a refused drop (`components/freecell/FreeCellBoard.tsx`)                                                                                                                                                      | 1.0    |
 | `freecell.gameWin`                                                                         | `card-game-won.ogg` (shared with Solitaire and Hearts)                         | the game is won; with the riffle's settle, on the last card's contact                                                                                                                                         | 1.0    |
 
-"No moves available" has no sound. `freecell-invalid-move.mp3` is shipped but unused.
+"No moves available" has no sound. The old `freecell-invalid-move.mp3` was deleted in #3845.

@@ -386,19 +386,6 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Notes:** Short victory fanfare. Triumphant conclusion to a completed FreeCell game.
 - **Status (#3661):** No game uses this file any more: FreeCell moved to synthesized sounds (#3563) and Bottle Sort to its own set (#3661, `sort-win.ogg`). It is not bundled in the app, so the CC BY duty applies again only if it ships; kept in the repo.
 
-### freecell-invalid-move.mp3
-
-- **Event:** Move rejected — wrong card, full free cell, or supermove limit exceeded
-- **Original filename:** `493163__Breviceps__buzzer-wrong-answer-error.mp3` (preview lq)
-- **Source URL:** https://freesound.org/people/Breviceps/sounds/493163/
-- **Creator:** Breviceps on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Short buzzer for wrong answer / error. Signals an invalid move without being jarring.
-
 ---
 
 ## Star Swarm (#803)
