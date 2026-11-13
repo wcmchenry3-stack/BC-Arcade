@@ -212,6 +212,27 @@ Why 8 MiB stays the JS limit (decided in #2829): the store bundle was 6.24 MiB t
 
 The all-games ceiling is 8.25 MiB for now (#3791, 2026-11-13, owner decision). Dev's all-games bundle had reached 8,379,013 B, and the Bottle Sort sound set's 23 asset-registry entries (about 10 KB of JS) put it 711 B over 8 MiB. The store-config limit is unchanged. [#3820](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3820) cuts the all-games JS and lowers the ceiling back to 8 MiB.
 
+### Packaged-asset budget rule (#3631)
+
+> Proposed 2026-11-13 from the measurement in [asset-budget-plan.md](research/asset-budget-plan.md). The numbers below are the rule for new sound and art PRs; they take effect when the owner accepts the plan.
+
+Store-config packaged assets were 3,699,614 B (3.53 MiB, 127 files) on 2026-11-13: 75% fonts, 24% sounds, 1% images. The 4.0 MiB hard limit leaves 0.47 MiB. Every PR that adds or changes a file under `frontend/assets/` that a **store-visible** game or shared UI reaches must follow this. Files only hidden premium games use are outside the totals until the premium launch re-budget, but still obey the per-file limits.
+
+| Budget                         | Value                                                       |
+| ------------------------------ | ----------------------------------------------------------- |
+| New SFX file                   | at most 30 KB (loops and stingers at most 40 KB)            |
+| New sound set for one game     | at most 100 KB total, 3 variants per cue at most            |
+| New raster image               | at most 100 KB, WebP unless it needs alpha steps WebP lacks |
+| New font file or icon font     | none without owner approval                                 |
+| Store `dist/assets` warn line  | 3,932,160 B (3.75 MiB)                                      |
+| Store `dist/assets` hard limit | 4,194,304 B (4 MiB), unchanged                              |
+
+- The [ASSETS.md](ASSETS.md#size-budgets) budgets (SFX 50 KB, game image 500 KB, and so on) still apply; the per-file numbers above are stricter for store-visible files.
+- The PR description states the packaged-assets delta in bytes (before and after, from the `android-bundle-check` comment or `node frontend/scripts/size-report.mjs`) and which of the numbers above it spends.
+- A PR that takes the store total past the warn line, or that needs more than the budget for its set, stops for an owner decision recorded on the issue; it does not raise a limit by itself.
+- Import fonts and icon sets by subpath (`@expo-google-fonts/manrope/400Regular`), never from the package barrel: the barrel makes Metro package every weight.
+- Warn line wiring: `size-report.mjs --warn-assets <bytes>` exists (non-blocking `::warning::`). Passing `--warn-assets 3932160` in the "Size budgets" step of `ci.yml` is a separate owner-approved workflow PR, so until then the 3.75 MiB line is a review check, not a CI check.
+
 CI builds the store bundle with the env set explicitly. A gitignored `frontend/.env` on a dev machine points at the pre-launch API and would otherwise make a bundle with all 12 games, because Expo loads `.env` before Metro runs.
 
 ### Reproducing the numbers
@@ -308,7 +329,7 @@ Record date, commit, env config, artifact bytes, per-device sizes and the JS, as
 
 Before the epic, a store bundle shipped the five hidden premium games' code and assets (206 asset files, about 38 MB) even though no route reached them. Two facts shaped the fix:
 
-- **`assetBundlePatterns: ["assets/**"]` in `app.json` does not package assets in this project.** The native projects are committed (bare workflow) and `expo-updates` is not installed, so the APK/IPA contains exactly the assets that Metro's dependency graph `require()`s, copied by `expo export:embed --assets-dest`. Changing `app.json` did not change the count (verified: 206 files before, 53 after, `app.json` unchanged).
+- **`assetBundlePatterns: ["assets/**"]`in`app.json`does not package assets in this project.** The native projects are committed (bare workflow) and`expo-updates`is not installed, so the APK/IPA contains exactly the assets that Metro's dependency graph`require()`s, copied by `expo export:embed --assets-dest`. Changing `app.json`did not change the count (verified: 206 files before, 53 after,`app.json` unchanged).
 - **`React.lazy()` / `import()` on native does not split the Hermes bundle.** A lazily imported screen, its whole module subtree and the assets it requires are all in the single bundle. Lazy loading only defers evaluation.
 
 **Mechanism.** `frontend/metro/storeBundle.js` wraps `resolver.resolveRequest` (chained after Sentry's resolver; wired in `frontend/metro.config.js`). In a store bundle it resolves the hidden games' screen modules to `src/screens/StoreBuildExcludedScreen.tsx`, which renders nothing:
@@ -373,12 +394,12 @@ Today: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 
 
 The April finding "Sentry ~24.5%" (below, historical) was a share of **raw `sourcesContent`** in the source map: unminified source text, summed over mapped modules, from a different SDK version. It is not installed size and not shipped JS. The numbers that matter for the bundle are the minified bytes.
 
-| Measure (2026-10-10, `@sentry/react-native` 8.27.0, `@sentry/core` and `browser` 10.75.0) | @sentry/* bytes | Denominator                          |  Share |
-| ----------------------------------------------------------------------------------------- | --------------: | ------------------------------------ | -----: |
-| Minified, original config (`dev` a19aadc5)                                                |       1,386,809 | 7,651,684 B bundle                   | 18.12% |
-| Minified, current store config (#2832 options)                                            |       1,196,103 | 6,544,901 B bundle                   | 18.28% |
-| `sourcesContent`, original config                                                         |       2,268,892 | 13,559,977 B summed `sourcesContent` | 16.73% |
-| `sourcesContent`, current store config                                                    |       1,896,091 | 11,141,467 B summed `sourcesContent` | 17.02% |
+| Measure (2026-10-10, `@sentry/react-native` 8.27.0, `@sentry/core` and `browser` 10.75.0) | @sentry/\* bytes | Denominator                          |  Share |
+| ----------------------------------------------------------------------------------------- | ---------------: | ------------------------------------ | -----: |
+| Minified, original config (`dev` a19aadc5)                                                |        1,386,809 | 7,651,684 B bundle                   | 18.12% |
+| Minified, current store config (#2832 options)                                            |        1,196,103 | 6,544,901 B bundle                   | 18.28% |
+| `sourcesContent`, original config                                                         |        2,268,892 | 13,559,977 B summed `sourcesContent` | 16.73% |
+| `sourcesContent`, current store config                                                    |        1,896,091 | 11,141,467 B summed `sourcesContent` | 17.02% |
 
 The share barely moves because #2830 shrank the denominator in the same period. The absolute change is the point: **−190,706 B of Sentry JS** (−191,244 B of bundle, −2.84%), and −372,801 B of `sourcesContent`.
 
@@ -415,7 +436,7 @@ Bytes of bundled files, 2026-10-10 (all-games config; Cascade is a hidden game, 
 
 Players created at mount, before and after #3604: Solitaire 16 to 7, FreeCell 9 to 3, Hearts 11 to 6 (unit-counted, see `soundLazy.test.tsx`). Device mount time and memory on a low-end Android phone are not yet measured.
 
-Audio is not sized or planned here. In the store config the 19 packaged sounds are 567.0 KB of SFX; the 45 sounds (22,211 KB) of the all-games config are mostly BGM behind the hidden games. BGM format, bitrate, per-track budgets and the engine choice are owned by epic #1779 and #1787; the current budgets and track list are in [ASSETS.md](ASSETS.md#size-budgets). `react-native-audio-api` stays installed for that decision (next section).
+Audio is not sized or planned here. In the store config (2026-11-13) the 93 packaged sounds are 851.2 KB of SFX (all `.ogg`); the 45 sounds (22,211 KB) of the all-games config are mostly BGM behind the hidden games. BGM format, bitrate, per-track budgets and the engine choice are owned by epic #1779 and #1787; the current budgets and track list are in [ASSETS.md](ASSETS.md#size-budgets). `react-native-audio-api` stays installed for that decision (next section).
 
 ### Native dependency audit (#2831)
 
