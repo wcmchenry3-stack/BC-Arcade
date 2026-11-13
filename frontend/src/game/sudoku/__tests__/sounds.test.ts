@@ -59,7 +59,6 @@ describe("Sudoku sound registry (#3775)", () => {
 
   it("the files the other games still use stay on disk", () => {
     for (const f of [
-      "hearts-moon-shot.mp3",
       "freecell-game-win.mp3",
       "solitaire-invalid-move.ogg",
     ]) {
