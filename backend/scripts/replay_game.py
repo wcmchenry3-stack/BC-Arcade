@@ -43,6 +43,13 @@ A Star Swarm game gets its per-wave ``wave_completed`` summaries and decoded
 hull and lives, Carrier stages and power-ups per wave, cross-checked against the summaries.
 It is a sampled diagnostic, not a frame-by-frame or projectile replay.
 
+A Sort game (one level) is rebuilt from its ``game_started`` (level, catalog version) and
+``moves`` events (#3388, ``sort/rebuild.py``): the opening board from the shipped catalog, then
+each pour, undo, hint and "back to last good move" with the moves and undos after it, the final
+board and a verdict: ``complete``, ``incomplete`` (a clean prefix: a cap, a dropped batch, no
+``game_ended``) or ``invalid`` (an illegal pour, a malformed action, repeated units, a result that
+disagrees, an incompatible catalog or engine).
+
 Exit codes: 0 printed (gaps do not change it), 1 no such game, 2 bad argument.
 """
 
@@ -226,7 +233,7 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
 
 
 def _rebuilt_state(game: GameRow, events: Sequence[EventRow]) -> list[str]:
-    """The game's state rebuilt from its events, for a game that records enough to (Yacht: #3282, Daily Word: #3287, Star Swarm: #3395)."""
+    """The game's state rebuilt from its events, for a game that records enough to (Yacht: #3282, Daily Word: #3287, Star Swarm: #3395, Sort: #3388)."""
     if game.game_type == "daily_word":
         from daily_word.replay import rebuild as rebuild_daily_word
         from daily_word.replay import render_board
@@ -236,6 +243,11 @@ def _rebuilt_state(game: GameRow, events: Sequence[EventRow]) -> list[str]:
         from starswarm.replay import render as render_starswarm
 
         return ["", *render_starswarm((e.event_type, e.data) for e in events)]
+    if game.game_type == "sort":
+        from sort.rebuild import rebuild as rebuild_sort
+        from sort.rebuild import render as render_sort
+
+        return ["", *render_sort(rebuild_sort((e.event_type, e.data) for e in events))]
     if game.game_type != "yacht":
         return []
     from yacht.replay import rebuild as rebuild_yacht
