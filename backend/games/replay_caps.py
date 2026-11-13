@@ -195,7 +195,8 @@ DAILY_WORD_CAP = ReplayCap(max_events=4, max_bytes=4 * 600)
 # 12 x (1,024 B ``MAX_MOVES_BYTES`` + 200 B ``ROW_OVERHEAD_BYTES``) = 14,688 B, with
 # 12 events. An honest worst row (25 widest pours, the widest envelope) is 369 B as
 # ``jsonb::text`` (288 B compact), so 12 of them are 12 x (369 + 200) = 6,828 B, under
-# half the cap (tests/test_sort_replay.py). Lifecycle rows are not counted (their own
+# half the cap (tests/test_sort_replay.py). The widest event the validator accepts
+# (32 actions, split into parts) is 496 B stored: 12 x (496 + 200) = 8,352 B, still under. Lifecycle rows are not counted (their own
 # cap). Counts are held to the device's limits; the figures are kept in step by a test.
 SORT_MAX_UNITS = 12
 SORT_CAP = ReplayCap(
