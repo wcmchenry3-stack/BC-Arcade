@@ -670,7 +670,9 @@ describe("the split summary strip moves no hand", () => {
     const before = places();
     await advance(1);
     expect(resultShown()).toBe(true);
-    expect(screen.getByTestId("result-outcome").props.children).toBe("Won: 1 · Lost: 1 · Push: 1");
+    // 3–4 hands: the strip shows the net alone; its label reads the summary (#3781).
+    expect(screen.getByTestId("result-net").props.children).toBe("No change");
+    expect(screen.getByLabelText("Push. Won: 1 · Lost: 1 · Push: 1. Payout: 0 chips")).toBeTruthy();
     expect(places()).toEqual(before);
     await settle();
     expect(places()).toEqual(before);

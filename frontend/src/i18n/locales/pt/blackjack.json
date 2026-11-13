@@ -82,6 +82,7 @@
   "score.blackjacks": "Blackjacks",
   "score.busts": "Estouros",
   "hud.goalProgressAccessibilityLabel": "Progresso da meta: {{chips}} de {{goal}} fichas",
+  "hud.chipsAccessibilityLabel": "Fichas: {{chips}}",
   "table.beginner": "Iniciante",
   "table.intermediate": "Intermediário",
   "table.highRoller": "Grande Apostador",

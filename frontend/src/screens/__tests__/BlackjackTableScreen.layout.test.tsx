@@ -407,3 +407,130 @@ describe("the stake at 375×667 with 4 split hands in play", () => {
     }
   });
 });
+
+// #3781: a 3–4 hand split's banner was cut ("Won: 2 · Los… +2…" at 320×568; at 375×667 too in
+// de/es/fr/nl/pt/ru). It shows the net payout alone; the screen reader still hears it all.
+describe("the split result banner", () => {
+  const OUTS = ["win", "push", "lose", "win"] as const;
+  const PAYS = [25, 0, -25, 25];
+  function split(n: number): EngineState {
+    const hands = [
+      [c("8"), c("A"), c("2", "♦"), c("K", "♥")],
+      [c("8", "♥"), c("9", "♣")],
+      [c("8", "♦"), c("4"), c("K", "♣")],
+      [c("8", "♣"), c("Q", "♦")],
+    ].slice(0, n);
+    return {
+      ...base(),
+      phase: "result",
+      bet: 25,
+      outcome: "win",
+      payout: PAYS.slice(0, n).reduce((a, b) => a + b, 0),
+      chips: 150,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("7", "♥"), c("10", "♣")],
+      split_count: n - 1,
+      player_hands: hands,
+      hand_bets: hands.map(() => 25),
+      hand_outcomes: [...OUTS.slice(0, n)],
+      hand_payouts: PAYS.slice(0, n),
+      split_from_aces: hands.map(() => false),
+      active_hand_index: n,
+    } as EngineState;
+  }
+  async function renderAt(width: number, height: number, state: EngineState) {
+    mockWindow.width = width;
+    mockWindow.height = height;
+    (loadGame as jest.Mock).mockResolvedValue(state);
+    await render(
+      <ThemeProvider>
+        <BlackjackGameProvider>
+          <BlackjackTableScreen
+            navigation={
+              {
+                navigate: jest.fn(),
+                replace: jest.fn(),
+                popToTop: jest.fn(),
+                goBack: jest.fn(),
+              } as never
+            }
+          />
+        </BlackjackGameProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const inner = estimateFeltSize({
+      screenWidth: width,
+      screenHeight: height,
+      insetTop: 0,
+      insetBottom: 0,
+      headerHeight: APP_HEADER_HEIGHT,
+    });
+    await act(async () => {
+      fireEvent(screen.getByTestId("blackjack-felt"), "layout", {
+        nativeEvent: {
+          layout: {
+            x: 0,
+            y: 0,
+            width: inner.width + 2 * FELT_BORDER,
+            height: inner.height + 2 * FELT_BORDER,
+          },
+        },
+      });
+    });
+  }
+
+  const SIZES = [
+    { name: "320×568", width: 320, height: 568 },
+    { name: "375×667", width: 375, height: 667 },
+    { name: "390×844", width: 390, height: 844 },
+    { name: "430×932", width: 430, height: 932 },
+  ];
+  const NET_ONLY = SIZES.flatMap((s) => [
+    {
+      ...s,
+      n: 4,
+      summary: "Won: 2 · Lost: 1 · Push: 1",
+      outcome: "You Win!",
+      net: "+25 chips",
+      amount: 25,
+    },
+    {
+      ...s,
+      n: 3,
+      summary: "Won: 1 · Lost: 1 · Push: 1",
+      outcome: "Push",
+      net: "No change",
+      amount: 0,
+    },
+  ]);
+
+  // Owner decision (#3781): 3–4 hands show the net alone at every size, not only beside a
+  // collapsed dealer; each hand's row or cell shows its own tag and payout.
+  it.each(NET_ONLY)(
+    "at $name with $n hands, shows the net payout alone and reads the whole result",
+    async ({ width, height, n, summary, outcome, net, amount }) => {
+      await renderAt(width, height, split(n));
+      expect(screen.getByTestId("result-net").props.children).toBe(net);
+      expect(screen.queryByText(summary)).toBeNull();
+      expect(screen.queryByTestId("result-outcome")).toBeNull();
+      // The whole result is still read out.
+      expect(screen.getByLabelText(`${outcome}. ${summary}. Payout: ${amount} chips`)).toBeTruthy();
+      // Each hand still shows its own payout.
+      expect(screen.getAllByTestId("hand-payout")).toHaveLength(n);
+    }
+  );
+
+  it.each(SIZES)(
+    "at $name with 2 hands, keeps the summary beside the payout",
+    async ({ width, height }) => {
+      await renderAt(width, height, split(2));
+      expect(screen.getByTestId("result-outcome").props.children).toBe("Won: 1 · Push: 1");
+      // The banner's payout (hand 1's label says "+25 chips" too).
+      expect(screen.getByLabelText("Payout: 25 chips")).toBeTruthy();
+      expect(screen.queryByTestId("result-net")).toBeNull();
+    }
+  );
+});
