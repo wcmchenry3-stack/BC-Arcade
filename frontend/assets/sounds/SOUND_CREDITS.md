@@ -1158,7 +1158,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-win`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 2.4 s "mallet run": a marimba note on each tile's hop, rising C5 E5 G5 C6 E6 70 ms apart, a glass shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the result card shows at 1.1 s. Replaced Daily Word's use of the shared `hearts-moon-shot.mp3` (10 s), which Sudoku keeps (Blackjack moved off it with #3581).
+- **Recipe:** 2.4 s "mallet run": a marimba note on each tile's hop, rising C5 E5 G5 C6 E6 70 ms apart, a glass shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the result card shows at 1.1 s. Replaced Daily Word's use of the shared `hearts-moon-shot.mp3` (10 s), whose last user, Sudoku, moved off it with #3775 (Blackjack with #3581).
 
 ### daily-word-loss.ogg
 
