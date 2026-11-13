@@ -15,6 +15,9 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
 
 With no sound names, every sound is written.
 
+Runner-up options (#3673): `--options <sound> [scratch_dir]` writes a sound's saved options to a
+scratch folder, never frontend/assets/sounds/. `OPTIONS` below holds them.
+
 Sounds:
 - card-place-1/2/3.ogg  "slide and settle", 0.10 s each: ~40-50 ms of grainy card-on-felt
   friction ending in a soft flat flap of air, with no tonal body. Three variations (slide length,
@@ -62,6 +65,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from synth_common import (
     SR,
+    OptionTable,
     bell,
     fade,
     highpass,
@@ -71,6 +75,7 @@ from synth_common import (
     mallet,
     noise,
     norm,
+    options_cli,
     phase,
     place,
     saw,
@@ -679,6 +684,19 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
 }
 
 
+# --- Runner-up options (#3673): never shipped ---------------------------------------------------
+
+# sound -> {option label: (recipe, level)}, the same shape as `SOUNDS`; A is the shipped pick.
+# Empty: the arcade design log (docs/games/arcade-sound-design.md) describes its
+# runner-ups in words only, with no recipe, and none has been recovered. TODO(#3673): add an entry
+# when an owner "try B again" needs one and the log's description is enough; don't invent recipes.
+OPTIONS: OptionTable = {}
+
+
+def _finish(recipe: Callable[[], np.ndarray], level: Level) -> np.ndarray:
+    return level(recipe())
+
+
 def main(out_dir: Path, names: list[str]) -> None:
     unknown = [n for n in names if n not in SOUNDS]
     if unknown:
@@ -690,4 +708,5 @@ def main(out_dir: Path, names: list[str]) -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    main(Path(args[0]) if args else OUT_DEFAULT, args[1:])
+    if not options_cli(args, OPTIONS, _finish):
+        main(Path(args[0]) if args else OUT_DEFAULT, args[1:])
