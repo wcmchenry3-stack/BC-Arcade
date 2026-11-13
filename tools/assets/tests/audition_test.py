@@ -6,6 +6,7 @@ onto a video, frames at given times) and the `run.js` scenario list. The ffmpeg 
 own tiny inputs, so they need no web build; they skip when ffmpeg is missing.
 """
 
+import base64
 import json
 import shutil
 import subprocess
@@ -329,7 +330,7 @@ def test_run_js_entitlements_mock_matches_the_e2e_helper():
     for game in ("blackjack", "cascade", "hearts", "starswarm", "mahjong"):
         assert f'"{game}"' in helper
     payload = body["token"].split(".")[1]
-    claims = json.loads(__import__("base64").urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
     assert claims["entitled_games"] == ["blackjack", "cascade", "hearts", "starswarm", "mahjong"]
     assert claims["sub"] == "e2e-test" and body["expires_at"].startswith("2286-")
     assert "iat: 1000000000" in helper and "exp: 9999999999" in helper
@@ -376,3 +377,27 @@ def test_resolve_play_src_only_serves_audio_files(tmp_path):
     (tmp_path / "index.html").write_text("x")
     with pytest.raises(ValueError, match="not an audio file"):
         common.resolve_play_src("http://h/index.html", tmp_path)
+
+
+def _stream_duration(path: Path, stream: str) -> float:
+    cmd = ["ffprobe", "-v", "error", "-select_streams", stream]
+    cmd += ["-show_entries", "stream=duration", "-of", "csv=p=0", str(path)]
+    return float(subprocess.run(cmd, capture_output=True, text=True, check=True).stdout)
+
+
+@needs_ffmpeg
+def test_mix_audio_does_not_outlast_the_video_when_a_sound_lands_at_the_end(tmp_path):
+    video = tmp_path / "game.webm"
+    cmd = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=101x75:d=3"]
+    subprocess.run([*cmd, "-r", "10", "-c:v", "libvpx", str(video)], check=True)
+    dist = _make_dist(tmp_path)
+    long_sound = dist / "assets" / "assets" / "sounds" / "long.ccc.wav"
+    common.write_wav(_tone(800, 1.5, 0.3), long_sound)
+    log = _log(
+        tmp_path, [{"t": 2.8, "src": "http://localhost:8081/assets/assets/sounds/long.ccc.wav"}]
+    )
+    out = tmp_path / "audition.mp4"
+    mix.main([str(video), "--log", str(log), "--dist", str(dist), "--out", str(out)])
+    v, a = (_stream_duration(out, kind) for kind in ("v:0", "a:0"))
+    assert v == pytest.approx(3.0, abs=0.3)  # the picture is not cut short
+    assert a <= v + 0.05

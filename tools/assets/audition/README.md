@@ -42,6 +42,8 @@ It writes `<out>.mp4` and `<out>.png` (the spectrogram) and prints the numbers t
 
 ## Step 2: play the game and log every sound (`run.js`)
 
+> The build, serve and `run.js` path is a manual step on purpose: it needs a web build and Chrome, and there is no CI job for it. CI and the tests cover `preview.py`, `mix.py`, the mocks and the `--options` flag.
+
 Build the web build for the **dev** API. Use exactly this command, never a plain `expo export` (without `EXPO_PUBLIC_API_URL` the bundle has no API at all, and `EXPO_PUBLIC_TEST_HOOKS=1` is what the e2e builds use):
 
 ```bash
@@ -103,6 +105,10 @@ To check that a sound lands on the frame it should (a tile turning, a card showi
 ```bash
 python tools/assets/audition/mix.py /tmp/aud/daily-word.webm --frames 8.4,18.9 --frames-dir /tmp/aud/frames
 ```
+
+## Lint
+
+`run.js` follows default Prettier (80 columns, as for `tools/`) plus `node --check`. `e2e/` and the JS under `tools/` have no enforced ESLint or CI lint, so "linted like `e2e/`" means exactly that: keep `npx prettier --check tools/assets/audition/run.js` clean. The Python is linted by ruff and black like the rest of `tools/`.
 
 ## Tests
 

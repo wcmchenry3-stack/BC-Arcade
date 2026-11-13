@@ -34,7 +34,7 @@ pip install -r tools/assets/requirements.txt
 
 **Sound options and auditions (#3673).** `synth_puzzle_sfx.py`, `synth_arcade_sfx.py` and `synth_starswarm_sfx.py` each keep a sound's runner-up options in an `OPTIONS` table (never in `SOUNDS`, so nothing ships them): `python tools/assets/synth_puzzle_sfx.py --options daily-word-win [scratch_dir]` writes the A (the pick), B and C options to a scratch folder, never `frontend/assets/sounds/`. The three `audition/` tools are the process steps (preview the options, play the game and log every sound, mix them onto the video); the exact web build command, the check that `dist` holds no production API host and the serve command are in [`assets/audition/README.md`](assets/audition/README.md). The process itself is in [`docs/games/puzzle-sound-design.md`](../docs/games/puzzle-sound-design.md#auditioning-a-sound).
 
-Tests for these scripts: `cd tools && python -m pytest` (`tools/pytest.ini`; the backend suite does not collect them). CI runs them, and lints `tools/**/*.py` with the same ruff and black rules as `backend/` (config in `tools/pyproject.toml`). Locally: `cd tools && ruff check . && black --check .`.
+Tests for these scripts: `cd tools && python -m pytest` (`tools/pytest.ini`; the backend suite does not collect them). CI runs them, and lints `tools/**/*.py` with the same ruff and black rules as `backend/` (config in `tools/pyproject.toml`). Locally: `cd tools && ruff check . && black --check .`. The JS (`assets/audition/run.js`) follows default Prettier (80 columns) plus `node --check`; neither `e2e/` nor the JS under `tools/` has an enforced ESLint or CI lint.
 
 ### Sort palette check (`check_palette.py`)
 

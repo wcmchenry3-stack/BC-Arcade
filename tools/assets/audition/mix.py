@@ -82,15 +82,17 @@ def grab_frame(video: Path, t: float, out: Path) -> None:
     run([*cmd, "-frames:v", "1", str(out)])
 
 
-def write_audition(video: Path, track: np.ndarray, out: Path) -> None:
+def write_audition(video: Path, track: np.ndarray, out: Path, trim: bool = False) -> None:
+    """Mux the track under the video. `trim` ends the output with the video (use it when the track was
+    padded to the video's length, so a sound near the end cannot outlast the picture)."""
     out.parent.mkdir(parents=True, exist_ok=True)
     wav = out.with_suffix(".wav")
     write_wav(track, wav)
     try:
         cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-i", str(wav)]
         cmd += ["-map", "0:v", "-map", "1:a", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2"]
-        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", str(out)]
-        run(cmd)
+        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k"]
+        run([*cmd, *(["-shortest"] if trim else []), str(out)])
     finally:
         wav.unlink(missing_ok=True)
 
@@ -123,7 +125,7 @@ def main(argv: list[str] | None = None) -> None:
         duration = media_duration(args.video)
         track, lines = build_track(plays, args.dist, args.offset, duration, tuple(args.skip))
         print("\n".join(lines))
-        write_audition(args.video, track, args.out)
+        write_audition(args.video, track, args.out, trim=duration is not None)
         print(f"{args.out}: {len(plays)} sounds mixed onto {args.video.name}")
 
     for raw in (args.frames or "").split(","):
