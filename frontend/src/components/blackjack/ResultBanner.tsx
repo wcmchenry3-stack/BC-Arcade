@@ -17,9 +17,9 @@ interface Props {
   /** "felt": a split round's summary ("Won: 1 · Lost: 2") in place of the outcome's words. */
   summary?: string | null;
   /**
-   * "felt", a 3–4 hand split (#3781, owner decision): the pill shows the round's net payout alone
-   * ("+25 chips"), at every size; each hand's row or cell shows its own tag and payout, and the
-   * summary and the payout do not fit the band together in every locale.
+   * "felt", every split, 2–4 hands (owner decisions, #3781, #3784): the pill shows the round's net
+   * payout alone ("+25 chips"), at every size; each hand's label shows its own tag and payout, and
+   * the summary and the payout do not fit the band together in every locale.
    * Its accessibility label still reads the whole result: outcome, summary and payout.
    */
   netOnly?: boolean;
