@@ -91,6 +91,38 @@ export type SplitMode = "single" | "fans" | "rows";
 /** How the table is drawn: by hand count, or "wide" (side by side) on a short felt. */
 export type TableMode = SplitMode | "grid" | "wide";
 
+/**
+ * Narrowest one-line hand label that shows a split hand's payout in words ("+25 chips", "No
+ * change"); a narrower one shows it as a signed number ("+25", "0"), as rows and the grid do.
+ * The total, the tag and the worded payout measure up to 146 px in English and 188 in Russian
+ * (the longest of the 13 locales) in the app's fonts (#3771); the 2-hand fans' labels are 140
+ * (320 wide), 168 (375), 175 (390) and 195 (430) wide.
+ */
+export const WORDED_PAYOUT_MIN_LABEL_WIDTH = 190;
+
+/** What a split hand's label shows once its result is in (#3771). */
+export interface SplitResultLabel {
+  /** The hand's name ("Hand 1") is drawn; when not, its accessibility label still says it. */
+  named: boolean;
+  /** The payout as a signed number ("+25") rather than in words ("+25 chips"). */
+  compactPayout: boolean;
+}
+
+/**
+ * A split hand's label at the result (#3771). A row's label is a column (the name on its own
+ * line over the total, tag and payout), so it keeps its name. Every other label is one line, too
+ * narrow on a phone for the name, the total, the tag and the payout together (the name was cut
+ * to "HA…"): the name gives way to the result, the hand still known by its place and outline.
+ * The cards never shrink for it: the label keeps its height.
+ */
+export function splitResultLabel(mode: TableMode, labelWidth: number): SplitResultLabel {
+  const rows = mode === "rows";
+  return {
+    named: rows,
+    compactPayout: rows || mode === "grid" || labelWidth < WORDED_PAYOUT_MIN_LABEL_WIDTH,
+  };
+}
+
 /** True in the phases whose felt shows the round's result (the result and the run's goal). */
 export function showsResult(phase: string | null | undefined): boolean {
   return phase === "result" || phase === "victory";

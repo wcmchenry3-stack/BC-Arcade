@@ -9,7 +9,7 @@
  */
 import React from "react";
 import { StyleSheet } from "react-native";
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
@@ -17,7 +17,12 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame } from "../../game/blackjack/storage";
 import { newGame } from "../../game/blackjack/engine";
 import type { Card, EngineState } from "../../game/blackjack/engine";
-import { estimateFeltSize, FELT_BORDER, MIN_CARD_WIDTH } from "../../game/blackjack/layout";
+import {
+  estimateFeltSize,
+  FELT_BORDER,
+  MIN_CARD_WIDTH,
+  WORDED_PAYOUT_MIN_LABEL_WIDTH,
+} from "../../game/blackjack/layout";
 import { APP_HEADER_HEIGHT } from "../../components/shared/AppHeader";
 
 jest.mock("@react-navigation/native", () =>
@@ -46,6 +51,7 @@ const PHONES = [
   { name: "320×568", width: 320, height: 568, insetTop: 0, insetBottom: 0 },
   { name: "375×667", width: 375, height: 667, insetTop: 0, insetBottom: 0 },
   { name: "390×844", width: 390, height: 844, insetTop: 47, insetBottom: 34 },
+  { name: "430×932", width: 430, height: 932, insetTop: 59, insetBottom: 34 },
 ];
 
 function base(): EngineState {
@@ -89,6 +95,50 @@ const SCENES: [string, () => EngineState][] = [
       hand_payouts: [0, 0],
       split_from_aces: [false, false],
       active_hand_index: 1,
+    }),
+  ],
+  [
+    // #3771: the hand names were cut to "HA…" beside the total, tag and payout.
+    "a 2-hand split at the result",
+    () => ({
+      ...base(),
+      phase: "result",
+      bet: 25,
+      chips: 150,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("7", "♥"), c("10", "♣")],
+      split_count: 1,
+      player_hands: [
+        [c("8"), c("A"), c("2", "♦"), c("K", "♥")],
+        [c("8", "♥"), c("9", "♣")],
+      ],
+      hand_bets: [25, 25],
+      hand_outcomes: ["win", "push"],
+      hand_payouts: [25, 0],
+      split_from_aces: [false, false],
+      active_hand_index: 2,
+    }),
+  ],
+  [
+    "a 3-hand split at the result",
+    () => ({
+      ...base(),
+      phase: "result",
+      bet: 25,
+      chips: 150,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("7", "♥"), c("10", "♣")],
+      split_count: 2,
+      player_hands: [
+        [c("8"), c("A"), c("2", "♦"), c("K", "♥")],
+        [c("8", "♥"), c("9", "♣")],
+        [c("8", "♦"), c("4"), c("K", "♣")],
+      ],
+      hand_bets: [25, 25, 25],
+      hand_outcomes: ["win", "push", "lose"],
+      hand_payouts: [25, 0, -25],
+      split_from_aces: [false, false, false],
+      active_hand_index: 3,
     }),
   ],
   [
@@ -226,6 +276,30 @@ describe.each(PHONES)("the table at $name", (phone) => {
       ]);
       expect(screen.getByLabelText(/^Hand 1, .*\+5 chips$/)).toBeTruthy();
       expect(screen.queryByTestId("result-detail")).toBeNull();
+    }
+    // #3771: a split hand's label never cuts its name. At the result a one-line label (fans, the
+    // grid) has no room for the name beside the total, tag and payout, so it draws none; a row's
+    // label (a column) keeps it on its own line. The accessibility label always names the hand.
+    if (labels.length > 1) {
+      const atResult = result !== null;
+      labels.forEach((l, i) => {
+        const node = screen.getByTestId(l.id);
+        const column = StyleSheet.flatten(node.props.style).flexDirection === "column";
+        const names = within(node).queryAllByTestId("hand-name");
+        expect(names).toHaveLength(atResult && !column ? 0 : 1);
+        for (const n of names) expect(n.props.numberOfLines).toBe(1);
+        expect(node.props.accessibilityLabel).toMatch(new RegExp(`^Hand ${i + 1}, Player score`));
+        if (atResult) {
+          expect(node.props.accessibilityLabel).toMatch(
+            /, (Win|Push|Lose), ([+-]\d+ chips|No change)$/
+          );
+          // The payout in words only where every locale's line fits.
+          const payout = within(node).getByTestId("hand-payout").props.children as string;
+          if (/chips|change/.test(payout)) {
+            expect(l.width).toBeGreaterThanOrEqual(WORDED_PAYOUT_MIN_LABEL_WIDTH);
+          }
+        }
+      });
     }
     // Cards of different hands never overlap; the result and labels cover no card.
     for (let i = 0; i < cards.length; i++) {
