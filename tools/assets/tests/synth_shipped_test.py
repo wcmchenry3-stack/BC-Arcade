@@ -4,11 +4,15 @@ Every in-house sound in `frontend/assets/sounds/` is made by `synth_starswarm_sf
 `synth_arcade_sfx.py` or `synth_puzzle_sfx.py`. These tests fail when a recipe changes without the
 `.ogg` being regenerated, or an `.ogg` is replaced by hand.
 
-The comparison is on decoded samples, not encoded bytes, so a different Ogg/Vorbis encoder build does
-not trip it. Each recipe is rendered, encoded the way the generator encodes it, decoded, and compared
-with the decoded shipped file. The tolerance is a relative RMS error: well above what an encoder
-update moves (nothing, today: the decodes are bit-identical) and well below a 0.5 dB level change in
-one recipe parameter (a 5.9% error).
+The comparison is on decoded samples, not encoded bytes: each recipe is rendered, encoded the way
+the generator encodes it, decoded, and compared with the decoded shipped file. In practice this is
+bit-exact decoded PCM under a MATCHED ffmpeg/libvorbis build: the shipped files and the fresh encode
+decode identically today (error 0.0). The 2% relative RMS tolerance only absorbs trivial float
+differences. It does NOT survive an encoder change: a libvorbis quality change (q5 vs q4.9) moves the
+decode by 2.1% (daily-word-win) to 18.3% (die-hold-1). The tolerance is kept tight on purpose: it is
+what makes a 0.17 dB recipe change fail (a 0.5 dB change is a 5.9% error). If the encoder build
+changes rather than a recipe, refresh the shipped sounds with the procedure in docs/ASSETS.md.
+CI uses the ffmpeg/libvorbis of the pinned `ubuntu-24.04` runner image.
 
 Needs ffmpeg with libvorbis. Locally the comparison skips without it; under CI (`CI` set) it fails
 instead, so the guard cannot go quietly missing there. The ownership tests need nothing.
@@ -33,7 +37,8 @@ from synth_common import SHIPPED_SOUNDS_DIR, write_ogg
 
 CREDITS = SHIPPED_SOUNDS_DIR / "SOUND_CREDITS.md"
 
-# Relative RMS error between decoded shipped audio and decoded fresh audio. See the module docstring.
+# Relative RMS error between decoded shipped audio and decoded fresh audio. Effectively "same decode
+# under the same encoder build"; it does not absorb an encoder change. See the module docstring.
 TOLERANCE = 0.02
 # Encoders pad differently; a sound this many samples longer or shorter is a real change.
 LENGTH_SLACK = 2048
@@ -106,11 +111,15 @@ def _decode(path: Path) -> np.ndarray:
 def _distance(shipped: Path, fresh_audio: np.ndarray, scratch: Path) -> float:
     """Relative RMS error of the shipped sound against `fresh_audio` after the generator's encode.
 
-    Returns infinity when the lengths differ by more than the encoder's padding.
+    Returns infinity when either decode is empty or silent, or the lengths differ by more than the
+    encoder's padding.
     """
     encoded = scratch / "fresh.ogg"
     write_ogg(fresh_audio, encoded)
     a, b = _decode(shipped), _decode(encoded)
+    # Two silent or empty decodes would compare equal; neither is a real sound.
+    if len(a) == 0 or len(b) == 0 or not np.any(a) or not np.any(b):
+        return float("inf")
     if abs(len(a) - len(b)) > LENGTH_SLACK:
         return float("inf")
     n = min(len(a), len(b))
@@ -130,7 +139,9 @@ def test_shipped_sound_is_the_generator_output(script, name, tmp_path):
     err = _distance(shipped, finish(recipe()), tmp_path)
     assert err <= TOLERANCE, (
         f"{filename(name)} differs from {script} '{name}' (relative RMS error {err:.4f} > "
-        f"{TOLERANCE}). Regenerate it: python tools/assets/{script} frontend/assets/sounds {name}"
+        f"{TOLERANCE}). Regenerate it: python tools/assets/{script} frontend/assets/sounds {name}. "
+        "If the encoder/ffmpeg build changed rather than the recipe, refresh via the ASSETS.md "
+        "pin procedure."
     )
 
 
@@ -152,6 +163,15 @@ def test_a_different_sound_exceeds_the_tolerance(tmp_path):
     recipe, level = synth_puzzle_sfx.SOUNDS["die-hold-1"]
     shipped = SHIPPED_SOUNDS_DIR / "die-release-1.ogg"
     assert _distance(shipped, level(recipe()), tmp_path) > TOLERANCE
+
+
+@pytest.mark.usefixtures("ffmpeg_ready")
+def test_a_silent_pair_fails_the_comparison(tmp_path):
+    # An all-silent shipped file against an all-silent recipe must not count as a match.
+    silence = np.zeros(4410)
+    shipped = tmp_path / "silent.ogg"
+    write_ogg(silence, shipped)
+    assert _distance(shipped, silence, tmp_path) == float("inf")
 
 
 # --- ownership: recipes and credits agree -------------------------------------------------------
