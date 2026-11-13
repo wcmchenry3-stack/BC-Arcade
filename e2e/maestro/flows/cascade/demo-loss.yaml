@@ -1,0 +1,26 @@
+appId: com.buffingchi.games
+# Cascade demo flow (#3719): a loss, by the real lid rule. Tagged `demo`, so only the
+# `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
+#
+# `cascade-test-fill-bin` (a test-build-only control, components/cascade/CascadeTestControls.tsx,
+# present only with EXPO_PUBLIC_TEST_HOOKS=1) restores a full bin whose top is over the lid.
+# It does not end the game: the engine's lid rule does, about 4 s later (a settled piece over
+# the lid for 3 s, after the 1 s restore grace), and the result card appears. The wait allows 30 s.
+# Replaces the tap-until-you-lose attempt that took 21 minutes and left a 1.35 GB video.
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: cascade-demo-loss
+- runFlow: ../_shared/open-cascade.yaml
+- takeScreenshot: cascade-demo-loss-before
+- tapOn:
+    id: "cascade-test-fill-bin"
+    retryTapIfNoChange: false
+- takeScreenshot: cascade-demo-loss-filled
+- extendedWaitUntil:
+    visible:
+      id: "cascade-result-title"
+    timeout: 30000
+- takeScreenshot: cascade-demo-loss-result
+- stopRecording

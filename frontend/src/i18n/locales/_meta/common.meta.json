@@ -961,5 +961,14 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Read after offline.windowExhausted; must work as a follow-on sentence."
+  },
+  "action.autoComplete": {
+    "component": "SolitaireScreen, FreeCellScreen (AutoCompleteButton)",
+    "description": "Button that finishes a board that can no longer be lost, in one tap (Solitaire and FreeCell).",
+    "tone": "functional",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

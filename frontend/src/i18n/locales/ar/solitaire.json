@@ -14,7 +14,6 @@
   "stat.timeA11y": "الوقت: {{time}}",
   "action.undo": "تراجع",
   "action.hint": "تلميح",
-  "action.autoComplete": "إكمال تلقائي",
   "action.dealAgain": "وزع مجددًا",
   "stock.recycle": "إعادة التدوير الثانية وما بعدها تكلف 50 نقطة.",
   "pile.stock.label": "اسحب {{count}} من المخزون، تبقى {{remaining}} بطاقة",

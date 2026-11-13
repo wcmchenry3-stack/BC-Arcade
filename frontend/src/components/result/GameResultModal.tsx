@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Modal, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
+import { endsWithSentenceMark, joinSentence } from "../../utils/joinSentence";
 import { useTheme } from "../../theme/ThemeContext";
 import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
 import { useAppOverlayOpen } from "../../hooks/appOverlay";
@@ -125,10 +126,16 @@ export function useResultFeedback({
     announcedRef.current = true;
     fireHaptic(outcome);
     const detailText = [subtitle, endNote?.label, endNote?.note, heroA11y]
-      .filter(Boolean)
-      .join(". ");
+      .filter((part): part is string => Boolean(part))
+      .reduce<string>((acc, part) => (acc ? joinSentence(acc, part) : part), "");
+    // A title that already ends in a mark ("You Win!") takes no extra separator (#3824); otherwise
+    // the locale's own "{{title}}<sep> {{detail}}" template applies (". " / "。" / "। ").
     AccessibilityInfo.announceForAccessibility(
-      detailText ? t("a11y.announce", { title, detail: detailText }) : title
+      !detailText
+        ? title
+        : endsWithSentenceMark(title)
+          ? joinSentence(title, detailText)
+          : t("a11y.announce", { title, detail: detailText })
     );
   }, [active, presented, outcome, subtitle, endNote?.label, endNote?.note, heroA11y, title, t]);
 }

@@ -121,6 +121,70 @@ describe("LockableGrid", () => {
     expect(onContinue).toHaveBeenCalledTimes(1);
   });
 
+  describe("sections (#3687)", () => {
+    const sectioned = {
+      items: [1, 2, 3, 4, 5, 6, 7].map((id) => ({ id })),
+      sectionSize: 3,
+      sectionTitleOf: (i: number) => `Part ${i + 1}`,
+      sectionTestIDOf: (i: number) => `part-${i + 1}`,
+    };
+
+    it("renders a header per section, as an accessible heading, before its cards", async () => {
+      await renderGrid(sectioned);
+      expect(screen.getAllByRole("header").map((h) => h.props.children)).toEqual([
+        "Part 1",
+        "Part 2",
+        "Part 3",
+      ]);
+      expect(screen.getByTestId("part-3")).toBeTruthy();
+      // 7 items in sections of 3: the last section holds one.
+      expect(rowOf("level-7")).not.toBe(rowOf("level-6"));
+    });
+
+    it("starts each section on a new row, whatever the column count", async () => {
+      await renderGrid({ ...sectioned, columns: 2 });
+      // Section 1 is items 1-3: rows [1,2] and [3]; item 4 starts section 2's row.
+      expect(rowOf("level-3")).not.toBe(rowOf("level-4"));
+    });
+
+    it("renders no headers without sectionSize (the Mahjong picker's case)", async () => {
+      await renderGrid();
+      expect(screen.queryAllByRole("header")).toHaveLength(0);
+    });
+
+    it("scrolls to the section header when the target opens a later section", async () => {
+      const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo").mockImplementation(() => {});
+      await renderGrid({ ...sectioned, initialScrollIndex: 3 }); // item 4: section 2, first row
+      const row = rowOf("level-4")!;
+      await fireEvent(row.parent as never, "layout", {
+        nativeEvent: { layout: { x: 0, y: 100, width: 300, height: 500 } },
+      });
+      // The grid's offset alone isn't enough: the scroll waits on the header's.
+      expect(scrollTo).not.toHaveBeenCalled();
+      await fireEvent(screen.getByTestId("part-2") as never, "layout", {
+        nativeEvent: { layout: { x: 0, y: 150, width: 300, height: 30 } },
+      });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo).toHaveBeenCalledWith({ y: 100 + 150 - 24, animated: false });
+      scrollTo.mockRestore();
+    });
+
+    it("scrolls to an item in a later section, headers included in the offsets", async () => {
+      const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo").mockImplementation(() => {});
+      await renderGrid({ ...sectioned, initialScrollIndex: 5 }); // item 6: section 2, second row
+      const row = rowOf("level-6")!;
+      await fireEvent(row.parent as never, "layout", {
+        nativeEvent: { layout: { x: 0, y: 100, width: 300, height: 500 } },
+      });
+      await fireEvent(row as never, "layout", {
+        nativeEvent: { layout: { x: 0, y: 260, width: 300, height: 80 } },
+      });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo).toHaveBeenCalledWith({ y: 100 + 260 - 24, animated: false });
+      scrollTo.mockRestore();
+    });
+  });
+
   describe("initialScrollIndex (#2761)", () => {
     async function layout(node: unknown, y: number) {
       await fireEvent(node as never, "layout", {

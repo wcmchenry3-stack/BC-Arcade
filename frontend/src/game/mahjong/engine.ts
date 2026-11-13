@@ -9,7 +9,6 @@
  * valid. Tests can pin the shuffle via `setRng(createSeededRng(seed))`.
  */
 
-import { bestOf } from "../_shared/bestOf";
 import {
   createRngSlot,
   createSeededRng,
@@ -44,34 +43,6 @@ import {
 const SCORE_PER_PAIR = 10;
 const SCORE_COMPLETE_BONUS = 500;
 
-/**
- * Fastest clear that ranks, in ms (#2747): half a second per pair over 72
- * pairs. Mirrors `MIN_CLEAR_MS` in `backend/mahjong/models.py` (the board's
- * `min_value`); `backend/tests/test_board_definitions.py` keeps them equal.
- * A faster clear is a broken clock (e.g. an old save resumed with no time
- * banked), so it is never a device best either.
- */
-export const MAHJONG_MIN_CLEAR_MS = 36000;
-
-/** A stored device best time, or 0 ("no best yet") when it is below the floor. */
-export function plausibleBestMs(ms: number): number {
-  return Number.isFinite(ms) && ms >= MAHJONG_MIN_CLEAR_MS ? ms : 0;
-}
-
-/**
- * The device best after a clear taking `finalMs`: fastest wins, and a clear
- * below `MAHJONG_MIN_CLEAR_MS` neither counts nor is a new best. A sub-floor
- * `priorBestMs` (stored before the floor) is ignored.
- */
-export function nextBestTime(
-  priorBestMs: number,
-  finalMs: number
-): { bestTimeMs: number; isNewBest: boolean } {
-  const prior = plausibleBestMs(priorBestMs);
-  if (plausibleBestMs(finalMs) === 0) return { bestTimeMs: prior, isNewBest: false };
-  const { best, isNewBest } = bestOf(prior, finalMs, true);
-  return { bestTimeMs: best, isNewBest };
-}
 /** The most moves `undoMove` can take back; the oldest entry goes first. */
 export const UNDO_CAP = 50;
 export const MAX_SHUFFLES = 3;

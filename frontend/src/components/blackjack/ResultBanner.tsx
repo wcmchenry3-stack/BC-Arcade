@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-import { joinSentence } from "./joinSentence";
+import { joinSentence } from "../../utils/joinSentence";
 
 interface Props {
   outcome: string;
@@ -116,8 +116,14 @@ export default function ResultBanner({
   }
 
   let payoutText: string;
-  // The outcome's text: the win green needs its AA variant (the border keeps `bonus`)
-  const outcomeTextColor = outcome === "win" ? colors.bonusText : accentColor;
+  // The outcome's text: the win green and the blackjack lime need their AA variants (the border
+  // keeps `bonus` / `tertiary`)
+  const outcomeTextColor =
+    outcome === "win"
+      ? colors.bonusText
+      : outcome === "blackjack"
+        ? colors.tertiaryText
+        : accentColor;
   let payoutColor: string;
   if (payout > 0) {
     payoutText = t("payout.positive", { amount: payout });

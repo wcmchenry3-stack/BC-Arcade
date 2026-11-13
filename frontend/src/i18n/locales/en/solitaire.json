@@ -14,7 +14,6 @@
   "stat.timeA11y": "Time: {{time}}",
   "action.undo": "Undo",
   "action.hint": "Hint",
-  "action.autoComplete": "Auto-Complete",
   "action.dealAgain": "Deal Again",
   "stock.recycle": "Second and later recycles cost 50 points.",
   "pile.stock.label": "Draw {{count}} from stock, {{remaining}} cards remaining",

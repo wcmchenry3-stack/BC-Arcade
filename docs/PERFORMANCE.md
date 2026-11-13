@@ -268,13 +268,13 @@ What the Android build copies into the APK/AAB besides native code. Source: `siz
 
 **Store config** (JS 6,544,825 B + assets 3,403,575 B):
 
-| Bucket                  | Files |      KB | Notes                                                               |
-| ----------------------- | ----: | ------: | ------------------------------------------------------------------- |
-| Fonts                   |    14 | 2,710.8 | Manrope ×7, Space Grotesk ×5, MaterialIcons, MaterialCommunityIcons |
-| Sounds                  |    19 |   567.0 | SFX only (see residuals below)                                      |
-| App logo                |     1 |    37.6 | `assets/logo.png` via `AppHeader`                                   |
-| React Navigation images |    17 |     6.2 | Library images                                                      |
-| Other                   |     1 |     2.2 | `raw/keep.xml`                                                      |
+| Bucket                  | Files |      KB | Notes                                                                                                                                                                                                       |
+| ----------------------- | ----: | ------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fonts                   |    14 | 2,710.8 | Manrope ×7, Space Grotesk ×5, MaterialIcons, MaterialCommunityIcons (measured before #3839; per-weight subpath imports now package 7 fonts, 2,128,172 B, and take total assets to 3,051,428 B in 120 files) |
+| Sounds                  |    19 |   567.0 | SFX only (see residuals below)                                                                                                                                                                              |
+| App logo                |     1 |    37.6 | `assets/logo.png` via `AppHeader`                                                                                                                                                                           |
+| React Navigation images |    17 |     6.2 | Library images                                                                                                                                                                                              |
+| Other                   |     1 |     2.2 | `raw/keep.xml`                                                                                                                                                                                              |
 
 **All-games config** (JS 7,460,309 B + assets 28,744,159 B):
 
@@ -329,7 +329,7 @@ Record date, commit, env config, artifact bytes, per-device sizes and the JS, as
 
 Before the epic, a store bundle shipped the five hidden premium games' code and assets (206 asset files, about 38 MB) even though no route reached them. Two facts shaped the fix:
 
-- **`assetBundlePatterns: ["assets/**"]` in `app.json` does not package assets in this project.** The native projects are committed (bare workflow) and `expo-updates` is not installed, so the APK/IPA contains exactly the assets that Metro's dependency graph `require()`s, copied by `expo export:embed --assets-dest`. Changing `app.json` did not change the count (verified: 206 files before, 53 after, `app.json` unchanged).
+- **`assetBundlePatterns: ["assets/**"]`in`app.json`does not package assets in this project.** The native projects are committed (bare workflow) and`expo-updates`is not installed, so the APK/IPA contains exactly the assets that Metro's dependency graph`require()`s, copied by `expo export:embed --assets-dest`. Changing `app.json`did not change the count (verified: 206 files before, 53 after,`app.json` unchanged).
 - **`React.lazy()` / `import()` on native does not split the Hermes bundle.** A lazily imported screen, its whole module subtree and the assets it requires are all in the single bundle. Lazy loading only defers evaluation.
 
 **Mechanism.** `frontend/metro/storeBundle.js` wraps `resolver.resolveRequest` (chained after Sentry's resolver; wired in `frontend/metro.config.js`). In a store bundle it resolves the hidden games' screen modules to `src/screens/StoreBuildExcludedScreen.tsx`, which renders nothing:
@@ -394,12 +394,12 @@ Today: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 
 
 The April finding "Sentry ~24.5%" (below, historical) was a share of **raw `sourcesContent`** in the source map: unminified source text, summed over mapped modules, from a different SDK version. It is not installed size and not shipped JS. The numbers that matter for the bundle are the minified bytes.
 
-| Measure (2026-10-10, `@sentry/react-native` 8.27.0, `@sentry/core` and `browser` 10.75.0) | @sentry/* bytes | Denominator                          |  Share |
-| ----------------------------------------------------------------------------------------- | --------------: | ------------------------------------ | -----: |
-| Minified, original config (`dev` a19aadc5)                                                |       1,386,809 | 7,651,684 B bundle                   | 18.12% |
-| Minified, current store config (#2832 options)                                            |       1,196,103 | 6,544,901 B bundle                   | 18.28% |
-| `sourcesContent`, original config                                                         |       2,268,892 | 13,559,977 B summed `sourcesContent` | 16.73% |
-| `sourcesContent`, current store config                                                    |       1,896,091 | 11,141,467 B summed `sourcesContent` | 17.02% |
+| Measure (2026-10-10, `@sentry/react-native` 8.27.0, `@sentry/core` and `browser` 10.75.0) | @sentry/\* bytes | Denominator                          |  Share |
+| ----------------------------------------------------------------------------------------- | ---------------: | ------------------------------------ | -----: |
+| Minified, original config (`dev` a19aadc5)                                                |        1,386,809 | 7,651,684 B bundle                   | 18.12% |
+| Minified, current store config (#2832 options)                                            |        1,196,103 | 6,544,901 B bundle                   | 18.28% |
+| `sourcesContent`, original config                                                         |        2,268,892 | 13,559,977 B summed `sourcesContent` | 16.73% |
+| `sourcesContent`, current store config                                                    |        1,896,091 | 11,141,467 B summed `sourcesContent` | 17.02% |
 
 The share barely moves because #2830 shrank the denominator in the same period. The absolute change is the point: **−190,706 B of Sentry JS** (−191,244 B of bundle, −2.84%), and −372,801 B of `sourcesContent`.
 
@@ -426,6 +426,15 @@ Bytes of bundled files, 2026-10-10 (all-games config; Cascade is a hidden game, 
 (After = sum of the two theme directories: icons 250,642 + 371,746; baked 359,716 + 310,679. Before counts all 48 files, including the unbundled `pumpkin` and `milkyway` files.) `pumpkin` and `milkyway` were also dropped from `src/game/cascade/images.ts`: before that they cost 1,657,949 B in the bundle. The iOS `App-Icon-1024x1024@1x.png` went from 1,575,612 to 1,537,275 B (lossless only). The store bundle ships only `logo.png` (37.6 KB) as an in-app image.
 
 ### Audio
+
+**SFX players (#3604).** Every `useSound` key needs an `expo-audio` player, and each player is a native object that also holds the audio session (`retainAudioSession`). Rules for the hooks in `frontend/src/game/_shared/`:
+
+- **One player per distinct asset.** `useSound` takes a hold on a shared pool (`soundPool.ts`) keyed by the registry's asset, so keys that resolve to the same file (Solitaire's `autoCompleteSettle` played by both the riffle and the recycle) share one player. The last hold removes it and releases the session.
+- **Eager by default, lazy for rare sounds.** `useSound(key, registry, volume, { lazy: true })` (shorthand `LAZY_SOUND`) creates the player on the first `play()`. Use it for sounds heard about once a game or less (win/lose, the Draw-3 fan, a multi-card move, the moon shot, the riffle). Keep frequent or latency-critical sounds (card place, flips, trick sweep, lasers) eager so their first play has no creation cost. A lazy sound that is never played costs nothing and never touches the audio session. `useSoundVariants` and `useLoopSound` take the same option; `useRunSound` (riffle) is always lazy.
+- **A lazy first play** skips the redundant `seekTo(0)` (the new player is at the start), and the first play may start a few ms after an eager one; measure on a low-end Android device before marking a sound lazy if it is close to a user action.
+- `useSoundVariants` works out its usable variations once per `keys`/`registry`, and sizes its slots from `MAX_SOUND_VARIANTS`.
+
+Players created at mount, before and after #3604: Solitaire 16 to 7, FreeCell 9 to 3, Hearts 11 to 6 (unit-counted, see `soundLazy.test.tsx`). Device mount time and memory on a low-end Android phone are not yet measured.
 
 Audio is not sized or planned here. In the store config (2026-11-13) the 93 packaged sounds are 851.2 KB of SFX (all `.ogg`); the 45 sounds (22,211 KB) of the all-games config are mostly BGM behind the hidden games. BGM format, bitrate, per-track budgets and the engine choice are owned by epic #1779 and #1787; the current budgets and track list are in [ASSETS.md](ASSETS.md#size-budgets). `react-native-audio-api` stays installed for that decision (next section).
 
@@ -580,7 +589,7 @@ The one heavy one-shot is the **Yacht oracle**: `getOracleTable()` 197 ms cold (
 | P1       | Lobby prefetch contention (545 KB evaluated right after Home paints). Only if the P0 trace shows JS-thread contention in the first 2 s: stagger the prefetch (for example start about 1.5 s after Home, one task per tick), and/or `require()` the Sudoku bank lazily inside `poolFor` as the Yacht oracle does (same decode work, identical behaviour). |
 | P1       | Yacht VS-start freeze. If the device measurement is above about 250 ms: compute `targetIndex` with index arithmetic instead of sort/join, chunk `buildHoldOptions` across ticks during the VS intro, or ship the hold options as packed data. Output must stay bit-identical (oracle and AI golden tests, `yacht-sim-gate.yml`).                         |
 | P2       | Sentry and reanimated are about 40% of eager source. Check whether Sentry init and module evaluation is a measurable share of T0 to T1 before touching them; any removal must pass the A/B protocol.                                                                                                                                                     |
-| P2       | Five TTFs (466 KB) gate the first React frame. Measure `useFonts` resolve time on the low-end device; if material, render the shell with system fonts or cut unused weights.                                                                                                                                                                             |
+| P2       | Five TTFs (466 KB) gate the first React frame. Measure `useFonts` resolve time on the low-end device; if material, render the shell with system fonts. Unused weights are already cut (#3839: only the 5 used weights are imported, by subpath).                                                                                                         |
 | P3       | `fflate` (34 KB), the plural-rules polyfill and locale data (39 KB) and the glyph maps (231 KB) are small eager costs. Leave them unless the P0 trace shows them.                                                                                                                                                                                        |
 | P3       | `LeaderboardScreen`'s lazy chunk (118 KB) pulls in the hidden Star Swarm engine (about 38 KB). Not a startup issue; worth a look in dead-code work.                                                                                                                                                                                                      |
 | P3       | Add a one-line `console.info` of `cold_start_ms` in non-store builds so the number is readable with `adb logcat -s ReactNativeJS` where Sentry is disabled.                                                                                                                                                                                              |

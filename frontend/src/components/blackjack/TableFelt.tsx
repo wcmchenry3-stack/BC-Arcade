@@ -354,7 +354,7 @@ function HandStake({ bet, chipColor }: { bet: number; chipColor: string }) {
         style={[
           styles.bet,
           styles.shrink,
-          { color: colors.celebration, fontFamily: typography.heading },
+          { color: colors.goldText, fontFamily: typography.heading },
         ]}
         numberOfLines={1}
         adjustsFontSizeToFit

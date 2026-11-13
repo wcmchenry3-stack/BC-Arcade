@@ -46,6 +46,11 @@ export interface GameBarAction {
   readonly onPress: () => void;
   readonly testID: string;
   readonly badge?: number;
+  /**
+   * The badge's fill (default `color`). Its numeral is `textOnAccent`, so the fill must be light
+   * enough for that (#3819: Mahjong's Shuffle icon is a dark brown gold in light, the badge is not).
+   */
+  readonly badgeColor?: string;
   readonly accessibilityValue?: string;
   /**
    * A toggle's on state (Sudoku's Notes, #3773). Omit for a plain action. On draws a tinted chip with
@@ -66,6 +71,7 @@ function Action({
   onPress,
   testID,
   badge,
+  badgeColor = color,
   accessibilityValue,
   selected,
   narrow,
@@ -108,7 +114,7 @@ function Action({
           <MaterialIcons name={icon} size={26} color={color} />
         )}
         {badge !== undefined && (
-          <View style={[styles.badge, { backgroundColor: color }]} testID={`${testID}-badge`}>
+          <View style={[styles.badge, { backgroundColor: badgeColor }]} testID={`${testID}-badge`}>
             <Text
               style={[styles.badgeText, { color: colors.textOnAccent }]}
               maxFontSizeMultiplier={MAX_FONT_SCALE}

@@ -14,7 +14,6 @@
   "stat.timeA11y": "시간: {{time}}",
   "action.undo": "되돌리기",
   "action.hint": "힌트",
-  "action.autoComplete": "자동 완료",
   "action.dealAgain": "다시 시작",
   "stock.recycle": "두 번째부터는 50점이 차감됩니다.",
   "pile.stock.label": "덱에서 {{count}}장 뽑기, {{remaining}}장 남음",

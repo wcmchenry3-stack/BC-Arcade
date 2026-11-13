@@ -38,7 +38,8 @@ class SortResult(BaseModel):
     keys are strict integers: lax coercion would turn a string or a bool
     into a stored number. ``level_reached`` and ``level`` stop at the
     catalog's last level; builds from before the catalog only ever sent
-    levels up to 23, so they still pass.
+    levels up to 23, so they still pass. ``stars`` (#3687) is the solve's own
+    1 to 3 stars (a strict integer); builds from before it simply omit it.
     """
 
     level: int | None = Field(default=None, ge=0, le=LEVEL_COUNT)
@@ -47,6 +48,9 @@ class SortResult(BaseModel):
     level_reached: StrictInt | None = Field(default=None, ge=0, le=LEVEL_COUNT)
     total_moves: StrictInt | None = Field(default=None, ge=0, le=MAX_BOARD_VALUE)
     catalog_version: StrictInt | None = Field(default=None, ge=1, le=MAX_BOARD_VALUE)
+    # The solve's stars, 1 to 3 (#3687), judged against the level's par. Sent on
+    # the row already sent; it does not affect the board's ranking.
+    stars: StrictInt | None = Field(default=None, ge=1, le=3)
     # Sent by the #2512 builds; kept so their rows store what they always did.
     outcome: str | None = Field(default=None, max_length=32)
     won: bool | None = None

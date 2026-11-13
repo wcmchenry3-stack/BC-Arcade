@@ -256,6 +256,11 @@ class Settings(BaseSettings):
     # write; lifecycle events are still stored. Every game at once; per game it is
     # game_types.replay_enabled (#3279), and GET /games/catalog serves both combined.
     replay_recording_enabled: bool = Field(default=True, alias="REPLAY_RECORDING_ENABLED")
+    # Star Swarm #3710: store ``damage.hitsByTier`` of each ``wave_completed`` (the
+    # grid is kept forever: wave_completed is a keep-list type). false strips it at
+    # validation, no app release; the rest of the event is unchanged. Distinct from
+    # the replay switches, which stop the whole wave summary.
+    starswarm_hits_by_tier: bool = Field(default=True, alias="STARSWARM_HITS_BY_TIER")
     # Sort's leaderboard reset (#2761, games.boards.editions): while false the
     # Sort board and Stats "Best" rank every row, as before the level catalog;
     # true ranks only rows sent with the catalog's version. Turn it on once the

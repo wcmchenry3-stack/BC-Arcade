@@ -25,19 +25,9 @@
 
 import type { SolitaireState } from "./types";
 import { clockForSave, clockOnLoad } from "../_shared/playClock";
-import { createJsonSlot, createRecord } from "../_shared/storageSlot";
+import { createJsonSlot } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "solitaire.storage";
-
-/**
- * The device's cached best, for the result card's best time and "New best"
- * badge only (#2636); the player's history is the Stats screen, fed by the
- * server. Older builds also kept `bestMoves`, `gamesPlayed` and `gamesWon`
- * here: a stored record with them still loads, and the next save drops them.
- */
-export interface SolitaireStats {
-  bestTimeMs: number;
-}
 
 type ParsedSave = { -readonly [K in keyof SolitaireState]?: SolitaireState[K] };
 
@@ -95,14 +85,6 @@ export const {
   beforeSave: (state) => stripNestedUndo(clockForSave(withoutEvents(state))),
 });
 
-export const { load: loadStats, save: saveStats } = createRecord<SolitaireStats>({
-  key: "solitaire_stats_v1",
-  subsystem: SUBSYSTEM,
-  ops: { load: "loadStats", save: "saveStats" },
-  fallback: () => ({ bestTimeMs: 0 }),
-  read: (raw) => {
-    const parsed = JSON.parse(raw);
-    return { bestTimeMs: typeof parsed?.bestTimeMs === "number" ? parsed.bestTimeMs : 0 };
-  },
-  write: (stats) => JSON.stringify({ bestTimeMs: stats.bestTimeMs }),
-});
+// The device's best time, for the result card's best time and "New best" badge, is the shared
+// personal best (`game/_shared/personalBest.ts`, #3757); its old record `solitaire_stats_v1` is
+// moved in there on the first read.

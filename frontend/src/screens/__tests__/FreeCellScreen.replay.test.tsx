@@ -37,8 +37,12 @@ jest.mock("../../game/freecell/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveGame: jest.fn().mockResolvedValue(undefined),
   clearGame: jest.fn().mockResolvedValue(undefined),
-  loadStats: jest.fn().mockResolvedValue({ bestMoves: 0 }),
-  saveStats: jest.fn().mockResolvedValue(undefined),
+}));
+// The best is the shared personal best (#3757): mocked, with its real comparator.
+jest.mock("../../game/_shared/personalBest", () => ({
+  ...jest.requireActual("../../game/_shared/personalBest"),
+  getBest: jest.fn().mockResolvedValue(0),
+  recordResult: jest.fn(() => Promise.resolve({ best: 0, improved: false, isNewBest: false })),
 }));
 import { loadGame, saveGame } from "../../game/freecell/storage";
 
@@ -360,7 +364,8 @@ describe("a restored game that cannot be replayed is not recorded", () => {
 
   it("an old save with no count and no history is recorded from 0", async () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11));
-    await renderScreen();
+    const api = await renderScreen();
+    await press(api, "Auto-Complete"); // #3566: the run starts from the button
     await act(async () => {
       jest.advanceTimersByTime(1000);
     });
@@ -371,7 +376,8 @@ describe("a restored game that cannot be replayed is not recorded", () => {
 describe("Auto Complete", () => {
   it("records each step as an auto action with no save per card, and the win saves them once", async () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11)); // Q♠ then K♠ still to go
-    await renderScreen();
+    const api = await renderScreen();
+    await press(api, "Auto-Complete"); // #3566: the run starts from the button
     await act(async () => {
       jest.advanceTimersByTime(120); // one step
     });

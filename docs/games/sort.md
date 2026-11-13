@@ -29,18 +29,18 @@ Every player gets the same level N: the levels are a fixed catalog shipped insid
 - **trap rate:** the share of 24 seeded random plays (12 random non-trivial pours each) that end on a board `fast_solver` proves dead;
 - **openings:** the number of distinct first pours.
 
-Within a spec's pool, difficulty is 60% the trap-rate percentile and 40% the length percentile (ties: fewer openings is harder). The *i*-th of the *n* levels that use a spec takes the candidate at quantile `(i + 0.5) / n`, so each spec gets harder every time it comes back. A run takes about 9 s; the file is about 7 KB.
+Within a spec's pool, difficulty is 60% the trap-rate percentile and 40% the length percentile (ties: fewer openings is harder). The _i_-th of the _n_ levels that use a spec takes the candidate at quantile `(i + 0.5) / n`, so each spec gets harder every time it comes back. A run takes about 9 s; the file is about 7 KB.
 
 **The curve** (`CHAPTERS` in the script; one spec per level):
 
-| Chapter | Levels  | Colours (empty bottles)                        | Par   |
-| ------- | ------- | ---------------------------------------------- | ----- |
-| 1       | 1–20    | 3–5 (2 or 1)                                   | 7–20  |
-| 2       | 21–40   | 5–7 (2 or 1)                                   | 17–29 |
-| 3       | 41–60   | 7–9 (2 or 1)                                   | 22–37 |
-| 4       | 61–80   | 9–11 (2), with 9-colour 1-empty spikes         | 29–46 |
-| 5       | 81–100  | 11–13 (2), with 9-colour 1-empty spikes        | 34–57 |
-| 6       | 101–120 | 12–14 (2), with 9-colour 1-empty spikes        | 35–63 |
+| Chapter | Levels  | Colours (empty bottles)                 | Par   |
+| ------- | ------- | --------------------------------------- | ----- |
+| 1       | 1–20    | 3–5 (2 or 1)                            | 7–20  |
+| 2       | 21–40   | 5–7 (2 or 1)                            | 17–29 |
+| 3       | 41–60   | 7–9 (2 or 1)                            | 22–37 |
+| 4       | 61–80   | 9–11 (2), with 9-colour 1-empty spikes  | 29–46 |
+| 5       | 81–100  | 11–13 (2), with 9-colour 1-empty spikes | 34–57 |
+| 6       | 101–120 | 12–14 (2), with 9-colour 1-empty spikes | 35–63 |
 
 One empty bottle makes a spec tight, two relaxed. One empty bottle stops at 9 colours: random 1-empty deals of 9 colours are about 99% dead, and 10 or more would take too many deals. Each chapter opens on easier specs than it ends on and drops back to an easier ("breather") spec now and then; mean par rises chapter on chapter and from the first half of each chapter to the second (`test_sort_catalog.py` checks both).
 
@@ -56,7 +56,27 @@ One empty bottle makes a spec tight, two relaxed. One empty bottle stops at 9 co
 - Everything is read and computed first, then written in one batch (`setMany`): the migrated progress, the emptied bests and `@sort/catalog_version`. Until that write lands the old save is untouched, so a failure or a kill part-way just migrates again on the next load, from the same data. Only then is the old level cache removed (best-effort: nothing reads it). While a migration has failed, that session doesn't use the stored bests and offers no unfinished board.
 - A save carrying a catalog version this build doesn't know (a newer build's, reachable only on a web rollback) is left untouched: the session plays from level 1 in memory and writes no progress.
 - The unlock only lets the player play on. The leaderboard counts only levels solved on the catalog (see [Scoring](#scoring-persistence)).
-- The level grid opens scrolled to the furthest unlocked level (`LockableGrid`'s `initialScrollIndex`), so a player unlocked to level 103 doesn't scroll 26 rows.
+- The level grid opens scrolled to the furthest unlocked level (`LockableGrid`'s `initialScrollIndex`), so a player unlocked to level 103 doesn't scroll 26 rows. The scroll offset includes the chapter headers above the row.
+
+### Stars (#3687)
+
+A solve earns 1 to 3 stars against the level's `par`, by moves alone (undo costs nothing; undos are still recorded):
+
+| Stars | Moves                      |
+| ----- | -------------------------- |
+| 3     | at most `par`              |
+| 2     | at most `ceil(par × 1.25)` |
+| 1     | more than that             |
+
+The thresholds live in `frontend/src/game/sort/stars.ts` (`starsFor`, `twoStarMoves`) and nowhere else; `stars.test.ts` pins them at par, at `ceil(par × 1.25)` and one past each. `par` is already about 23% above the shortest solution (see [Par](#level-progression)), so 3 stars asks for a careful solve and 2 stars for a loose one.
+
+**A level's best stars are derived, not stored.** `bestStarsFor(bests, level, par)` reads the level's best moves (`@sort/best_moves`) and its `par`, so there is one copy of the truth, nothing to keep in step, and a save from before stars needs no migration. (The best moves are the lowest, so they give the best stars.) A level with no best, or with no known par, has 0 stars.
+
+**The result card** shows this solve's stars (`SolveStars`, passed through the card's `detail` slot, so no other game's card changes) and "Moves N · Target P". It keeps the NEW BEST pill. **The level grid** shows each unlocked tile's best stars under its number (`StarRow`): filled stars for what is earned and outlined stars for the rest, so an unsolved level shows three outlines (the goal, and a steady tile height). A locked tile is unchanged: no stars. The count is carried by shape (filled vs outlined), not colour alone. Colours are existing tokens (`celebration` for a filled star, `textMuted` for an outline), each at least 3:1 on `surfaceHigh` (`starsContrast.test.ts`). **Screen readers:** a tile reads "Level 5, 2 of 3 stars" (just "Level 5" while unsolved, "Level 5, locked" while locked); the result card's stars read "2 of 3 stars. Moves 6, target 7."; the star icons themselves are hidden from the accessibility tree. Tiles are at least 44 pt.
+
+**Chapters.** The grid has six "Chapter N" headers (`CHAPTER_SIZE` = 20 levels each), accessible headings (`accessibilityRole="header"`). `LockableGrid` takes optional `sectionSize` / `sectionTitleOf` for this; without them (Mahjong's layout picker) it renders as before. It stays a plain `ScrollView`: 120 small tiles and 6 headers are about 500 views, which a mid-range phone lays out once, while a virtualised list would break the shared grid's `initialScrollIndex` scroll and its row padding. Not measured on a device; revisit if the catalog grows.
+
+**Result metadata.** The completed level's result carries `stars` (an integer 1 to 3, on the row already sent): about 10 bytes (`,"stars":2`) per completed level row, no new rows or requests, no new storage. It doesn't change ranking.
 
 ## File map
 
@@ -81,6 +101,7 @@ One empty bottle makes a spec tight, two relaxed. One empty bottle stops at 9 co
 - `catalogMigration.ts`: moves a save from the random levels onto the catalog, once.
 - `useSortLevels.ts`: the screen's view, the catalog's levels and the player's progress and bests (after the migration).
 - `storage.ts`: local progress and best moves.
+- `stars.ts`: the star thresholds and a level's derived best stars (see [Stars](#stars-3687)).
 - `usePourAnimation.ts`: hook that sequences a pour in flight.
 - `motion.ts`: every duration, ceiling and shape constant of [Motion](#motion-3660), and `pourTimeline(units)`. `haptics.ts`: the per-event haptics.
 - `useSortAudio.ts` / `sounds.ts`: sound playback and the `sort.pour` / `sort.win` registry.
@@ -164,7 +185,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 - **Board reset (#2761):** the board's `edition` is `("catalog_version", 1)`: only rows whose result carries `catalog_version: 1` rank, or count as a player's "Best" in stats. Rows from the random levels, including solves still sent by app builds from before the catalog, carry none: they stay stored (history, XP, stats totals) but never rank. No migration and no delete; nothing grows. A future catalog that changes the levels raises the version, which resets the board the same way.
 - **When the reset takes effect: `SORT_CATALOG_EDITION_ENFORCED`** (env var, default off; the board's `edition_switch`, read by `backend/games/boards/editions.py`). The backend deploys on merge to `main`, long before the store builds that send `catalog_version` reach players. While the switch is off, the Sort board and Stats "Best" rank every row as before the reset (the 120 cap and the moves tie-break already apply). **Release step:** once the catalog builds are live on both stores, the owner sets `SORT_CATALOG_EDITION_ENFORCED=true` on `bc-arcade-api` and redeploys; from then on only catalog rows rank. The same flip also moves Sort's daily-challenge goals from reach level 3 / 8 / 15 to 10 / 30 / 60 (#3728; [DAILY-CHALLENGE.md](../DAILY-CHALLENGE.md#2-current-eligible-goal-pool)); days already frozen keep the thresholds they were frozen with. No app release, no migration; unset it (and redeploy) to undo. See [RENDER.md](../RENDER.md#environment-variables). The metadata grows by `"catalog_version":1`, 20 bytes per completed level row, well inside the existing row.
 - **Partitions:** none: one board.
-- **Recorded, not partitioned:** result (`SortResult`): `level` (the level actually played), `moves`, `undos`, `won`, `catalog_version`, and `total_moves`, the sum of the player's best moves on levels 1 to `level_reached` (`@sort/best_moves` on the device; left out when one of those levels has no best on record, e.g. after a save moved onto the catalog).
+- **Recorded, not partitioned:** result (`SortResult`): `level` (the level actually played), `moves`, `undos`, `won`, `catalog_version`, `stars` (1 to 3, #3687; a strict integer, left out by older builds; about 10 bytes a completed row), and `total_moves`, the sum of the player's best moves on levels 1 to `level_reached` (`@sort/best_moves` on the device; left out when one of those levels has no best on record, e.g. after a save moved onto the catalog).
 - **Max value:** 120, the number of catalog levels (`LEVEL_COUNT` in `backend/sort/catalog.py`). `level_reached` and `catalog_version` must be integers (`StrictInt`), as must `total_moves` (at most 2³¹−1); `level_reached` and `level` are at most 120.
 - **Outcomes:** `has_winner = False`. Every solve, a replay included, records `completed` scored with the player's standing after it (`SortScreen.tsx`). The board keeps each player's best row: their highest level, then their lowest total. A replay that lowers a best move count lowers the total and becomes the best row. Leaving a level unsolved records `abandoned` with `{ won: false, level, moves }` and no score: going back to the level grid, resetting the level, or leaving the screen.
 - **Duration:** `useGameSync`'s active-play window; Sort sends no duration of its own. Entering or restarting a level restarts the window (`resetPlayWindow`), so time on the level grid is not counted.
@@ -203,6 +224,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 - Metadata model: `SortMetadata` — `player_name: str = ""` (max 64 chars, `LegacyPlayerName`; 32 before #2995). Current builds send no metadata.
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `catalog_version`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
+- **Replay recording (backend, #3387, epic #3383).** Sort records a level as `moves` events, validated by `backend/sort/replay.py` (`validate_moves`, hooked in `SortModule.validate_event`) and seeded by `0047_sort_replay_events` (deploy it before the app that sends the event, or the server answers `400 unknown_event_type`). `data` is the recorder's envelope (`v` 1, `unit`, `t_ms`, optional `part` / `parts`) plus `m`, 1..32 actions (the app sends 25), each an array of strict ints: pour `[0, from, to]`, undo `[1]`, hint `[2, from, to]`, rewind `[3, n]` (`0 <= from, to < 16` and `from != to`, `1 <= n <= 1000`). 1,024 B of compact JSON per event (`MAX_MOVES_BYTES`, equal to the app's `SORT_MOVES_MAX_BYTES`; a test holds the two equal once the app has it). A bad event is dropped, not the batch, with a throttled Sentry report by reason only. `game_started` is not validated and carries `{ level, catalog, engine_version: 1 }`; `game_ended` and `SortResult` are unchanged. Per-level cap `SORT_CAP` (`games/replay_caps.py`): 12 events and 14,688 B. The full section (the app's recorder, the replay format and its cost) is written with story #3389.
 
 ## Colour palette
 
@@ -214,7 +236,7 @@ Free: no entitlement check.
 
 ## Progression / comparability
 
-Settled by #2761: every player gets the same fixed catalog of 120 levels, so "Level 19" is one puzzle for everyone and moves compare. The leaderboard was reset when the catalog shipped (only `catalog_version` 1 rows rank) and ranks fewest total moves on a tie again. Stars per level (#3687) build on each level's `par`.
+Settled by #2761: every player gets the same fixed catalog of 120 levels, so "Level 19" is one puzzle for everyone and moves compare. The leaderboard was reset when the catalog shipped (only `catalog_version` 1 rows rank) and ranks fewest total moves on a tie again. Stars per level (#3687) are judged against each level's `par` (see [Stars](#stars-3687)).
 
 ## Sound
 

@@ -5,8 +5,6 @@ import {
   clearGame,
   loadGame,
   saveGame,
-  loadStats,
-  saveStats,
   loadProgress,
   saveProgress,
   unlockNextLayout,
@@ -15,6 +13,7 @@ import {
 import { createGame, getAnyFreePair, selectTile, shuffleBoard, undoMove } from "../engine";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
 import type { MahjongState } from "../types";
+import { getBests, recordResult } from "../../_shared/personalBest";
 
 const GAME_KEY = "mahjong_game";
 
@@ -421,6 +420,17 @@ describe("mahjong storage — play clock across a relaunch (#2750)", () => {
     expect(loaded!.accumulatedMs).toBe(9_000);
   });
 });
+
+// The best times are the shared personal best (#3757), which moves `mahjong_stats_v1` in on the
+// first read: these read it through there, with the shape the old record had.
+async function loadStats(): Promise<{ bestTimeMsByLayout: Record<string, number> }> {
+  return { bestTimeMsByLayout: { ...(await getBests("mahjong")) } };
+}
+async function saveStats(stats: { bestTimeMsByLayout: Record<string, number> }): Promise<void> {
+  for (const [layout, ms] of Object.entries(stats.bestTimeMsByLayout)) {
+    await recordResult("mahjong", layout, ms);
+  }
+}
 
 describe("mahjong stats storage", () => {
   beforeEach(async () => {

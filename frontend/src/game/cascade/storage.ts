@@ -1,4 +1,4 @@
-import { createJsonSlot, createRecord } from "../_shared/storageSlot";
+import { createJsonSlot } from "../_shared/storageSlot";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SUBSYSTEM = "cascade.storage";
@@ -86,15 +86,5 @@ export async function clearGame(): Promise<void> {
   await discardLegacy();
 }
 
-/** The player's best Cascade score on this device (#2515); 0 when none. */
-export const { load: loadBestScore, save: saveBestScore } = createRecord<number>({
-  key: "cascade_best_score",
-  subsystem: SUBSYSTEM,
-  ops: { load: "loadBest", save: "saveBest" },
-  fallback: () => 0,
-  read: (raw) => {
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-  },
-  write: (score) => String(Math.floor(score)),
-});
+// The best score (#2515) is the shared personal best (`game/_shared/personalBest.ts`, #3757);
+// its old key `cascade_best_score` is moved in there on the first read.

@@ -189,15 +189,11 @@ jest.mock("../components/FeedbackWidget/SessionLogger", () => ({
 }));
 const mockFonts = { loaded: true };
 jest.mock("expo-font", () => ({ useFonts: () => [mockFonts.loaded] }));
-jest.mock("@expo-google-fonts/space-grotesk", () => ({
-  SpaceGrotesk_400Regular: 1,
-  SpaceGrotesk_700Bold: 2,
-}));
-jest.mock("@expo-google-fonts/manrope", () => ({
-  Manrope_400Regular: 3,
-  Manrope_600SemiBold: 4,
-  Manrope_700Bold: 5,
-}));
+jest.mock("@expo-google-fonts/space-grotesk/400Regular", () => ({ SpaceGrotesk_400Regular: 1 }));
+jest.mock("@expo-google-fonts/space-grotesk/700Bold", () => ({ SpaceGrotesk_700Bold: 2 }));
+jest.mock("@expo-google-fonts/manrope/400Regular", () => ({ Manrope_400Regular: 3 }));
+jest.mock("@expo-google-fonts/manrope/600SemiBold", () => ({ Manrope_600SemiBold: 4 }));
+jest.mock("@expo-google-fonts/manrope/700Bold", () => ({ Manrope_700Bold: 5 }));
 
 // The global Sentry mock has no ErrorBoundary; give it a minimal real one.
 type FallbackProps = { error: unknown; resetError: () => void };

@@ -6,8 +6,9 @@
  * area the table is given, i.e. under the header and above the tab bar). It is derived
  * from the approved "layout A" mockup, drawn on a 390 x 708 table: felt 362 x 392 at
  * (14, 64), 66 dp trick cards, 64 dp hand cards fanned +-14 degrees with a 26 dp arc.
- * Smaller and larger tables scale that drawing; a landscape table gets its own
- * vertical budget (the hand and the felt share a short height).
+ * Smaller and larger tables scale that drawing; a landscape table (a tablet, a wide split-screen
+ * window or a short web window; phones are portrait-only since #3603) gets its own vertical
+ * budget (the hand and the felt share a short height).
  *
  * Pure like `game/blackjack/layout.ts`, so the sizes are unit-tested instead of
  * eyeballed (game/hearts/__tests__/layout.test.ts).

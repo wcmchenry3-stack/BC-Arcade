@@ -14,7 +14,6 @@
   "stat.timeA11y": "時間: {{time}}",
   "action.undo": "元に戻す",
   "action.hint": "ヒント",
-  "action.autoComplete": "自動完了",
   "action.dealAgain": "もう一度",
   "stock.recycle": "2回目以降のリサイクルは50ポイント消費します。",
   "pile.stock.label": "山札から{{count}}枚引く、残り{{remaining}}枚",

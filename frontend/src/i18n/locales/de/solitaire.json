@@ -14,7 +14,6 @@
   "stat.timeA11y": "Zeit: {{time}}",
   "action.undo": "Rückgängig",
   "action.hint": "Hinweis",
-  "action.autoComplete": "Auto-Abschluss",
   "action.dealAgain": "Neu mischen",
   "stock.recycle": "Ab dem zweiten Mal kostet das Zurücklegen 50 Punkte.",
   "pile.stock.label": "Ziehe {{count}} vom Stapel, {{remaining}} Karten übrig",

@@ -42,6 +42,7 @@ async function open(
   await page.evaluate(
     ([s, ai]) => {
       localStorage.removeItem("yacht_best_score_v1");
+      localStorage.removeItem("personal_best_v1:yacht");
       localStorage.setItem(
         "yacht_game_v2",
         JSON.stringify({

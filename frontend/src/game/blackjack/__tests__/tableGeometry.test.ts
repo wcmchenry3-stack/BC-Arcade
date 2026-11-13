@@ -1,8 +1,8 @@
 /**
  * One-table layout (#3580): the corner index of every card stays readable and
  * nothing overlaps or leaves the felt, at the three phone sizes the owner
- * approved the layout at, the smallest phone (320×568) and in landscape
- * (667×375, 844×390, 932×430). Felt sizes come from `estimateFeltSize`, the
+ * approved the layout at, the smallest phone (320×568) and in short wide windows
+ * (the old phone-landscape sizes 667×375, 844×390, 932×430; #3648). Felt sizes come from `estimateFeltSize`, the
  * same chrome terms the screen lays out (header, HUD strip, dock, tab bar and
  * GameShell's bottom padding); 320×568 and 375×667 match the felt measured in
  * the web build's screenshots (216 / 315 high).
@@ -483,9 +483,9 @@ describe("the smallest phone (320×568), 4 hands of 5+ cards", () => {
 });
 
 // Landscape on phones goes away with the portrait lock (#3603); the wide
-// arrangement stays a best-effort fallback for a landscape window, checked here
-// on a short landscape felt with room for it.
-describe("the wide arrangement (landscape window, short felt)", () => {
+// arrangement stays for a landscape window with a short felt (a short web window, an
+// Android tablet about 600 dp tall; #3648), checked here on a short felt with room for it.
+describe("the wide arrangement (short window, short felt)", () => {
   const wide = (hands: number[], showResult: boolean) =>
     computeTableGeometry({
       feltWidth: 828,
@@ -583,9 +583,9 @@ describe("splitResultLabel", () => {
   });
 });
 
-// #3771 known gap: the wide arrangement (a landscape fallback; phones are locked to portrait,
+// #3771 known gap: the wide arrangement (a short landscape window; phones are locked to portrait,
 // #3603) gives 3–4 hands labels narrower than the compact line. Pinned so a change shows here.
-describe("a split hand's label in the wide arrangement (landscape fallback)", () => {
+describe("a split hand's label in the wide arrangement (short window)", () => {
   it.each([
     [568, 320, [129.6, 96, 76]],
     [667, 375, [143.39, 120, 94.4]],

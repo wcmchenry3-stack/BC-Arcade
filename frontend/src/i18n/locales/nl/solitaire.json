@@ -14,7 +14,6 @@
   "stat.timeA11y": "Tijd: {{time}}",
   "action.undo": "Ongedaan",
   "action.hint": "Tip",
-  "action.autoComplete": "Auto-afmaken",
   "action.dealAgain": "Opnieuw Delen",
   "stock.recycle": "Na de eerste keer kost recyclen 50 punten.",
   "pile.stock.label": "Trek {{count}} van de stapel, {{remaining}} kaarten over",
