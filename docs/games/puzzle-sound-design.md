@@ -18,6 +18,16 @@ The house rules are the card games' (see [arcade-sound-design.md](arcade-sound-d
 - **Variations are matched by short-term loudness** (`level_rms`, the loudest 50 ms), not by peak. The card games' card place sits at −21.5 dBFS.
 - **Small files**: mono Ogg Vorbis q5; loops ~2 s and seamless.
 
+## Auditioning a sound
+
+Every sound goes through the same three steps. The tools are saved in `tools/assets/audition/` (#3673), so a session does not rewrite them; [their README](../../tools/assets/audition/README.md) has the commands, the exact web build command (never a plain `expo export`) and the serve command.
+
+1. **Preview the options.** `preview.py` packages each option, or a gameplay rhythm of sounds, as an mp4 with a spectrogram still, and reports its length, size, `level_rms` and share of energy below 300 Hz. The generators keep each sound's runner-up options in an `OPTIONS` table, never in `SOUNDS`; `python tools/assets/synth_puzzle_sfx.py --options <sound>` writes them to a scratch folder (not `frontend/assets/sounds/`).
+2. **Play the game.** `run.js` drives the game in the web build (Yacht, 2048, Mahjong, Daily Word), records a video and logs every `HTMLMediaElement.play`. Its network is closed: the dev API's `/entitlements` and each game's routes are mocked, and everything else is aborted.
+3. **Check the timing.** `mix.py` lays each logged sound onto the video at its logged time, and grabs frames at given times, so each sound can be checked against the frame it should land on.
+
+Saved options so far: Daily Word's win and loss B and C (recovered from the #3665 thread; `--options daily-word-win` and `daily-word-loss`). The runner-ups below are described in words only, and their recipes were not kept; recreate one only when the owner asks for it, from its description here.
+
 ## Starting point (`dev`, before #3578)
 
 A snapshot of what the six games played before this story; each game's current table is in its doc.
@@ -401,6 +411,7 @@ Adds 57,740 B for two sounds the game didn't have, ten files in all. Nothing is 
     - loss: a falling marimba line on the answer's tiles (G E D C A), then a low A minor chord.
   - B, tiles and chimes: a wooden click as each tile lands, a glass chime run, then a marimba roll; the loss a tick per answer tile and a low minor third.
   - C, small and sweet: a quick light run then a two-note "ding-ding"; the loss a two-note sigh.
+  - B and C are saved: `python tools/assets/synth_puzzle_sfx.py --options daily-word-win` (or `daily-word-loss`) writes A, B and C to a scratch folder (#3673).
 - **Pick: A.** Win −17 and loss −21 dBFS over the loudest 50 ms, so the win sits 1 dB under Mahjong's and the loss level with 2048's game over. Nothing below 300 Hz.
 - **Gameplay audition.** Two games in the web build, with every `play()` logged and laid over the video:
   - won (SLATE, TRACE, CRANE): the win starts as the row finishes flipping, its notes on the hops under the sparks, and its chord at 1.1 s as "You Win!" settles;

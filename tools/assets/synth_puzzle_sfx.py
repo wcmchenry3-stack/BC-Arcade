@@ -15,6 +15,11 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
 
 With no sound names, every sound is written.
 
+Runner-up options (#3673), kept next to each pick and never shipped:
+    python tools/assets/synth_puzzle_sfx.py --options daily-word-win [scratch_dir]
+writes the sound's A (the pick, the same recipe as `SOUNDS`), B and C to a scratch folder (the
+system temp dir by default; it refuses frontend/assets/sounds/). See `OPTIONS` below.
+
 Sounds:
 - dice-roll-1/2/3.ogg  Yacht "short cup and spill", 0.75 s each: a brief muffled rattle in a cup
   (~90 ms), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s, inside the
@@ -82,6 +87,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from synth_common import (
     SR,
+    OptionTable,
     fade,
     highpass,
     level_rms,
@@ -90,6 +96,7 @@ from synth_common import (
     mallet,
     noise,
     norm,
+    options_cli,
     phase,
     place,
     t_axis,
@@ -1227,6 +1234,86 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
 }
 
 
+# --- Runner-up options (#3673): never shipped ---------------------------------------------------
+
+# The Daily Word win and loss options B and C the owner heard on 2026-11-09, recovered from the
+# scratch script in the #3665 thread. A is the shipped pick above. The tick seeds match that script,
+# so each option reproduces the audition's audio.
+# TODO(#3673): the other runner-ups in docs/games/puzzle-sound-design.md (dice roll, die hold,
+# scoring ladder, jackpot, 2048, Mahjong, Daily Word reveal and refusal, Yacht end of game, Sudoku)
+# are described there in words only, with no recipe. Recreate one only when the owner asks for it
+# and the log's description is enough; don't invent a recipe.
+
+
+def daily_word_win_b() -> np.ndarray:
+    """B, tiles and chimes (2.4 s): a wooden click as each tile lands from its hop, a rising glass
+    chime run over the sparks, landing on a warm marimba roll as the card shows."""
+    x = np.zeros(int(2.4 * SR))
+    for k in range(5):
+        place(x, word_tick(15000 + k, 0.8, 6500), k * DAILY_WORD_HOP_STAGGER + 0.24)
+    for k, n in enumerate([C6, D5 + 12, E6, G6, C6 + 9, C7]):
+        place(x, glass(n, 0.8, 0.28) * 0.18, 0.12 + 0.13 * k)
+    roll = roll_chord([C5, E5, G5, C6], 1.1, 15100)
+    place(x, roll * 0.9, DAILY_WORD_WIN_CARD_AT - 0.02)
+    return fade(x, 0.0, 0.25)
+
+
+def daily_word_loss_b() -> np.ndarray:
+    """B, tiles and chimes (1.6 s): a soft wooden tick on each answer tile, then one gentle low
+    marimba minor third (A4, C5) as the card shows."""
+    x = np.zeros(int(1.6 * SR))
+    for k in range(5):
+        at = k * DAILY_WORD_ANSWER_STAGGER + DAILY_WORD_ANSWER_MID
+        place(x, word_tick(15200 + k, 0.6, 3500, thud=0.3), at)
+    place(x, marimba(A4, 1.0, 0.35) * 0.7, DAILY_WORD_LOSS_CARD_AT)
+    place(x, marimba(C5, 1.0, 0.35) * 0.55, DAILY_WORD_LOSS_CARD_AT + 0.02)
+    return fade(x, 0.0, 0.25)
+
+
+def daily_word_win_c() -> np.ndarray:
+    """C, small and sweet (1.9 s): a quick pentatonic mallet run over the hops (C D E G A), then a
+    two-note "ding-ding" (G5, then C6 with a bell) as the card shows."""
+    x = np.zeros(int(1.9 * SR))
+    for k, n in enumerate([C5, D5, E5, G5, C6 - 3]):
+        hop = k * DAILY_WORD_HOP_STAGGER + DAILY_WORD_HOP_PEAK
+        place(x, marimba(n, 0.4, 0.12) * 0.7, hop - 0.004)
+    place(x, marimba(G5, 0.9, 0.3) * 0.85, DAILY_WORD_WIN_CARD_AT - 0.12)
+    place(x, marimba(C6, 1.0, 0.35), DAILY_WORD_WIN_CARD_AT)
+    place(x, glass(C7, 0.9, 0.3) * 0.18, DAILY_WORD_WIN_CARD_AT)
+    return fade(x, 0.0, 0.25)
+
+
+def daily_word_loss_c() -> np.ndarray:
+    """C, small and sweet (1.5 s): a soft falling two-note sigh (E5 to C5) as the answer begins,
+    the last answer tile met by a quiet low A4."""
+    x = np.zeros(int(1.5 * SR))
+    place(x, marimba(E5, 0.7, 0.25) * 0.75, DAILY_WORD_ANSWER_MID)
+    place(x, marimba(C5, 0.9, 0.3) * 0.7, DAILY_WORD_ANSWER_MID + 0.28)
+    place(x, marimba(A4, 0.9, 0.3) * 0.5, DAILY_WORD_LOSS_CARD_AT)
+    return fade(x, 0.0, 0.25)
+
+
+# sound -> {option label: (recipe, level)}. A is the shipped pick, so it is the very entry in
+# `SOUNDS`; B and C take A's level. `--options <sound>` writes them to a scratch folder; nothing
+# here is in `SOUNDS`, so the generator's normal run never writes or ships an option.
+OPTIONS: OptionTable = {
+    "daily-word-win": {
+        "A": SOUNDS["daily-word-win"],
+        "B": (daily_word_win_b, SOUNDS["daily-word-win"][1]),
+        "C": (daily_word_win_c, SOUNDS["daily-word-win"][1]),
+    },
+    "daily-word-loss": {
+        "A": SOUNDS["daily-word-loss"],
+        "B": (daily_word_loss_b, SOUNDS["daily-word-loss"][1]),
+        "C": (daily_word_loss_c, SOUNDS["daily-word-loss"][1]),
+    },
+}
+
+
+def _finish(recipe: Callable[[], np.ndarray], level: Level) -> np.ndarray:
+    return level(recipe())
+
+
 def main(out_dir: Path, names: list[str]) -> None:
     unknown = [n for n in names if n not in SOUNDS]
     if unknown:
@@ -1238,4 +1325,5 @@ def main(out_dir: Path, names: list[str]) -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    main(Path(args[0]) if args else OUT_DEFAULT, args[1:])
+    if not options_cli(args, OPTIONS, _finish):
+        main(Path(args[0]) if args else OUT_DEFAULT, args[1:])

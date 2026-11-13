@@ -132,6 +132,7 @@ Preserve these because they contain evidence and rationale, but use the canonica
 | [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md)                     | Cascade physics design/reference                                                                                  |
 | [CASCADE-THEMING.md](research/CASCADE-THEMING.md)                     | Cascade theming design/reference                                                                                  |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
+| [mahjong-renderer-split.md](research/mahjong-renderer-split.md)       | Why Mahjong has Skia and Canvas2D renderers, unify options, native screenshot testing (#3707)                     |
 | [animation-lab.html](research/animation-lab.html)                     | Dev-only animation/sound preview page (serve from the repo root; see its header)                                  |
 
 ## Audits and point-in-time snapshots
