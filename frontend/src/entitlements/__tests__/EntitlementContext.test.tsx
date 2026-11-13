@@ -730,18 +730,22 @@ describe("refetch on reconnect after a failed first fetch (#3868)", () => {
     expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
-  it("skips a reconnect refresh while the previous one is still in flight", async () => {
+  it("retries on a second reconnect edge even if the first reconnect refresh is still pending and then fails", async () => {
     mockNetworkStatus = { isOnline: false, isInitialized: true };
     mockRequest.mockRejectedValue(networkFailure());
     await renderProvider();
 
     const first = deferRequest();
     await goOnline();
-    await goOffline();
-    await goOnline();
     expect(mockRequest).toHaveBeenCalledTimes(2);
 
-    await act(async () => first.resolve(entitledResponse()));
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+
+    await act(async () => first.reject(networkFailure()));
+    await flushAsync();
     await flushAsync();
     expect(ctx.canPlay("hearts")).toBe(true);
   });

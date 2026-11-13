@@ -288,23 +288,22 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
     return () => sub.remove();
   }, [refresh]);
 
-  // Re-fetch once on each offline → online edge while armed (#3868), unless a
-  // reconnect refresh is still in flight. Only after NetInfo has initialized,
-  // so the boot "true → true" is not a reconnect. Without a NetworkProvider the
-  // default context never changes, so this is inert.
+  // Re-fetch once on each offline → online edge while armed (#3868). Every edge
+  // refreshes, even while an earlier reconnect refresh is pending: the
+  // generation check drops the older response as stale, and skipping an edge
+  // would leave the player Locked if that pending request then fails. Only
+  // after NetInfo has initialized, so the boot "true → true" is not a
+  // reconnect. Without a NetworkProvider the default context never changes, so
+  // this is inert.
   const { isOnline, isInitialized } = network;
   const wasOnlineRef = useRef(isOnline);
-  const reconnectInFlightRef = useRef(false);
   useEffect(() => {
     networkRef.current = { isOnline, isInitialized };
     const prev = wasOnlineRef.current;
     wasOnlineRef.current = isOnline;
     if (!isInitialized || prev || !isOnline) return;
-    if (!retryOnReconnectRef.current || reconnectInFlightRef.current) return;
-    reconnectInFlightRef.current = true;
-    void refresh().finally(() => {
-      reconnectInFlightRef.current = false;
-    });
+    if (!retryOnReconnectRef.current) return;
+    void refresh();
   }, [isOnline, isInitialized, refresh]);
 
   // Detect revocations and clean up local state for any game no longer entitled.
