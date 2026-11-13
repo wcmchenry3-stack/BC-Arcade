@@ -15,7 +15,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AccessibilityInfo, AppState, Dimensions, StyleSheet } from "react-native";
 import type { AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
-import FreeCellScreen from "../FreeCellScreen";
+import FreeCellScreen, { FreeCellBandContent } from "../FreeCellScreen";
+import { AutoCompleteButton } from "../../components/shared/AutoCompleteButton";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
 import { ENGINE_VERSION } from "../../game/freecell/engine";
@@ -166,6 +167,15 @@ async function renderScreen() {
   );
 }
 
+/** Taps the Auto-Complete button (#3566): FreeCell never starts the run by itself. */
+async function pressAutoComplete(
+  getByLabelText: Awaited<ReturnType<typeof renderScreen>>["getByLabelText"]
+) {
+  await act(async () => {
+    await fireEvent.press(getByLabelText("Auto-Complete"));
+  });
+}
+
 describe("FreeCellScreen — hint on reversible-only position (#1295)", () => {
   beforeEach(() => {
     (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
@@ -208,7 +218,7 @@ describe("FreeCellScreen — hint on reversible-only position (#1295)", () => {
 // ---------------------------------------------------------------------------
 // #2452 — FreeCell records a per-session game
 //
-// Positions are built so auto-complete (which runs on load) plays the moves:
+// Positions are built so the Auto-Complete button (#3566) plays the moves:
 // every foundation is full except spades, and the rest of the spades sit in
 // column 0 in order, so each auto-step is one move.
 // ---------------------------------------------------------------------------
@@ -266,6 +276,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11)); // Q♠ then K♠ still to go
     const { getByLabelText, unmount } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
 
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS); // one move
@@ -291,6 +302,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(12)); // only K♠ to go
     const { getByLabelText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
 
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS);
@@ -312,6 +324,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11)); // two auto-steps to go
     const { getByLabelText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
     clock.advanceForegroundNow(7_000);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS); // first move opens the session
@@ -403,6 +416,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11));
     const { getByLabelText, getByText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS); // first move opens the session
     });
@@ -429,6 +443,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9)); // four auto-steps to go
     const { getByLabelText, getByText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS); // step 1 opens the session
     });
@@ -460,6 +475,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(12));
     const { getByLabelText, unmount } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS);
     });
@@ -552,6 +568,7 @@ describe("FreeCellScreen — Auto-Complete always releases the input lock (#2225
     });
     const { getByLabelText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
     // Locked while the step is pending.
     expect(getByLabelText("Hint")).toBeDisabled();
 
@@ -597,6 +614,7 @@ describe("FreeCellScreen — result card (#2508)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(12));
     const r = await renderScreen();
     await waitFor(() => r.getByLabelText("Hint"));
+    await pressAutoComplete(r.getByLabelText);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS);
     });
@@ -705,6 +723,7 @@ describe("FreeCellScreen — result card (#2508)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(12));
     const r = await renderScreen();
     await waitFor(() => r.getByLabelText("Hint"));
+    await pressAutoComplete(r.getByLabelText);
     clock.advanceForegroundNow(9_000);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS); // the winning move
@@ -821,6 +840,7 @@ describe("FreeCellScreen — a won game is not saved again (#3087)", () => {
   it("the next mount after a win deals a fresh game, not the won board", async () => {
     const first = await renderScreen();
     await waitFor(() => first.getByLabelText("Hint"));
+    await pressAutoComplete(first.getByLabelText);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS); // the winning move
     });
@@ -1087,6 +1107,7 @@ describe("FreeCellScreen — Auto-Complete riffle (#3563)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9)); // four auto-steps to go
     const { getByLabelText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
     expect(played("freecell.autoCompleteStart")).toBe(1);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS * 10);
@@ -1100,6 +1121,7 @@ describe("FreeCellScreen — Auto-Complete riffle (#3563)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9));
     const { getByLabelText, getByText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    await pressAutoComplete(getByLabelText);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS);
     });
@@ -1211,13 +1233,14 @@ describe("FreeCellScreen — the play clock across Auto-Complete steps and loads
     r.getByTestId("freecell-stat-time").props.children as string;
 
   it("an Auto-Complete step queued while the app is away does not run the clock", async () => {
-    // Five spades left, a minute already played: Auto-Complete starts on load.
+    // Five spades left, a minute already played: the player taps Auto-Complete.
     (loadGame as jest.Mock).mockResolvedValue({
       ...nearlyWon(8),
       clock: { startedAt: null, accumulatedMs: 60_000, paused: true },
     });
     const r = await renderScreen();
     await waitFor(() => r.getByLabelText("Hint"));
+    await pressAutoComplete(r.getByLabelText);
     // One step lands, with the clock running.
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS);
@@ -1264,5 +1287,209 @@ describe("FreeCellScreen — the play clock across Auto-Complete steps and loads
     });
     // The minute played and the five seconds since returning; not the two hours away.
     expect(shownTime(r)).toBe("1:05");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3566 — Auto-Complete is a button, never an automatic start
+// ---------------------------------------------------------------------------
+
+/**
+ * Every foundation full but spades (A to J), the Q♠ under the K♠ in column 0: not
+ * auto-completable until the K♠ goes to a free cell.
+ */
+function blockedKing(): FreeCellState {
+  return {
+    ...nearlyWon(11),
+    tableau: [
+      [
+        { suit: "spades", rank: 12 as never },
+        { suit: "spades", rank: 13 as never },
+      ],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+    ],
+  };
+}
+
+describe("FreeCellScreen — the Auto-Complete button (#3566)", () => {
+  let reduceMotion: jest.SpyInstance;
+  const moves = (r: Awaited<ReturnType<typeof renderScreen>>, n: number) =>
+    r.getByLabelText(`Moves: ${n}`);
+
+  beforeEach(() => {
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  });
+  afterEach(async () => {
+    await act(async () => {
+      flushTimers();
+    });
+    reduceMotion.mockRestore();
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("is offered exactly when the board can finish and the game is not complete", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11));
+    const finishable = await renderScreen();
+    await waitFor(() => finishable.getByLabelText("Hint"));
+    expect(finishable.getByLabelText("Auto-Complete")).toBeTruthy();
+    await act(async () => {
+      finishable.unmount();
+    });
+
+    (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
+    const stuck = await renderScreen();
+    await waitFor(() => stuck.getByLabelText("Hint"));
+    expect(stuck.queryByLabelText("Auto-Complete")).toBeNull();
+    await act(async () => {
+      stuck.unmount();
+    });
+
+    (loadGame as jest.Mock).mockResolvedValue({ ...nearlyWon(13), isComplete: true });
+    const won = await renderScreen();
+    await won.findByTestId("freecell-result");
+    expect(won.queryByLabelText("Auto-Complete", { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("does not start on resume: the saved board waits, with its button", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11));
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    await act(async () => {
+      flushTimers();
+    });
+    expect(moves(r, 0)).toBeTruthy();
+    expect(r.getByLabelText("Auto-Complete")).toBeTruthy();
+    expect(r.getByLabelText("Hint")).not.toBeDisabled();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(played("freecell.autoCompleteStart")).toBe(0);
+  });
+
+  it("does not start after a move that makes the board finishable", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(blockedKing());
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    expect(r.queryByLabelText("Auto-Complete")).toBeNull();
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("K of Spades"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Empty free cell 1"));
+    });
+    await act(async () => {
+      flushTimers();
+    });
+    expect(moves(r, 1)).toBeTruthy(); // the player's move only
+    expect(r.getByLabelText("Auto-Complete")).toBeTruthy();
+    expect(r.getByLabelText("Hint")).not.toBeDisabled();
+    expect(played("freecell.autoCompleteStart")).toBe(0);
+  });
+
+  it("does not start on Undo into a finishable board; it offers the button", async () => {
+    // A board that cannot finish, whose undo is a board that can.
+    const finishableBefore = { ...nearlyWon(11), undoStack: [] as FreeCellState[] };
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...blockedKing(),
+      moveCount: 1,
+      undoStack: [finishableBefore],
+    });
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    expect(r.queryByLabelText("Auto-Complete")).toBeNull();
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Undo"));
+    });
+    await act(async () => {
+      flushTimers();
+    });
+    expect(moves(r, 0)).toBeTruthy(); // the undone board's count: nothing ran
+    expect(r.getByLabelText("Auto-Complete")).toBeTruthy();
+    expect(r.getByLabelText("Hint")).not.toBeDisabled();
+    expect(played("freecell.autoCompleteStart")).toBe(0);
+  });
+
+  it("runs on a tap: input locked and the button hidden during the run, then the board completes", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(9)); // four steps to go
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Auto-Complete"));
+    });
+    // Running: locked, and the button is gone.
+    expect(r.getByLabelText("Hint")).toBeDisabled();
+    expect(r.getByLabelText("Undo")).toBeDisabled();
+    expect(r.queryByLabelText("Auto-Complete")).toBeNull();
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS);
+    });
+    expect(moves(r, 1)).toBeTruthy();
+    expect(r.getByLabelText("Hint")).toBeDisabled();
+    expect(r.queryByLabelText("Auto-Complete")).toBeNull();
+    // A card tapped during the run does nothing.
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("K of Spades"));
+    });
+    expect(r.queryByText(/\(selected\)/)).toBeNull();
+
+    await act(async () => {
+      flushTimers();
+    });
+    await r.findByTestId("freecell-result");
+    expect(r.queryByLabelText("Auto-Complete")).toBeNull();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    expect(summary["result"]).toEqual(expect.objectContaining({ won: true, moves: 4 }));
+  });
+
+  it("is the shared pill Solitaire uses: same role, label and style", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11));
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    const screenBtn = r.getByLabelText("Auto-Complete");
+    const reference = await render(
+      <ThemeProvider>
+        <AutoCompleteButton onPress={() => undefined} />
+      </ThemeProvider>
+    );
+    const sharedBtn = reference.getByLabelText("Auto-Complete");
+    expect(screenBtn.props.accessibilityRole).toBe("button");
+    expect(screenBtn.props.accessibilityRole).toBe(sharedBtn.props.accessibilityRole);
+    expect(screenBtn.props.accessibilityLabel).toBe(sharedBtn.props.accessibilityLabel);
+    expect(StyleSheet.flatten(screenBtn.props.style)).toEqual(
+      StyleSheet.flatten(sharedBtn.props.style)
+    );
+  });
+
+  it("never shares the felt's band with the no-moves banner", async () => {
+    const both = await render(
+      <ThemeProvider>
+        <FreeCellBandContent
+          showAutoComplete
+          showNoMoves
+          onAutoComplete={() => undefined}
+          onUndo={() => undefined}
+          undoDisabled={false}
+        />
+      </ThemeProvider>
+    );
+    expect(both.getByLabelText("Auto-Complete")).toBeTruthy();
+    expect(both.queryByText(/no moves left/i)).toBeNull();
+    await act(async () => {
+      both.unmount();
+    });
+    // A stuck board shows the banner and no button.
+    (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
+    const stuck = await renderScreen();
+    await waitFor(() => stuck.getByLabelText("Hint"));
+    await act(async () => {
+      await fireEvent.press(stuck.getByLabelText("Hint"));
+    });
+    expect(stuck.queryByText(/no moves left/i)).not.toBeNull();
+    expect(stuck.queryByLabelText("Auto-Complete")).toBeNull();
   });
 });

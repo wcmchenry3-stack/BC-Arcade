@@ -4,7 +4,8 @@
  * Concerns:
  *   1. Game logic — FreeCellBoard (components/freecell) sends drags and taps to the pure
  *      engine (`applyMove`, `undoMove`, `applyHint`); deals come from the solvable seed bank.
- *   2. Auto-complete — `startAutoComplete` steps the finish with the board input-locked (#2225).
+ *   2. Auto-complete — `startAutoComplete` steps the finish with the board input-locked (#2225); only the
+ *      Auto-Complete button starts it (#3566).
  *   3. Persistence — `usePersistedGameState` (#3087) restores the save on mount (or deals
  *      fresh) and saves after every change once it has loaded.
  *   4. Instrumentation (#2452) — `useGameRecorder("freecell")` (`useGameSync` plus the shared
@@ -47,6 +48,7 @@ import { bestOf } from "../game/_shared/bestOf";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { PillButton } from "../components/shared/PillButton";
+import { AutoCompleteButton } from "../components/shared/AutoCompleteButton";
 import FreeCellBoard from "../components/freecell/FreeCellBoard";
 import { CardFlightContext } from "../components/cards/cardFlights";
 import {
@@ -296,8 +298,8 @@ export default function FreeCellScreen() {
 
   /**
    * Runs Auto-Complete from `fromState`: one card per step, AUTO_STEP_MS apart, the board
-   * input-locked (#2225). Its first card waits `firstStepMs`: the landing of the move that
-   * started the run (#3573). The one way in (#3566's button must call it too).
+   * input-locked (#2225). Only the Auto-Complete button starts it (#3566): a move, a resume
+   * and an Undo never do. Its first card waits `firstStepMs` (one step by default).
    */
   const startAutoComplete = useCallback(
     (fromState: FreeCellState, firstStepMs: number = AUTO_STEP_MS) => {
@@ -509,7 +511,6 @@ export default function FreeCellScreen() {
       setResumedWin(true);
       setWinSummary({ best: statsRef.current.bestMoves, isNewBest: false });
     }
-    startAutoComplete(initial);
   });
 
   const handleMove = useCallback(
@@ -520,14 +521,11 @@ export default function FreeCellScreen() {
       if (moved === state) return;
       // A tap flies the card from its slot; a drop settles it from where the ghost was let go.
       startMotion(offset ? "drop" : "tap", state, moved, offset);
-      // Auto-Complete's first card waits for this move's landing (#3573, owner).
-      const firstStepMs = Math.max(AUTO_STEP_MS, cueRef.current.landed);
       const applied = clockMove(state, moved);
       const next = recordAction(moveAction(state, move), applied);
       setState(next);
-      startAutoComplete(next, firstStepMs);
     },
-    [state, startAutoComplete, recordAction, setState, clockMove, startMotion, cueRef]
+    [state, recordAction, setState, clockMove, startMotion]
   );
 
   const handleUndo = useCallback(() => {
@@ -618,6 +616,15 @@ export default function FreeCellScreen() {
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;
   const hintDisabled = state === null || state.isComplete || autoCompleting;
+  // The Auto-Complete button (#3566): offered exactly while the board can finish itself.
+  const showAutoComplete = useMemo(
+    () => state !== null && !state.isComplete && !autoCompleting && canAutoComplete(state),
+    [state, autoCompleting]
+  );
+  const handleAutoComplete = useCallback(() => {
+    if (state === null || state.isComplete) return;
+    startAutoComplete(state);
+  }, [state, startAutoComplete]);
   // The felt's size (#3607): what the screen's chrome leaves (the window less the
   // header, the stat line, the tab bar and the gutters) until the felt reports its
   // own size, then the measured one. As in SolitaireScreen.
@@ -850,25 +857,13 @@ export default function FreeCellScreen() {
                 pointerEvents="box-none"
                 testID="freecell-bottom-band"
               >
-                {showNoMovesBanner && (
-                  <View
-                    style={[
-                      styles.noMovesBanner,
-                      { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-                    ]}
-                    accessibilityRole="alert"
-                    accessibilityLiveRegion="assertive"
-                  >
-                    <Text style={[styles.noMovesText, { color: colors.text }]}>
-                      {t("freecell:noMoves.message")}
-                    </Text>
-                    <PillButton
-                      label={t("freecell:action.undo")}
-                      onPress={handleUndo}
-                      disabled={undoDisabled}
-                    />
-                  </View>
-                )}
+                <FreeCellBandContent
+                  showAutoComplete={showAutoComplete}
+                  showNoMoves={showNoMovesBanner}
+                  onAutoComplete={handleAutoComplete}
+                  onUndo={handleUndo}
+                  undoDisabled={undoDisabled}
+                />
               </View>
             </FeltTable>
           </View>
@@ -906,6 +901,48 @@ export default function FreeCellScreen() {
         onAnimationEnd={() => setShowFoundation(false)}
       />
     </GameShell>
+  );
+}
+
+/**
+ * The felt's bottom band: the Auto-Complete pill (#3566) or the no-moves banner, never
+ * both. An auto-completable board always has a move, so a stale banner never shares the
+ * band with the button.
+ */
+export function FreeCellBandContent({
+  showAutoComplete,
+  showNoMoves,
+  onAutoComplete,
+  onUndo,
+  undoDisabled,
+}: {
+  showAutoComplete: boolean;
+  showNoMoves: boolean;
+  onAutoComplete: () => void;
+  onUndo: () => void;
+  undoDisabled: boolean;
+}) {
+  const { t } = useTranslation("freecell");
+  const { colors } = useTheme();
+  return (
+    <>
+      {showNoMoves && !showAutoComplete && (
+        <View
+          style={[
+            styles.noMovesBanner,
+            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
+          ]}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+        >
+          <Text style={[styles.noMovesText, { color: colors.text }]}>
+            {t("freecell:noMoves.message")}
+          </Text>
+          <PillButton label={t("freecell:action.undo")} onPress={onUndo} disabled={undoDisabled} />
+        </View>
+      )}
+      {showAutoComplete && <AutoCompleteButton onPress={onAutoComplete} />}
+    </>
   );
 }
 

@@ -27,7 +27,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import {
   Animated,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -42,6 +41,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
+import { AutoCompleteButton } from "../components/shared/AutoCompleteButton";
 import { CELEBRATION_SPARKLE } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
@@ -1489,18 +1489,7 @@ export default function SolitaireScreen() {
                         </Text>
                       )}
                     </View>
-                    {showAutoComplete && (
-                      <Pressable
-                        onPress={handleAutoComplete}
-                        style={[styles.autoBtn, { backgroundColor: colors.accent }]}
-                        accessibilityRole="button"
-                        accessibilityLabel={t("solitaire:action.autoComplete")}
-                      >
-                        <Text style={[styles.autoBtnText, { color: colors.textOnAccent }]}>
-                          {t("solitaire:action.autoComplete")}
-                        </Text>
-                      </Pressable>
-                    )}
+                    {showAutoComplete && <AutoCompleteButton onPress={handleAutoComplete} />}
                   </View>
                 </FeltTable>
 
@@ -1599,16 +1588,5 @@ const styles = StyleSheet.create({
   tableauRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-  },
-  autoBtn: {
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  autoBtnText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
 });

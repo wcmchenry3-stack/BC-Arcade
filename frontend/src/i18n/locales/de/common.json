@@ -105,5 +105,6 @@
   "locked.back": "Zurück zur Lobby",
   "locked.back_label": "Zurück zur Lobby",
   "offline.windowExhausted": "Du warst seit 3 Tagen nicht online. Verbinde dich mit dem Internet, um das neueste Rätsel zu erhalten.",
-  "offline.windowExhaustedStreak": "Verbinde dich, um deine Serie fortzusetzen."
+  "offline.windowExhaustedStreak": "Verbinde dich, um deine Serie fortzusetzen.",
+  "action.autoComplete": "Auto-Abschluss"
 }
