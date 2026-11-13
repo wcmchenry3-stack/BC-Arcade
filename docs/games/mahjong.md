@@ -205,7 +205,7 @@ Active implementation bugs and future gameplay work stay in GitHub rather than b
 
 ## Device screenshots (Maestro demo flows, #3801)
 
-A cloud session can't see the board on iOS or Android, so the faded and blurry tile reports (#3684) are checked from CI. Dispatch `mobile-smoke-android.yml` or `mobile-smoke-ios.yml` with `flows: mahjong-demo` to run only `e2e/maestro/flows/mahjong/demo-*.yaml` and upload `maestro-<platform>-media`: `mahjong-demo-open` (the untouched Turtle board, no hint) and `mahjong-demo-zoom` (after a double-tap zoom, see "Board camera"), each with a video. `mahjong/smoke.yaml` is unchanged and still takes its own `mahjong-smoke` after a hint tap. Commands and notes: [MAESTRO.md, "Mahjong demo flows"](../MAESTRO.md#mahjong-demo-flows-3801).
+A cloud session can't see the board on iOS or Android, so the faded and blurry tile reports (#3684) are checked from CI. Dispatch `mobile-smoke-android.yml` or `mobile-smoke-ios.yml` with `flows: mahjong-demo` to run only `e2e/maestro/flows/mahjong/demo-*.yaml` and upload `maestro-<platform>-media`: `mahjong-demo-open`, `mahjong-demo-open-late` and `mahjong-demo-open-late2` (the untouched Turtle board, no hint, at about 5 s, 15 s and 25 s, to tell a transient tile-face fallback from a permanent one) and `mahjong-demo-zoom` (after a double-tap zoom, see "Board camera"), each with a video. `mahjong/smoke.yaml` is unchanged and still takes its own `mahjong-smoke` after a hint tap. Commands and notes: [MAESTRO.md, "Mahjong demo flows"](../MAESTRO.md#mahjong-demo-flows-3801).
 
 ## Sound
 

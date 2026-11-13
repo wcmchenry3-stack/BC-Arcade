@@ -128,8 +128,16 @@ def test_only_demo_files_are_tagged_demo():
 
 
 def test_mahjong_demo_flows_screenshots_and_no_hint_tap():
-    expected = {"demo-open.yaml": "mahjong-demo-open", "demo-zoom.yaml": "mahjong-demo-zoom"}
-    for name, shot in expected.items():
+    expected = {
+        "demo-open.yaml": [
+            "mahjong-demo-open",
+            "mahjong-demo-open-late",
+            "mahjong-demo-open-late2",
+        ],
+        "demo-zoom.yaml": ["mahjong-demo-zoom"],
+    }
+    for name, shots in expected.items():
         text = (FLOWS / "mahjong" / name).read_text()
-        assert f"takeScreenshot: {shot}" in text
+        for shot in shots:
+            assert f"takeScreenshot: {shot}\n" in text
         assert "mahjong-hint-button" not in text

@@ -119,7 +119,7 @@ Mahjong's real look on iOS and Android can't be seen from a cloud session, so th
 
 | Flow | Shows | Screenshots (`.png`) | Video (`.mp4`) |
 |---|---|---|---|
-| `demo-open.yaml` | Home → Mahjong, Turtle layout, the untouched board (no hint, no tile tap) | `mahjong-demo-open` | `mahjong-demo-open` |
+| `demo-open.yaml` | Home → Mahjong, Turtle layout, the untouched board (no hint, no tile tap), three shots about 5 s, 15 s and 25 s after the board shows | `mahjong-demo-open`, `mahjong-demo-open-late`, `mahjong-demo-open-late2` | `mahjong-demo-open` |
 | `demo-zoom.yaml` | the same board, then a double-tap on the board viewport (`mahjong-board-viewport`), to show the tiles' crispness zoomed in | `mahjong-demo-zoom` | `mahjong-demo-zoom` |
 
 Both use the shared subflow `_shared/open-mahjong.yaml` (the same steps as `smoke.yaml`: `navigate-to.yaml` for the hidden game, tap `mahjong-layout-turtle` if the picker shows, wait for `mahjong-board-viewport`). They are tagged `demo`, so every other run leaves them out (`--exclude-tags=demo`). Dispatch either workflow with `flows: mahjong-demo` to run only `mahjong/demo-*.yaml` (`--include-tags=demo`, whatever changed):
@@ -139,6 +139,7 @@ Notes:
 
 - **The zoom tap.** The board zooms on `Gesture.Tap().numberOfTaps(2)` (`game/mahjong/useBoardZoomPan.ts`, "Board camera" in [`games/mahjong.md`](games/mahjong.md)); from the fitted view it zooms to readable tiles centred on the tap. On a 390 x 844 phone Turtle fits at about 25.6 px a tile (`games/mahjong.md`, `zoom.test.ts`), above the 24 px opening-zoom threshold, so it should open fitted and the double-tap zooms in. If a device opened Turtle already zoomed in, the double-tap would zoom out instead (`zoomAt` toggles); the compare-with-`mahjong-demo-open` fallback below covers that too. `doubleTapOn` with the viewport's testID taps its centre, a point Maestro resolves the same way on both platforms. A tile under the tap is selected too (the second tap of a double-tap keeps it selected), so the zoomed frame may show one selected tile.
 - **Random deal.** The deal is random (no seed hook is reachable from Maestro, see the Cascade notes), so the tiles differ per run. The look of the tiles (faded, blurry) does not depend on the deal.
+- **Three open shots.** The first Android run (run 43454289761) showed suit-colour fallback blocks instead of tile faces at the default zoom, with real faces after a double-tap. The tile faces rasterise after the commit on a timer (`tileFaces.ts`), so the blocks may be a transient or permanent. `demo-open.yaml` photographs the board three times to tell them apart: if `-late` and `-late2` show faces, the blocks were transient; if they still show blocks, they are permanent. Maestro has no sleep command and `waitForAnimationToEnd` returns once the screen is still, so each pause is an `extendedWaitUntil` on an id that never exists with `optional: true`, which runs its full timeout and then continues (not yet verified on a device). The flow takes about 30 s, well under the 3-minute recorder limit.
 - **Not run locally.** These flows were written without a device; the first dispatch is their first run. If the double-tap misses (the camera did not move), the screenshot shows the fitted board, so compare it with `mahjong-demo-open`.
 
 ### Scoped runs on PRs

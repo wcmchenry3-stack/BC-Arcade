@@ -4,7 +4,8 @@ appId: com.buffingchi.games
 # it (docs/MAESTRO.md, "Mahjong demo flows"). It records a video and takes a
 # named screenshot, both uploaded as the maestro-<platform>-media artifact.
 #
-# The untouched Turtle board: no hint tap (smoke.yaml's screenshot has a hint
+# The untouched Turtle board, photographed three times (`mahjong-demo-open`,
+# `-late`, `-late2`): no hint tap (smoke.yaml's screenshot has a hint
 # glow in the frame), no tile tap.
 tags:
   - demo
@@ -12,8 +13,30 @@ tags:
 - runFlow: ../_shared/launch.yaml
 - startRecording: mahjong-demo-open
 - runFlow: ../_shared/open-mahjong.yaml
-# Let the deal-in animation land and the tiles render.
-- waitForAnimationToEnd:
-    timeout: 3000
+# Maestro has no sleep command, and waitForAnimationToEnd returns as soon as the
+# screen is still (a 3 s one was evidently too short: the first Android run
+# showed suit-colour fallback blocks, the tile faces rasterise after the commit
+# on a timer, tileFaces.ts). So each pause below waits for an id that never
+# exists, `optional: true`: it runs its whole timeout, then the flow carries on.
+# Three shots at about 5 s, 15 s and 25 s after the board shows tell a
+# transient fallback from a permanent one. About 30 s in all, well under
+# Android's 3-minute recorder limit.
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 5000
+    optional: true
 - takeScreenshot: mahjong-demo-open
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 10000
+    optional: true
+- takeScreenshot: mahjong-demo-open-late
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 10000
+    optional: true
+- takeScreenshot: mahjong-demo-open-late2
 - stopRecording

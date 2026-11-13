@@ -218,6 +218,7 @@ Maestro 2.12.1 (iOS in CI, with `--debug-output`) writes them into the flow's
 debug bundle, `<debug-output>/<flow>/takeScreenshot/` and `.../startRecording/`.
 CI uploads both as `maestro-<platform>-media`. See `docs/MAESTRO.md`, "Cascade demo flows" and "Mahjong demo flows", for
 the list, what they don't cover yet, and how to trigger them.
+Mahjong's screenshots: `mahjong-demo-open`, `mahjong-demo-open-late`, `mahjong-demo-open-late2`, `mahjong-demo-zoom`.
 
 ## Scope
 
