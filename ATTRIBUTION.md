@@ -135,7 +135,7 @@ script's own rules. The answer lists are filtered by hand (`answers_blocklist_fr
 
 ## Audio (CC BY 4.0)
 
-- **"Victory fanfare"** by humanoide9000 on Freesound, used as `frontend/assets/sounds/freecell-game-win.mp3` (FreeCell and Bottle Sort win sound; re-encoded to MP3)
+- **"Victory fanfare"** by humanoide9000 on Freesound, used as `frontend/assets/sounds/freecell-game-win.mp3` (FreeCell's and then Bottle Sort's win sound; no game uses it since #3661, so it is not bundled in the app; kept in the repo; re-encoded to MP3)
   - Source: https://freesound.org/people/humanoide9000/sounds/466133/
   - License: https://creativecommons.org/licenses/by/4.0/
 

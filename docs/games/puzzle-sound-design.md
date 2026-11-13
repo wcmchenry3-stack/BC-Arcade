@@ -472,6 +472,71 @@ Adds 35,883 B now; nothing is deleted, since the fanfare is shared. Daily Word n
 
 Adds 57,389 B now; nothing is deleted.
 
+### Sort, "glass and water" (`sort.select`, `sort.pourLift`, `sort.pourStream1u`..`4u`, `sort.refused`, `sort.complete`, `sort.undo`, `sort.hint`, `sort.win`, #3661)
+
+- **Brief.** The owner chose the material for the whole set: **glass and water**, real glass bottles with a light clink, water poured into glass and a bright chime cascade for the win (over "soft potion" and "ceramic and syrup"). A stream for the whole pour, and all four optional sounds (bottle complete, select, undo, hint) are in. Before this, Sort borrowed Cascade's 0.55 s fruit-merge blip for the pour and FreeCell's 10.56 s fanfare for the win, and a refused pour, a select, a completed bottle, an undo and a hint were silent.
+- **Constraints.** All times are from `game/sort/motion.ts` (#3660, #3783):
+  - a pour lifts 170 ms, tilts 130 ms, the stream starts at `flowStartMs` 300 ms and each unit has a `POUR_UNIT_MS` 300 ms slot (1 to 4 units); a pour is 780 ms plus 300 ms per extra unit;
+  - select lifts 160 ms, a refused shake is 240 ms, a completed bottle pulses 420 ms (its badge pops in 300 ms), an undo fades 280 ms, and the win cascade is 1,380 ms (`WIN_CASCADE_MS`), then the result card;
+  - level 23 has 16 bottles and a practised player pours fast, so every frequent sound is short and the three most frequent have three variations.
+- **Rounds.**
+  - **Round 1, three options per sound, previewed in gameplay rhythm.** The owner picked **A** for select, refused, complete, undo, hint and win (and the lift).
+  - **Pour, redone (rounds 2 to 4).** The first pour was one short bubble per unit; the owner found it too quick and asked for a real "glug glug glug", about three glugs per unit.
+  - **Round 2, three glugs** (A, a classic bottle glug at 520 Hz, three gulps per unit over a liquid bed; B deeper; C quicker). **A was picked, then rejected at the audition:** "let's work on the sound of a liquid pouring more". Separate gulps read as a bottle being drunk from, not as liquid pouring.
+  - **Round 3, three continuous noise-formant streams** (a hiss and splash with a formant sweeping up as the bottle fills). **Rejected:** "worse, it sounds wavy (in a bad way), not like a liquid". Slow amplitude and formant movement is what read as wavy.
+  - **Round 4, physically based synthesis** (the owner's direction): van den Doel's bubble model, where a liquid is many individual bubble "plinks". Three options (A dense small bubbles, B fuller with larger bubbles, C a sparse trickle). **Picked: A**, "all of these are much better".
+    - Each bubble is a damped sinusoid at the Minnaert frequency, f0 = 3260 / r Hz for a radius r in mm, with a rising chirp f(t) = f0 (1 + 0.1 d t) and damping d = 0.043 f0 + 0.0014 f0^1.5 (1/s).
+    - Bubbles arrive as a Poisson stream at 1,400 a second (thinned: the rate ramps in over 15 ms, flows for the whole stream, dies away over about 50 ms). Radii follow a power law r^-2.5 on 0.5-4 mm (about 0.8-6.5 kHz), amplitude proportional to r (times a 0.25 log-normal spread).
+    - As the destination fills, radii shrink by 0.20 octave per unit, so the pitch rises through the pour; a light impact tap (-26 dB re the bubbles, 2-8 kHz noise) marks the stream hitting. There is no slow amplitude or formant modulation.
+    - One file per unit count (1 to 4 units: 0.48, 0.78, 1.08 and 1.38 s, i.e. 0.3 s per unit plus an 0.18 s tail), three variations each; seed 1000 + 100 x units + variation.
+- **Picks, and how each sound is built** (mono Ogg Vorbis q5, fixed seeds; levels are dBFS over the loudest 50 ms, peak at most -3):
+
+| Sound       | File                                      | Length      | Level | Design                                                                                                                                                                                                                                      | Plays                                                                                          |
+| ----------- | ----------------------------------------- | ----------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Select      | `sort-select-1/2/3.ogg`                   | 0.12 s      | -24   | A bright glass tick (a noise burst, 2.5-9 kHz) with a tiny 3.1 kHz inharmonic glass ping: a fingertip on a bottle. Variations at -5%, 0%, +5.5% pitch.                                                                                      | On the tap that selects a filled bottle (with the light haptic)                                |
+| Pour lift   | `sort-pour-lift-1/2/3.ogg`                | 0.2 s       | -28   | A faint glass touch (1.9 kHz) and a soft tick, then a rising puff of air (0.5-2.4 kHz): the bottle leaves the shelf. The quietest sound in the set.                                                                                         | At the tap that starts a pour                                                                  |
+| Pour stream | `sort-pour-stream-{1,2,3,4}u-{1,2,3}.ogg` | 0.48-1.38 s | -21   | Van den Doel bubble synthesis, "stream4 A": ~1,400 small bubbles a second (0.8-6.5 kHz, damped sinusoids with a rising chirp), the pitch rising 0.20 octave per unit as the bottle fills, over a light impact tap. One file per unit count. | Once, at the stream's start, `flowStartMs` (+ 50 ms latency budget), for the pour's unit count |
+| Refused     | `sort-refused.ogg`                        | 0.26 s      | -23   | Two dull glass taps, falling (900 Hz, then 760 Hz 120 ms later): a bottle knocking its neighbour. Soft and clearly "no"; not shared with the pour.                                                                                          | On the refused-pour shake (with the warning haptic)                                            |
+| Complete    | `sort-complete.ogg`                       | 0.5 s       | -20   | A two-note glass chime rising a fifth (E6, then B6 70 ms later).                                                                                                                                                                            | When a pour that completes a bottle lands, as its badge pops                                   |
+| Undo        | `sort-undo.ogg`                           | 0.3 s       | -27   | A reversed clink: a glass ping played backward, a swell, ending in a tiny tick at 255 ms as the board fades back in.                                                                                                                        | Once per Undo or "Back to last good move"                                                      |
+| Hint        | `sort-hint.ogg`                           | 0.65 s      | -26   | Three soft rising glass pings, G6, B6, D7, 100 ms apart, each a little louder.                                                                                                                                                              | When a hint is shown (the source lifts and the destination rings)                              |
+| Win         | `sort-win.ogg`                            | 2.0 s       | -17   | A glass chime cascade, one rising C major pentatonic note per cascade piece (170 ms apart), then a bright glass chord (C6 G6 C7 G7) and a tick at 1.38 s, the end of the cascade, as the result card opens.                                 | At the start of the win cascade (the winning pour's landing)                                   |
+
+- **Timing and triggers** (`useSortAudio.ts`, `SortScreen.tsx`):
+  - **Pour.** The lift plays at the tap. The stream file for the pour's unit count plays once at `flowStartMs` (300 ms; plus the 50 ms `POUR_START_LATENCY_BUDGET_MS` between the tap and the animation's first frame) and runs as long as the stream (0.3 s per unit) with an 0.18 s tail over the return. It is one JS timer started with the pour, never per-frame work, cleared when the pour is cancelled (a reset, a level change, leaving the screen, the app going to the background, where it would fire late on resume) and on unmount, so a dropped pour makes no stream; a restored game plays nothing.
+  - **Variations.** Each unit count has its own three variations (`useSoundVariants`), never the same one twice in a row for that count. That is 12 players, one per file, created with the screen.
+  - **Reduce Motion.** The pour lands at once (`REDUCE_MOTION_POUR_MS` 0), so there is no stream to follow: the lift and the 1-unit stream play together at the tap.
+  - **Win.** The sound starts at the landing, which is also the start of the cascade, so its chord lands at 1.38 s as the card opens. Under Reduce Motion or a screen reader the card opens at once and the sound plays as it is: the chime run sounds under the card and the chord about 1.4 s after it. (`useSound` can't start mid-file; skipping to the chord would be a follow-up if the owner prefers it.)
+  - **Complete.** On the pour that completes a bottle (the success haptic's event), at the badge pop; not on the winning pour (the win covers it), an undo or a restore.
+  - **Hint.** Only when a pour is suggested, not for the "no way to win" notice.
+- **Levels** are the designed loudness (select -24, lift -28, stream -21, refused -23, complete -20, undo -27, hint -26, win -17), baked into the files; every sound plays at `useSound`'s default volume. Under 3% of any file's energy is below 300 Hz (tested): the lift has the most (1.3-2.1%), the streams under 0.3%.
+- **Prototypes.** Every round's scripts, including the options not picked, are archived in [`sort-sfx-3661/`](sort-sfx-3661/README.md) (reference only; the shipped recipes are in `synth_puzzle_sfx.py`).
+- **Reproducibility.** Every file's decoded audio (`synth_common.decoded_pcm_sha256`) is identical to the approved prototype's (all 12 streams included), and `tools/assets/tests/synth_puzzle_sfx_test.py` pins each sound's timing against the motion.
+- **Gameplay audition.** Recorded with every `play()` logged and laid over the video; see the story's thread for the owner's approval.
+- **Why it works.**
+  - One material for eight sounds: everything is glass touched or water moving, so the game has a voice of its own and the borrowed Cascade blip and FreeCell fanfare are gone.
+  - The pour sounds like pouring: a touch as the bottle lifts, then a stream of many tiny bubbles that rises in pitch as the bottle fills and lasts exactly as long as the stream on screen, so a four-unit pour is a longer pour, not more gulps.
+  - The "no" is dull taps against the bright glass of everything else, and the win's chord lands on the card instead of 10 s after it.
+
+| File                            | Old size                    | New size             | Old length | New length |
+| ------------------------------- | --------------------------- | -------------------- | ---------- | ---------- |
+| `cascade-fruit-merge.ogg`       | 5,910 B, Cascade's, stays   | — (Sort's use only)  | 0.55 s     | —          |
+| `freecell-game-win.mp3`         | 87,960 B, stays in the repo | — (Sort's use only)  | 10.56 s    | —          |
+| `sort-select-1/2/3.ogg`         | —                           | 14.5 KB (14,882 B)   | —          | 0.12 s     |
+| `sort-pour-lift-1/2/3.ogg`      | —                           | 17.3 KB (17,708 B)   | —          | 0.2 s      |
+| `sort-pour-stream-1u-1/2/3.ogg` | —                           | 30.3 KB (30,313 B)   | —          | 0.48 s     |
+| `sort-pour-stream-2u-1/2/3.ogg` | —                           | 39.2 KB (40,113 B)   | —          | 0.78 s     |
+| `sort-pour-stream-3u-1/2/3.ogg` | —                           | 46.9 KB (48,028 B)   | —          | 1.08 s     |
+| `sort-pour-stream-4u-1/2/3.ogg` | —                           | 59.3 KB (60,672 B)   | —          | 1.38 s     |
+| `sort-refused.ogg`              | —                           | 5.8 KB (5,960 B)     | —          | 0.26 s     |
+| `sort-complete.ogg`             | —                           | 7.1 KB (7,272 B)     | —          | 0.5 s      |
+| `sort-undo.ogg`                 | —                           | 5.9 KB (6,021 B)     | —          | 0.3 s      |
+| `sort-hint.ogg`                 | —                           | 7.7 KB (7,863 B)     | —          | 0.65 s     |
+| `sort-win.ogg`                  | —                           | 16.3 KB (16,676 B)   | —          | 2.0 s      |
+| **Sort's total**                | 91.7 KB (93,870 B)          | 249.5 KB (255,508 B) |            |            |
+
+Twenty-three files added, none removed: Sort's sound files grow by 161,638 B (the twelve streams are 179,126 B; the three glug files this replaced, 23,921 B, never shipped), and its two borrowed files (one of them the 10.56 s fanfare) are no longer played. No single file is over 50 KB (the largest is the 4-unit stream, variation 2, at 20,927 B; a 4-unit set of three is 59.3 KB). `cascade-fruit-merge.ogg` stays for Cascade. `freecell-game-win.mp3` is no longer used by any game (FreeCell moved to synthesized sounds in #3563), so it is no longer bundled; it stays in the repo, with its CC BY credit, until the owner decides to delete it (see the rights audit).
+
 ### Sudoku sounds (#3775)
 
 - **Brief (#3775, from #3578).** Only the win played, and it was the borrowed 10 s, 321 KB `hearts-moon-shot.mp3`, which kept playing into the next puzzle (audit bug). Four originals for the keys the engine already emits, timed to `game/sudoku/motion.ts` (#3774). The owner chose the material (pencil and paper, Sudoku's own identity) and the options.

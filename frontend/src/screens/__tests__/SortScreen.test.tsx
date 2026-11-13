@@ -61,6 +61,20 @@ jest.mock("expo-haptics", () => ({
   NotificationFeedbackType: { Success: "success", Warning: "warning", Error: "error" },
 }));
 
+// Sort's sounds (#3661): the triggers are asserted here; the timeline and the files are covered
+// by game/sort/__tests__ (useSortAudio, sounds).
+const mockAudio = {
+  playSelect: jest.fn(),
+  playPour: jest.fn(),
+  cancelPour: jest.fn(),
+  playRefused: jest.fn(),
+  playComplete: jest.fn(),
+  playUndo: jest.fn(),
+  playHint: jest.fn(),
+  playWin: jest.fn(),
+};
+jest.mock("../../game/sort/useSortAudio", () => ({ useSortAudio: () => mockAudio }));
+
 const mockGoBack = jest.fn();
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
@@ -440,6 +454,25 @@ describe("SortScreen — save on leaving the app", () => {
     await setAppState("active");
     await blur();
     expect(storage.saveProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops a pour's pending stream when the app goes to the background, not on a blur (#3661)", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1, 2 of/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Bottle 3, empty"));
+    });
+    mockAudio.cancelPour.mockClear();
+    await blur();
+    await setAppState("active");
+    expect(mockAudio.cancelPour).not.toHaveBeenCalled();
+    await setAppState("background");
+    expect(mockAudio.cancelPour).toHaveBeenCalledTimes(1);
   });
 
   it("saves the latest board: the one after the last pour", async () => {
@@ -1360,6 +1393,21 @@ describe("SortScreen — Hint on a dead board (#2768)", () => {
     expect(r.queryByText("No way to win from here")).toBeNull();
   });
 
+  it("Back to last good move plays the undo sound once, and the notice's own hint none (#3661)", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    mockAudio.playUndo.mockClear();
+    mockAudio.playHint.mockClear();
+    await tapHint(r); // the dead-board notice: no hint was shown
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    expect(mockAudio.playHint).not.toHaveBeenCalled();
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 1")).toBeTruthy());
+    expect(mockAudio.playUndo).toHaveBeenCalledTimes(1); // one action, though it undoes two moves
+  });
+
   it("Restart level resets the board and abandons the session", async () => {
     const r = await openDeadLevel();
     await playIntoDeadEnd(r);
@@ -2145,6 +2193,204 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       await press(r, /^Bottle 1,/);
       await land(); // the landing impact rejects, the move still lands
       expect(lastProps().state.moveCount).toBe(1);
+    });
+  });
+
+  describe("sounds (#3661)", () => {
+    const heard = () =>
+      Object.fromEntries(
+        Object.entries(mockAudio)
+          .map(([name, fn]) => [name, fn.mock.calls.length] as const)
+          // cancelPour is housekeeping (entering a level clears it too): asserted on its own.
+          .filter(([name, n]) => n > 0 && name !== "cancelPour")
+      );
+    beforeEach(() => {
+      Object.values(mockAudio).forEach((fn) => fn.mockClear());
+    });
+
+    it("select: one sound on a tap that lifts a filled bottle; none to deselect or on an empty one", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 4,/); // empty, nothing selected
+      expect(heard()).toEqual({});
+      await press(r, /^Bottle 2,/);
+      expect(heard()).toEqual({ playSelect: 1 });
+      await press(r, /^Bottle 2 selected/); // deselect
+      expect(heard()).toEqual({ playSelect: 1 });
+    });
+
+    it("pour: the lift and stream are started once, with the unit count, at the tap; the landing adds none", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/); // ["blue"]
+      mockAudio.playSelect.mockClear();
+      await press(r, /^Bottle 4,/); // one unit into the empty bottle
+      expect(mockAudio.playPour).toHaveBeenCalledTimes(1);
+      expect(mockAudio.playPour).toHaveBeenCalledWith(1, false);
+      expect(heard()).toEqual({ playPour: 1 });
+      await land();
+      expect(heard()).toEqual({ playPour: 1 });
+    });
+
+    it("pour: a multi-unit pour passes its unit count", async () => {
+      const levels = [WIN_LEVEL, { id: 2, bottles: [["blue", "red", "red"], ["red"], [], []] }];
+      const r = await openLevel({ id: 2 }, levels);
+      await press(r, /^Bottle 1,/);
+      await press(r, /^Bottle 2,/);
+      expect(mockAudio.playPour).toHaveBeenCalledWith(2, false);
+    });
+
+    it("pour under Reduce Motion tells the audio, which plays the lift and the 1-unit stream at once", async () => {
+      const query = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+      try {
+        const r = await openLevel(BOTTLE_LEVEL);
+        await press(r, /^Bottle 3,/);
+        await press(r, /^Bottle 4,/);
+        expect(mockAudio.playPour).toHaveBeenCalledWith(1, true);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("refused pour: the refused sound once, and neither the pour nor the select again", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      mockAudio.playSelect.mockClear();
+      await press(r, /^Bottle 1,/); // red on top: refused
+      expect(heard()).toEqual({ playRefused: 1 });
+    });
+
+    it("complete: when the pour that completes a bottle lands, not when it starts", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 2,/);
+      await press(r, /^Bottle 1,/);
+      expect(mockAudio.playComplete).not.toHaveBeenCalled();
+      await land();
+      expect(mockAudio.playComplete).toHaveBeenCalledTimes(1);
+      expect(mockAudio.playWin).not.toHaveBeenCalled();
+    });
+
+    it("a pour that completes no bottle plays no complete sound", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      await land();
+      expect(mockAudio.playComplete).not.toHaveBeenCalled();
+    });
+
+    it("win: the winning pour plays the win once and no complete sound", async () => {
+      const r = await openLevel(WIN_LEVEL);
+      await press(r, /^Bottle 2,/);
+      await press(r, /^Bottle 1,/);
+      expect(mockAudio.playWin).not.toHaveBeenCalled();
+      await land();
+      expect(mockAudio.playWin).toHaveBeenCalledTimes(1);
+      expect(mockAudio.playComplete).not.toHaveBeenCalled();
+      // Closing the card does not play it again.
+      await act(async () => {
+        lastProps().onWinCascadeDone();
+      });
+      await r.findByTestId("sort-result");
+      expect(mockAudio.playWin).toHaveBeenCalledTimes(1);
+    });
+
+    it("win under Reduce Motion plays once, as the card opens at once", async () => {
+      const query = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+      try {
+        const r = await openLevel(WIN_LEVEL);
+        await winLevelOne(r);
+        expect(await r.findByTestId("sort-result")).toBeTruthy();
+        expect(mockAudio.playWin).toHaveBeenCalledTimes(1);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("undo: once per Undo; none while the button is off", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Undo" })); // nothing to undo: disabled
+      });
+      expect(mockAudio.playUndo).not.toHaveBeenCalled();
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      await land();
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Undo" }));
+      });
+      expect(mockAudio.playUndo).toHaveBeenCalledTimes(1);
+    });
+
+    it("hint: one sound when a hint is shown (the source lifts), and no select sound", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+      try {
+        await act(async () => {
+          await fireEvent.press(r.getByRole("button", { name: /^Hint/ }));
+        });
+        await r.findByLabelText(/Bottle 2 selected/);
+        expect(heard()).toEqual({ playHint: 1 });
+      } finally {
+        mockSolveBoard.mockReset();
+      }
+    });
+
+    it("hint: none for the no-solution notice", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
+      try {
+        await act(async () => {
+          await fireEvent.press(r.getByRole("button", { name: /^Hint/ }));
+        });
+        await waitFor(() => expect(mockSolveBoard).toHaveBeenCalled());
+        await r.findByText(/no way to win/i);
+        expect(mockAudio.playHint).not.toHaveBeenCalled();
+      } finally {
+        mockSolveBoard.mockReset();
+      }
+    });
+
+    it("leaving to the level select mid-pour cancels the pending stream", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      expect(mockAudio.playPour).toHaveBeenCalledTimes(1);
+      mockAudio.cancelPour.mockClear();
+      await press(r, "Back to levels");
+      expect(await r.findByText("Choose a Level")).toBeTruthy();
+      expect(mockAudio.cancelPour).toHaveBeenCalledTimes(1);
+      await land(); // a late landing plays nothing more
+      expect(heard()).toEqual({ playSelect: 1, playPour: 1 });
+    });
+
+    it("a dropped pour (New Game) cancels its pending stream; a restored game plays nothing", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      mockAudio.cancelPour.mockClear();
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "More options" }));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByText("New Game"));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+      });
+      expect(mockAudio.cancelPour).toHaveBeenCalledTimes(1);
+      await land();
+      expect(mockAudio.playComplete).not.toHaveBeenCalled();
+      expect(mockAudio.playWin).not.toHaveBeenCalled();
+      await r.unmount();
+
+      Object.values(mockAudio).forEach((fn) => fn.mockClear());
+      playOnLevels([WIN_LEVEL, BOTTLE_LEVEL]);
+      storage.loadProgress.mockResolvedValue({
+        unlockedLevel: 2,
+        currentLevelId: 2,
+        currentState: initState(BOTTLE_LEVEL.bottles as Color[][]),
+      });
+      const restored = await renderScreen();
+      await press(restored, "Continue Level 2");
+      expect(heard()).toEqual({});
     });
   });
 });

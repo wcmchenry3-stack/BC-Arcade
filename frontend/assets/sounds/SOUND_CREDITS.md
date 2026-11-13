@@ -384,6 +384,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Commercial use:** Yes (with attribution)
 - **Download date:** 2026-04-25
 - **Notes:** Short victory fanfare. Triumphant conclusion to a completed FreeCell game.
+- **Status (#3661):** No game uses this file any more: FreeCell moved to synthesized sounds (#3563) and Bottle Sort to its own set (#3661, `sort-win.ogg`). It is not bundled in the app, so the CC BY duty applies again only if it ships; kept in the repo.
 
 ### freecell-invalid-move.mp3
 
@@ -1224,6 +1225,190 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 2.0 s: two level marimba notes (E5, G5) into an open, unresolved C-G-D chord with a faint bell as the result card shows at 0.6 s: "even". New: a tie had no sound.
 
+### sort-select-1.ogg
+
+- **Event:** Sort bottle selected, on the tap that lifts it: `sort.select` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-select-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "glass and water": a bright glass tick (a 12 ms noise burst, 2.5-9 kHz) and a tiny glass ping (3.1 kHz, inharmonic partials) as a fingertip touches the bottle. The three variations are pitched -5%, 0% and +5.5% with their own noise seeds. New: a select had no sound.
+
+### sort-select-2.ogg
+
+- **Event:** Sort bottle selected, on the tap that lifts it: `sort.select2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-select-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "glass and water": a bright glass tick (a 12 ms noise burst, 2.5-9 kHz) and a tiny glass ping (3.1 kHz, inharmonic partials) as a fingertip touches the bottle. The three variations are pitched -5%, 0% and +5.5% with their own noise seeds. New: a select had no sound.
+
+### sort-select-3.ogg
+
+- **Event:** Sort bottle selected, on the tap that lifts it: `sort.select3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-select-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "glass and water": a bright glass tick (a 12 ms noise burst, 2.5-9 kHz) and a tiny glass ping (3.1 kHz, inharmonic partials) as a fingertip touches the bottle. The three variations are pitched -5%, 0% and +5.5% with their own noise seeds. New: a select had no sound.
+
+### sort-pour-lift-1.ogg
+
+- **Event:** Sort pour starts, at the tap: `sort.pourLift` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-lift-2.ogg
+
+- **Event:** Sort pour starts, at the tap: `sort.pourLift2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-lift-3.ogg
+
+- **Event:** Sort pour starts, at the tap: `sort.pourLift3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-1u-1.ogg
+
+- **Event:** Sort pour of 1 unit, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream1u` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-1u-2.ogg
+
+- **Event:** Sort pour of 1 unit, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream1u2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-1u-3.ogg
+
+- **Event:** Sort pour of 1 unit, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream1u3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-2u-1.ogg
+
+- **Event:** Sort pour of 2 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream2u` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-2u-2.ogg
+
+- **Event:** Sort pour of 2 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream2u2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-2u-3.ogg
+
+- **Event:** Sort pour of 2 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream2u3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-3u-1.ogg
+
+- **Event:** Sort pour of 3 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream3u` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-3u-2.ogg
+
+- **Event:** Sort pour of 3 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream3u2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-3u-3.ogg
+
+- **Event:** Sort pour of 3 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream3u3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-4u-1.ogg
+
+- **Event:** Sort pour of 4 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream4u` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-4u-2.ogg
+
+- **Event:** Sort pour of 4 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream4u2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-4u-3.ogg
+
+- **Event:** Sort pour of 4 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream4u3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-refused.ogg
+
+- **Event:** Sort pour refused, on the destination's shake: `sort.refused`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-refused`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.26 s "glass and water": two dull glass taps, falling (900 Hz, then 760 Hz 120 ms later), like a bottle knocking its neighbour, on the shake's first swings (`REFUSED_SHAKE_MS` 240). New: a refused pour had no sound.
+
+### sort-complete.ogg
+
+- **Event:** Sort pour completes a bottle (not the winning pour), as the badge pops: `sort.complete`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-complete`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s "glass and water": a two-note glass chime rising a fifth (E6, then B6 70 ms later). New: a completed bottle had no sound.
+
+### sort-undo.ogg
+
+- **Event:** Sort Undo, or "Back to last good move" (once per action): `sort.undo`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-undo`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.3 s "glass and water": a reversed clink (a 1.8 kHz glass ping played backward, a swell) ending in a tiny tick at 255 ms, as the board fades back in (`UNDO_FADE_MS` 280). New: undo had no sound.
+
+### sort-hint.ogg
+
+- **Event:** Sort hint shown (the source lifts and the destination rings; not the no-solution notice): `sort.hint`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-hint`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.65 s "glass and water": three soft rising glass pings 100 ms apart (G6, B6, D7), each a little louder. New: a hint had no sound.
+
+### sort-win.ogg
+
+- **Event:** Sort level solved, from the start of the win cascade: `sort.win`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s "glass and water": a glass chime cascade, one rising C major pentatonic note per cascade piece (C6, E6, G6, B6, D7, E7, 170 ms apart), then a bright glass chord (C6, G6, C7, G7) and a tick at 1.38 s (`WIN_CASCADE_MS`), as the result card opens. Replaces `freecell-game-win.mp3` (87,960 B, 10.56 s) as Sort's win sound; FreeCell keeps the file and its CC BY credit.
+
 ---
 
 ## Cascade (#834)
@@ -1240,6 +1425,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Commercial use:** Yes
 - **Download date:** 2026-04-26
 - **Notes:** Satisfying merge thud. Volume scales from 0.35 (tier 0) to 1.0 (tier 10) to reward higher-tier merges.
+- **Status (#3661):** Cascade only: Bottle Sort moved to its own synthesized pour sounds.
 
 ### cascade-combo.ogg
 

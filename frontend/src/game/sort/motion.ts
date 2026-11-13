@@ -73,8 +73,8 @@ export const POUR_UNIT_LEAVE_AT = 0.6;
  * state change and the render that start it (about a frame), and the end-of-animation hop
  * to React before the move counter changes (about a frame). Measured on web (tap to move counter
  * minus the animation): 50 to 70 ms. The pour is designed to `pourTotalMs(1) + this <= 900` so that, from the
- * player's tap to the move landing, one unit still takes 900 ms or less.
- * @internal Exported for tests; no production caller (knip --production, #3126).
+ * player's tap to the move landing, one unit still takes 900 ms or less. The sounds (#3661)
+ * add it to the stream's start time, which is measured from the tap.
  */
 export const POUR_START_LATENCY_BUDGET_MS = 50;
 
@@ -139,7 +139,7 @@ export function pourTimeline(units: number): PourTimeline {
 /**
  * A pour's animation length: 780 ms for one unit, 300 ms more for each extra one. From the
  * tap add `POUR_START_LATENCY_BUDGET_MS`: 830 ms, under the 900 ms ceiling.
- * @internal Exported for tests, and for the sounds (#3661) to come; no production caller yet.
+ * @internal Exported for tests only (`motion.test.ts`, `usePourAnimation.test.ts`); no production caller (knip --production, #3126).
  */
 export function pourTotalMs(units: number): number {
   return pourTimeline(units).endMs;

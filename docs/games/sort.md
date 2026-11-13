@@ -218,13 +218,24 @@ Settled by #2761: every player gets the same fixed catalog of 120 levels, so "Le
 
 ## Sound
 
-Registry: `frontend/src/game/sort/sounds.ts` (`SORT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/sort/sounds.ts` (`SORT_SOUNDS`). Sort's sounds are original, synthesized "glass and water" sounds (#3661, part of #3578) from `tools/assets/synth_puzzle_sfx.py`; the reasoning, the options and the picks are in the [puzzle sound design log](puzzle-sound-design.md). Levels are baked into the files, so every sound plays at `useSound`'s default volume (1.0); each plays through `useSound` (which honours the player's sound setting) or, for the three frequent ones, `useSoundVariants` (three variations, never the same twice in a row).
 
-Triggers are in `frontend/src/screens/SortScreen.tsx` (via `frontend/src/game/sort/useSortAudio.ts`).
+Triggers are in `frontend/src/screens/SortScreen.tsx` (via `frontend/src/game/sort/useSortAudio.ts`) and are timed to `frontend/src/game/sort/motion.ts`.
 
-| Key         | File                                  | Plays when          | Volume |
-| ----------- | ------------------------------------- | ------------------- | ------ |
-| `sort.pour` | `cascade-fruit-merge.ogg` (Cascade's) | a pour starts       | 1.0    |
-| `sort.win`  | `freecell-game-win.mp3` (FreeCell's)  | the level is solved | 1.0    |
+| Key                                          | File                            | Plays when                                                                                                                                                                                                  | Volume |
+| -------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `sort.select`, `select2`, `select3`          | `sort-select-1/2/3.ogg`         | a tap selects a filled bottle (with the light haptic); not a deselect, and not the source a hint lifts                                                                                                      | 1.0    |
+| `sort.pourLift`, `pourLift2`, `pourLift3`    | `sort-pour-lift-1/2/3.ogg`      | a pour starts (the tap)                                                                                                                                                                                     | 1.0    |
+| `sort.pourStream1u` to `sort.pourStream4u` (each with `2`, `3` variations) | `sort-pour-stream-{1,2,3,4}u-{1,2,3}.ogg` | once per pour, at the stream's start (`flowStartMs` 300 ms after the pour starts, plus the 50 ms latency budget), the file for the pour's unit count (1 to 4; 0.48 to 1.38 s); cleared with a cancelled pour (reset, level change, leaving, backgrounding) | 1.0 |
+| `sort.refused`                               | `sort-refused.ogg`              | a pour is refused (the destination's shake; with the warning haptic)                                                                                                                                        | 1.0    |
+| `sort.complete`                              | `sort-complete.ogg`             | a pour that completes a bottle lands, as the badge pops (with the success haptic); not the winning pour, an undo or a restore                                                                               | 1.0    |
+| `sort.undo`                                  | `sort-undo.ogg`                 | Undo, or "Back to last good move" (once per action, however many moves it undoes)                                                                                                                           | 1.0    |
+| `sort.hint`                                  | `sort-hint.ogg`                 | a hint is shown (the source lifts, the destination rings); not for the "no way to win" notice                                                                                                               | 1.0    |
+| `sort.win`                                   | `sort-win.ogg`                  | the level is solved: at the start of the win cascade, so its chord lands as the result card opens (`WIN_CASCADE_MS`, 1.38 s)                                                                                | 1.0    |
 
-A refused pour has no sound.
+Notes:
+
+- The stream is one file per pour, as long as the stream (0.3 s per unit) plus an 0.18 s tail: van den Doel bubble synthesis, the pitch rising as the bottle fills.
+- Reduce Motion: the pour lands at once, so a pour plays the lift and the 1-unit stream together at the tap. Under Reduce Motion or a screen reader the result card opens at once and the win sound plays as it is.
+- A restored (Continue) game, a cancelled pour and a level change play nothing. Going to the background mid-pour also drops the pour's pending stream (they would fire late, in a clump, on resume); the pour animation is unchanged.
+- Sort no longer plays `cascade-fruit-merge.ogg` (Cascade's) or `freecell-game-win.mp3`.
