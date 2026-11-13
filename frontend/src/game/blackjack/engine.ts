@@ -244,11 +244,19 @@ function freshShuffledDeck(deckCount: number = 1): Card[] {
  * Draw one card from a deck. Returns the new deck (with one fewer card)
  * and the drawn card. Auto-reshuffles if the deck runs dry mid-draw.
  */
-function deal(deck: Card[], deckCount: number = 1): { deck: Card[]; card: Card } {
+function deal(deck: Card[], deckCount: number): { deck: Card[]; card: Card } {
   const working = deck.length === 0 ? freshShuffledDeck(deckCount) : deck;
   const next = [...working];
   const card = next.pop()!;
   return { deck: next, card };
+}
+
+/**
+ * Draw from the state's shoe. Every in-round draw goes through this, so a reshuffle on an
+ * empty shoe always rebuilds the table's `rules.deck_count` decks (#3769), never one.
+ */
+function dealFrom(s: EngineState): { deck: Card[]; card: Card } {
+  return deal(s.deck, s.rules.deck_count);
 }
 
 // ---------------------------------------------------------------------------
@@ -592,7 +600,7 @@ function dealerShouldDraw(hand: readonly Card[], hitSoft17: boolean): boolean {
 function dealerPlay(s: EngineState): EngineState {
   let working = s;
   while (dealerShouldDraw(working.dealer_hand, working.rules.hit_soft_17)) {
-    const { deck, card } = deal(working.deck, working.rules.deck_count);
+    const { deck, card } = dealFrom(working);
     working = { ...working, deck, dealer_hand: [...working.dealer_hand, card] };
   }
   return working;
@@ -723,7 +731,7 @@ export function hit(s: EngineState): EngineState {
     if (s.split_from_aces[s.active_hand_index]) {
       throw new Error("Cannot hit on split aces.");
     }
-    const { deck, card } = deal(s.deck);
+    const { deck, card } = dealFrom(s);
     const newHands = s.player_hands.map((h, i) => (i === s.active_hand_index ? [...h, card] : h));
     const value = handValue(newHands[s.active_hand_index] ?? []);
     const busted = value > 21;
@@ -737,7 +745,7 @@ export function hit(s: EngineState): EngineState {
     return next;
   }
 
-  const { deck, card } = deal(s.deck);
+  const { deck, card } = dealFrom(s);
   const next: EngineState = {
     ...s,
     deck,
@@ -813,7 +821,7 @@ export function doubleDown(s: EngineState): EngineState {
       throw new Error("Insufficient chips to double down.");
     }
 
-    const { deck, card } = deal(s.deck);
+    const { deck, card } = dealFrom(s);
     const newHands = s.player_hands.map((h, i) => (i === idx ? [...h, card] : h));
     const newBets = [...s.hand_bets];
     newBets[idx] = handBet * 2;
@@ -836,7 +844,7 @@ export function doubleDown(s: EngineState): EngineState {
   }
   if (s.chips < s.bet * 2) throw new Error("Insufficient chips to double down.");
 
-  const { deck, card } = deal(s.deck, s.rules.deck_count);
+  const { deck, card } = dealFrom(s);
   const afterDouble: EngineState = {
     ...s,
     bet: s.bet * 2,

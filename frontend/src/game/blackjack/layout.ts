@@ -91,6 +91,36 @@ export type SplitMode = "single" | "fans" | "rows";
 /** How the table is drawn: by hand count, or "wide" (side by side) on a short felt. */
 export type TableMode = SplitMode | "grid" | "wide";
 
+/** How a hand's label is drawn, and what a split hand's label shows once its result is in. */
+export interface SplitResultLabel {
+  /** A column (a row's label): the name on its own line over the total. Else one line. */
+  column: boolean;
+  /** The split hand's name ("Hand 1") is drawn at the result; its accessibility label always says it. */
+  named: boolean;
+  /** A split hand's payout as a signed number ("+25", "-400", "0"), never in words ("+25 chips"). */
+  compactPayout: boolean;
+}
+
+/**
+ * A hand's label (#3771). A row's label is a column (the name on its own line over the total, tag
+ * and payout), so it keeps its name at the result. Every other label (2-hand fans, the grid, the
+ * wide arrangement) is one line, too narrow on a phone for the name, the total, the tag and the
+ * payout together (the name was cut to "HA…"): at the result the name gives way to the result.
+ * No hand is outlined at the result (only the hand being played is): each hand is known by its
+ * place, its label over its own cards. Every split hand's payout is a signed number (owner
+ * decision, #3779): in words the widest locale's line (Russian, "-400 фишек" on a doubled
+ * high-roller hand) is 196 px, wider than the widest fan label (195, at 430). The label keeps its
+ * height, so no card shrinks for it.
+ *
+ * Known gap: the wide arrangement (a landscape window, a fallback: phones are locked to portrait,
+ * #3603) gives 3–4 hands labels of about 96 / 76 px (568×320) and 120 / 94 px (667×375), so
+ * the ~105 px compact line can still be cut with 3–4 hands at 568×320 and 4 hands at 667×375.
+ */
+export function splitResultLabel(mode: TableMode): SplitResultLabel {
+  const column = mode === "rows";
+  return { column, named: column, compactPayout: true };
+}
+
 /** True in the phases whose felt shows the round's result (the result and the run's goal). */
 export function showsResult(phase: string | null | undefined): boolean {
   return phase === "result" || phase === "victory";

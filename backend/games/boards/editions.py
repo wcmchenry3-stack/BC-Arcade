@@ -34,11 +34,18 @@ def _get_settings() -> Settings:
     return _settings
 
 
+def edition_switch_on(name: str) -> bool:
+    """Whether the boolean ``Settings`` field *name* is on, read lazily (not at
+    import time). Shared by the boards' ``edition_switch`` and by anything else
+    gated on the same release step (Sort's daily-challenge goals, #3728)."""
+    return bool(getattr(_get_settings(), name))
+
+
 def enforced_edition(board: BoardDefinition) -> tuple[str, int] | None:
     """The board's ``edition`` if it applies now, else ``None`` (every row ranks)."""
     if board.edition is None:
         return None
-    if board.edition_switch is not None and not getattr(_get_settings(), board.edition_switch):
+    if board.edition_switch is not None and not edition_switch_on(board.edition_switch):
         return None
     return board.edition
 

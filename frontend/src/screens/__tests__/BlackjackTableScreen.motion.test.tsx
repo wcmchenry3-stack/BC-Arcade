@@ -463,17 +463,15 @@ describe("a split", () => {
     await advance(1);
     // Hand 1's WIN tag pops with its chips, then hand 2's LOSE 300 ms later.
     expect(tags()).toEqual(["Win"]);
-    expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
-      "+10 chips",
-    ]);
+    expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual(["+10"]);
     expect(banner()).toBe("Won: 1 · Lost: 1");
     await advance(299);
     expect(tags()).toEqual(["Win"]);
     await advance(1);
     expect(tags()).toEqual(["Win", "Lose"]);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
-      "+10 chips",
-      "-10 chips",
+      "+10",
+      "-10",
     ]);
     expect(banner()).toBe("Won: 1 · Lost: 1");
     await advance(COLLECT_MS);
