@@ -88,7 +88,32 @@ def test_resolve_pr_dispatch_one_pr_and_query():
     assert mc.resolve_pr(
         "workflow_dispatch", "", "feat/x", REPO, False, _gh_returning([{"number": 7}], calls)
     ) == (7, "")
-    assert "head=owner:feat/x" in calls[0][1] and "state=open" in calls[0][1]
+    args = calls[0]
+    assert args[:4] == ["api", "-X", "GET", f"repos/{REPO}/pulls"]
+    assert "head=owner:feat/x" in args and "state=open" in args
+
+
+def test_resolve_pr_dispatch_branch_with_query_characters_is_one_field():
+    # A branch name with &, # or + stays one -f value for gh to encode; it can't add parameters.
+    calls = []
+    mc.resolve_pr(
+        "workflow_dispatch",
+        "",
+        "feat/a&state=closed#b+c",
+        REPO,
+        False,
+        _gh_returning([{"number": 3}], calls),
+    )
+    args = calls[0]
+    assert "head=owner:feat/a&state=closed#b+c" in args
+    assert not any("?" in a for a in args)
+    assert args.count("state=open") == 1
+
+
+def test_wanted_rejects_trailing_newline():
+    assert not mc._wanted("mahjong-demo-open.png\n", ("mahjong-",))
+    assert not mc._wanted("mahjong-demo\nopen.png", ("mahjong-",))
+    assert mc._wanted("mahjong-demo-open.png", ("mahjong-",))
 
 
 def test_resolve_pr_dispatch_zero_or_several_prs():

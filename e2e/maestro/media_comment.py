@@ -26,7 +26,7 @@ import sys
 OPT_IN_PREFIXES = ("mahjong-",)
 MEDIA_EXTENSIONS = (".png", ".mp4")
 # Names go into a markdown table: accept only plain file names.
-SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+SAFE_NAME = re.compile(r"[A-Za-z0-9._-]+")  # used with fullmatch: no trailing newline
 
 
 def marker(platform):
@@ -45,7 +45,7 @@ def _walk(paths):
 
 def _wanted(name, prefixes):
     return (
-        bool(SAFE_NAME.match(name))
+        bool(SAFE_NAME.fullmatch(name))
         and name.startswith(tuple(prefixes))
         and name.lower().endswith(MEDIA_EXTENSIONS)
     )
@@ -93,10 +93,27 @@ def resolve_pr(event, pr_number, branch, repo, is_fork, gh=run_gh):
         return None, f"{event or 'unknown'} run: not attached to a PR"
     owner = repo.split("/")[0]
     try:
-        out = gh(["api", f"repos/{repo}/pulls?head={owner}:{branch}&state=open&per_page=100"])
+        # -f lets gh encode the query, so a branch name with &, #, + or % can't break or add to it.
+        out = gh(
+            [
+                "api",
+                "-X",
+                "GET",
+                f"repos/{repo}/pulls",
+                "-f",
+                f"head={owner}:{branch}",
+                "-f",
+                "state=open",
+                "-f",
+                "per_page=100",
+            ]
+        )
         prs = json.loads(out or "[]")
     except (subprocess.CalledProcessError, ValueError, OSError) as exc:
-        return None, f"could not list PRs for {branch}: {exc}"
+        return (
+            None,
+            f"could not list PRs for {branch}: {exc} {getattr(exc, 'stderr', '') or ''}".strip(),
+        )
     if len(prs) == 1:
         return int(prs[0]["number"]), ""
     return None, f"{len(prs)} open PRs for {branch} (need exactly one)"
@@ -158,7 +175,8 @@ def comment_main(env=os.environ, gh=run_gh):
     try:
         print(f"Comment {upsert_comment(repo, pr, platform, body, gh)} on PR #{pr}.")
     except (subprocess.CalledProcessError, OSError) as exc:
-        print(f"::warning::Could not post the media comment on PR #{pr}: {exc}")
+        detail = (getattr(exc, "stderr", "") or "").strip()
+        print(f"::warning::Could not post the media comment on PR #{pr}: {exc} {detail}".strip())
     return 0
 
 
