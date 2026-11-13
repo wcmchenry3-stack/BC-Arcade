@@ -196,6 +196,13 @@ def test_a_bottle_index_off_this_board_is_invalid() -> None:
         assert r.verdict == INVALID and "off the board" in r.reason
 
 
+def test_a_non_integer_envelope_version_is_invalid() -> None:
+    for v in (True, 1.0, "1"):
+        data = {"v": v, "unit": 1, "m": [[0, 1, 4]]}
+        r = run([("game_started", STARTED), ("moves", data), ("game_ended", ENDED)])
+        assert r.verdict == INVALID and flags(r) == ["malformed_action"]
+
+
 def test_a_bad_envelope_is_invalid() -> None:
     for data in (
         {"v": 2, "unit": 1, "m": []},
@@ -251,7 +258,12 @@ def test_a_split_unit_reads_as_one_and_missing_or_wrong_parts_are_flagged() -> N
         [("game_started", STARTED), parts[0], moves_event(1, [[0, 4, 0]], part=0, parts=2)]
     )
     assert out_of_order.verdict == INVALID and flags(out_of_order) == ["bad_parts"]
-    for extra in ({"part": 0}, {"part": 2, "parts": 2}, {"part": True, "parts": 2}):
+    for extra in (
+        {"part": 0},
+        {"part": 2, "parts": 2},
+        {"part": True, "parts": 2},
+        {"part": 0, "parts": 1},
+    ):
         bad = run([("game_started", STARTED), moves_event(1, [[0, 1, 4]], **extra)])
         assert bad.verdict == INVALID
 
@@ -265,7 +277,24 @@ def test_a_log_with_no_game_ended_is_truncated_and_incomplete() -> None:
 def test_a_cut_off_log_is_incomplete_against_game_ended() -> None:
     r = run(log(GOLDEN_UNITS[:1]))  # the cap, or a lost last batch: unit 2 never arrived
     assert r.verdict == INCOMPLETE and flags(r) == ["truncated", "truncated", "truncated"]
-    assert "2 of 4 moves" in r.reason or "of 4 moves" in r.reason
+    assert r.reason == "log reaches 1 of 3 undos (cut off, or past the cap)"
+    assert [f.message for f in r.flags[1:]] == [
+        "log reaches 2 moves, game_ended says 4 (cut off, or past the cap)",
+        "log stops before the winning move",
+    ]
+
+
+def test_a_prefix_with_more_moves_but_fewer_undos_is_incomplete_not_invalid() -> None:
+    # moves go back down on an undo, so only undos tell a prefix: this log has 2 moves and
+    # 1 undo, the final result 1 move and 3 undos, and it is not solved
+    ended = {"level": 1, "moves": 1, "undos": 3, "won": True}
+    r = run(log(GOLDEN_UNITS[:1], ended=ended))
+    assert r.verdict == INCOMPLETE and all(f.effect == INCOMPLETE for f in r.flags)
+    assert r.reason == "log reaches 1 of 3 undos (cut off, or past the cap)"
+    assert "log stops before the winning move" in [f.message for f in r.flags]
+    # the same moves with undos equal or higher is a contradiction
+    ended = {"level": 1, "moves": 1, "undos": 1, "won": False}
+    assert run(log(GOLDEN_UNITS[:1], ended=ended)).verdict == INVALID
 
 
 @pytest.mark.parametrize(
@@ -290,6 +319,21 @@ def test_won_but_the_board_is_not_solved_is_invalid() -> None:
 
 def test_result_fields_the_game_did_not_send_are_not_compared() -> None:
     assert run(log(ended={"won": True})).verdict == COMPLETE
+    abandon = {"level": 1, "moves": 1, "won": False}  # an abandon sends no undos
+    assert run(log([[[0, 1, 4]]], ended=abandon)).verdict == COMPLETE
+
+
+def test_a_game_ended_with_no_result_is_incomplete_not_complete() -> None:
+    for ended in ({"outcome": "abandoned"}, {}, {"level": 1, "undos": 0}):
+        r = run(log([[[0, 1, 4]]], ended=ended))
+        assert r.verdict == INCOMPLETE
+        assert r.reason == "game_ended has no result to check against"
+
+
+def test_a_completed_outcome_needs_a_solved_board() -> None:
+    r = run(log([[[0, 1, 4]]], ended={"outcome": "completed"}))
+    assert r.verdict == INVALID and "not solved" in r.reason
+    assert run(log(ended={"outcome": "completed"})).verdict == INCOMPLETE  # solved, but no result
 
 
 # -- incompatible --------------------------------------------------------------
@@ -324,6 +368,24 @@ def test_an_unreadable_catalog_level_is_incompatible() -> None:
     broken = {**CATALOG, "levels": [["AZ,,", 1]]}
     r = rebuild(log(), broken)
     assert r.verdict == INVALID and flags(r) == ["incompatible_catalog"]
+
+
+@pytest.mark.parametrize("entry", [[None, 1], [5, 1], [[], 1], [{"a": 1}, 1], None, 3])
+def test_a_malformed_catalog_entry_is_incompatible_not_a_traceback(entry: Any) -> None:
+    r = rebuild(log(), {**CATALOG, "levels": [entry]})
+    assert r.verdict == INVALID and flags(r) == ["incompatible_catalog"]
+
+
+def test_the_bottle_depth_is_the_solvers_and_the_apps() -> None:
+    import re
+
+    from sort import fast_solver
+    from sort import rebuild as module
+
+    types_ts = Path(__file__).resolve().parents[2] / "frontend/src/game/sort/types.ts"
+    app = re.search(r"export const BOTTLE_DEPTH = (\d+);", types_ts.read_text())
+    assert app is not None
+    assert module.BOTTLE_DEPTH == fast_solver.DEPTH == int(app.group(1))
 
 
 def test_client_supplied_values_are_printed_safely() -> None:

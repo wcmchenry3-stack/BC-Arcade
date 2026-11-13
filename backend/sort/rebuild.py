@@ -43,10 +43,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from sort.fast_solver import DEPTH
-
 CATALOG_PATH = Path(__file__).resolve().parents[2] / "frontend/src/game/sort/levels.catalog.json"
 
+BOTTLE_DEPTH = 4
+"""Units a bottle holds (``BOTTLE_DEPTH`` in engine types.ts); a test holds it equal to the app's and the solver's."""
 ENGINE_VERSION = 1
 MOVES_VERSION = 1
 MAX_BOTTLES = 16
@@ -130,7 +130,7 @@ def decode_level(encoded: str, legend: list[str]) -> Board:
 
 def is_valid_pour(src: list[str], dst: list[str]) -> bool:
     """``isValidPour``: something to pour, room to take it, and the same top colour (or empty)."""
-    return bool(src) and len(dst) < DEPTH and (not dst or dst[-1] == src[-1])
+    return bool(src) and len(dst) < BOTTLE_DEPTH and (not dst or dst[-1] == src[-1])
 
 
 def apply_pour(board: Board, frm: int, to: int) -> tuple[Board, str, int]:
@@ -145,7 +145,7 @@ def apply_pour(board: Board, frm: int, to: int) -> tuple[Board, str, int]:
         if c != color:
             break
         run += 1
-    n = min(run, DEPTH - len(dst))
+    n = min(run, BOTTLE_DEPTH - len(dst))
     for _ in range(n):
         dst.append(src.pop())
     return new, color, n
@@ -153,7 +153,7 @@ def apply_pour(board: Board, frm: int, to: int) -> tuple[Board, str, int]:
 
 def is_solved(board: Board) -> bool:
     """``isComplete``: every bottle empty, or full of one colour."""
-    return all(not b or (len(b) == DEPTH and len(set(b)) == 1) for b in board)
+    return all(not b or (len(b) == BOTTLE_DEPTH and len(set(b)) == 1) for b in board)
 
 
 # -- reading -------------------------------------------------------------------
@@ -294,7 +294,7 @@ def _opening(out: Rebuilt, started: dict[str, Any], catalog: dict[str, Any] | No
         return None
     try:
         return decode_level(levels[level - 1][0], catalog["legend"])
-    except (ValueError, TypeError, KeyError, IndexError) as e:
+    except (ValueError, TypeError, KeyError, IndexError, AttributeError) as e:
         _incompatible(
             out, "incompatible_catalog", f"incompatible catalog: level {level} unreadable ({e})"
         )
@@ -354,13 +354,20 @@ class _Units:
 
 def _envelope_problem(data: dict[str, Any]) -> str | None:
     unit, part, parts = data.get("unit"), data.get("part"), data.get("parts")
-    if data.get("v") != MOVES_VERSION or not _is_int(unit) or unit < 1:
+    if (
+        not _is_int(data.get("v"))
+        or data.get("v") != MOVES_VERSION
+        or not _is_int(unit)
+        or unit < 1
+    ):
         return "a moves event has a bad envelope (v or unit)"
     if not isinstance(data.get("m"), list):
         return f"unit {unit}: m is not a list"
     if (part is None) != (parts is None):
         return f"unit {unit}: part and parts come together"
-    if part is not None and not (_is_int(part) and _is_int(parts) and 0 <= part < parts):
+    if part is not None and not (
+        _is_int(part) and _is_int(parts) and parts >= 2 and 0 <= part < parts
+    ):
         return f"unit {unit}: part {_v(part)} of {_v(parts)} makes no sense"
     return None
 
@@ -397,25 +404,49 @@ def _check_result(out: Rebuilt, ended: dict[str, Any]) -> None:
                 f"game_ended is for level {ended['level']}, the log is level {out.level}",
             )
         )
-    short = False
-    for key, got in (("moves", out.moves), ("undos", out.undos)):
-        want = ended.get(key)
-        if not _is_int(want):
-            continue
-        if got > want:
-            flags.append(Flag("mismatch", INVALID, f"log has {got} {key}, game_ended says {want}"))
-        elif got < want:
-            short = True
+    want_moves, want_undos = ended.get("moves"), ended.get("undos")
+    won, outcome = ended.get("won"), ended.get("outcome")
+    if not _is_int(want_moves) and not isinstance(won, bool):
+        flags.append(Flag("truncated", INCOMPLETE, "game_ended has no result to check against"))
+    # undos only ever grow, moves do not (an undo takes one back): fewer undos than the
+    # result says means the log is a prefix, whatever its move count
+    prefix = False
+    if _is_int(want_undos):
+        if out.undos > want_undos:
+            flags.append(
+                Flag(
+                    "mismatch", INVALID, f"log has {out.undos} undos, game_ended says {want_undos}"
+                )
+            )
+        elif out.undos < want_undos:
+            prefix = True
             flags.append(
                 Flag(
                     "truncated",
                     INCOMPLETE,
-                    f"log reaches {got} of {want} {key} (cut off, or past the cap)",
+                    f"log reaches {out.undos} of {want_undos} undos (cut off, or past the cap)",
                 )
             )
-    won = ended.get("won")
-    if won is True and not out.solved:
-        if short:
+    if _is_int(want_moves) and out.moves != want_moves:
+        if out.moves < want_moves or prefix:
+            prefix = True
+            flags.append(
+                Flag(
+                    "truncated",
+                    INCOMPLETE,
+                    f"log reaches {out.moves} moves, game_ended says {want_moves} "
+                    "(cut off, or past the cap)",
+                )
+            )
+        else:
+            flags.append(
+                Flag(
+                    "mismatch", INVALID, f"log has {out.moves} moves, game_ended says {want_moves}"
+                )
+            )
+    claims_win = won is True or (won is None and outcome == "completed")
+    if claims_win and not out.solved:
+        if prefix:
             flags.append(Flag("truncated", INCOMPLETE, "log stops before the winning move"))
         else:
             flags.append(
