@@ -124,17 +124,18 @@ These files can contain current release facts, but they are not the evergreen ar
 
 Preserve these because they contain evidence and rationale, but use the canonical docs/code for current behavior.
 
-| Document                                                              | Purpose                                                                                                           |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| [HEARTS_PIMC_SPIKE.md](research/HEARTS_PIMC_SPIKE.md)                 | Hearts AI PIMC research and follow-up evidence                                                                    |
-| [YACHT_ORACLE.md](research/YACHT_ORACLE.md)                           | Yacht optimal-play oracle design/reference                                                                        |
-| [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md)             | Cascade asset investigation                                                                                       |
-| [asset-budget-plan.md](research/asset-budget-plan.md)                 | Packaged-asset budget plan (#3631): store-config measurement, ranked size wins, budget rule                       |
-| [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md)                     | Cascade physics design/reference                                                                                  |
-| [CASCADE-THEMING.md](research/CASCADE-THEMING.md)                     | Cascade theming design/reference                                                                                  |
-| [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
-| [mahjong-renderer-split.md](research/mahjong-renderer-split.md)       | Why Mahjong has Skia and Canvas2D renderers, unify options, native screenshot testing (#3707)                     |
-| [animation-lab.html](research/animation-lab.html)                     | Dev-only animation/sound preview page (serve from the repo root; see its header)                                  |
+| Document                                                                  | Purpose                                                                                                           |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| [HEARTS_PIMC_SPIKE.md](research/HEARTS_PIMC_SPIKE.md)                     | Hearts AI PIMC research and follow-up evidence                                                                    |
+| [YACHT_ORACLE.md](research/YACHT_ORACLE.md)                               | Yacht optimal-play oracle design/reference                                                                        |
+| [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md)                 | Cascade asset investigation                                                                                       |
+| [asset-budget-plan.md](research/asset-budget-plan.md)                     | Packaged-asset budget plan (#3631): store-config measurement, ranked size wins, budget rule                       |
+| [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md)                         | Cascade physics design/reference                                                                                  |
+| [CASCADE-THEMING.md](research/CASCADE-THEMING.md)                         | Cascade theming design/reference                                                                                  |
+| [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md)     | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
+| [starswarm-hits-by-tier-plan.md](research/starswarm-hits-by-tier-plan.md) | Star Swarm: record which enemy tier hit the player (#3710): plan, replay/save impact, data cost, owner decisions  |
+| [mahjong-renderer-split.md](research/mahjong-renderer-split.md)           | Why Mahjong has Skia and Canvas2D renderers, unify options, native screenshot testing (#3707)                     |
+| [animation-lab.html](research/animation-lab.html)                         | Dev-only animation/sound preview page (serve from the repo root; see its header)                                  |
 
 ## Audits and point-in-time snapshots
 

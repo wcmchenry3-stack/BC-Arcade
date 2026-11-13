@@ -2,7 +2,15 @@
  * Mahjong deal seed in `game_started` (#3281): the recorded seed + layout rebuild
  * the identical opening.
  */
-import { createGame, dealEventData, drawDealSeed, ENGINE_VERSION, setRng } from "../engine";
+import {
+  createGame,
+  dealEventData,
+  drawDealSeed,
+  E2E_DEAL_SEED,
+  ENGINE_VERSION,
+  hasFreePairs,
+  setRng,
+} from "../engine";
 import { getLayout, LAYOUTS } from "../layouts/registry";
 import { createSeededRng } from "../../_shared/seededRng";
 
@@ -39,5 +47,30 @@ describe("mahjong deal seed", () => {
 
   it("leaves the seed out when it is unknown (a restored save)", () => {
     expect(dealEventData("turtle")).toEqual({ layout: "turtle", engine_version: ENGINE_VERSION });
+  });
+});
+
+describe("mahjong fixed deal in test builds (#3803)", () => {
+  const ORIGINAL = process.env.EXPO_PUBLIC_TEST_HOOKS;
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    else process.env.EXPO_PUBLIC_TEST_HOOKS = ORIGINAL;
+  });
+
+  it.each(LAYOUTS.map((l) => l.id))("deals the same %s board every time", (id) => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    const a = createGame(getLayout(id), drawDealSeed());
+    setRng(createSeededRng(99)); // the RNG slot must not matter
+    const b = createGame(getLayout(id), drawDealSeed());
+    expect(drawDealSeed()).toBe(E2E_DEAL_SEED);
+    expect(b.tiles).toEqual(a.tiles);
+    expect(hasFreePairs(a.tiles)).toBe(true);
+  });
+
+  it("is random without the flag", () => {
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    const seeds = new Set(Array.from({ length: 10 }, () => drawDealSeed()));
+    expect(seeds.size).toBeGreaterThan(1);
+    expect(seeds.has(E2E_DEAL_SEED)).toBe(false);
   });
 });
