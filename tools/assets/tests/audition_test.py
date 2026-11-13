@@ -479,3 +479,16 @@ def test_mix_events_limit_cuts_and_pads_to_the_recording():
     out = common.mix_events([(np.full(10 * common.SR, 0.1), 1.0)], limit=3.0)
     assert len(out) == 3 * common.SR
     assert common.mix_events([(np.full(10, 0.1), 5.0)], limit=3.0).max() == 0.0
+
+
+@needs_ffmpeg
+def test_preview_never_touches_an_input_wav_named_like_the_old_scratch_file(tmp_path):
+    # The scratch wav used to be `<output>.wav`: previewing that very file overwrote then deleted it.
+    wav = tmp_path / "sound.wav"
+    common.write_wav(_tone(1000, 0.4, 0.1), wav)
+    before = wav.read_bytes()
+    r = preview.make_preview([str(wav)], tmp_path / "sound.mp4")
+    assert wav.read_bytes() == before
+    assert r["length_s"] == pytest.approx(0.4, abs=0.01)
+    assert (tmp_path / "sound.mp4").is_file()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["sound.mp4", "sound.png", "sound.wav"]

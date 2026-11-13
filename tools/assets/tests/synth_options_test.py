@@ -128,7 +128,11 @@ def test_option_a_is_the_shipped_pick_itself():
         assert options["A"] is synth_puzzle_sfx.SOUNDS[sound]
 
 
-def test_the_generators_normal_run_writes_only_shipped_sounds(tmp_path):
+def test_the_generators_normal_run_writes_only_shipped_sounds(tmp_path, monkeypatch):
+    # The encoder is stubbed, so this runs without ffmpeg: it is the names that are checked.
+    monkeypatch.setattr(
+        synth_puzzle_sfx, "write_ogg", lambda _x, path: Path(path).write_bytes(b"x")
+    )
     synth_puzzle_sfx.main(tmp_path, ["daily-word-win", "daily-word-loss"])
     assert sorted(p.name for p in tmp_path.iterdir()) == [
         "daily-word-loss.ogg",

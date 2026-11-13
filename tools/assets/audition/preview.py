@@ -20,7 +20,9 @@ Generators write options with `synth_*_sfx.py --options <sound>`; see README.md.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -63,7 +65,9 @@ def make_preview(specs: list[str], out_mp4: Path, title: str | None = None) -> d
     x = mix_events([(decode(p), at) for p, at in parsed])
     padded = np.concatenate([x, np.zeros(int(TAIL * SR))])
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
-    wav = out_mp4.with_suffix(".wav")
+    # A scratch folder of its own: the wav can never be (or overwrite) an input or the output.
+    scratch = Path(tempfile.mkdtemp(prefix="bc-preview-"))
+    wav = scratch / "preview.wav"
     png = out_mp4.with_suffix(".png")
     write_wav(padded, wav)
     try:
@@ -77,7 +81,7 @@ def make_preview(specs: list[str], out_mp4: Path, title: str | None = None) -> d
         cmd += ["-b:a", "160k", "-shortest", str(out_mp4)]
         run(cmd)
     finally:
-        wav.unlink(missing_ok=True)
+        shutil.rmtree(scratch, ignore_errors=True)
     return report(x, [p for p, _ in parsed], out_mp4)
 
 
