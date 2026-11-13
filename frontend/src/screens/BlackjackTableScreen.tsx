@@ -527,14 +527,15 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         </ScrollView>
       ) : (
         <>
-          {/* Slim HUD strip: table, chips / goal, progress */}
-          {state && engine?.runGoal != null && (
+          {/* Slim HUD strip: table, chips / goal, progress. Without a goal (Keep Playing) it keeps
+              the table and chips (#3617). */}
+          {state && engine && (
             <View style={styles.hud}>
               <HudSidebar
                 // The settled count shows once the payout lands (#3581).
                 chips={motion.shownChips ?? engine.chips}
                 startingChips={engine.startingChips}
-                runGoal={engine.runGoal}
+                runGoal={engine.runGoal ?? null}
                 milestones={activeTable.milestones}
                 tableName={t(activeTable.labelKey as Parameters<typeof t>[0])}
                 tableAccentColor={tableAccentColor}

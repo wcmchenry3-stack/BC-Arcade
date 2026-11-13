@@ -1,5 +1,5 @@
-import React from "react";
-import { PixelRatio, StyleSheet, View } from "react-native";
+import React, { useMemo } from "react";
+import { PixelRatio, Platform, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import type { Grid, Variant } from "../../game/sudoku/types";
@@ -14,11 +14,16 @@ interface Props {
   /** Solution string; with `showMistakes`, legal-but-wrong digits are coloured (#2943). */
   solution?: string;
   showMistakes?: boolean;
+  /**
+   * The board's width and height in points (#3773). The screen sizes it from the space left above
+   * the controls; the digits and notes scale with it. Omitted, the board fills its parent's width.
+   */
+  boardSize?: number;
   onCellPress: (row: number, col: number) => void;
 }
 
-/** Gap between a cell's highlight and the separators around it (see the wrapper below). */
-const CELL_INSET = 2;
+/** The board's outer border (the thick box-border width). */
+const BOARD_BORDER = 2;
 
 export default function SudokuGrid({
   grid,
@@ -27,12 +32,16 @@ export default function SudokuGrid({
   variant,
   solution,
   showMistakes = false,
+  boardSize,
   onCellPress,
 }: Props) {
   const { t } = useTranslation("sudoku");
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const { size, boxRows, boxCols } = variantConfig(variant);
   const strongColor = colors.boxBorder;
+  // The board's base: cream cells sit on the raised cream in light, where `surface` is too close to
+  // the page for a wash to read; dark keeps its `surface`.
+  const surface = theme === "light" ? colors.surfaceHigh : colors.surface;
 
   // Digit of the currently-selected cell (0 = empty / nothing to match).
   const selectedValue =
@@ -40,18 +49,57 @@ export default function SudokuGrid({
       ? (grid[selectedRow]?.[selectedCol]?.value ?? 0)
       : 0;
 
+  const sameBox = (r: number, c: number, r2: number, c2: number): boolean =>
+    Math.floor(r / boxRows) === Math.floor(r2 / boxRows) &&
+    Math.floor(c / boxCols) === Math.floor(c2 / boxCols);
+
+  // The selected cell's row, column and box.
   const isPeer = (r: number, c: number): boolean => {
     if (selectedRow === null || selectedCol === null) return false;
     if (r === selectedRow && c === selectedCol) return false;
-    return r === selectedRow || c === selectedCol;
+    return r === selectedRow || c === selectedCol || sameBox(r, c, selectedRow, selectedCol);
   };
+
+  // Cells that clash with a conflicting cell: the same digit in its row, column or box.
+  const clashes = useMemo(() => {
+    const out = new Set<number>();
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        const cell = grid[r]?.[c];
+        if (!cell || !cell.isError || cell.value === 0) continue;
+        for (let r2 = 0; r2 < size; r2++) {
+          for (let c2 = 0; c2 < size; c2++) {
+            if (r2 === r && c2 === c) continue;
+            if (grid[r2]?.[c2]?.value !== cell.value) continue;
+            if (r2 === r || c2 === c || sameBox(r, c, r2, c2)) out.add(r2 * size + c2);
+          }
+        }
+      }
+    }
+    return out;
+    // sameBox only reads the variant's box shape
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grid, size, boxRows, boxCols]);
+
+  const cellPx = boardSize === undefined ? undefined : (boardSize - 2 * BOARD_BORDER) / size;
+  const hairline = 1 / PixelRatio.get();
 
   return (
     <View
       accessibilityLabel={t("a11y.board")}
+      // A grid on native; on web a `grid` role needs row and gridcell children (axe: aria-required-children),
+      // which a View tree of buttons does not give, so it is a labelled group there.
+      role={Platform.OS === "web" ? "group" : "grid"}
+      testID="sudoku-board"
       style={[
         styles.grid,
-        { borderWidth: 2, borderColor: strongColor, borderRadius: 4, overflow: "hidden" },
+        boardSize === undefined ? styles.fill : { width: boardSize, height: boardSize },
+        {
+          borderWidth: BOARD_BORDER,
+          borderColor: strongColor,
+          borderRadius: 4,
+          overflow: "hidden",
+        },
       ]}
     >
       {grid.map((row, r) => (
@@ -61,17 +109,15 @@ export default function SudokuGrid({
             const isBoxTop = r % boxRows === 0;
             const isBoxRight = (c + 1) % boxCols === 0;
             const isBoxBottom = (r + 1) % boxRows === 0;
-            const hairline = 1 / PixelRatio.get();
+            const isSelected = r === selectedRow && c === selectedCol;
             return (
               <View
                 key={`${r}-${c}`}
                 style={{
                   flex: 1,
-                  // Opaque surface + inset: the translucent selected / match / peer
-                  // washes in SudokuCell never touch a separator, so every border
-                  // sits next to `surface` (>= 3:1, WCAG 1.4.11) in every cell state.
-                  backgroundColor: colors.surface,
-                  padding: CELL_INSET,
+                  // Opaque base under the cell, so a translucent wash never lets a separator
+                  // or the page show through.
+                  backgroundColor: surface,
                   borderLeftWidth: c === 0 ? 0 : isBoxLeft ? 2 : hairline,
                   borderLeftColor: isBoxLeft ? strongColor : colors.border,
                   borderTopWidth: r === 0 ? 0 : isBoxTop ? 2 : hairline,
@@ -87,13 +133,13 @@ export default function SudokuGrid({
                   row={r}
                   col={c}
                   size={size}
-                  selected={r === selectedRow && c === selectedCol}
-                  highlighted={
-                    selectedValue !== 0 &&
-                    cell.value === selectedValue &&
-                    !(r === selectedRow && c === selectedCol)
-                  }
+                  box={Math.floor(r / boxRows) * (size / boxCols) + Math.floor(c / boxCols) + 1}
+                  cellPx={cellPx}
+                  surface={surface}
+                  selected={isSelected}
+                  highlighted={selectedValue !== 0 && cell.value === selectedValue && !isSelected}
                   peer={isPeer(r, c)}
+                  clash={clashes.has(r * size + c)}
                   mistake={
                     showMistakes &&
                     solution !== undefined &&
@@ -101,7 +147,7 @@ export default function SudokuGrid({
                     cell.value !== 0 &&
                     cell.value !== solution.charCodeAt(r * size + c) - 48
                   }
-                  onPress={() => onCellPress(r, c)}
+                  onPress={onCellPress}
                 />
               </View>
             );
@@ -114,9 +160,11 @@ export default function SudokuGrid({
 
 const styles = StyleSheet.create({
   grid: {
+    flexDirection: "column",
+  },
+  fill: {
     width: "100%",
     aspectRatio: 1,
-    flexDirection: "column",
   },
   row: {
     flex: 1,

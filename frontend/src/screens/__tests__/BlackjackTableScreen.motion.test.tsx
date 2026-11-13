@@ -463,17 +463,15 @@ describe("a split", () => {
     await advance(1);
     // Hand 1's WIN tag pops with its chips, then hand 2's LOSE 300 ms later.
     expect(tags()).toEqual(["Win"]);
-    expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
-      "+10 chips",
-    ]);
+    expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual(["+10"]);
     expect(banner()).toBe("Won: 1 · Lost: 1");
     await advance(299);
     expect(tags()).toEqual(["Win"]);
     await advance(1);
     expect(tags()).toEqual(["Win", "Lose"]);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
-      "+10 chips",
-      "-10 chips",
+      "+10",
+      "-10",
     ]);
     expect(banner()).toBe("Won: 1 · Lost: 1");
     await advance(COLLECT_MS);
@@ -672,7 +670,9 @@ describe("the split summary strip moves no hand", () => {
     const before = places();
     await advance(1);
     expect(resultShown()).toBe(true);
-    expect(screen.getByTestId("result-outcome").props.children).toBe("Won: 1 · Lost: 1 · Push: 1");
+    // 3–4 hands: the strip shows the net alone; its label reads the summary (#3781).
+    expect(screen.getByTestId("result-net").props.children).toBe("No change");
+    expect(screen.getByLabelText("Push. Won: 1 · Lost: 1 · Push: 1. Payout: 0 chips")).toBeTruthy();
     expect(places()).toEqual(before);
     await settle();
     expect(places()).toEqual(before);

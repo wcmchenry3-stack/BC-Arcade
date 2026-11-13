@@ -53,6 +53,13 @@ export interface Colors {
   /** Native `shadowOpacity` value to pair with `chromeShadowColor`. */
   chromeShadowOpacity: number;
   error: string;
+  /**
+   * The error red as the colour of TEXT (the HUD error count, a wrong Sudoku digit) on the page
+   * surfaces. `error` reaches only ~3.6:1 on cream, so it can't colour text there. Both themes
+   * reach WCAG AA (>= 4.5:1) on every surface and on the Sudoku washes. Rings, fills, washes and
+   * underlines stay `error`.
+   */
+  errorText: string;
   bonus: string;
   /**
    * Bottle Sort's hint destination ring (#3660), a 2 px border on `background`: reaches the
@@ -123,6 +130,10 @@ const TOKENS = {
   // Semantic
   errorDark: "#ff716c",
   errorLight: "#d94a42",
+  // Error as text: 4.7-5.9:1 on every cream surface and the Sudoku washes (a lighter red in dark,
+  // where the same-digit wash would hold `error` to 3.5:1)
+  errorTextDark: "#ff9a95",
+  errorTextLight: "#b52d26",
   bonusDark: "#4ade80",
   bonusLight: "#2da557",
   // Outcome — light variants darkened to clear 4.5:1 on cream surfaceHigh
@@ -179,6 +190,7 @@ export const dark: Colors = {
   chromeShadowColor: TOKENS.accentDark,
   chromeShadowOpacity: 0.08,
   error: TOKENS.errorDark,
+  errorText: TOKENS.errorTextDark,
   bonus: TOKENS.bonusDark,
   hintRing: TOKENS.bonusDark,
   outcomeWin: TOKENS.bonusDark,
@@ -236,6 +248,7 @@ export const light: Colors = {
   chromeShadowColor: "#000000",
   chromeShadowOpacity: 0.06,
   error: TOKENS.errorLight,
+  errorText: TOKENS.errorTextLight,
   bonus: TOKENS.bonusLight,
   hintRing: TOKENS.outcomeWinLight,
   outcomeWin: TOKENS.outcomeWinLight,

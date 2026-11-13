@@ -16,6 +16,13 @@ interface Props {
   detail?: string | null;
   /** "felt": a split round's summary ("Won: 1 · Lost: 2") in place of the outcome's words. */
   summary?: string | null;
+  /**
+   * "felt", a 3–4 hand split (#3781, owner decision): the pill shows the round's net payout alone
+   * ("+25 chips"), at every size; each hand's row or cell shows its own tag and payout, and the
+   * summary and the payout do not fit the band together in every locale.
+   * Its accessibility label still reads the whole result: outcome, summary and payout.
+   */
+  netOnly?: boolean;
 }
 
 /** The outcome's words. On the felt a natural says what it pays: "Blackjack! 3:2" (#3621). */
@@ -39,6 +46,43 @@ function feltLabelOf(
   return outcome === "blackjack" ? t("outcome.blackjackNaturalLabel") : undefined;
 }
 
+interface FeltText {
+  text: string;
+  label: string | undefined;
+  color: string;
+}
+
+/** The felt pill's usual line: the outcome's words (or a split round's summary), then the payout. */
+function FeltOutcomeAndPayout({
+  compact,
+  outcome,
+  payout,
+}: {
+  compact: boolean;
+  outcome: FeltText;
+  payout: FeltText;
+}) {
+  return (
+    <>
+      <Text
+        testID="result-outcome"
+        style={[styles.feltOutcome, compact && styles.feltOutcomeCompact, { color: outcome.color }]}
+        numberOfLines={1}
+        accessibilityLabel={outcome.label}
+      >
+        {outcome.text}
+      </Text>
+      <Text
+        style={[styles.feltPayout, compact && styles.feltPayoutCompact, { color: payout.color }]}
+        accessibilityLabel={payout.label}
+        numberOfLines={1}
+      >
+        {payout.text}
+      </Text>
+    </>
+  );
+}
+
 export default function ResultBanner({
   outcome,
   payout,
@@ -46,6 +90,7 @@ export default function ResultBanner({
   variant = "card",
   detail,
   summary = null,
+  netOnly = false,
 }: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -83,6 +128,13 @@ export default function ResultBanner({
   }
 
   if (variant === "felt") {
+    const outcomeLabel = feltLabelOf(
+      (key) => t(key as Parameters<typeof t>[0]),
+      outcome,
+      outcomeText,
+      summary
+    );
+    const payoutLabel = t("payout.accessibilityLabel", { amount: payout });
     return (
       <View style={styles.feltWrap} accessibilityLiveRegion="polite">
         <View
@@ -92,30 +144,22 @@ export default function ResultBanner({
             { backgroundColor: colors.surfaceHigh, borderColor: accentColor },
           ]}
         >
-          <Text
-            testID="result-outcome"
-            style={[
-              styles.feltOutcome,
-              compact && styles.feltOutcomeCompact,
-              { color: accentColor },
-            ]}
-            numberOfLines={1}
-            accessibilityLabel={feltLabelOf(
-              (key) => t(key as Parameters<typeof t>[0]),
-              outcome,
-              outcomeText,
-              summary
-            )}
-          >
-            {summary ?? outcomeText}
-          </Text>
-          <Text
-            style={[styles.feltPayout, compact && styles.feltPayoutCompact, { color: payoutColor }]}
-            accessibilityLabel={t("payout.accessibilityLabel", { amount: payout })}
-            numberOfLines={1}
-          >
-            {payoutText}
-          </Text>
+          {netOnly ? (
+            <Text
+              testID="result-net"
+              style={[styles.feltOutcome, styles.feltOutcomeCompact, { color: payoutColor }]}
+              numberOfLines={1}
+              accessibilityLabel={`${outcomeLabel ?? outcomeText}. ${payoutLabel}`}
+            >
+              {payoutText}
+            </Text>
+          ) : (
+            <FeltOutcomeAndPayout
+              compact={compact}
+              outcome={{ text: summary ?? outcomeText, label: outcomeLabel, color: accentColor }}
+              payout={{ text: payoutText, label: payoutLabel, color: payoutColor }}
+            />
+          )}
         </View>
         {/* compact (split rows / grid): one line; each hand and the dealer show their own totals */}
         {detail && !compact ? (

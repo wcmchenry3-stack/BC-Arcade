@@ -61,6 +61,7 @@ Tokens live in `frontend/src/theme/ThemeContext.tsx`. Import via `useTheme()` �
 | `secondary`    | `#d674ff` | Magenta secondary — combo, alt state                                           |
 | `tertiary`     | `#cafd00` | Lime tertiary — tertiary accents                                               |
 | `error`        | `#ff716c` | Errors, critical mass                                                          |
+| `errorText`    | `#ff9a95` | Error red for text: ≥ 4.5:1 on every surface and the Sudoku washes             |
 | `bonus`        | `#4ade80` | Positive confirmations                                                         |
 
 ### Light theme
@@ -83,6 +84,7 @@ Stitch only ships a dark mockup. The light theme is **first-class** and maintain
 | `secondary`    | `#a34fc4` | Darkened magenta                                                               |
 | `tertiary`     | `#8fa800` | Darkened lime                                                                  |
 | `error`        | `#d94a42` | Errors                                                                         |
+| `errorText`    | `#b52d26` | Error red for text: ≥ 4.5:1 on every cream surface and the Sudoku washes       |
 | `bonus`        | `#2da557` | Positive confirmations (large text/UI)                                         |
 
 The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
@@ -92,6 +94,10 @@ The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 ### Accent as text: `accentText` (#3748)
 
 The light accent `#1bc5d4` measures 1.6–2:1 on cream, so it can't colour text. **Any text (or thin stroke) that would be `colors.accent` is `colors.accentText`**: in dark it is the accent itself, in light a darker teal `#006d77` that reaches **≥ 4.5:1** on `background`, `surface`, `surfacePeer`, `surfaceAlt`, `surfaceHigh` and the held-die tint (`frontend/src/theme/__tests__/accentTextContrast.test.ts`). Backgrounds, button fills, bars and borders that carry no information stay `accent`. The light `potential` token (Yacht's potential scores) is `accentText`.
+
+### Error as text: `errorText` (#3773)
+
+The light error `#d94a42` is ~3.6:1 on cream, so it can't colour small text. **Text that would be `colors.error` is `colors.errorText`** (the HUD error count, a wrong or conflicting Sudoku digit): in light a darker red `#b52d26`, in dark a lighter `#ff9a95` (the dark `error` is 3.5:1 on the same-digit wash), both **≥ 4.5:1** on every page surface and Sudoku wash (`frontend/src/theme/__tests__/errorTextContrast.test.ts`, `components/sudoku/__tests__/boardContrast.test.ts`). Rings, washes, fills and underlines stay `error`.
 
 Not switched, by design: icons and spinners (graphics need 3:1, not 4.5:1), text on a fixed dark surface (the dark header bar, the blackjack and solitaire felt, dev panels) where the bright accent is the readable one.
 

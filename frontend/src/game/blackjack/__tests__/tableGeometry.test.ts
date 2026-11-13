@@ -7,6 +7,8 @@
  * GameShell's bottom padding); 320×568 and 375×667 match the felt measured in
  * the web build's screenshots (216 / 315 high).
  */
+import * as fs from "fs";
+import * as path from "path";
 import {
   ACTIVE_ROW_SHARE,
   DOCK_BUTTON_HEIGHT,
@@ -17,6 +19,8 @@ import {
   DOCK_PADDING_TOP,
   MIN_ROW_H,
   ROW_LABEL_CONTENT_HEIGHT,
+  ROW_LABEL_WIDTH,
+  splitResultLabel,
   cardCapFor,
   computeTableGeometry,
   estimateFeltSize,
@@ -523,3 +527,249 @@ describe("the wide arrangement (landscape window, short felt)", () => {
     }
   });
 });
+
+// #3771: a 2-hand split's label at the result read "HA…" at 390×844. The label is one line (the
+// name, the total, the tag and the payout), and in English that is 197 px against labels of 140
+// to 195. Measured in the app's fonts (web build, Space Grotesk / Manrope): the widest English
+// line with no name and the payout as a signed number ("21*", "PUSH", "-25").
+const EN_COMPACT_RESULT_LINE = 105;
+
+describe.each([SMALLEST, ...PHONES])("a split hand's label at the result at $name", (phone) => {
+  it.each([2, 3, 4])("%i hands: nothing in it is cut off; the cards keep their size", (n) => {
+    const at = (showResult: boolean) =>
+      geometry(phone, {
+        dealerCards: 3,
+        handCards: same(n, 3),
+        activeHandIndex: showResult ? null : 0,
+        showResult,
+      });
+    const g = at(true);
+    for (const h of g.hands) {
+      const label = splitResultLabel(g.mode);
+      if (g.mode === "rows") {
+        // A row's label is a column: the name and total, over the tag and payout (#3782).
+        expect(label).toEqual({ column: true, named: true, totalBesideName: true });
+        expect(h.label.width).toBe(ROW_LABEL_WIDTH);
+        expect(h.label.height).toBeGreaterThanOrEqual(ROW_LABEL_CONTENT_HEIGHT);
+        continue;
+      }
+      // One line: the name gives way to the result, the payout is a signed number, and it fits.
+      expect(label).toEqual({ column: false, named: false, totalBesideName: false });
+      expect(h.label.width).toBeGreaterThanOrEqual(EN_COMPACT_RESULT_LINE);
+    }
+    // The label keeps its height, so no card is smaller than in play.
+    if (g.mode === "fans") {
+      const play = at(false);
+      g.hands.forEach((h, i) => {
+        expect(h.label.height).toBe(play.hands[i]!.label.height);
+        expect(h.fan.cardWidth).toBe(play.hands[i]!.fan.cardWidth);
+      });
+    }
+  });
+});
+
+describe("splitResultLabel", () => {
+  it("keeps the name only in a row's label; every split payout is a signed number", () => {
+    expect(splitResultLabel("rows")).toEqual({ column: true, named: true, totalBesideName: true });
+    // Owner decision (#3779): never in words, at any width. The worded Russian line on a doubled
+    // high-roller hand ("-400 фишек") is 196 px, wider than the 430 fan label (195).
+    for (const mode of ["single", "fans", "grid", "wide"] as const) {
+      expect(splitResultLabel(mode)).toEqual({
+        column: false,
+        named: false,
+        totalBesideName: false,
+      });
+    }
+  });
+});
+
+// #3771 known gap: the wide arrangement (a landscape fallback; phones are locked to portrait,
+// #3603) gives 3–4 hands labels narrower than the compact line. Pinned so a change shows here.
+describe("a split hand's label in the wide arrangement (landscape fallback)", () => {
+  it.each([
+    [568, 320, [129.6, 96, 76]],
+    [667, 375, [143.39, 120, 94.4]],
+  ])("%i×%i: nameless and compact at the result; label widths pinned", (w, h, widths) => {
+    [2, 3, 4].forEach((n, k) => {
+      const g = computeTableGeometry({
+        feltWidth: w - 18,
+        feltHeight: 160,
+        screenWidth: w,
+        screenHeight: h,
+        dealerCards: 3,
+        handCards: same(n, 3),
+        activeHandIndex: null,
+        showResult: true,
+      });
+      expect(g.mode).toBe("wide");
+      expect(splitResultLabel(g.mode)).toEqual({
+        column: false,
+        named: false,
+        totalBesideName: false,
+      });
+      for (const hand of g.hands) expect(hand.label.width).toBeCloseTo(widths[k]!, 1);
+      // The known gap, from the geometry itself: which hand counts get a label narrower than the
+      // compact line (3–4 hands at 568×320, 4 hands at 667×375; 2 hands always fit).
+      expect(g.hands[0]!.label.width < EN_COMPACT_RESULT_LINE).toBe(
+        n === 4 || (n === 3 && w === 568)
+      );
+    });
+  });
+});
+
+// #3782: a split hand's result line in every locale, with a 3-digit payout (a doubled 200 bet at
+// the top table shows -400). Measured in the app's fonts (web build: Space Grotesk tag and total,
+// Manrope name, the system font payout), as #3771 measured, for these exact strings, with the
+// total pill sized for a soft total ("21*") and a 3-digit payout. The widths are pinned by hand:
+// a changed tag or hand name fails the coverage test below until it is measured again and the
+// numbers here updated; the tests do not measure text themselves.
+// - oneLine: total + tag + payout, one line (fans, the grid): the 320 px phone's labels are 140.
+// - nameAndTotal / tagAndPayout: a row's two lines at the result, in its 100 px column.
+// Before #3782 Russian's "Проигрыш" made the one-line label 158 px (cut off at 320 px) and a
+// row's one line (total + tag + payout) was 116 px in English and 158 in Russian.
+const MEASURED_RESULT_LINES: Record<
+  string,
+  { hand: string; tags: string[]; oneLine: number; nameAndTotal: number; tagAndPayout: number }
+> = {
+  ar: {
+    hand: "اليد",
+    tags: ["فوز", "تعادل", "خسارة"],
+    oneLine: 117,
+    nameAndTotal: 70,
+    tagAndPayout: 71,
+  },
+  de: {
+    hand: "Hand",
+    tags: ["Gewinn", "Remis", "Verlust"],
+    oneLine: 136,
+    nameAndTotal: 90,
+    tagAndPayout: 90,
+  },
+  en: {
+    hand: "Hand",
+    tags: ["Win", "Push", "Lose"],
+    oneLine: 116,
+    nameAndTotal: 90,
+    tagAndPayout: 70,
+  },
+  es: {
+    hand: "Mano",
+    tags: ["Gana", "Empate", "Pierde"],
+    oneLine: 127,
+    nameAndTotal: 92,
+    tagAndPayout: 80,
+  },
+  "fr-CA": {
+    hand: "Main",
+    tags: ["Gagné", "Égalité", "Perdu"],
+    oneLine: 127,
+    nameAndTotal: 87,
+    tagAndPayout: 81,
+  },
+  he: {
+    hand: "יד",
+    tags: ["ניצחון", "תיקו", "הפסד"],
+    oneLine: 118,
+    nameAndTotal: 67,
+    tagAndPayout: 72,
+  },
+  hi: {
+    hand: "हाथ",
+    tags: ["जीत", "बराबरी", "हार"],
+    oneLine: 108,
+    nameAndTotal: 73,
+    tagAndPayout: 62,
+  },
+  ja: {
+    hand: "ハンド",
+    tags: ["勝ち", "引き分け", "負け"],
+    oneLine: 113,
+    nameAndTotal: 91,
+    tagAndPayout: 67,
+  },
+  ko: { hand: "핸드", tags: ["승", "무", "패"], oneLine: 102, nameAndTotal: 80, tagAndPayout: 56 },
+  nl: {
+    hand: "Hand",
+    tags: ["Winst", "Gelijk", "Verlies"],
+    oneLine: 132,
+    nameAndTotal: 90,
+    tagAndPayout: 86,
+  },
+  pt: {
+    hand: "Mão",
+    tags: ["Vitória", "Empate", "Derrota"],
+    oneLine: 138,
+    nameAndTotal: 83,
+    tagAndPayout: 91,
+  },
+  ru: {
+    hand: "Рука",
+    tags: ["Победа", "Ничья", "Минус"],
+    oneLine: 139,
+    nameAndTotal: 88,
+    tagAndPayout: 93,
+  },
+  zh: { hand: "手牌", tags: ["赢", "平", "输"], oneLine: 102, nameAndTotal: 80, tagAndPayout: 56 },
+};
+const widest = (k: "oneLine" | "nameAndTotal" | "tagAndPayout") =>
+  Math.max(...Object.values(MEASURED_RESULT_LINES).map((m) => m[k]));
+/** A row's two lines at the result: the total pill (21 px), the gap (3), the tag (16, CJK). */
+const ROW_RESULT_CONTENT_HEIGHT = 21 + 3 + 16;
+
+describe("the split result lines measured in every locale (#3782)", () => {
+  const dir = path.join(__dirname, "../../../i18n/locales");
+  const locales = fs.readdirSync(dir).filter((d) => !d.startsWith("_") && !d.endsWith(".json"));
+
+  it("covers every locale's current tags and hand name (re-measure when one changes)", () => {
+    expect(Object.keys(MEASURED_RESULT_LINES).sort()).toEqual([...locales].sort());
+    for (const l of locales) {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, l, "blackjack.json"), "utf8"));
+      expect({
+        l,
+        hand: j["hand.playerHand"],
+        tags: [j["tag.win"], j["tag.push"], j["tag.lose"]],
+      }).toEqual({
+        l,
+        hand: `${MEASURED_RESULT_LINES[l]!.hand} {{number}}`,
+        tags: MEASURED_RESULT_LINES[l]!.tags,
+      });
+    }
+  });
+
+  it("the widest are Russian (one line, row line 2) and Spanish (row line 1)", () => {
+    expect(widest("oneLine")).toBe(139);
+    expect(widest("nameAndTotal")).toBe(92);
+    expect(widest("tagAndPayout")).toBe(93);
+  });
+
+  it("a row's single line (total + tag + payout) would not fit its column even in English", () => {
+    expect(MEASURED_RESULT_LINES.en!.oneLine).toBeGreaterThan(ROW_LABEL_WIDTH);
+  });
+});
+
+describe.each([SMALLEST, ...PHONES])(
+  "every locale's result line fits at $name (#3782)",
+  (phone) => {
+    it.each([2, 3, 4])("%i hands, a 3-digit payout: no label narrower than its line", (n) => {
+      for (const cards of [2, 3, 5]) {
+        const g = geometry(phone, {
+          dealerCards: 3,
+          handCards: same(n, cards),
+          activeHandIndex: null,
+          showResult: true,
+        });
+        for (const h of g.hands) {
+          const label = splitResultLabel(g.mode);
+          if (label.totalBesideName) {
+            expect(h.label.width).toBeGreaterThanOrEqual(widest("nameAndTotal"));
+            expect(h.label.width).toBeGreaterThanOrEqual(widest("tagAndPayout"));
+            expect(h.label.height).toBeGreaterThanOrEqual(ROW_RESULT_CONTENT_HEIGHT);
+            expect(ROW_LABEL_CONTENT_HEIGHT).toBeGreaterThanOrEqual(ROW_RESULT_CONTENT_HEIGHT);
+          } else {
+            expect(h.label.width).toBeGreaterThanOrEqual(widest("oneLine"));
+          }
+        }
+      }
+    });
+  }
+);

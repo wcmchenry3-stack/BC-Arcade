@@ -82,6 +82,7 @@
   "score.blackjacks": "黑杰克",
   "score.busts": "爆牌",
   "hud.goalProgressAccessibilityLabel": "目标进度：{{chips}} / {{goal}} 筹码",
+  "hud.chipsAccessibilityLabel": "筹码：{{chips}}",
   "table.beginner": "新手",
   "table.intermediate": "进阶",
   "table.highRoller": "大户玩家",

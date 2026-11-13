@@ -8,9 +8,14 @@
  * clears the cell's notes and pushes an undo snapshot (capped at the engine's
  * UNDO_STACK_LIMIT); a note toggles one digit and pushes nothing; an undo
  * restores the last snapshot — values, notes and the error count with it.
- * Toggling a note also trims that digit from every peer (same row, column or
- * box) that holds the digit as its value and has it as a note — a filled cell
- * can carry notes, since notes mode works on any non-given cell.
+ * A digit or a hint also removes that digit from the notes of every peer (same
+ * row, column or box) (#3785); toggling a note touches no other cell.
+ *
+ * Replay compatibility (#3785): the entries carry no notes-mode or selection
+ * state (each names its cell), so the rule change leaves what an entry does to
+ * the values and the error count as it was. Only the notes differ: a recording
+ * made before #3785 rebuilt here shows the peers' notes cleared as the new
+ * rules clear them. Notes are display-only; the final grid and errors are exact.
  */
 
 import { OP_DIGIT, OP_ERASE, OP_HINT, OP_NOTE, OP_UNDO } from "../../replay";
@@ -61,6 +66,12 @@ export function rebuildFromEvents(puzzle: string, events: readonly RecordedEvent
     if (stack.length > UNDO_STACK_LIMIT) stack.shift();
   };
 
+  const prunePeers = (cell: number, digit: number) => {
+    for (let peer = 0; peer < values.length; peer++) {
+      if (isPeer(cell, peer, size, boxRows, boxCols)) notes[peer]!.delete(digit);
+    }
+  };
+
   for (const event of events) {
     if (event.type !== "entries") continue;
     const data = event.data as { i: number; e: number[][] };
@@ -76,17 +87,13 @@ export function rebuildFromEvents(puzzle: string, events: readonly RecordedEvent
           push();
           values[cell] = digit;
           notes[cell]!.clear();
+          prunePeers(cell, digit);
           if (flag === 1) errors += 1;
           break;
         case OP_NOTE: {
           const n = notes[cell]!;
           if (n.has(digit)) n.delete(digit);
           else n.add(digit);
-          for (let peer = 0; peer < values.length; peer++) {
-            if (values[peer] === digit && isPeer(cell, peer, size, boxRows, boxCols)) {
-              notes[peer]!.delete(digit);
-            }
-          }
           break;
         }
         case OP_ERASE:
@@ -108,6 +115,7 @@ export function rebuildFromEvents(puzzle: string, events: readonly RecordedEvent
           push();
           values[cell] = digit;
           notes[cell]!.clear();
+          prunePeers(cell, digit);
           break;
         default:
           throw new Error(`unknown op ${op}`);

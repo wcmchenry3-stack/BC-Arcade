@@ -82,6 +82,7 @@
   "score.blackjacks": "ブラックジャック",
   "score.busts": "バースト",
   "hud.goalProgressAccessibilityLabel": "目標進捗: {{chips}} / {{goal}} チップ",
+  "hud.chipsAccessibilityLabel": "チップ: {{chips}}",
   "table.beginner": "初心者",
   "table.intermediate": "中級者",
   "table.highRoller": "ハイローラー",

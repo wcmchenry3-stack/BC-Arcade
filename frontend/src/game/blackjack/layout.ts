@@ -47,9 +47,15 @@ const ZONE_GAP = 6;
 const BOX_PAD = 4;
 /** Vertical padding inside a split row around its cards. */
 const ROW_PAD = 2;
-/** Left column of a split row: hand number over the total pill with the bet or payout beside it. */
+/**
+ * Left column of a split row: the hand number over the total pill and bet; at the result the
+ * number and total over the tag and payout (`splitResultLabel`, #3782).
+ */
 export const ROW_LABEL_WIDTH = 100;
-/** Height of a row label's content: the hand name (one line) over the total pill and payout. */
+/**
+ * Height of a row label's content, two lines: in play the hand name over the total pill and bet;
+ * at the result the name and total over the tag and payout (#3782).
+ */
 export const ROW_LABEL_CONTENT_HEIGHT = 40;
 /** Height kept free for the result banner (outcome and payout, then one detail line). */
 export const RESULT_BANNER_HEIGHT = 52;
@@ -90,6 +96,43 @@ export const FELT_BORDER = 1;
 export type SplitMode = "single" | "fans" | "rows";
 /** How the table is drawn: by hand count, or "wide" (side by side) on a short felt. */
 export type TableMode = SplitMode | "grid" | "wide";
+
+/** How a hand's label is drawn, and what a split hand's label shows once its result is in. */
+export interface SplitResultLabel {
+  /** A column (a row's label): the name on its own line over the total. Else one line. */
+  column: boolean;
+  /** The split hand's name ("Hand 1") is drawn at the result; its accessibility label always says it. */
+  named: boolean;
+  /**
+   * Two lines (rows, #3782): the name and total, then the tag and payout. A row's 100 px column
+   * cannot hold the total, tag and a 3-digit payout on one line in any locale (English 116 px).
+   */
+  totalBesideName: boolean;
+}
+
+/**
+ * A hand's label (#3771). A row's label is a column, so it keeps its name at the result: in play
+ * the name over the total; at the result the name and total over the tag and payout (#3782).
+ * Every other label (2-hand fans, the grid, the wide arrangement) is one line, too narrow on a
+ * phone for the name, the total, the tag and the payout together (the name was cut to "HA…"): at
+ * the result the name gives way to the result. No hand is outlined at the result (only the hand
+ * being played is): each hand is known by its place, its label over its own cards. Every split
+ * hand's payout is a signed number (owner decision, #3779): in words the widest locale's line
+ * (Russian, "-400 фишек" on a doubled high-roller hand) is 196 px, wider than the widest fan
+ * label (195, at 430). The label keeps its height, so no card shrinks for it.
+ *
+ * Every locale's result line fits with a 3-digit payout (#3782, measured and pinned in
+ * tableGeometry.test.ts): one line up to 139 px (the 320-wide phone's labels are 140), a row's
+ * two lines up to 92 / 93 px in its 100 px column.
+ *
+ * Known gap: the wide arrangement (a landscape window, a fallback: phones are locked to portrait,
+ * #3603) gives 3–4 hands labels of about 96 / 76 px (568×320) and 120 / 94 px (667×375), so
+ * the one-line result can still be cut with 3–4 hands at 568×320 and 4 hands at 667×375.
+ */
+export function splitResultLabel(mode: TableMode): SplitResultLabel {
+  const column = mode === "rows";
+  return { column, named: column, totalBesideName: column };
+}
 
 /** True in the phases whose felt shows the round's result (the result and the run's goal). */
 export function showsResult(phase: string | null | undefined): boolean {

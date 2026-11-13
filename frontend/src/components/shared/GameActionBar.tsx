@@ -2,10 +2,18 @@
  * The action bar under a game's board (#3614, #3688): icon-over-label buttons at least 44 x 44 pt,
  * in thumb reach above the tab bar. Mahjong (Undo, Hint, Shuffle) and 2048 (Hint, New Game) share
  * it, so a Hint button looks and sits the same in every game that has one. A button may carry a
- * badge (Mahjong's shuffles left) and a spoken value.
+ * badge (Mahjong's shuffles left) and a spoken value. A toggle (Sudoku's Notes, #3773) shows its
+ * on state as a tinted, ringed chip and `accessibilityState.selected`.
  */
 import React from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
@@ -13,6 +21,13 @@ import { PILL_DISABLED_OPACITY } from "./PillButton";
 
 /** The bar has a fixed height; its small labels and badge grow with font size up to this. */
 const MAX_FONT_SCALE = 1.3;
+
+/**
+ * Below this width per action (a 5-action bar on a 320 pt phone is ~59 pt each), the label shrinks
+ * to 9 pt with little letter-spacing and stays on one line (a translated word of up to ~12 capitals
+ * fits; on native `adjustsFontSizeToFit` takes a longer one down a little more) (#3773).
+ */
+const NARROW_ACTION_WIDTH = 64;
 
 export interface GameBarAction {
   readonly key: string;
@@ -27,6 +42,12 @@ export interface GameBarAction {
   readonly testID: string;
   readonly badge?: number;
   readonly accessibilityValue?: string;
+  /**
+   * A toggle's on state (Sudoku's Notes, #3773). Omit for a plain action. On draws a tinted chip with
+   * a ring in `color` behind the button, and the button reports `accessibilityState.selected`.
+   * `color` must be a `#rrggbb` token, as the tint is `color` at 15% alpha.
+   */
+  readonly selected?: boolean;
 }
 
 function Action({
@@ -40,7 +61,9 @@ function Action({
   testID,
   badge,
   accessibilityValue,
-}: Omit<GameBarAction, "key">) {
+  selected,
+  narrow,
+}: Omit<GameBarAction, "key"> & { narrow: boolean }) {
   const { colors } = useTheme();
   const inactive = disabled || busy === true;
   return (
@@ -49,12 +72,19 @@ function Action({
       disabled={inactive}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={busy === undefined ? { disabled } : { disabled: inactive, busy }}
+      accessibilityState={{
+        ...(busy === undefined ? { disabled } : { disabled: inactive, busy }),
+        ...(selected === undefined ? null : { selected }),
+      }}
       accessibilityValue={accessibilityValue ? { text: accessibilityValue } : undefined}
       testID={testID}
       hitSlop={4}
       style={({ pressed }) => [
         styles.action,
+        selected !== undefined && [
+          styles.toggle,
+          selected && { backgroundColor: `${color}26`, borderColor: color },
+        ],
         { opacity: inactive ? PILL_DISABLED_OPACITY : pressed ? 0.7 : 1 },
       ]}
     >
@@ -81,8 +111,8 @@ function Action({
         )}
       </View>
       <Text
-        style={[styles.label, { color }]}
-        numberOfLines={2}
+        style={[styles.label, narrow && styles.labelNarrow, { color }]}
+        numberOfLines={narrow ? 1 : 2}
         adjustsFontSizeToFit
         minimumFontScale={0.8}
         maxFontSizeMultiplier={MAX_FONT_SCALE}
@@ -108,8 +138,17 @@ export default function GameActionBar({
   bordered = true,
 }: GameActionBarProps) {
   const { colors } = useTheme();
+  const [narrow, setNarrow] = React.useState(false);
+  const onLayout = React.useCallback(
+    (e: LayoutChangeEvent) => {
+      const next = e.nativeEvent.layout.width / actions.length < NARROW_ACTION_WIDTH;
+      setNarrow((was) => (was === next ? was : next));
+    },
+    [actions.length]
+  );
   return (
     <View
+      onLayout={onLayout}
       style={[
         styles.bar,
         { height },
@@ -119,7 +158,7 @@ export default function GameActionBar({
       accessibilityRole="toolbar"
     >
       {actions.map(({ key, ...action }) => (
-        <Action key={key} {...action} />
+        <Action key={key} {...action} narrow={narrow} />
       ))}
     </View>
   );
@@ -139,6 +178,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
+  // A toggle keeps a transparent ring when off, so switching it does not move the button.
+  toggle: { borderRadius: 12, borderWidth: 1.5, borderColor: "transparent" },
   // The spinner takes the icon box so the bar does not shift while busy.
   spinner: { width: 26, height: 26 },
   label: {
@@ -147,6 +188,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
     textTransform: "uppercase",
     textAlign: "center",
+  },
+  labelNarrow: {
+    fontSize: 9,
+    letterSpacing: 0.2,
   },
   badge: {
     position: "absolute",

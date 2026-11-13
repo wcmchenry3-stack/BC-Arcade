@@ -9,7 +9,8 @@ import { typography } from "../../theme/typography";
 interface HudSidebarProps {
   chips: number;
   startingChips: number;
-  runGoal: number;
+  /** Null once the player keeps playing past the goal (#3617): no goal text and no bar. */
+  runGoal: number | null;
   milestones: readonly number[];
   tableName: string;
   tableAccentColor: string;
@@ -34,7 +35,8 @@ export default function HudSidebar({
 
   const hudColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : colors.text;
   const barColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : tableAccentColor;
-  const goalProgress = Math.min(1, chips / runGoal);
+  const hasGoal = runGoal != null;
+  const goalProgress = hasGoal ? Math.min(1, chips / runGoal) : 0;
 
   return (
     <View
@@ -78,49 +80,61 @@ export default function HudSidebar({
         <View style={styles.chipBlock}>
           <Text
             style={[styles.chipsText, { color: hudColor, fontFamily: typography.heading }]}
-            accessibilityLabel={t("hud.goalProgressAccessibilityLabel", {
-              chips: formatNumber(t, chips),
-              goal: formatNumber(t, runGoal),
-            })}
+            testID="blackjack-hud-chips"
+            accessibilityLabel={
+              hasGoal
+                ? t("hud.goalProgressAccessibilityLabel", {
+                    chips: formatNumber(t, chips),
+                    goal: formatNumber(t, runGoal),
+                  })
+                : t("hud.chipsAccessibilityLabel", { chips: formatNumber(t, chips) })
+            }
           >
             {formatNumber(t, chips)}
           </Text>
-          <Text
-            style={[styles.goalText, { color: colors.textMuted, fontFamily: typography.label }]}
-          >
-            {" / "}
-            {formatNumber(t, runGoal)}
-          </Text>
+          {hasGoal && (
+            <Text
+              style={[styles.goalText, { color: colors.textMuted, fontFamily: typography.label }]}
+            >
+              {" / "}
+              {formatNumber(t, runGoal)}
+            </Text>
+          )}
         </View>
       </View>
 
       {/* Progress bar with milestone tick marks.
           barWrapper is 6 px tall so ticks (6 px) can protrude 1 px above/below
           the 4 px barTrack without being clipped by overflow:hidden. */}
-      <View style={styles.barWrapper}>
-        <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
-          <View
-            style={[
-              styles.barFill,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              { width: `${(goalProgress * 100).toFixed(1)}%` as any, backgroundColor: barColor },
-            ]}
-          />
-        </View>
-        {milestones.map((m, i) => (
-          <View
-            key={i}
-            style={[
-              styles.tick,
-              {
+      {hasGoal ? (
+        <View style={styles.barWrapper} testID="blackjack-goal-bar">
+          <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
+            <View
+              style={[
+                styles.barFill,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                left: `${((m / runGoal) * 100).toFixed(1)}%` as any,
-                backgroundColor: chips >= m ? barColor : colors.border,
-              },
-            ]}
-          />
-        ))}
-      </View>
+                { width: `${(goalProgress * 100).toFixed(1)}%` as any, backgroundColor: barColor },
+              ]}
+            />
+          </View>
+          {milestones.map((m, i) => (
+            <View
+              key={i}
+              style={[
+                styles.tick,
+                {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  left: `${((m / runGoal) * 100).toFixed(1)}%` as any,
+                  backgroundColor: chips >= m ? barColor : colors.border,
+                },
+              ]}
+            />
+          ))}
+        </View>
+      ) : (
+        // Same height as the bar, so the felt does not shift when the goal clears (#3617).
+        <View style={styles.barWrapper} />
+      )}
     </View>
   );
 }
@@ -161,6 +175,9 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     gap: 2,
     marginLeft: "auto",
+    // The baseline-aligned "/ goal" text makes this row 24 tall; without a goal (#3617) the row
+    // keeps that height, so the felt does not move when Keep Playing clears the goal.
+    minHeight: 24,
   },
   chipsText: {
     fontSize: 17,

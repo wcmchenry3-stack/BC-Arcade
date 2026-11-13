@@ -339,7 +339,7 @@
     "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "Must fit a split hand's one-line result label with the total and a 3-digit payout (#3782): about 60 px drawn in capitals (German VERLUST, 7 Latin capitals, fits). Russian uses Минус for lose. Measure again (tableGeometry.test.ts) after a change."
   },
   "tag.lose": {
     "component": "TableFelt",
@@ -348,7 +348,7 @@
     "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "See tag.win: about 60 px drawn in capitals (#3782)."
   },
   "tag.push": {
     "component": "TableFelt",
@@ -357,7 +357,7 @@
     "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "See tag.win: about 60 px drawn in capitals (#3782)."
   },
   "result.splitWon": {
     "component": "ResultBanner",
@@ -743,6 +743,15 @@
     "tone": "functional",
     "characterLimit": 60,
     "placeholders": ["{{chips}}", "{{goal}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.chipsAccessibilityLabel": {
+    "component": "HudSidebar",
+    "description": "Accessibility label for the chip total in the HUD when the run has no goal (after Keep Playing).",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
