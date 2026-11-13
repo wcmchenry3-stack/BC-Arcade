@@ -151,6 +151,24 @@ export function feltResultFor(state: BlackjackState, t: Translate): FeltResult |
   return { outcome: state.outcome, payout: state.payout, detail };
 }
 
+/**
+ * The dock's actions (Hit, Stand, Double, Split) are greyed and off: outside the player's phase,
+ * and while the felt outlines a hand other than the one the engine plays (#3764 review). A hand
+ * that stands on its own on 21, busts or doubles moves the engine on at once, while the felt still
+ * outlines it (or a hand passed over on the way) until its cards land; a tap then would act on a
+ * hand the player has not seen outlined. A Stand onto the next hand outlines the engine's hand at
+ * once, so it is never greyed by this; nor is a hand outlined with its held card still to come
+ * (#3720), which is the engine's hand. `outlined` null (no outlined hand) is greyed by `!playing`
+ * already; the check is kept as a guard.
+ */
+function actionsOff(
+  playing: boolean,
+  outlined: number | null,
+  state: BlackjackState | null
+): boolean {
+  return !playing || (outlined !== null && outlined !== state?.active_hand_index);
+}
+
 export default function BlackjackTableScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { t: tResult } = useTranslation("result");
@@ -693,7 +711,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   only when the result shows on the felt (owner decision, #3720). */}
               {dockPlaying && (
                 <ActionButtons
-                  disabled={!playing}
+                  disabled={actionsOff(playing, activeHandIndex, state)}
                   onHit={handleHit}
                   onStand={handleStand}
                   onDoubleDown={handleDoubleDown}
