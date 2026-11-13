@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { joinSentence } from "./joinSentence";
 
 interface Props {
   outcome: string;
@@ -42,7 +43,7 @@ function feltLabelOf(
   outcomeText: string,
   summary: string | null
 ): string | undefined {
-  if (summary !== null) return `${outcomeText}. ${summary}`;
+  if (summary !== null) return joinSentence(outcomeText, summary);
   return outcome === "blackjack" ? t("outcome.blackjackNaturalLabel") : undefined;
 }
 
@@ -149,7 +150,7 @@ export default function ResultBanner({
               testID="result-net"
               style={[styles.feltOutcome, styles.feltOutcomeCompact, { color: payoutColor }]}
               numberOfLines={1}
-              accessibilityLabel={`${outcomeLabel ?? outcomeText}. ${payoutLabel}`}
+              accessibilityLabel={joinSentence(outcomeLabel ?? outcomeText, payoutLabel)}
             >
               {payoutText}
             </Text>
