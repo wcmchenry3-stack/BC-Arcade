@@ -203,8 +203,16 @@ All per-frame animation uses `react-native-reanimated` shared values and worklet
 | Solitaire   | Win cascade, card lift/glow, shake             | `frontend/src/components/solitaire/SolitaireWinCascade.tsx`     |
 | FreeCell    | Foundation complete, game win, auto-complete   | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx` |
 | Bottle Sort | Pour choreography (lift, travel, tilt, stream) | `frontend/src/components/sort/SortBoard.tsx`                    |
+| Bottle Sort | Every duration, ceiling and `pourTimeline`     | `frontend/src/game/sort/motion.ts`                              |
 | Mahjong     | Match burst (FlyingPair)                       | `frontend/src/components/mahjong/FlyingPair.tsx`                |
 | Mahjong     | Shuffle pulse, deadlock shake                  | `frontend/src/components/mahjong/useMahjongFeedback.ts`         |
+
+----------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Solitaire | Win cascade, card lift/glow, shake | `frontend/src/components/solitaire/SolitaireWinCascade.tsx` |
+| FreeCell | Foundation complete, game win, auto-complete | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx` |
+| Bottle Sort | Pour choreography (lift, travel, tilt, stream) | `frontend/src/components/sort/SortBoard.tsx`; every duration and `pourTimeline` in `frontend/src/game/sort/motion.ts` |
+| Mahjong | Match burst (FlyingPair) | `frontend/src/components/mahjong/FlyingPair.tsx` |
+| Mahjong | Shuffle pulse, deadlock shake | `frontend/src/components/mahjong/useMahjongFeedback.ts` |
 
 ---
 

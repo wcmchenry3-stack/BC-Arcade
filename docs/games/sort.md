@@ -29,18 +29,18 @@ Every player gets the same level N: the levels are a fixed catalog shipped insid
 - **trap rate:** the share of 24 seeded random plays (12 random non-trivial pours each) that end on a board `fast_solver` proves dead;
 - **openings:** the number of distinct first pours.
 
-Within a spec's pool, difficulty is 60% the trap-rate percentile and 40% the length percentile (ties: fewer openings is harder). The *i*-th of the *n* levels that use a spec takes the candidate at quantile `(i + 0.5) / n`, so each spec gets harder every time it comes back. A run takes about 9 s; the file is about 7 KB.
+Within a spec's pool, difficulty is 60% the trap-rate percentile and 40% the length percentile (ties: fewer openings is harder). The _i_-th of the _n_ levels that use a spec takes the candidate at quantile `(i + 0.5) / n`, so each spec gets harder every time it comes back. A run takes about 9 s; the file is about 7 KB.
 
 **The curve** (`CHAPTERS` in the script; one spec per level):
 
-| Chapter | Levels  | Colours (empty bottles)                        | Par   |
-| ------- | ------- | ---------------------------------------------- | ----- |
-| 1       | 1–20    | 3–5 (2 or 1)                                   | 7–20  |
-| 2       | 21–40   | 5–7 (2 or 1)                                   | 17–29 |
-| 3       | 41–60   | 7–9 (2 or 1)                                   | 22–37 |
-| 4       | 61–80   | 9–11 (2), with 9-colour 1-empty spikes         | 29–46 |
-| 5       | 81–100  | 11–13 (2), with 9-colour 1-empty spikes        | 34–57 |
-| 6       | 101–120 | 12–14 (2), with 9-colour 1-empty spikes        | 35–63 |
+| Chapter | Levels  | Colours (empty bottles)                 | Par   |
+| ------- | ------- | --------------------------------------- | ----- |
+| 1       | 1–20    | 3–5 (2 or 1)                            | 7–20  |
+| 2       | 21–40   | 5–7 (2 or 1)                            | 17–29 |
+| 3       | 41–60   | 7–9 (2 or 1)                            | 22–37 |
+| 4       | 61–80   | 9–11 (2), with 9-colour 1-empty spikes  | 29–46 |
+| 5       | 81–100  | 11–13 (2), with 9-colour 1-empty spikes | 34–57 |
+| 6       | 101–120 | 12–14 (2), with 9-colour 1-empty spikes | 35–63 |
 
 One empty bottle makes a spec tight, two relaxed. One empty bottle stops at 9 colours: random 1-empty deals of 9 colours are about 99% dead, and 10 or more would take too many deals. Each chapter opens on easier specs than it ends on and drops back to an easier ("breather") spec now and then; mean par rises chapter on chapter and from the first half of each chapter to the second (`test_sort_catalog.py` checks both).
 
@@ -66,7 +66,7 @@ One empty bottle makes a spec tight, two relaxed. One empty bottle stops at 9 co
 
 `frontend/src/components/sort/`
 
-- `SortBoard.tsx`: the board. Lays out bottles in rows and draws the pour (tilt, stream, ghost liquid, win confetti).
+- `SortBoard.tsx`: the board. Lays out bottles in rows and draws the pour (tilt, stream, ghost liquid, win cascade).
 - `BottleView.tsx`: one flask. Owns the flask shape and viewBox constants (`VB_W`, `VB_H`, `PAD_TOP`, `NECK_LEFT`, `NECK_RIGHT`, `BODY_BOTTOM`, `INNER_H`) that SortBoard imports.
 - `gridGeometry.ts`: pure grid and bottle-size math, plus `BOARD_PADDING` / `BOARD_HORIZONTAL_PAD`, the one source for the board's padding.
 - `LevelSelectScreen.tsx`: the level grid.
@@ -82,6 +82,7 @@ One empty bottle makes a spec tight, two relaxed. One empty bottle stops at 9 co
 - `useSortLevels.ts`: the screen's view, the catalog's levels and the player's progress and bests (after the migration).
 - `storage.ts`: local progress and best moves.
 - `usePourAnimation.ts`: hook that sequences a pour in flight.
+- `motion.ts`: every duration, ceiling and shape constant of [Motion](#motion-3660), and `pourTimeline(units)`. `haptics.ts`: the per-event haptics.
 - `useSortAudio.ts` / `sounds.ts`: sound playback and the `sort.pour` / `sort.win` registry.
 
 ## Screen layout
@@ -112,9 +113,47 @@ The after numbers are pinned in `gridGeometry.test.ts` ("390x844 phone"). The 16
 
 Smaller phones (375 x 667 and 360 x 640; their old board heights are estimated from the 390 x 844 one minus the height and safe-area differences, not measured) were checked too: at every bottle count from 4 to 16, bottles are at least as wide as before (`gridGeometry.test.ts`, "never smaller than before"). With a 56 pt bar the 9 to 12 bottle levels came out 0.1 pt narrower there, so the bar is 54 pt (its buttons are 52 pt tall).
 
-## Motion
+## Motion (#3660)
 
-To be written by #3660.
+Every action has a short motion and, where it makes sense, a haptic. Every duration, ceiling and shape constant lives in one module, `frontend/src/game/sort/motion.ts`, so the sounds (#3661) can be timed to the same numbers; `motion.test.ts` holds each one to the owner's ceilings (2026-11-13). `BottleView`, `SortBoard`, `SortScreen` and `usePourAnimation` import from it. Haptics go through one helper, `frontend/src/game/sort/haptics.ts`.
+
+| Event                               | Motion                                                                                                                                                                         | Duration (ceiling)                                    | Reduce Motion                             | Haptic                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------- |
+| Select (a tap)                      | the bottle lifts once and holds (5% of its height, never more than the 8 pt row gap, so it never reaches the row above); the stroke changes. No bobbing                        | 160 ms (200)                                          | lifted at once                            | light impact                                                                 |
+| Deselect                            | the bottle settles back                                                                                                                                                        | 120 ms                                                | at once                                   | none                                                                         |
+| Hint                                | the source is selected as above; the destination keeps its ring                                                                                                                | as Select                                             | as Select                                 | none (a hint is not a tap)                                                   |
+| Pour                                | the bottle lifts to the destination's neck, tilts to 50 degrees, tilts on to 95 as it drains one unit at a time (stream, splash on each landing), then untilts and returns     | 900 ms for 1 unit, 300 ms more per unit (900 + 300/u) | no ghost, no tilt: the move lands at once | medium impact when the move lands (not at the tap)                           |
+| Refused pour (wrong colour or full) | the tapped destination shakes "no"; the selection clears, as before. No penalty                                                                                                | 240 ms (250)                                          | no shake                                  | warning notification                                                         |
+| Bottle completed                    | the bottle pulses (scale 1.08) and its check badge pops in. Only when a pour completes it on screen: a bottle already solved on a fresh board or a restore does not animate    | 420 ms (450), badge 300 ms                            | the badge appears at once                 | success notification (not on the winning pour, see Win)                      |
+| Undo                                | the board changes at once and fades in from 40% opacity                                                                                                                        | 280 ms (300)                                          | at once                                   | none                                                                         |
+| Level in (a new level)              | the bottles drop in and fade in, one after another (60 ms apart at most); a tap on a bottle skips it. Not for a restored game, Restart or Play Again                           | 560 ms total (600)                                    | none: there at once                       | none                                                                         |
+| Win                                 | six liquid-coloured pieces fall across the board, then the result card opens. A tap on the board skips the cascade. The score, the session and the unlock are recorded at once | 1.38 s (1.5 s)                                        | no cascade, the card at once              | success notification, from the result card when it opens (`GameResultModal`) |
+
+Pour timings, from `pourTimeline(units)` (ms from the tap):
+
+| Units | Lift ends | Flow starts | Each unit leaves, lands | Flow ends | Move lands (end) |
+| ----- | --------- | ----------- | ----------------------- | --------- | ---------------- |
+| 1     | 200       | 360         | 540, 660                | 660       | 900              |
+| 2     | 200       | 360         | 540, 660; 840, 960      | 960       | 1200             |
+| 3     | 200       | 360         | ...; 1140, 1260         | 1260      | 1500             |
+| 4     | 200       | 360         | ...; 1440, 1560         | 1560      | 1800             |
+
+How it runs:
+
+- **UI thread.** Every animation is a Reanimated shared value. A bottle's lift, shake, pulse and drop-in are derived values read in its animated style (`selectLiftPx`, `shakeOffsetPx`, `pulseScale`, `levelInLook` in `motion.ts` are worklets); the check badge is `useAnimatedProps`. The pour's ghost is as before, but each unit's drain (the source's layers fade out) and landing (the destination's layers fade in, and the splash pulses through `useAnimatedReaction`) are now steps of two shared values (`unitsEmitted`, `unitsLanded`) on the pour's own timeline. They were a `setTimeout` and a React state update per unit (4 timers and 4 renders for a 2-unit pour); a pour now renders React twice (the ghost appears, the ghost goes), whatever its size. A new level runs one board-wide clock that each bottle reads its slice of. `SortBoard` still does no per-frame React work and keeps its memoised handlers.
+- **Events, not frames.** `SortScreen` turns a tap into one event: a select, a refused pour (`refused` = `{ index, seq }`, which makes that bottle shake once per new `seq`), an undo (`undoSeq`), a new level (`levelIn`), a win (`winCascade`). A restored game carries none, so it replays nothing: a bottle that mounts selected is lifted at once, one that mounts solved shows its badge, a board that mounts with a `seq` plays nothing.
+- **Input.** A tap during a pour is ignored, as before; the pour is just faster. `usePourAnimation` keeps its contract: `start` refuses a second pour, `cancel` drops a pour without landing it, and the move is committed when SortBoard reports the pour done (so the replay recorder, #3385, still records a pour on landing). A select, a refused pour, an undo animation and the level-in never block a tap. Undo and Hint are off while the win cascade plays.
+- **Win.** `SortScreen` records the solve at once, but opens `GameResultModal` only when `SortBoard` reports the cascade over (`onWinCascadeDone`: its timer, `WIN_CASCADE_MS`; or a tap on the board). Under Reduce Motion the card opens at once. Leaving the board during the cascade drops it. Closing the card on a solved board does not play it again; Restart and Play Again make the next solve play it.
+- **Pour geometry** still reads the `onLayout` positions kept in refs (#2297); the bottle count change reset is untouched.
+- **Reduce Motion** is the shared `useReduceMotion` everywhere, `BottleView` included. A Reduce Motion pour has no ghost and no tilt (the old in-place 62 degree tilt is gone); it lands on the hook's timer, `REDUCE_MOTION_POUR_MS` (0).
+
+### Haptics
+
+Fired from the event that starts the motion, once, never per frame. Best-effort, as `GameResultModal`'s: a rejected promise or a thrown error is swallowed. None on web. Sort has no haptics setting, and the app has no shared haptics on/off setting yet; if one is added, `fireSortHaptic` is the one place to honour it. A cancelled pour (Restart, a level change, leaving) fires nothing, since nothing lands. The winning pour fires the medium impact only: the bottle-complete success is skipped for it, and the one success on a win is the result card's own (`useResultFeedback`), which now arrives after the cascade, so a win has exactly one.
+
+### Hint destination ring
+
+The ring (`hint-dst-ring`) is a 2 px border on the page background. `colors.bonus` is 2.7:1 on the light theme's cream, below the 3:1 non-text minimum (WCAG 1.4.11), so it now uses `colors.outcomeWin` (4.6:1 light, 11.0:1 dark). `theme/__tests__/hintRingContrast.test.ts` pins both.
 
 ## Scoring (Persistence)
 
