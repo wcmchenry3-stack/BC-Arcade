@@ -4,19 +4,34 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { LockableGrid } from "../shared/LockableGrid";
-import type { LevelData } from "../../game/sort/catalog";
-import type { SortProgress } from "../../game/sort/storage";
+import { CHAPTER_SIZE, type LevelData } from "../../game/sort/catalog";
+import type { BestMoves, SortProgress } from "../../game/sort/storage";
+import { bestStarsFor } from "../../game/sort/stars";
+import { StarRow } from "./StarRow";
 
 const COLS = 4;
 
+/** A level to show; `par` is the catalog's target, which the stars are judged against. */
+type GridLevel = LevelData & { readonly par?: number };
+
 interface Props {
-  readonly levels: readonly LevelData[];
+  readonly levels: readonly GridLevel[];
   readonly progress: SortProgress;
+  /** The player's best moves per level; each solved level's best stars derive from them (#3687). */
+  readonly bestMoves?: BestMoves;
   readonly onSelectLevel: (id: number) => void;
   readonly onContinue: () => void;
 }
 
-export default function LevelSelectScreen({ levels, progress, onSelectLevel, onContinue }: Props) {
+const NO_BESTS: BestMoves = {};
+
+export default function LevelSelectScreen({
+  levels,
+  progress,
+  bestMoves = NO_BESTS,
+  onSelectLevel,
+  onContinue,
+}: Props) {
   const { t } = useTranslation("sort");
   const { colors } = useTheme();
 
@@ -31,6 +46,9 @@ export default function LevelSelectScreen({ levels, progress, onSelectLevel, onC
       onContinue={onContinue}
       items={levels}
       columns={COLS}
+      sectionSize={CHAPTER_SIZE}
+      sectionTitleOf={(index) => t("levelSelect.chapter", { chapter: index + 1 })}
+      sectionTestIDOf={(index) => `sort-chapter-${index + 1}`}
       // Open on the furthest unlocked level: a save moved onto the catalog
       // can start far down the grid (#2761).
       initialScrollIndex={Math.min(progress.unlockedLevel, levels.length) - 1}
@@ -39,17 +57,30 @@ export default function LevelSelectScreen({ levels, progress, onSelectLevel, onC
       isUnlocked={(level) => level.id <= progress.unlockedLevel}
       onSelect={(level) => onSelectLevel(level.id)}
       testIDOf={(level) => `sort-level-${level.id}`}
-      accessibilityLabelOf={(level, unlocked) =>
-        unlocked
-          ? t("hud.level", { level: level.id })
-          : t("levelSelect.lockedLevel", { level: level.id })
-      }
+      accessibilityLabelOf={(level, unlocked) => {
+        if (!unlocked) return t("levelSelect.lockedLevel", { level: level.id });
+        const stars = bestStarsFor(bestMoves, level.id, level.par);
+        return stars > 0
+          ? t("levelSelect.levelStars", { level: level.id, stars })
+          : t("hud.level", { level: level.id });
+      }}
       cardStyle={styles.card}
       lockStyle={styles.lockIcon}
       renderContent={(level, unlocked) => (
-        <Text style={[styles.levelNum, { color: unlocked ? colors.text : colors.textMuted }]}>
-          {level.id}
-        </Text>
+        <>
+          <Text style={[styles.levelNum, { color: unlocked ? colors.text : colors.textMuted }]}>
+            {level.id}
+          </Text>
+          {/* An unlocked level not solved yet shows three empty outlines: the
+              goal is visible, and the tile keeps its height. Locked tiles show none. */}
+          {unlocked ? (
+            <StarRow
+              stars={bestStarsFor(bestMoves, level.id, level.par)}
+              size={14}
+              testID={`sort-level-${level.id}-stars`}
+            />
+          ) : null}
+        </>
       )}
     />
   );
@@ -58,6 +89,9 @@ export default function LevelSelectScreen({ levels, progress, onSelectLevel, onC
 const styles = StyleSheet.create({
   card: {
     aspectRatio: 1,
+    // At least 44 pt each way even on a narrow screen (#3687).
+    minHeight: 44,
+    minWidth: 44,
     gap: 2,
   },
   levelNum: {

@@ -64,5 +64,8 @@ const catalog = catalogJson as unknown as CatalogFile;
  */
 export const SORT_CATALOG_VERSION: number = catalog.version;
 
+/** Levels per chapter: the level grid groups the catalog under chapter headers (#3687). */
+export const CHAPTER_SIZE = 20;
+
 /** Every level, level 1 first. */
 export const SORT_LEVELS: readonly CatalogLevel[] = decodeCatalog(catalog);

@@ -40,5 +40,9 @@
   "hint.unknown": "Kein Hinweis gefunden",
   "hint.backToLastGoodMove": "Zurück zum letzten guten Zug",
   "hint.restartLevel": "Level neu starten",
-  "hint.dismiss": "Schließen"
+  "hint.dismiss": "Schließen",
+  "levelSelect.chapter": "Kapitel {{chapter}}",
+  "levelSelect.levelStars": "Level {{level}}, {{stars}} von 3 Sternen",
+  "stars.summary": "{{stars}} von 3 Sternen. Züge {{moves}}, Ziel {{par}}.",
+  "stars.movesTarget": "Züge {{moves}} · Ziel {{par}}"
 }
