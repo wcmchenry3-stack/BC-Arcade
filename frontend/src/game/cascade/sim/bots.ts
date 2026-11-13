@@ -5,6 +5,12 @@
  *  - random: taps every 600-1200 ms at a random x.
  *  - heuristic: waits for the board to calm, then drops where it lands touching a same-tier
  *    piece, else where the pile is lowest. It aims to merge.
+ *  - skilled (#3697): the heuristic's timing, but it plays the way a practised Suika player
+ *    does: it keeps the pile graded (big pieces towards the left wall, small ones towards the
+ *    right), sets up merges by dropping next to a piece one tier up or down, and avoids burying a
+ *    smaller piece under a bigger one. The capstone runs (time to the win) use it; the heuristic
+ *    buries small pieces under big ones and loses to clutter, so it understates what a player
+ *    who plans can do. It is a proxy too: a practised human probably plays better than either.
  */
 import type { PieceSnapshot } from "../engine";
 import type { RandomSource } from "../../_shared/seededRng";
@@ -104,8 +110,64 @@ export const heuristicBot: Bot = {
   },
 };
 
+const SKILLED_X_STEP_PX = 4;
+/** Contact tolerance when listing the pieces a landed drop would touch (px). */
+const SKILLED_TOUCH_PX = 3;
+
+/** Where a circle of radius r dropped at x comes to rest, and the pieces it then touches. */
+function landing(view: BotView, x: number, r: number): { y: number; touching: PieceSnapshot[] } {
+  const { constants: c, pieces } = view;
+  let y = c.worldHeight - c.floorThickness - r;
+  for (const p of pieces) {
+    const reach = r + c.physicsRadius(p.tier);
+    const dx = Math.abs(p.x - x);
+    if (dx >= reach) continue;
+    y = Math.min(y, p.y - Math.sqrt(reach * reach - dx * dx));
+  }
+  const touching = pieces.filter(
+    (p) => Math.hypot(p.x - x, p.y - y) <= r + c.physicsRadius(p.tier) + SKILLED_TOUCH_PX
+  );
+  return { y, touching };
+}
+
+export const skilledBot: Bot = {
+  name: "skilled",
+  nextDelayMs: heuristicBot.nextDelayMs,
+  shouldTap: heuristicBot.shouldTap,
+  chooseX(view) {
+    const { constants: c, tier, rng } = view;
+    const r = c.physicsRadius(tier);
+    const minX = c.wallThickness + r;
+    const maxX = c.worldWidth - c.wallThickness - r;
+    const top = Math.max(...c.droppableTiers);
+    // Where this tier belongs in a graded pile: the biggest drop by the left wall's side of the
+    // small-piece zone, the smallest at the right wall.
+    const home = minX + (maxX - minX) * (0.55 + 0.45 * (1 - tier / Math.max(1, top)));
+    let bestX = (minX + maxX) / 2;
+    let best = -Infinity;
+    for (let x = minX; x <= maxX; x += SKILLED_X_STEP_PX) {
+      const { y, touching } = landing(view, x, r);
+      let score = y; // lower is better (y grows downwards)
+      for (const p of touching) {
+        if (p.tier === tier) score += 1000 + 20 * tier;
+        else if (Math.abs(p.tier - tier) === 1) score += 25;
+        // Resting on a smaller piece buries it under this one.
+        if (p.y > y && p.tier < tier) score -= 30 * (tier - p.tier);
+      }
+      score -= Math.abs(x - home) * 0.15;
+      score += rng() * 0.01;
+      if (score > best) {
+        best = score;
+        bestX = x;
+      }
+    }
+    return bestX;
+  },
+};
+
 export const BOTS: Record<string, Bot> = {
   heuristic: heuristicBot,
   random: randomBot,
   spam: spamBot,
+  skilled: skilledBot,
 };

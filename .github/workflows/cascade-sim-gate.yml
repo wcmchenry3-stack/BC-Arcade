@@ -1,12 +1,15 @@
 name: Cascade Sim Gate
 
 # Long run of the Cascade sim harness (#2893): 100 seeded games per bot (heuristic, random,
-# spam) at 60 and 120 Hz against the real engine, spawn selector and queue, compared with
-# frontend/src/game/cascade/sim/baseline.json. It fails when a banded metric leaves its band
-# (piece frequency and drought, game length, score, top-tier rate, packing density, visible gap,
-# settle time, jitter, guard-rail events), when the spam bot does not reach game over inside
-# 120 simulated seconds (the lid, #3694), or when the mean step cost with 20+ pieces passes
-# 16 ms. About 2.5 min. A manual run with a seed count other than 100 is informational (bands skipped). The same checks in miniature (3 seeds) run in every PR's Jest run
+# spam) at 60 and 120 Hz against the real engine (planck.js since #3697), spawn selector and
+# queue, plus the capstone runs (#3697: the skilled bot, 60 Hz, up to 10 simulated
+# minutes, stopping at the win), compared with frontend/src/game/cascade/sim/baseline.json. It
+# fails when a banded metric leaves its band (piece frequency and drought, game length, score,
+# top-tier rate, win rate and time to the capstone, packing density, visible gap, overlap,
+# settle time, jitter, wall penetration, chain latency), when the spam bot does not reach game
+# over inside 120 simulated seconds (the lid, #3694), when a guard rail fires, when chain merges
+# are slow (p90 150 ms or more), or when the mean step cost with 20+ pieces passes 16 ms.
+# About 12 min (the capstone runs are about 4 of it). A manual run with a seed count other than 100 is informational (bands skipped). The same checks in miniature (3 seeds) run in every PR's Jest run
 # (frontend/src/game/cascade/sim/__tests__/sim.test.ts). How to read a failure and how to
 # re-baseline: docs/TESTING.md ("Cascade sim") and docs/games/cascade.md.
 
@@ -24,6 +27,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - "frontend/src/game/cascade/engine.ts"
+      - "frontend/src/game/cascade/physicsWorld.ts"
       - "frontend/src/game/cascade/constants.ts"
       - "frontend/src/game/cascade/pieceDefs.ts"
       - "frontend/src/game/cascade/tiers.ts"
@@ -47,7 +51,7 @@ jobs:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Cascade sim (100 seeds, 60 and 120 Hz)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend

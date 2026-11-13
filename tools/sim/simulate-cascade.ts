@@ -3,13 +3,16 @@
  *
  * Usage (from the repo root, or `npm run sim:cascade -- <flags>` in frontend/):
  *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts                 # smoke suite, prints the table
- *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts --full          # 100 seeds x 3 bots x 60/120 Hz (~3 min)
+ *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts --full          # 100 seeds x 3 bots x 60/120 Hz, plus the capstone runs (~10 min)
  *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts --full --gate   # ... and fail on a band / lid / step-budget violation
  *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts --full --update-baseline   # rewrite baseline.json "full"
  *
  * Flags:
- *   --full               the long suite (default: the smoke suite)
- *   --seeds N            override the seed count
+ *   --full               the long suite (default: the smoke suite), with the capstone runs
+ *                        (#3697: the skilled bot, 60 Hz, up to 10 simulated minutes
+ *                        each, stopping at the win)
+ *   --seeds N            override the seed count (the capstone runs' too)
+ *   --no-capstone        skip the capstone runs (a quicker look; bands are then skipped)
  *   --bots a,b           override the bots (heuristic, random, spam)
  *   --gate               compare with baseline.json and exit 1 on a violation
  *   --update-baseline    write this run's deterministic metrics and bands into baseline.json
@@ -63,13 +66,24 @@ function intArg(name: string, min: number): number | undefined {
 
 function main(): number {
   for (const f of process.argv.slice(2).filter((a) => a.startsWith("--"))) {
-    const known = ["--full", "--gate", "--update-baseline", ...VALUE_FLAGS];
+    const known = [
+      "--full",
+      "--gate",
+      "--update-baseline",
+      "--no-capstone",
+      ...VALUE_FLAGS,
+    ];
     if (!known.includes(f)) throw new UsageError(`unknown flag ${f}`);
   }
   const suiteName = has("--full") ? "full" : "smoke";
   const params = { ...(suiteName === "full" ? FULL_PARAMS : SMOKE_PARAMS) };
   const seeds = intArg("--seeds", 1);
   if (seeds !== undefined) params.seeds = seeds;
+  if (params.capstone) {
+    params.capstone = { ...params.capstone };
+    if (seeds !== undefined) params.capstone.seeds = seeds;
+    if (has("--no-capstone")) delete params.capstone;
+  }
   const offset = intArg("--seed-offset", 0);
   if (offset !== undefined) params.seedOffset = offset;
   const bots = arg("--bots");
@@ -83,7 +97,10 @@ function main(): number {
     }
   }
   const custom =
-    seeds !== undefined || offset !== undefined || bots !== undefined;
+    seeds !== undefined ||
+    offset !== undefined ||
+    bots !== undefined ||
+    has("--no-capstone");
   if (has("--update-baseline") && custom) {
     throw new UsageError(
       "--update-baseline cannot be combined with --seeds, --seed-offset or --bots: it would overwrite the suite with a subset",
@@ -129,7 +146,9 @@ function main(): number {
       base !== undefined &&
       base.params.seeds === params.seeds &&
       base.params.maxSimMs === params.maxSimMs &&
-      base.params.bots.join() === params.bots.join();
+      base.params.bots.join() === params.bots.join() &&
+      JSON.stringify(base.params.capstone ?? null) ===
+        JSON.stringify(params.capstone ?? null);
     if (!comparable) {
       console.log(
         "\nNote: seeds/bots differ from the baseline; band checks skipped (hard gates only).",

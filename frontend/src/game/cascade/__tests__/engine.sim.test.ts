@@ -10,13 +10,14 @@
  * Simulated seconds to game over as this test runs them (the sim harness's `spamBot` via
  * `runGame`, #2893), all by overflow:
  *   seed      1     2     3     4     5
- *   60 Hz   68.1  62.1  39.2  57.0  67.4   (16.67 ms frames)
- *   120 Hz  48.9  51.4  67.0  47.8  61.3   (8.33 ms frames)
- * That is the 12-tier ladder (#3695, `tiers.ts`) with the harness's `spamBot`. History: the
- * 10-tier ladder read 34-46 s here, and 54-73 s with the lid test's own bot. The mean over 100
- * seeds is about 59 s (sim/baseline.json), and the bound below still leaves about 1.6x headroom
- * over the slowest of these. Headless and deterministic: the seeded RNG drives the queue, the tap
- * times and the tap x. The bot and the game loop live in `../sim/` (`runGame`, `spamBot`).
+ *   60 Hz   70.1  39.9  48.6  44.4  65.4   (16.67 ms frames)
+ *   120 Hz  76.2  61.3 105.2  61.2  62.9   (8.33 ms frames)
+ * That is planck.js with the lively tuning and ladder (#3697). History: the 12-tier ladder on
+ * Matter.js (#3695) read 39-68 s here, the 10-tier ladder 34-46 s. Lively's pieces shuffle into
+ * gaps, so a mindless pile lasts longer: seed 3 at 120 Hz (105.2 s) is also the longest of the
+ * 100-seed full suite (spam@60 93.8 s), so the bound below has about 14 % headroom, not the
+ * 1.6x it had. Headless and deterministic: the seeded RNG drives the queue, the tap times and the
+ * tap x. The bot and the game loop live in `../sim/` (`runGame`, `spamBot`).
  */
 import { spamBot } from "../sim/bots";
 import { runGame } from "../sim/runGame";
