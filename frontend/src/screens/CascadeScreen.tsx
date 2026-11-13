@@ -47,7 +47,6 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
-import { bestOf } from "../game/_shared/bestOf";
 import { clockElapsedMs, pauseClock, resumeClock, type PlayClock } from "../game/_shared/playClock";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
@@ -91,10 +90,9 @@ import {
   loadGame as loadCascadeGame,
   SAVE_VERSION,
   clearGame as clearCascadeGame,
-  loadBestScore,
-  saveBestScore,
   type SavedState,
 } from "../game/cascade/storage";
+import { getBest, judgeResult, recordResult } from "../game/_shared/personalBest";
 import { useSound } from "../game/_shared/useSound";
 import { CASCADE_SOUNDS } from "../game/cascade/sounds";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
@@ -250,10 +248,10 @@ function CascadeGame() {
 
   const completedGameIdRef = useRef<string | null>(null);
 
-  // The best score persists across app launches (#2515).
+  // The best score persists across app launches (#2515): the shared personal best (#3757).
   useEffect(() => {
     let active = true;
-    loadBestScore().then((best) => {
+    getBest("cascade").then((best) => {
       if (active && best > bestScoreRef.current) bestScoreRef.current = best;
     });
     return () => {
@@ -478,11 +476,11 @@ function CascadeGame() {
     (gameId: string | null) => {
       const finalScore = scoreRef.current;
       const previousBest = bestScoreRef.current;
-      const { improved, isNewBest } = bestOf(previousBest, finalScore, false);
-      // bestOf counts any result as improving on no best; a 0 score never set one.
-      if (improved && finalScore > 0) {
+      // A 0 score never sets a best (the game's rule in `personalBestGames.ts`).
+      const { improved, isNewBest } = judgeResult("cascade", previousBest, finalScore);
+      if (improved) {
         bestScoreRef.current = finalScore;
-        saveBestScore(finalScore).catch(() => {});
+        void recordResult("cascade", finalScore);
       }
       setResult({
         score: finalScore,
