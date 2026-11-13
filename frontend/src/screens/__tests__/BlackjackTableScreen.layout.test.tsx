@@ -319,3 +319,103 @@ describe("the stake at 375×667 with 4 split hands in play", () => {
     }
   });
 });
+
+// #3781: at 320×568 a 3–4 hand split's result collapses the dealer, and the banner beside it is
+// too narrow for "Won: 2 · Lost: 1 · Push: 1  +25 chips" (cut to "Won: 2 · Los… +2…"; longer
+// still in ru/fr). There it shows the net payout alone; the screen reader still hears it all.
+describe("the split result banner", () => {
+  const OUTS = ["win", "push", "lose", "win"] as const;
+  const PAYS = [25, 0, -25, 25];
+  function split(n: number): EngineState {
+    const hands = [
+      [c("8"), c("A"), c("2", "♦"), c("K", "♥")],
+      [c("8", "♥"), c("9", "♣")],
+      [c("8", "♦"), c("4"), c("K", "♣")],
+      [c("8", "♣"), c("Q", "♦")],
+    ].slice(0, n);
+    return {
+      ...base(),
+      phase: "result",
+      bet: 25,
+      outcome: "win",
+      payout: PAYS.slice(0, n).reduce((a, b) => a + b, 0),
+      chips: 150,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("7", "♥"), c("10", "♣")],
+      split_count: n - 1,
+      player_hands: hands,
+      hand_bets: hands.map(() => 25),
+      hand_outcomes: [...OUTS.slice(0, n)],
+      hand_payouts: PAYS.slice(0, n),
+      split_from_aces: hands.map(() => false),
+      active_hand_index: n,
+    } as EngineState;
+  }
+  async function renderAt(width: number, height: number, state: EngineState) {
+    mockWindow.width = width;
+    mockWindow.height = height;
+    (loadGame as jest.Mock).mockResolvedValue(state);
+    await render(
+      <ThemeProvider>
+        <BlackjackGameProvider>
+          <BlackjackTableScreen
+            navigation={
+              {
+                navigate: jest.fn(),
+                replace: jest.fn(),
+                popToTop: jest.fn(),
+                goBack: jest.fn(),
+              } as never
+            }
+          />
+        </BlackjackGameProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const inner = estimateFeltSize({
+      screenWidth: width,
+      screenHeight: height,
+      insetTop: 0,
+      insetBottom: 0,
+      headerHeight: APP_HEADER_HEIGHT,
+    });
+    await act(async () => {
+      fireEvent(screen.getByTestId("blackjack-felt"), "layout", {
+        nativeEvent: {
+          layout: {
+            x: 0,
+            y: 0,
+            width: inner.width + 2 * FELT_BORDER,
+            height: inner.height + 2 * FELT_BORDER,
+          },
+        },
+      });
+    });
+  }
+
+  it.each([
+    [4, "Won: 2 · Lost: 1 · Push: 1", "You Win!", "+25 chips", 25],
+    [3, "Won: 1 · Lost: 1 · Push: 1", "Push", "No change", 0],
+  ])(
+    "at 320×568 with %i hands, shows the net payout alone beside the dealer",
+    async (n, summary, outcome, net, amount) => {
+      await renderAt(320, 568, split(n));
+      expect(screen.getByTestId("result-net").props.children).toBe(net);
+      expect(screen.queryByText(summary)).toBeNull();
+      expect(screen.queryByTestId("result-outcome")).toBeNull();
+      // The whole result is still read out.
+      expect(screen.getByLabelText(`${outcome}. ${summary}. Payout: ${amount} chips`)).toBeTruthy();
+      // The banner sits beside the dealer's label and total (no dealer cards drawn).
+      expect(screen.queryAllByTestId(/^dealer-card-\d+$/)).toHaveLength(0);
+    }
+  );
+
+  it("at 375×667 with 4 hands, keeps the summary beside the payout (its own row)", async () => {
+    await renderAt(375, 667, split(4));
+    expect(screen.getByTestId("result-outcome").props.children).toBe("Won: 2 · Lost: 1 · Push: 1");
+    expect(screen.getByText("+25 chips")).toBeTruthy();
+    expect(screen.queryByTestId("result-net")).toBeNull();
+  });
+});

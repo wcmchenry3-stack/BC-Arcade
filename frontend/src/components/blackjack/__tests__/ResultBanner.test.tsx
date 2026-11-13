@@ -64,4 +64,46 @@ describe("ResultBanner", () => {
     const { getByLabelText } = await renderBanner("win", 100);
     expect(getByLabelText(/payout/i)).toBeTruthy();
   });
+
+  // #3781: beside a collapsed dealer the band is too narrow for a split round's summary.
+  describe("felt, net only", () => {
+    const SUMMARY = "Won: 2 · Lost: 1 · Push: 1";
+    async function renderFelt(netOnly: boolean) {
+      return await render(
+        <ThemeProvider>
+          <ResultBanner
+            variant="felt"
+            compact
+            outcome="win"
+            payout={25}
+            detail="Dealer has 17"
+            summary={SUMMARY}
+            netOnly={netOnly}
+          />
+        </ThemeProvider>
+      );
+    }
+
+    it("shows the net payout alone, on one line", async () => {
+      const { getByTestId, queryByText, queryByTestId } = await renderFelt(true);
+      const net = getByTestId("result-net");
+      expect(net.props.children).toBe("+25 chips");
+      expect(net.props.numberOfLines).toBe(1);
+      expect(queryByText(SUMMARY)).toBeNull();
+      expect(queryByTestId("result-outcome")).toBeNull();
+      expect(queryByTestId("result-detail")).toBeNull();
+    });
+
+    it("still reads the whole result: outcome, summary and payout", async () => {
+      const { getByLabelText } = await renderFelt(true);
+      expect(getByLabelText(`You Win!. ${SUMMARY}. Payout: 25 chips`)).toBeTruthy();
+    });
+
+    it("off, shows the summary beside the payout as before", async () => {
+      const { getByTestId, getByText, queryByTestId } = await renderFelt(false);
+      expect(getByTestId("result-outcome").props.children).toBe(SUMMARY);
+      expect(getByText("+25 chips")).toBeTruthy();
+      expect(queryByTestId("result-net")).toBeNull();
+    });
+  });
 });

@@ -499,6 +499,8 @@ export default function TableFelt({
             payout={result.payout}
             detail={result.detail}
             summary={result.summary ?? null}
+            // Beside a collapsed dealer the band is too narrow for the summary (#3781).
+            netOnly={geometry.dealer.collapsed}
           />
         </PopIn>
       )}
