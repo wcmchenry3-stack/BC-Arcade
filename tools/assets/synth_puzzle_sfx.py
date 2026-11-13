@@ -792,6 +792,154 @@ def yacht_tie() -> np.ndarray:
     return fade(x, 0.0, 0.3)
 
 
+# --- Sort "glass and water" (#3661): option A for every sound -----------------------------------
+
+# From game/sort/motion.ts (#3660, #3783): a pour's stream starts at flowStartMs (300 ms) and each
+# unit takes a UNIT_MS (300 ms) slot, so the glug plays once per unit at flowStartMs + i * 300 ms
+# (a 0.38 s file, overlapping the next by ~80 ms). The win cascade is WIN_CASCADE_MS (1380 ms).
+SORT_UNIT_AT = 0.300
+SORT_WIN_CARD_AT = 1.38
+SORT_WIN_LEN = 2.0
+SORT_GLASS = [(1.0, 1.0, 1.0), (2.32, 0.45, 0.55), (4.25, 0.22, 0.3), (6.63, 0.10, 0.18)]
+
+
+def sort_ping(f, dur, decay, parts=SORT_GLASS, att=0.002, g=1.0):
+    """Glass ping: inharmonic partials, a short attack, exponential decays."""
+    t = t_axis(dur)
+    x = np.zeros_like(t)
+    for r, a, ds in parts:
+        if f * r < 9000:
+            x += a * np.sin(phase(np.full_like(t, f * r))) * np.exp(-t / (decay * ds))
+    return g * x * np.clip(t / att, 0, 1)
+
+
+def sort_tick(seed, dur=0.02, lo=2500, hi=9000, g=1.0):
+    """A bright noise tick: a fingertip or glass edge."""
+    t = t_axis(dur)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    return g * x / (np.std(x) + 1e-12) * np.exp(-t / (dur / 5)) * np.clip(t / 0.0004, 0, 1)
+
+
+def sort_air(seed, dur, lo, hi, peak=0.5, power=1.5):
+    """A smooth band of air, swelling to `peak` (0..1 of dur) then falling."""
+    t = t_axis(dur)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    x /= np.std(x) + 1e-12
+    p = t / t[-1]
+    up = np.clip(p / peak, 0, 1) ** power
+    dn = (1 - np.clip((p - peak) / (1 - peak + 1e-9), 0, 1)) ** 2
+    return x * up * dn
+
+
+def sort_jit(i, spread=0.05):
+    """Variation i's pitch scale: 1.0, -5%, +5.5%."""
+    return [1.0, 1 - spread, 1 + spread * 1.1][i % 3]
+
+
+def sort_select(i: int = 0) -> np.ndarray:
+    """Select, 0.12 s: a bright glass tick, a fingertip on a bottle with a tiny ping, on the tap."""
+    j = sort_jit(i)
+    x = np.zeros(int(0.12 * SR))
+    place(x, sort_tick(100 + i, 0.012, 2500, 9000, 0.9), 0)
+    place(x, sort_ping(3100 * j, 0.1, 0.018, [(1, 1, 1), (2.32, 0.3, 0.5)], g=0.9), 0)
+    return fade(x, 0.002, 0.02)
+
+
+def sort_lift(i: int = 0) -> np.ndarray:
+    """Pour lift, 0.2 s: a faint glass touch, then a soft rising puff of air as the bottle leaves
+    the shelf, at the tap."""
+    j = sort_jit(i)
+    x = np.zeros(int(0.2 * SR))
+    place(x, sort_ping(1900 * j, 0.1, 0.03, [(1, 1, 1), (2.32, 0.35, 0.5)], g=0.35), 0.0)
+    place(x, sort_tick(200 + i, 0.012, 1500, 6000, 0.3), 0.0)
+    place(x, sort_air(210 + i, 0.17, 500, 2400, 0.7) * 0.5, 0.01)
+    return fade(x, 0.01, 0.03)
+
+
+def sort_gulp(f0, dur, decay, h2, h3, dip=0.22, att=0.005):
+    """One bottle gulp: the pitch starts high, drops fast, then rises again; harmonics carry it
+    on phone speakers."""
+    t = t_axis(dur)
+    f = f0 * (1.12 - dip * (1 - np.exp(-t / 0.012)) + 0.2 * (1 - np.exp(-t / 0.05)) * 0.5)
+    ph = phase(f)
+    x = np.sin(ph) + h2 * np.sin(2 * ph) + h3 * np.sin(3 * ph)
+    return x * np.exp(-t / decay) * np.clip(t / att, 0, 1)
+
+
+def sort_glug(i: int = 0) -> np.ndarray:
+    """Glug, 0.38 s, one per unit poured ("classic bottle glug"): three clear gulps at a 520 Hz
+    fundamental (0, ~105, ~208 ms) over a light liquid bed pulsing with them. Variations are
+    -5%, 0% and +5% in pitch. Played at each unit's slot start, flowStartMs + i * 300 ms."""
+    rng = np.random.default_rng(700 + i)
+    scale = [0.95, 1.0, 1.05][i % 3]
+    times, gains = [0.0, 0.105, 0.208], [1, 0.85, 0.95]
+    x = np.zeros(int(0.38 * SR))
+    for k, (at, g) in enumerate(zip(times, gains, strict=True)):
+        at += rng.uniform(-0.01, 0.01) * (k > 0)
+        f = 520 * scale * (1 + 0.04 * k) * rng.uniform(0.97, 1.03)
+        place(x, sort_gulp(f, 0.16, 0.04, 0.3, 0.1) * g, max(at, 0))
+    n = len(x)
+    t = t_axis(0.38)
+    bed = lp2(highpass(noise(n, 800 + i), 700), 3000)
+    bed /= np.std(bed) + 1e-12
+    pulse = np.full(n, 0.35)
+    for at in times:
+        pulse += 0.65 * np.exp(-np.clip(t - at, 0, None) / 0.05) * (t >= at)
+    pulse *= np.clip(t / 0.01, 0, 1) * np.exp(-np.clip(t - 0.28, 0, None) / 0.04)
+    x = x / (np.abs(x).max() + 1e-9) + 0.18 * 0.5 * bed * pulse
+    x = highpass(x, 250)  # keep phone speakers clean
+    return fade(x, 0.002, 0.05)
+
+
+def sort_refused() -> np.ndarray:
+    """Refused pour, 0.26 s: two dull glass taps, falling, like a bottle knocking its neighbour,
+    on the shake's first swings (REFUSED_SHAKE_MS 240)."""
+    x = np.zeros(int(0.26 * SR))
+    parts = [(1, 1, 1), (2.5, 0.3, 0.4)]
+    place(x, sort_ping(900, 0.09, 0.02, parts, g=1.0), 0.0)
+    place(x, sort_tick(400, 0.008, 800, 3500, 0.4) * 0.5, 0.0)
+    place(x, sort_ping(760, 0.12, 0.028, parts, g=0.85), 0.12)
+    place(x, sort_tick(401, 0.008, 800, 3500, 0.4) * 0.4, 0.12)
+    return fade(x, 0.002, 0.04)
+
+
+def sort_complete() -> np.ndarray:
+    """Bottle complete, 0.5 s: a two-note glass chime rising a fifth (E6, B6), under the badge pop."""
+    x = np.zeros(int(0.5 * SR))
+    place(x, sort_ping(1319, 0.4, 0.14, g=0.8), 0.0)
+    place(x, sort_ping(1976, 0.4, 0.16, g=0.9), 0.07)
+    return fade(x, 0.002, 0.08)
+
+
+def sort_undo() -> np.ndarray:
+    """Undo, 0.3 s: a reversed clink, a swell that ends in a tiny tick (the move taken back)."""
+    x = np.zeros(int(0.3 * SR))
+    place(x, sort_ping(1800, 0.26, 0.07, g=1.0)[::-1] * 0.8, 0.0)
+    place(x, sort_tick(440, 0.008, 2500, 8000, 0.3), 0.255)
+    return fade(x, 0.004, 0.05)
+
+
+def sort_hint() -> np.ndarray:
+    """Hint, 0.65 s: three rising soft glass pings (G6, B6, D7), as the source lifts and the
+    destination ring shows."""
+    x = np.zeros(int(0.65 * SR))
+    for k, (at, f) in enumerate([(0.0, 1568), (0.1, 1976), (0.2, 2349)]):
+        place(x, sort_ping(f, 0.4, 0.1, [(1, 1, 1), (2.32, 0.25, 0.5)], g=0.7 + 0.15 * k), at)
+    return fade(x, 0.006, 0.08)
+
+
+def sort_win() -> np.ndarray:
+    """Win, 2.0 s: a glass chime cascade, one rising C major pentatonic note per 170 ms, then a
+    bright glass chord and tick at 1.38 s (WIN_CASCADE_MS), as the result card opens."""
+    x = np.zeros(int(SORT_WIN_LEN * SR))
+    for k, f in enumerate([1047, 1319, 1568, 1976, 2349, 2637]):
+        place(x, sort_ping(f, 0.9, 0.22, g=0.55 + 0.06 * k), 0.02 + k * 0.17)
+    for f, g in [(1047, 0.8), (1568, 0.7), (2093, 0.8), (3136, 0.5)]:
+        place(x, sort_ping(f, 0.6, 0.3, g=g), SORT_WIN_CARD_AT)
+    place(x, sort_tick(500, 0.02, 3000, 9000, 0.6), SORT_WIN_CARD_AT)
+    return fade(x, 0.004, 0.15)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -825,6 +973,9 @@ MAHJONG_SELECT_LEVEL = rms50(-23.0, -3.0)  # the most frequent Mahjong sound: 3 
 MAHJONG_MATCH_LEVEL = rms50(-20.0, -1.0)  # the reward, ~72 times a game
 # A reveal plays on every tile (5 per guess): grey quietest, green 4 dB over it.
 DAILY_WORD_REVEAL_LEVEL = {"miss": -28.0, "present": -26.0, "correct": -24.0}
+SORT_SELECT_LEVEL = rms50(-24.0, -3.0)  # the most frequent Sort sound, with the lift
+SORT_LIFT_LEVEL = rms50(-28.0, -3.0)  # a soft touch under every pour: the quietest
+SORT_GLUG_LEVEL = rms50(-21.0, -3.0)  # up to four per pour: the body of the pour
 JACKPOT_LEVEL = rms50(-16.0, -1.0)  # the top of the ladder, 2 dB over the upper bonus
 CPU_JACKPOT_LEVEL = rms50(-19.0, -1.0)  # the computer's, 3 dB under yours
 
@@ -892,6 +1043,20 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "yacht-win": (yacht_win, rms50(-15.0, -1.0)),  # 1 dB over the jackpot: the top of the ladder
     "yacht-loss": (yacht_loss, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
     "yacht-tie": (yacht_tie, rms50(-19.0, -1.0)),  # between the win and the loss
+    "sort-select-1": (lambda: sort_select(0), SORT_SELECT_LEVEL),
+    "sort-select-2": (lambda: sort_select(1), SORT_SELECT_LEVEL),
+    "sort-select-3": (lambda: sort_select(2), SORT_SELECT_LEVEL),
+    "sort-pour-lift-1": (lambda: sort_lift(0), SORT_LIFT_LEVEL),
+    "sort-pour-lift-2": (lambda: sort_lift(1), SORT_LIFT_LEVEL),
+    "sort-pour-lift-3": (lambda: sort_lift(2), SORT_LIFT_LEVEL),
+    "sort-pour-glug-1": (lambda: sort_glug(0), SORT_GLUG_LEVEL),
+    "sort-pour-glug-2": (lambda: sort_glug(1), SORT_GLUG_LEVEL),
+    "sort-pour-glug-3": (lambda: sort_glug(2), SORT_GLUG_LEVEL),
+    "sort-refused": (sort_refused, rms50(-23.0, -3.0)),
+    "sort-complete": (sort_complete, rms50(-20.0, -3.0)),
+    "sort-undo": (sort_undo, rms50(-27.0, -3.0)),
+    "sort-hint": (sort_hint, rms50(-26.0, -3.0)),
+    "sort-win": (sort_win, rms50(-17.0, -3.0)),
 }
 
 

@@ -216,6 +216,21 @@ describe("puzzle, tile and dice game sound credits (#3578)", () => {
         "yacht-win.ogg",
         "yacht-loss.ogg",
         "yacht-tie.ogg",
+        // Sort, "glass and water" (#3661)
+        "sort-select-1.ogg",
+        "sort-select-2.ogg",
+        "sort-select-3.ogg",
+        "sort-pour-lift-1.ogg",
+        "sort-pour-lift-2.ogg",
+        "sort-pour-lift-3.ogg",
+        "sort-pour-glug-1.ogg",
+        "sort-pour-glug-2.ogg",
+        "sort-pour-glug-3.ogg",
+        "sort-refused.ogg",
+        "sort-complete.ogg",
+        "sort-undo.ogg",
+        "sort-hint.ogg",
+        "sort-win.ogg",
       ])
     );
     expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);
