@@ -19,7 +19,16 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, Platform, StyleSheet, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Animated,
+  Platform,
+  StyleSheet,
+  ScrollView,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+} from "react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -36,8 +45,10 @@ import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersi
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { ElapsedText, createClockActivity } from "../components/shared/ElapsedText";
-import { PillButton } from "../components/shared/PillButton";
+import GameActionBar from "../components/shared/GameActionBar";
+import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
+import { boardFit } from "../components/sudoku/cellStyle";
 import NumberPad from "../components/sudoku/NumberPad";
 import PreGame from "../components/sudoku/PreGame";
 import NewGameModal from "../components/sudoku/NewGameModal";
@@ -64,6 +75,19 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 
 const FLASH_MS = 200;
+
+// The bottom-anchored play area (#3773): HUD, the board (as big as the space left allows), the
+// action bar, then the digit keys in two rows. A phone shorter than COMPACT_BELOW_H trades some
+// bar and key height for a bigger board; the keys stay at 44 pt, the touch minimum.
+const COMPACT_BELOW_H = 700;
+const BAR_H = 56;
+const BAR_H_COMPACT = 48;
+const KEY_H = 58;
+const KEY_H_COMPACT = 44;
+const KEY_GAP = 5;
+const KEY_GAP_COMPACT = 3;
+/** Space between the board and the action bar, and between the bar and the keys. */
+const BLOCK_GAP = 4;
 
 /**
  * Whether a restored game's replay could not be rebuilt from its first entry
@@ -180,6 +204,13 @@ export default function SudokuScreen() {
   // `ElapsedText` without re-rendering the screen, grid and pad (#2964).
   const [clockActivity] = useState(createClockActivity);
   const [newGameModalVisible, setNewGameModalVisible] = useState(false);
+  // The action bar's New Game asks first (the header menu's has its own confirm): the same copy as 2048.
+  const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
+  const { width: windowW, height: windowH } = useWindowDimensions();
+  const compact = windowH < COMPACT_BELOW_H;
+  // The play area above the bar, and its HUD: the board takes what is left.
+  const [slot, setSlot] = useState<{ w: number; h: number } | null>(null);
+  const [hudH, setHudH] = useState(0);
   // What the result card shows, captured when the puzzle is solved.
   const [result, setResult] = useState<{
     /** Null when the clock gave no usable time (the device clock stepped back). */
@@ -652,16 +683,27 @@ export default function SudokuScreen() {
     }
   }, [fullButWrong, t]);
 
-  const headerRight = useMemo(() => {
-    if (!state) return null;
-    return (
-      <PillButton
-        label={t("action.undo")}
-        onPress={handleUndo}
-        disabled={state.undoStack.length === 0}
-      />
+  const onSlotLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setSlot((prev) =>
+      prev && prev.w === width && prev.h === height ? prev : { w: width, h: height }
     );
-  }, [state, handleUndo, t]);
+  }, []);
+  const onHudLayout = useCallback((e: LayoutChangeEvent) => {
+    setHudH(e.nativeEvent.layout.height);
+  }, []);
+  // As large as the width or the height left above the bar allows; until measured, the grid fills the width.
+  // The board is hidden until then (opacity 0, still laid out) so it does not snap from full width.
+  // On a window too short for even the smallest board the play area scrolls instead of overlapping.
+  const fit = slot === null ? null : boardFit(slot.w, slot.h, hudH);
+  const boardSize = fit?.size;
+  const Slot = fit !== null && !fit.fits ? ScrollView : View;
+
+  const handleNewGameBarPress = useCallback(() => setConfirmNewGameVisible(true), []);
+  const handleConfirmNewGame = useCallback(() => {
+    setConfirmNewGameVisible(false);
+    setNewGameModalVisible(true);
+  }, []);
 
   return (
     <GameShell
@@ -681,8 +723,8 @@ export default function SudokuScreen() {
           : undefined
       }
       onOpenLeaderboard={openLeaderboard}
-      rightSlot={headerRight}
-      style={{ paddingBottom: 16 }}
+      gutter={windowW >= 360 ? 16 : 12}
+      style={{ paddingBottom: 8 }}
     >
       {state === null ? (
         <PreGame
@@ -694,67 +736,128 @@ export default function SudokuScreen() {
         />
       ) : (
         <View style={styles.body}>
-          <HudStatRow
-            style={styles.hudTight}
-            stats={[
-              { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
+          <Slot
+            testID="sudoku-play-area"
+            // A ScrollView takes child alignment only through contentContainerStyle (RN throws otherwise).
+            style={Slot === ScrollView ? styles.slotOuter : styles.slot}
+            onLayout={onSlotLayout}
+            {...(Slot === ScrollView ? { contentContainerStyle: styles.slotScroll } : null)}
+          >
+            <View onLayout={onHudLayout}>
+              <HudStatRow
+                style={styles.hudTight}
+                testID="sudoku-hud"
+                stats={[
+                  { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
+                  {
+                    key: "errors",
+                    text: t("hud.errors", { count: state.errorCount }),
+                    muted: state.errorCount === 0,
+                    error: state.errorCount > 0,
+                  },
+                  {
+                    key: "elapsed",
+                    muted: true,
+                    render: (textStyle) => (
+                      <ElapsedText
+                        getElapsedMs={playedMs}
+                        running={!isComplete}
+                        activity={clockActivity}
+                        frozenS={result?.elapsedS ?? null}
+                        resetKey={clockEpoch}
+                        format={formatElapsed}
+                        accessibilityLabel={elapsedA11yLabel}
+                        style={textStyle}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={[styles.gridWrap, slot === null && styles.unmeasured]}>
+              <SudokuGrid
+                grid={state.grid}
+                selectedRow={state.selectedRow}
+                selectedCol={state.selectedCol}
+                variant={state.variant}
+                solution={state.solution}
+                showMistakes={showMistakes}
+                boardSize={boardSize}
+                onCellPress={handleCellPress}
+              />
+            </View>
+          </Slot>
+
+          <View style={{ height: BLOCK_GAP }} />
+
+          {/* Undo, Erase, Notes, Hint and New Game: in thumb reach, right under the board. */}
+          <GameActionBar
+            testID="sudoku-action-bar"
+            height={compact ? BAR_H_COMPACT : BAR_H}
+            bordered={false}
+            actions={[
               {
-                key: "errors",
-                text:
-                  state.errorCount === 1
-                    ? t("hud.errorsOne")
-                    : t("hud.errors", { count: state.errorCount }),
-                muted: true,
+                key: "undo",
+                icon: "undo",
+                label: t("action.undo"),
+                accessibilityLabel: t("action.undo"),
+                color: colors.accentText,
+                disabled: state.undoStack.length === 0,
+                onPress: handleUndo,
+                testID: "sudoku-undo",
               },
               {
-                key: "elapsed",
-                muted: true,
-                render: (textStyle) => (
-                  <ElapsedText
-                    getElapsedMs={playedMs}
-                    running={!isComplete}
-                    activity={clockActivity}
-                    frozenS={result?.elapsedS ?? null}
-                    resetKey={clockEpoch}
-                    format={formatElapsed}
-                    accessibilityLabel={elapsedA11yLabel}
-                    style={textStyle}
-                  />
-                ),
+                key: "erase",
+                icon: "backspace",
+                label: t("numberPad.eraseShort"),
+                accessibilityLabel: t("numberPad.erase"),
+                color: colors.accentText,
+                onPress: handleErase,
+                testID: "sudoku-erase",
+              },
+              {
+                key: "notes",
+                icon: "edit",
+                label: t("numberPad.notes"),
+                accessibilityLabel: t("numberPad.toggleNotes"),
+                color: colors.accentText,
+                selected: state.notesMode,
+                onPress: handleToggleNotes,
+                testID: "sudoku-notes",
+              },
+              {
+                key: "hint",
+                icon: "lightbulb",
+                label: t("action.hint"),
+                accessibilityLabel: t("action.hint"),
+                color: colors.outcomeWin, // the AA green on cream, as Yacht's Hint
+                onPress: handleHint,
+                testID: "sudoku-hint",
+              },
+              {
+                key: "newGame",
+                icon: "refresh",
+                label: t("action.newGame"),
+                accessibilityLabel: t("action.newGame"),
+                color: colors.accentText,
+                onPress: handleNewGameBarPress,
+                testID: "sudoku-new-game",
               },
             ]}
           />
 
-          <View style={styles.gridWrap}>
-            <SudokuGrid
-              grid={state.grid}
-              selectedRow={state.selectedRow}
-              selectedCol={state.selectedCol}
-              variant={state.variant}
-              solution={state.solution}
-              showMistakes={showMistakes}
-              onCellPress={handleCellPress}
-            />
-          </View>
+          <View style={{ height: BLOCK_GAP }} />
 
-          <View
-            style={[styles.gridPadDivider, { backgroundColor: colors.border }]}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
+          <NumberPad
+            grid={state.grid}
+            variant={state.variant}
+            notesMode={state.notesMode}
+            onDigit={handleDigit}
+            keyHeight={compact ? KEY_H_COMPACT : KEY_H}
+            gap={compact ? KEY_GAP_COMPACT : KEY_GAP}
+            message={fullButWrong ? t("fullWrong.message") : undefined}
           />
-
-          <View style={styles.padWrap}>
-            <NumberPad
-              grid={state.grid}
-              variant={state.variant}
-              notesMode={state.notesMode}
-              onDigit={handleDigit}
-              onErase={handleErase}
-              onToggleNotes={handleToggleNotes}
-              onHint={handleHint}
-              message={fullButWrong ? t("fullWrong.message") : undefined}
-            />
-          </View>
 
           <Animated.View
             pointerEvents="none"
@@ -820,8 +923,16 @@ export default function SudokuScreen() {
           currentVariant={variant}
           onQuickRestart={() => handleStartWithSettings(difficulty, variant)}
           onStart={handleStartWithSettings}
+          onCancel={() => setNewGameModalVisible(false)}
         />
       ) : null}
+
+      <NewGameConfirmModal
+        visible={confirmNewGameVisible}
+        onConfirm={handleConfirmNewGame}
+        onCancel={() => setConfirmNewGameVisible(false)}
+        testID="sudoku-abandon"
+      />
     </GameShell>
   );
 }
@@ -833,24 +944,30 @@ export default function SudokuScreen() {
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    gap: 12,
   },
-  // Sudoku's grid fills the height, so its HUD keeps the tighter padding.
+  // The HUD and the board sit at the bottom of the space above the action bar; a tall phone's
+  // spare height goes above them.
+  slot: {
+    flex: 1,
+    justifyContent: "flex-end",
+    minHeight: 0,
+  },
+  // Sudoku's board fills the height, so its HUD keeps the tighter padding.
   hudTight: {
     paddingVertical: 4,
   },
-  gridWrap: {
-    alignSelf: "stretch",
-  },
-  gridPadDivider: {
-    alignSelf: "stretch",
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: 4,
-  },
-  padWrap: {
+  slotOuter: {
     flex: 1,
-    alignSelf: "stretch",
+    minHeight: 0,
+  },
+  slotScroll: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+  },
+  gridWrap: {
     alignItems: "center",
-    justifyContent: "center",
+  },
+  unmeasured: {
+    opacity: 0,
   },
 });

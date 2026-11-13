@@ -28,6 +28,7 @@ import {
   toggleNotesMode,
   undo,
 } from "../engine";
+import { applyRecorded } from "../replay";
 import type { CellValue, GameEvent, Grid, NoteDigit, SudokuCell, SudokuState } from "../types";
 import { CLASSIC_CONFIG, UNDO_STACK_LIMIT } from "../types";
 
@@ -376,6 +377,74 @@ describe("enterDigit (normal mode)", () => {
     const { row, col } = findEmpty(s0);
     const s1 = enterDigit(selectCell(s0, row, col), 5);
     expect(s1.undoStack[0]!.undoStack).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// enterDigit — a repeat tap (#3773)
+// ---------------------------------------------------------------------------
+
+describe("enterDigit: entering the digit a cell already holds (#3773)", () => {
+  it("returns the very same state for a legal digit: no undo step, no events", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findEmpty(s0);
+    const correct = s0.solution.charCodeAt(row * 9 + col) - 48;
+    const s1 = enterDigit(selectCell(s0, row, col), correct as CellValue);
+    const s2 = enterDigit(s1, correct as CellValue);
+    expect(s2).toBe(s1);
+    expect(s2.undoStack).toHaveLength(1);
+    expect(s2.events).toBe(s1.events);
+  });
+
+  it("costs no further error when the illegal digit is tapped again", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findEmpty(s0);
+    const bad = illegalDigit(s0, row, col);
+    const s1 = enterDigit(selectCell(s0, row, col), bad);
+    expect(s1.errorCount).toBe(1);
+    const s2 = enterDigit(enterDigit(s1, bad), bad);
+    expect(s2).toBe(s1);
+    expect(s2.errorCount).toBe(1);
+    expect(s2.undoStack).toHaveLength(1);
+    expect(s2.events).toBe(s1.events); // no second errorEntered
+  });
+
+  it("a different digit still replaces it, and the same digit after that counts again", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findEmpty(s0);
+    const correct = s0.solution.charCodeAt(row * 9 + col) - 48;
+    const other = (correct % 9) + 1;
+    const s1 = enterDigit(selectCell(s0, row, col), correct as CellValue);
+    const s2 = enterDigit(s1, other as CellValue);
+    expect(s2).not.toBe(s1);
+    expect(s2.grid[row]![col]!.value).toBe(other);
+    expect(s2.undoStack).toHaveLength(2);
+    const s3 = enterDigit(s2, correct as CellValue);
+    expect(s3.grid[row]![col]!.value).toBe(correct);
+    expect(s3.undoStack).toHaveLength(3);
+  });
+
+  it("is not recorded for replay: applyRecorded gives nothing for a repeat tap", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findEmpty(s0);
+    const correct = s0.solution.charCodeAt(row * 9 + col) - 48;
+    const s1 = enterDigit(selectCell(s0, row, col), correct as CellValue);
+    expect(applyRecorded(s1, { kind: "digit", digit: correct as CellValue })).toBeNull();
+    // ...while the first tap is
+    const first = applyRecorded(selectCell(s0, row, col), {
+      kind: "digit",
+      digit: correct as CellValue,
+    });
+    expect(first).not.toBeNull();
+  });
+
+  it("still toggles a note when the same digit is tapped twice in notes mode", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findEmpty(s0);
+    const s1 = enterDigit(toggleNotesMode(selectCell(s0, row, col)), 4);
+    expect(s1.grid[row]![col]!.notes.has(4)).toBe(true);
+    const s2 = enterDigit(s1, 4);
+    expect(s2.grid[row]![col]!.notes.has(4)).toBe(false);
   });
 });
 
