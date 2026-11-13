@@ -451,12 +451,14 @@ describe("a split", () => {
     // Net even: a push on the felt; a win and a loss play the mixed chime (#3770), not the push.
     // No hand's own result shows yet.
     // #3720 review: the banner is the net from the start and never changes as the hands reveal.
-    // The strip under the dealer sums the round up (#3581 spec: "1 win · 2 lost"), its label naming
-    // the net push.
-    const banner = () => screen.getByTestId("result-outcome").props.children;
+    // The strip under the dealer shows the net alone (owner decision, #3784), its label naming the
+    // net push and summing the round up (#3581 spec: "1 win · 2 lost").
+    const banner = () => screen.getByTestId("result-net").props.children;
     const tags = () => screen.queryAllByTestId("hand-tag").map((n) => n.props.children);
-    expect(banner()).toBe("Won: 1 · Lost: 1");
-    expect(screen.getByTestId("result-outcome").props.accessibilityLabel).toMatch(/^Push\./);
+    expect(banner()).toBe("No change");
+    expect(screen.getByTestId("result-net").props.accessibilityLabel).toBe(
+      "Push. Won: 1 · Lost: 1. Payout: 0 chips"
+    );
     expect(screen.queryAllByTestId("hand-payout")).toHaveLength(0);
     expect(tags()).toEqual([]);
     await advance(419);
@@ -465,7 +467,7 @@ describe("a split", () => {
     // Hand 1's WIN tag pops with its chips, then hand 2's LOSE 300 ms later.
     expect(tags()).toEqual(["Win"]);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual(["+10"]);
-    expect(banner()).toBe("Won: 1 · Lost: 1");
+    expect(banner()).toBe("No change");
     await advance(299);
     expect(tags()).toEqual(["Win"]);
     await advance(1);
@@ -474,9 +476,9 @@ describe("a split", () => {
       "+10",
       "-10",
     ]);
-    expect(banner()).toBe("Won: 1 · Lost: 1");
+    expect(banner()).toBe("No change");
     await advance(COLLECT_MS);
-    expect(banner()).toBe("Won: 1 · Lost: 1");
+    expect(banner()).toBe("No change");
     await settle();
     expect(soundsSince(at)).toEqual([
       ["blackjack.cardFlip", 0],

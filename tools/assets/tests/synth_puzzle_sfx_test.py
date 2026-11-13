@@ -1,5 +1,6 @@
 """pytest suite for synth_puzzle_sfx.py (#3578)."""
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -293,3 +294,105 @@ def test_yacht_win_is_louder_than_the_tie_and_the_tie_louder_than_the_loss():
     assert lv["win"] > lv["tie"] > lv["loss"]
     assert lv["win"] - lv["tie"] == pytest.approx(4, abs=0.2)
     assert lv["tie"] - lv["loss"] == pytest.approx(2, abs=0.2)
+
+
+# --- Sudoku (#3775), option A "crisp graphite" -------------------------------------------------
+
+SUDOKU_SOUNDS = (
+    "sudoku-digit-place",
+    "sudoku-digit-place-2",
+    "sudoku-digit-place-3",
+    "sudoku-error-entered",
+    "sudoku-unit-complete",
+    "sudoku-puzzle-complete",
+)
+
+
+def _sudoku(name: str) -> np.ndarray:
+    recipe, level = synth_puzzle_sfx.SOUNDS[name]
+    return level(recipe())
+
+
+def _low_share(x: np.ndarray) -> float:
+    spec = np.abs(np.fft.rfft(x)) ** 2
+    f = np.fft.rfftfreq(len(x), 1 / SR)
+    return float(spec[f < 300].sum() / spec.sum())
+
+
+def test_sudoku_timings_follow_the_motion():
+    # game/sudoku/motion.ts (#3774): SOLVED_BEAT_MS 1000, UNIT_SWEEP_START_MS 50, UNIT_SWEEP_MS 450.
+    assert synth_puzzle_sfx.SUDOKU_WIN_CARD_AT == 1.0
+    assert synth_puzzle_sfx.SUDOKU_UNIT_SWEEP_START == 0.05
+    assert synth_puzzle_sfx.SUDOKU_UNIT_SWEEP == 0.45
+
+
+def test_sudoku_win_lands_its_chord_on_the_card():
+    x = _sudoku("sudoku-puzzle-complete")
+    card = synth_puzzle_sfx.SUDOKU_WIN_CARD_AT
+    assert any(abs(t - card) <= 0.01 for t in _onsets(x)), _onsets(x)
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+    assert 2.0 <= len(x) / SR <= 2.4
+    # It opens with the place tick: the solving digit sounds like every other, then the underline.
+    assert _loudest_5ms_at(x[: int(0.2 * SR)]) <= 0.02
+
+
+def test_sudoku_unit_taps_run_along_the_sweep():
+    x = _sudoku("sudoku-unit-complete")
+    start = synth_puzzle_sfx.SUDOKU_UNIT_SWEEP_START
+    end = start + synth_puzzle_sfx.SUDOKU_UNIT_SWEEP
+    # The place tick opens it (the unit replaces the place sound); four taps follow inside the sweep.
+    assert _loudest_5ms_at(x[: int(0.03 * SR)]) <= 0.02
+    taps = [t for t in _onsets(x[int(0.03 * SR) :]) if t < 1]
+    taps = [t + 0.03 for t in taps]
+    assert len(taps) == 4, taps
+    assert start - 0.005 <= taps[0] <= start + 0.02
+    assert all(start <= t <= end for t in taps)
+    assert len(x) / SR <= 0.65
+
+
+def test_sudoku_error_scratches_inside_the_pulse():
+    # ERROR_PULSE_MS 380: the scratch-out is over before the pulse is.
+    x = _sudoku("sudoku-error-entered")
+    assert len(x) / SR <= 0.38
+
+
+def test_sudoku_levels_sit_in_the_family():
+    place = [_rms50_db(_sudoku(n)) for n in SUDOKU_SOUNDS[:3]]
+    assert place == [pytest.approx(-26, abs=0.2)] * 3  # level with 2048's spawn
+    assert _rms50_db(_sudoku("sudoku-error-entered")) == pytest.approx(-24, abs=0.2)
+    assert _rms50_db(_sudoku("sudoku-unit-complete")) == pytest.approx(-22, abs=0.2)
+    assert _rms50_db(_sudoku("sudoku-puzzle-complete")) == pytest.approx(-17, abs=0.2)
+    for n in SUDOKU_SOUNDS:
+        assert 20 * np.log10(np.max(np.abs(_sudoku(n)))) <= -1.0 + 0.01, n
+
+
+def test_sudoku_sounds_carry_on_phone_speakers():
+    # The win under 0.1 % below 300 Hz (as Yacht's); the short ones, being clicks, under 2 %.
+    assert _low_share(_sudoku("sudoku-puzzle-complete")) < 0.001
+    for n in SUDOKU_SOUNDS[:5]:
+        assert _low_share(_sudoku(n)) < 0.02, n
+
+
+def test_sudoku_place_variations_differ():
+    a, b, c = (_sudoku(n) for n in SUDOKU_SOUNDS[:3])
+    assert not np.array_equal(a, b) and not np.array_equal(b, c)
+    assert len(a) / SR <= 0.1
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg to decode the Ogg")
+@pytest.mark.parametrize("name", SUDOKU_SOUNDS)
+def test_sudoku_committed_ogg_is_the_generators_audio(name):
+    # Ogg bytes differ between runs; the decoded audio is what must match the recipe.
+    import subprocess
+
+    committed = (
+        Path(__file__).resolve().parents[3] / "frontend" / "assets" / "sounds" / f"{name}.ogg"
+    )
+    cmd = ["ffmpeg", "-v", "error", "-i", str(committed), "-f", "s16le", "-ac", "1", "-"]
+    pcm = np.frombuffer(subprocess.run(cmd, capture_output=True, check=True).stdout, np.int16)
+    got = pcm.astype(np.float64) / 32768
+    want = _sudoku(name)
+    n = min(len(got), len(want))
+    assert abs(len(got) - len(want)) < 0.05 * SR, name
+    corr = np.corrcoef(got[:n], want[:n])[0, 1]
+    assert corr > 0.95, (name, corr)  # lossy q5 clicks: ~0.96-0.99 when the recipe is the same
