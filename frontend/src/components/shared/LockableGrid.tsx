@@ -20,7 +20,7 @@ function chunk<T>(arr: readonly T[], size: number): T[][] {
   return result;
 }
 
-export interface LockableGridProps<T> {
+interface LockableGridBaseProps<T> {
   readonly title: string;
   /** Set to "header" to announce the title as a heading. */
   readonly titleAccessibilityRole?: "header";
@@ -47,15 +47,27 @@ export interface LockableGridProps<T> {
    * furthest unlocked level). Omitted: the grid opens at the top.
    */
   readonly initialScrollIndex?: number;
-  /**
-   * Group the items into sections of this many (the last may be shorter), each
-   * under a header row. Omitted: one run of rows without a header, as before.
-   */
-  readonly sectionSize?: number;
-  /** The header text of section `index` (0-based); required with `sectionSize`. */
-  readonly sectionTitleOf?: (index: number) => string;
-  readonly sectionTestIDOf?: (index: number) => string;
 }
+
+/** Sections: `sectionSize` and `sectionTitleOf` come together, or neither. */
+type LockableGridSections =
+  | {
+      /**
+       * Group the items into sections of this many (the last may be shorter),
+       * each under a header row. Omitted: one run of rows without a header.
+       */
+      readonly sectionSize: number;
+      /** The header text of section `index` (0-based). */
+      readonly sectionTitleOf: (index: number) => string;
+      readonly sectionTestIDOf?: (index: number) => string;
+    }
+  | {
+      readonly sectionSize?: undefined;
+      readonly sectionTitleOf?: undefined;
+      readonly sectionTestIDOf?: undefined;
+    };
+
+export type LockableGridProps<T> = LockableGridBaseProps<T> & LockableGridSections;
 
 /** Space kept above the row scrolled to, so the row before it peeks in. */
 const SCROLL_MARGIN = 24;
@@ -104,6 +116,8 @@ export function LockableGrid<T>({
     initialScrollIndex !== undefined && initialScrollIndex >= columns
       ? `${targetSection}:${targetRowInSection}`
       : null;
+  const headerIsTarget =
+    titled && targetRow !== null && targetSection > 0 && targetRowInSection === 0;
   const scrollRef = useRef<ScrollView>(null);
   const gridY = useRef<number | null>(null);
   const rowY = useRef<number | null>(null);
@@ -156,6 +170,16 @@ export function LockableGrid<T>({
             {titled && (
               <Text
                 testID={sectionTestIDOf?.(sectionIdx)}
+                // A target on a later section's first row scrolls to its header,
+                // so the "CHAPTER N" heading stays in view.
+                onLayout={
+                  headerIsTarget && sectionIdx === targetSection
+                    ? (e) => {
+                        rowY.current = e.nativeEvent.layout.y;
+                        maybeScroll();
+                      }
+                    : undefined
+                }
                 accessibilityRole="header"
                 style={[styles.sectionTitle, { color: colors.text }]}
               >
@@ -167,7 +191,7 @@ export function LockableGrid<T>({
                 key={rowIdx}
                 style={[styles.row, { gap }]}
                 onLayout={
-                  `${sectionIdx}:${rowIdx}` === targetRow
+                  !headerIsTarget && `${sectionIdx}:${rowIdx}` === targetRow
                     ? (e) => {
                         rowY.current = e.nativeEvent.layout.y;
                         maybeScroll();

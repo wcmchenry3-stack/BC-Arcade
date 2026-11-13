@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, Text } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
@@ -6,7 +6,7 @@ import { typography } from "../../theme/typography";
 import { LockableGrid } from "../shared/LockableGrid";
 import { CHAPTER_SIZE, type LevelData } from "../../game/sort/catalog";
 import type { BestMoves, SortProgress } from "../../game/sort/storage";
-import { bestStarsFor } from "../../game/sort/stars";
+import { bestStarsFor, type BestStars } from "../../game/sort/stars";
 import { StarRow } from "./StarRow";
 
 const COLS = 4;
@@ -33,7 +33,13 @@ export default function LevelSelectScreen({
   onContinue,
 }: Props) {
   const { t } = useTranslation("sort");
-  const { colors } = useTheme();
+
+  // Each level's best stars, once per (bests, levels): the label and the tile read this.
+  const starsByLevel = useMemo(() => {
+    const map = new Map<number, BestStars>();
+    for (const level of levels) map.set(level.id, bestStarsFor(bestMoves, level.id, level.par));
+    return map;
+  }, [bestMoves, levels]);
 
   const hasContinue = progress.currentLevelId !== null && progress.currentState !== null;
 
@@ -59,7 +65,7 @@ export default function LevelSelectScreen({
       testIDOf={(level) => `sort-level-${level.id}`}
       accessibilityLabelOf={(level, unlocked) => {
         if (!unlocked) return t("levelSelect.lockedLevel", { level: level.id });
-        const stars = bestStarsFor(bestMoves, level.id, level.par);
+        const stars = starsByLevel.get(level.id) ?? 0;
         return stars > 0
           ? t("levelSelect.levelStars", { level: level.id, stars })
           : t("hud.level", { level: level.id });
@@ -67,24 +73,35 @@ export default function LevelSelectScreen({
       cardStyle={styles.card}
       lockStyle={styles.lockIcon}
       renderContent={(level, unlocked) => (
-        <>
-          <Text style={[styles.levelNum, { color: unlocked ? colors.text : colors.textMuted }]}>
-            {level.id}
-          </Text>
-          {/* An unlocked level not solved yet shows three empty outlines: the
-              goal is visible, and the tile keeps its height. Locked tiles show none. */}
-          {unlocked ? (
-            <StarRow
-              stars={bestStarsFor(bestMoves, level.id, level.par)}
-              size={14}
-              testID={`sort-level-${level.id}-stars`}
-            />
-          ) : null}
-        </>
+        <LevelTile id={level.id} stars={starsByLevel.get(level.id) ?? 0} unlocked={unlocked} />
       )}
     />
   );
 }
+
+interface TileProps {
+  readonly id: number;
+  readonly stars: BestStars;
+  readonly unlocked: boolean;
+}
+
+/**
+ * A tile's number and stars. Memoised on (id, stars, unlocked), so a new
+ * `bestMoves` object re-renders only the tiles whose stars changed.
+ */
+const LevelTile = React.memo(function LevelTile({ id, stars, unlocked }: TileProps) {
+  const { colors } = useTheme();
+  return (
+    <>
+      <Text style={[styles.levelNum, { color: unlocked ? colors.text : colors.textMuted }]}>
+        {id}
+      </Text>
+      {/* An unlocked level not solved yet shows three empty outlines: the
+          goal is visible, and the tile keeps its height. Locked tiles show none. */}
+      {unlocked ? <StarRow stars={stars} size={14} testID={`sort-level-${id}-stars`} /> : null}
+    </>
+  );
+});
 
 const styles = StyleSheet.create({
   card: {

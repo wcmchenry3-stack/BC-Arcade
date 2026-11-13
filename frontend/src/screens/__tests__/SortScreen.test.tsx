@@ -2465,6 +2465,42 @@ describe("SortScreen — stars (#3687)", () => {
     expect(r.getAllByTestId(/^sort-level-1-stars-\d-filled$/, { hidden: true })).toHaveLength(3);
   });
 
+  it("a worse replay shows its own 1 star on the card; the tile keeps the best 3", async () => {
+    // Four reds in four bottles: three pours to solve. Par 1, best stored as 1 move (3 stars);
+    // the replay takes 3 moves, past ceil(1 x 1.25) = 2, so it earns 1 star.
+    playOnLevels([{ id: 1, par: 1, bottles: [["red"], ["red"], ["red"], ["red"], []] }]);
+    storage.loadBestMoves.mockResolvedValue({ "1": 1 });
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: null,
+      currentState: null,
+    });
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1, 3 of 3 stars"));
+    });
+    for (const from of [2, 3, 4]) {
+      await act(async () => {
+        await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${from},`)));
+      });
+      await act(async () => {
+        await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+      });
+      await act(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (global as any).__sortBoardLastProps?.onPourComplete?.();
+      });
+    }
+    await skipWinCascade();
+    const card = within(await r.findByTestId("sort-result"));
+    expect(card.getByLabelText("1 of 3 stars. Moves 3, target 1.")).toBeTruthy();
+    expect(card.getAllByTestId(/^sort-result-star-\d-filled$/, { hidden: true })).toHaveLength(1);
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Level" }));
+    });
+    expect(await r.findByLabelText("Level 1, 3 of 3 stars")).toBeTruthy();
+  });
+
   it("shows a stored best's stars on the grid at load", async () => {
     storage.loadBestMoves.mockResolvedValue({ "2": 1 });
     const r = await renderScreen();

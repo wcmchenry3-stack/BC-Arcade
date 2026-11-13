@@ -148,8 +148,25 @@ describe("LockableGrid", () => {
     });
 
     it("renders no headers without sectionSize (the Mahjong picker's case)", async () => {
-      await renderGrid({ sectionTitleOf: (i) => `Part ${i}` });
+      await renderGrid();
       expect(screen.queryAllByRole("header")).toHaveLength(0);
+    });
+
+    it("scrolls to the section header when the target opens a later section", async () => {
+      const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo").mockImplementation(() => {});
+      await renderGrid({ ...sectioned, initialScrollIndex: 3 }); // item 4: section 2, first row
+      const row = rowOf("level-4")!;
+      await fireEvent(row.parent as never, "layout", {
+        nativeEvent: { layout: { x: 0, y: 100, width: 300, height: 500 } },
+      });
+      // The grid's offset alone isn't enough: the scroll waits on the header's.
+      expect(scrollTo).not.toHaveBeenCalled();
+      await fireEvent(screen.getByTestId("part-2") as never, "layout", {
+        nativeEvent: { layout: { x: 0, y: 150, width: 300, height: 30 } },
+      });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      expect(scrollTo).toHaveBeenCalledWith({ y: 100 + 150 - 24, animated: false });
+      scrollTo.mockRestore();
     });
 
     it("scrolls to an item in a later section, headers included in the offsets", async () => {
