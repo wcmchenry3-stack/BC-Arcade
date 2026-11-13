@@ -10,7 +10,7 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Animated, AppState } from "react-native";
+import { Animated, AppState, StyleSheet } from "react-native";
 import type { AppStateStatus } from "react-native";
 
 import SudokuScreen from "../SudokuScreen";
@@ -210,6 +210,98 @@ describe("SudokuScreen — mount resume", () => {
     } finally {
       __setPremiumLevelsForTests(null);
     }
+  });
+});
+
+describe("SudokuScreen — thumb pad layout (#3773)", () => {
+  async function startEasy() {
+    const rendered = await renderAndAwaitLoad();
+    await fireEvent.press(rendered.getByLabelText(/start/i));
+    return rendered;
+  }
+
+  it("puts Undo, Erase, Notes, Hint and New Game in the action bar, in that order", async () => {
+    const r = await startEasy();
+    const bar = r.getByTestId("sudoku-action-bar");
+    const buttons = within(bar).getAllByRole("button");
+    expect(buttons.map((b) => b.props.testID)).toEqual([
+      "sudoku-undo",
+      "sudoku-erase",
+      "sudoku-notes",
+      "sudoku-hint",
+      "sudoku-new-game",
+    ]);
+    expect(within(bar).getByText("Undo")).toBeTruthy();
+    expect(within(bar).getByText("Erase")).toBeTruthy();
+    expect(within(bar).getByText("Notes")).toBeTruthy();
+    expect(within(bar).getByText("Hint")).toBeTruthy();
+    expect(within(bar).getByText("New game")).toBeTruthy();
+  });
+
+  it("has no Undo pill in the header", async () => {
+    const r = await startEasy();
+    expect(r.getAllByLabelText(/^undo$/i)).toHaveLength(1);
+    expect(within(r.getByTestId("sudoku-action-bar")).getByLabelText(/^undo$/i)).toBeTruthy();
+  });
+
+  it("shows Notes on or off in the bar, with selected state", async () => {
+    const r = await startEasy();
+    const notes = r.getByTestId("sudoku-notes");
+    expect(notes.props.accessibilityState).toEqual(expect.objectContaining({ selected: false }));
+    await act(async () => {
+      await fireEvent.press(notes);
+    });
+    expect(r.getByTestId("sudoku-notes").props.accessibilityState).toEqual(
+      expect.objectContaining({ selected: true })
+    );
+    // the digit keys turn into dashed note keys
+    expect(r.getByTestId("sudoku-digit-5")).toHaveStyle({ borderStyle: "dashed" });
+  });
+
+  it("lays the keys out in two rows under the action bar", async () => {
+    const r = await startEasy();
+    expect(r.getByTestId("sudoku-keys-row-1").children).toHaveLength(5);
+    expect(r.getByTestId("sudoku-keys-row-2").children).toHaveLength(4);
+  });
+
+  it("a bar New Game asks first, then opens the New Game picker; Cancel keeps the puzzle", async () => {
+    const r = await startEasy();
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game"));
+    });
+    // the abandon confirm, with the shared copy
+    expect(r.getByText("Start new game?")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start new game"));
+    });
+    expect(r.getByText("New Game")).toBeTruthy(); // the picker's title
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game-cancel"));
+    });
+    expect(r.queryByText("Quick Restart")).toBeNull();
+    expect(r.getByTestId("sudoku-board")).toBeTruthy(); // still playing
+  });
+
+  it("declining the confirm leaves the puzzle as it is", async () => {
+    const r = await startEasy();
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Cancel"));
+    });
+    expect(r.queryByText("Quick Restart")).toBeNull();
+  });
+
+  it("the board is a labelled grid", async () => {
+    const r = await startEasy();
+    expect(r.getByLabelText("Sudoku board").props.role).toBe("grid");
+  });
+
+  it("counts errors with a plural-aware label, in the error colour once above 0", async () => {
+    const r = await startEasy();
+    expect(r.getByText("0 errors")).toBeTruthy();
+    expect(r.getByText("0 errors")).toHaveStyle({ color: darkColors.textMuted });
   });
 });
 
@@ -1311,7 +1403,43 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     expect(r.getByText("1 error")).toBeTruthy();
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
-    ).toHaveStyle({ color: darkColors.error });
+    ).toHaveStyle({ color: darkColors.errorText });
+  });
+
+  it("two illegal entries read '1 error' then '2 errors', in the errorText colour (#3773)", async () => {
+    const base = loadPuzzle("medium", "classic", () => 0);
+    // Two empty cells, each with a digit that repeats one in its row, column or box.
+    const picks: { row: number; col: number; digit: number }[] = [];
+    for (let r = 0; r < 9 && picks.length < 2; r++) {
+      for (let c = 0; c < 9 && picks.length < 2; c++) {
+        if (base.grid[r]![c]!.given) continue;
+        for (let d = 1; d <= 9; d++) {
+          if (sudokuEngine.getConflicts(base.grid, r, c, d).length > 0) {
+            picks.push({ row: r, col: c, digit: d });
+            break;
+          }
+        }
+      }
+    }
+    expect(picks).toHaveLength(2);
+    const [a, b] = picks as [(typeof picks)[number], (typeof picks)[number]];
+    const r = await resume(selectCell(base, a.row, a.col));
+    const enter = async (cellPick: typeof a) => {
+      await act(async () => {
+        await fireEvent.press(r.getByLabelText(cellLabel(cellPick.row, cellPick.col)));
+      });
+      await act(async () => {
+        await fireEvent.press(
+          r.getByLabelText(new RegExp(`enter digit ${cellPick.digit}\\.`, "i"))
+        );
+      });
+    };
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${a.digit}\\.`, "i")));
+    });
+    expect(r.getByText("1 error")).toHaveStyle({ color: darkColors.errorText });
+    await enter(b);
+    expect(r.getByText("2 errors")).toHaveStyle({ color: darkColors.errorText });
   });
 
   it("Show mistakes defaults to on for easy and off for medium and hard", async () => {
@@ -1332,7 +1460,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     await play(r, s.legalWrong, s.other);
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
-    ).toHaveStyle({ color: darkColors.error });
+    ).toHaveStyle({ color: darkColors.errorText });
     expect(errorFlashes()).toBe(0);
     expect(r.getByText("0 errors")).toBeTruthy();
   });
@@ -1349,7 +1477,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     await act(async () => {
       await fireEvent.press(item);
     });
-    expect(digitText()).toHaveStyle({ color: darkColors.error });
+    expect(digitText()).toHaveStyle({ color: darkColors.errorText });
     expect(await AsyncStorage.getItem(SHOW_MISTAKES_KEY)).toBe("1");
 
     const item2 = await showMistakesItem(r);
@@ -1403,7 +1531,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     const r2 = await resume(oldDuplicate);
     expect(
       within(r2.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
-    ).toHaveStyle({ color: darkColors.error });
+    ).toHaveStyle({ color: darkColors.errorText });
   });
 
   describe("a full grid that is not the solution", () => {
@@ -1443,6 +1571,28 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
       expect(r.queryByTestId("sudoku-full-wrong")).toBeNull();
       const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
       expect(summary["result"]).toEqual({ won: true, errors: 0 });
+    });
+  });
+});
+
+describe("SudokuScreen — play area too short for the board (#3773)", () => {
+  it("falls back to a ScrollView with child alignment only on its content container", async () => {
+    const base = loadPuzzle("medium", "classic", () => 0);
+    await saveGame(base);
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    const area = r.getByTestId("sudoku-play-area");
+    await act(async () => {
+      await fireEvent(area, "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 60 } },
+      });
+    });
+    const scroll = r.getByTestId("sudoku-play-area");
+    expect(scroll.type).toBe("RCTScrollView");
+    const outer = StyleSheet.flatten(scroll.props.style) ?? {};
+    expect(outer).not.toHaveProperty("justifyContent");
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle)).toMatchObject({
+      justifyContent: "flex-end",
     });
   });
 });

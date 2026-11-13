@@ -47,13 +47,57 @@ The game randomly selects a puzzle from the chosen local bank. The last **diffic
 
 - Tap a cell to select it. Tapping the selected cell again deselects it.
 - Given cells can be selected/highlighted but cannot be edited.
-- Tap a digit to enter it in the selected editable cell.
-- The number pad shows how many instances of each digit remain; a digit is disabled once all instances are on the grid.
+- Tap a digit key to enter it in the selected editable cell. **Tapping the digit a cell already holds does nothing** (#3773): no error, undo step, replay entry or event, so a double tap cannot cost a second error or fill the undo history. (In Notes mode the same digit still toggles a note.)
+- Each digit key shows how many instances of that digit remain; a digit is dimmed and disabled once all instances are on the grid.
 - **Erase** clears the selected editable cell's value and notes.
 - **Notes** toggles pencil-mark mode.
 - **Undo** restores the previous placement/erase snapshot; the history is capped at 50 entries.
 - **Hint** fills the selected empty editable cell with its correct solution digit (or, on a full grid that is not the solution, corrects a wrong cell; see Errors and completion).
+- **New Game** asks "Start new game?", then opens the New Game picker (variant and difficulty, **Start**, **Quick Restart**, **Cancel**); Android Back or Escape closes the picker like Cancel. The ⋯ menu's New Game still does the same, through its own abandon confirm.
 - **Show mistakes** is a checkable item in the ⋯ header menu (see Errors and completion).
+
+## UI (#3773)
+
+The "thumb pad" layout, anchored to the bottom above the tab bar. Top to bottom:
+
+1. **HUD row** (`HudStatRow`): difficulty, the error count, the clock. The count is plural-aware (`hud.errors_one` / `_other`, plus the `few`/`many` forms ru needs and the six Arabic forms) and is drawn in the theme's `error` colour once above 0.
+2. **Board** (`components/sudoku/SudokuGrid.tsx`): square, as large as the width or the height left above the controls allows (the screen measures the space and passes `boardSize`). A taller phone's spare height goes above the HUD. Cell digits and notes scale with the cell (`cellStyle.ts`).
+3. **Action bar** (shared `components/shared/GameActionBar`, 56 pt, 48 pt on a phone shorter than 700 pt): Undo, Erase, Notes, Hint, New Game. **Notes shows its state** as a tinted, ringed chip behind the button (the bar's new `selected` prop; the button also reports `accessibilityState.selected`) and the digit keys turn into dashed, accent-coloured note keys. With five actions on a 320 pt phone each slot is ~59 pt, so below 64 pt per action the labels drop to 9 pt on one line; a locale's label must stay about 12 capitals or fewer (de Undo is "Zurück", the New Game label is a short form in de, es, fr-CA and ru).
+4. **Digit keys** (`NumberPad`): two centred rows, 5 over 4 on a 9×9 and 3 over 3 on a 6×6, each key the digit over how many remain. Keys are at least 44 pt tall and wide at 320 pt wide, even on a 568 pt tall phone (the board gives up height first). Digits are Space Grotesk Bold (`typography.heading`).
+
+The header holds only back, the title and ⋯ (the Undo pill is gone).
+
+### Highlights
+
+- The **selected cell** is a solid accent fill.
+- Its **row, column and 3×3 box** (2×3 on a 6×6) get a soft wash (`peer`).
+- **Every other cell with the same digit** gets a stronger wash (`same`).
+- A cell paints **one** wash, never two stacked: a conflict, else the same digit, else a peer. That keeps each digit colour above its contrast on every background.
+- The washes are theme tokens in `theme/theme.sudoku.ts` (dark: the accent; light: the lighter teal, which a 4.5:1 `accentText` digit can still sit on). A cell's background is composited from them in `components/sudoku/cellStyle.ts`.
+
+### Digits
+
+- Digits the player enters use `accentText` (the plain accent is 1.6-2:1 on cream); givens use the text colour.
+- Notes are a 3×3 grid inside the cell (2×3 on a 6×6), each digit in its fixed slot, sized from the cell, so seven notes fit a 31 pt cell at 320 pt wide.
+- `components/sudoku/__tests__/boardContrast.test.ts` composites every wash over the board surface in both themes and holds the entered digit, a given and a pencil note to 4.5:1, an error digit (large bold text) to 3:1, and the selected cell's digits to 4.5:1.
+
+### Two kinds of error, told apart
+
+| | Meaning | Style | Label |
+| --- | --- | --- | --- |
+| Conflict | The digit repeats one in its row, column or box (an illegal move) | red digit on a red wash, and a **red ring on each cell it clashes with** (the same digit in its row, column or box) | "conflict, repeats a digit in its row, column or box"; the clashing cells say "clashes with a conflict" |
+| Mistake | Show mistakes is on and the legal digit is not the solution | red digit with a red **underline** bar, no wash | "mistake, wrong digit" |
+
+A conflict that is also not the solution shows the conflict. These are static styles; motion for errors is a later story.
+
+### Accessibility
+
+- A cell's label is `Cell row R, column C, <digit or empty>` then, where they apply, `given` or `entered`, `box N`, `notes 1 4 7`, and the conflict, mistake or clash text. The row, column and value stay first so a short query still matches.
+- Each digit key says `Enter digit D. Remaining: N` (0 when used up, and the key is disabled).
+- The board is a labelled grid (`role="grid"` on native; a labelled group on web, where a `grid` needs row and cell roles).
+- The Notes button reports `accessibilityState.selected`.
+- Every control is at least 44 pt (`e2e/tests/sudoku-layout.spec.ts`, at 390x844 and 320x568); `e2e/tests/i18n-overflow.spec.ts` checks the board, the bar and the picker for clipped or spilling text in en, es, fr-CA, de and ru at both sizes.
+- Board digits and notes do not follow the system font scale (the board is fixed geometry); the HUD and the bar do, up to the bar's own cap.
 
 ### Notes
 
@@ -80,7 +124,7 @@ A hint:
 
 Only **illegal moves** are errors (#2943). A digit is illegal when it duplicates a digit already in its row, column or box (givens included). The check is against the board, not the stored solution:
 
-- an illegal digit stays on the board, is coloured as an error, increments `errorCount` and flashes the screen;
+- an illegal digit stays on the board, is drawn as a conflict (see UI), increments `errorCount` and flashes the screen. Entering the same illegal digit again in that cell does nothing, so it is counted once;
 - a **legal but incorrect** digit (one that breaks no rule but is not the solution digit) is not an error: it is not counted, does not flash, costs no score and is not coloured, unless Show mistakes is on (below);
 - the error colour follows the current board: erasing or changing the conflicting digit clears the highlight, and both cells of a conflict between two player digits are highlighted. `errorCount` counts illegal **entries** made, so removing the duplicate afterwards does not refund the error (undo does);
 - a legal placement can trigger row/column/box completion feedback;
@@ -90,7 +134,7 @@ Undo restores the previous error count, so undoing an illegal placement removes 
 
 ### Full grid that is not the solution
 
-When every cell is filled but the grid is not the solution, a message says that something is off and points to the **Hint** button. It replaces the number pad's digit row (every digit is used up by then, so the row is disabled anyway), so the layout keeps its height; the pad's own **Hint** button (Erase, Notes, Hint row) stays in place and is the action. The message is announced to screen readers (live region on Android, an announcement on iOS). That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
+When every cell is filled but the grid is not the solution, a message says that something is off and points to the **Hint** button. It replaces the digit keys (every digit is used up by then, so they are disabled anyway) and keeps their height, so the layout does not move; the action bar's **Hint** button stays in place and is the action. The message is announced to screen readers (live region on Android, an announcement on iOS). That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
 
 ### Show mistakes
 
@@ -231,6 +275,7 @@ The heavy hard game above (315 entries) over the real GameEventClient → EventS
 - Replay recording: `frontend/src/game/sudoku/replay.ts` (entries, `applyRecorded`, the chunked entry log); backend `backend/sudoku/models.py` (`validate_entries`), migration `backend/alembic/versions/0043_sudoku_replay_events.py`
 - Engine: `frontend/src/game/sudoku/engine.ts`
 - Types/config: `frontend/src/game/sudoku/types.ts`
+- Board UI: `frontend/src/components/sudoku/` (`SudokuGrid`, `SudokuCell`, `NumberPad`, `NewGameModal`, `cellStyle.ts`), palette `frontend/src/theme/theme.sudoku.ts`
 - Screen: [`frontend/src/screens/SudokuScreen.tsx`](../../frontend/src/screens/SudokuScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Storage: `frontend/src/game/sudoku/storage.ts`
 - Classic bank: `frontend/src/game/sudoku/puzzles.json`

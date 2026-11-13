@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { typography } from "../../theme/typography";
 import type { CellValue, Grid, Variant } from "../../game/sudoku/types";
 import { variantConfig } from "../../game/sudoku/types";
 
@@ -11,13 +12,14 @@ interface Props {
   variant: Variant;
   notesMode: boolean;
   onDigit: (digit: CellValue) => void;
-  onErase: () => void;
-  onToggleNotes: () => void;
-  onHint: () => void;
+  /** Key height in points (at least 44; the screen shrinks it on a short phone). */
+  keyHeight?: number;
+  /** Gap between keys, in points. */
+  gap?: number;
   /**
-   * Shown in place of the digit row (#2943) on a full-but-wrong grid: no empty
+   * Shown in place of the digit keys (#2943) on a full-but-wrong grid: no empty
    * cell is left to type into, so the player fixes a cell with Hint, or with
-   * Erase and then a digit (the row comes back once the grid isn't full).
+   * Erase and then a digit (the keys come back once the grid isn't full).
    */
   message?: string;
 }
@@ -28,14 +30,17 @@ function countValue(grid: Grid, digit: CellValue): number {
   return n;
 }
 
+/**
+ * The digit keys, in two centred rows (5 + 4 on a 9×9, 3 + 3 on a 6×6, #3773), each showing its
+ * digit and how many of it remain. Erase, Notes, Hint and New Game are the action bar's.
+ */
 export default function NumberPad({
   grid,
   variant,
   notesMode,
   onDigit,
-  onErase,
-  onToggleNotes,
-  onHint,
+  keyHeight = 52,
+  gap = 4,
   message,
 }: Props) {
   const { t } = useTranslation("sudoku");
@@ -53,22 +58,37 @@ export default function NumberPad({
     return m;
   }, [grid, digits]);
 
-  return (
-    <View style={styles.pad}>
-      {message ? (
+  // 5 keys across; the second row's keys are as wide as the first's and centred. In percent of the
+  // pad's width, so no layout pass is needed: half the empty keys' width, plus half a gap, each side.
+  const firstRow = size === 9 ? 5 : 3;
+  const rows = [digits.slice(0, firstRow), digits.slice(firstRow)];
+  const sidePad = (n: number) => `${((5 - n) / 10) * 100}%` as const;
+
+  if (message) {
+    return (
+      <View style={[styles.pad, { minHeight: 2 * keyHeight + gap }]}>
         <View
           testID="sudoku-full-wrong"
           accessibilityRole="alert"
           accessibilityLiveRegion={Platform.OS === "android" ? "polite" : undefined}
-          style={[styles.message, { maxWidth: 360, borderColor: colors.error }]}
+          style={[styles.message, { borderColor: colors.error }]}
         >
           <Text style={[styles.messageText, { color: colors.text }]}>{message}</Text>
         </View>
-      ) : (
-        <View style={[styles.digitRow, { maxWidth: 360 }]}>
-          {digits.map((d) => {
-            const placed = counts.get(d) ?? 0;
-            const remaining = size - placed;
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.pad, { gap }]} testID="sudoku-keys">
+      {rows.map((row, i) => (
+        <View
+          key={i}
+          testID={`sudoku-keys-row-${i + 1}`}
+          style={[styles.row, { gap, paddingHorizontal: row.length < 5 ? sidePad(row.length) : 0 }]}
+        >
+          {row.map((d) => {
+            const remaining = Math.max(0, size - (counts.get(d) ?? 0));
             const disabled = remaining <= 0;
             return (
               <Pressable
@@ -77,141 +97,88 @@ export default function NumberPad({
                 onPress={() => onDigit(d)}
                 disabled={disabled}
                 accessibilityRole="button"
-                accessibilityLabel={t("numberPad.digit", {
-                  digit: d,
-                  defaultValue: `Enter digit ${d}`,
-                })}
+                accessibilityLabel={t("numberPad.digit", { digit: d, remaining })}
                 accessibilityState={{ disabled }}
                 style={[
-                  styles.digitBtn,
+                  styles.key,
                   {
+                    height: keyHeight,
                     backgroundColor: colors.surfaceHigh,
-                    borderColor: colors.border,
-                    opacity: disabled ? 0.35 : 1,
+                    // Notes on: the keys turn into dashed note keys, so the mode reads at a glance.
+                    borderColor: notesMode ? colors.accentText : colors.border,
+                    borderStyle: notesMode ? "dashed" : "solid",
+                    borderWidth: notesMode ? 1.5 : 1,
+                    opacity: disabled ? 0.32 : 1,
                   },
                 ]}
               >
-                <Text style={[styles.digitText, { color: colors.text }]}>{d}</Text>
-                <Text style={[styles.remainingText, { color: colors.textMuted }]}>{remaining}</Text>
+                <Text
+                  allowFontScaling={false}
+                  style={[
+                    styles.digit,
+                    {
+                      color: notesMode ? colors.accentText : colors.text,
+                      fontSize: notesMode ? 20 : keyHeight < 52 ? 22 : 28,
+                    },
+                  ]}
+                >
+                  {d}
+                </Text>
+                <Text
+                  allowFontScaling={false}
+                  style={[styles.remaining, { color: colors.textMuted }]}
+                >
+                  {disabled ? " " : remaining}
+                </Text>
               </Pressable>
             );
           })}
         </View>
-      )}
-      <View style={styles.toolRow}>
-        <Pressable
-          onPress={onErase}
-          accessibilityRole="button"
-          accessibilityLabel={t("numberPad.erase", { defaultValue: "Erase cell" })}
-          style={[styles.toolBtn, { borderColor: colors.accent }]}
-        >
-          <Text style={[styles.toolText, { color: colors.accentText }]}>
-            {t("numberPad.eraseShort", { defaultValue: "Erase" })}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={onToggleNotes}
-          accessibilityRole="button"
-          accessibilityLabel={t("numberPad.toggleNotes", {
-            defaultValue: "Toggle pencil marks",
-          })}
-          accessibilityState={{ selected: notesMode }}
-          style={[
-            styles.toolBtn,
-            {
-              borderColor: colors.accent,
-              backgroundColor: notesMode ? colors.accent : "transparent",
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.toolText,
-              { color: notesMode ? colors.textOnAccent : colors.accentText },
-            ]}
-          >
-            {t("numberPad.notes", { defaultValue: "Notes" })}
-          </Text>
-        </Pressable>
-        <Pressable
-          testID="sudoku-hint"
-          onPress={onHint}
-          accessibilityRole="button"
-          accessibilityLabel={t("action.hint", { defaultValue: "Hint" })}
-          style={[styles.toolBtn, { borderColor: colors.accent }]}
-        >
-          <Text style={[styles.toolText, { color: colors.accentText }]}>
-            {t("action.hint", { defaultValue: "Hint" })}
-          </Text>
-        </Pressable>
-      </View>
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   pad: {
-    alignItems: "center",
-    gap: 12,
-    width: "100%",
+    alignSelf: "stretch",
   },
-  digitRow: {
+  row: {
     flexDirection: "row",
-    gap: 4,
-    width: "100%",
+    justifyContent: "center",
   },
-  digitBtn: {
+  key: {
     flex: 1,
-    aspectRatio: 0.85,
-    borderRadius: 8,
-    borderWidth: 1,
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
   },
-  digitText: {
-    fontSize: 20,
-    fontWeight: "700",
-    fontFamily: "SpaceGrotesk",
+  digit: {
+    fontFamily: typography.heading,
     textAlign: "center",
+    includeFontPadding: false,
   },
-  remainingText: {
-    fontSize: 9,
-    fontWeight: "600",
+  remaining: {
+    fontFamily: typography.label,
+    fontSize: 10.5,
+    lineHeight: 12,
+    marginTop: 2,
     textAlign: "center",
+    includeFontPadding: false,
   },
-  // About the digit row's footprint (a digit button is 0.85 as wide as tall);
-  // the text wraps freely and is small enough for the longest locale.
   message: {
-    width: "100%",
+    flex: 1,
     justifyContent: "center",
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
+    borderRadius: 10,
+    paddingHorizontal: 12,
     paddingVertical: 4,
   },
   messageText: {
-    fontSize: 12,
-    lineHeight: 15,
+    fontSize: 13,
+    lineHeight: 17,
     textAlign: "center",
-  },
-  toolRow: {
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-  },
-  toolBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  toolText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
   },
 });
