@@ -806,8 +806,9 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
   it("Reduce Motion turned on mid-Auto-Complete: the run's later cards land at once (#3712 review)", async () => {
     const api = await mountOn(blockedKing(true));
     const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
-    // Steps at 120 (Q♠), 240 (K♠) and 360 (K♥, the win).
-    await advance(250);
+    // Steps at 120 (Q♠), 240 (K♠) and 360 (K♥, the win). The toggle comes while Q♠ flies,
+    // before K♠'s and K♥'s steps, so both of those are queued after it (#3831 review).
+    await advance(170);
     expect(flying(api, "spades-12")).toBe(true);
     await act(async () => {
       reduceMotionListeners.forEach((h) => h(true));
@@ -817,7 +818,7 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     await advance(70);
     expect(flying(api, "spades-13")).toBe(false);
     expect(inFlight(api)).toEqual([]);
-    await advance(40);
+    await advance(120);
     expect(inFlight(api)).toEqual([]);
     // The win lands at its step, not at a flight's contact.
     expect(playedAt(WIN, t)).toEqual([360]);
