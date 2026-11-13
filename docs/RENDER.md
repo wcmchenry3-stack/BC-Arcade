@@ -91,6 +91,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `DATABASE_PLAN_MB`         | optional; default `500` (the Supabase plan's database limit; raise it with the plan) | optional                              | Dashboard           |
 | `REPLAY_JOB_HOUR_UTC`      | optional; default `9`, 0–21 (start of the 3-hour off-peak UTC window for the daily prune and budget check) | optional       | Dashboard           |
 | `REPLAY_RECORDING_ENABLED` | optional; default `true`. **Set `false` to stop storing replay events at once** (lifecycle events, games and boards unaffected; a game it cut stays cut when switched back on) | optional | Dashboard |
+| `STARSWARM_HITS_BY_TIER` | optional; default `true`. **Set `false` to stop storing Star Swarm's per-tier hit grid** (`damage.hitsByTier` of `wave_completed`, kept forever, #3710) at once; the rest of each wave is still stored | optional | Dashboard |
 | `CLIENT_SENTRY_ENABLED`    | optional; default `true`. **Set `false` to stop the apps' Sentry events** (keep-list: fatal crashes, native crashes/hangs, player feedback), #3437 | optional | Dashboard |
 | `CLIENT_SENTRY_SAMPLE_RATE` | optional; default `1.0`, 0–1 (share of the apps' Sentry events sent; a value outside 0–1 fails the deploy) | optional | Dashboard |
 | `SORT_CATALOG_EDITION_ENFORCED` | default `false`. **Set `true` once the app builds with Sort's level catalog are live in both stores** (#2761): the Sort board and Stats "Best" then rank only catalog solves, and Sort's daily-challenge goals move from level 3 / 8 / 15 to 10 / 30 / 60 for days not yet frozen (#3728) | optional (set `true` to test the reset) | Dashboard |
@@ -525,6 +526,13 @@ hung request. It is rate limited to 30/minute per IP.
   `render.yaml` with its quotes still gets sent, but browsers ignore it. When you
   change a header in `render.yaml`, make the same change in the dashboard,
   without the quotes. The API sets its own headers in `backend/middleware/headers_and_log.py`; its CSP `connect-src` hosts follow `ENVIRONMENT` (prod hosts when `production`, dev hosts otherwise).
+- **WebAssembly on the web sites (#2960).** Cascade draws through Skia's CanvasKit on web, a
+  `.wasm` file served from the site itself. Browsers refuse to compile WebAssembly under a CSP
+  whose `script-src` lacks `'wasm-unsafe-eval'` (Cascade then shows its load error). The dev
+  frontend's CSP in `render.yaml` has it; if that service's headers are also kept in the
+  dashboard, add it there too. Prod does not yet: the store web build leaves Cascade out until it
+  ships (#3703), and that story adds `'wasm-unsafe-eval'` to the prod CSP (yaml and dashboard).
+  It permits WebAssembly compilation only, not JavaScript `eval`.
 - The scan reads the service IDs from two **secrets**, `RENDER_PROD_API_SERVICE_ID`
   and `RENDER_PROD_FRONTEND_SERVICE_ID`, plus `RENDER_API_KEY`.
 - It is `workflow_run`-triggered on purpose: a `push`-triggered job would be one of

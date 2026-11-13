@@ -54,7 +54,7 @@ export default function StatsBento({ state }: Props) {
           {t("stats.highestTile")}
         </Text>
         <Text
-          style={[styles.value, { color: colors.tertiary, fontFamily: typography.heading }]}
+          style={[styles.value, { color: colors.tertiaryText, fontFamily: typography.heading }]}
           numberOfLines={1}
           adjustsFontSizeToFit
           accessibilityLabel={t("a11y.highestTile", { value: maxTile > 0 ? maxTile : 0 })}
@@ -73,7 +73,7 @@ export default function StatsBento({ state }: Props) {
           {t("stats.timePlayed")}
         </Text>
         <Text
-          style={[styles.value, { color: colors.secondary, fontFamily: typography.heading }]}
+          style={[styles.value, { color: colors.secondaryText, fontFamily: typography.heading }]}
           numberOfLines={1}
           adjustsFontSizeToFit
           accessibilityLabel={t("a11y.timePlayed", { time: formatTime(elapsedMs) })}

@@ -49,9 +49,9 @@ counts named in each row.
 
 | Measure                                                                                                       | Count                                                                                                                                                                        |
 | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Files under `frontend/assets/` (excluding `*.md`)                                                             | 307 (299 bundled + 8 not bundled; `git ls-files frontend/assets \| grep -v '\.md$'`)                                                                                         |
+| Files under `frontend/assets/` (excluding `*.md`)                                                             | 306 (299 bundled + 7 not bundled; `git ls-files frontend/assets \| grep -v '\.md$'`)                                                                                         |
 | Referenced by code / `app.json` (bundled)                                                                     | 299 (295 imported by code + 4 `app.json` paths; one is web-only: `favicon.png`)                                                                                              |
-| Present but not bundled                                                                                       | 32 (Section 3.4): 8 under `frontend/assets/` + 24 icon masters at the repo root                                                                                              |
+| Present but not bundled                                                                                       | 31 (Section 3.4): 7 under `frontend/assets/` + 24 icon masters at the repo root                                                                                              |
 | Native resource rasters (Android mipmap/splash + iOS icon/splash)                                             | 29 (derived from the app icon/logo art)                                                                                                                                      |
 | npm font files (Space Grotesk x2, Manrope x3) + icon font files (MaterialIcons, MaterialCommunityIcons)       | 7                                                                                                                                                                            |
 | **Total shipped asset files**                                                                                 | **334** (298 native bundle assets + 29 native resources + 7 npm fonts; excludes web-only favicon)                                                                            |
@@ -171,6 +171,11 @@ to 200, Blackjack sounds 14 to 18). No third-party or unverified file is added.
 With both merged (recounted from the tree): files under `assets/` 307, bundled 299 (295 imported
 by code), shipped 334 (native bundle 298), the free bucket 93, the premium bucket 201.
 
+#3845 deleted the unreferenced `sounds/freecell-invalid-move.mp3` (25,584 B; Breviceps, CC0; its
+`SOUND_CREDITS.md` entry went with it): files under `assets/` 307 to 306, not bundled under `assets/`
+8 to 7 (32 to 31 with the icon masters). Nothing shipped changes (bundled 299, shipped 334). The other
+seven not-bundled files stay: tests still pin them on disk (Section 3.4).
+
 ## 3. Inventory
 
 Legend for **Rights status**: `VERIFIED` = source and license recorded in the repo; `UNVERIFIED` = not
@@ -268,7 +273,6 @@ Cascade images, 44 are bundled; the pumpkin and milky-way files are not (Section
 | `assets/sounds/freecell-game-win.mp3`                                                                                                            |     1 | No registry uses it: FreeCell moved to synthesized sounds (#3563) and Bottle Sort (#3661)                                 | Freesound, humanoide9000, CC BY 4.0 (A1): the attribution duty applies only if it ships again. Safe to delete. |
 | `assets/sounds/solitaire-invalid-move.ogg`                                                                                                       |     1 | Sudoku played its own `sudoku-error-entered.ogg` from #3775; no game requires it (kept: shared sounds are not deleted)    | Kenney Digital Audio, CC0. Safe to delete.                                                                     |
 | `assets/sounds/hearts-moon-shot.mp3`                                                                                                             |     1 | Sudoku, its last user, moved to `sudoku-puzzle-complete.ogg` in #3775 (kept, not deleted)                                 | Pixabay, u_it78ck90s3. Safe to delete.                                                                         |
-| `assets/sounds/freecell-invalid-move.mp3`                                                                                                        |     1 | FreeCell uses `card-invalid-move.ogg` instead (#3563)                                                                     | Freesound, Breviceps, CC0. Safe to delete.                                                                     |
 | `cascade_icon_masters/*-icons/*.webp` (repo root)                                                                                                |    24 | Full-resolution processed icons, moved out of `frontend/assets/` in #2833; the app ships 256 px thumbnails made from them | Same art as U2/U3; follows those.                                                                              |
 | `assets/fruit-icons/pumpkin.webp`, `assets/fruits-baked/pumpkin.png`, `assets/celestial-icons/milkyway.webp`, `assets/cosmos-baked/milkyway.png` |     4 | Future tiers; import removed from `src/game/cascade/images.ts` in #2833                                                   | Same art as U2/U3; follows those.                                                                              |
 

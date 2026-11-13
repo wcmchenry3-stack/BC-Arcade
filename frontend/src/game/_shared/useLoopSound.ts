@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { createAudioPlayer, AudioPlayer } from "expo-audio";
 import { useSoundSettings } from "./SoundContext";
 import { GAME_AUDIO_PLAYER_OPTIONS, retainAudioSession } from "./audioSession";
+import type { SoundOptions } from "./useSound";
 
 /**
  * A sound that plays continuously while a condition holds (#3526): a power-up's engine hum, the
@@ -11,11 +12,16 @@ import { GAME_AUDIO_PLAYER_OPTIONS, retainAudioSession } from "./audioSession";
  *
  * `start()` records that the loop is wanted even while muted; muting stops the player, and
  * unmuting resumes it if it is still wanted. The player is removed on unmount.
+ *
+ * `options.lazy` (#3604): the player is created the first time the loop actually has to play
+ * (`start()` while not muted) instead of at mount, and holds the audio session only from then on.
+ * Loops are not pooled with one-shots: the player's `loop` flag is this hook's own.
  */
 export function useLoopSound(
   key: string,
   registry: Record<string, number>,
-  volume = 1.0
+  volume = 1.0,
+  { lazy = false }: SoundOptions = {}
 ): { start: () => void; stop: () => void } {
   const { muted } = useSoundSettings();
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -23,21 +29,48 @@ export function useLoopSound(
   const playingRef = useRef(false); // whether the player was told to play
   const mutedRef = useRef(muted);
 
+  const sourceRef = useRef<number | null>(null);
+  const releaseRef = useRef<(() => void) | null>(null);
+  const volumeRef = useRef(volume);
+  // True between the registry effect's setup and cleanup; a stale start() must not create a
+  // lazy player nobody would remove.
+  const aliveRef = useRef(false);
+  // True for a lazily created player until its first start: it is already at position 0, and a
+  // seekTo on a not-yet-ready item may never complete (iOS), which would leave play() unreached.
+  const freshRef = useRef(false);
+
   const sync = useCallback(() => {
-    const player = playerRef.current;
-    if (!player) return;
     const shouldPlay = wantedRef.current && !mutedRef.current;
     if (shouldPlay === playingRef.current) return;
+    if (shouldPlay && !playerRef.current) {
+      // A lazy loop's first start: create the player now (synchronous, so never twice).
+      const source = sourceRef.current;
+      if (source == null || !aliveRef.current) return;
+      const created = createAudioPlayer(source, GAME_AUDIO_PLAYER_OPTIONS);
+      created.loop = true;
+      created.volume = volumeRef.current;
+      playerRef.current = created;
+      freshRef.current = true;
+      releaseRef.current = retainAudioSession();
+    }
+    const player = playerRef.current;
+    if (!player) return;
     playingRef.current = shouldPlay;
     try {
       if (shouldPlay) {
         player.loop = true;
-        Promise.resolve(player.seekTo(0))
+        const rewind = freshRef.current ? undefined : player.seekTo(0);
+        freshRef.current = false;
+        Promise.resolve(rewind)
           .then(() => {
             // stop() may have landed while the seek was pending
-            if (playingRef.current) return player.play();
+            if (playingRef.current && playerRef.current === player) return player.play();
           })
-          .catch(() => {});
+          .catch(() => {
+            // A failed start must not leave the loop marked as playing, or no later start()
+            // could retry it.
+            if (playerRef.current === player) playingRef.current = false;
+          });
       } else {
         player.pause();
         Promise.resolve(player.seekTo(0)).catch(() => {});
@@ -55,31 +88,40 @@ export function useLoopSound(
   useEffect(() => {
     const source = registry[key];
     if (source == null) return;
-    const player = createAudioPlayer(source, GAME_AUDIO_PLAYER_OPTIONS);
-    player.loop = true;
-    player.volume = volume;
-    playerRef.current = player;
+    sourceRef.current = source;
+    aliveRef.current = true;
+    if (!lazy) {
+      const player = createAudioPlayer(source, GAME_AUDIO_PLAYER_OPTIONS);
+      player.loop = true;
+      player.volume = volumeRef.current;
+      playerRef.current = player;
+      releaseRef.current = retainAudioSession();
+    }
     playingRef.current = false;
-    const releaseSession = retainAudioSession();
     // A start() that landed before the player existed.
     sync();
     return () => {
-      try {
-        player.pause();
-      } catch {
-        // audio cleanup, failure is safe
+      aliveRef.current = false;
+      sourceRef.current = null;
+      const player = playerRef.current;
+      if (player) {
+        try {
+          player.pause();
+        } catch {
+          // audio cleanup, failure is safe
+        }
+        player.remove();
       }
-      player.remove();
-      releaseSession();
+      releaseRef.current?.();
+      releaseRef.current = null;
       playerRef.current = null;
       playingRef.current = false;
     };
-    // volume intentionally excluded — the sync effect below handles live updates
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, registry, sync]);
+  }, [key, registry, lazy, sync]);
 
   // Live volume: a running loop follows the dev-panel mixer.
   useEffect(() => {
+    volumeRef.current = volume;
     if (playerRef.current) playerRef.current.volume = volume;
   }, [volume]);
 

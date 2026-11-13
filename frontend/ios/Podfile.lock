@@ -21,12 +21,12 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - EXConstants (57.0.23):
+  - EXConstants (57.0.24):
     - ExpoModulesCore
   - EXJSONUtils (57.0.2)
   - EXManifests (57.0.2):
     - ExpoModulesCore
-  - Expo (57.0.32):
+  - Expo (57.0.33):
     - ExpoModulesCore
     - ExpoModulesJSI
     - hermes-engine
@@ -222,7 +222,7 @@ PODS:
     - ExpoModulesCore
   - ExpoLogBox (57.0.5):
     - React-Core
-  - ExpoModulesCore (57.0.25):
+  - ExpoModulesCore (57.0.26):
     - ExpoModulesJSI
     - hermes-engine
     - RCTRequired
@@ -249,10 +249,10 @@ PODS:
   - ExpoModulesJSI (57.1.3):
     - React-Core
     - ReactCommon
-  - ExpoModulesWorklets (57.0.25):
+  - ExpoModulesWorklets (57.0.26):
     - ExpoModulesCore
     - ExpoModulesJSI
-  - ExpoModulesWorkletsAdapter (57.0.25):
+  - ExpoModulesWorkletsAdapter (57.0.26):
     - ExpoModulesCore
     - ExpoModulesJSI
     - ExpoModulesWorklets
@@ -2965,10 +2965,10 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   AsyncStorage: 163ab23f6aa37a58b7f2379d0b4ee7ac84d6655c
-  EXConstants: 6dae4529b5d2acfb7e81f4f2e1110e4cdd0c4df3
+  EXConstants: 3c072d540176acea8cf9b3c41730cc0d22a8b258
   EXJSONUtils: a49e3ef80dff762108e5690c7b2f360675dcf7f6
   EXManifests: 4c53b2602e03ccf44d0b4ff9c5d655b2c5acba3f
-  Expo: 5979b659fafd3e318d60aaed473907cbb92c620e
+  Expo: ba623bfcba2e4bea97b54257f9df43478f078092
   expo-dev-client: 26b4494cc0477a78fbec2db24ec6418e18e16cee
   expo-dev-launcher: ead20320bbd8a1a93926d370c814a9afd451c460
   expo-dev-menu: 7a4e3f4f0dfb788c88cae1ff0e87cd7011e4c6d6
@@ -2984,10 +2984,10 @@ SPEC CHECKSUMS:
   ExpoLinearGradient: f08a0dea5ad3fe23042d15b1ced831312c9141b8
   ExpoLocalization: f204d4ca963bfcea932068a978247878f664f5a4
   ExpoLogBox: 1e498d9b63edb2895cacad690bd1848c0546cf01
-  ExpoModulesCore: be9e09606c2a68db882affd3b0e6dae9778fb1d2
+  ExpoModulesCore: eddcff7b0f292f3ffccbb237fc17877fefe4885d
   ExpoModulesJSI: ded9f4c72f35fc9400ad85506a94acdd87b2b23b
-  ExpoModulesWorklets: 8f4fc5a9ad92641e1fded703d491dce1ea77bbe2
-  ExpoModulesWorkletsAdapter: fc4bce2ace721d85baf536de0b4d289915573a46
+  ExpoModulesWorklets: a3021e8f3b01c5f9b989ce625782cd296eaaf68f
+  ExpoModulesWorkletsAdapter: 718164ff618f6245d9b18479dd46af9210eadc6d
   EXUpdatesInterface: 4c96533f11c8cefe879bd506564cc2d537f56804
   FBLazyVector: 2138c6c2ab66c31bf5754dc18097fbc498a49c7f
   hermes-engine: 63c5db7d529c36335fada6582fd293ae2a105d77

@@ -176,6 +176,37 @@ Fired from the event that starts the motion, once, never per frame. Best-effort,
 
 The ring (`hint-dst-ring`) is a 2 px border on the page background. `colors.bonus` is 2.7:1 on the light theme's cream, below the 3:1 non-text minimum (WCAG 1.4.11), so it uses its own token, `colors.hintRing` (`#1f7a3c` on light, 4.6:1; `#4ade80` on dark, 11.0:1). `theme/__tests__/hintRingContrast.test.ts` pins both.
 
+## Replay recording
+
+(#3384, epic #3383; the screen wiring is #3385.) A step log, not a visual replay: the level and catalog version, then every committed pour, undo, hint shown and "back to last good move", in order. From those the board, move count and undo count are rebuilt exactly, offline, from the shipped catalog. Code: `frontend/src/game/sort/replay.ts` (`SortReplay`, `rebuild`, `isAction`); tests: `__tests__/replay.test.ts`.
+
+**`game_started`** carries `{ level, catalog, engine_version: 1 }` (`SORT_REPLAY_ENGINE_VERSION`). **No fallback board:** the opening board is always `(catalog, level)` from `levels.catalog.json` / `catalog.ts`, so a catalog bump keeps the old catalog file for as long as its recordings are read.
+
+**A `moves` event** is `{ v: 1, unit, t_ms, m: [action, ...] }` (the recorder's envelope plus `m`): up to **25** actions, one recorder unit per chunk (`ACTIONS_PER_CHUNK`). Actions are number tuples:
+
+| Action                 | Tuple           | Meaning                                                                                                                                       |
+| ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pour                   | `[0, from, to]` | a committed pour, recorded when it lands; the engine decides the colour and the amount (the whole top run, up to the room in the destination) |
+| Undo                   | `[1]`           | an undo that changed the board (an undo with empty history is a no-op and is not recorded)                                                    |
+| Hint                   | `[2, from, to]` | a hint shown; changes nothing (for difficulty analysis)                                                                                       |
+| Back to last good move | `[3, n]`        | rewinds `n` moves; each counts as an undo (`undosUsed += n`), as `handleBackToLastGoodMove` calls `undo` n times                              |
+
+Not recorded: selections, refused pours, cancelled pour animations, timing beyond the envelope's `t_ms`.
+
+`rebuild(opening, actions)` applies the log with the engine (`applyPour`, `isValidPour`, `undo`) and reports the first illegal action (malformed tuple, bottle index off the board, an illegal pour, an undo or rewind with not enough history). `isAction` is the strict shape check the backend validator mirrors: integers, bottle indices `0..MAX_BOTTLES-1` (16), `from !== to`, arity, a rewind of `1..MAX_REWIND` (1000).
+
+**Caps** (`eventQueueConfig.ts`): `SORT_MOVES_MAX_BYTES` 1 KB per event (a worst honest chunk of 25 x `[0,15,14],` is about 281 B with the envelope; the backend's `MAX_MOVES_BYTES` holds the same figure), `SORT_MAX_UNITS` 12 rows a level (300 actions; the longest level's par is 63) and `SORT_SESSION_MAX_BYTES` 8 KB of JSON a level. Past either cap recording stops as a clean prefix, so a level with more than 300 actions (a very long, hint-heavy one) keeps only its first 300: its replay is a prefix and does not reach the final move and undo counts. The reader (#3388, `replay_game.py`) reports such a log `incomplete`, never complete. The kill switch and sample rate are the recorder's replay dial; `SortReplay` does not read it.
+
+**Reading a replay** (#3388). `cd backend && python scripts/replay_game.py <game_id>` prints the game's events and then the level rebuilt from them (`backend/sort/rebuild.py`, with the engine's own pour rules, held equal to the reference simulator in `scripts/sort_verify_levels.py` by `tests/test_sort_rebuild.py`): the opening board from the shipped catalog file, each step (`#12 pour 3→7  red ×2  moves 9 undos 1`, `#13 undo`, `#14 hint 2→5`, `#15 back to last good move ×3`; bottles are numbered from 0), the final board, whether it is solved, and a verdict with its reason:
+
+- `complete`: every unit arrived in order, every action applied, and the rebuilt moves, undos and win match `game_ended`.
+- `incomplete`: a clean prefix that stops short of its result: no `game_ended` (`truncated`), a unit or part that never arrived (`gap`: a dropped batch or the cap above; a lost last unit is caught from `game_ended`'s recorder summary `replay.u` when the app sent it, since a last unit of hints changes no count; a log that reached the 12-unit recording cap is always incomplete, as the app stops there without a marker), or a board that has not reached `game_ended`'s undos, moves or win, or a `game_ended` with no `moves` or `won` to check against (the orphan sweep's abandon). Rule 1: undos only grow while moves go back down on an undo, so a log with fewer undos than `game_ended` is a prefix even when it shows more moves or an unsolved board; only equal or higher undos with more moves, or a win claim (`won: true` or `outcome: "completed"`) on an unsolved board, is `invalid`. Rule 2: no result to check is never `complete`. The steps shown are right as far as they go.
+- `invalid`: not an honest recording: `illegal_pour`, `undo_past_start` (an undo or rewind with too little history), `malformed_action`, `duplicate_unit` / `restarted_unit` / `bad_parts`, a `mismatch` with `game_ended` (more moves or undos than it says, a win it does not, another level), or `incompatible_catalog` / `incompatible_engine` (the game's `catalog` is not the catalog file's version, its level is not in it, or `engine_version` is not 1). With no fallback board there is nothing to rebuild then, and nothing is printed but the reason; a catalog bump will keep the old file so this can load it by version. A game with no `game_started` is also `invalid`.
+
+Reading stops at the first problem, so a step after a gap or an illegal pour is never guessed.
+
+**Volume estimate** (CLAUDE.md priorities): a typical level is 30–60 actions, 2–3 rows, about 0.5–1 KB stored with the backend's ~200 B row overhead; the worst a level can store is 12 rows, about 15 KB (backend `SORT_CAP`). At 1,000 levels played a day that is about 1 MB a day, bounded by the per-game sample rate and the storage-budget job, which lowers every rate at 90 % of the budget. Measured numbers are added by #3389.
+
 ## Scoring (Persistence)
 
 Every level played is its own session row (#2625): progress is not carried in one session.
@@ -224,6 +255,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 - Metadata model: `SortMetadata` — `player_name: str = ""` (max 64 chars, `LegacyPlayerName`; 32 before #2995). Current builds send no metadata.
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `catalog_version`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
+- **Replay recording (backend, #3387, epic #3383).** Sort records a level as `moves` events, validated by `backend/sort/replay.py` (`validate_moves`, hooked in `SortModule.validate_event`) and seeded by `0047_sort_replay_events` (deploy it before the app that sends the event, or the server answers `400 unknown_event_type`). `data` is the recorder's envelope (`v` 1, `unit`, `t_ms`, optional `part` / `parts`) plus `m`, 1..32 actions (the app sends 25), each an array of strict ints: pour `[0, from, to]`, undo `[1]`, hint `[2, from, to]`, rewind `[3, n]` (`0 <= from, to < 16` and `from != to`, `1 <= n <= 1000`). 1,024 B of compact JSON per event (`MAX_MOVES_BYTES`, equal to the app's `SORT_MOVES_MAX_BYTES`; a test holds the two equal). A bad event is dropped, not the batch, with a throttled Sentry report by reason only. `game_started` is not validated and carries `{ level, catalog, engine_version: 1 }`; `game_ended` and `SortResult` are unchanged. Per-level cap `SORT_CAP` (`games/replay_caps.py`): 12 events and 14,688 B. The full section (the app's recorder, the replay format and its cost) is written with story #3389.
 
 ## Colour palette
 

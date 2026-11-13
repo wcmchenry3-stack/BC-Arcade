@@ -587,7 +587,7 @@ describe("recording caps config", () => {
   });
 
   it("gives a game without an entry the defaults", () => {
-    expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
+    expect(recordingConfigFor("cascade")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });
 

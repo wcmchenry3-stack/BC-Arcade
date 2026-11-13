@@ -312,6 +312,13 @@ export interface Bullet {
   readonly postClear?: true;
   /** #2845: an enemy shot aimed at Buddy — it replaced a player-directed shot (finite capacity). */
   readonly target?: "buddy";
+  /**
+   * #3710: the tier of the ship that fired this enemy shot — a label for the per-wave
+   * `damage.hitsByTier` stats, never read by play. Absent on a player shot and on a shot restored
+   * from a save before #3710. Left out of the save spec like `PowerUp.source` (no fingerprint
+   * change) and out of the golden hash (`sha()`).
+   */
+  readonly tier?: EnemyTier;
 }
 
 export interface Player {

@@ -46,50 +46,62 @@ Tokens live in `frontend/src/theme/ThemeContext.tsx`. Import via `useTheme()` �
 
 ### Dark theme (canonical, matches Stitch)
 
-| Token          | Hex       | Purpose                                                                        |
-| -------------- | --------- | ------------------------------------------------------------------------------ |
-| `background`   | `#0e0e13` | App background, surface-dim equivalent                                         |
-| `surface`      | `#19191f` | Cards, containers                                                              |
-| `surfaceAlt`   | `#1f1f26` | Elevated surfaces, nav bars                                                    |
-| `surfaceHigh`  | `#25252c` | Highest elevation, modals                                                      |
-| `border`       | `#2e2e38` | Dividers, faint outlines                                                       |
-| `boxBorder`    | `#7a7a88` | Structural separators (Sudoku 3×3 boxes), ≥ 3:1 on every surface (WCAG 1.4.11) |
-| `text`         | `#e8e8f0` | Primary text on surfaces                                                       |
-| `textMuted`    | `#a0a0ac` | Secondary text, labels                                                         |
-| `textOnAccent` | `#0e0e13` | Text on accent-filled buttons                                                  |
-| `accent`       | `#8ff5ff` | Cyan primary — CTAs, highlights                                                |
-| `accentText`   | `#8ff5ff` | The accent as the colour of text (the same as `accent` in dark)                |
-| `accentBright` | `#00eefc` | Accent gradient stop, neon glow                                                |
-| `secondary`    | `#d674ff` | Magenta secondary — combo, alt state                                           |
-| `tertiary`     | `#cafd00` | Lime tertiary — tertiary accents                                               |
-| `error`        | `#ff716c` | Errors, critical mass                                                          |
-| `errorText`    | `#ff9a95` | Error red for text: ≥ 4.5:1 on every surface and the Sudoku washes             |
-| `bonus`        | `#4ade80` | Positive confirmations                                                         |
-| `bonusText`    | `#4ade80` | The bonus green as the colour of text (the same as `bonus` in dark)            |
+| Token             | Hex       | Purpose                                                                        |
+| ----------------- | --------- | ------------------------------------------------------------------------------ |
+| `background`      | `#0e0e13` | App background, surface-dim equivalent                                         |
+| `surface`         | `#19191f` | Cards, containers                                                              |
+| `surfaceAlt`      | `#1f1f26` | Elevated surfaces, nav bars                                                    |
+| `surfaceHigh`     | `#25252c` | Highest elevation, modals                                                      |
+| `border`          | `#2e2e38` | Dividers, faint outlines                                                       |
+| `boxBorder`       | `#7a7a88` | Structural separators (Sudoku 3×3 boxes), ≥ 3:1 on every surface (WCAG 1.4.11) |
+| `text`            | `#e8e8f0` | Primary text on surfaces                                                       |
+| `textMuted`       | `#a0a0ac` | Secondary text, labels                                                         |
+| `textOnAccent`    | `#0e0e13` | Text on accent-filled buttons                                                  |
+| `accent`          | `#8ff5ff` | Cyan primary — CTAs, highlights                                                |
+| `accentText`      | `#8ff5ff` | The accent as the colour of text (the same as `accent` in dark)                |
+| `accentBright`    | `#00eefc` | Accent gradient stop, neon glow                                                |
+| `secondary`       | `#d674ff` | Magenta secondary — combo, alt state                                           |
+| `tertiary`        | `#cafd00` | Lime tertiary — tertiary accents                                               |
+| `error`           | `#ff716c` | Errors, critical mass                                                          |
+| `errorText`       | `#ff9a95` | Error red for text: ≥ 4.5:1 on every surface and the Sudoku washes             |
+| `bonus`           | `#4ade80` | Positive confirmations                                                         |
+| `bonusText`       | `#4ade80` | The bonus green as the colour of text (the same as `bonus` in dark)            |
+| `secondaryText`   | `#d674ff` | The secondary purple as the colour of text (the same as `secondary` in dark)   |
+| `tertiaryText`    | `#cafd00` | The tertiary lime as the colour of text (the same as `tertiary` in dark)       |
+| `goldText`        | `#ffd700` | Gold as the colour of text or a thin icon (the celebration gold in dark)       |
+| `warnText`        | `#ffb547` | Amber warning text (Blackjack's low chips)                                     |
+| `textOnSecondary` | `#19191f` | Label on a `secondary` fill (the same as `surface` in dark)                    |
+| `textOnBonus`     | `#19191f` | Label on a `bonus` fill (the same as `surface` in dark)                        |
 
 ### Light theme
 
 Stitch only ships a dark mockup. The light theme is **first-class** and maintained by us — we keep it so users on bright environments or with system-level light preference aren't forced into dark. It is intentionally not a mechanical inversion of dark: it uses a warm cream ground, and accent hues are desaturated/darkened so they don't vibrate on cream.
 
-| Token          | Hex       | Purpose                                                                        |
-| -------------- | --------- | ------------------------------------------------------------------------------ |
-| `background`   | `#f5ecd7` | App background (cream)                                                         |
-| `surface`      | `#fbf4e2` | Cards, containers                                                              |
-| `surfaceAlt`   | `#eddfbf` | Elevated surfaces                                                              |
-| `surfaceHigh`  | `#fff8e8` | Highest elevation, modals                                                      |
-| `border`       | `#d8c9a6` | Dividers, faint outlines                                                       |
-| `boxBorder`    | `#1a1412` | Structural separators (Sudoku 3×3 boxes), ≥ 3:1 on every surface (WCAG 1.4.11) |
-| `text`         | `#1a1412` | Primary text                                                                   |
-| `textMuted`    | `#6b5e4a` | Secondary text                                                                 |
-| `accent`       | `#1bc5d4` | Teal — fills and decoration, not text                                          |
-| `accentText`   | `#006d77` | Teal for text: ≥ 4.5:1 on every cream surface (4.6–5.8:1)                      |
-| `accentBright` | `#00a8b8` | Accent-filled buttons (dark text on it)                                        |
-| `secondary`    | `#a34fc4` | Darkened magenta                                                               |
-| `tertiary`     | `#8fa800` | Darkened lime                                                                  |
-| `error`        | `#d94a42` | Errors                                                                         |
-| `errorText`    | `#b52d26` | Error red for text: ≥ 4.5:1 on every cream surface and the Sudoku washes       |
-| `bonus`        | `#2da557` | Positive confirmations (icons, rings, fills; not text)                         |
-| `bonusText`    | `#17692f` | Green for text: ≥ 4.5:1 on every cream surface (5.1–6.4:1)                     |
+| Token             | Hex       | Purpose                                                                        |
+| ----------------- | --------- | ------------------------------------------------------------------------------ |
+| `background`      | `#f5ecd7` | App background (cream)                                                         |
+| `surface`         | `#fbf4e2` | Cards, containers                                                              |
+| `surfaceAlt`      | `#eddfbf` | Elevated surfaces                                                              |
+| `surfaceHigh`     | `#fff8e8` | Highest elevation, modals                                                      |
+| `border`          | `#d8c9a6` | Dividers, faint outlines                                                       |
+| `boxBorder`       | `#1a1412` | Structural separators (Sudoku 3×3 boxes), ≥ 3:1 on every surface (WCAG 1.4.11) |
+| `text`            | `#1a1412` | Primary text                                                                   |
+| `textMuted`       | `#6b5e4a` | Secondary text                                                                 |
+| `accent`          | `#1bc5d4` | Teal — fills and decoration, not text                                          |
+| `accentText`      | `#006d77` | Teal for text: ≥ 4.5:1 on every cream surface (4.6–5.8:1)                      |
+| `accentBright`    | `#00a8b8` | Accent-filled buttons (dark text on it)                                        |
+| `secondary`       | `#a34fc4` | Darkened magenta                                                               |
+| `tertiary`        | `#8fa800` | Darkened lime                                                                  |
+| `error`           | `#d94a42` | Errors                                                                         |
+| `errorText`       | `#b52d26` | Error red for text: ≥ 4.5:1 on every cream surface and the Sudoku washes       |
+| `bonus`           | `#2da557` | Positive confirmations (icons, rings, fills; not text)                         |
+| `bonusText`       | `#17692f` | Green for text: ≥ 4.5:1 on every cream surface (5.1–6.4:1)                     |
+| `secondaryText`   | `#8a3fb0` | Purple for text: ≥ 4.5:1 on every cream surface (4.65–5.80:1)                  |
+| `tertiaryText`    | `#586600` | Olive for text: ≥ 4.5:1 on every cream surface (4.80–5.99:1)                   |
+| `goldText`        | `#7a5600` | Brown gold for text and the Shuffle icon: ≥ 4.5:1 (5.04–6.28:1)                |
+| `warnText`        | `#8a5200` | Brown amber for text: ≥ 4.5:1 (4.84–6.04:1)                                    |
+| `textOnSecondary` | `#ffffff` | Label on a `secondary` fill: 4.70:1 (cream is 4.28)                            |
+| `textOnBonus`     | `#0e0e13` | Label on a `bonus` fill: 6.08:1 (cream is 2.89)                                |
 
 The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 
@@ -99,11 +111,15 @@ The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 
 The light accent `#1bc5d4` measures 1.6–2:1 on cream, so it can't colour text. **Any text (or thin stroke) that would be `colors.accent` is `colors.accentText`**: in dark it is the accent itself, in light a darker teal `#006d77` that reaches **≥ 4.5:1** on `background`, `surface`, `surfacePeer`, `surfaceAlt`, `surfaceHigh` and the held-die tint (`frontend/src/theme/__tests__/accentTextContrast.test.ts`). Backgrounds, button fills, bars and borders that carry no information stay `accent`. The light `potential` token (Yacht's potential scores) is `accentText`.
 
-**Rule of thumb (#3755):** a `color:` style on a `<Text>` is `accentText`, never `accent`, on any themed surface (cream in light), including Blackjack's felt, which is `surface`. Text on a fixed dark or accent-filled surface may use another token (`textOnAccent`). Where an outlined button or pill has accent text _and_ an accent border, both are `accentText` so it doesn't show two teals. `frontend/src/theme/__tests__/lowContrastTextUses.test.ts` fails when a `color:` key names `colors.accent` or `colors.bonus`.
+**Rule of thumb (#3755):** a `color:` style on a `<Text>` is `accentText`, never `accent`, on any themed surface (cream in light), including Blackjack's felt, which is `surface`. Text on a fixed dark or accent-filled surface may use another token (`textOnAccent`). Where an outlined button or pill has accent text _and_ an accent border, both are `accentText` so it doesn't show two teals. `frontend/src/theme/__tests__/lowContrastTextUses.test.ts` fails when a `color:` key names `colors.accent`, `bonus`, `secondary`, `tertiary` or `celebration`, or the raw gold / amber constants (#3819).
 
 ### Bonus as text: `bonusText` (#3754)
 
 The light bonus green `#2da557` is ~3:1 on cream: fine for an icon, ring or border (3:1 non-text rule), too light for text. **Green text (Hint labels, winning totals and payouts, the Hearts moon, Blackjack outcome and P/L) is `colors.bonusText`**: the same as `bonus` in dark, `#17692f` in light, **≥ 4.5:1** on `background`, `surface`, `surfacePeer`, `surfaceAlt` and `surfaceHigh` (`accentTextContrast.test.ts`). Icons, rings and fills stay `bonus`. A `GameActionBar` Hint passes `color: colors.bonus` (icon) and `labelColor: colors.bonusText` (label).
+
+### Purple, lime, gold and amber as text (#3819)
+
+In light, the purple `secondary` `#a34fc4` is 3.6–4.4:1 on cream, the lime `tertiary` `#8fa800` ~2–2.5:1, gold `#ffd700` 1.2:1 and the amber `#ffb547` 1.6:1. **Text in these colours is `secondaryText` / `tertiaryText` / `goldText` / `warnText`**: each is the colour it replaces in dark (dark is unchanged by construction), and in light a deeper purple `#8a3fb0`, olive `#586600`, brown gold `#7a5600` and brown amber `#8a5200`, all **≥ 4.5:1** on `background`, `surface`, `surfacePeer`, `surfaceAlt` and `surfaceHigh` (`accentTextContrast.test.ts`). Fills, borders, icons, bars, top bars and gradients stay on the raw colour. Uses: 2048's Highest tile, Time played and Best; Blackjack's outcome banner, Stand button, dock labels, table-accent text (through `accentAsText`, which maps `accent`, `secondary` and `tertiary` to their text tokens), hand stake (`goldText`) and low-chips figure (`warnText`); Mahjong's Shuffle icon and label (`goldText`, the 3:1 icon rule fails on the raw gold too). Labels on a fill: `textOnSecondary` (the Intermediate Deal button, the ALL-IN badge) and `textOnBonus` (the comeback banner), the same as `surface` in dark.
 
 ### Error as text: `errorText` (#3773)
 
@@ -115,13 +131,13 @@ Not switched, by design: icons and spinners (graphics need 3:1, not 4.5:1), text
 
 Used by the shared end-of-game result card (see epic #2500). Each foreground reaches **≥ 4.5:1** on `surfaceHigh` in its theme, enforced by `frontend/src/theme/__tests__/outcomeContrast.test.ts`. Don't substitute `bonus` or `accent` here: on cream they measure 2.99:1 and 1.99:1.
 
-| Token          | Dark      | Light     | Use                                      |
-| -------------- | --------- | --------- | ---------------------------------------- |
-| `outcomeWin`   | `#4ade80` | `#1f7a3c` | "You Win!"                               |
-| `outcomeLoss`  | `#a0a0ac` | `#6b5e4a` | "You Lose" — muted, deliberately not red |
-| `outcomeDraw`  | `#d674ff` | `#8a3fb0` | "It's a Tie!"                            |
-| `outcomeEnded` | `#8ff5ff` | `#00737e` | "Game Over" in score-attack games        |
-| `celebration`  | `#ffd700` | `#8a6100` | Gold in win celebrations                 |
+| Token          | Dark      | Light     | Use                                                       |
+| -------------- | --------- | --------- | --------------------------------------------------------- |
+| `outcomeWin`   | `#4ade80` | `#1f7a3c` | "You Win!"                                                |
+| `outcomeLoss`  | `#a0a0ac` | `#6b5e4a` | "You Lose" — muted, deliberately not red                  |
+| `outcomeDraw`  | `#d674ff` | `#8a3fb0` | "It's a Tie!"                                             |
+| `outcomeEnded` | `#8ff5ff` | `#00737e` | "Game Over" in score-attack games                         |
+| `celebration`  | `#ffd700` | `#8a6100` | Gold in win celebrations (fills; for text use `goldText`) |
 
 Each outcome also has a `*Tint` (same hue, 10–14% alpha) for icon discs and badges.
 

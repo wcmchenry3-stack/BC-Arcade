@@ -195,22 +195,44 @@ Everything in this section is current. The April 2026 sections further down are 
 
 The source of truth is the `android-bundle-check` job in `.github/workflows/ci.yml` (flags to `frontend/scripts/size-report.mjs`) and `frontend/package.json`.
 
-| Budget                     | Value                              | Measured on                                       | Enforced by                                                      | Effect                                                |
-| -------------------------- | ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
-| JS hard limit              | 8,388,608 B (8 MiB)                | Store bundle, `dist/index.android.bundle`         | `--max-js 8388608` in step "Size budgets"                        | CI fails                                              |
-| JS warn threshold          | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
-| Packaged assets hard limit | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
-| Hidden-premium asset guard | 0 files                            | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
-| All-games JS ceiling       | 8,650,752 B (8.25 MiB), temporary  | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
-| `bundlesize`               | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
-| Hidden-locale guard        | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
-| PR comment baseline        | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
-| Release APK size report    | none                               | `android-release-smoke` universal arm64 APK       | Step "APK size report (non-blocking)"                            | Step summary only                                     |
-| New game JS delta          | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
+| Budget                         | Value                              | Measured on                                       | Enforced by                                                      | Effect                                                |
+| ------------------------------ | ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
+| JS hard limit                  | 8,388,608 B (8 MiB)                | Store bundle, `dist/index.android.bundle`         | `--max-js 8388608` in step "Size budgets"                        | CI fails                                              |
+| JS warn threshold              | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
+| Packaged assets hard limit     | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
+| Packaged assets warn threshold | 3,932,160 B (3.75 MiB)             | Store `dist/assets`                               | `--warn-assets 3932160`                                          | `::warning`, CI passes                                |
+| Hidden-premium asset guard     | 0 files                            | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
+| All-games JS ceiling           | 8,650,752 B (8.25 MiB), temporary  | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
+| `bundlesize`                   | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
+| Hidden-locale guard            | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
+| PR comment baseline            | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
+| Release APK size report        | none                               | `android-release-smoke` universal arm64 APK       | Step "APK size report (non-blocking)"                            | Step summary only                                     |
+| New game JS delta              | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
 
 Why 8 MiB stays the JS limit (decided in #2829): the store bundle was 6.24 MiB then (5.55 MiB since #3150), but the premium release un-hides the games and becomes the 7.11 MiB all-games bundle. 8 MiB leaves about 0.89 MiB (12%) of growth over that ceiling. Lowering the limit now would only fail the premium launch. Drift on today's store bundle is caught by the 6.0 MiB warning (about 8% over 5.55 MiB; it was 6.75 MiB before #3150). The all-games ceiling is checked now, not at launch. The assets limit (4 MiB, about 23% over the 3.25 MiB store payload) will fail by design when games are un-hidden: that needs a deliberate re-budget, not a quiet increase.
 
 The all-games ceiling is 8.25 MiB for now (#3791, 2026-11-13, owner decision). Dev's all-games bundle had reached 8,379,013 B, and the Bottle Sort sound set's 23 asset-registry entries (about 10 KB of JS) put it 711 B over 8 MiB. The store-config limit is unchanged. [#3820](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3820) cuts the all-games JS and lowers the ceiling back to 8 MiB.
+
+### Packaged-asset budget rule (#3631)
+
+> Proposed 2026-11-13 from the measurement in [asset-budget-plan.md](research/asset-budget-plan.md). The numbers below are the rule for new sound and art PRs; they take effect when the owner accepts the plan.
+
+Store-config packaged assets were 3,699,614 B (3.53 MiB, 127 files) on 2026-11-13: 75% fonts, 24% sounds, 1% images. The 4.0 MiB hard limit leaves 0.47 MiB. Every PR that adds or changes a file under `frontend/assets/` that a **store-visible** game or shared UI reaches must follow this. Files only hidden premium games use are outside the totals until the premium launch re-budget, but still obey the per-file limits.
+
+| Budget                         | Value                                                       |
+| ------------------------------ | ----------------------------------------------------------- |
+| New SFX file                   | at most 30 KB (loops and stingers at most 40 KB)            |
+| New sound set for one game     | at most 100 KB total, 3 variants per cue at most            |
+| New raster image               | at most 100 KB, WebP unless it needs alpha steps WebP lacks |
+| New font file or icon font     | none without owner approval                                 |
+| Store `dist/assets` warn line  | 3,932,160 B (3.75 MiB)                                      |
+| Store `dist/assets` hard limit | 4,194,304 B (4 MiB), unchanged                              |
+
+- The [ASSETS.md](ASSETS.md#size-budgets) budgets (SFX 50 KB, game image 500 KB, and so on) still apply; the per-file numbers above are stricter for store-visible files.
+- The PR description states the packaged-assets delta in bytes (before and after, from the `android-bundle-check` comment or `node frontend/scripts/size-report.mjs`) and which of the numbers above it spends.
+- A PR that takes the store total past the warn line, or that needs more than the budget for its set, stops for an owner decision recorded on the issue; it does not raise a limit by itself.
+- Import fonts and icon sets by subpath (`@expo-google-fonts/manrope/400Regular`), never from the package barrel: the barrel makes Metro package every weight.
+- Warn line wiring: the "Size budgets" step in `ci.yml` passes `--warn-assets 3932160`, so crossing 3.75 MiB prints a non-blocking `::warning::` and sets `status=warn`; the "Bundle size report" PR comment then shows a warning line and lists "3.75 MiB warn" next to the assets row (#3844). Current store assets are 3,051,428 B, well under the line.
 
 CI builds the store bundle with the env set explicitly. A gitignored `frontend/.env` on a dev machine points at the pre-launch API and would otherwise make a bundle with all 12 games, because Expo loads `.env` before Metro runs.
 
@@ -308,7 +330,7 @@ Record date, commit, env config, artifact bytes, per-device sizes and the JS, as
 
 Before the epic, a store bundle shipped the five hidden premium games' code and assets (206 asset files, about 38 MB) even though no route reached them. Two facts shaped the fix:
 
-- **`assetBundlePatterns: ["assets/**"]` in `app.json` does not package assets in this project.** The native projects are committed (bare workflow) and `expo-updates` is not installed, so the APK/IPA contains exactly the assets that Metro's dependency graph `require()`s, copied by `expo export:embed --assets-dest`. Changing `app.json` did not change the count (verified: 206 files before, 53 after, `app.json` unchanged).
+- **`assetBundlePatterns: ["assets/**"]`in`app.json`does not package assets in this project.** The native projects are committed (bare workflow) and`expo-updates`is not installed, so the APK/IPA contains exactly the assets that Metro's dependency graph`require()`s, copied by `expo export:embed --assets-dest`. Changing `app.json`did not change the count (verified: 206 files before, 53 after,`app.json` unchanged).
 - **`React.lazy()` / `import()` on native does not split the Hermes bundle.** A lazily imported screen, its whole module subtree and the assets it requires are all in the single bundle. Lazy loading only defers evaluation.
 
 **Mechanism.** `frontend/metro/storeBundle.js` wraps `resolver.resolveRequest` (chained after Sentry's resolver; wired in `frontend/metro.config.js`). In a store bundle it resolves the hidden games' screen modules to `src/screens/StoreBuildExcludedScreen.tsx`, which renders nothing:
@@ -373,12 +395,12 @@ Today: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 
 
 The April finding "Sentry ~24.5%" (below, historical) was a share of **raw `sourcesContent`** in the source map: unminified source text, summed over mapped modules, from a different SDK version. It is not installed size and not shipped JS. The numbers that matter for the bundle are the minified bytes.
 
-| Measure (2026-10-10, `@sentry/react-native` 8.27.0, `@sentry/core` and `browser` 10.75.0) | @sentry/* bytes | Denominator                          |  Share |
-| ----------------------------------------------------------------------------------------- | --------------: | ------------------------------------ | -----: |
-| Minified, original config (`dev` a19aadc5)                                                |       1,386,809 | 7,651,684 B bundle                   | 18.12% |
-| Minified, current store config (#2832 options)                                            |       1,196,103 | 6,544,901 B bundle                   | 18.28% |
-| `sourcesContent`, original config                                                         |       2,268,892 | 13,559,977 B summed `sourcesContent` | 16.73% |
-| `sourcesContent`, current store config                                                    |       1,896,091 | 11,141,467 B summed `sourcesContent` | 17.02% |
+| Measure (2026-10-10, `@sentry/react-native` 8.27.0, `@sentry/core` and `browser` 10.75.0) | @sentry/\* bytes | Denominator                          |  Share |
+| ----------------------------------------------------------------------------------------- | ---------------: | ------------------------------------ | -----: |
+| Minified, original config (`dev` a19aadc5)                                                |        1,386,809 | 7,651,684 B bundle                   | 18.12% |
+| Minified, current store config (#2832 options)                                            |        1,196,103 | 6,544,901 B bundle                   | 18.28% |
+| `sourcesContent`, original config                                                         |        2,268,892 | 13,559,977 B summed `sourcesContent` | 16.73% |
+| `sourcesContent`, current store config                                                    |        1,896,091 | 11,141,467 B summed `sourcesContent` | 17.02% |
 
 The share barely moves because #2830 shrank the denominator in the same period. The absolute change is the point: **−190,706 B of Sentry JS** (−191,244 B of bundle, −2.84%), and −372,801 B of `sourcesContent`.
 
@@ -406,7 +428,16 @@ Bytes of bundled files, 2026-10-10 (all-games config; Cascade is a hidden game, 
 
 ### Audio
 
-Audio is not sized or planned here. In the store config the 19 packaged sounds are 567.0 KB of SFX; the 45 sounds (22,211 KB) of the all-games config are mostly BGM behind the hidden games. BGM format, bitrate, per-track budgets and the engine choice are owned by epic #1779 and #1787; the current budgets and track list are in [ASSETS.md](ASSETS.md#size-budgets). `react-native-audio-api` stays installed for that decision (next section).
+**SFX players (#3604).** Every `useSound` key needs an `expo-audio` player, and each player is a native object that also holds the audio session (`retainAudioSession`). Rules for the hooks in `frontend/src/game/_shared/`:
+
+- **One player per distinct asset.** `useSound` takes a hold on a shared pool (`soundPool.ts`) keyed by the registry's asset, so keys that resolve to the same file (Solitaire's `autoCompleteSettle` played by both the riffle and the recycle) share one player. The last hold removes it and releases the session.
+- **Eager by default, lazy for rare sounds.** `useSound(key, registry, volume, { lazy: true })` (shorthand `LAZY_SOUND`) creates the player on the first `play()`. Use it for sounds heard about once a game or less (win/lose, the Draw-3 fan, a multi-card move, the moon shot, the riffle). Keep frequent or latency-critical sounds (card place, flips, trick sweep, lasers) eager so their first play has no creation cost. A lazy sound that is never played costs nothing and never touches the audio session. `useSoundVariants` and `useLoopSound` take the same option; `useRunSound` (riffle) is always lazy.
+- **A lazy first play** skips the redundant `seekTo(0)` (the new player is at the start), and the first play may start a few ms after an eager one; measure on a low-end Android device before marking a sound lazy if it is close to a user action.
+- `useSoundVariants` works out its usable variations once per `keys`/`registry`, and sizes its slots from `MAX_SOUND_VARIANTS`.
+
+Players created at mount, before and after #3604: Solitaire 16 to 7, FreeCell 9 to 3, Hearts 11 to 6 (unit-counted, see `soundLazy.test.tsx`). Device mount time and memory on a low-end Android phone are not yet measured.
+
+Audio is not sized or planned here. In the store config (2026-11-13) the 93 packaged sounds are 851.2 KB of SFX (all `.ogg`); the 45 sounds (22,211 KB) of the all-games config are mostly BGM behind the hidden games. BGM format, bitrate, per-track budgets and the engine choice are owned by epic #1779 and #1787; the current budgets and track list are in [ASSETS.md](ASSETS.md#size-budgets). `react-native-audio-api` stays installed for that decision (next section).
 
 ### Native dependency audit (#2831)
 
@@ -702,7 +733,7 @@ These were looked at for #2869 and left alone, either because they wouldn't redu
 
 When a deliberate size increase is approved (e.g. a new game or major feature, or un-hiding premium games), update everything that carries the number, in the same PR as the size-increasing change so reviewers see them together:
 
-1. The `android-bundle-check` flags in `.github/workflows/ci.yml`: `--max-js`, `--warn-js`, `--max-assets` (store step) and `--max-js` (all-games step), plus the budget comment block above them.
+1. The `android-bundle-check` flags in `.github/workflows/ci.yml`: `--max-js`, `--warn-js`, `--max-assets`, `--warn-assets` (store step) and `--max-js` (all-games step), plus the budget comment block above them.
 2. `frontend/package.json`: the `"bundlesize"` `maxSize` field.
 3. `BASELINE_BYTES` and the "Delta vs ... baseline" label in the PR-comment step, and the numbers in this doc.
 
@@ -1176,6 +1207,23 @@ Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`)
 | Mid-range Android (TBD) | 4-chain       | TODO               | TODO              |
 | Older iPhone (TBD)      | Settled board | TODO               | TODO (expect < 2) |
 | Older iPhone (TBD)      | 4-chain       | TODO               | TODO              |
+
+## Cascade on web (CanvasKit, #2960)
+
+On web Cascade draws with Skia's web runtime, CanvasKit (how and why: [games/cascade.md](games/cascade.md#rendering-2960)). Measured on the web export (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`, 2026-11-12, `canvaskit-wasm` 0.41.0 for `@shopify/react-native-skia` 2.14.0):
+
+| What                                                                    |         Raw |     gzip -9 | When it downloads                                                                                          |
+| ----------------------------------------------------------------------- | ----------: | ----------: | ---------------------------------------------------------------------------------------------------------- |
+| `canvaskit.<hash>.wasm` (`dist/assets/node_modules/canvaskit-wasm/...`) | 8,076,553 B | 3,246,406 B | The first time Cascade opens. Same origin, content-hashed name, so the browser caches it                   |
+| `CascadeRoute-<hash>.js` (route, loader, CanvasKit's JS glue)           |   124,717 B |    37,713 B | When Cascade opens, or in the lobby's background prefetch for a player who can play Cascade                |
+| `CascadeScreen-<hash>.js` (screen, Matter.js, Skia's JS)                |   681,063 B |   166,321 B | After CanvasKit has loaded. No longer prefetched from the lobby: the prefetch now stops at the route chunk |
+
+- **Nothing else pays it.** The lobby, start-up and every other web game never request the `.wasm` and never evaluate Skia (checked by `e2e/tests/cascade-smoke.spec.ts`; in the export, Skia's JS appears only in the `CascadeScreen` chunk and CanvasKit's glue only in the `CascadeRoute` chunk).
+- **Compression is the host's.** The gzip column is what a compressing host sends; whether Render's static sites compress `.wasm` has not been checked. Uncompressed it is 8.1 MB on the first open.
+- **Owner check after the first dev deploy.** Confirm the host serves `/assets/**/canvaskit.<hash>.wasm` with `Content-Type: application/wasm` (a wrong type stops streaming compilation, and some browsers refuse it) and a long `Cache-Control` (the name is content-hashed), e.g. `curl -sI <dev-site>/assets/node_modules/canvaskit-wasm/bin/full/canvaskit.<hash>.wasm`. Fix it in the static site's headers (`render.yaml`) if not.
+- **Load time.** Local, uncached: the board is up about 0.7 s after tapping Play (Chromium, loopback). On a slow 3G link the ~3.2 MB takes about a minute, which is why the load timeout is 60 s (`CANVASKIT_LOAD_TIMEOUT_MS`); past it the player gets an error with Try again, and the download keeps going.
+- **Cost.** Static files from the web host only: no API, database or Sentry volume, except one Sentry event (`subsystem: cascade.canvaskit`) for the first failed load in a page session; later failed attempts only add a breadcrumb, so Retry cannot multiply events. Web is not a store platform; the store web build leaves Cascade out until #3703 (`metro/storeBundle.js`), so production web does not serve the `.wasm` to players yet.
+- **Native: unchanged.** iOS and Android do not get the loader or the `.wasm`: `CascadeRoute.tsx` is the screen itself there. An Android export with every game (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform android --no-bytecode`) has no `.wasm` asset and none of CanvasKit's loader code (`CanvasKitInit`, `locateFile`, `canvaskit.wasm` all absent; the `CanvasKit` identifiers it does contain are Skia's own `JsiSk*` JS classes, not from this change). The three new strings (loading, error, Try again) ship in the `cascade` translations on every platform, a few hundred bytes per locale.
 
 ## Star Swarm timeline diagnostics (#3396)
 

@@ -189,6 +189,21 @@ BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
 # unpruned, ~350 B per game, until the owner revisits that.
 DAILY_WORD_CAP = ReplayCap(max_events=4, max_bytes=4 * 600)
 
+# Bottle Sort (#3387, epic #3383): ``moves`` events of up to 25 actions (a pour is
+# ``[0, 15, 14]``, 9 B), and the app records at most 12 of them a level
+# (``SORT_MAX_UNITS``). The cap is rows x (the event byte cap + row overhead):
+# 12 x (1,024 B ``MAX_MOVES_BYTES`` + 200 B ``ROW_OVERHEAD_BYTES``) = 14,688 B, with
+# 12 events. An honest worst row (25 widest pours, the widest envelope) is 369 B as
+# ``jsonb::text`` (288 B compact), so 12 of them are 12 x (369 + 200) = 6,828 B, under
+# half the cap (tests/test_sort_replay.py). The widest event the validator accepts
+# (32 actions, split into parts) is 496 B stored: 12 x (496 + 200) = 8,352 B, still under. Lifecycle rows are not counted (their own
+# cap). Counts are held to the device's limits; the figures are kept in step by a test.
+SORT_MAX_UNITS = 12
+SORT_CAP = ReplayCap(
+    max_events=SORT_MAX_UNITS,
+    max_bytes=SORT_MAX_UNITS * (1_024 + ROW_OVERHEAD_BYTES),
+)
+
 # Cascade: provisional until the Cascade refactor (not measured; owner, #3318).
 CASCADE_CAP = ReplayCap(max_events=3_000, max_bytes=1_000 * 900)
 
@@ -196,6 +211,7 @@ CAPS_BY_GAME_TYPE: dict[str, ReplayCap] = {
     "blackjack": BLACKJACK_CAP,
     "cascade": CASCADE_CAP,
     "daily_word": DAILY_WORD_CAP,
+    "sort": SORT_CAP,
     "starswarm": STARSWARM_CAP,
     "twenty48": TWENTY48_CAP,
 }

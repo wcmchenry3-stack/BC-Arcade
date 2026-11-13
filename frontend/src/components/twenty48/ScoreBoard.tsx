@@ -102,7 +102,7 @@ export default function ScoreBoard({ score, bestScore, scoreDelta }: ScoreBoardP
           {t("twenty48:score.best")}
         </Text>
         <Text
-          style={[styles.value, { color: colors.secondary }]}
+          style={[styles.value, { color: colors.secondaryText }]}
           numberOfLines={1}
           adjustsFontSizeToFit
           accessibilityLabel={t("twenty48:score.bestAccessibilityLabel", { score: bestScore })}

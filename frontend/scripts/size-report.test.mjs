@@ -79,6 +79,18 @@ test("evaluate: hard limit fails, warn threshold warns, boundaries are inclusive
   assert.equal(w.failures.length, 0);
   assert.equal(w.warnings.length, 1);
   assert.equal(evaluate({ jsBytes: 1, assetBytes: 11 }, { maxAssets: 10 }).failures.length, 1);
+  // Asset warn line (#3631): warns between the warn and hard limits, never fails, and is
+  // silent at or below the line; above the hard limit only the failure is reported.
+  const aw = evaluate({ jsBytes: 1, assetBytes: 8 }, { maxAssets: 10, warnAssets: 6 });
+  assert.deepEqual(aw.failures, []);
+  assert.equal(aw.warnings.length, 1);
+  assert.deepEqual(
+    evaluate({ jsBytes: 1, assetBytes: 6 }, { maxAssets: 10, warnAssets: 6 }).warnings,
+    []
+  );
+  const awFail = evaluate({ jsBytes: 1, assetBytes: 11 }, { maxAssets: 10, warnAssets: 6 });
+  assert.equal(awFail.failures.length, 1);
+  assert.deepEqual(awFail.warnings, []);
   const h = [{ file: "x", bytes: 1, pattern: "p" }];
   assert.equal(evaluate({ jsBytes: 1, hidden: h }, { forbidHidden: true }).failures.length, 1);
   assert.equal(evaluate({ jsBytes: 1, hidden: h }, {}).failures.length, 0);
