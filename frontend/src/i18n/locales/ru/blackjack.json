@@ -82,6 +82,7 @@
   "score.blackjacks": "Блэкджеки",
   "score.busts": "Перебор",
   "hud.goalProgressAccessibilityLabel": "Прогресс цели: {{chips}} из {{goal}}",
+  "hud.chipsAccessibilityLabel": "Фишки: {{chips}}",
   "table.beginner": "Новичок",
   "table.intermediate": "Средний",
   "table.highRoller": "Крупный игрок",

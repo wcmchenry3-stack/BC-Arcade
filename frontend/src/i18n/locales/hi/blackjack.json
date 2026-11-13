@@ -82,6 +82,7 @@
   "score.blackjacks": "ब्लैकजैक",
   "score.busts": "बस्ट",
   "hud.goalProgressAccessibilityLabel": "लक्ष्य प्रगति: {{goal}} में से {{chips}} चिप्स",
+  "hud.chipsAccessibilityLabel": "चिप्स: {{chips}}",
   "table.beginner": "शुरुआती",
   "table.intermediate": "मध्यम",
   "table.highRoller": "हाई रोलर",

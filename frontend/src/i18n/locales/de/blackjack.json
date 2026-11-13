@@ -82,6 +82,7 @@
   "score.blackjacks": "Blackjacks",
   "score.busts": "Überkauft",
   "hud.goalProgressAccessibilityLabel": "Zielfortschritt: {{chips}} von {{goal}} Chips",
+  "hud.chipsAccessibilityLabel": "Chips: {{chips}}",
   "table.beginner": "Anfänger",
   "table.intermediate": "Fortgeschritten",
   "table.highRoller": "High Roller",

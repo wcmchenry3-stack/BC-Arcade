@@ -82,6 +82,7 @@
   "score.blackjacks": "البلاك جاك",
   "score.busts": "الإفلاس",
   "hud.goalProgressAccessibilityLabel": "تقدم الهدف: {{chips}} من {{goal}} رقاقة",
+  "hud.chipsAccessibilityLabel": "الرقائق: {{chips}}",
   "table.beginner": "مبتدئ",
   "table.intermediate": "متوسط",
   "table.highRoller": "اللاعب الكبير",

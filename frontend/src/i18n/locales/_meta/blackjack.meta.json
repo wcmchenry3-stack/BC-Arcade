@@ -746,6 +746,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "hud.chipsAccessibilityLabel": {
+    "component": "HudSidebar",
+    "description": "Accessibility label for the chip total in the HUD when the run has no goal (after Keep Playing).",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{chips}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "hud.criticalWarning": {
     "component": "HudSidebar",
     "description": "Warning shown in the HUD when the player's bankroll is critically low.",
