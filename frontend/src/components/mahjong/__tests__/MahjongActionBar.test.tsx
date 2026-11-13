@@ -9,7 +9,7 @@ import { StyleSheet } from "react-native";
 import MahjongActionBar from "../MahjongActionBar";
 import * as ThemeModule from "../../../theme/ThemeContext";
 import { light } from "../../../theme/ThemeContext";
-import { MAHJONG_HINT_COLOR } from "../../../theme/theme.mahjong";
+import { MAHJONG_BORDER_SELECTED, MAHJONG_HINT_COLOR } from "../../../theme/theme.mahjong";
 
 const UNDO = "Undo last matched pair";
 const HINT = "Show a hint — highlights one valid pair for 2 seconds";
@@ -29,8 +29,8 @@ function mount(over: Partial<React.ComponentProps<typeof MahjongActionBar>> = {}
   return { props, view: render(<MahjongActionBar {...props} />) };
 }
 
-/** The Hint icon's colour (jest renders MaterialIcons as a host `MockMaterialIcons`). */
-function hintIconColor(): string {
+/** A button's icon colour, by test id (jest renders MaterialIcons as a host `MockMaterialIcons`). */
+function iconColor(buttonTestID: string): string {
   type N = { type?: string; props?: { color?: string; testID?: string }; children?: unknown };
   const walk = (n: unknown, inHint: boolean): string | undefined => {
     if (!n || typeof n !== "object") return undefined;
@@ -42,7 +42,7 @@ function hintIconColor(): string {
       return undefined;
     }
     const node = n as N;
-    const here = inHint || node.props?.testID === "mahjong-hint-button";
+    const here = inHint || node.props?.testID === buttonTestID;
     if (here && node.type === "MockMaterialIcons") return node.props?.color;
     return walk(node.children, here);
   };
@@ -114,7 +114,7 @@ describe("MahjongActionBar", () => {
       color: string;
     };
     expect(color).toBe(MAHJONG_HINT_COLOR);
-    expect(hintIconColor()).toBe(MAHJONG_HINT_COLOR);
+    expect(iconColor("mahjong-hint-button")).toBe(MAHJONG_HINT_COLOR);
   });
 
   it("uses the bonus icon and the AA bonusText label in light (#3754)", async () => {
@@ -131,6 +131,34 @@ describe("MahjongActionBar", () => {
       color: string;
     };
     expect(color).toBe(light.bonusText);
-    expect(hintIconColor()).toBe(light.bonus);
+    expect(iconColor("mahjong-hint-button")).toBe(light.bonus);
+  });
+
+  it("keeps the tile-selection gold (goldText) on the Shuffle icon and label in dark (#3819)", async () => {
+    await mount().view;
+    const bar = screen.getByTestId("mahjong-action-bar");
+    const { color } = StyleSheet.flatten(within(bar).getByText("SHUFFLE").props.style) as {
+      color: string;
+    };
+    expect(color).toBe(MAHJONG_BORDER_SELECTED);
+    expect(iconColor("mahjong-shuffle-button")).toBe(MAHJONG_BORDER_SELECTED);
+  });
+
+  it("uses goldText on the Shuffle icon and label in light, where gold is 1.2:1 (#3819)", async () => {
+    jest.spyOn(ThemeModule, "useTheme").mockReturnValue({
+      theme: "light",
+      themeMode: "light",
+      colors: light,
+      toggle: () => undefined,
+      setThemeMode: () => undefined,
+    });
+    await mount().view;
+    const bar = screen.getByTestId("mahjong-action-bar");
+    const { color } = StyleSheet.flatten(within(bar).getByText("SHUFFLE").props.style) as {
+      color: string;
+    };
+    expect(color).toBe(light.goldText);
+    expect(iconColor("mahjong-shuffle-button")).toBe(light.goldText);
+    expect(light.goldText).not.toBe(MAHJONG_BORDER_SELECTED);
   });
 });

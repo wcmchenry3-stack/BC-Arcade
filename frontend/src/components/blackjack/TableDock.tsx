@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import ChipButton from "./ChipButton";
+import { labelOnFill } from "./tableAccentText";
 import { DOCK_BUTTON_HEIGHT, DOCK_CHIP_SIZE, DOCK_GAP } from "../../game/blackjack/layout";
 
 interface TrayProps {
@@ -67,7 +68,7 @@ export function DockButton({
   testID,
   accentColor,
 }: DockButtonProps) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const bg = disabled ? colors.surface : kind === "primary" ? accentColor : colors.surface;
   const border = disabled
     ? colors.border
@@ -81,9 +82,9 @@ export function DockButton({
   const fg = disabled
     ? colors.textMuted
     : kind === "primary"
-      ? colors.textOnAccent
+      ? labelOnFill(colors, theme, accentColor)
       : kind === "secondary"
-        ? colors.secondary
+        ? colors.secondaryText
         : kind === "danger"
           ? colors.error
           : colors.text;

@@ -680,7 +680,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                     ]}
                     accessibilityLabel={t("blackjack:comeback.bannerAccessibilityLabel")}
                   >
-                    <Text style={[styles.comebackText, { color: colors.surface }]}>
+                    <Text style={[styles.comebackText, { color: colors.textOnBonus }]}>
                       {t("blackjack:comeback.banner")}
                     </Text>
                   </Animated.View>
@@ -690,7 +690,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                     style={[styles.allInBadge, allInStyle, { backgroundColor: colors.secondary }]}
                     accessibilityLabel={t("blackjack:allIn.badgeAccessibilityLabel")}
                   >
-                    <Text style={[styles.allInText, { color: colors.surface }]}>
+                    <Text style={[styles.allInText, { color: colors.textOnSecondary }]}>
                       {t("blackjack:allIn.badge")}
                     </Text>
                   </Animated.View>

@@ -8,7 +8,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-import { MAHJONG_HINT_COLOR, MAHJONG_SHUFFLE_COLOR } from "../../theme/theme.mahjong";
+import { MAHJONG_HINT_COLOR } from "../../theme/theme.mahjong";
 import GameActionBar from "../shared/GameActionBar";
 import { MAHJONG_ACTION_BAR_H } from "../../game/mahjong/layout";
 
@@ -37,6 +37,8 @@ export default function MahjongActionBar({
   // Hint matches 2048's: the 3:1 bonus green icon and an AA `bonusText` label (#3754).
   const hintIcon = theme === "light" ? colors.bonus : MAHJONG_HINT_COLOR;
   const hintLabel = theme === "light" ? colors.bonusText : MAHJONG_HINT_COLOR;
+  // Shuffle's gold is 1.2:1 on cream, below even the 3:1 icon minimum, so the icon and the label
+  // are `goldText` (#3819): a brown gold in light, the tile-selection gold `#ffd700` in dark.
   return (
     <GameActionBar
       testID="mahjong-action-bar"
@@ -69,7 +71,7 @@ export default function MahjongActionBar({
           label: t("action.shuffle"),
           accessibilityLabel: t("action.shuffleLabel"),
           accessibilityValue: t("hud.shufflesLeft", { count: shufflesLeft }),
-          color: MAHJONG_SHUFFLE_COLOR,
+          color: colors.goldText,
           disabled: shuffleDisabled,
           onPress: onShuffle,
           testID: "mahjong-shuffle-button",

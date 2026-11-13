@@ -34,7 +34,7 @@ export default function HudSidebar({
   const isCritical = startingChips > 0 && chips < startingChips * 0.2;
   const showStreak = winStreak >= 3;
 
-  const hudColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : colors.text;
+  const hudColor = isCritical ? colors.error : isLowChips ? colors.warnText : colors.text;
   const barColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : tableAccentColor;
   const hasGoal = runGoal != null;
   const goalProgress = hasGoal ? Math.min(1, chips / runGoal) : 0;
