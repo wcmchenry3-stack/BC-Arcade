@@ -400,9 +400,7 @@ describe("planMotion", () => {
       ["deal", 540],
     ]);
     // Only the deal plays it: a Stand after an all-in deal does not.
-    expect(cuesOf(planMotion(view(all), view(stand(all)))!).map(([q]) => q)).not.toContain(
-      "allIn"
-    );
+    expect(cuesOf(planMotion(view(all), view(stand(all)))!).map(([q]) => q)).not.toContain("allIn");
   });
 
   it("a new hand's betting has no motion", () => {

@@ -290,9 +290,14 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const reduceMotion = useReduceMotion();
   const motion = useBlackjackMotion({ engine, reduceMotion, awayRef, playCue });
   const leaveMotion = motion.leave;
+  // The round that wins the run opens the victory screen as the motion settles, which would cut
+  // its run cue off: that round plays none (#3582). Read at event time, hence the ref.
+  const wonRunRef = useRef(false);
+  const wonRun = engine?.phase === "victory";
   useLayoutEffect(() => {
     leaveMotionRef.current = leaveMotion;
-  }, [leaveMotion]);
+    wonRunRef.current = wonRun;
+  }, [leaveMotion, wonRun]);
   /** What the felt draws: the settled round, cut to what the motion has shown so far. */
   const shown = motion.view;
 
@@ -302,7 +307,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       // The cards', the result's and the chips' sounds and effects are the motion's (#3581).
       // The run's cues (#3582) play with their toasts, as the round settles: one per round.
       milestone: (event) => {
-        motion.runCue("milestone");
+        if (!wonRunRef.current) motion.runCue("milestone");
         motion.whenSettled(() => {
           setMilestoneChips(event.value);
           milestoneOpacity.value = withSequence(
@@ -312,7 +317,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         });
       },
       comeback: () => {
-        motion.runCue("comeback");
+        if (!wonRunRef.current) motion.runCue("comeback");
         motion.whenSettled(() => {
           setComebackVisible(true);
           comebackOpacity.value = withSequence(

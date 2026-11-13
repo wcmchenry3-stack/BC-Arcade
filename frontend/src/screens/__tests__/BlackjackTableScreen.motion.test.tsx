@@ -1381,6 +1381,19 @@ describe("the run's cues (#3582)", () => {
     expect(named(at, "blackjack.milestone")).toEqual([WIN_SETTLED]);
   });
 
+  it("the round that wins the run plays no run cue (the victory screen replaces the table)", async () => {
+    const { nav: n } = await mountOn(
+      newGame(deck(...WIN), { ...BEGINNER, milestones: [105], runGoal: 105 })
+    );
+    await dealTen();
+    await settle();
+    const at = await standNow();
+    await settle();
+    expect(named(at, "blackjack.milestone")).toEqual([]);
+    expect(named(at, "blackjack.comeback")).toEqual([]);
+    expect(n.replace).toHaveBeenCalledWith("BlackjackVictory");
+  });
+
   it("the next round's milestone ticks again (one a round, not one a run)", async () => {
     // The first dealer draws the two 2s; the next round is dealt the same cards.
     const order = [...WIN, card("2", "♣"), card("2", "♣"), ...WIN];
@@ -1436,6 +1449,17 @@ describe("the run's cues (#3582)", () => {
         ["blackjack.chipPayout", 3 * GAP],
         ["blackjack.milestone", 4 * GAP],
       ]);
+    });
+
+    it("the round that wins the run plays no run cue", async () => {
+      await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105], runGoal: 105 }));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await settle();
+      expect(named(at, "blackjack.milestone")).toEqual([]);
+      expect(named(at, "blackjack.comeback")).toEqual([]);
+      expect(named(at, "blackjack.win")).not.toEqual([]);
     });
 
     it("a 3-hand split: the chime, the payout, then the tick", async () => {
