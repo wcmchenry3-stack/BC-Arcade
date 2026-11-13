@@ -692,7 +692,10 @@ export class CascadeEngine {
     if (this._gameOver) return;
     if (!PIECE_DEFS[tier]) return;
     const r = tierRadius(tier);
-    const e = this._addPiece(tier, x, OVERFLOW_LINE_Y - r - DROP_SPAWN_INSET, r);
+    // A tap at the edge of the bin (the screen clamps it to the walls' inner faces) places the
+    // piece against the wall, not inside it: Box2D would push it out by position, a visible jump.
+    const cx = clamp(x, WALL_THICKNESS + r, WORLD_WIDTH - WALL_THICKNESS - r);
+    const e = this._addPiece(tier, cx, OVERFLOW_LINE_Y - r - DROP_SPAWN_INSET, r);
     // It spawns over the lid: the gate holds until it falls below, and the lid rule ignores it
     // until it lands (#3694).
     e.falling = true;

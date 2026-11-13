@@ -223,6 +223,17 @@ describe("the win (#3699 builds on it)", () => {
   });
 });
 
+describe("drops at the edge of the bin", () => {
+  it("place the piece against the wall, never inside it", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(5, WALL_THICKNESS);
+    engine.drop(4, WORLD_WIDTH - WALL_THICKNESS);
+    const [left, right] = engine.getState().pieces;
+    expect(left!.x).toBe(WALL_THICKNESS + tierRadius(5));
+    expect(right!.x).toBe(WORLD_WIDTH - WALL_THICKNESS - tierRadius(4));
+  });
+});
+
 describe("no teleports in normal play", () => {
   it("a crowded bin of drops at random spots never fires the guard rail", () => {
     const engine = new CascadeEngine({});
