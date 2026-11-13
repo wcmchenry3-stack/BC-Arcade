@@ -93,6 +93,10 @@ jobs:
     # 41642667861 (#3553) passed 18 of 20 flows and hit the old 90 min limit.
     # 120 min leaves room for that; a run only uses it when it needs it.
     timeout-minutes: 120
+    outputs:
+      # The opted-in media names and the media artifact's URL, for comment-media (#3805).
+      media-names: ${{ steps.media-names.outputs.names }}
+      media-url: ${{ steps.upload-media.outputs.artifact-url }}
     env:
       # Major version of Xcode to select. 26 ships Swift 6.2 (needed by an SPM
       # dependency); 27 hard-errors on pod targets below iOS 15, so don't float
@@ -369,6 +373,7 @@ jobs:
       # to the working directory). The working-directory globs stay as a
       # fallback. Cost: artifact storage only, bounded by the 14-day retention.
       - name: Upload screenshots and recordings
+        id: upload-media
         uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -383,6 +388,12 @@ jobs:
           if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
           retention-days: 14
 
+      # Names of the media the PR comment lists (opt-in prefixes live in media_comment.py).
+      - name: List opted-in media names
+        id: media-names
+        if: always()
+        run: python3 e2e/maestro/media_comment.py names *.png *.mp4 maestro-debug
+
       - name: Upload failure screenshots and build log
         uses: actions/upload-artifact@v7
         if: failure()
@@ -394,3 +405,41 @@ jobs:
             xcodebuild.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # Lists the run's opted-in media (e2e/maestro/media_comment.py: OPT_IN_PREFIXES) on the
+  # PR, or on the one open PR for a dispatched branch (#3805). A separate job so the
+  # emulator job keeps `contents: read` only; the job's own `permissions` replace the
+  # workflow's, so it names both. Skipped for fork PRs (read-only token) and when the run
+  # has no opted-in media; the script itself never fails the job.
+  comment-media:
+    name: Comment Maestro iOS media
+    needs: maestro-ios
+    if: |
+      !cancelled() && needs.maestro-ios.outputs.media-names != '' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: e2e/maestro
+          persist-credentials: false
+
+      - name: Comment or update the media list
+        # Everything reaches the script through env, never `${{ }}` in the run body.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: ios
+          MEDIA_NAMES: ${{ needs.maestro-ios.outputs.media-names }}
+          ARTIFACT_URL: ${{ needs.maestro-ios.outputs.media-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BRANCH: ${{ github.ref_name }}
+        run: python3 e2e/maestro/media_comment.py comment
