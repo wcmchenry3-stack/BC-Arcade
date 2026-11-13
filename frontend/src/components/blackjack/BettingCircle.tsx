@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { formatNumber } from "../../api/statsDisplay";
 import { typography } from "../../theme/typography";
+import { accentAsText } from "./tableAccentText";
 
 interface BettingCircleProps {
   bet: number;
@@ -59,7 +60,7 @@ export default function BettingCircle({ bet, accentColor, size = 148 }: BettingC
         style={[
           styles.betAmount,
           {
-            color: bet === 0 ? colors.textMuted : resolvedAccent,
+            color: bet === 0 ? colors.textMuted : accentAsText(colors, resolvedAccent),
             fontFamily: typography.heading,
           },
           // A small spot (a landscape felt) scales its amount down to fit.

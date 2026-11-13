@@ -64,7 +64,7 @@ export default function YachtScorecard({ you, opponent, youLabel, opponentLabel 
   function totalsColor(side: "you" | "opp"): string {
     if (!hasOpponent) return colors.text;
     if (winner === "tie") return colors.text;
-    return winner === side ? colors.bonus : colors.text;
+    return winner === side ? colors.bonusText : colors.text;
   }
 
   function valueText(v: number | null): { text: string; muted: boolean } {
@@ -115,7 +115,7 @@ export default function YachtScorecard({ you, opponent, youLabel, opponentLabel 
           style={[
             styles.valueCell,
             styles.bonusValue,
-            { color: bonusEarned(youUpper) ? colors.bonus : colors.textMuted },
+            { color: bonusEarned(youUpper) ? colors.bonusText : colors.textMuted },
           ]}
         >
           {youText}
@@ -125,7 +125,7 @@ export default function YachtScorecard({ you, opponent, youLabel, opponentLabel 
             style={[
               styles.valueCell,
               styles.bonusValue,
-              { color: bonusEarned(oppUpper) ? colors.bonus : colors.textMuted },
+              { color: bonusEarned(oppUpper) ? colors.bonusText : colors.textMuted },
             ]}
           >
             {oppText}

@@ -116,10 +116,12 @@ export default function ResultBanner({
   }
 
   let payoutText: string;
+  // The outcome's text: the win green needs its AA variant (the border keeps `bonus`)
+  const outcomeTextColor = outcome === "win" ? colors.bonusText : accentColor;
   let payoutColor: string;
   if (payout > 0) {
     payoutText = t("payout.positive", { amount: payout });
-    payoutColor = colors.bonus;
+    payoutColor = colors.bonusText;
   } else if (payout < 0) {
     payoutText = t("payout.negative", { amount: payout });
     payoutColor = colors.error;
@@ -157,7 +159,11 @@ export default function ResultBanner({
           ) : (
             <FeltOutcomeAndPayout
               compact={compact}
-              outcome={{ text: summary ?? outcomeText, label: outcomeLabel, color: accentColor }}
+              outcome={{
+                text: summary ?? outcomeText,
+                label: outcomeLabel,
+                color: outcomeTextColor,
+              }}
               payout={{ text: payoutText, label: payoutLabel, color: payoutColor }}
             />
           )}
@@ -190,7 +196,7 @@ export default function ResultBanner({
     >
       <Text
         testID="result-outcome"
-        style={[styles.outcome, compact && styles.outcomeCompact, { color: accentColor }]}
+        style={[styles.outcome, compact && styles.outcomeCompact, { color: outcomeTextColor }]}
       >
         {outcomeText}
       </Text>
