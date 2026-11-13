@@ -87,7 +87,7 @@ Stitch only ships a dark mockup. The light theme is **first-class** and maintain
 | `error`        | `#d94a42` | Errors                                                                         |
 | `errorText`    | `#b52d26` | Error red for text: ≥ 4.5:1 on every cream surface and the Sudoku washes       |
 | `bonus`        | `#2da557` | Positive confirmations (icons, rings, fills; not text)                         |
-| `bonusText`    | `#17692f` | Green for text: ≥ 4.5:1 on every cream surface (5.1–5.8:1)                     |
+| `bonusText`    | `#17692f` | Green for text: ≥ 4.5:1 on every cream surface (5.1–6.4:1)                     |
 
 The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 
