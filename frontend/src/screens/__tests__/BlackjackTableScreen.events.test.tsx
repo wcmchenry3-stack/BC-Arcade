@@ -308,8 +308,8 @@ describe("split hand result", () => {
     expect(strip.props.children).toBe("Won: 1 · Lost: 1");
     expect(strip.props.accessibilityLabel).toBe("Push. Won: 1 · Lost: 1");
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
-      "+50 chips",
-      "-50 chips",
+      "+50",
+      "-50",
     ]);
     // Each hand's own tag.
     expect(screen.getAllByTestId("hand-tag").map((n) => n.props.children)).toEqual(["Win", "Lose"]);
@@ -333,10 +333,7 @@ describe("split hand result", () => {
     expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual([
       "Push: 2",
     ]);
-    expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
-      "No change",
-      "No change",
-    ]);
+    expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual(["0", "0"]);
     expect(screen.getAllByTestId("hand-tag").map((n) => n.props.children)).toEqual([
       "Push",
       "Push",
