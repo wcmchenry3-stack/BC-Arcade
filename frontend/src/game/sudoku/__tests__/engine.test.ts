@@ -1128,6 +1128,18 @@ describe("undo restores the board only (#3785)", () => {
     expect([restored.selectedRow, restored.selectedCol]).toEqual([3, 3]);
   });
 
+  it("a note-only erase undone after a later note edit selects the erased cell, not the edited one (review)", () => {
+    const s0 = blankBoard(loadPuzzle("easy", "classic", rng0));
+    // X (5,5) gets a note, then is erased (one undo step). Then a note is toggled in an
+    // earlier cell Y (1,1): note toggles push no snapshot, so undo restores both cells.
+    const noted = putNote(s0, 5, 5, 3);
+    const cleared = eraseCell(selectCell(noted, 5, 5));
+    const yEdited = putNote(cleared, 1, 1, 7);
+    const back = undo(yEdited);
+    expect(notesAt(back, 5, 5)).toEqual([3]);
+    expect([back.selectedRow, back.selectedCol]).toEqual([5, 5]);
+  });
+
   it("undoing a hint selects the hinted cell", () => {
     const s0 = blankBoard(loadPuzzle("easy", "classic", rng0));
     const hinted = applyHint(selectCell(s0, 4, 2));

@@ -526,7 +526,18 @@ export function undo(state: SudokuState): SudokuState {
       if (!byNotes && !sameNotes(cell.notes, now.notes)) byNotes = [r, c];
     })
   );
-  const changed: [number, number] | null = byValue ?? byNotes;
+  // Notes-only changes: prefer the cell the undone action was taken on (the snapshot's selection),
+  // since a later note toggle (which pushes no snapshot) can also differ in an earlier cell.
+  const actedOn: [number, number] | null =
+    prev.selectedRow !== null &&
+    prev.selectedCol !== null &&
+    !sameNotes(
+      cellAt(prev.grid, prev.selectedRow, prev.selectedCol).notes,
+      cellAt(state.grid, prev.selectedRow, prev.selectedCol).notes
+    )
+      ? [prev.selectedRow, prev.selectedCol]
+      : null;
+  const changed: [number, number] | null = byValue ?? actedOn ?? byNotes;
   return {
     ...prev,
     notesMode: state.notesMode,
