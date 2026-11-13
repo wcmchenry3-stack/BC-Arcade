@@ -1,4 +1,11 @@
-import { cellBackground, cellMetrics, composite, parseColor } from "../cellStyle";
+import {
+  MIN_BOARD,
+  boardFit,
+  cellBackground,
+  cellMetrics,
+  composite,
+  parseColor,
+} from "../cellStyle";
 
 describe("parseColor", () => {
   it("reads #rrggbb and rgba()", () => {
@@ -69,5 +76,31 @@ describe("cellMetrics", () => {
     expect(3 * (m.note + 1)).toBeLessThanOrEqual(31 - 2);
     // three columns, each a digit wide (~0.7 em), inside the width
     expect(3 * m.note * 0.8).toBeLessThanOrEqual(31 - 2);
+  });
+});
+
+describe("boardFit (#3773)", () => {
+  it("takes the narrower of the width and the height left under the HUD", () => {
+    expect(boardFit(358, 600, 30)).toEqual({ size: 358, fits: true });
+    expect(boardFit(358, 330, 30)).toEqual({ size: 300, fits: true });
+    expect(boardFit(296.7, 400, 26.4)).toEqual({ size: 296, fits: true });
+  });
+  it("never exceeds the space it was given", () => {
+    for (const [w, h, hud] of [
+      [320, 253, 26],
+      [300, 150, 20],
+      [200, 500, 30],
+    ] as const) {
+      const { size, fits } = boardFit(w, h, hud);
+      if (fits) expect(size).toBeLessThanOrEqual(Math.min(w, h - hud));
+    }
+  });
+  it("uses the floor, and says it does not fit, when the space is smaller than it", () => {
+    expect(boardFit(320, 140, 30)).toEqual({ size: MIN_BOARD, fits: false });
+    expect(boardFit(320, 10, 30)).toEqual({ size: MIN_BOARD, fits: false });
+    expect(boardFit(100, 500, 30)).toEqual({ size: MIN_BOARD, fits: false });
+  });
+  it("keeps the floor when the space is exactly the floor", () => {
+    expect(boardFit(MIN_BOARD, 500, 0)).toEqual({ size: MIN_BOARD, fits: true });
   });
 });

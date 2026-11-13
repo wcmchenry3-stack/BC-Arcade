@@ -2,8 +2,7 @@
  * Contrast of the Sudoku board's digits on the cell backgrounds they actually sit on (#3773):
  * the base surface and each wash composited over it, in both themes. The entered digit is
  * `accentText` (the plain accent is 1.6-2:1 on cream); a rule conflict and a mistake draw the
- * `error` digit, which is large bold text here (a cell digit is >= 18.7 px bold at the smallest
- * board), so it is held to 3:1.
+ * `errorText` digit (a cell digit is ~17 px bold at 320, not "large text"), held to 4.5:1 like the rest.
  */
 import { dark, light, type Colors } from "../../../theme/ThemeContext";
 import { SUDOKU_WASHES } from "../../../theme/theme.sudoku";
@@ -69,9 +68,16 @@ describe.each([
     ...backgrounds,
     ["the conflict wash", bg({ conflict: true })],
     ["the conflict wash in a peer cell", bg({ conflict: true, peer: true })],
-  ])("an error digit reaches 3:1 (large text) on %s", (_n, color) => {
-    expect(contrast(colors.error, color)).toBeGreaterThanOrEqual(3);
+  ])("an error digit (errorText) reaches AA (4.5:1) on %s", (_n, color) => {
+    expect(contrast(colors.errorText, color)).toBeGreaterThanOrEqual(4.5);
   });
+
+  it.each(["background", "surface", "surfaceAlt", "surfaceHigh"] as const)(
+    "the HUD error count (errorText) reaches AA (4.5:1) on the %s",
+    (surface) => {
+      expect(contrast(colors.errorText, colors[surface])).toBeGreaterThanOrEqual(4.5);
+    }
+  );
 
   it("the selected cell's digits reach AA (4.5:1) on the accent fill", () => {
     expect(contrast(colors.textOnAccent, colors.accent)).toBeGreaterThanOrEqual(4.5);

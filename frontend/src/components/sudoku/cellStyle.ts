@@ -68,3 +68,22 @@ export function cellMetrics(cellPx: number) {
     markGap: Math.round(cellPx * 0.06),
   };
 }
+
+/** The smallest board drawn; below it the play area scrolls rather than shrink the board further. */
+export const MIN_BOARD = 120;
+
+export interface BoardFit {
+  readonly size: number;
+  /** False when even the smallest board does not fit: the caller scrolls the area instead. */
+  readonly fits: boolean;
+}
+
+/**
+ * The board's side in points: as wide as the area and as tall as the height left under the HUD
+ * allow, never more than that space (so it cannot overlap the HUD or the header). Under
+ * `MIN_BOARD` it stays at `MIN_BOARD`, with `fits: false`.
+ */
+export function boardFit(areaW: number, areaH: number, hudH: number): BoardFit {
+  const space = Math.floor(Math.min(areaW, areaH - hudH));
+  return space >= MIN_BOARD ? { size: space, fits: true } : { size: MIN_BOARD, fits: false };
+}

@@ -1403,7 +1403,43 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     expect(r.getByText("1 error")).toBeTruthy();
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
-    ).toHaveStyle({ color: darkColors.error });
+    ).toHaveStyle({ color: darkColors.errorText });
+  });
+
+  it("two illegal entries read '1 error' then '2 errors', in the errorText colour (#3773)", async () => {
+    const base = loadPuzzle("medium", "classic", () => 0);
+    // Two empty cells, each with a digit that repeats one in its row, column or box.
+    const picks: { row: number; col: number; digit: number }[] = [];
+    for (let r = 0; r < 9 && picks.length < 2; r++) {
+      for (let c = 0; c < 9 && picks.length < 2; c++) {
+        if (base.grid[r]![c]!.given) continue;
+        for (let d = 1; d <= 9; d++) {
+          if (sudokuEngine.getConflicts(base.grid, r, c, d).length > 0) {
+            picks.push({ row: r, col: c, digit: d });
+            break;
+          }
+        }
+      }
+    }
+    expect(picks).toHaveLength(2);
+    const [a, b] = picks as [(typeof picks)[number], (typeof picks)[number]];
+    const r = await resume(selectCell(base, a.row, a.col));
+    const enter = async (cellPick: typeof a) => {
+      await act(async () => {
+        await fireEvent.press(r.getByLabelText(cellLabel(cellPick.row, cellPick.col)));
+      });
+      await act(async () => {
+        await fireEvent.press(
+          r.getByLabelText(new RegExp(`enter digit ${cellPick.digit}\\.`, "i"))
+        );
+      });
+    };
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${a.digit}\\.`, "i")));
+    });
+    expect(r.getByText("1 error")).toHaveStyle({ color: darkColors.errorText });
+    await enter(b);
+    expect(r.getByText("2 errors")).toHaveStyle({ color: darkColors.errorText });
   });
 
   it("Show mistakes defaults to on for easy and off for medium and hard", async () => {
@@ -1424,7 +1460,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     await play(r, s.legalWrong, s.other);
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
-    ).toHaveStyle({ color: darkColors.error });
+    ).toHaveStyle({ color: darkColors.errorText });
     expect(errorFlashes()).toBe(0);
     expect(r.getByText("0 errors")).toBeTruthy();
   });
@@ -1441,7 +1477,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     await act(async () => {
       await fireEvent.press(item);
     });
-    expect(digitText()).toHaveStyle({ color: darkColors.error });
+    expect(digitText()).toHaveStyle({ color: darkColors.errorText });
     expect(await AsyncStorage.getItem(SHOW_MISTAKES_KEY)).toBe("1");
 
     const item2 = await showMistakesItem(r);
@@ -1495,7 +1531,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     const r2 = await resume(oldDuplicate);
     expect(
       within(r2.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
-    ).toHaveStyle({ color: darkColors.error });
+    ).toHaveStyle({ color: darkColors.errorText });
   });
 
   describe("a full grid that is not the solution", () => {

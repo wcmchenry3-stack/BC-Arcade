@@ -147,7 +147,7 @@ export default function SudokuGrid({
                     cell.value !== 0 &&
                     cell.value !== solution.charCodeAt(r * size + c) - 48
                   }
-                  onPress={() => onCellPress(r, c)}
+                  onPress={onCellPress}
                 />
               </View>
             );

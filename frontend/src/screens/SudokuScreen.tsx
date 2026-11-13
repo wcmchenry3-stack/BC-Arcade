@@ -24,6 +24,7 @@ import {
   Animated,
   Platform,
   StyleSheet,
+  ScrollView,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
@@ -47,6 +48,7 @@ import { ElapsedText, createClockActivity } from "../components/shared/ElapsedTe
 import GameActionBar from "../components/shared/GameActionBar";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
+import { boardFit } from "../components/sudoku/cellStyle";
 import NumberPad from "../components/sudoku/NumberPad";
 import PreGame from "../components/sudoku/PreGame";
 import NewGameModal from "../components/sudoku/NewGameModal";
@@ -86,8 +88,6 @@ const KEY_GAP = 5;
 const KEY_GAP_COMPACT = 3;
 /** Space between the board and the action bar, and between the bar and the keys. */
 const BLOCK_GAP = 4;
-/** The smallest board the layout will draw. */
-const MIN_BOARD = 200;
 
 /**
  * Whether a restored game's replay could not be rebuilt from its first entry
@@ -693,8 +693,11 @@ export default function SudokuScreen() {
     setHudH(e.nativeEvent.layout.height);
   }, []);
   // As large as the width or the height left above the bar allows; until measured, the grid fills the width.
-  const boardSize =
-    slot === null ? undefined : Math.max(MIN_BOARD, Math.floor(Math.min(slot.w, slot.h - hudH)));
+  // The board is hidden until then (opacity 0, still laid out) so it does not snap from full width.
+  // On a window too short for even the smallest board the play area scrolls instead of overlapping.
+  const fit = slot === null ? null : boardFit(slot.w, slot.h, hudH);
+  const boardSize = fit?.size;
+  const Slot = fit !== null && !fit.fits ? ScrollView : View;
 
   const handleNewGameBarPress = useCallback(() => setConfirmNewGameVisible(true), []);
   const handleConfirmNewGame = useCallback(() => {
@@ -733,7 +736,11 @@ export default function SudokuScreen() {
         />
       ) : (
         <View style={styles.body}>
-          <View style={styles.slot} onLayout={onSlotLayout}>
+          <Slot
+            style={styles.slot}
+            onLayout={onSlotLayout}
+            {...(Slot === ScrollView ? { contentContainerStyle: styles.slotScroll } : null)}
+          >
             <View onLayout={onHudLayout}>
               <HudStatRow
                 style={styles.hudTight}
@@ -766,7 +773,7 @@ export default function SudokuScreen() {
               />
             </View>
 
-            <View style={styles.gridWrap}>
+            <View style={[styles.gridWrap, slot === null && styles.unmeasured]}>
               <SudokuGrid
                 grid={state.grid}
                 selectedRow={state.selectedRow}
@@ -778,7 +785,7 @@ export default function SudokuScreen() {
                 onCellPress={handleCellPress}
               />
             </View>
-          </View>
+          </Slot>
 
           <View style={{ height: BLOCK_GAP }} />
 
@@ -822,7 +829,7 @@ export default function SudokuScreen() {
                 icon: "lightbulb",
                 label: t("action.hint"),
                 accessibilityLabel: t("action.hint"),
-                color: colors.bonus,
+                color: colors.outcomeWin, // the AA green on cream, as Yacht's Hint
                 onPress: handleHint,
                 testID: "sudoku-hint",
               },
@@ -947,7 +954,14 @@ const styles = StyleSheet.create({
   hudTight: {
     paddingVertical: 4,
   },
+  slotScroll: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+  },
   gridWrap: {
     alignItems: "center",
+  },
+  unmeasured: {
+    opacity: 0,
   },
 });

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -32,7 +32,8 @@ interface Props {
    * half of the clash. Drawn as a red ring (#3773).
    */
   clash?: boolean;
-  onPress: () => void;
+  /** Stable across renders (the screen's `useCallback`): the cell passes its own row and column. */
+  onPress: (row: number, col: number) => void;
 }
 
 interface LabelInput {
@@ -73,15 +74,15 @@ function cellLabel(t: TFunction<"sudoku">, i: LabelInput): string {
 /**
  * A digit's colour. The selected cell is solid accent: `textOnAccent` / `errorOnAccent` are tuned
  * for text on it. Elsewhere a given is plain text, the player's own digit is `accentText`, and a
- * flagged one (conflict or mistake) is `error`.
+ * flagged one (conflict or mistake) is `errorText`.
  */
 function digitColor(colors: Colors, given: boolean, selected: boolean, flagged: boolean): string {
   if (selected) return flagged ? colors.errorOnAccent : colors.textOnAccent;
   if (given) return colors.text;
-  return flagged ? colors.error : colors.accentText;
+  return flagged ? colors.errorText : colors.accentText;
 }
 
-export default function SudokuCell({
+function SudokuCellImpl({
   cell,
   row,
   col,
@@ -120,23 +121,30 @@ export default function SudokuCell({
   const noteColor = selected ? colors.textOnAccent : colors.textMuted;
 
   // Notes sit in a 3-column grid regardless of variant: 3 rows for 9×9, 2 for 6×6.
-  const noteDigits = Array.from({ length: size }, (_, i) => (i + 1) as NoteDigit);
+  const noteDigits = useMemo(
+    () => Array.from({ length: size }, (_, i) => (i + 1) as NoteDigit),
+    [size]
+  );
   const noteRows = Math.ceil(size / 3);
 
-  const label = cellLabel(t, {
-    cell,
-    row,
-    col,
-    box,
-    notes: noteDigits,
-    conflict,
-    mistake: showMistake,
-    clash,
-  });
+  const label = useMemo(
+    () =>
+      cellLabel(t, {
+        cell,
+        row,
+        col,
+        box,
+        notes: noteDigits,
+        conflict,
+        mistake: showMistake,
+        clash,
+      }),
+    [t, cell, row, col, box, noteDigits, conflict, showMistake, clash]
+  );
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(row, col)}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
@@ -246,3 +254,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
 });
+
+/**
+ * Memoised (#3773): a tap changes a handful of cells (the selection, its row, column and box, the
+ * digit's twins); every other cell has the same props and skips its render and its label.
+ */
+const SudokuCell = React.memo(SudokuCellImpl);
+export default SudokuCell;

@@ -347,7 +347,7 @@ describe("SudokuCell", () => {
         />
       );
       expect(getByText("5").props.style).toEqual(
-        expect.arrayContaining([expect.objectContaining({ color: darkColors.error })])
+        expect.arrayContaining([expect.objectContaining({ color: darkColors.errorText })])
       );
     });
 
@@ -431,7 +431,7 @@ describe("SudokuGrid", () => {
     // Digits: given (text), selected user entry (textOnAccent), unselected error (error).
     expect(getByText("5")).toHaveStyle({ color: darkColors.text });
     expect(getByText("3")).toHaveStyle({ color: darkColors.textOnAccent });
-    expect(getByText("7")).toHaveStyle({ color: darkColors.error });
+    expect(getByText("7")).toHaveStyle({ color: darkColors.errorText });
     // Box separators are 2px boxBorder; inner separators are hairline border.
     const wrapperOf = (r: number, c: number) => at(r, c).parent!;
     expect(wrapperOf(0, 3)).toHaveStyle({
@@ -677,7 +677,7 @@ describe("SudokuCell mistake colouring (#2943)", () => {
     expect(off.getByText("5")).toHaveStyle({ color: darkColors.accentText });
     await off.unmount();
     const on = await wrap(<SudokuCell {...props} cell={cell({ value: 5 })} mistake />);
-    expect(on.getByText("5")).toHaveStyle({ color: darkColors.error });
+    expect(on.getByText("5")).toHaveStyle({ color: darkColors.errorText });
   });
 
   it("uses the on-accent error colour for a selected mistake", async () => {
@@ -721,7 +721,7 @@ describe("SudokuGrid showMistakes (#2943)", () => {
       />
     );
     const twos = on.getAllByText("2");
-    expect(twos[0]).toHaveStyle({ color: darkColors.error }); // the player's wrong digit
+    expect(twos[0]).toHaveStyle({ color: darkColors.errorText }); // the player's wrong digit
     expect(twos[1]).toHaveStyle({ color: darkColors.text }); // the given
     expect(on.getByText("1")).toHaveStyle({ color: darkColors.accentText }); // correct digit
   });

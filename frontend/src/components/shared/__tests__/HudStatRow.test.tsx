@@ -38,7 +38,7 @@ describe("HudStatRow", () => {
     expect(style("12 moves").color).not.toBe(style("Easy").color);
   });
 
-  it("draws an error stat in the theme's error colour, over muted (#3773)", async () => {
+  it("draws an error stat in the theme's errorText colour, over muted (#3773)", async () => {
     await renderRow({
       stats: [
         { key: "a", text: "Easy" },
@@ -46,7 +46,7 @@ describe("HudStatRow", () => {
         { key: "c", text: "0 errors", muted: true },
       ],
     });
-    expect(style("2 errors").color).toBe(darkColors.error);
+    expect(style("2 errors").color).toBe(darkColors.errorText);
     expect(style("0 errors").color).toBe(darkColors.textMuted);
   });
 

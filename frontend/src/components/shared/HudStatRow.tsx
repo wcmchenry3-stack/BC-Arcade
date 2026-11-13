@@ -22,7 +22,7 @@ export interface HudTextStat extends HudStatBase {
   muted?: boolean;
   /** Bold weight, for a title-like first item. */
   bold?: boolean;
-  /** Render in the theme's `error` colour (Sudoku's error count once it is above 0, #3773). Wins over `muted`. */
+  /** Render in the theme's `errorText` colour (Sudoku's error count once it is above 0, #3773). Wins over `muted`. */
   error?: boolean;
   /** Screen-reader label. Defaults to `text`. */
   accessibilityLabel?: string;
@@ -71,7 +71,7 @@ export function HudStatRow({ stats, size = "md", style, testID }: HudStatRowProp
           styles.text,
           {
             fontSize,
-            color: s.error === true ? colors.error : s.muted ? colors.textMuted : colors.text,
+            color: s.error === true ? colors.errorText : s.muted ? colors.textMuted : colors.text,
           },
           s.bold && styles.bold,
         ];

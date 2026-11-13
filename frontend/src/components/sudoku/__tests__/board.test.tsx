@@ -222,7 +222,7 @@ describe("SudokuCell digits, notes and error styles (#3773)", () => {
 
   it("a conflict is a red digit on a red wash, with no underline", async () => {
     const r = await wrap(<SudokuCell {...base} cell={cell({ value: 7, isError: true })} />);
-    expect(r.getByText("7")).toHaveStyle({ color: darkColors.error });
+    expect(r.getByText("7")).toHaveStyle({ color: darkColors.errorText });
     expect(bg(r.getByTestId("sudoku-cell-0-0"))).toBe(CONFLICT);
     expect(r.queryByTestId("sudoku-cell-0-0-mistake")).toBeNull();
     expect(r.queryByTestId("sudoku-cell-0-0-clash")).toBeNull();
@@ -230,7 +230,7 @@ describe("SudokuCell digits, notes and error styles (#3773)", () => {
 
   it("a mistake is a red digit with an underline, and no wash", async () => {
     const r = await wrap(<SudokuCell {...base} cell={cell({ value: 2 })} mistake />);
-    expect(r.getByText("2")).toHaveStyle({ color: darkColors.error });
+    expect(r.getByText("2")).toHaveStyle({ color: darkColors.errorText });
     expect(r.getByTestId("sudoku-cell-0-0-mistake")).toHaveStyle({
       backgroundColor: darkColors.error,
     });
