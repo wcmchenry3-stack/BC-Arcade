@@ -724,7 +724,7 @@ describe("SortBoard motion (#3660)", () => {
       const ring = StyleSheet.flatten(
         getByTestId("hint-dst-ring", { includeHiddenElements: true }).props.style
       );
-      expect(ring.borderColor).toBe(dark.outcomeWin);
+      expect(ring.borderColor).toBe(dark.hintRing);
     });
   });
 });

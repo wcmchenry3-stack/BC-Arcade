@@ -139,6 +139,11 @@ export interface BottleViewProps {
    */
   readonly refusedSeq?: number;
   /**
+   * The board's undo count. A bottle that becomes solved in the render where it changes did
+   * so by an undo, which only fades the board: no pulse, no badge pop.
+   */
+  readonly undoSeq?: number;
+  /**
    * A new level's drop-in (#3660): the board's clock (0..1, shared by every bottle) and this
    * bottle's place in it. Omitted for a restored game, which plays nothing.
    */
@@ -160,6 +165,7 @@ export default function BottleView({
   hitSlop,
   isGhost = false,
   refusedSeq = 0,
+  undoSeq = 0,
   entryClock,
   entryDelayMs = 0,
   drained,
@@ -210,21 +216,24 @@ export default function BottleView({
   const pulse = useSharedValue(0);
   const badge = useSharedValue(completed ? 1 : 0);
   const wasCompleted = useRef(completed);
+  const seenUndoSeq = useRef(undoSeq);
   useEffect(() => {
     const was = wasCompleted.current;
+    const undone = undoSeq !== seenUndoSeq.current;
     wasCompleted.current = completed;
+    seenUndoSeq.current = undoSeq;
     if (isGhost || completed === was) return;
     cancelAnimation(pulse);
     cancelAnimation(badge);
     pulse.value = 0;
-    if (!completed || reduceMotion) {
+    if (!completed || reduceMotion || undone) {
       badge.value = completed ? 1 : 0;
       return;
     }
     badge.value = 0;
     badge.value = withTiming(1, { duration: COMPLETE_BADGE_MS, easing: Easing.linear });
     pulse.value = withTiming(1, { duration: COMPLETE_PULSE_MS, easing: Easing.linear });
-  }, [completed, reduceMotion, pulse, badge, isGhost]);
+  }, [completed, undoSeq, reduceMotion, pulse, badge, isGhost]);
 
   const dropPx = bottleHeight * LEVEL_IN_DROP_FRAC;
   const animStyle = useAnimatedStyle(() => {

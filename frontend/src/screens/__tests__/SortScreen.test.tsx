@@ -50,7 +50,7 @@ jest.mock("../../components/sort/SortBoard", () => {
     return React.createElement(mod.default, props);
   }
   MockSortBoard.displayName = "SortBoard";
-  return { __esModule: true, default: MockSortBoard, POUR_PER_UNIT_MS: mod.POUR_PER_UNIT_MS };
+  return { __esModule: true, default: MockSortBoard };
 });
 
 // Haptics (#3660): the card's own pulse and Sort's per-event ones all come through here.
@@ -184,6 +184,17 @@ async function renderScreen() {
       <SortScreen />
     </ThemeProvider>
   );
+}
+
+/**
+ * The win cascade (#3660) holds the result card for WIN_CASCADE_MS. Tests that only want the
+ * card skip it, as a tap on the board does, instead of waiting it out in real time.
+ */
+async function skipWinCascade() {
+  await act(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).__sortBoardLastProps?.onWinCascadeDone?.();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -618,6 +629,7 @@ describe("SortScreen — level advance to a different grid shape (regression #22
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
 
     // Next Level is on the result card straight away (#2512) — it no longer
     // waits for a leaderboard submission.
@@ -691,6 +703,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     return within(await r.findByTestId("sort-result"));
   }
 
@@ -741,6 +754,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     return within(await r.findByTestId("sort-result"));
   }
 
@@ -785,6 +799,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     await r.findByTestId("sort-result");
     expect(completion().summary.durationMs).toBe(45_000);
   });
@@ -801,6 +816,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     return within(await r.findByTestId("sort-result"));
   }
 
@@ -1145,6 +1161,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     card = within(await r.findByTestId("sort-result"));
     expect(card.getByText("Sort Puzzle · Level 2")).toBeTruthy();
     // Level 2's best (1) was already on record: not a new best.
@@ -1923,6 +1940,18 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       }
     });
 
+    it("a screen reader skips the cascade: the card at once", async () => {
+      const query = jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(true);
+      try {
+        const r = await openLevel(WIN_LEVEL);
+        await winLevelOne(r);
+        expect(lastProps().winCascade).toBe(false);
+        expect(await r.findByTestId("sort-result")).toBeTruthy();
+      } finally {
+        query.mockRestore();
+      }
+    });
+
     it("Undo is ignored while the cascade plays", async () => {
       const r = await openLevel(WIN_LEVEL);
       await winLevelOne(r);
@@ -1956,6 +1985,21 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
   });
 
   describe("level in, undo and refused pour", () => {
+    it("Play Again keeps the mounted board and tells it to play no level-in", async () => {
+      const r = await openLevel(WIN_LEVEL, [WIN_LEVEL]);
+      expect(lastProps().levelIn).toBe(true);
+      await winLevelOne(r);
+      await act(async () => {
+        lastProps().onWinCascadeDone();
+      });
+      await act(async () => {
+        await fireEvent.press(
+          within(await r.findByTestId("sort-result")).getByRole("button", { name: "Play Again" })
+        );
+      });
+      expect(lastProps().levelIn).toBe(false);
+    });
+
     it("a new level drops in; a restored game plays nothing", async () => {
       const r = await openLevel(WIN_LEVEL);
       expect(lastProps().levelIn).toBe(true);
@@ -2048,7 +2092,8 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       notify.mockClear();
       impact.mockClear();
       await land();
-      expect(impact).toHaveBeenCalledWith("medium");
+      // Success only: no medium impact in the same tick.
+      expect(impact).not.toHaveBeenCalled();
       expect(notify).toHaveBeenCalledTimes(1);
       expect(notify).toHaveBeenCalledWith("success");
       await r.unmount();
@@ -2056,7 +2101,9 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       // The winning pour: medium on landing; the success pulse is the card's, once, after the cascade.
       const w = await openLevel(WIN_LEVEL);
       notify.mockClear();
+      impact.mockClear();
       await winLevelOne(w);
+      expect(impact.mock.calls.filter(([kind]) => kind === "medium")).toHaveLength(1);
       expect(notify).not.toHaveBeenCalled();
       await act(async () => {
         lastProps().onWinCascadeDone();

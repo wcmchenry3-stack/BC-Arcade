@@ -78,6 +78,7 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { useScreenReaderEnabled } from "../components/shared/useScreenReaderEnabled";
 
 /** "Back to last good move" stops solving after this many solves or ms. */
 const UNDO_SEARCH_MAX_SOLVES = 24;
@@ -133,6 +134,8 @@ export default function SortScreen() {
 
   const [boardHeight, setBoardHeight] = useState(0);
   const reduceMotion = useReduceMotion();
+  // A screen reader skips the win cascade too: the card and its announcement come at once.
+  const screenReader = useScreenReaderEnabled();
   const audio = useSortAudio();
 
   // The pour in flight (#2981). Its move lands when the animation ends, on
@@ -141,10 +144,9 @@ export default function SortScreen() {
     (snapshot: SortState, from: number, to: number) => {
       const nextState = applyPour(snapshot, from, to);
       setGameState(nextState);
-      // Haptics (#3660), once per landing, from the event and never a frame: a medium pulse
-      // for the pour, and a success pulse if it completed a bottle. The winning pour skips
-      // the second one: the result card pulses success when it opens, after the cascade.
-      fireSortHaptic("land");
+      // Haptics (#3660), once per landing, from the event and never a frame: a success
+      // pulse if the pour completed a bottle, a medium one otherwise. The winning pour gets
+      // the medium one only: the result card pulses success when it opens, after the cascade.
       const filled = nextState.bottles[to] ?? [];
       const before = snapshot.bottles[to] ?? [];
       if (
@@ -154,6 +156,8 @@ export default function SortScreen() {
         !(before.length > 0 && isBottleSolved(before))
       ) {
         fireSortHaptic("complete");
+      } else {
+        fireSortHaptic("land");
       }
       if (nextState.isComplete) {
         audio.playWin();
@@ -327,7 +331,7 @@ export default function SortScreen() {
     // The card follows the win cascade (#3660); at once under Reduce Motion, and when it
     // comes back for a solved board whose cascade already played. Everything below
     // (the session, the best, the unlock) still happens now, not after the cascade.
-    if (!reduceMotion && cascadeRef.current === "idle") {
+    if (!reduceMotion && !screenReader && cascadeRef.current === "idle") {
       cascadeRef.current = "playing";
       setWinCascade(true);
     } else {
@@ -577,7 +581,9 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
-    setLevelIn(true);
+    // Play Again keeps the mounted board (same key), which plays no level-in: only a board
+    // that will mount (from the level grid, or the next level) is told to.
+    setLevelIn(!(view === "play" && levelId === currentLevelId));
     enterPlay();
   }
 

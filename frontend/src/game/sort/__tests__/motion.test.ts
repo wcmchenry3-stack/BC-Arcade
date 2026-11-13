@@ -11,6 +11,7 @@ import {
   LEVEL_IN_STAGGER_MAX_MS,
   LEVEL_IN_TOTAL_MS,
   POUR_LIFT_MS,
+  POUR_START_LATENCY_BUDGET_MS,
   POUR_RETURN_MS,
   POUR_TILT_MS,
   POUR_TRAVEL_MS,
@@ -66,7 +67,7 @@ describe("Sort motion — durations stay under the owner's ceilings (#3660)", ()
   });
 
   it.each([1, 2, 3, 4])("a pour of %i unit(s) is within 900 ms + 300 ms per extra unit", (n) => {
-    expect(pourTotalMs(n)).toBeLessThanOrEqual(
+    expect(pourTotalMs(n) + POUR_START_LATENCY_BUDGET_MS).toBeLessThanOrEqual(
       CEILINGS_MS.pourOneUnit + (n - 1) * CEILINGS_MS.pourPerExtraUnit
     );
   });
@@ -86,29 +87,39 @@ describe("Sort motion — durations stay under the owner's ceilings (#3660)", ()
 });
 
 describe("pourTimeline", () => {
-  it("one unit: lift 200, flow from 360, leaves at 540, lands at 660, ends at 900", () => {
+  it("one unit: lift 170, flow from 300, leaves at 480, lands at 600, ends at 780", () => {
     expect(pourTimeline(1)).toEqual({
-      liftEndMs: 200,
-      flowStartMs: 360,
-      units: [{ leaveMs: 540, landMs: 660 }],
-      flowEndMs: 660,
-      endMs: 900,
+      liftEndMs: 170,
+      flowStartMs: 300,
+      units: [{ leaveMs: 480, landMs: 600 }],
+      flowEndMs: 600,
+      endMs: 780,
     });
   });
 
-  it("two, three and four units: 300 ms per unit, 1200 / 1500 / 1800 ms in all", () => {
+  it("two, three and four units: 300 ms per unit, 1080 / 1380 / 1680 ms in all", () => {
     const two = pourTimeline(2);
     expect(two.units).toEqual([
-      { leaveMs: 540, landMs: 660 },
-      { leaveMs: 840, landMs: 960 },
+      { leaveMs: 480, landMs: 600 },
+      { leaveMs: 780, landMs: 900 },
     ]);
-    expect(two.flowEndMs).toBe(960);
-    expect(two.endMs).toBe(1200);
-    expect(pourTimeline(3).endMs).toBe(1500);
+    expect(two.flowEndMs).toBe(900);
+    expect(two.endMs).toBe(1080);
+    expect(pourTimeline(3).endMs).toBe(1380);
     const four = pourTimeline(4);
-    expect(four.units.map((u) => u.landMs)).toEqual([660, 960, 1260, 1560]);
-    expect(four.flowEndMs).toBe(1560);
-    expect(four.endMs).toBe(1800);
+    expect(four.units.map((u) => u.landMs)).toEqual([600, 900, 1200, 1500]);
+    expect(four.flowEndMs).toBe(1500);
+    expect(four.endMs).toBe(1680);
+  });
+
+  it("from the tap, the start and end latency budget included, one unit is within 900 ms", () => {
+    expect(POUR_START_LATENCY_BUDGET_MS).toBeGreaterThan(0);
+    expect(pourTotalMs(1) + POUR_START_LATENCY_BUDGET_MS).toBeLessThanOrEqual(
+      CEILINGS_MS.pourOneUnit
+    );
+    for (const n of [2, 3, 4]) {
+      expect(pourTotalMs(n) - pourTotalMs(n - 1)).toBeLessThanOrEqual(CEILINGS_MS.pourPerExtraUnit);
+    }
   });
 
   it.each([1, 2, 3, 4])("%i unit(s): in order, every unit lands before the stream stops", (n) => {

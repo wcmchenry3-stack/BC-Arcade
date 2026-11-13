@@ -57,17 +57,27 @@ export const CEILINGS_MS = {
 // ---------------------------------------------------------------------------
 
 /** The bottle lifts and travels to just above the destination's neck. */
-export const POUR_LIFT_MS = 200;
+export const POUR_LIFT_MS = 170;
 /** It tilts from upright to `TILT_START_DEG`; the stream fades in. */
-export const POUR_TILT_MS = 160;
+export const POUR_TILT_MS = 130;
 /** Each unit's share of the progressive tilt and the stream. */
 export const POUR_UNIT_MS = 300;
 /** It untilts and returns, together. */
-export const POUR_RETURN_MS = 240;
+export const POUR_RETURN_MS = 180;
 /** How long a unit takes from the spout to settle in the destination. */
 export const POUR_TRAVEL_MS = 120;
 /** Where in its slot a unit leaves the spout (the source drains by one). */
 export const POUR_UNIT_LEAVE_AT = 0.6;
+/**
+ * What a pour spends before and after its animation, outside `pourTimeline`: the tap, the
+ * state change and the render that start it (about a frame), and the end-of-animation hop
+ * to React before the move counter changes (about a frame). Measured on web (tap to move counter
+ * minus the animation): 50 to 70 ms. The pour is designed to `pourTotalMs(1) + this <= 900` so that, from the
+ * player's tap to the move landing, one unit still takes 900 ms or less.
+ * @internal Exported for tests; no production caller (knip --production, #3126).
+ */
+export const POUR_START_LATENCY_BUDGET_MS = 50;
+
 /** Reduce Motion: no ghost, no tilt; the move lands at once. */
 export const REDUCE_MOTION_POUR_MS = 0;
 
@@ -91,7 +101,7 @@ export function pourFlowMs(units: number): number {
   return Math.max(1, units) * POUR_UNIT_MS;
 }
 
-/** One pour's moments, in ms from the tap. */
+/** One pour's moments, in ms from the start of its animation (add the latency budget for the tap). */
 export interface PourTimeline {
   /** The lift ends and the tilt begins. */
   readonly liftEndMs: number;
@@ -127,7 +137,8 @@ export function pourTimeline(units: number): PourTimeline {
 }
 
 /**
- * A pour's whole length: 900 ms for one unit, 300 ms more for each extra one.
+ * A pour's animation length: 780 ms for one unit, 300 ms more for each extra one. From the
+ * tap add `POUR_START_LATENCY_BUDGET_MS`: 830 ms, under the 900 ms ceiling.
  * @internal Exported for tests, and for the sounds (#3661) to come; no production caller yet.
  */
 export function pourTotalMs(units: number): number {

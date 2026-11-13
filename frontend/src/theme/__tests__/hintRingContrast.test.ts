@@ -23,8 +23,8 @@ describe.each([
   ["dark", dark],
   ["light", light],
 ] as [string, Colors][])("%s: Sort hint destination ring", (_name, palette) => {
-  it("uses outcomeWin, which reaches 3:1 on the board's background", () => {
-    expect(contrast(palette.outcomeWin, palette.background)).toBeGreaterThanOrEqual(3);
+  it("hintRing reaches 3:1 on the board's background", () => {
+    expect(contrast(palette.hintRing, palette.background)).toBeGreaterThanOrEqual(3);
   });
 });
 

@@ -390,35 +390,33 @@ export default function SortBoard({
       units: unitCount,
     });
 
-    // Phase 1: Diagonal lift+travel simultaneously (POUR_LIFT_MS)
-    ghostDx.value = withTiming(liftDx, { duration: POUR_LIFT_MS });
-    ghostDy.value = withTiming(liftDy, { duration: POUR_LIFT_MS }, (finished) => {
-      if (!finished) return;
-      // Phase 2: Tilt to TILT_START_DEG
-      ghostTiltDeg.value = withTiming(
-        tiltSign * TILT_START_DEG,
-        { duration: POUR_TILT_MS },
-        (finished) => {
+    // The whole pour is one timeline per shared value, built here in one go and started on
+    // the same frame: lift and travel, tilt, the progressive tilt over the flow, then untilt
+    // and return. No finished-callback hands off from one phase to the next (each hop slipped
+    // a frame, #3660); the only callback is on the last segment, which lands the move.
+    ghostDx.value = withSequence(
+      withTiming(liftDx, { duration: POUR_LIFT_MS }),
+      withDelay(POUR_TILT_MS + pourHoldMs, withTiming(0, { duration: POUR_RETURN_MS }))
+    );
+    ghostTiltDeg.value = withDelay(
+      POUR_LIFT_MS,
+      withSequence(
+        withTiming(tiltSign * TILT_START_DEG, { duration: POUR_TILT_MS }),
+        withTiming(tiltSign * TILT_PEAK_DEG, { duration: pourHoldMs }),
+        withTiming(0, { duration: POUR_RETURN_MS })
+      )
+    );
+    ghostDy.value = withSequence(
+      withTiming(liftDy, { duration: POUR_LIFT_MS }),
+      withDelay(
+        POUR_TILT_MS + pourHoldMs,
+        withTiming(0, { duration: POUR_RETURN_MS }, (finished) => {
           if (!finished) return;
-          // Phase 3: Progressive tilt to TILT_PEAK_DEG over full pour
-          ghostTiltDeg.value = withTiming(
-            tiltSign * TILT_PEAK_DEG,
-            { duration: pourHoldMs },
-            (finished) => {
-              if (!finished) return;
-              // Phase 4: Simultaneous untilt + diagonal return
-              ghostTiltDeg.value = withTiming(0, { duration: POUR_RETURN_MS });
-              ghostDx.value = withTiming(0, { duration: POUR_RETURN_MS });
-              ghostDy.value = withTiming(0, { duration: POUR_RETURN_MS }, (finished) => {
-                if (!finished) return;
-                runOnJS(setGhost)(null);
-                runOnJS(notifyPourComplete)();
-              });
-            }
-          );
-        }
-      );
-    });
+          runOnJS(setGhost)(null);
+          runOnJS(notifyPourComplete)();
+        })
+      )
+    );
 
     // Stream fades in as tilt starts, fades out when return begins
     ghostStreamOpacity.value = withDelay(
@@ -558,6 +556,7 @@ export default function SortBoard({
                     index={idx}
                     selected={state.selectedBottleIndex === idx}
                     refusedSeq={refused?.index === idx ? refused.seq : 0}
+                    undoSeq={undoSeq}
                     entryClock={playLevelIn ? entryClock : undefined}
                     entryDelayMs={levelInDelayMs(idx, numBottles)}
                     colorblindMode={colorblindMode}
@@ -577,7 +576,7 @@ export default function SortBoard({
                           top: -4,
                           width: bottleW + 8,
                           height: bottleH + 8,
-                          borderColor: colors.outcomeWin,
+                          borderColor: colors.hintRing,
                         },
                       ]}
                       pointerEvents="none"

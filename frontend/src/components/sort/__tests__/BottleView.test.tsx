@@ -279,6 +279,21 @@ describe("BottleView motion (#3660)", () => {
       expect(Math.max(...durations)).toBeLessThanOrEqual(450);
     });
 
+    it("a bottle that becomes solved by an undo only shows its badge: no pulse, no pop", async () => {
+      const { rerender, queryByLabelText } = await render(
+        withTheme(<BottleView bottle={almost} index={0} undoSeq={0} />)
+      );
+      timing.mockClear();
+      await rerender(withTheme(<BottleView bottle={solved} index={0} undoSeq={1} />));
+      expect(queryByLabelText("Bottle 1, complete")).toBeTruthy();
+      expect(timing).not.toHaveBeenCalled();
+      // A later pour (the count unchanged) completing it does animate.
+      await rerender(withTheme(<BottleView bottle={almost} index={0} undoSeq={1} />));
+      timing.mockClear();
+      await rerender(withTheme(<BottleView bottle={solved} index={0} undoSeq={1} />));
+      expect(timing).toHaveBeenCalledTimes(2);
+    });
+
     it("a bottle already solved on a fresh board or a restore does not animate", async () => {
       await render(withTheme(<BottleView bottle={solved} index={0} />));
       expect(timing).not.toHaveBeenCalled();
