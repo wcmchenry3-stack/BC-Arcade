@@ -2,7 +2,7 @@ import { formatPL, plColor, winRatePct } from "../blackjackStatsModel";
 import { initialSessionStats } from "../../../game/blackjack/sessionStats";
 
 const en = (n: number) => n.toLocaleString("en-US");
-const colors = { bonus: "BONUS", error: "ERROR", text: "TEXT" };
+const colors = { bonusText: "BONUS", error: "ERROR", text: "TEXT" };
 
 describe("plColor", () => {
   it("returns bonus for positive, error for negative, text for zero", () => {

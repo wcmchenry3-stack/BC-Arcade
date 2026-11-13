@@ -7,6 +7,9 @@ import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 import MahjongActionBar from "../MahjongActionBar";
+import * as ThemeModule from "../../../theme/ThemeContext";
+import { light } from "../../../theme/ThemeContext";
+import { MAHJONG_HINT_COLOR } from "../../../theme/theme.mahjong";
 
 const UNDO = "Undo last matched pair";
 const HINT = "Show a hint — highlights one valid pair for 2 seconds";
@@ -26,7 +29,29 @@ function mount(over: Partial<React.ComponentProps<typeof MahjongActionBar>> = {}
   return { props, view: render(<MahjongActionBar {...props} />) };
 }
 
+/** The Hint icon's colour (jest renders MaterialIcons as a host `MockMaterialIcons`). */
+function hintIconColor(): string {
+  type N = { type?: string; props?: { color?: string; testID?: string }; children?: unknown };
+  const walk = (n: unknown, inHint: boolean): string | undefined => {
+    if (!n || typeof n !== "object") return undefined;
+    if (Array.isArray(n)) {
+      for (const c of n) {
+        const r = walk(c, inHint);
+        if (r) return r;
+      }
+      return undefined;
+    }
+    const node = n as N;
+    const here = inHint || node.props?.testID === "mahjong-hint-button";
+    if (here && node.type === "MockMaterialIcons") return node.props?.color;
+    return walk(node.children, here);
+  };
+  return walk(screen.toJSON(), false) as string;
+}
+
 describe("MahjongActionBar", () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it("renders Undo, Hint and Shuffle in that order, with their labels and test ids", async () => {
     await mount().view;
     const bar = screen.getByTestId("mahjong-action-bar");
@@ -80,5 +105,32 @@ describe("MahjongActionBar", () => {
       expect(style.minHeight).toBeGreaterThanOrEqual(44);
       expect(style.minWidth).toBeGreaterThanOrEqual(44);
     }
+  });
+
+  it("keeps the blue hint colour on the icon and label in dark", async () => {
+    await mount().view;
+    const bar = screen.getByTestId("mahjong-action-bar");
+    const { color } = StyleSheet.flatten(within(bar).getByText("HINT").props.style) as {
+      color: string;
+    };
+    expect(color).toBe(MAHJONG_HINT_COLOR);
+    expect(hintIconColor()).toBe(MAHJONG_HINT_COLOR);
+  });
+
+  it("uses the bonus icon and the AA bonusText label in light (#3754)", async () => {
+    jest.spyOn(ThemeModule, "useTheme").mockReturnValue({
+      theme: "light",
+      themeMode: "light",
+      colors: light,
+      toggle: () => undefined,
+      setThemeMode: () => undefined,
+    });
+    await mount().view;
+    const bar = screen.getByTestId("mahjong-action-bar");
+    const { color } = StyleSheet.flatten(within(bar).getByText("HINT").props.style) as {
+      color: string;
+    };
+    expect(color).toBe(light.bonusText);
+    expect(hintIconColor()).toBe(light.bonus);
   });
 });

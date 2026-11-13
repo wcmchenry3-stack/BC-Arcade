@@ -1484,7 +1484,7 @@ export default function SolitaireScreen() {
                   >
                     <View accessibilityLiveRegion="polite" pointerEvents="none">
                       {selectionLabel !== null && (
-                        <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
+                        <Text style={[styles.selectionIndicatorText, { color: colors.accentText }]}>
                           {selectionLabel}
                         </Text>
                       )}

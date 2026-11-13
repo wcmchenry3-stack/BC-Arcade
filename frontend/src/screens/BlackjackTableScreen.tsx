@@ -24,7 +24,7 @@
  *      (and the bust/win flashes with the result; a natural's moment on the
  *      felt, #3621). Input stays live: an action lands any motion at once first.
  *      `useGameEvents` drives the milestone and comeback toasts (once the
- *      round settles, each with its cue: `motion.runCue`, #3582) and the
+ *      round settles, each with its cue: `motion.whenSettled(fn, { cue })`, #3582) and the
  *      all-in badge (its sound is planned with the deal's motion).
  *   4. Navigation — the run's goal opens BlackjackVictory; the run history opens
  *      BlackjackStats; New Game is in the header's ⋯ menu (with its confirm).
@@ -307,25 +307,31 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       // The cards', the result's and the chips' sounds and effects are the motion's (#3581).
       // The run's cues (#3582) play with their toasts, as the round settles: one per round.
       milestone: (event) => {
-        if (!wonRunRef.current) motion.runCue("milestone");
-        motion.whenSettled(() => {
-          setMilestoneChips(event.value);
-          milestoneOpacity.value = withSequence(
-            withTiming(1, { duration: 150 }),
-            withDelay(1400, withTiming(0, { duration: 250 }))
-          );
-        });
+        const cue = wonRunRef.current ? undefined : "milestone";
+        motion.whenSettled(
+          () => {
+            setMilestoneChips(event.value);
+            milestoneOpacity.value = withSequence(
+              withTiming(1, { duration: 150 }),
+              withDelay(1400, withTiming(0, { duration: 250 }))
+            );
+          },
+          { cue }
+        );
       },
       comeback: () => {
-        if (!wonRunRef.current) motion.runCue("comeback");
-        motion.whenSettled(() => {
-          setComebackVisible(true);
-          comebackOpacity.value = withSequence(
-            withTiming(1, { duration: 200 }),
-            withDelay(2200, withTiming(0, { duration: 400 }))
-          );
-          setTimeout(() => setComebackVisible(false), 2800); // 200+2200+400
-        });
+        const cue = wonRunRef.current ? undefined : "comeback";
+        motion.whenSettled(
+          () => {
+            setComebackVisible(true);
+            comebackOpacity.value = withSequence(
+              withTiming(1, { duration: 200 }),
+              withDelay(2200, withTiming(0, { duration: 400 }))
+            );
+            setTimeout(() => setComebackVisible(false), 2800); // 200+2200+400
+          },
+          { cue }
+        );
       },
       // The badge only: its sound is the deal's, planned with the motion (#3582).
       allIn: () => {

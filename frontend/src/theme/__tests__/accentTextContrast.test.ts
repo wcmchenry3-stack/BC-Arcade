@@ -54,3 +54,25 @@ describe("accentText follows the theme", () => {
     expect(light.accentText).toMatch(/^#00[67][0-9a-f]7[0-9a-f]$/i);
   });
 });
+
+describe.each([
+  ["dark", dark],
+  ["light", light],
+] as [string, Colors][])("%s bonusText token (#3754)", (_name, palette) => {
+  it.each(SURFACES)("reaches WCAG AA (4.5:1) as text on %s", (surface) => {
+    expect(contrast(palette.bonusText, palette[surface])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("bonusText follows the theme", () => {
+  it("dark keeps today's bonus", () => {
+    expect(dark.bonusText).toBe(dark.bonus);
+  });
+
+  it("light is darker than its bonus, which fails AA as text on cream", () => {
+    expect(light.bonusText).toBe("#17692f");
+    expect(light.bonusText).not.toBe(light.bonus);
+    expect(contrast(light.bonus, light.background)).toBeLessThan(4.5);
+    expect(luminance(light.bonusText)).toBeLessThan(luminance(light.bonus));
+  });
+});
