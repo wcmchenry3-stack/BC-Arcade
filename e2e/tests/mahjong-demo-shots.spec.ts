@@ -10,18 +10,20 @@
  * The screenshots keep the Maestro names (`mahjong-demo-open.png`, `mahjong-demo-zoom.png`) and
  * are written to `e2e/test-results/mahjong-demo/`, which the `Playwright E2E` job uploads in the
  * `playwright-report` artifact. They are a CI artifact for a person to look at: no pixel
- * assertion, only that the board is visible and the files were written.
+ * assertion, only that the board is visible (and zoomed, for the zoom shot) and the files were written.
  *
  * "Settled": the run uses reduced motion (so no deal-in or camera ease runs; the app reads
  * `prefers-reduced-motion`), and the board canvas must then draw the same pixels on several
- * reads in a row. The tile faces load after the first paint, so a canvas that has not changed
- * for a while is one whose faces are in.
+ * reads in a row. The tile faces load after the first paint (suit-colour fallbacks first), so
+ * the test build marks the canvas `data-faces-loaded` once they are in (GameCanvas.web.tsx);
+ * the spec waits for that, then for the pixels to stop changing (the repaint follows the load).
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { existsSync, mkdirSync, statSync } from "fs";
+import { mkdirSync, statSync } from "fs";
 import { join } from "path";
 import { gotoMahjong } from "./helpers/mahjong";
+import { installEntitlementsMock } from "./helpers/api-mock";
 
 /** Where the PNGs land: under `test-results/`, which CI uploads (see the header). */
 const SHOT_DIR = join(__dirname, "..", "test-results", "mahjong-demo");
@@ -41,8 +43,11 @@ async function boardFingerprint(page: Page): Promise<string> {
     });
 }
 
-/** Resolves once the board has drawn the same pixels on `STABLE_READS` reads in a row. */
+/** Resolves once the faces are loaded and the board has drawn the same pixels on `STABLE_READS` reads in a row. */
 async function waitForBoardSettled(page: Page): Promise<void> {
+  await expect(
+    page.getByRole("img", { name: /Mahjong Solitaire/i }),
+  ).toHaveAttribute("data-faces-loaded", "true", { timeout: 15_000 });
   const STABLE_READS = 5;
   let last = "";
   let same = 0;
@@ -68,6 +73,7 @@ async function saveShot(page: Page, name: string): Promise<string> {
 
 test.describe("Mahjong — web demo screenshots for the Maestro comparison (#3804)", () => {
   test.beforeEach(async ({ page }) => {
+    await installEntitlementsMock(page);
     await page.goto("/");
     // A clean start, so the layout picker deals the fixed board.
     await page.evaluate(() => localStorage.removeItem("mahjong_game"));
@@ -82,18 +88,22 @@ test.describe("Mahjong — web demo screenshots for the Maestro comparison (#380
   test("mahjong-demo-open: the untouched Turtle board", async ({ page }) => {
     const path = await saveShot(page, "mahjong-demo-open");
     await expect(page.getByTestId("mahjong-board-viewport")).toBeVisible();
-    expect(existsSync(path)).toBe(true);
-    expect(statSync(path).size).toBeGreaterThan(0);
+    expect(statSync(path).size).toBeGreaterThan(10_000);
   });
 
   test("mahjong-demo-zoom: after a double-tap on the board viewport", async ({
     page,
   }) => {
-    await page.getByTestId("mahjong-board-viewport").dblclick();
+    const board = page.getByRole("img", { name: /Mahjong Solitaire/i });
+    const fit = (await board.boundingBox())!;
+    await page.mouse.dblclick(fit.x + fit.width * 0.25, fit.y + fit.height / 2);
+    // The zoom is a CSS transform, so the canvas pixels don't show it: check the box grew.
+    await expect
+      .poll(async () => (await board.boundingBox())!.width)
+      .toBeGreaterThan(fit.width * 1.5);
+    await expect(page.getByTestId("mahjong-minimap")).toBeVisible();
     await waitForBoardSettled(page);
     const path = await saveShot(page, "mahjong-demo-zoom");
-    await expect(page.getByTestId("mahjong-board-viewport")).toBeVisible();
-    expect(existsSync(path)).toBe(true);
-    expect(statSync(path).size).toBeGreaterThan(0);
+    expect(statSync(path).size).toBeGreaterThan(10_000);
   });
 });
