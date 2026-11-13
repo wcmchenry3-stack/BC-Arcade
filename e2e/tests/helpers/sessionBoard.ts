@@ -19,7 +19,21 @@ export interface SessionBoardCalls {
 
 export async function routeSessionBoard(
   page: Page,
-  { legacyPattern, rank = 1 }: { legacyPattern: string; rank?: number },
+  {
+    legacyPattern,
+    rank = 1,
+    playerName = null,
+  }: {
+    legacyPattern: string;
+    rank?: number;
+    /**
+     * The name the server already holds for this player (#3790), or null when
+     * the player isn't on the boards. Pass the name a test plants on the
+     * device: the app's launch refresh (GET /players/me) treats the server as
+     * the source of truth and forgets a device name the server doesn't hold.
+     */
+    playerName?: string | null;
+  },
 ): Promise<SessionBoardCalls> {
   const calls: SessionBoardCalls = { rankLookups: [], legacyCalls: [] };
   await page.route("**/games/*/rank", async (route) => {
@@ -32,12 +46,14 @@ export async function routeSessionBoard(
     });
   });
   // /players/me as the server behaves since #2778: a join (PUT, no body)
-  // assigns a generated name, GET reads it, DELETE leaves. The name is
-  // "Tester" so a device that already holds that name keeps it.
-  let boardName: string | null = null;
+  // assigns a generated name ("Tester" here), GET reads it, DELETE leaves.
+  // Joining again keeps the current name, as on the server. The board starts
+  // with `playerName`, so the server agrees with a name the test planted on
+  // the device (#3790).
+  let boardName: string | null = playerName;
   await page.route("**/players/me", async (route) => {
     const method = route.request().method();
-    if (method === "PUT") boardName = "Tester";
+    if (method === "PUT") boardName ??= "Tester";
     if (method === "DELETE") boardName = null;
     await route.fulfill({
       status: 200,
