@@ -11,10 +11,11 @@ import { contactPair } from "../contactSpawn";
 import { DEFAULT_CONSTANTS, streamRng, type SimConstants, type SimEngine } from "../config";
 import { packingDensity, touchingGaps } from "../physicsFeel";
 import { sampleQueue } from "../queueSampler";
-import { runGame, type GameMetrics } from "../runGame";
+import { CHAIN_WATCH_MS, runGame, type GameMetrics } from "../runGame";
 import {
   CHAIN_LATENCY_BOUND_MS,
   COST_BUDGET_MS,
+  aggregateGames,
   FULL_PARAMS,
   ROBUST_KEYS,
   SMOKE_PARAMS,
@@ -247,6 +248,30 @@ describe("determinism and the engine seam", () => {
     expect(m.feel.chainLatencyMs).toHaveLength(1);
     expect(m.feel.chainLatencyMs[0]!).toBeLessThan(150);
     expect(m.feel.chainMisses).toBe(0);
+  });
+
+  it("chains that never merge again count as late in the latency percentiles (PR #3863)", () => {
+    const idle = runGame({
+      seed: 1,
+      hz: 60,
+      bot: { name: "idle", nextDelayMs: () => 1e9, shouldTap: () => false, chooseX: () => 0 },
+      maxSimMs: 100,
+    });
+    const game = (latency: number[], misses: number): GameMetrics => ({
+      ...idle,
+      feel: { ...idle.feel, chainLatencyMs: latency, chainMisses: misses },
+    });
+    // 17 chains merge in one step, 3 (15 %) stall past the watch limit.
+    const games = [
+      ...Array.from({ length: 17 }, () => game([1000 / 60], 0)),
+      ...Array.from({ length: 3 }, () => game([], 1)),
+    ];
+    const out = aggregateGames(games, CAPSTONE_TIER);
+    expect(out["feel.chainLatency.watched"]).toBe(20);
+    expect(out["feel.chainLatencyMs.median"]).toBeCloseTo(1000 / 60);
+    expect(out["feel.chainLatencyMs.p90"]).toBe(CHAIN_WATCH_MS);
+    expect(out["feel.chainLatencyMs.p90"]!).toBeGreaterThanOrEqual(CHAIN_LATENCY_BOUND_MS);
+    expect(out["feel.chainUnder150Rate"]).toBeCloseTo(0.85);
   });
 
   it("measures wall penetration from the snapshots, at each piece's current size", () => {

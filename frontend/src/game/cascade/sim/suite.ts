@@ -13,7 +13,7 @@
  */
 import { BOTS } from "./bots";
 import { FRAME_RATES_HZ, resolveConstants, type SimConfig } from "./config";
-import { runGame, type GameMetrics } from "./runGame";
+import { CHAIN_WATCH_MS, runGame, type GameMetrics } from "./runGame";
 import { sampleQueue } from "./queueSampler";
 
 export interface SuiteParams {
@@ -189,8 +189,12 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   const lat = games.flatMap((g) => g.feel.chainLatencyMs ?? []);
   const misses = sumOf((g) => g.feel.chainMisses ?? 0);
   out["feel.chainLatency.watched"] = lat.length + misses;
-  out["feel.chainLatencyMs.median"] = pct(lat, 0.5);
-  out["feel.chainLatencyMs.p90"] = pct(lat, 0.9);
+  // A watched product that never merged again is a censored late sample: it counts at the watch
+  // limit, so stalled chains raise the percentiles instead of dropping out of them (PR #3863).
+  const latWithMisses =
+    misses > 0 ? lat.concat(new Array<number>(misses).fill(CHAIN_WATCH_MS)) : lat;
+  out["feel.chainLatencyMs.median"] = pct(latWithMisses, 0.5);
+  out["feel.chainLatencyMs.p90"] = pct(latWithMisses, 0.9);
   // Share of watched merge products that merged again within the bound (misses count as late).
   out["feel.chainUnder150Rate"] =
     lat.length + misses > 0
