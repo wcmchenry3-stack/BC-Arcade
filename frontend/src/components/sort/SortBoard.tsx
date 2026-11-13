@@ -1,21 +1,49 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
   cancelAnimation,
+  Easing,
   runOnJS,
   useAnimatedProps,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
   withSequence,
   withTiming,
 } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import Svg, { Circle, ClipPath, Defs, Ellipse, G, Path, Rect } from "react-native-svg";
 import { useTranslation } from "react-i18next";
 import type { Bottle, Color, SortState } from "../../game/sort/types";
 import { BOTTLE_DEPTH } from "../../game/sort/types";
 import { useTheme } from "../../theme/ThemeContext";
 import { BOTTLE_LIQUID_SHEEN, BOTTLE_STREAM_HIGHLIGHT } from "../../theme/theme.bottle";
+import {
+  LEVEL_IN_TOTAL_MS,
+  POUR_LIFT_MS,
+  POUR_RETURN_MS,
+  POUR_TILT_MS,
+  POUR_UNIT_MS,
+  SPLASH_FADE_MS,
+  SPLASH_GROW_MS,
+  SPLASH_RX_FROM,
+  SPLASH_RX_TO,
+  STREAM_GLOW_WIDTH,
+  STREAM_HIGHLIGHT_WIDTH,
+  STREAM_WIDTH,
+  TILT_PEAK_DEG,
+  TILT_START_DEG,
+  UNDO_FADE_FROM,
+  UNDO_FADE_MS,
+  WIN_CASCADE_FADE_OUT_MS,
+  WIN_CASCADE_HOLD_MS,
+  WIN_CASCADE_MS,
+  WIN_CASCADE_PIECE_PX,
+  WIN_CASCADE_STAGGER_MS,
+  levelInDelayMs,
+  pourTimeline,
+} from "../../game/sort/motion";
 import BottleView, {
   DEFAULT_BOTTLE_HEIGHT,
   DEFAULT_BOTTLE_WIDTH,
@@ -34,6 +62,7 @@ import { ConfettiFall, type ConfettiFallTiming } from "../shared/ConfettiFall";
 import { useReduceMotion } from "../shared/useReduceMotion";
 
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
+const AnimatedG = Animated.createAnimatedComponent(G);
 
 interface Offset {
   x: number;
@@ -76,10 +105,25 @@ export interface SortBoardProps {
   readonly hintTo?: number | null;
   /** Height of the board container in pixels — used to scale bottles to fit. */
   readonly availableHeight?: number;
-  /** Total flow duration in ms (POUR_PER_UNIT_MS × unitCount); computed by SortScreen. */
+  /** Total flow duration in ms (`pourFlowMs(units)`, motion.ts); computed by SortScreen. */
   readonly pourHoldMs?: number;
   /** Called when the pour animation fully completes (ghost returns to origin). */
   readonly onPourComplete?: () => void;
+  /**
+   * The bottle whose pour was just refused (#3660). It shakes once per new `seq`; the
+   * value present at mount plays nothing.
+   */
+  readonly refused?: { readonly index: number; readonly seq: number } | null;
+  /** Bumped on each undo: the board fades in from the previous one (#3660). */
+  readonly undoSeq?: number;
+  /**
+   * A new level (not a restored game): the bottles drop in, staggered, over
+   * `LEVEL_IN_TOTAL_MS`. Read at mount; a tap on a bottle skips it.
+   */
+  readonly levelIn?: boolean;
+  /** The win cascade is playing (#3660). `onWinCascadeDone` follows its end or a tap. */
+  readonly winCascade?: boolean;
+  readonly onWinCascadeDone?: () => void;
 }
 
 interface GhostInfo {
@@ -92,24 +136,22 @@ interface GhostInfo {
   dstY: number;
   tiltSign: 1 | -1;
   dstBottleLength: number;
+  units: number;
 }
 
-// Pour animation timing (ms) — exported so SortScreen can compute total timeout
-const POUR_LIFT_MS = 240; // diagonal lift+travel phase
-const POUR_TILT_MS = 220; // tilt from 0° to TILT_START_DEG
-export const POUR_PER_UNIT_MS = 380; // per-unit progressive tilt + stream
-const POUR_RETURN_MS = 320; // simultaneous untilt + return
-
-// Tilt progresses from start angle to peak as the bottle empties
-const TILT_START_DEG = 50;
-const TILT_PEAK_DEG = 95;
-
-// ms for poured liquid to travel from spout to settle in destination
-const POUR_TRAVEL_MS = 160;
-
-const STREAM_WIDTH = 6;
-const STREAM_GLOW_WIDTH = 14;
-const STREAM_HIGHLIGHT_WIDTH = 1.4;
+/**
+ * A shared-value animation that steps 1, 2, 3 ... at the given times (ms from now). The UI
+ * thread runs it; nothing is scheduled in JS.
+ */
+function stepsAt(timesMs: readonly number[]): number {
+  let prev = 0;
+  const steps = timesMs.map((t, i) => {
+    const delay = Math.max(0, t - prev - 1);
+    prev = t;
+    return withDelay(delay, withTiming(i + 1, { duration: 1 }));
+  });
+  return withSequence(...steps) as unknown as number;
+}
 
 export default function SortBoard({
   state,
@@ -119,8 +161,13 @@ export default function SortBoard({
   pouringTo = null,
   hintTo = null,
   availableHeight,
-  pourHoldMs = POUR_PER_UNIT_MS,
+  pourHoldMs = POUR_UNIT_MS,
   onPourComplete,
+  refused = null,
+  undoSeq = 0,
+  levelIn = false,
+  winCascade = false,
+  onWinCascadeDone,
 }: SortBoardProps) {
   const { t } = useTranslation("sort");
   const { theme, colors } = useTheme();
@@ -223,20 +270,32 @@ export default function SortBoard({
     opacity: ghostStreamOpacity.value,
   }));
 
-  // Ghost React state (drives overlay visibility and bottle capture)
+  // Ghost React state: drives overlay visibility and bottle capture. Set once at the start of
+  // a pour and cleared once at its end.
   const [ghost, setGhost] = useState<GhostInfo | null>(null);
-  const [unitsEmitted, setUnitsEmitted] = useState(0);
-  const [unitsLanded, setUnitsLanded] = useState(0);
-  const emitTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const landTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // How many units have left the source and landed in the destination (#3660). Shared values,
+  // stepped on the UI thread by the pour's timeline: a pour renders no React per unit.
+  const unitsEmitted = useSharedValue(0);
+  const unitsLanded = useSharedValue(0);
 
   // Animated splash at landing point
-  const splashRx = useSharedValue(4);
+  const splashRx = useSharedValue(SPLASH_RX_FROM);
   const splashOpacity = useSharedValue(0);
   const splashProps = useAnimatedProps(() => ({
     rx: splashRx.value,
     opacity: splashOpacity.value,
   }));
+  // Pulse the splash ellipse on each unit landing
+  useAnimatedReaction(
+    () => unitsLanded.value,
+    (landed, previous) => {
+      if (landed === 0 || landed === previous) return;
+      splashRx.value = SPLASH_RX_FROM;
+      splashRx.value = withTiming(SPLASH_RX_TO, { duration: SPLASH_GROW_MS });
+      splashOpacity.value = 0.7;
+      splashOpacity.value = withTiming(0, { duration: SPLASH_FADE_MS });
+    }
+  );
 
   // Stable wrapper so the worklet can invoke onPourComplete via runOnJS without
   // capturing a stale closure — the ref is updated on every render.
@@ -257,15 +316,17 @@ export default function SortBoard({
       cancelAnimation(ghostDx);
       cancelAnimation(ghostTiltDeg);
       cancelAnimation(ghostStreamOpacity);
+      cancelAnimation(unitsEmitted);
+      cancelAnimation(unitsLanded);
       ghostDy.value = 0;
       ghostDx.value = 0;
       ghostTiltDeg.value = 0;
       ghostStreamOpacity.value = 0;
       ghostPivotOffX.value = 0;
       ghostPivotOffY.value = 0;
+      unitsEmitted.value = 0;
+      unitsLanded.value = 0;
       setGhost(null);
-      setUnitsEmitted(0);
-      setUnitsLanded(0);
       // Reduce Motion is live: turned on mid-pour, it drops the ghost that
       // would have finished this pour, so finish it here (a no-op on
       // SortScreen's reduce-motion timer path, which queues no pending pour).
@@ -305,12 +366,12 @@ export default function SortBoard({
     const liftDx = dstPos.x + bottleW / 2 - (srcPos.x + pivotLocalX);
     const liftDy = dstPos.y - srcPos.y - 8;
 
-    const unitCount = Math.max(1, Math.round(pourHoldMs / POUR_PER_UNIT_MS));
+    const unitCount = Math.max(1, Math.round(pourHoldMs / POUR_UNIT_MS));
+    const timeline = pourTimeline(unitCount);
     const pourColor = sourceBottle[sourceBottle.length - 1] ?? ("red" as Color);
 
-    setUnitsEmitted(0);
-    setUnitsLanded(0);
-
+    unitsEmitted.value = 0;
+    unitsLanded.value = 0;
     ghostDx.value = 0;
     ghostDy.value = 0;
     ghostTiltDeg.value = 0;
@@ -326,6 +387,7 @@ export default function SortBoard({
       dstY: dstPos.y,
       tiltSign,
       dstBottleLength: dstBottle?.length ?? 0,
+      units: unitCount,
     });
 
     // Phase 1: Diagonal lift+travel simultaneously (POUR_LIFT_MS)
@@ -350,7 +412,6 @@ export default function SortBoard({
               ghostDy.value = withTiming(0, { duration: POUR_RETURN_MS }, (finished) => {
                 if (!finished) return;
                 runOnJS(setGhost)(null);
-                runOnJS(setUnitsEmitted)(0);
                 runOnJS(notifyPourComplete)();
               });
             }
@@ -368,60 +429,58 @@ export default function SortBoard({
       )
     );
 
-    // Schedule per-unit drain (source ghost) and land (destination fill) timers
-    const flowStart = POUR_LIFT_MS + POUR_TILT_MS;
-    for (let i = 1; i <= unitCount; i++) {
-      const emitAt = flowStart + (i - 1) * POUR_PER_UNIT_MS + POUR_PER_UNIT_MS * 0.6;
-      const landAt = emitAt + POUR_TRAVEL_MS;
-      const captured = i;
-      emitTimersRef.current.push(setTimeout(() => setUnitsEmitted(captured), emitAt));
-      landTimersRef.current.push(setTimeout(() => setUnitsLanded(captured), landAt));
-    }
+    // Each unit's drain (source ghost) and landing (destination fill) is a step of a shared
+    // value on the pour's own timeline, from `pourTimeline`: no timers, no React state.
+    unitsEmitted.value = stepsAt(timeline.units.map((u) => u.leaveMs));
+    unitsLanded.value = stepsAt(timeline.units.map((u) => u.landMs));
 
-    return () => {
-      emitTimersRef.current.forEach(clearTimeout);
-      emitTimersRef.current = [];
-      landTimersRef.current.forEach(clearTimeout);
-      landTimersRef.current = [];
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pouringFrom, pouringTo, reduceMotion, pourHoldMs]);
 
-  // Pulse the splash ellipse on each unit landing
+  // Level-in (#3660): one clock for the board, 0 -> 1 over LEVEL_IN_TOTAL_MS; each bottle
+  // reads its own slice of it on the UI thread. A tap sets it to 1, which skips the rest. A
+  // restored game (`levelIn` false) or Reduce Motion starts at 1 and plays nothing.
+  const playLevelIn = levelIn && !reduceMotion;
+  const entryClock = useSharedValue(playLevelIn ? 0 : 1);
   useEffect(() => {
-    if (unitsLanded === 0) return;
-    splashRx.value = 4;
-    splashRx.value = withTiming(14, { duration: 200 });
-    splashOpacity.value = 0.7;
-    splashOpacity.value = withTiming(0, { duration: 280 });
+    if (!playLevelIn) return;
+    entryClock.value = withTiming(1, { duration: LEVEL_IN_TOTAL_MS, easing: Easing.linear });
+    // Mount only: a level change remounts the board (SortScreen keys it by level).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unitsLanded]);
+  }, []);
+  const skipLevelIn = useCallback(() => {
+    if (entryClock.value >= 1) return;
+    cancelAnimation(entryClock);
+    entryClock.value = 1;
+  }, [entryClock]);
 
-  // Pour tilt direction — used for reduce-motion fallback only. Mirrors the
-  // srcPos/dstPos guard in the ghost effect above: if either position isn't
-  // populated yet (e.g. a pour started before fresh onLayout events land for
-  // a just-reset grid), fall back to undefined (no tilt) rather than
-  // guessing — BottleView only tilts when pouringDirection is set, so a
-  // guessed default here would risk tilting the bottle the wrong way.
-  const srcXForDirection = bottlePos(pouringFrom ?? -1)?.x;
-  const dstXForDirection = bottlePos(pouringTo ?? -1)?.x;
-  const pouringDirection: "left" | "right" | undefined =
-    pouringFrom !== null &&
-    pouringTo !== null &&
-    srcXForDirection !== undefined &&
-    dstXForDirection !== undefined
-      ? srcXForDirection < dstXForDirection
-        ? "right"
-        : "left"
-      : undefined;
+  // Undo (#3660): the board fades in from the one it replaces. Nothing on mount.
+  const boardFade = useSharedValue(1);
+  const seenUndoSeq = useRef(undoSeq);
+  useEffect(() => {
+    if (undoSeq === seenUndoSeq.current) return;
+    seenUndoSeq.current = undoSeq;
+    cancelAnimation(boardFade);
+    if (reduceMotion) {
+      boardFade.value = 1;
+      return;
+    }
+    boardFade.value = UNDO_FADE_FROM;
+    boardFade.value = withTiming(1, { duration: UNDO_FADE_MS, easing: Easing.out(Easing.quad) });
+  }, [undoSeq, reduceMotion, boardFade]);
+  const gridFadeStyle = useAnimatedStyle(() => ({ opacity: boardFade.value }));
 
   const handlers = useMemo(
-    () => state.bottles.map((_, idx) => () => onBottleTap(idx)),
+    () =>
+      state.bottles.map((_, idx) => () => {
+        skipLevelIn();
+        onBottleTap(idx);
+      }),
     // state.bottles identity changes on every pour; keying on .length avoids
     // rebuilding all handlers when only liquid positions change. onBottleTap is
     // included so callers that wrap it in useCallback get stable handles too.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.bottles.length, onBottleTap]
+    [state.bottles.length, onBottleTap, skipLevelIn]
   );
 
   // Stream arc geometry — computed from ghost snapshot each render.
@@ -447,16 +506,12 @@ export default function SortBoard({
     streamColor = topColor ? liquidColors[topColor] : "transparent";
   }
 
-  // Draining ghost contents: slice from top as units emit
-  const ghostBottle =
-    ghost !== null ? ghost.bottle.slice(0, Math.max(0, ghost.bottle.length - unitsEmitted)) : [];
-
   return (
     <View accessibilityLabel={t("a11y.boardRegion")} accessibilityRole="none" style={styles.board}>
-      <View
+      <Animated.View
         key={numBottles}
         testID="sort-grid"
-        style={[styles.grid, { gap: rowGap }]}
+        style={[styles.grid, { gap: rowGap }, gridFadeStyle]}
         onLayout={(e) => {
           gridOffsetRef.current = {
             x: e.nativeEvent.layout.x,
@@ -502,10 +557,9 @@ export default function SortBoard({
                     bottle={bottle}
                     index={idx}
                     selected={state.selectedBottleIndex === idx}
-                    pouring={reduceMotion ? idx === pouringFrom : false}
-                    pouringDirection={
-                      reduceMotion && idx === pouringFrom ? pouringDirection : undefined
-                    }
+                    refusedSeq={refused?.index === idx ? refused.seq : 0}
+                    entryClock={playLevelIn ? entryClock : undefined}
+                    entryDelayMs={levelInDelayMs(idx, numBottles)}
                     colorblindMode={colorblindMode}
                     bottleWidth={bottleW}
                     bottleHeight={bottleH}
@@ -523,7 +577,7 @@ export default function SortBoard({
                           top: -4,
                           width: bottleW + 8,
                           height: bottleH + 8,
-                          borderColor: colors.bonus,
+                          borderColor: colors.outcomeWin,
                         },
                       ]}
                       pointerEvents="none"
@@ -536,7 +590,7 @@ export default function SortBoard({
             })}
           </View>
         ))}
-      </View>
+      </Animated.View>
 
       {/* Ghost bottle overlay — floats above grid during pour animation.
           ghost is only set when !reduceMotion, so the extra guard is omitted. */}
@@ -568,52 +622,37 @@ export default function SortBoard({
           )}
 
           {/* Destination rising fill — units appear in target bottle as they land */}
-          {unitsLanded > 0 && (
-            <View
-              style={[
-                styles.dstFillOverlay,
-                { left: ghost.dstX, top: ghost.dstY, width: bottleW, height: bottleH },
-              ]}
-              pointerEvents="none"
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-            >
-              <Svg width={bottleW} height={bottleH} viewBox={`0 0 ${VB_W} ${VB_H}`}>
-                <Defs>
-                  <ClipPath id={`dst-fill-${ghost.bottleIndex}-${ghost.dstX}`}>
-                    <Path d={FLASK_CAVITY} />
-                  </ClipPath>
-                </Defs>
-                <G clipPath={`url(#dst-fill-${ghost.bottleIndex}-${ghost.dstX})`}>
-                  {(() => {
-                    const unitHVb = INNER_H_VB / BOTTLE_DEPTH;
-                    const fillColor = liquidColors[ghost.pourColor];
-                    return Array.from({ length: unitsLanded }).map((_, k) => {
-                      const yVb = BODY_BOTTOM_VB - (ghost.dstBottleLength + k + 1) * unitHVb;
-                      return (
-                        <G key={k}>
-                          <Rect
-                            x={0}
-                            y={yVb}
-                            width={VB_W}
-                            height={unitHVb + 0.5}
-                            fill={fillColor}
-                          />
-                          <Rect
-                            x={0}
-                            y={yVb}
-                            width={VB_W}
-                            height={2.5}
-                            fill={BOTTLE_LIQUID_SHEEN}
-                          />
-                        </G>
-                      );
-                    });
-                  })()}
-                </G>
-              </Svg>
-            </View>
-          )}
+          <View
+            style={[
+              styles.dstFillOverlay,
+              { left: ghost.dstX, top: ghost.dstY, width: bottleW, height: bottleH },
+            ]}
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <Svg width={bottleW} height={bottleH} viewBox={`0 0 ${VB_W} ${VB_H}`}>
+              <Defs>
+                <ClipPath id={`dst-fill-${ghost.bottleIndex}-${ghost.dstX}`}>
+                  <Path d={FLASK_CAVITY} />
+                </ClipPath>
+              </Defs>
+              <G clipPath={`url(#dst-fill-${ghost.bottleIndex}-${ghost.dstX})`}>
+                {Array.from({ length: ghost.units }).map((_, k) => (
+                  <LandedUnit
+                    key={k}
+                    landed={unitsLanded}
+                    k={k}
+                    yVb={
+                      BODY_BOTTOM_VB - (ghost.dstBottleLength + k + 1) * (INNER_H_VB / BOTTLE_DEPTH)
+                    }
+                    unitHVb={INNER_H_VB / BOTTLE_DEPTH}
+                    fill={liquidColors[ghost.pourColor]}
+                  />
+                ))}
+              </G>
+            </Svg>
+          </View>
           {streamPath !== "" && (
             <Animated.View style={[StyleSheet.absoluteFill, ghostStreamStyle]} pointerEvents="none">
               <Svg width="100%" height="100%">
@@ -668,7 +707,8 @@ export default function SortBoard({
             ]}
           >
             <BottleView
-              bottle={ghostBottle}
+              bottle={ghost.bottle}
+              drained={unitsEmitted}
               index={ghost.bottleIndex}
               isGhost
               colorblindMode={colorblindMode}
@@ -679,42 +719,97 @@ export default function SortBoard({
         </View>
       )}
 
-      <SortWinOverlay visible={state.isComplete} />
+      {winCascade && <SortWinCascade onDone={onWinCascadeDone} height={avH} />}
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Win overlay — liquid-coloured confetti cascades down when the puzzle is solved
+// Destination fill: one layer per poured unit, shown on the UI thread as it lands
 // ---------------------------------------------------------------------------
 
-interface OverlayProps {
-  readonly visible: boolean;
+function LandedUnit({
+  landed,
+  k,
+  yVb,
+  unitHVb,
+  fill,
+}: {
+  readonly landed: SharedValue<number>;
+  readonly k: number;
+  readonly yVb: number;
+  readonly unitHVb: number;
+  readonly fill: string;
+}) {
+  const props = useAnimatedProps(() => ({ opacity: landed.value > k ? 1 : 0 }));
+  return (
+    <AnimatedG animatedProps={props}>
+      <Rect x={0} y={yVb} width={VB_W} height={unitHVb + 0.5} fill={fill} />
+      <Rect x={0} y={yVb} width={VB_W} height={2.5} fill={BOTTLE_LIQUID_SHEEN} />
+    </AnimatedG>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Win cascade (#3660) — liquid-coloured pieces fall across the board when the puzzle is
+// solved. The result card waits for `onDone`: the cascade's end (WIN_CASCADE_MS) or a tap.
+// ---------------------------------------------------------------------------
+
+interface CascadeProps {
+  readonly onDone?: () => void;
+  readonly height: number;
 }
 
 const CONFETTI_KEYS: Color[] = ["red", "orange", "green", "blue", "purple", "pink"];
-const CONFETTI_PIECE = { width: 20, height: 20, borderRadius: 10 } as const;
-const CONFETTI_FALL: ConfettiFallTiming = {
-  fromY: -60,
-  toY: 500,
-  staggerMs: 100,
-  holdMs: 600,
-  fadeOutMs: 400,
-};
+const CONFETTI_PIECE = {
+  width: WIN_CASCADE_PIECE_PX,
+  height: WIN_CASCADE_PIECE_PX,
+  borderRadius: WIN_CASCADE_PIECE_PX / 2,
+} as const;
 
-function SortWinOverlay({ visible }: OverlayProps) {
+function SortWinCascade({ onDone, height }: CascadeProps) {
   const { theme } = useTheme();
   const liquidColors = LIQUID_COLORS[theme];
   const reduceMotion = useReduceMotion();
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
 
-  if (!visible || reduceMotion) return null;
+  // Reduce Motion (also turned on mid-cascade): no cascade, the card at once.
+  useEffect(() => {
+    if (reduceMotion) {
+      onDoneRef.current?.();
+      return;
+    }
+    const timer = setTimeout(() => onDoneRef.current?.(), WIN_CASCADE_MS);
+    return () => clearTimeout(timer);
+  }, [reduceMotion]);
 
+  if (reduceMotion) return null;
+
+  const timing: ConfettiFallTiming = {
+    fromY: -60,
+    toY: Math.max(height, 300),
+    staggerMs: WIN_CASCADE_STAGGER_MS,
+    holdMs: WIN_CASCADE_HOLD_MS,
+    fadeOutMs: WIN_CASCADE_FADE_OUT_MS,
+  };
   return (
-    <ConfettiFall
-      colors={CONFETTI_KEYS.map((k) => liquidColors[k])}
-      pieceStyle={CONFETTI_PIECE}
-      timing={CONFETTI_FALL}
-    />
+    <>
+      <ConfettiFall
+        testID="sort-win-cascade"
+        colors={CONFETTI_KEYS.map((k) => liquidColors[k])}
+        pieceStyle={CONFETTI_PIECE}
+        timing={timing}
+      />
+      {/* A tap anywhere on the board skips the cascade. */}
+      <Pressable
+        testID="sort-win-cascade-skip"
+        style={StyleSheet.absoluteFill}
+        onPress={() => onDoneRef.current?.()}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+    </>
   );
 }
 
