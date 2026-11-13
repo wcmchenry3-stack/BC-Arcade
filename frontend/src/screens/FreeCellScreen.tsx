@@ -92,7 +92,7 @@ import {
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
-import { useSound } from "../game/_shared/useSound";
+import { LAZY_SOUND, useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
 import { FREECELL_CARD_PLACE, FREECELL_SOUNDS } from "../game/freecell/sounds";
 import type { DropOffset } from "../game/_shared/drag/DragContext";
@@ -288,9 +288,9 @@ export default function FreeCellScreen() {
 
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
 
-  const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS);
-  const { play: playNoMoves } = useSound("freecell.noMoves", FREECELL_SOUNDS);
-  const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS);
+  const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS, 1.0, LAZY_SOUND);
+  const { play: playNoMoves } = useSound("freecell.noMoves", FREECELL_SOUNDS, 1.0, LAZY_SOUND);
+  const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS, 1.0, LAZY_SOUND);
 
   /**
    * Runs Auto-Complete from `fromState`: one card per step, AUTO_STEP_MS apart, the board

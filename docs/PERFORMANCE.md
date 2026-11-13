@@ -404,6 +404,15 @@ Bytes of bundled files, 2026-10-10 (all-games config; Cascade is a hidden game, 
 
 ### Audio
 
+**SFX players (#3604).** Every `useSound` key needs an `expo-audio` player, and each player is a native object that also holds the audio session (`retainAudioSession`). Rules for the hooks in `frontend/src/game/_shared/`:
+
+- **One player per distinct asset.** `useSound` takes a hold on a shared pool (`soundPool.ts`) keyed by the registry's asset, so keys that resolve to the same file (Solitaire's `autoCompleteSettle` played by both the riffle and the recycle) share one player. The last hold removes it and releases the session.
+- **Eager by default, lazy for rare sounds.** `useSound(key, registry, volume, { lazy: true })` (shorthand `LAZY_SOUND`) creates the player on the first `play()`. Use it for sounds heard about once a game or less (win/lose, the Draw-3 fan, a multi-card move, the moon shot, the riffle). Keep frequent or latency-critical sounds (card place, flips, trick sweep, lasers) eager so their first play has no creation cost. A lazy sound that is never played costs nothing and never touches the audio session. `useSoundVariants` and `useLoopSound` take the same option; `useRunSound` (riffle) is always lazy.
+- **A lazy first play** skips the redundant `seekTo(0)` (the new player is at the start), and the first play may start a few ms after an eager one; measure on a low-end Android device before marking a sound lazy if it is close to a user action.
+- `useSoundVariants` works out its usable variations once per `keys`/`registry`, and sizes its slots from `MAX_SOUND_VARIANTS`.
+
+Players created at mount, before and after #3604: Solitaire 16 to 7, FreeCell 9 to 3, Hearts 11 to 6 (unit-counted, see `soundLazy.test.tsx`). Device mount time and memory on a low-end Android phone are not yet measured.
+
 Audio is not sized or planned here. In the store config the 19 packaged sounds are 567.0 KB of SFX; the 45 sounds (22,211 KB) of the all-games config are mostly BGM behind the hidden games. BGM format, bitrate, per-track budgets and the engine choice are owned by epic #1779 and #1787; the current budgets and track list are in [ASSETS.md](ASSETS.md#size-budgets). `react-native-audio-api` stays installed for that decision (next section).
 
 ### Native dependency audit (#2831)

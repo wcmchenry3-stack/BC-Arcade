@@ -84,7 +84,7 @@ import PreGameModal from "../components/solitaire/PreGameModal";
 import TestDealControl from "../components/solitaire/TestDealControl";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
-import { useSound } from "../game/_shared/useSound";
+import { LAZY_SOUND, useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
 import { useAutoCompleteRiffle } from "../game/_shared/useRunSound";
 import {
@@ -289,13 +289,29 @@ export default function SolitaireScreen() {
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const { play: playCardFlip } = useSoundVariants(SOLITAIRE_CARD_FLIP, SOLITAIRE_SOUNDS);
-  const { play: playCardFan } = useSoundVariants(SOLITAIRE_CARD_FAN, SOLITAIRE_SOUNDS);
+  const { play: playCardFan } = useSoundVariants(
+    SOLITAIRE_CARD_FAN,
+    SOLITAIRE_SOUNDS,
+    1.0,
+    Math.random,
+    LAZY_SOUND
+  );
   const { play: playCardPlace } = useSoundVariants(SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS);
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
-  const { play: playMultiCardMove } = useSound("solitaire.multiCardMove", SOLITAIRE_SOUNDS);
-  const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
+  const { play: playMultiCardMove } = useSound(
+    "solitaire.multiCardMove",
+    SOLITAIRE_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
+  const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS, 1.0, LAZY_SOUND);
   // The recycle's squared deck (#3572, owner): the riffle's settle on the deck's contact.
-  const { play: playRecycleSettle } = useSound("solitaire.autoCompleteSettle", SOLITAIRE_SOUNDS);
+  const { play: playRecycleSettle } = useSound(
+    "solitaire.autoCompleteSettle",
+    SOLITAIRE_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
   // A tap is ignored without feedback during Auto-Complete, so a refused drop
   // is too. Read through a ref so the provider's callback is never stale.
