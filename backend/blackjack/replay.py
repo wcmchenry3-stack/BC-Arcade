@@ -11,7 +11,9 @@ Read only: nothing here validates, stores or changes anything. Outcomes are
 printed as the app recorded them, never worked out again here, so a round reads
 right under the rules of the build that played it: before #3741 the dealer did not
 peek and a 3-card 21 pushed a dealer natural; since, a dealer natural ends the
-round at the deal (no actions, no dealer play) and beats any other 21. Events from
+round at the deal (no actions, no dealer play) and beats any other 21. Since #3764 a
+hand that reaches 21 stands on its own, and the app records that stand as ``["s", i]``,
+the entry a tapped Stand makes, so it reads here as "stand hand N on 21". Events from
 builds before #3284 carry no cards, so a round made of them is listed as such
 and not rebuilt. A round with events missing (the app drops an event over its
 cap, or a batch is lost) is shown as far as it goes.

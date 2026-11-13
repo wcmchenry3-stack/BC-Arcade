@@ -882,3 +882,114 @@ def test_a_run_mixing_both_rules_rebuilds_its_chips() -> None:
     out = rounds(PEEKED + PEEKED_PUSH + OLD_RULES_21)
     assert [r.unit for r in out] == [1, 2, 3]
     assert [r.chips_after for r in out] == [90, 90, 90]
+
+
+# ---------------------------------------------------------------------------
+# #3764: a hand that reaches 21 stands on its own
+# ---------------------------------------------------------------------------
+#
+# The app records the automatic stand as ``["s", i]``, the same entry a tapped Stand makes,
+# right after the action that reached 21 (or passed a split hand dealt 21). The server checks
+# shape only and never plays a round again, so this needs no new field and no rules version:
+# the replay reads it as a stand on 21.
+
+# A single hand: 7 4 hits a T (21) and stands on its own; the dealer's 16 draws a 2 (18).
+AUTO_21 = _rules_round(
+    5,
+    {
+        "b": [10, 100],
+        "p": ["7S", "4H"],
+        "d": ["TC", "6D"],
+        "sh": 312,
+        "rem": 308,
+        "a": [["h", 0, "TD"], ["s", 0]],
+        "dl": {"d": ["2H"], "t": 18},
+    },
+    {"i": 0, "o": "win", "p": 10, "ch": 110, "c": ["7S", "4H", "TD"]},
+)
+# A split of tens: hand 1 is dealt an A (21) and stands at the split; hand 2 (T 7) is stood by
+# the player; the dealer's 15 draws a 2 (17).
+AUTO_21_SPLIT = _rules_round(
+    6,
+    {
+        "b": [10, 110],
+        "p": ["TS", "TH"],
+        "d": ["6C", "9D"],
+        "sh": 312,
+        "rem": 308,
+        "a": [["p", 0, [["TS", "AD"], ["TH", "7C"]]], ["s", 0], ["s", 1]],
+        "dl": {"d": ["2H"], "t": 17},
+    },
+    {"i": 0, "o": "win", "p": 10, "ch": 120, "c": ["TS", "AD"]},
+    {"i": 1, "o": "push", "p": 0, "ch": 120, "c": ["TH", "7C"]},
+)
+# A save on 21 from before #3764, stood when the app loads it: the resumed round's one action.
+AUTO_21_RESUMED = _rules_round(
+    7,
+    {
+        "b": [10, 120],
+        "d": ["TC", "6D"],
+        "sh": 312,
+        "rem": 300,
+        "a": [["s", 0]],
+        "dl": {"d": ["2H"], "t": 18},
+        "r": 1,
+    },
+    {"i": 0, "o": "win", "p": 10, "ch": 130, "c": ["7S", "4H", "TD"]},
+)
+
+
+@pytest.mark.parametrize(
+    "events", [AUTO_21, AUTO_21_SPLIT, AUTO_21_RESUMED], ids=["single", "split", "resumed"]
+)
+def test_an_automatic_stand_on_21_validates_and_is_stored_as_sent(events: list) -> None:
+    module = get_module("blackjack")
+    for name, data in events:
+        assert module.validate_event(name, copy.deepcopy(data)) == data, (name, data)
+
+
+def test_an_automatic_stand_on_21_replays_as_a_stand_on_21() -> None:
+    text = "\n".join(render_rounds(AUTO_21))
+    assert "hit      hand 1 draws TD -> 7S 4H TD = 21" in text
+    assert "stand    hand 1 on 21" in text
+    assert "dealer   hole TC draws 2H -> TC 6D 2H = 18" in text
+    assert "hand 1 7S 4H TD = 21 WIN +10" in text
+    # In that order: the hit, its stand, then the dealer.
+    assert (
+        text.index("hit      hand 1") < text.index("stand    hand 1") < text.index("dealer   hole")
+    )
+
+
+def test_a_split_hand_dealt_21_replays_as_stood_after_the_split() -> None:
+    lines = [line.strip() for line in render_rounds(AUTO_21_SPLIT)]
+    steps = [line for line in lines if line.startswith(("split", "stand", "dealer"))]
+    assert steps == [
+        "split    hand 1 -> TS AD | TH 7C",
+        "stand    hand 1 on 21",
+        "stand    hand 2 on 17",
+        "dealer   hole 6C draws 2H -> 6C 9D 2H = 17",
+    ]
+
+
+def test_a_save_on_21_stood_on_load_replays_as_a_resumed_stand() -> None:
+    text = "\n".join(render_rounds(AUTO_21_RESUMED))
+    assert "resumed  after the app was killed" in text
+    assert "stand    hand 1 (earlier events missing)" in text
+    assert "hand 1 7S 4H TD = 21 WIN +10" in text
+
+
+def test_the_widest_single_hand_round_with_its_stand_on_21_fits_the_cap() -> None:
+    """A hit to 21 adds one ``["s", 0]`` (8 B) to the 517 B single-hand worst case."""
+    env = {"v": 1, "unit": 99_999, "t_ms": 86_400_000}
+    widest = {
+        "b": [2_000_000_000, 2_000_000_000],
+        "p": ["AS", "AH"],
+        "d": ["AD", "AC"],
+        "sh": 832,
+        "rem": 832,
+        "a": [["h", 0, c] for c in _ACES[2:]] + [["s", 0]],
+        "dl": {"d": _ACES, "t": 26, "b": 1},
+        **env,
+    }
+    assert len(json.dumps(widest, separators=(",", ":"))) == 525
+    assert validate_hand_event("round_played", widest) == widest

@@ -7,6 +7,7 @@ import {
   DEFAULT_RULES,
   handValue,
   settleUnpeekedDealerNatural,
+  standOnTwentyOne,
 } from "./engine";
 import { GameRules } from "./types";
 import { saveGame, loadGame, clearGame, saveRun, RunRecord } from "./storage";
@@ -116,6 +117,25 @@ const BlackjackGameContext = createContext<BlackjackGameContextValue | null>(nul
  */
 function withRoundCount(saved: EngineState): EngineState {
   return saved.phase === "player" && saved.round == null ? { ...saved, round: 1 } : saved;
+}
+
+/**
+ * What a loaded game becomes before play, and why (`repair`):
+ *
+ * - `settled`: a save from before the dealer's peek (#3741), mid-hand against a dealer natural,
+ *   settled as the peek would have settled it at the deal (`settleUnpeekedDealerNatural`).
+ * - `stood`: a save from before #3764 with the hand to play on 21 (it waited for a Stand then),
+ *   stood as 21 stands in play (`standOnTwentyOne`).
+ * - `none`: any other save, as it is.
+ */
+function repairOnLoad(loaded: EngineState): {
+  next: EngineState;
+  repair: "settled" | "stood" | "none";
+} {
+  const settled = settleUnpeekedDealerNatural(loaded);
+  if (settled !== loaded) return { next: settled, repair: "settled" };
+  const stood = standOnTwentyOne(loaded);
+  return stood !== loaded ? { next: stood, repair: "stood" } : { next: loaded, repair: "none" };
 }
 
 export function BlackjackGameProvider({ children }: { children: React.ReactNode }) {
@@ -512,6 +532,31 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     [startSession, emitTransitionEvents]
   );
 
+  /**
+   * A save from before #3764 with the hand to play on 21 (`loaded`), stood on load (`next`): the
+   * round carries on as any round killed mid-hand does (the session resumes, a resumed round log),
+   * and the stand is applied through the ordinary path, recorded as the round's action `["s", i]`
+   * as a tapped Stand is. A single hand settles here (counted, recorded, and an all-in loss ends the
+   * run, as in play); a split hand moves play on to the next.
+   */
+  const standOnLoad = useCallback(
+    (loaded: EngineState, next: EngineState) => {
+      // A hidden game (#3328) starts no session, so it records and ends nothing.
+      if (!isGameVisible("blackjack")) return;
+      // Ahead of the render's effect, as apply() does (#2745): the progress snapshots the resume
+      // and the stand persist carry the settled chips.
+      engineRef.current = next;
+      roundLogRef.current = resumedRoundLog(loaded);
+      void startSession(loaded.chips, true, hasReachedGoal(loaded), loaded.round);
+      try {
+        emitTransitionEvents(loaded, next, "stand");
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [startSession, emitTransitionEvents]
+  );
+
   useEffect(() => {
     let active = true;
     loadGame()
@@ -522,10 +567,12 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         // natural, is settled as the peek would have settled it at the deal. The
         // round is then played out below as if it had just been dealt: the session
         // resumes, the hand is counted and recorded, and an all-in loss ends the run.
-        const next = settleUnpeekedDealerNatural(loaded);
-        const settledOnLoad = next !== loaded;
+        // A save from before #3764 on 21 is stood, the stand recorded as the
+        // round's action (`repairOnLoad`). Either is saved, so a relaunch does not
+        // repeat it.
+        const { next, repair } = repairOnLoad(loaded);
         setEngine(next);
-        if (!saved || settledOnLoad) saveGame(next);
+        if (!saved || repair !== "none") saveGame(next);
         // Fresh game with no table selected yet — session starts after table pick.
         const tableSelectPending =
           !saved && next.runGoal === null && next.chips === next.startingChips && next.bet === 0;
@@ -545,8 +592,10 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         // state. Pass resuming=true for saved mid-game states so syncMarkStarted
         // fires after syncStart. A saved run that already reached its goal
         // (victory, or Keep Playing) stays a win when it ends (#2628).
-        if (settledOnLoad) {
+        if (repair === "settled") {
           playOutSettledOnLoad(loaded, next);
+        } else if (repair === "stood") {
+          standOnLoad(loaded, next);
         } else if (!pickPending && !(next.chips === 0 && next.phase === "result")) {
           // A game killed mid-round (phase "player") records its rest as that round.
           const openRound = saved && next.phase === "player" ? next.round : undefined;
