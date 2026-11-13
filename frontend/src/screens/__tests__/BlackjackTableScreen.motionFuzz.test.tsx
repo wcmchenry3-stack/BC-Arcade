@@ -257,11 +257,13 @@ describe("fuzz: random play with taps mid-motion", () => {
       let held: readonly number[] = [];
       let settledRounds = 0;
       /**
-       * An action that leaves the engine at a result settles a round, also from a result: a Rebet
-       * whose deal is decided at once (the dealer's peek, #3741) goes result -> result.
+       * An action that leaves the engine at a result settles a round, also from a result when it
+       * starts a new round (the count, #3284): a Rebet whose deal is decided at once (the dealer's
+       * peek, #3741) goes result -> result.
        */
       const settles = (before: EngineState, after: EngineState) =>
-        showsResult(after.phase) && (!showsResult(before.phase) || after !== before);
+        showsResult(after.phase) &&
+        (!showsResult(before.phase) || (after.round ?? 0) !== (before.round ?? 0));
       /** Cards the engine dealt (a split's second card moves; it is not dealt again). */
       let dealt = 0;
       // Per round too: a round's deal sounds never outnumber the cards it dealt (a skip only drops
