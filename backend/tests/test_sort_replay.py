@@ -278,10 +278,7 @@ def test_the_byte_cap_matches_the_apps_registry() -> None:
         encoding="utf-8"
     )
     m = re.search(r"export const SORT_MOVES_MAX_BYTES\s*=\s*(\d+)\s*;", ts)
-    if m is None:
-        # The app constant lands with the frontend story (#3384); this holds the two
-        # equal from then on. Remove this skip once it is on dev.
-        pytest.skip("SORT_MOVES_MAX_BYTES is not in eventQueueConfig.ts yet (#3384)")
+    assert m is not None, "SORT_MOVES_MAX_BYTES is missing from eventQueueConfig.ts"
     assert int(m.group(1)) == MAX_MOVES_BYTES
 
 

@@ -19,6 +19,9 @@
     // metro/storeBundle.js resolves hidden premium screens to it in store
     // bundles (#2830); nothing imports it by name.
     "src/screens/StoreBuildExcludedScreen.tsx!",
+    // Bottle Sort's replay module (#3384) ships one PR ahead of the screen that
+    // records with it (#3385, epic #3383). Remove this entry in #3385.
+    "src/game/sort/replay.ts!",
     // build-yacht-oracle.ts imports these through a ../../frontend/... path
     // that knip 6 no longer follows from an out-of-workspace entry.
     "tooling/yacht/oracleBuild/solver.ts",
