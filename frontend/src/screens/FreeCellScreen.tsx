@@ -15,7 +15,7 @@
  *   5. Result + leaderboard (#2633) — the win is `useCompletionTransition` (#3087): once
  *      per game, a resumed won game records nothing; the shared GameResultModal; best
  *      moves via `bestOf`; ranked via `useGameLeaderboard`.
- *   6. Events and layout — `useGameEvents` plays sounds and the foundation animation. The
+ *   6. Events and layout — `useGameEvents` plays the sounds and banners. The
  *      board sits on the shared felt (#3607) under a MOVES · TIME stat line; its geometry
  *      (`game/freecell/layout.ts`) fits the tallest legal column, so it never scrolls
  *      vertically. TIME is the game's own play clock (`game/freecell/playClock.ts`).
