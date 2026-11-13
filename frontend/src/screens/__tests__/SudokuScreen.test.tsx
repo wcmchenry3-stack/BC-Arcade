@@ -10,7 +10,7 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Animated, AppState } from "react-native";
+import { Animated, AppState, StyleSheet } from "react-native";
 import type { AppStateStatus } from "react-native";
 
 import SudokuScreen from "../SudokuScreen";
@@ -1571,6 +1571,28 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
       expect(r.queryByTestId("sudoku-full-wrong")).toBeNull();
       const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
       expect(summary["result"]).toEqual({ won: true, errors: 0 });
+    });
+  });
+});
+
+describe("SudokuScreen — play area too short for the board (#3773)", () => {
+  it("falls back to a ScrollView with child alignment only on its content container", async () => {
+    const base = loadPuzzle("medium", "classic", () => 0);
+    await saveGame(base);
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    const area = r.getByTestId("sudoku-play-area");
+    await act(async () => {
+      await fireEvent(area, "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 60 } },
+      });
+    });
+    const scroll = r.getByTestId("sudoku-play-area");
+    expect(scroll.type).toBe("RCTScrollView");
+    const outer = StyleSheet.flatten(scroll.props.style) ?? {};
+    expect(outer).not.toHaveProperty("justifyContent");
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle)).toMatchObject({
+      justifyContent: "flex-end",
     });
   });
 });

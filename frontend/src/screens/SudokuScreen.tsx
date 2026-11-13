@@ -737,7 +737,9 @@ export default function SudokuScreen() {
       ) : (
         <View style={styles.body}>
           <Slot
-            style={styles.slot}
+            testID="sudoku-play-area"
+            // A ScrollView takes child alignment only through contentContainerStyle (RN throws otherwise).
+            style={Slot === ScrollView ? styles.slotOuter : styles.slot}
             onLayout={onSlotLayout}
             {...(Slot === ScrollView ? { contentContainerStyle: styles.slotScroll } : null)}
           >
@@ -953,6 +955,10 @@ const styles = StyleSheet.create({
   // Sudoku's board fills the height, so its HUD keeps the tighter padding.
   hudTight: {
     paddingVertical: 4,
+  },
+  slotOuter: {
+    flex: 1,
+    minHeight: 0,
   },
   slotScroll: {
     flexGrow: 1,
