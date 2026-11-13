@@ -165,6 +165,17 @@ Notes:
 - **Not run locally.** These flows were written without a device; the first dispatch is their first run. If the double-tap misses (the camera did not move), the screenshot shows the fitted board, so compare it with `mahjong-demo-open`.
 - **Web counterparts.** `e2e/tests/mahjong-demo-shots.spec.ts` (Playwright, #3804) takes `mahjong-demo-open.png` and `mahjong-demo-zoom.png` on the web build, from the fixed `E2E_DEAL_SEED` deal (#3803, the same board the Maestro runs deal), so web (Canvas2D) can be compared side by side with iOS/Android (Skia). They are in the `playwright-report` artifact of the `Playwright E2E` job, under `e2e/test-results/mahjong-demo/`. See [TESTING.md, "Mahjong web demo screenshots"](TESTING.md).
 
+### Media on the PR (#3805)
+
+The media artifact is a zip inside the run, easy to miss. When a run produces opted-in media, the `comment-media` job in each smoke workflow posts one PR comment per platform (`<!-- maestro-media:android -->` or `:ios`, edited in place on each run, no new comment per run). It lists each file name, screenshot or recording, with the commit, a link to the run and a link to the `maestro-<platform>-media` artifact (`artifact-url` of the upload step). The same list goes to the job summary.
+
+- **Not inline.** GitHub cannot render an image from inside an artifact in a comment, and committing images or hosting them elsewhere would grow storage, so the comment is a list plus a link (downloading the artifact needs repo access). Artifact retention (14 days) and size are unchanged.
+- **Opt-in.** `OPT_IN_PREFIXES` in `e2e/maestro/media_comment.py` (today `("mahjong-",)`: `mahjong-demo-*`, `mahjong-smoke`, and a future `mahjong-diag-*`). Another game opts in by adding its screenshot-name prefix there; nothing else changes. Only plain file names (`[A-Za-z0-9._-]`) ending `.png` or `.mp4` are listed.
+- **Which PR.** A `pull_request` run comments on its own PR. A `workflow_dispatch` run (the `flows: mahjong-demo` way to get the demos) is attached to no PR, so the job asks `GET /repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open` and comments only if exactly one PR is open for that branch; with none or several it writes the job summary only. The weekly `schedule` run never comments.
+- **Permissions.** The Maestro job keeps `contents: read`. Only `comment-media` has `pull-requests: write` (plus `contents: read`, since a job's `permissions` replace the workflow's); it needs the Maestro job and reads only its two outputs (`media-names`, `media-url`).
+- **Fork PRs.** Their `GITHUB_TOKEN` is read-only, so the job's `if` skips it when the PR's head repo is not this repo. The script also treats a fork, a missing PR and any API error as "do not comment": it prints a notice or a `::warning::` and exits 0, so it can never fail the run.
+- **Tests.** `tools/maestro_scope/tests/media_comment_test.py` (names filter, body, marker, PR resolution, fork, never-fail).
+
 ### Scoped runs on PRs
 
 > **Live on both legs** (Android since #2400, iOS since #2347).
