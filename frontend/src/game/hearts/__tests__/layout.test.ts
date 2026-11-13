@@ -1,6 +1,6 @@
 /**
  * Hearts card-table geometry (#3587): the felt, the four plates, the opponents' fans, the
- * trick and the fanned hand fit the three phone sizes and landscape, without overlap and
+ * trick and the fanned hand fit the three phone sizes and short wide windows (the old phone-landscape sizes), without overlap and
  * with readable cards. The sizes are the table area (the screen less its header and tab bar).
  */
 import {
@@ -28,9 +28,9 @@ const SIZES = [
   { name: "375x667", width: 375, height: 667 - 64 - 72 },
   { name: "390x844", width: 390, height: 844 - 64 - 72 },
   { name: "430x932", width: 430, height: 932 - 64 - 72 },
-  { name: "landscape 844x390", width: 844, height: 390 - 56 - 49 },
-  { name: "landscape 667x375", width: 667, height: 375 - 56 - 49 },
-  { name: "landscape 932x430", width: 932, height: 430 - 56 - 49 },
+  { name: "short wide window 844x390", width: 844, height: 390 - 56 - 49 },
+  { name: "short wide window 667x375", width: 667, height: 375 - 56 - 49 },
+  { name: "short wide window 932x430", width: 932, height: 430 - 56 - 49 },
 ] as const;
 
 const POSITIONS: TrickPosition[] = ["bottom", "left", "top", "right"];

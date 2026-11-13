@@ -1,7 +1,8 @@
 // ===========================================================================
 // One-table layout (#3580): fanned hands on a felt, split fans, rows, a 2×2
 // grid (3–4 hands on a felt too short for rows) and a wide arrangement (a
-// landscape window only; a portrait phone always stacks).
+// landscape window with a short felt only: a short web window, an Android tablet around 600 dp
+// tall; a portrait window always stacks, and a phone is locked to portrait, #3603, #3648).
 //
 // Pure geometry for the one Blackjack table screen. Everything is measured in
 // the felt's own coordinates (0,0 = its top-left corner). The screen measures
@@ -125,9 +126,10 @@ export interface SplitResultLabel {
  * tableGeometry.test.ts): one line up to 139 px (the 320-wide phone's labels are 140), a row's
  * two lines up to 92 / 93 px in its 100 px column.
  *
- * Known gap: the wide arrangement (a landscape window, a fallback: phones are locked to portrait,
- * #3603) gives 3–4 hands labels of about 96 / 76 px (568×320) and 120 / 94 px (667×375), so
- * the one-line result can still be cut with 3–4 hands at 568×320 and 4 hands at 667×375.
+ * Known gap: the wide arrangement (a landscape window with a short felt; phones are locked to
+ * portrait, #3603) gives 3–4 hands labels of about 96 / 76 px (568×320) and 120 / 94 px (667×375),
+ * so the one-line result can still be cut with 3–4 hands at those short windows. Those sizes are
+ * the old phone-landscape ones; at 900×600 and wider the labels are 133 px or more (#3648).
  */
 export function splitResultLabel(mode: TableMode): SplitResultLabel {
   const column = mode === "rows";
@@ -293,7 +295,7 @@ function minRowsHeight(n: number): number {
 /**
  * The felt height the stacked arrangement (single, fans, rows) needs at the
  * smallest card size. A shorter portrait felt uses the grid (3–4 hands); a
- * shorter landscape one the wide arrangement.
+ * shorter landscape one (a short window, #3648) the wide arrangement.
  */
 export function minStackedHeight(handCount: number): number {
   const minCard = cardH(MIN_CARD_WIDTH);
@@ -330,8 +332,8 @@ export function tableGeometryForTurn(
 
 /**
  * The whole table: dealer at the top, the player's hand(s) low near the dock,
- * the result band between them; on a short felt (landscape) the dealer, the
- * result and the hands side by side. Hands never overlap each other, the
+ * the result band between them; on a short landscape felt (a short window, #3648) the
+ * dealer, the result and the hands side by side. Hands never overlap each other, the
  * dealer or the result band, and every card shows its corner index.
  */
 export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
@@ -341,7 +343,7 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
   if (n === 0) return bettingGeometry(input, base);
   const portrait = input.screenHeight === undefined || input.screenHeight >= screenWidth;
   const fits = feltHeight >= minStackedHeight(n);
-  // Side by side only in a landscape window; a portrait phone always stacks.
+  // Side by side only in a landscape window with a short felt; a portrait window always stacks.
   if (!fits && !portrait) return wideGeometry(input, base);
   if (splitModeFor(n) !== "rows") return stackedGeometry(input, base);
   return fits ? rowsGeometry(input, base) : gridGeometry(input, base);
@@ -362,7 +364,7 @@ function bettingGeometry(input: TableGeometryInput, base: GeometryBase): TableGe
     betSpot = { x: centreX - d / 2, y, width: d, height: d };
     limits = { x: FELT_PAD_X, y: y + d + 4, width: innerW, height: LIMITS_H };
   } else {
-    // Short felt (landscape): the limits line beside the spot.
+    // Short felt (a short landscape window, #3648): the limits line beside the spot.
     const d = Math.floor(Math.max(0, Math.min(148, avail - 4, innerW * 0.4)));
     const y = top + (avail - d) / 2;
     const x = centreX - d - 8;
@@ -673,7 +675,8 @@ function dealerAndResult(
 }
 
 /**
- * A short felt (landscape): columns side by side, left to right: the dealer,
+ * A short landscape felt (a short web window, a tablet about 600 dp tall; not a phone since
+ * #3603, see #3648): columns side by side, left to right: the dealer,
  * the result, then each hand, each column a label over its fan. The result
  * column is kept in every phase so nothing moves when the result arrives.
  */

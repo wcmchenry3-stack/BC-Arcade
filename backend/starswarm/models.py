@@ -32,6 +32,7 @@ from pydantic_core import PydanticCustomError
 
 from games.replay_caps import CAP_REPORT_WINDOW_S
 from observability.report import Throttle, report_event
+from settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +332,7 @@ _KEYED_TABLES: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] = {
     "combat.spawned": (ENEMY_TIERS, None),
     "combat.kills": (ENEMY_TIERS, KILL_METHODS),
     "damage.hits": (HIT_CAUSES, HIT_RESULTS),
+    "damage.hitsByTier": (ENEMY_TIERS, HIT_RESULTS),
 }
 
 
@@ -431,6 +433,11 @@ class WaveCombat(_WaveBlock):
 
 class WaveDamage(_WaveBlock):
     hits: NestedCounts = Field(default_factory=dict)
+    # #3710: the same grid by the enemy tier that landed the hit (rocks are
+    # tierless, so they are in ``hits`` only). Additive on schema v 2 (like
+    # ``gunsPeak``); absent from builds before it. Stripped at validation while
+    # ``STARSWARM_HITS_BY_TIER`` is off (``validate_wave_completed``).
+    hitsByTier: NestedCounts = Field(default_factory=dict)
     # Required: null on a wave the player cleared.
     deathCause: HitCause | None
     # #3535: when the lethal hit landed. Sent only on a died wave (absent = null);
@@ -542,6 +549,17 @@ def _safe_paths(locs: Any) -> list[str]:
     return paths
 
 
+_settings: Settings | None = None
+
+
+def hits_by_tier_enabled() -> bool:
+    """``STARSWARM_HITS_BY_TIER`` (settings.py), read lazily: the no-release switch (#3710)."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings.starswarm_hits_by_tier
+
+
 def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
     """The ``wave_completed`` ``data`` to store, or ``None`` to drop the event.
 
@@ -577,6 +595,9 @@ def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
         _report_dropped_wave("invalid", fields=fields, error_types=types)
         return None
     stored = stats.model_dump(mode="json", exclude_unset=True)
+    if not hits_by_tier_enabled():
+        # #3710 kill switch: the grid is the only unpruned growth this field adds.
+        stored.get("damage", {}).pop("hitsByTier", None)
     unknown = _unknown_table_keys(stored)
     if unknown:
         logger.warning(

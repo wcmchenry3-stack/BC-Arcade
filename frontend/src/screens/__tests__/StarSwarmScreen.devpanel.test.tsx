@@ -248,6 +248,25 @@ describe("run counters", () => {
     expect(screen.getByText("wave 4 · Commander · score 900")).toBeTruthy();
   });
 
+  it("#3710: shows this wave's hits on the player by enemy tier", async () => {
+    const state = initStarSwarm(CANVAS_W, CANVAS_H, 4, 42, "Commander");
+    const hitsByTier = {
+      ...state.waveStats.damage.hitsByTier,
+      Guardian: { life: 2, plating: 1, shield: 7 },
+    };
+    canvas.state = {
+      ...state,
+      waveStats: { ...state.waveStats, damage: { ...state.waveStats.damage, hitsByTier } },
+    };
+    await renderRun();
+    await openPanel();
+
+    const stats = within(screen.getByLabelText("Run stats"));
+    expect(stats.getByText("tier     life plat shld")).toBeTruthy();
+    expect(stats.getByText("Guardian    2    1    7")).toBeTruthy();
+    expect(stats.getByText("Carrier     0    0    0")).toBeTruthy();
+  });
+
   it("stops reading the engine once the panel is collapsed", async () => {
     jest.useFakeTimers();
     canvas.state = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42);

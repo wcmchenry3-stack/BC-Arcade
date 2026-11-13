@@ -6,10 +6,13 @@ highest level a player has cleared (``level_reached``), a metadata metric.
 
 from __future__ import annotations
 
+from typing import Any
+
 from games.board import BoardDefinition
 from games.module_base import GameModuleBase
 from sort.catalog import CATALOG_VERSION, LEVEL_COUNT
 from sort.models import SortMetadata, SortResult
+from sort.replay import MOVES, validate_moves
 from vocab import GameType
 
 
@@ -51,6 +54,13 @@ class SortModule(GameModuleBase):
         edition=("catalog_version", CATALOG_VERSION),
         edition_switch="sort_catalog_edition_enforced",
     )
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``moves`` is checked against the v1 schema (#3387); every other
+        event passes through (the lifecycle events)."""
+        if name == MOVES:
+            return validate_moves(data)
+        return data
 
 
 module = SortModule()
