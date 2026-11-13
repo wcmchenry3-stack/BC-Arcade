@@ -91,7 +91,9 @@ export async function rememberMyStats(response: StatsResponse, token: MyStatsTok
       }
       // A reinstall's empty local bests are seeded from it, once, with no request of its own
       // (#3802). Only for the session it was fetched for, so never from a deleted player's data.
-      await seedPersonalBests(response);
+      // The guard is re-checked right before each write: "Delete my data" bumps the generation
+      // (and clears the session) while the awaits above and the seed's own reads are in flight.
+      await seedPersonalBests(response, () => token.generation === generation);
     }
   } catch {
     // Nothing remembered: the stats screen fetches for itself.

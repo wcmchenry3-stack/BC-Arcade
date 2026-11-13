@@ -185,3 +185,39 @@ describe("kill switch", () => {
     expect(isSeedEnabled()).toBe(true);
   });
 });
+
+describe("the guard (a deleted player's stats must not seed)", () => {
+  it("a guard that is false from the start seeds nothing", async () => {
+    await seedPersonalBests(FULL, () => false);
+    expect(await getBest("cascade")).toBe(0);
+  });
+
+  it("a guard that flips while the stored best is being read blocks the write", async () => {
+    let current = true;
+    const getMany = jest.mocked(AsyncStorage.getMany);
+    const real = getMany.getMockImplementation();
+    getMany.mockImplementationOnce(async (keys) => {
+      current = false; // "Delete my data" lands during the read
+      return real ? real(keys) : {};
+    });
+    await seedPersonalBests(FULL, () => current);
+    expect(await AsyncStorage.getItem(storageKey("cascade"))).toBeNull();
+    expect(await getBest("cascade")).toBe(0);
+  });
+
+  it("a guard that flips after the first game seeds it and not the rest", async () => {
+    let calls = 0;
+    // Checks: before the dial, then per game a check and a write check: true for cascade only.
+    await seedPersonalBests(FULL, () => {
+      calls += 1;
+      return calls <= 3;
+    });
+    const seeded = [
+      await getBest("cascade"),
+      await getBest("freecell"),
+      await getBest("starswarm"),
+      await getBest("twenty48"),
+    ].filter((v) => v > 0);
+    expect(seeded).toEqual([900]);
+  });
+});

@@ -6,7 +6,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import type { StatsResponse } from "../../../api/types";
 import { fetchAndRememberMyStats, clearMyStatsCache } from "../../../hooks/useMyStats";
-import { __resetPersonalBestForTests, getBest } from "../personalBest";
+import { getOrCreateSessionId } from "../session";
+import { __resetPersonalBestForTests, getBest, storageKey } from "../personalBest";
 import { __resetPersonalBestSeedForTests, isSeedEnabled } from "../personalBestSeed";
 import { __resetReplayDialSyncForTests, refresh } from "../replayDialSync";
 
@@ -48,6 +49,30 @@ describe("a kept /stats/me response", () => {
       return STATS;
     });
     expect(await getBest("cascade")).toBe(0);
+  });
+});
+
+describe("Delete my data between the check and the write", () => {
+  it("seeds nothing when it lands while the streak is being saved", async () => {
+    const streak = { ...STATS, streak_days: 3 } as StatsResponse;
+    await getOrCreateSessionId(); // so the mocked write below is the streak's, not the session's
+    jest.mocked(AsyncStorage.setItem).mockImplementationOnce(async () => {
+      clearMyStatsCache(); // the delete flow's step, mid-await
+    });
+    await fetchAndRememberMyStats(() => Promise.resolve(streak));
+    expect(await getBest("cascade")).toBe(0);
+    expect(await AsyncStorage.getItem(storageKey("cascade"))).toBeNull();
+  });
+
+  it("seeds nothing when it lands while the best is being read", async () => {
+    const getMany = jest.mocked(AsyncStorage.getMany);
+    const real = getMany.getMockImplementation();
+    getMany.mockImplementationOnce(async (keys) => {
+      clearMyStatsCache();
+      return real ? real(keys) : {};
+    });
+    await fetchAndRememberMyStats(() => Promise.resolve(STATS));
+    expect(await AsyncStorage.getItem(storageKey("cascade"))).toBeNull();
   });
 });
 

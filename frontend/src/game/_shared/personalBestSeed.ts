@@ -41,7 +41,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import type { StatsResponse } from "../../api/types";
-import { getBest, recordResult, type PersonalBestGame } from "./personalBest";
+import { getBest, seedBest, type PersonalBestGame } from "./personalBest";
 
 /** Per seedable game: the server's board label that means the local best's metric. */
 const SEEDABLE: Readonly<Partial<Record<PersonalBestGame, string>>> = {
@@ -117,12 +117,18 @@ export async function acceptSeedDial(body: unknown, now: number = Date.now()): P
 }
 
 /**
- * Seeds the local best of each seedable game that has none from `stats` (see the header).
+ * Seeds the local best of each seedable game that has none from `stats` (see the header), while
+ * `isCurrent()` holds: it is checked before each game and again right before each write, so a
+ * response whose player was deleted meanwhile seeds nothing.
  * Resolves when done; never rejects.
  */
-export async function seedPersonalBests(stats: StatsResponse): Promise<void> {
+export async function seedPersonalBests(
+  stats: StatsResponse,
+  isCurrent: () => boolean = () => true
+): Promise<void> {
   try {
     await hydrateSeedDial();
+    if (!isCurrent()) return;
     if (!isSeedEnabled()) return;
     const byGame = isRecord(stats?.by_game) ? stats.by_game : {};
     for (const [game, labelKey] of Object.entries(SEEDABLE) as [PersonalBestGame, string][]) {
@@ -130,9 +136,10 @@ export async function seedPersonalBests(stats: StatsResponse): Promise<void> {
       if (!isRecord(entry) || entry.best_label_key !== labelKey) continue;
       const value = entry.best_value;
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      if (!isCurrent()) return;
       if ((await getBest(game)) > 0) continue;
-      // Keeps the better value by the game's comparator; a value that can't be a best is ignored.
-      await recordResult(game, Math.floor(value));
+      // Only written while `isCurrent()` still holds, checked again inside the write itself.
+      await seedBest(game, Math.floor(value), isCurrent);
     }
   } catch {
     // Nothing is seeded; the next stats response tries again.

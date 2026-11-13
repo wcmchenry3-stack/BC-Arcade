@@ -275,6 +275,26 @@ export async function getBest(
 }
 
 /**
+ * Seeds `game`'s best with `value` (#3802) when it has none. Unlike `recordResult` it checks
+ * `allowed()` after the stored best is read, inside the game's ordered operation and right before
+ * the write, so a caller whose data stopped being the player's while it waited writes nothing.
+ * Returns whether it wrote. Never rejects.
+ */
+export function seedBest(
+  game: PersonalBestGame,
+  value: number,
+  allowed: () => boolean
+): Promise<boolean> {
+  return inOrder(game, async () => {
+    const { bests, readable } = await load(game);
+    if (!readable || Object.keys(bests).length > 0) return false;
+    const result = judgeResult(game, 0, value);
+    if (!result.improved || !allowed()) return false;
+    return write(game, { [DEFAULT_VARIANT]: result.best });
+  });
+}
+
+/**
  * Records a finished game's `value` for `game` (and `variant`) and returns how it compares with
  * the stored best (`judgeResult`). Writes only when the best improves, and never when storage
  * could not be read. Never rejects.
