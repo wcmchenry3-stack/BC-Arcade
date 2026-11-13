@@ -376,19 +376,6 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 This was the only CC BY 4.0 sound ("Victory fanfare" by humanoide9000 on Freesound, https://freesound.org/people/humanoide9000/sounds/466133/). No game used it after #3661 and it was not bundled, so the file was deleted in #3871 and no attribution duty remains.
 
-### freecell-invalid-move.mp3
-
-- **Event:** Move rejected — wrong card, full free cell, or supermove limit exceeded
-- **Original filename:** `493163__Breviceps__buzzer-wrong-answer-error.mp3` (preview lq)
-- **Source URL:** https://freesound.org/people/Breviceps/sounds/493163/
-- **Creator:** Breviceps on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Short buzzer for wrong answer / error. Signals an invalid move without being jarring.
-
 ---
 
 ## Star Swarm (#803)

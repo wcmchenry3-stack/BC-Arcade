@@ -49,9 +49,9 @@ counts named in each row.
 
 | Measure                                                                                                       | Count                                                                                                                                                                        |
 | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Files under `frontend/assets/` (excluding `*.md`)                                                             | 306 (299 bundled + 7 not bundled; `git ls-files frontend/assets \| grep -v '\.md$'`)                                                                                         |
+| Files under `frontend/assets/` (excluding `*.md`)                                                             | 305 (299 bundled + 6 not bundled; `git ls-files frontend/assets \| grep -v '\.md$'`)                                                                                         |
 | Referenced by code / `app.json` (bundled)                                                                     | 299 (295 imported by code + 4 `app.json` paths; one is web-only: `favicon.png`)                                                                                              |
-| Present but not bundled                                                                                       | 31 (Section 3.4): 7 under `frontend/assets/` + 24 icon masters at the repo root                                                                                              |
+| Present but not bundled                                                                                       | 30 (Section 3.4): 6 under `frontend/assets/` + 24 icon masters at the repo root                                                                                              |
 | Native resource rasters (Android mipmap/splash + iOS icon/splash)                                             | 29 (derived from the app icon/logo art)                                                                                                                                      |
 | npm font files (Space Grotesk x2, Manrope x3) + icon font files (MaterialIcons, MaterialCommunityIcons)       | 7                                                                                                                                                                            |
 | **Total shipped asset files**                                                                                 | **334** (298 native bundle assets + 29 native resources + 7 npm fonts; excludes web-only favicon)                                                                            |
@@ -168,10 +168,12 @@ the audition of 2026-11-13), a net +4 files (files under `assets/` 280 to 284, b
 imported by code 269 to 273, shipped 308 to 312, native bundle 272 to 276, the premium bucket 196
 to 200, Blackjack sounds 14 to 18). No third-party or unverified file is added.
 
-`freecell-game-win.mp3` deleted in #3871 (it was CC BY 4.0, unbundled since #3661, and no code, test or config reference remained): files under `assets/` 307 to 306, not bundled under `assets/` 8 to 7 (32 to 31 with the icon masters). Bundled, shipped, third-party and unverified counts do not change, because it was already outside all of them.
+`freecell-game-win.mp3` deleted in #3871 (it was CC BY 4.0, unbundled since #3661, and no code, test or config reference remained), and `freecell-invalid-move.mp3` deleted in #3845 (25,584 B; Breviceps, CC0; its `SOUND_CREDITS.md` entry went with it): with both, files under `assets/` 307 to 305, not bundled under `assets/` 8 to 6 (32 to 30 with the icon masters). Bundled, shipped, third-party and unverified counts do not change, because both files were already outside all of them.
 
 With both merged (recounted from the tree, before #3871): files under `assets/` 307, bundled 299 (295 imported
 by code), shipped 334 (native bundle 298), the free bucket 93, the premium bucket 201.
+
+The other six not-bundled files under `assets/` stay: tests still pin them on disk (Section 3.4).
 
 ## 3. Inventory
 
@@ -268,7 +270,6 @@ Cascade images, 44 are bundled; the pumpkin and milky-way files are not (Section
 | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----: | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | `assets/sounds/solitaire-invalid-move.ogg`                                                                                                       |     1 | Sudoku played its own `sudoku-error-entered.ogg` from #3775; no game requires it (kept: shared sounds are not deleted)    | Kenney Digital Audio, CC0. Safe to delete. |
 | `assets/sounds/hearts-moon-shot.mp3`                                                                                                             |     1 | Sudoku, its last user, moved to `sudoku-puzzle-complete.ogg` in #3775 (kept, not deleted)                                 | Pixabay, u_it78ck90s3. Safe to delete.     |
-| `assets/sounds/freecell-invalid-move.mp3`                                                                                                        |     1 | FreeCell uses `card-invalid-move.ogg` instead (#3563)                                                                     | Freesound, Breviceps, CC0. Safe to delete. |
 | `cascade_icon_masters/*-icons/*.webp` (repo root)                                                                                                |    24 | Full-resolution processed icons, moved out of `frontend/assets/` in #2833; the app ships 256 px thumbnails made from them | Same art as U2/U3; follows those.          |
 | `assets/fruit-icons/pumpkin.webp`, `assets/fruits-baked/pumpkin.png`, `assets/celestial-icons/milkyway.webp`, `assets/cosmos-baked/milkyway.png` |     4 | Future tiers; import removed from `src/game/cascade/images.ts` in #2833                                                   | Same art as U2/U3; follows those.          |
 

@@ -142,8 +142,9 @@ Mahjong's real look on iOS and Android can't be seen from a cloud session, so th
 |---|---|---|---|
 | `demo-open.yaml` | Home → Mahjong, Turtle layout, the untouched board (no hint, no tile tap), three shots about 5 s, 15 s and 25 s after the board shows | `mahjong-demo-open`, `mahjong-demo-open-late`, `mahjong-demo-open-late2` | `mahjong-demo-open` |
 | `demo-zoom.yaml` | the same board, then a double-tap on the board viewport (`mahjong-board-viewport`), to show the tiles' crispness zoomed in | `mahjong-demo-zoom` | `mahjong-demo-zoom` |
+| `demo-diagnose.yaml` | the #3684 test-build readout and render variants a, b and c (each a fresh deal): per variant about 5 s and 20 s after the deal, 3 s after the UI heartbeat is on, and after a double-tap; how to read them is in [games/mahjong.md](games/mahjong.md) | `mahjong-diag-<a\|b\|c>-open`, `-late`, `-hb`, `-zoom` | `mahjong-diag` |
 
-Both use the shared subflow `_shared/open-mahjong.yaml` (the same steps as `smoke.yaml`: `navigate-to.yaml` for the hidden game, tap `mahjong-layout-turtle` if the picker shows, wait for `mahjong-board-viewport`). They are tagged `demo`, so every other run leaves them out (`--exclude-tags=demo`). Dispatch either workflow with `flows: mahjong-demo` to run only `mahjong/demo-*.yaml` (`--include-tags=demo`, whatever changed):
+All three use the shared subflow `_shared/open-mahjong.yaml` (the same steps as `smoke.yaml`: `navigate-to.yaml` for the hidden game, tap `mahjong-layout-turtle` if the picker shows, wait for `mahjong-board-viewport`). They are tagged `demo`, so every other run leaves them out (`--exclude-tags=demo`). Dispatch either workflow with `flows: mahjong-demo` to run only `mahjong/demo-*.yaml` (`--include-tags=demo`, whatever changed):
 
 ```bash
 # On the branch to look at; records video, uploads maestro-<platform>-media
