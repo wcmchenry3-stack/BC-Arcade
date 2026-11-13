@@ -661,8 +661,44 @@ function finishIfAllHandsDone(s: EngineState): EngineState {
   };
 }
 
+/**
+ * A hand on 21 stands on its own (#3764): from the hand to play, every split hand already on 21
+ * (one dealt 21 by the split, like a split 10 that drew an Ace) is passed over. Split aces are
+ * never the hand to play (they get one card each and are passed at the split), so this never
+ * touches them.
+ */
+function passTwentyOnes(s: EngineState): EngineState {
+  let i = s.active_hand_index;
+  while (
+    i < s.player_hands.length &&
+    (s.hand_outcomes[i] ?? null) === null &&
+    handValue(s.player_hands[i] ?? []) === 21
+  ) {
+    i++;
+  }
+  return i === s.active_hand_index ? s : { ...s, active_hand_index: i };
+}
+
 function advanceHand(s: EngineState): EngineState {
-  return finishIfAllHandsDone({ ...s, active_hand_index: s.active_hand_index + 1 });
+  return finishIfAllHandsDone(passTwentyOnes({ ...s, active_hand_index: s.active_hand_index + 1 }));
+}
+
+/**
+ * The events of a split action that may have settled the round: `lead` (the action's own), then,
+ * when the round settled, its outcome, and any milestone or comeback it reached.
+ */
+function splitRoundEvents(
+  prev: EngineState,
+  next: EngineState,
+  lead: readonly BlackjackGameEvent[]
+): BlackjackGameEvent[] {
+  if (next.phase === "player" || next.outcome === null) return [...lead];
+  return [
+    ...lead,
+    outcomeEvent(next.outcome as "win" | "lose" | "push"),
+    ...pendingMilestoneEvents(prev, next),
+    ...pendingComebackEvents(prev, next),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -690,6 +726,11 @@ export function hit(s: EngineState): EngineState {
       const extras = [...msEvents, ...cbEvents];
       return { ...advanced, events: extras.length > 0 ? [...events, ...extras] : events };
     }
+    if (handValue(newHands[s.active_hand_index] ?? []) === 21) {
+      // 21 stands on its own (#3764): the next hand is played, or the dealer after the last.
+      const advanced = advanceHand(next);
+      return { ...advanced, events: splitRoundEvents(s, advanced, events) };
+    }
     return next;
   }
 
@@ -707,6 +748,11 @@ export function hit(s: EngineState): EngineState {
       ...settled,
       events: [{ type: "cardDeal" }, { type: "bust" }, ...msEvents, ...cbEvents],
     };
+  }
+  if (handValue(next.player_hand) === 21) {
+    // 21 stands on its own (#3764): the dealer's turn and the settlement, as a Stand plays them.
+    const stood = stand(next);
+    return { ...stood, events: [{ type: "cardDeal" }, ...(stood.events ?? [])] };
   }
   return { ...next, events: [{ type: "cardDeal" }] };
 }
@@ -732,6 +778,20 @@ export function stand(s: EngineState): EngineState {
     ...next,
     events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents, ...cbEvents],
   };
+}
+
+/**
+ * A game saved by a build from before #3764 with the hand to play already on 21 (it then waited
+ * for a Stand): stood now, as the load path's choice (`BlackjackGameContext.tsx`, which records
+ * the stand as the round's action). A single hand settles with the dealer's turn; a split hand
+ * moves play on to the next hand (or the dealer). Any other save is returned as it is. No events:
+ * a restored round replays nothing.
+ */
+export function standOnTwentyOne(s: EngineState): EngineState {
+  if (s.phase !== "player") return s;
+  const hand = s.split_count > 0 ? s.player_hands[s.active_hand_index] : s.player_hand;
+  if (hand === undefined || handValue(hand) !== 21) return s;
+  return { ...stand(s), events: undefined };
 }
 
 export function doubleDown(s: EngineState): EngineState {
@@ -924,7 +984,11 @@ export function split(s: EngineState): EngineState {
     return finishIfAllHandsDone(next);
   }
 
-  return next;
+  // A hand the split dealt 21 stands on its own (#3764): play moves on, maybe to the dealer.
+  const played = finishIfAllHandsDone(passTwentyOnes(next));
+  if (played === next) return next;
+  const events = splitRoundEvents(s, played, []);
+  return { ...played, events: events.length > 0 ? events : undefined };
 }
 
 function reshuffleThreshold(rules: GameRules): number {

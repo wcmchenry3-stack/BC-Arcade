@@ -25,7 +25,6 @@ import {
   newGame,
   placeBet,
   setRng,
-  stand,
   toViewState,
 } from "../../game/blackjack/engine";
 import { savedAgainstNatural } from "../../game/blackjack/__tests__/helpers/engineFixtures";
@@ -606,7 +605,8 @@ describe("the result's detail after the dealer's peek", () => {
     // A hand-built state: no game reaches it now. The peek settles a dealer natural at the deal,
     // and a save from before it is settled on load with its two dealt cards. This holds
     // `feltResultFor`'s rule (any loss to a two-card dealer 21) should such a state appear.
-    const settled = stand(hit(savedAgainstNatural([card("10"), card("6", "♥")], [card("5")])));
+    // The hit to 21 stands on its own (#3764).
+    const settled = hit(savedAgainstNatural([card("10"), card("6", "♥")], [card("5")]));
     expect(settled.outcome).toBe("lose");
     const t = ((key: string) => i18n.t(key)) as unknown as Parameters<typeof feltResultFor>[1];
     expect(feltResultFor(toViewState(settled), t)?.detail).toBe("Dealer Blackjack");

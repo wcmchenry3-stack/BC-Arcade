@@ -125,8 +125,9 @@ describe("a natural beats any 21 that is not one", () => {
     expect(s.events?.[0]).toEqual({ type: "loss" });
   });
 
-  it("a hit to 21 then a stand against the dealer's natural loses", () => {
-    const s = stand(hit(savedAgainstNatural([c("♠", "10"), c("♥", "6")], [c("♣", "5")])));
+  it("a hit to 21 against the dealer's natural stands on its own (#3764) and loses", () => {
+    const s = hit(savedAgainstNatural([c("♠", "10"), c("♥", "6")], [c("♣", "5")]));
+    expect(s.phase).toBe("result");
     expect(s.outcome).toBe("lose");
   });
 
@@ -143,9 +144,9 @@ describe("a natural beats any 21 that is not one", () => {
       deck: [...Array(10).fill(c("♠", "2")), c("♦", "Q"), c("♣", "K"), c("♠", "3"), c("♥", "3")],
     });
     let s = split(s0);
-    // Hand 1: 8 3 then K = 21; hand 2: 8 3 then Q = 21.
-    s = stand(hit(s));
-    s = stand(hit(s));
+    // Hand 1: 8 3 then K = 21; hand 2: 8 3 then Q = 21. Each 21 stands on its own (#3764).
+    s = hit(s);
+    s = hit(s);
     expect(s.phase).toBe("result");
     expect(s.hand_outcomes).toEqual(["lose", "lose"]);
     expect(s.payout).toBe(-200);

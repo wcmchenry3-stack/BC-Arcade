@@ -427,7 +427,8 @@ function planSplit(
   }
   landed = dealTo(b, SPLIT_DEAL_MS + DEAL_STAGGER_MS, k + 1, nextCounts[k + 1]! - 1, 1);
   if (nextActive === null) return { start, landed, slideMs: SPLIT_SLIDE_MS, held };
-  return { start, ...activate(b, landed, nextActive, held), slideMs: SPLIT_SLIDE_MS };
+  const played = activateThrough(b, landed, k + 2, nextActive, held);
+  return { start, ...played, slideMs: SPLIT_SLIDE_MS };
 }
 
 /**
@@ -462,6 +463,25 @@ function activate(
   return { landed: dealToHeld(b, at + ACTIVATE_DEAL_MS, j, n), held: out };
 }
 
+/**
+ * Play moves on from hand `from` to hand `j` at `at`. A hand passed over on the way was dealt 21
+ * and stood on its own (#3764): one still holding its card back is outlined and dealt it first,
+ * so the felt never skips a card. Then `j` is outlined and dealt what it holds back.
+ */
+function activateThrough(
+  b: TimelineBuilder,
+  at: number,
+  from: number,
+  j: number,
+  held: number[]
+): { landed: number; held: number[] } {
+  let step = { landed: at, held };
+  for (let i = from; i < j; i++) {
+    if ((step.held[i] ?? 0) > 0) step = activate(b, step.landed, i, step.held);
+  }
+  return activate(b, step.landed, j, step.held);
+}
+
 /** Deals the `n` cards hand `j` held back: they are its last. */
 function dealToHeld(b: TimelineBuilder, at: number, j: number, n: number): number {
   for (let m = 0; m < n; m++) {
@@ -493,7 +513,7 @@ function planPlay(
     // or the dealer plays.
     const start = { ...base, active: k };
     if (nextActive === null) return { start, landed: 0, slideMs: REFAN_MS, held };
-    return { start, ...activate(b, 0, nextActive, held), slideMs: SPLIT_SLIDE_MS };
+    return { start, ...activateThrough(b, 0, k + 1, nextActive, held), slideMs: SPLIT_SLIDE_MS };
   }
   if (nextCounts.some((n, i) => n !== (i === grew ? p.counts[i]! + 1 : p.counts[i]))) return null;
   b.cue(0, "deal");
@@ -503,9 +523,10 @@ function planPlay(
   if (nextActive === null || nextActive === k) {
     return { start, landed: DEAL_FLIGHT_MS, slideMs: REFAN_MS, held };
   }
-  // A split hand is done (bust, or doubled): the next one is outlined as its card lands.
+  // A split hand is done (bust, doubled, or 21, #3764): the next one is outlined as its card lands.
   if ((next.player_hands[grew]?.value ?? 0) > 21) b.cue(DEAL_FLIGHT_MS, "bust");
-  return { start, ...activate(b, DEAL_FLIGHT_MS, nextActive, held), slideMs: SPLIT_SLIDE_MS };
+  const played = activateThrough(b, DEAL_FLIGHT_MS, grew + 1, nextActive, held);
+  return { start, ...played, slideMs: SPLIT_SLIDE_MS };
 }
 
 /**

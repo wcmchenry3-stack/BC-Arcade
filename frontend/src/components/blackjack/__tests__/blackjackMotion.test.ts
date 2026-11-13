@@ -8,6 +8,7 @@
  */
 import {
   doubleDown,
+  handValue,
   hit,
   isNaturalBlackjack,
   newGame,
@@ -198,6 +199,75 @@ describe("planMotion", () => {
     expect(t.held).toEqual([0, 0]);
   });
 
+  // #3764: 21 stands on its own. The hit's card lands, then the dealer's turn runs on the same
+  // clock, with no tap between: the same timeline as a hit and then a Stand.
+  it("a hit to 21: the card lands, then the dealer's turn runs straight through", () => {
+    // 7+4 hits a 10 (21); dealer 10+6 draws a 2 (18).
+    const s0 = placeBet(
+      betting(c("7"), c("10", "♣"), c("4", "♥"), c("6", "♦"), c("10", "♦"), c("2", "♥")),
+      10
+    );
+    expect(s0.phase).toBe("player");
+    const s1 = hit(s0);
+    expect(s1.phase).toBe("result");
+    const t = planMotion(view(s0), view(s1))!;
+    const flip = DEAL_FLIGHT_MS;
+    const r = flip + DEALER_PACE_MS + DEAL_FLIGHT_MS + RESULT_DELAY_MS;
+    expect(t.resultAt).toBe(r);
+    expect(cuesOf(t)).toEqual([
+      ["deal", 0],
+      ["flip", flip],
+      ["deal", flip + DEALER_PACE_MS],
+      ["win", r],
+      ["payout", r + CHIP_DELAY_MS],
+    ]);
+    expect(t.flips).toBe(true);
+    // No stage between the hit and the result outlines a hand to play with 21 showing: the hand
+    // is outlined until the hole card turns, while its 21 is still landing.
+    const turned = t.frames.find((f) => !f.stage.holeDown)!;
+    expect(turned.at).toBe(flip);
+    expect(turned.stage.active).toBeNull();
+    t.frames
+      .filter((f) => f.stage.active !== null)
+      .forEach((f) => expect(f.stage.counted[0]).toBeLessThan(3));
+    expect(t.frames[t.frames.length - 1]!.stage).toEqual(fullStage(view(s1)));
+  });
+
+  it("a split hand dealt 21 is passed over: its held card is dealt on the way to the next hand", () => {
+    // 10s split: hand 1 10+10, hand 2 10+7 (held). Hand 1 split again: 10+5, 10+A (held), 10+7.
+    const s0 = placeBet(
+      betting(
+        c("10"),
+        c("6", "♣"),
+        c("10", "♥"),
+        c("9", "♦"),
+        c("10", "♦"),
+        c("7", "♣"),
+        c("5", "♥"),
+        c("A", "♥")
+      ),
+      10
+    );
+    const s1 = split(s0);
+    const t1 = planMotion(view(s0), view(s1))!;
+    const s2 = split(s1);
+    expect(s2.player_hands.map((h) => h.length)).toEqual([2, 2, 2]);
+    const t2 = planMotion(view(s1), view(s2), t1.held)!;
+    expect(t2.held).toEqual([0, 1, 1]);
+    // Stand on 15: hand 2 (21) stands on its own, hand 3 is the one to play.
+    const s3 = stand(s2);
+    expect(s3.active_hand_index).toBe(2);
+    const t3 = planMotion(view(s2), view(s3), t2.held)!;
+    // Hand 2 is outlined and dealt its Ace, then hand 3 is outlined and dealt its 7.
+    expect(cuesOf(t3)).toEqual([
+      ["deal", 350],
+      ["deal", 350 + DEAL_FLIGHT_MS + 350],
+    ]);
+    expect(t3.held).toEqual([0, 0, 0]);
+    expect(t3.frames[t3.frames.length - 1]!.stage.hands).toEqual([2, 2, 2]);
+    expect(t3.frames.map((f) => f.stage.active)).toEqual(expect.arrayContaining([1, 2]));
+  });
+
   it("a new hand's betting has no motion", () => {
     const s0 = stand(placeBet(betting(c("10"), c("7", "♣"), c("5", "♥"), c("9", "♥")), 10));
     expect(planMotion(view(s0), view(newHand(s0)))).toBeNull();
@@ -331,7 +401,8 @@ describe("the natural", () => {
     const bust = savedAgainstNatural([c("10"), c("6", "♥")], [c("K", "♦")]);
     expect(naturalEdges(view(hit(bust)))).toEqual(NO_NATURALS);
     // Standard rules (#3741): the dealer's natural beats a 3-card 21, so it decided the round.
-    const settled = stand(hit(savedAgainstNatural([c("10"), c("6", "♥")], [c("5", "♦")])));
+    // The hit to 21 stands on its own (#3764).
+    const settled = hit(savedAgainstNatural([c("10"), c("6", "♥")], [c("5", "♦")]));
     expect(settled.outcome).toBe("lose");
     expect(naturalEdges(view(settled))).toEqual({ player: false, dealer: true });
   });
@@ -418,11 +489,15 @@ describe("cubicBezier", () => {
 // ── Fuzz ──────────────────────────────────────────────────────────────────────
 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
-/** A shuffled shoe, with pairs made likely (so splits and resplits come up). */
-function shoe(rng: () => number): Card[] {
+/**
+ * A shuffled shoe, with pairs made likely (so splits and resplits come up). Seeds past 40 pair
+ * tens, so split hands dealt 21 (a ten and an ace) come up too (#3764).
+ */
+const pairFor = (seed: number) => (seed > 40 ? "10" : "8");
+function shoe(rng: () => number, pair = "8"): Card[] {
   const cards: Card[] = [];
   for (let i = 0; i < 312; i++) {
-    const rank = rng() < 0.3 ? "8" : RANKS[Math.floor(rng() * RANKS.length)]!;
+    const rank = rng() < 0.3 ? pair : RANKS[Math.floor(rng() * RANKS.length)]!;
     cards.push(c(rank, ["♠", "♥", "♦", "♣"][Math.floor(rng() * 4)]));
   }
   return cards;
@@ -567,9 +642,14 @@ function expectPeek(s: EngineState) {
 }
 
 describe("fuzz: random rounds", () => {
-  it.each(Array.from({ length: 40 }, (_, i) => i + 1))("seed %i", (seed) => {
+  it.each(Array.from({ length: 60 }, (_, i) => i + 1))("seed %i", (seed) => {
     const rng = createSeededRng(seed * 7919);
-    let s = newGame(shoe(rng), { startingChips: 5000, runGoal: null, betMin: 5, betMax: 25 });
+    let s = newGame(shoe(rng, pairFor(seed)), {
+      startingChips: 5000,
+      runGoal: null,
+      betMin: 5,
+      betMax: 25,
+    });
     let n = 0;
     const fresh = () => `id${++n}`;
     let ids = assignCardIds(null, toViewState(s), fresh);
@@ -586,6 +666,9 @@ describe("fuzz: random rounds", () => {
       while (s.phase === "player") {
         // The peek (#3741): the player never acts against a dealer natural.
         expect(isNaturalBlackjack(s.dealer_hand.slice(0, 2))).toBe(false);
+        // 21 stands on its own (#3764): the hand to play never shows 21, so Hit and Stand are
+        // never offered on one.
+        expect(toViewState(s).player_hand.value).toBeLessThan(21);
         const action = pick(s, rng);
         prev = toViewState(s);
         s = action(s);
@@ -601,11 +684,16 @@ describe("fuzz: random rounds", () => {
     }
   });
 
-  it("covers splits, resplits to four hands, doubles, naturals and peeked dealer naturals over the seeds", () => {
-    const seen = { split: 0, four: 0, double: 0, natural: 0, peeked: 0 };
-    for (let seed = 1; seed <= 40; seed++) {
+  it("covers splits, resplits to four hands, doubles, naturals, peeked dealer naturals and 21s that stand on their own over the seeds", () => {
+    const seen = { split: 0, four: 0, double: 0, natural: 0, peeked: 0, hit21: 0, passed21: 0 };
+    for (let seed = 1; seed <= 60; seed++) {
       const rng = createSeededRng(seed * 7919);
-      let s = newGame(shoe(rng), { startingChips: 5000, runGoal: null, betMin: 5, betMax: 25 });
+      let s = newGame(shoe(rng, pairFor(seed)), {
+        startingChips: 5000,
+        runGoal: null,
+        betMin: 5,
+        betMax: 25,
+      });
       for (let round = 0; round < 12; round++) {
         s = placeBet(s, 10);
         if (s.outcome === "blackjack") seen.natural++;
@@ -614,8 +702,20 @@ describe("fuzz: random rounds", () => {
           const action = pick(s, rng);
           if (action === split) seen.split++;
           if (action === doubleDown) seen.double++;
+          const before = s;
           s = action(s);
           if (s.player_hands.length === 4) seen.four++;
+          // A hit that made 21 (#3764), and a split hand dealt 21 that play passed over.
+          if (action === hit) {
+            const k = before.active_hand_index;
+            const h = s.split_count > 0 ? s.player_hands[k] : s.player_hand;
+            if (h !== undefined && handValue(h) === 21) seen.hit21++;
+          }
+          const passedTo = s.phase === "player" ? s.active_hand_index : s.player_hands.length;
+          for (let i = before.active_hand_index; i < passedTo; i++) {
+            const h = s.player_hands[i];
+            if (h?.length === 2 && handValue(h) === 21 && !s.split_from_aces[i]) seen.passed21++;
+          }
         }
         s = newHand(s);
       }
@@ -625,5 +725,7 @@ describe("fuzz: random rounds", () => {
     expect(seen.double).toBeGreaterThan(10);
     expect(seen.natural).toBeGreaterThan(0);
     expect(seen.peeked).toBeGreaterThan(0);
+    expect(seen.hit21).toBeGreaterThan(0);
+    expect(seen.passed21).toBeGreaterThan(0);
   });
 });
