@@ -62,6 +62,12 @@ export interface Colors {
   errorText: string;
   bonus: string;
   /**
+   * `bonus` as the colour of text (#3754): green labels and figures (Hint labels, winning totals,
+   * payouts). Dark is `bonus` itself; light is a deeper green at >= 4.5:1 on every cream surface,
+   * where `bonus` reads ~3:1. Icons, borders, rings and fills stay `bonus` (3:1 non-text rule).
+   */
+  bonusText: string;
+  /**
    * Bottle Sort's hint destination ring (#3660), a 2 px border on `background`: reaches the
    * 3:1 non-text minimum (WCAG 1.4.11) in both themes, which `bonus` does not on cream.
    */
@@ -136,6 +142,8 @@ const TOKENS = {
   errorTextLight: "#b52d26",
   bonusDark: "#4ade80",
   bonusLight: "#2da557",
+  // Bonus as text on cream: 5.8:1 on the page, 5.1:1 on surfaceAlt
+  bonusTextLight: "#17692f",
   // Outcome — light variants darkened to clear 4.5:1 on cream surfaceHigh
   outcomeWinLight: "#1f7a3c",
   outcomeDrawDark: "#d674ff",
@@ -192,6 +200,7 @@ export const dark: Colors = {
   error: TOKENS.errorDark,
   errorText: TOKENS.errorTextDark,
   bonus: TOKENS.bonusDark,
+  bonusText: TOKENS.bonusDark,
   hintRing: TOKENS.bonusDark,
   outcomeWin: TOKENS.bonusDark,
   outcomeWinTint: "rgba(74,222,128,0.14)",
@@ -250,6 +259,7 @@ export const light: Colors = {
   error: TOKENS.errorLight,
   errorText: TOKENS.errorTextLight,
   bonus: TOKENS.bonusLight,
+  bonusText: TOKENS.bonusTextLight,
   hintRing: TOKENS.outcomeWinLight,
   outcomeWin: TOKENS.outcomeWinLight,
   outcomeWinTint: "rgba(31,122,60,0.12)",

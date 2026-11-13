@@ -725,6 +725,7 @@ export default function Twenty48Screen({ navigation }: Props) {
                 label: t("twenty48:action.hint"),
                 accessibilityLabel: t("twenty48:action.hintLabel"),
                 color: colors.bonus,
+                labelColor: colors.bonusText, // the icon keeps the 3:1 green; the label needs AA
                 disabled: hintDisabled,
                 onPress: handleHint,
                 testID: "twenty48-hint-button",

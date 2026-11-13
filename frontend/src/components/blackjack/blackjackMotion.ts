@@ -179,7 +179,7 @@ export type SoundCue =
 
 /**
  * The run's cues (#3582), played with their toast as the round settles: a milestone crossed, and
- * a comeback. Not on the action's timeline: the motion plays them (`BlackjackMotion.runCue`).
+ * a comeback. Not on the action's timeline: the motion plays them (`whenSettled(fn, { cue })`).
  */
 export type RunCue = "milestone" | "comeback";
 

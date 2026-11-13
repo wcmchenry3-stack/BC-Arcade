@@ -738,7 +738,7 @@ export default function GameScreen({ navigation, route }: Props) {
             icon: "lightbulb" as const,
             label: t("action.hint"),
             accessibilityLabel: t("action.hintLabel"),
-            color: colors.outcomeWin,
+            color: colors.bonusText,
             disabled: hintDisabled,
             // Disabled (and inert) while your dice tumble (#3749): `hintDisabled` above.
             onPress: onHint,
@@ -759,7 +759,10 @@ export default function GameScreen({ navigation, route }: Props) {
 
   const roundPill = (
     <View
-      style={[styles.roundPill, { backgroundColor: colors.surfaceAlt, borderColor: colors.accent }]}
+      style={[
+        styles.roundPill,
+        { backgroundColor: colors.surfaceAlt, borderColor: colors.accentText },
+      ]}
     >
       <Text style={[styles.roundPillText, { color: colors.accentText }]}>
         {t("round.header", {

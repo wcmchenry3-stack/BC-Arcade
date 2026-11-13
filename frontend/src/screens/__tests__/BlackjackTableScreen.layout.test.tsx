@@ -519,7 +519,11 @@ describe("the split result banner", () => {
       expect(screen.queryByText(summary)).toBeNull();
       expect(screen.queryByTestId("result-outcome")).toBeNull();
       // The whole result is still read out.
-      expect(screen.getByLabelText(`${outcome}. ${summary}. Payout: ${amount} chips`)).toBeTruthy();
+      expect(
+        screen.getByLabelText(
+          `${outcome}${outcome.endsWith("!") ? "" : "."} ${summary}. Payout: ${amount} chips`
+        )
+      ).toBeTruthy();
       // Each hand still shows its own payout.
       expect(screen.getAllByTestId("hand-payout")).toHaveLength(n);
     }
@@ -539,7 +543,7 @@ describe("the split result banner", () => {
       expect(screen.getByTestId("result-net").props.children).toBe("+25 chips");
       expect(screen.queryByTestId("result-outcome")).toBeNull();
       expect(screen.queryByText("Won: 1 · Push: 1")).toBeNull();
-      expect(screen.getByLabelText("You Win!. Won: 1 · Push: 1. Payout: 25 chips")).toBeTruthy();
+      expect(screen.getByLabelText("You Win! Won: 1 · Push: 1. Payout: 25 chips")).toBeTruthy();
       // The detail line still shows under it, and each hand its own payout.
       expect(screen.getByTestId("result-detail").props.children).toBe("Dealer has 17");
       expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
@@ -555,9 +559,7 @@ describe("the split result banner", () => {
       expect(screen.getByTestId("result-net").props.children).toBe("+25 фишек");
       expect(screen.queryByTestId("result-outcome")).toBeNull();
       expect(screen.queryByText("Победы: 1 · Ничьи: 1")).toBeNull();
-      expect(
-        screen.getByLabelText("Победа!. Победы: 1 · Ничьи: 1. Выплата: 25 фишек")
-      ).toBeTruthy();
+      expect(screen.getByLabelText("Победа! Победы: 1 · Ничьи: 1. Выплата: 25 фишек")).toBeTruthy();
     });
   });
 

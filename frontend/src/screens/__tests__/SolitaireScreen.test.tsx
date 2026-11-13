@@ -877,7 +877,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
       startedAt: null,
       accumulatedMs: 95000,
       // Saved with the winning move's events, as a real save would be.
-      events: ["foundationComplete", "gameWin"],
+      events: ["gameWin"],
     };
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
     return await mount();

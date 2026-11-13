@@ -1628,7 +1628,7 @@ describe("a mixed split (#3770)", () => {
     // 3 hands: the banner shows the net alone (#3781), named a win with the hands' summary.
     expect(screen.getByTestId("result-net").props.children).toBe("+10 chips");
     expect(screen.getByTestId("result-net").props.accessibilityLabel).toMatch(
-      /^You Win!\. Won: 2 · Lost: 1\./
+      /^You Win! Won: 2 · Lost: 1\./
     );
     expect(soundsSince(at)).toEqual([
       ["blackjack.cardFlip", 0],

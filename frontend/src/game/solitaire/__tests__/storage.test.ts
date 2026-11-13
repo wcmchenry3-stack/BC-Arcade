@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
 import { clearGame, loadGame, saveGame } from "../storage";
-import { dealGame, applyMove } from "../engine";
+import { dealGame, applyMove, drawFromStock } from "../engine";
 import type { SolitaireState } from "../types";
 
 const GAME_KEY = "solitaire_game";
@@ -88,6 +88,19 @@ describe("solitaire storage", () => {
     expect("events" in loaded!).toBe(false);
     expect(loaded!.score).toBe(s.score);
     expect(loaded!.tableau.length).toBe(7);
+  });
+
+  it("restores a save whose stored events include the removed foundationComplete (#3567)", async () => {
+    const s = seedState();
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...s, _v: 1, events: ["cardPlace", "foundationComplete", "gameWin"] })
+    );
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect("events" in loaded!).toBe(false);
+    // The restored game plays on normally.
+    expect(drawFromStock(loaded!).events).toEqual(["cardFlip"]);
   });
 
   it("returns null and captures a warning on a corrupt JSON payload", async () => {
