@@ -1,4 +1,5 @@
 import React from "react";
+import { StyleSheet } from "react-native";
 import { render } from "@testing-library/react-native";
 import ResultBanner from "../ResultBanner";
 import { ThemeProvider } from "../../../theme/ThemeContext";
@@ -97,6 +98,36 @@ describe("ResultBanner", () => {
     it("still reads the whole result: outcome, summary and payout", async () => {
       const { getByLabelText } = await renderFelt(true);
       expect(getByLabelText(`You Win!. ${SUMMARY}. Payout: 25 chips`)).toBeTruthy();
+    });
+
+    it("colours the net by its sign: a gain, a loss and no change each their own colour", async () => {
+      const cases: ["win" | "lose" | "push", number][] = [
+        ["win", 25],
+        ["lose", -25],
+        ["push", 0],
+      ];
+      const { getAllByTestId } = await render(
+        <ThemeProvider>
+          {cases.map(([outcome, payout]) => (
+            <ResultBanner
+              key={outcome}
+              variant="felt"
+              compact
+              outcome={outcome}
+              payout={payout}
+              detail="Dealer has 17"
+              summary={SUMMARY}
+              netOnly
+            />
+          ))}
+        </ThemeProvider>
+      );
+      const colors = getAllByTestId("result-net").map(
+        (n) => StyleSheet.flatten(n.props.style)?.color
+      );
+      expect(colors).toHaveLength(3);
+      colors.forEach((c) => expect(c).toBeTruthy());
+      expect(new Set(colors).size).toBe(3);
     });
 
     it("off, shows the summary beside the payout as before", async () => {
