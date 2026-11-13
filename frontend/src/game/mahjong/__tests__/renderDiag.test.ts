@@ -99,7 +99,7 @@ describe("the test-build gate", () => {
     expect(hook.result.current).toBe("c");
   });
 
-  it("useRenderVariant stays a and is never notified when the flag is off", async () => {
+  it("useRenderVariant stays a and never re-renders when the flag is off", async () => {
     hooksOff();
     let renders = 0;
     const hook = await renderHook(() => {

@@ -669,7 +669,7 @@ describe("#3684 render readout (test builds only)", () => {
     resetRenderDiag();
   });
 
-  it("is not on the board outside a test build, and the canvas draws variant a", async () => {
+  it("is not on the board outside a test build", async () => {
     delete process.env.EXPO_PUBLIC_TEST_HOOKS;
     await mountOn(pairBoard());
     expect(screen.getByTestId("game-canvas")).toBeTruthy();
@@ -719,7 +719,7 @@ describe("#3684 render readout (test builds only)", () => {
     expect(mockCanvasMounts).toBe(before + 1);
   });
 
-  it("turning the flag off releases a picked variant: the canvas is back to a", async () => {
+  it("turning the flag off releases a picked variant: getRenderVariant is a again", async () => {
     process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
     jest
       .spyOn(Reanimated, "useFrameCallback")
