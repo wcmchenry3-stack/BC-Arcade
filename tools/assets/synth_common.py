@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -185,3 +187,57 @@ def decoded_pcm_sha256(path: Path) -> str:
     cmd = ["ffmpeg", "-v", "error", "-i", str(path), "-f", "s16le", "-ac", "1", "-"]
     pcm = subprocess.run(cmd, capture_output=True, check=True).stdout
     return hashlib.sha256(pcm).hexdigest()
+
+
+# --- runner-up options (#3673) ----------------------------------------------------------------
+
+SHIPPED_SOUNDS_DIR = Path(__file__).resolve().parents[2] / "frontend" / "assets" / "sounds"
+
+# One sound's options: a label ("A", "B", ...) to (recipe, level). Option A is the pick that
+# ships, so it points at the same recipe `SOUNDS` uses. The others are never shipped.
+OptionTable = dict[str, dict[str, tuple[Callable[[], np.ndarray], object]]]
+
+
+def options_scratch_dir(requested: str | None = None) -> Path:
+    """Where `--options` writes: a scratch folder, never the shipped sounds."""
+    out = Path(requested) if requested else Path(tempfile.gettempdir()) / "bc-arcade-sound-options"
+    resolved = out.resolve()
+    if resolved == SHIPPED_SOUNDS_DIR or SHIPPED_SOUNDS_DIR in resolved.parents:
+        raise SystemExit(f"--options never writes to {SHIPPED_SOUNDS_DIR}; pick a scratch folder")
+    return out
+
+
+def write_options(
+    table: OptionTable,
+    sound: str,
+    out_dir: Path,
+    finish: Callable[[Callable[[], np.ndarray], object], np.ndarray],
+) -> list[Path]:
+    """Render every option of `sound` to `out_dir/<sound>-<label>.ogg`; returns the paths."""
+    if sound not in table:
+        known = ", ".join(sorted(table)) or "none saved yet"
+        raise SystemExit(f"no runner-up options for {sound!r}; known: {known}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for label, (recipe, level) in table[sound].items():
+        path = out_dir / f"{sound}-{label}.ogg"
+        write_ogg(finish(recipe, level), path)
+        paths.append(path)
+    return paths
+
+
+def options_cli(
+    args: list[str],
+    table: OptionTable,
+    finish: Callable[[Callable[[], np.ndarray], object], np.ndarray],
+) -> bool:
+    """Handle `--options <sound> [out_dir]`; returns False when `args` is not that flag."""
+    if args[:1] != ["--options"]:
+        return False
+    if len(args) < 2:
+        raise SystemExit(f"usage: --options <sound> [scratch_dir]; known: {', '.join(table)}")
+    for path in write_options(
+        table, args[1], options_scratch_dir(args[2] if len(args) > 2 else None), finish
+    ):
+        print(path)
+    return True
