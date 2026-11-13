@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
 import { clearGame, loadGame, saveGame, loadStats, saveStats } from "../storage";
-import { dealGame } from "../engine";
+import { applyMove, dealGame, getHintMoves } from "../engine";
 import type { FreeCellState } from "../types";
 
 const GAME_KEY = "freecell_game";
@@ -26,6 +26,25 @@ describe("freecell storage", () => {
     expect(loaded!.tableau.length).toBe(8);
     expect(loaded!.freeCells.length).toBe(4);
     expect(loaded!.isComplete).toBe(false);
+  });
+
+  it("restores a save whose stored events include the removed foundationComplete (#3567)", async () => {
+    const s = seedState();
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({
+        ...s,
+        events: [{ type: "cardPlace" }, { type: "foundationComplete", suit: "spades" }],
+      })
+    );
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.tableau.length).toBe(8);
+    // The restored game plays on normally: the next move's events replace the stale ones.
+    const move = getHintMoves(loaded!)[0]!;
+    const next = applyMove(loaded!, move);
+    expect(next.moveCount).toBe(loaded!.moveCount + 1);
+    expect(JSON.stringify(next.events)).not.toContain("foundationComplete");
   });
 
   it("returns null when no save exists", async () => {
