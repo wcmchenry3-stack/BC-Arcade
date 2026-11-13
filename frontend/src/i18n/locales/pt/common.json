@@ -106,5 +106,6 @@
   "locked.back": "Voltar ao lobby",
   "locked.back_label": "Voltar ao lobby",
   "offline.windowExhausted": "Já se passaram 3 dias desde a sua última conexão. Conecte-se à internet para receber o quebra-cabeça mais recente.",
-  "offline.windowExhaustedStreak": "Conecte-se para manter a sua sequência."
+  "offline.windowExhaustedStreak": "Conecte-se para manter a sua sequência.",
+  "action.autoComplete": "Auto-Completar"
 }

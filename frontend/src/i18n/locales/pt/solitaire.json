@@ -14,7 +14,6 @@
   "stat.timeA11y": "Tempo: {{time}}",
   "action.undo": "Desfazer",
   "action.hint": "Dica",
-  "action.autoComplete": "Auto-Completar",
   "action.dealAgain": "Recomeçar",
   "stock.recycle": "Reciclar depois da 1ª vez custa 50 pontos.",
   "pile.stock.label": "Comprar {{count}} do estoque, {{remaining}} cartas restantes",

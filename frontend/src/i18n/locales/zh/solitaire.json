@@ -14,7 +14,6 @@
   "stat.timeA11y": "时间：{{time}}",
   "action.undo": "撤销",
   "action.hint": "提示",
-  "action.autoComplete": "自动完成",
   "action.dealAgain": "重新发牌",
   "stock.recycle": "第二次及以后回收需扣50分。",
   "pile.stock.label": "抽取{{count}}张，剩余{{remaining}}张",

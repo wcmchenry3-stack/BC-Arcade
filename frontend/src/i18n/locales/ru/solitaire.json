@@ -14,7 +14,6 @@
   "stat.timeA11y": "Время: {{time}}",
   "action.undo": "Отмена",
   "action.hint": "Подсказка",
-  "action.autoComplete": "Автозавершение",
   "action.dealAgain": "Сдать снова",
   "stock.recycle": "Повторная переработка стоит 50 очков.",
   "pile.stock.label": "Взять {{count}} из колоды, осталось {{remaining}} карт",
