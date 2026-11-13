@@ -46,13 +46,14 @@ export async function routeSessionBoard(
     });
   });
   // /players/me as the server behaves since #2778: a join (PUT, no body)
-  // assigns a generated name, GET reads it, DELETE leaves. A join assigns
-  // "Tester". The board starts with `playerName`, so the server agrees with a
-  // name the test planted on the device (#3790).
+  // assigns a generated name ("Tester" here), GET reads it, DELETE leaves.
+  // Joining again keeps the current name, as on the server. The board starts
+  // with `playerName`, so the server agrees with a name the test planted on
+  // the device (#3790).
   let boardName: string | null = playerName;
   await page.route("**/players/me", async (route) => {
     const method = route.request().method();
-    if (method === "PUT") boardName = "Tester";
+    if (method === "PUT") boardName ??= "Tester";
     if (method === "DELETE") boardName = null;
     await route.fulfill({
       status: 200,

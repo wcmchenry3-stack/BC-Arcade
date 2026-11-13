@@ -1492,7 +1492,7 @@ await expect(page.getByText("Hit")).toBeVisible();
 
 ### 6. Mocked server state must agree with planted client state
 
-When a spec plants data the server also owns, its route mocks must answer as a server holding that data. The app reconciles with the server at launch, and the server wins. Example (#3790): a spec planted `player_display_name` but mocked `GET /players/me` as `{display_name: null}`. The launch refresh then erased the name, and the result card showed the join prompt in about 70% of runs. Pass the planted name to the mock (`routeSessionBoard(page, { …, playerName: "Tester" })`). Don't rely on the one-time legacy-name migration: earlier page loads in the same test usually set its flag first.
+When a spec plants data the server also owns, its route mocks must answer as a server holding that data. The app reconciles with the server at launch, and the server wins. Example (#3790): a spec planted `player_display_name` but mocked `GET /players/me` as `{display_name: null}`. The launch refresh then erased the name, and the result card showed the join prompt in about 70% of runs. Pass the planted name to the mock (`routeSessionBoard(page, { …, playerName: "Tester" })`). A spec with its own inline `/players/me` mock must likewise start that mock with the planted name (the Hearts, Star Swarm and Sort specs don't yet; #3813). Don't rely on the one-time legacy-name migration: earlier page loads in the same test usually set its flag first.
 
 ## i18n overflow check
 
