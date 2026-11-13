@@ -66,7 +66,11 @@ const MIN_CARD_WIDTH = 36;
 /**
  * Below 36 dp only as a last resort: a felt so short (a phone in landscape) that the
  * tallest legal column would not fit even at a 1 dp stripe takes narrower cards rather
- * than running off the felt.
+ * than running off the felt. Not reachable on a tablet at its usual sizes (the felt is about
+ * 540 dp tall at 1024x768: Solitaire's cards are 40 dp, FreeCell's 36). It was written for
+ * 200-240 dp phone-landscape felts, a shape phones no longer have (#3603); it stays for a short
+ * web window (1280x400: Solitaire's cards 29 dp; 1280x300: both games 12 dp) and a window
+ * resized short, where the alternative is cards off the felt (#3648).
  */
 const FIT_FLOOR_CARD_WIDTH = 12;
 /**
@@ -170,7 +174,7 @@ export function columnHeight(
  * is an owner-approved exception to the 18 dp floor: 15 dp at 375 x 667 (rank and suit
  * readable through the compact corner index, #3622).
  * Whatever the felt, the tallest legal column fits: a felt too short for it even at a
- * 1 dp stripe (landscape) gets narrower cards, under 36 dp if it must. The table never
+ * 1 dp stripe (a short window) gets narrower cards, under 36 dp if it must. The table never
  * scrolls: that would fight the drag.
  *
  * The card width is not monotonic in the felt's height near the 24 dp step boundary
@@ -245,7 +249,7 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
 
   /**
    * The geometry as chosen, unless the tallest legal column would not fit it even at a
-   * 1 dp stripe (a landscape felt): then the widest narrower card at which it fits, so
+   * 1 dp stripe (a short window): then the widest narrower card at which it fits, so
    * every card stays on the felt. The table never scrolls.
    */
   const ensureFits = (g: TableGeometry): TableGeometry => {
@@ -267,7 +271,7 @@ export function computeTableGeometry(input: TableGeometryInput): TableGeometry {
   // narrowest cards miss the 24 dp stripe, narrowing usually buys a dp or two of stripe
   // for a much smaller card, so it keeps its widest cards, but only while their stripe
   // is within `WIDE_CARD_STRIPE_SLACK` of the narrowest cards' and the column fits
-  // (a landscape felt fails both and takes the narrow cards, below).
+  // (a short window's felt fails both and takes the narrow cards, below).
   if (maxFaceDown === 0) {
     const wide = build(widthLimit, defaultFaceDown(widthLimit), "faceUp");
     const narrowest = build(minWidth, defaultFaceDown(minWidth), "faceUp");

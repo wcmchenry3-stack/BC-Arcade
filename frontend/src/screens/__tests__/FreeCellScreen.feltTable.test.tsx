@@ -474,8 +474,9 @@ describe("Large cards on the felt (#3347, #3607)", () => {
   });
 });
 
-describe("a landscape felt (#3607 review)", () => {
-  // pixel_6 in landscape: a felt of about 901 x 222 dp. The tallest column must stay on it.
+describe("a short-window felt (#3607 review)", () => {
+  // The old pixel_6 phone-landscape felt, about 901 x 222 dp, kept as a short-window guard
+  // (#3648). The tallest column must stay on it.
   it("901x222: 36 dp cards and a 19-card column inside the felt, above the band", async () => {
     setWindow(914, 411);
     const api = await mountOn(boardState([TALLEST, [c("hearts", 9)]]));
