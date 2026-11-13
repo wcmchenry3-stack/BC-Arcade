@@ -93,7 +93,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `REPLAY_RECORDING_ENABLED` | optional; default `true`. **Set `false` to stop storing replay events at once** (lifecycle events, games and boards unaffected; a game it cut stays cut when switched back on) | optional | Dashboard |
 | `CLIENT_SENTRY_ENABLED`    | optional; default `true`. **Set `false` to stop the apps' Sentry events** (keep-list: fatal crashes, native crashes/hangs, player feedback), #3437 | optional | Dashboard |
 | `CLIENT_SENTRY_SAMPLE_RATE` | optional; default `1.0`, 0–1 (share of the apps' Sentry events sent; a value outside 0–1 fails the deploy) | optional | Dashboard |
-| `SORT_CATALOG_EDITION_ENFORCED` | default `false`. **Set `true` once the app builds with Sort's level catalog are live in both stores** (#2761): the Sort board and Stats "Best" then rank only catalog solves | optional (set `true` to test the reset) | Dashboard |
+| `SORT_CATALOG_EDITION_ENFORCED` | default `false`. **Set `true` once the app builds with Sort's level catalog are live in both stores** (#2761): the Sort board and Stats "Best" then rank only catalog solves, and Sort's daily-challenge goals move from level 3 / 8 / 15 to 10 / 30 / 60 for days not yet frozen (#3728) | optional (set `true` to test the reset) | Dashboard |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`
@@ -148,7 +148,7 @@ Until `SORT_CATALOG_EDITION_ENFORCED` is set, the Sort board ranks every row as
 before. When the catalog builds are live on the App Store and Play Store, set
 `SORT_CATALOG_EDITION_ENFORCED=true` on `bc-arcade-api` (Environment) and **Save
 and deploy**: from then on only solves sent with `catalog_version` 1 rank (older
-builds' solves stay stored, never ranked). No migration, nothing deleted; delete
+builds' solves stay stored, never ranked; Sort's daily-challenge goals for not-yet-frozen days become level 10 / 30 / 60). No migration, nothing deleted; delete
 the variable and redeploy to undo. Details: [games/sort.md](games/sort.md#scoring-persistence).
 
 The backend is moving these reads into one `Settings` object in
