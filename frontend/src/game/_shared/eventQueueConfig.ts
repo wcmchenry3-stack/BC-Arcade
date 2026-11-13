@@ -331,7 +331,7 @@ export const MAHJONG_MAX_UNITS = 20;
  * Sort (#3384, epic #3383): the cap on one `moves` event's JSON length. A chunk is
  * up to 25 actions, each a number tuple: the longest honest one is a pour or a
  * hint between bottles 15 and 14, `[0,15,14],` (10 characters), so a worst honest
- * chunk is about 250 B plus the recorder's envelope (~60 B). 1 KB never bites it
+ * chunk with the recorder's envelope measures 281 B (replay.test.ts). 1 KB never bites it
  * and still bounds a bad one (a chunk over it is split on `m`, not dropped). The
  * backend's `MAX_MOVES_BYTES` holds the same figure.
  */
