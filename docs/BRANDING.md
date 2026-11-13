@@ -23,6 +23,8 @@ Two families, both loaded via `@expo-google-fonts` and mapped through `frontend/
 
 Import from `theme/typography.ts` — never hardcode font family strings in components.
 
+Load fonts **per weight, by subpath** (`import { Manrope_400Regular } from "@expo-google-fonts/manrope/400Regular"` in `App.tsx`), never from the package barrel (`@expo-google-fonts/manrope`). The barrel `require`s every weight's `.ttf`, so Metro would package all 12 (about 648 KB more, #3839). Adding a weight means adding its subpath import, its `useFonts` key and its `typography.ts` entry; `src/__tests__/fontImports.test.ts` fails on a barrel import or a family name that is styled but not loaded.
+
 Game canvases use the same faces. Star Swarm's HUD (#3598) takes its fonts from
 `theme/typography.ts` through `game/starswarm/render/hudStyle.ts`: React Native Text on iOS and
 Android, and canvas text on web, where the canvas asks the browser to load the expo-font faces

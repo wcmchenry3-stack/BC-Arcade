@@ -3,12 +3,13 @@ import "./src/i18n/i18n";
 import React, { Suspense, useEffect, useRef } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFonts } from "expo-font";
-import { SpaceGrotesk_400Regular, SpaceGrotesk_700Bold } from "@expo-google-fonts/space-grotesk";
-import {
-  Manrope_400Regular,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
-} from "@expo-google-fonts/manrope";
+// Per-weight subpath imports: the package barrels require every weight's .ttf, so Metro would
+// package all of them (12 files, +648 KB). Import only the weights typography.ts uses (#3839).
+import { SpaceGrotesk_400Regular } from "@expo-google-fonts/space-grotesk/400Regular";
+import { SpaceGrotesk_700Bold } from "@expo-google-fonts/space-grotesk/700Bold";
+import { Manrope_400Regular } from "@expo-google-fonts/manrope/400Regular";
+import { Manrope_600SemiBold } from "@expo-google-fonts/manrope/600SemiBold";
+import { Manrope_700Bold } from "@expo-google-fonts/manrope/700Bold";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer, useNavigation } from "@react-navigation/native";
