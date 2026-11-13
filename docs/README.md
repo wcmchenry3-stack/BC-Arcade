@@ -129,6 +129,7 @@ Preserve these because they contain evidence and rationale, but use the canonica
 | [HEARTS_PIMC_SPIKE.md](research/HEARTS_PIMC_SPIKE.md)                 | Hearts AI PIMC research and follow-up evidence                                                                    |
 | [YACHT_ORACLE.md](research/YACHT_ORACLE.md)                           | Yacht optimal-play oracle design/reference                                                                        |
 | [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md)             | Cascade asset investigation                                                                                       |
+| [asset-budget-plan.md](research/asset-budget-plan.md)                 | Packaged-asset budget plan (#3631): store-config measurement, ranked size wins, budget rule                       |
 | [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md)                     | Cascade physics design/reference                                                                                  |
 | [CASCADE-THEMING.md](research/CASCADE-THEMING.md)                     | Cascade theming design/reference                                                                                  |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
