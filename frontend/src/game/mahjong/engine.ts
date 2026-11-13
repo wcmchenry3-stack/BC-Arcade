@@ -43,22 +43,8 @@ import {
 const SCORE_PER_PAIR = 10;
 const SCORE_COMPLETE_BONUS = 500;
 
-/**
- * Fastest clear that ranks, in ms (#2747): half a second per pair over 72
- * pairs. Mirrors `MIN_CLEAR_MS` in `backend/mahjong/models.py` (the board's
- * `min_value`); `backend/tests/test_board_definitions.py` keeps them equal.
- * A faster clear is a broken clock (e.g. an old save resumed with no time
- * banked), so it is never a device best either.
- */
-export const MAHJONG_MIN_CLEAR_MS = 36000;
-
-/**
- * A device best time, or 0 ("no best yet") when it is below the floor. The shared personal best
- * (`game/_shared/personalBestGames.ts`, #3757) counts only these as Mahjong bests.
- */
-export function plausibleBestMs(ms: number): number {
-  return Number.isFinite(ms) && ms >= MAHJONG_MIN_CLEAR_MS ? ms : 0;
-}
+// The clear-time floor and the device-best check live in `clearTime.ts` (#3757); re-exported here.
+export { MAHJONG_MIN_CLEAR_MS, plausibleBestMs } from "./clearTime";
 
 /** The most moves `undoMove` can take back; the oldest entry goes first. */
 export const UNDO_CAP = 50;

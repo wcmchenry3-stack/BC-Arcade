@@ -8,7 +8,7 @@
  * by variant, exactly as the game's own loader read it then. It may throw on a corrupt save: that
  * reads as no best. `personalBest.ts` merges it in on the first read and then removes the key.
  */
-import { plausibleBestMs } from "../mahjong/engine";
+import { plausibleBestMs } from "../mahjong/clearTime";
 
 export type PersonalBestGame =
   "cascade" | "freecell" | "mahjong" | "solitaire" | "starswarm" | "sudoku" | "twenty48" | "yacht";
