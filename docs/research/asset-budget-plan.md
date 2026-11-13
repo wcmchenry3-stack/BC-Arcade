@@ -101,7 +101,7 @@ The largest non-font file is `drawable-mdpi/assets_logo.png` (38,541 B), then `a
 
 ### Unreferenced and "not bundled" files
 
-The issue says the audit counts 39 "present but not bundled" files. Today's count differs (the audit has been edited since: 44, then 32, then edits by #3638 and #3711) and **none of them is in `dist/assets`**. Checked two ways: `node frontend/scripts/list-bundled-assets.mjs` lists 8 files under `frontend/assets/` that no code references, and none of those 8 names appears in the store `dist/assets` (which contains no `.mp3` at all). The 24 icon masters in `cascade_icon_masters/` (10,352 KB on disk) are at the repo root, outside `frontend/`, so Metro cannot reach them. Answer: no, none of them is bundled after all.
+The issue says the audit counts 39 "present but not bundled" files. Today's count differs (the audit has been edited since: 44, then 32, then edits by #3638 and #3711) and **none of them is in `dist/assets`**. Checked two ways: `node frontend/scripts/list-bundled-assets.mjs` listed 8 files under `frontend/assets/` that no code references (7 now: #3845 deleted `freecell-invalid-move.mp3`, 25,584 B; the other seven are still pinned on disk by tests), and none of those 8 names appears in the store `dist/assets` (which contains no `.mp3` at all). The 24 icon masters in `cascade_icon_masters/` (10,352 KB on disk) are at the repo root, outside `frontend/`, so Metro cannot reach them. Answer: no, none of them is bundled after all.
 
 | File (under `frontend/assets/`)     |   Bytes | Note                                                            |
 | ----------------------------------- | ------: | --------------------------------------------------------------- |
@@ -109,11 +109,10 @@ The issue says the audit counts 39 "present but not bundled" files. Today's coun
 | `sounds/freecell-game-win.mp3`      |  87,960 | Third-party, replaced by the synthesized card-game set          |
 | `celestial-icons/milkyway.webp`     |  47,058 | Cascade, not in any theme list                                  |
 | `cosmos-baked/milkyway.png`         |  37,760 | Cascade, not in any theme list                                  |
-| `sounds/freecell-invalid-move.mp3`  |  25,584 | Third-party, replaced by `card-invalid-move.ogg`                |
 | `fruits-baked/pumpkin.png`          |  16,162 | Cascade, not in any theme list                                  |
 | `sounds/solitaire-invalid-move.ogg` |   5,956 | Replaced by shared `card-invalid-move.ogg`                      |
 | `fruit-icons/pumpkin.webp`          |   4,856 | Cascade, not in any theme list                                  |
-| **Total**                           | 546,360 |                                                                 |
+| **Total**                           | 520,776 |                                                                 |
 
 Deleting them saves **0 B of packaged assets** (they ship nowhere) and 546 KB of repo weight. They are legitimate "delete when the owner agrees" cleanups (rights audit rows would change), not budget wins.
 
