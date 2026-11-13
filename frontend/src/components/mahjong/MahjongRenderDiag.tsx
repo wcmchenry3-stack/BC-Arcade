@@ -22,6 +22,7 @@ import {
 } from "../../theme/theme.constants";
 import {
   RENDER_VARIANTS,
+  VARIANT_LABELS,
   diagSnapshot,
   formatDiag,
   useRenderVariant,
@@ -135,9 +136,9 @@ function RenderDiagBody({ motionTiles, dealing, reduceMotion, onRedeal }: Mahjon
                 style={[styles.btn, v === current && styles.btnActive]}
                 testID={`mahjong-variant-${v}`}
                 accessibilityRole="button"
-                accessibilityLabel={`Render variant ${v}`}
+                accessibilityLabel={`Render variant ${VARIANT_LABELS[v]}`}
               >
-                <Text style={styles.btnText}>{v}</Text>
+                <Text style={styles.btnText}>{VARIANT_LABELS[v]}</Text>
               </Pressable>
             ))}
             <Pressable

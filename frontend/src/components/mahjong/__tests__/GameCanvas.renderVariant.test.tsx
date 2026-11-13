@@ -1,8 +1,9 @@
 /**
  * #3684: the native canvas's render variants (renderDiag.ts). Outside a test build it always
- * draws variant "a", today's renderer, whatever was picked; in a test build "b" draws at
- * resolution 1 and "c" draws the canvas at the board's size with only the face bitmaps at
- * the board's resolution. Skia is stubbed with host Views that keep their props.
+ * draws variant "b", the fixed renderer, whatever was picked: a canvas at the board's size, no
+ * View downscale, faces at PixelRatio x 1. In a test build "a" is the OLD oversized canvas
+ * (#3611, for the before/after demo) and "c" is b with faces at PixelRatio x res. Skia is
+ * stubbed with host Views that keep their props.
  */
 import React from "react";
 import { act, render, screen } from "@testing-library/react-native";
@@ -117,7 +118,7 @@ afterEach(() => {
   resetRenderDiag();
 });
 
-/** Today's renderer (#3611): an oversized canvas the View scales back down. */
+/** The OLD renderer (#3611, test builds only): an oversized canvas the View scales back down. */
 function expectVariantA() {
   const { canvas, frame, tileTransforms } = drawn();
   expect(canvas).toEqual({ width: 200 * RES, height: 160 * RES });
@@ -133,35 +134,58 @@ function expectVariantA() {
   expect(mockRaster).toHaveBeenCalledWith(...rasterSize(RES));
 }
 
+/** The fixed renderer (#3684): board-size canvas, no View downscale, faces at PixelRatio x 1. */
+function expectFixed() {
+  const { canvas, frame, tileTransforms } = drawn();
+  expect(canvas).toEqual({ width: 200, height: 160 });
+  expect(frame).toMatchObject({ width: 200, height: 160, left: 0, top: 0 });
+  expect(frame.transform).toEqual([{ scale: 1 }]);
+  expect(tileTransforms.length).toBeGreaterThan(0);
+  for (const t of tileTransforms) expect(t).toEqual([{ scale: 1 }]);
+  expect(mockRaster).toHaveBeenCalledWith(...rasterSize(1));
+  expect(mockRaster).not.toHaveBeenCalledWith(...rasterSize(RES));
+}
+
 describe("GameCanvas render variants (#3684)", () => {
-  it("outside a test build it draws variant a, whatever was picked, and records nothing", async () => {
-    setRenderVariant("b");
+  it("#3684 regression: production never draws a canvas larger than the board, nor a View downscale", async () => {
+    setRenderVariant("a");
     delete process.env.EXPO_PUBLIC_TEST_HOOKS;
     await mount();
-    expectVariantA();
-    expect(diagSnapshot().canvas).toBeNull();
-  });
-
-  it("a (the default in a test build) is today's renderer, and is recorded", async () => {
-    await mount();
-    expectVariantA();
-    expect(diagSnapshot().canvas).toMatchObject({ variant: "a", res: RES, facesReady: 42 });
-    expect(diagSnapshot().lastRaster).toMatchObject({ ready: 42, nulls: 0 });
-  });
-
-  it("b draws at resolution 1: board-size canvas, no scale anywhere, faces at the pixel ratio", async () => {
-    setRenderVariant("b");
-    await mount();
-    const { canvas, frame, tileTransforms } = drawn();
-    expect(canvas).toEqual({ width: 200, height: 160 });
-    expect(frame).toMatchObject({ width: 200, height: 160, left: 0, top: 0 });
+    const { canvas, frame } = drawn();
+    expect(RES).toBeGreaterThan(1);
+    expect(canvas.width).toBeLessThanOrEqual(200);
+    expect(canvas.height).toBeLessThanOrEqual(160);
+    expect(frame.width).toBeLessThanOrEqual(200);
+    expect(frame.height).toBeLessThanOrEqual(160);
     expect(frame.transform).toEqual([{ scale: 1 }]);
-    for (const t of tileTransforms) expect(t).toEqual([{ scale: 1 }]);
+    // #3684 review: the faces are rasterised at PixelRatio, not PixelRatio x res.
     expect(mockRaster).toHaveBeenCalledWith(...rasterSize(1));
     expect(mockRaster).not.toHaveBeenCalledWith(...rasterSize(RES));
   });
 
-  it("c draws a board-size canvas but keeps the faces at the board's resolution", async () => {
+  it("outside a test build it draws the fixed renderer, whatever was picked, and records nothing", async () => {
+    setRenderVariant("a");
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    await mount();
+    expectFixed();
+    expect(diagSnapshot().canvas).toBeNull();
+  });
+
+  it("b (the default in a test build) is the fixed renderer, and is recorded", async () => {
+    await mount();
+    expectFixed();
+    expect(diagSnapshot().canvas).toMatchObject({ variant: "b", res: RES, facesReady: 42 });
+    expect(diagSnapshot().lastRaster).toMatchObject({ ready: 42, nulls: 0 });
+  });
+
+  it("a is the old oversized renderer, kept in test builds for the before/after demo", async () => {
+    setRenderVariant("a");
+    await mount();
+    expectVariantA();
+    expect(diagSnapshot().canvas).toMatchObject({ variant: "a", res: RES });
+  });
+
+  it("c draws a board-size canvas but keeps the faces at the board's resolution (test builds only)", async () => {
     setRenderVariant("c");
     await mount();
     const { canvas, frame, tileTransforms } = drawn();
@@ -170,6 +194,7 @@ describe("GameCanvas render variants (#3684)", () => {
     expect(frame.transform).toEqual([{ scale: 1 }]);
     for (const t of tileTransforms) expect(t).toEqual([{ scale: 1 }]);
     expect(mockRaster).toHaveBeenCalledWith(...rasterSize(RES));
+    expect(mockRaster).not.toHaveBeenCalledWith(...rasterSize(1));
   });
 
   it("counts only the passes that rasterised: a cache hit is not a raster", async () => {
@@ -179,17 +204,17 @@ describe("GameCanvas render variants (#3684)", () => {
     await mount();
     expect(diagSnapshot().rasters).toBe(1);
     // Another size does rasterise.
-    setRenderVariant("b");
+    setRenderVariant("c");
     await mount();
     expect(diagSnapshot().rasters).toBe(2);
   });
 
   it("re-renders a mounted canvas when the variant changes", async () => {
     await mount();
-    expectVariantA();
+    expectFixed();
     await act(async () => {
-      setRenderVariant("b");
+      setRenderVariant("a");
     });
-    expect(diagSnapshot().canvas).toMatchObject({ variant: "b" });
+    expect(diagSnapshot().canvas).toMatchObject({ variant: "a" });
   });
 });
