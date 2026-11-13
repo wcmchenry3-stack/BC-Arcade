@@ -327,7 +327,6 @@ Object.assign(scenarios, {
     seed: { daily_word_state_v1: JSON.stringify({ _v: 1, puzzle_id: "today", rows: [] }) },
     run: () => dailyWord.loadState("2026-10-07:en"),
   },
-
   "hearts: v2 save with an old persona": {
     seed: {
       hearts_game: JSON.stringify({
@@ -379,7 +378,6 @@ Object.assign(scenarios, {
     },
     run: laterLoad(mahjong.loadGame),
   },
-
   "mahjong: progress": {
     run: async () => {
       await mahjong.saveProgress({
@@ -410,7 +408,6 @@ Object.assign(scenarios, {
     },
     run: laterLoad(solitaire.loadGame),
   },
-
   "sudoku: save without variant": {
     seed: {
       sudoku_game: (() => {
@@ -435,7 +432,6 @@ Object.assign(scenarios, {
     },
     run: sudoku.loadGame,
   },
-
   "twenty48: save without tiles (pre-#570)": {
     seed: {
       twenty48_game_v2: JSON.stringify({
