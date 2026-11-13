@@ -29,6 +29,8 @@
  *      tumble locks Roll, the dice, the score rows and Hint until the dice
  *      land; the card waits for the end beat (`useYachtEndBeat`), which waits
  *      for a YACHT! / JOKER! celebration. Reduce Motion is read live.
+ *   8. End sound (#3750): `onStart` of the beat plays `yacht.win` / `loss` /
+ *      `tie` once per game, never on a restore.
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -65,6 +67,7 @@ import {
   type TurnData,
 } from "../game/yacht/replay";
 import { useGameEvents } from "../game/_shared/useGameEvents";
+import type { YachtEndOutcome } from "../game/yacht/motion";
 import { useScoreSound } from "../game/yacht/useScoreSound";
 import { useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
@@ -145,6 +148,8 @@ export default function GameScreen({ navigation, route }: Props) {
   const motion = useYachtMotion({
     player: () => gameStateRef.current,
     reopenedFinished: route.params.initialState.game_over,
+    // The end sound (#3750): at the beat's start, once per game, never on a restore.
+    onStart: (outcome) => playEndRef.current(outcome),
   });
   const { rollingIndices, startTumble, isLocked, reset: resetMotion } = motion;
   // The player's turn as it is played (memory only); the computer's lives in its hook.
@@ -283,6 +288,15 @@ export default function GameScreen({ navigation, route }: Props) {
   const { play: playDieRelease } = useSoundVariants(YACHT_DIE_RELEASE, YACHT_SOUNDS);
   const { play: playYacht } = useSound("yacht.yacht", YACHT_SOUNDS);
   const { play: playJoker } = useSound("yacht.joker", YACHT_SOUNDS);
+  // The end of the game (#3750): win, loss or tie, played by the motion's `onStart`.
+  const { play: playEndWin } = useSound("yacht.win", YACHT_SOUNDS);
+  const { play: playEndLoss } = useSound("yacht.loss", YACHT_SOUNDS);
+  const { play: playEndTie } = useSound("yacht.tie", YACHT_SOUNDS);
+  const playEndRef = useRef<(outcome: YachtEndOutcome) => void>(() => undefined);
+  useEffect(() => {
+    playEndRef.current = (o) =>
+      (o === "win" ? playEndWin : o === "loss" ? playEndLoss : playEndTie)();
+  }, [playEndWin, playEndLoss, playEndTie]);
   // The scoring ladder (#3578): one sound per score, yours and the computer's "rival" set.
   const { play: playScoreCommit } = useSound("yacht.scoreCommit", YACHT_SOUNDS);
   const { play: playScoreZero } = useSound("yacht.scoreZero", YACHT_SOUNDS);

@@ -247,3 +247,49 @@ def test_twenty48_game_over_lands_then_falls_then_settles_on_the_card():
     # The chord is on the card.
     assert any(card - 0.005 <= t <= card + 0.02 for t in hits), hits
     assert len(x) / SR <= 2.2
+
+
+def test_yacht_end_cards_follow_the_motion():
+    # game/yacht/motion.ts (#3749): WIN_BEAT_MS 1000, LOSS_BEAT_MS 600 (a tie shares the loss beat).
+    assert synth_puzzle_sfx.YACHT_WIN_CARD_AT == 1.0
+    assert synth_puzzle_sfx.YACHT_END_CARD_AT == 0.6
+
+
+def test_yacht_win_lands_its_chord_on_the_card():
+    x = synth_puzzle_sfx.yacht_win()
+    card = synth_puzzle_sfx.YACHT_WIN_CARD_AT
+    assert np.max(np.abs(x[: int(0.05 * SR)])) > 0  # the run starts with the beat
+    assert any(abs(t - card) <= 0.01 for t in _onsets(x)), _onsets(x)
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+    assert len(x) / SR <= 2.7
+
+
+@pytest.mark.parametrize("name", ["yacht_loss", "yacht_tie"])
+def test_yacht_loss_and_tie_land_their_chord_on_the_card(name):
+    x = getattr(synth_puzzle_sfx, name)()
+    card = synth_puzzle_sfx.YACHT_END_CARD_AT
+    assert any(abs(t - card) <= 0.01 for t in _onsets(x)), _onsets(x)
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+    assert len(x) / SR <= 2.1
+
+
+def test_yacht_end_sounds_are_silent_before_the_beat_and_carry_on_phones():
+    for n in ("win", "loss", "tie"):
+        recipe, level = synth_puzzle_sfx.SOUNDS[f"yacht-{n}"]
+        x = level(recipe())
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        assert spec[f < 300].sum() / spec.sum() < 0.001, n  # under 0.1 %
+    # Each sound is generated from silence: nothing before the first note (sample 0 is zero).
+    for fn in (synth_puzzle_sfx.yacht_win, synth_puzzle_sfx.yacht_loss, synth_puzzle_sfx.yacht_tie):
+        assert fn()[0] == 0
+
+
+def test_yacht_win_is_louder_than_the_tie_and_the_tie_louder_than_the_loss():
+    lv = {}
+    for n in ("win", "tie", "loss"):
+        recipe, level = synth_puzzle_sfx.SOUNDS[f"yacht-{n}"]
+        lv[n] = _rms50_db(level(recipe()))
+    assert lv["win"] > lv["tie"] > lv["loss"]
+    assert lv["win"] - lv["tie"] == pytest.approx(4, abs=0.2)
+    assert lv["tie"] - lv["loss"] == pytest.approx(2, abs=0.2)

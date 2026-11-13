@@ -61,6 +61,9 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The outcome whose beat waits for a celebration.
   const waiting = useRef<YachtEndOutcome | null>(null);
+  // While the outcome is not known yet: whether its beat still waits for a celebration. A
+  // celebration done meanwhile clears it, so the beat doesn't wait for one already gone.
+  const pendingAfter = useRef(false);
   // Read live: `start` is called from handlers that closed over an older render.
   const reduceMotionRef = useRef(reduceMotion);
   const onStartRef = useRef(onStart);
@@ -76,7 +79,14 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
     phaseRef.current = next;
     setPhase(next);
   };
-  useEffect(() => clearTimer, []);
+  const generation = useRef(0);
+  // Unmounting ends any wait for an outcome: its beat never starts (and plays no sound).
+  useEffect(() => {
+    return () => {
+      generation.current += 1;
+      clearTimer();
+    };
+  }, []);
 
   /** The beat itself, now: the card waits `endBeatMs(kind)`, or nothing under Reduce Motion. */
   const begin = useCallback((kind: YachtEndOutcome) => {
@@ -106,7 +116,6 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
   }, [begin]);
 
   // Each start (and clear) is a new game end: a promise from an older one is ignored.
-  const generation = useRef(0);
 
   /** The outcome is known: the beat now, or a wait for the celebration first. */
   const startKnown = useCallback(
@@ -136,15 +145,18 @@ export function useYachtEndBeat({ onStart }: YachtEndBeatOptions = {}): YachtEnd
         return;
       }
       // Not known yet: hold the card (no timer) until it is.
+      pendingAfter.current = after;
       toPhase("waiting");
       void kind.then((k) => {
-        if (gen === generation.current) startKnown(k, after);
+        if (gen === generation.current) startKnown(k, pendingAfter.current);
       });
     },
     [startKnown]
   );
 
   const celebrationDone = useCallback(() => {
+    // Done before the outcome is known: its beat starts as soon as it is (Codex, PR #3772).
+    if (phaseRef.current === "waiting") pendingAfter.current = false;
     const kind = waiting.current;
     if (kind && phaseRef.current === "celebration") begin(kind);
   }, [begin]);

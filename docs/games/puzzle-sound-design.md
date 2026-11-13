@@ -425,3 +425,38 @@ Adds 57,740 B for two sounds the game didn't have, ten files in all. Nothing is 
 | **Total**                                 | —                       | 35.0 KB (35,883 B) |        |
 
 Adds 35,883 B now; nothing is deleted, since the fanfare is shared. Daily Word no longer uses it; it goes once Sudoku and the card games stop using it.
+
+### Yacht end-of-game sounds (#3750)
+
+- **Brief (#3750, Sentry BC_GAMES-6S).** Yacht played nothing when a game ended; a player reported it. Three originals in Yacht's "wood and mallet" family: a win, a gentle loss and a tie in between. The owner chose the material and the process as for Daily Word.
+- **Constraints.**
+  - Each sound starts with the end beat (`useYachtMotion({ onStart })`, #3749): the game's last score, or the moment a last-score Yacht's celebration ends. The beat plays once per game and never on a restore.
+  - The result card shows after the beat (`game/yacht/motion.ts`): a win `WIN_BEAT_MS` 1.0 s, a loss or a tie `LOSS_BEAT_MS` / `TIE_BEAT_MS` 0.6 s. So the chord lands at 1.0 s for the win and 0.6 s for the loss and the tie, as the card shows. The recipes pin both times (`YACHT_WIN_CARD_AT`, `YACHT_END_CARD_AT`).
+  - Win in vs, or a new personal best in solo; loss in vs; tie in vs, and in solo any game that is not a new best (owner).
+  - Before: none.
+- **Options.** Each was previewed as a score's pencil tap followed by the sound, three times (a win, a loss, a tie):
+  - **A, mallet fanfare** (picked):
+    - win: a two-octave run (C E G C E G), a rolled C major, then a "ta-da" chord with a high bell at the card;
+    - loss: a falling line (G E D C) into a soft low A minor;
+    - tie: two level notes (E, G) into an open, unresolved C-G-D chord.
+  - B, scorepad: pencil taps tallying the card (quickening for the win, slow for the loss, two even ones for the tie), then a marimba roll, a low minor third or a plain octave.
+  - C, small and sweet: a quick light run then a "ding-ding"; a two-note sigh; the same note twice then a level chord. The shortest (1.5 to 1.9 s).
+- **Pick: A, for all three** (owner). It continues the dice, scoring and jackpot sounds Yacht already has, so the win reads as the top of that ladder, and the tie's open chord is clearly neither a win nor a loss.
+- **Levels** (dBFS over the loudest 50 ms, peak at most -1): win -15 (1 dB over the jackpot: the top of the ladder), tie -19, loss -21 (gentle, level with 2048's game over). So win > tie > loss. Under 0.1 % of the energy is below 300 Hz (tested), so they carry on phone speakers.
+- **One sound at a time.** The computer's last score a yacht or a joker plays its own 0.7 s sound (`cpu-jackpot-*`); the end beat then starts after it (`CPU_JACKPOT_SOUND_MS`), so the end sound never stacks on it.
+- **Timing.** The chord's strike is within 10 ms of the card moment (`tools/assets/tests/synth_puzzle_sfx_test.py`). Under Reduce Motion the beat is 0, so the card shows at once and the chord lands about 1.0 s (win) or 0.6 s after it: the sound is audio, not motion, and still plays.
+- **Gameplay audition.** Four games in the web build (a vs win, loss and tie, and a solo game), every `play()` logged and laid over the video; each chord lands as the card appears. See the story's thread for the approval.
+- **Why it works.**
+  - The win is the jackpot's fanfare, one step bigger, so a Yacht score and a won game are the same voice.
+  - The loss falls and settles; the tie holds still; the three read apart without looking.
+  - Only one sound plays: a last-score Yacht plays its jackpot, then the end sound only after the celebration.
+- **Trigger changes.** New `yacht.win`, `yacht.loss` and `yacht.tie`, played from the end beat's `onStart` in `GameScreen`.
+
+| File             | Old | New size           | Length |
+| ---------------- | --- | ------------------ | ------ |
+| `yacht-win.ogg`  | —   | 22.4 KB            | 2.6 s  |
+| `yacht-loss.ogg` | —   | 16.7 KB            | 2.0 s  |
+| `yacht-tie.ogg`  | —   | 17.0 KB            | 2.0 s  |
+| **Total**        | —   | 56.0 KB (57,389 B) |        |
+
+Adds 57,389 B now; nothing is deleted.

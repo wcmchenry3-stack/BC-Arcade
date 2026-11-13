@@ -14,14 +14,21 @@
  * - End beat (`useYachtEndBeat`): solo, `soloEnded(next)` with your last score; vs, the computer's
  *   `onScored` (in `cpuOptions`) with its last score. A game reopened on the computer's last turn
  *   has no beat, and its score lands still (`still`), under the card.
+ *   A last score that is the computer's yacht or joker waits for that sound
+ *   (`CPU_JACKPOT_SOUND_MS`) before the beat starts, so the end sound never stacks on it.
  * - Solo best (owner): read at mount; a new best is a win (and stored), anything else a tie. If it
  *   has not been read yet the beat waits for it, so its outcome (and #3750's sound) is right.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { inputLockMaxMs, type YachtEndOutcome } from "../../game/yacht/motion";
+import {
+  CPU_JACKPOT_SOUND_MS,
+  inputLockMaxMs,
+  type YachtEndOutcome,
+} from "../../game/yacht/motion";
 import type { GameEvent, GameState } from "../../game/yacht/types";
 import { loadBestScore, saveBestScore, soloEndOutcome } from "../../game/yacht/bestScore";
+import { scoreSoundFor } from "../../game/yacht/useScoreSound";
 import { useReduceMotion } from "../shared/useReduceMotion";
 import { useYachtEndBeat, type YachtEndBeatOptions } from "./useYachtEndBeat";
 
@@ -154,7 +161,15 @@ export function useYachtMotion({ player, reopenedFinished, onStart }: YachtMotio
       const you = playerRef.current();
       // Its last score after yours ends a vs game: the beat starts in the same batch (no flash).
       if (!cpu.game_over || !you.game_over) return;
-      endGame(vsEndOutcome(you.total_score, cpu.total_score));
+      const outcome = vsEndOutcome(you.total_score, cpu.total_score);
+      // Its last score a yacht or a joker plays its own sound: the beat (and the end sound)
+      // starts after it, with the card held meanwhile, so one sound plays at a time (#3750).
+      const sound = scoreSoundFor(cpu.events);
+      if (sound === "yacht" || sound === "joker") {
+        endGame(new Promise((resolve) => setTimeout(() => resolve(outcome), CPU_JACKPOT_SOUND_MS)));
+        return;
+      }
+      endGame(outcome);
     },
     [endGame]
   );
