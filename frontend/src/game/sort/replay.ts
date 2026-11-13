@@ -40,7 +40,10 @@
  *
  * Unit numbers count the chunks handed over (`unit`). The screen saves the count
  * with the game and a resumed game passes it to `resumeAt`, so its next chunk
- * carries on from it (GAME-CONTRACT 2.10).
+ * carries on from it (GAME-CONTRACT 2.10). It also saves the actions not yet
+ * handed over (`pending`): above 0 on a load, a kill lost them and the replay
+ * stops (`block`) rather than carry on past a hole. A chunk the recorder throws
+ * on blocks it too: its unit number is spent and its chunk may be missing.
  *
  * `rebuild` and `isAction` are the reader's side: they apply and validate the
  * log with the real engine, with the same rules as the backend's validator.
@@ -141,6 +144,8 @@ export interface RebuildResult {
  * Applies `actions` to `opening` with the real engine and reports the first one
  * that does not apply: a malformed tuple, a bottle index off the board, a pour
  * the engine refuses, or an undo or rewind with not enough history. Pure.
+ * @internal The reader's side: tests (and the reader, #3388) call it; the app does
+ * not (knip --production, #3126).
  */
 export function rebuild(opening: SortState, actions: readonly Action[]): RebuildResult {
   let state = opening;
@@ -190,6 +195,8 @@ export interface ActionLog {
   flush(): void;
   /** Forget what is collected, handing nothing over. */
   clear(): void;
+  /** How many actions are collected and not yet handed over. */
+  readonly size: number;
 }
 
 /**
@@ -216,6 +223,9 @@ export function createActionLog(
     flush,
     clear() {
       chunk = [];
+    },
+    get size() {
+      return chunk.length;
     },
   };
 }
@@ -244,11 +254,24 @@ export class SortReplay {
   ) {
     this.log = createActionLog((m) => {
       if (this.unitCount >= this.maxUnits) return; // the level's row budget is spent
-      if (this.stopIfFull()) return;
-      this.unitCount += 1;
-      this.sink.beginUnit(this.unitCount);
-      this.sink.record("moves", { m });
-      this.sink.closeUnit();
+      try {
+        if (this.stopIfFull()) return;
+        this.unitCount += 1;
+        this.sink.beginUnit(this.unitCount);
+        this.sink.record("moves", { m });
+        this.sink.closeUnit();
+      } catch (error) {
+        // Any throw here (the cap check included): the unit number may be spent
+        // with its chunk not stored, and a log that carried on would have a hole
+        // a reader could not see. Stop for good (the throw is reported by `guarded`).
+        try {
+          this.sink.closeUnit();
+        } catch {
+          // best effort: the recorder may have no unit open
+        }
+        this.block();
+        throw error;
+      }
     }, chunkSize);
   }
 
@@ -262,6 +285,15 @@ export class SortReplay {
   /** The units handed to the recorder so far, this level: what the screen saves with it. */
   get unit(): number {
     return this.unitCount;
+  }
+
+  /**
+   * Actions collected and not yet handed to the recorder. The screen saves it
+   * with the game: a load that finds it above 0 knows a kill lost them, so the
+   * stored log has a hole and the replay must not carry on (`block`).
+   */
+  get pending(): number {
+    return this.log.size;
   }
 
   /** A pour landed. */
@@ -291,8 +323,13 @@ export class SortReplay {
    */
   flush(): void {
     this.guarded(() => {
-      this.log.flush();
-      this.sink.flush();
+      // The recorder saves what it already holds even when the chunk in
+      // progress throws (and blocks the replay).
+      try {
+        this.log.flush();
+      } finally {
+        this.sink.flush();
+      }
       this.stopIfFull();
     });
   }

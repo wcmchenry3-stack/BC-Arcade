@@ -20,6 +20,25 @@ export interface SortProgress {
   readonly unlockedLevel: number;
   readonly currentLevelId: number | null;
   readonly currentState: SortState | null;
+  /**
+   * With a level in progress (#3386): the replay chunks handed to the recorder
+   * so far (`SortReplay.unit`), so a resumed session carries its unit numbers
+   * on (`resumeAt`). At `SORT_MAX_UNITS` the level's replay is stopped for good.
+   * Missing on saves from before replay recording: such a board is not recorded.
+   */
+  readonly replayUnit?: number;
+  /**
+   * The actions collected and not yet handed over when the board was saved
+   * (`SortReplay.pending`). Above 0 on a load, a kill lost them: the replay
+   * stops rather than carry on past the hole.
+   */
+  readonly replayPending?: number;
+  /**
+   * The recorder session the board's replay went to (#3386). A Continue carries
+   * the replay on only when the session it resumes is this one: a resume can
+   * adopt another level's killed session. Missing on older saves: not recorded.
+   */
+  readonly replayGameId?: string;
 }
 
 const SUBSYSTEM = "sort.storage";
@@ -60,8 +79,21 @@ export async function saveProgress(progress: SortProgress): Promise<void> {
   await progressSlot.save(progress);
 }
 
+const isCount = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0;
+
+const isGameId = (x: unknown): x is string => typeof x === "string" && x.length > 0;
+
 export async function loadProgress(): Promise<SortProgress> {
-  return (await progressSlot.load()) ?? DEFAULT;
+  const loaded = await progressSlot.load();
+  if (!loaded) return DEFAULT;
+  // A replay count or game id of the wrong shape reads as missing: the board is not recorded.
+  const { replayUnit, replayPending, replayGameId, ...rest } = loaded;
+  return {
+    ...rest,
+    ...(isCount(replayUnit) ? { replayUnit } : {}),
+    ...(isCount(replayPending) ? { replayPending } : {}),
+    ...(isGameId(replayGameId) ? { replayGameId } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
