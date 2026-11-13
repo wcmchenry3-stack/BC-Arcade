@@ -8,7 +8,7 @@
  *   that failed to load or parse is retried on the next mount, up to `MAX_FACE_ATTEMPTS`
  *   times; the ones that loaded are kept, and the set keeps its identity when nothing changed.
  * - Rasterising: `tileFacesFor` draws each face into a CPU raster surface at the art box's
- *   size times the device pixel ratio (times the board's resolution, see `boardResolution`) (the snapshot is a plain bitmap, no GPU readback), and
+ *   size times the device pixel ratio times the canvas's face resolution (`canvasPlan` in `renderDiag.ts`) (the snapshot is a plain bitmap, no GPU readback), and
  *   keeps the result per size (`faceWidth`x`faceHeight`) in an LRU of `MAX_CACHED_SIZES`
  *   sizes. Each mounted canvas holds the size it draws (`useTileFaces` acquires it and
  *   releases it on a size change or unmount); only a size no canvas holds is evicted, and its

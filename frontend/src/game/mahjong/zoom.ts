@@ -36,10 +36,11 @@ export function computeZoomBounds(
 }
 
 /**
- * How many times the board's natural size the canvas is drawn at, so it stays sharp up to max
- * zoom (#3611). The gesture layer scales the drawn board as a bitmap, so a canvas drawn at its
- * natural size would be stretched (and blurred) by up to `maxZoom` when zoomed in; drawn at
- * `maxZoom` times the size and shown scaled down, zooming only ever shrinks it. Never below 1.
+ * The board's max zoom, never below 1. #3611 drew the native canvas at this many times the
+ * board's size and shrank it with a View transform; #3684 removed that (iOS stopped presenting
+ * the oversized layer and aliased it). Production now draws the canvas at the board's size, and
+ * this value only sets the face raster scale (`tileFaces.ts`) and, in test builds, the old
+ * renderer (`renderDiag.ts`).
  */
 export function boardResolution(cameraScale: number, tileWidth: number): number {
   return Math.max(1, computeZoomBounds(cameraScale, tileWidth).maxZoom);
