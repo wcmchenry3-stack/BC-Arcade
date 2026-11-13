@@ -87,6 +87,29 @@ describe("judgeResult: per-game comparator", () => {
   });
 });
 
+describe("judgeResult: Mahjong's fastest plausible clear (was `nextBestTime`, #2747)", () => {
+  const next = (prior: number, ms: number) => {
+    const { best, isNewBest } = judgeResult("mahjong", prior, ms);
+    return { bestTimeMs: best, isNewBest };
+  };
+
+  it("keeps the fastest plausible clear; a first clear is a best but not a new best (#2977)", () => {
+    expect(next(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
+    expect(next(90_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: true });
+    expect(next(60_000, 90_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
+    expect(next(60_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
+  });
+
+  it("never takes a clear under the floor as a best", () => {
+    expect(next(0, 5_000)).toEqual({ bestTimeMs: 0, isNewBest: false });
+    expect(next(90_000, 5_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
+  });
+
+  it("ignores a stored best under the floor: a real clear replaces it but is a first best", () => {
+    expect(next(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
+  });
+});
+
 describe("mergeBests", () => {
   it("keeps the better value per variant, by the game's comparator", () => {
     expect(mergeBests("freecell", { a: 90, b: 70 }, { a: 80, b: 75, c: 60 })).toEqual({
@@ -334,6 +357,53 @@ describe("older saves that hold no best", () => {
     await expect(getBests(game)).resolves.toEqual({});
     await expect(AsyncStorage.getItem(key)).resolves.toBeNull();
     await expect(AsyncStorage.getItem(storageKey(game))).resolves.toBeNull();
+  });
+
+  it.each([
+    ["starswarm", "starswarm.bestScore", "not a number"],
+    ["freecell", "freecell_stats_v1", "{}"],
+    ["solitaire", "solitaire_stats_v1", "not-json{"],
+    ["solitaire", "solitaire_stats_v1", '{"gamesPlayed":5}'],
+    ["sudoku", "sudoku_stats_v1", "{{bad json"],
+    ["sudoku", "sudoku_stats_v1", '{"easy":{"gamesSolved":4},"medium":{},"hard":null}'],
+    ["mahjong", "mahjong_stats_v1", '{"bestScore":1220,"bestTimeMs":90000,"gamesPlayed":2}'],
+  ] as const)("%s: %s = %s holds no best", async (game, key, raw) => {
+    await AsyncStorage.setItem(key, raw);
+    await expect(getBests(game)).resolves.toEqual({});
+  });
+
+  it("keeps only the best from records with the old counters", async () => {
+    await AsyncStorage.setItem(
+      "freecell_stats_v1",
+      JSON.stringify({ bestMoves: 60, gamesPlayed: 5, gamesWon: 2 })
+    );
+    await expect(getBests("freecell")).resolves.toEqual({ _: 60 });
+    await AsyncStorage.setItem(
+      "solitaire_stats_v1",
+      JSON.stringify({ bestTimeMs: 81000, bestMoves: 99, gamesPlayed: 12, gamesWon: 4 })
+    );
+    await expect(getBests("solitaire")).resolves.toEqual({ _: 81000 });
+    await AsyncStorage.setItem(
+      "sudoku_stats_v1",
+      JSON.stringify({
+        classic: {
+          easy: { bestTimeS: 95, gamesSolved: 12 },
+          medium: { bestTimeS: 0, gamesSolved: 0 },
+          hard: { bestTimeS: 400, gamesSolved: 2 },
+        },
+        mini: { easy: { bestTimeS: 30, gamesSolved: 1 } },
+      })
+    );
+    await expect(getBests("sudoku")).resolves.toEqual({
+      "classic.easy": 95,
+      "classic.hard": 400,
+      "mini.easy": 30,
+    });
+  });
+
+  it("Yacht's most possible score is a best; one above it is corrupt", async () => {
+    await AsyncStorage.setItem("yacht_best_score_v1", String(MAX_YACHT_SCORE));
+    await expect(getBest("yacht")).resolves.toBe(MAX_YACHT_SCORE);
   });
 
   it("floors a fractional score as the old Cascade and Star Swarm reads did", async () => {

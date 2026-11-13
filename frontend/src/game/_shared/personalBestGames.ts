@@ -8,7 +8,7 @@
  * by variant, exactly as the game's own loader read it then. It may throw on a corrupt save: that
  * reads as no best. `personalBest.ts` merges it in on the first read and then removes the key.
  */
-import { MAHJONG_MIN_CLEAR_MS } from "../mahjong/engine";
+import { plausibleBestMs } from "../mahjong/engine";
 
 export type PersonalBestGame =
   "cascade" | "freecell" | "mahjong" | "solitaire" | "starswarm" | "sudoku" | "twenty48" | "yacht";
@@ -95,7 +95,7 @@ export const PERSONAL_BEST_GAMES: Readonly<Record<PersonalBestGame, PersonalBest
   // it was before).
   mahjong: {
     lowerIsBetter: true,
-    isPlausible: (ms) => ms >= MAHJONG_MIN_CLEAR_MS,
+    isPlausible: (ms) => plausibleBestMs(ms) > 0,
     legacy: {
       keys: ["mahjong_stats_v1"],
       read: (stored) => {
