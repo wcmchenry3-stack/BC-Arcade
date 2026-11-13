@@ -15,7 +15,7 @@
  *      docs/games/freecell.md, "Replay recording"); nothing is saved per action.
  *   5. Result + leaderboard (#2633) — the win is `useCompletionTransition` (#3087): once
  *      per game, a resumed won game records nothing; the shared GameResultModal; best
- *      moves via `bestOf`; ranked via `useGameLeaderboard`.
+ *      moves via the shared personal best (#3757); ranked via `useGameLeaderboard`.
  *   6. Events and layout — `useGameEvents` plays the sounds and banners. The
  *      board sits on the shared felt (#3607) under a MOVES · TIME stat line; its geometry
  *      (`game/freecell/layout.ts`) fits the tallest legal column, so it never scrolls
@@ -44,7 +44,6 @@ import { PlayClockText } from "../components/shared/PlayClockText";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
-import { bestOf } from "../game/_shared/bestOf";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { PillButton } from "../components/shared/PillButton";
@@ -83,18 +82,12 @@ import { guardRecording, savedRows, type Action } from "../game/_shared/cards/mo
 import { useMoveLog } from "../game/_shared/cards/useMoveLog";
 import { useFlushOnBackground } from "../game/_shared/useFlushOnBackground";
 import type { FreeCellState, Move } from "../game/freecell/types";
-import {
-  clearGame,
-  loadGame,
-  saveGame,
-  loadStats,
-  saveStats,
-  type FreeCellStats,
-} from "../game/freecell/storage";
+import { clearGame, loadGame, saveGame } from "../game/freecell/storage";
+import { getBest, judgeResult, recordResult } from "../game/_shared/personalBest";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
-import { useSound } from "../game/_shared/useSound";
+import { LAZY_SOUND, useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
 import { FREECELL_CARD_PLACE, FREECELL_SOUNDS } from "../game/freecell/sounds";
 import type { DropOffset } from "../game/_shared/drag/DragContext";
@@ -135,16 +128,18 @@ export default function FreeCellScreen() {
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  const statsRef = useRef<FreeCellStats>({ bestMoves: 0 });
-  // The saved game (usePersistedGameState, #3087): loaded with the stats on mount, then
+  // The fewest moves in a win on this device, for the "new best" badge: the shared personal
+  // best (#3757), read with the saved game.
+  const bestMovesRef = useRef(0);
+  // The saved game (usePersistedGameState, #3087): loaded with the best on mount, then
   // saved on every change once that load has landed. Called before the win effect, so a
   // winning move is saved before the win clears it. `stateRef` is the latest state, read
   // by the new-game abandon and the unmount snapshot, neither of which can close over
   // `state`. The restore is below.
   const game = usePersistedGameState<FreeCellState>({
     load: async () => {
-      const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
-      statsRef.current = savedStats;
+      const [saved, bestMoves] = await Promise.all([loadGame(), getBest("freecell")]);
+      bestMovesRef.current = bestMoves;
       // None of the time the app was closed counts on the play clock (#3607). A load that
       // lands while the player is already away is paused in the restore handler below.
       return saved === null ? saved : onLoad(saved);
@@ -290,9 +285,9 @@ export default function FreeCellScreen() {
 
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
 
-  const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS);
-  const { play: playNoMoves } = useSound("freecell.noMoves", FREECELL_SOUNDS);
-  const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS);
+  const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS, 1.0, LAZY_SOUND);
+  const { play: playNoMoves } = useSound("freecell.noMoves", FREECELL_SOUNDS, 1.0, LAZY_SOUND);
+  const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS, 1.0, LAZY_SOUND);
 
   /**
    * Runs Auto-Complete from `fromState`: one card per step, AUTO_STEP_MS apart, the board
@@ -450,14 +445,16 @@ export default function FreeCellScreen() {
       onComplete: (s) => {
         const gameId = finishGame(s);
         const finalMoves = s.moveCount;
-        const curr = statsRef.current;
         // Only a win that happened this session has a session to rank.
         if (gameId) void lookupRank(gameId);
-        const { best, isNewBest } = bestOf(curr.bestMoves, finalMoves, true);
+        const { best, improved, isNewBest } = judgeResult(
+          "freecell",
+          bestMovesRef.current,
+          finalMoves
+        );
         setWinSummary({ best, isNewBest });
-        const updated: FreeCellStats = { ...curr, bestMoves: best };
-        statsRef.current = updated;
-        saveStats(updated).catch(() => {});
+        bestMovesRef.current = best;
+        if (improved) void recordResult("freecell", finalMoves);
       },
       onAlreadyComplete: finishGame,
     }
@@ -499,7 +496,7 @@ export default function FreeCellScreen() {
       setState({ ...saved, events: [] });
       markRestoredComplete();
       setResumedWin(true);
-      setWinSummary({ best: statsRef.current.bestMoves, isNewBest: false });
+      setWinSummary({ best: bestMovesRef.current, isNewBest: false });
     }
   });
 

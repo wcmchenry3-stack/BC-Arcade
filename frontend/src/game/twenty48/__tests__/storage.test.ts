@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { saveGame, loadGame, clearGame, saveBestScore, loadBestScore } from "../storage";
+import { saveGame, loadGame, clearGame } from "../storage";
 import { _resetTileIds, move, setRng, createSeededRng } from "../engine";
 import { Twenty48State } from "../types";
 
@@ -109,15 +109,6 @@ describe("twenty48 storage", () => {
     await saveGame(sample);
     await clearGame();
     expect(await loadGame()).toBeNull();
-  });
-
-  it("saves and loads best score", async () => {
-    await saveBestScore(1234);
-    expect(await loadBestScore()).toBe(1234);
-  });
-
-  it("loadBestScore returns 0 when nothing is saved", async () => {
-    expect(await loadBestScore()).toBe(0);
   });
 
   // #698: on app reload, the engine's module-level tile-ID counter restarts

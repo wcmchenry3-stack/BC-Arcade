@@ -168,6 +168,19 @@ cd frontend && npm run prebuild      # or: node scripts/optimize-assets.js
 
 The script is idempotent.
 
+## Tweaking a generated asset
+
+The in-house sounds (`synth_starswarm_sfx.py`, `synth_arcade_sfx.py`, `synth_puzzle_sfx.py`) and the Star Swarm sprites (`draw_starswarm_art.py`) are the output of their scripts in `tools/assets/`. Tests fail when a shipped file stops matching its generator (#3672), so a change always goes through the script:
+
+1. Edit the recipe in the generator script.
+2. Rerun the generator for that name into a scratch folder, e.g. `python tools/assets/synth_puzzle_sfx.py /tmp/out daily-word-win` (sprites: `python tools/assets/draw_starswarm_art.py --out /tmp/out <name>`).
+3. Listen to or look at the result, then copy it over the shipped file in `frontend/assets/`.
+4. Run `cd tools && python -m pytest`. `synth_shipped_test.py` (sounds) and `draw_starswarm_art_test.py` (sprites, pixel for pixel) must pass. The sound test compares decoded samples, which in practice means bit-exact decoded PCM under a matched ffmpeg/libvorbis build: its 2% relative RMS tolerance only absorbs trivial float differences, it fails a 0.17 dB recipe change, and it does not survive an encoder change (a libvorbis quality change moves the decode by 2% to 18%). It needs ffmpeg with libvorbis; CI gets it from the pinned `ubuntu-24.04` runner image plus an apt install, and under CI a missing ffmpeg fails the test instead of skipping. If the test fails and you changed no recipe, the encoder build probably changed: refresh the shipped sounds with the procedure below.
+
+### Pinned generator libraries
+
+`tools/assets/requirements.txt` pins numpy, scipy, Pillow, colour-science and pytest to exact versions, and CI's `Test tools (pytest)` job installs that file, so local, cloud and CI runs produce the same output (#3816: a cloud container with Pillow 12.3 instead of 13 failed the sprite tests, because Pillow 12's LANCZOS downscale differs). Install the file; do not rely on whatever is preinstalled. To upgrade one of them, bump the pin, regenerate **every** generated asset into scratch folders, review the diff (decoded PCM hashes for sounds, pixel diffs for sprites), and ship any changed files in the same PR. The audio encoder is the system `ffmpeg`/libvorbis, not a Python package, so it cannot be pinned there. CI takes it from the `ubuntu-24.04` runner image (pinned in `ci.yml`); a new ffmpeg/libvorbis build means regenerating the sounds, like a library bump. Dependabot watches `tools/assets/requirements.txt` for security updates only (`open-pull-requests-limit: 0` in `.github/dependabot.yml`): a version bump changes generator output, so it is never an automatic PR and always goes through this procedure.
+
 ## Regenerating baked Cascade sprites
 
 **This pipeline no longer runs** (#3692): its source art and the vertices JSON files it read were deleted, and it is removed in #3698.

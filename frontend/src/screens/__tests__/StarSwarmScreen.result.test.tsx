@@ -5,6 +5,7 @@ import EsStarswarm from "../../i18n/locales/es/starswarm.json";
 import { difficultyMultiplier } from "../../game/starswarm/engine";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { getBest, storageKey } from "../../game/_shared/personalBest";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 import type { ScoreLedger } from "../../game/starswarm/scoreLedger";
@@ -151,14 +152,32 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(within(screen.getByTestId("starswarm-result")).getByText("New best")).toBeTruthy();
   });
 
+  it("reads the best from the shared personal best and records a new one there (#3757)", async () => {
+    await AsyncStorage.setItem(storageKey("starswarm"), JSON.stringify({ v: 1, b: { _: 3000 } }));
+    await renderScreen();
+    await startRun();
+    await endRun(4200, 7);
+    expect(within(screen.getByTestId("starswarm-result")).getByText("New best")).toBeTruthy();
+    await waitFor(async () => expect(await getBest("starswarm")).toBe(4200));
+  });
+
+  it("writes no best for a run that doesn't beat it (#3757)", async () => {
+    await AsyncStorage.setItem(storageKey("starswarm"), JSON.stringify({ v: 1, b: { _: 9000 } }));
+    await renderScreen();
+    await startRun();
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    setItem.mockClear();
+    await endRun(4200, 7);
+    expect(within(screen.getByTestId("starswarm-result")).getByText("9,000")).toBeTruthy();
+    expect(setItem).not.toHaveBeenCalledWith(storageKey("starswarm"), expect.anything());
+  });
+
   it("saves the first run as the best, but it is not a new best (#2977)", async () => {
     await renderScreen();
     await startRun();
     await endRun(4200, 7);
     expect(within(screen.getByTestId("starswarm-result")).queryByText("New best")).toBeNull();
-    await waitFor(async () =>
-      expect(await AsyncStorage.getItem("starswarm.bestScore")).toBe("4200")
-    );
+    await waitFor(async () => expect(await getBest("starswarm")).toBe(4200));
   });
 
   // #2626: the named session row is the leaderboard entry; the card only reads its rank.

@@ -1,10 +1,12 @@
 /**
  * Yacht's solo personal best (#3749, owner: a local best): a new best is a win for the end beat,
  * anything else a tie; the first finished game sets it and counts as a new best; saves from
- * before it load unchanged.
+ * before it load unchanged. It is kept in the shared personal best (#3757), which moves the old
+ * `yacht_best_score_v1` in on the first read.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { loadBestScore, saveBestScore, soloEndOutcome } from "../bestScore";
+import { soloEndOutcome } from "../bestScore";
+import { getBest, recordResult } from "../../_shared/personalBest";
 import { loadGame } from "../storage";
 import { newGame } from "../engine";
 
@@ -33,21 +35,21 @@ describe("soloEndOutcome", () => {
 
 describe("the stored best", () => {
   it("is 0 with nothing stored, and keeps what was saved", async () => {
-    expect(await loadBestScore()).toBe(0);
-    await saveBestScore(212);
-    expect(await loadBestScore()).toBe(212);
+    expect(await getBest("yacht")).toBe(0);
+    await recordResult("yacht", 212);
+    expect(await getBest("yacht")).toBe(212);
   });
 
   it("reads anything unusable as no best", async () => {
     await AsyncStorage.setItem("yacht_best_score_v1", "not a number");
-    expect(await loadBestScore()).toBe(0);
+    expect(await getBest("yacht")).toBe(0);
     await AsyncStorage.setItem("yacht_best_score_v1", "-5");
-    expect(await loadBestScore()).toBe(0);
+    expect(await getBest("yacht")).toBe(0);
     // Above the most a game can score (1575): corrupt.
     await AsyncStorage.setItem("yacht_best_score_v1", "1576");
-    expect(await loadBestScore()).toBe(0);
+    expect(await getBest("yacht")).toBe(0);
     await AsyncStorage.setItem("yacht_best_score_v1", "1575");
-    expect(await loadBestScore()).toBe(1575);
+    expect(await getBest("yacht")).toBe(1575);
   });
 
   it("is its own record: a game saved before it still loads, and has no best", async () => {
@@ -58,9 +60,9 @@ describe("the stored best", () => {
     );
     const loaded = await loadGame();
     expect(loaded?.state.round).toBe(4);
-    expect(await loadBestScore()).toBe(0);
+    expect(await getBest("yacht")).toBe(0);
     // Saving a best leaves the game save alone.
-    await saveBestScore(99);
+    await recordResult("yacht", 99);
     expect((await loadGame())?.state.round).toBe(4);
   });
 });

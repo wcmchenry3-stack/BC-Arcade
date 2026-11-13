@@ -112,7 +112,7 @@ import { BLUR_MIN_TRICKS, HeartsReplay, gameStartedData } from "../game/hearts/r
 import { loadPendingReplay, pendingReplayPort } from "../game/hearts/pendingReplay";
 import type { PrincipleId } from "../game/hearts/conservative/terms";
 import { useGameEvents } from "../game/_shared/useGameEvents";
-import { useSound } from "../game/_shared/useSound";
+import { LAZY_SOUND, useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
 import { HEARTS_CARD_PLAY, HEARTS_SOUNDS, HEARTS_TRICK_WON } from "../game/hearts/sounds";
 import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimation";
@@ -600,13 +600,23 @@ export default function HeartsScreen() {
     )
   );
 
-  const { play: playHeartsBroken } = useSound("hearts.heartsBroken", HEARTS_SOUNDS);
-  const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS);
-  const { play: playQueenOfSpades } = useSound("hearts.queenOfSpades", HEARTS_SOUNDS);
+  const { play: playHeartsBroken } = useSound(
+    "hearts.heartsBroken",
+    HEARTS_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
+  const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS, 1.0, LAZY_SOUND);
+  const { play: playQueenOfSpades } = useSound(
+    "hearts.queenOfSpades",
+    HEARTS_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
   const { play: playCardPlay } = useSoundVariants(HEARTS_CARD_PLAY, HEARTS_SOUNDS);
   const { play: playTrickWon } = useSoundVariants(HEARTS_TRICK_WON, HEARTS_SOUNDS);
-  const { play: playGameWon } = useSound("hearts.gameWon", HEARTS_SOUNDS);
-  const { play: playGameLost } = useSound("hearts.gameLost", HEARTS_SOUNDS);
+  const { play: playGameWon } = useSound("hearts.gameWon", HEARTS_SOUNDS, 1.0, LAZY_SOUND);
+  const { play: playGameLost } = useSound("hearts.gameLost", HEARTS_SOUNDS, 1.0, LAZY_SOUND);
 
   /** The moon shot moment, with the howl when the human shot it. */
   function startMoonShot(shooter: number) {

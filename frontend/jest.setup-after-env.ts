@@ -55,3 +55,13 @@ beforeEach(() => {
     )
     .resetSentryThrottle();
 });
+
+// The shared personal best (#3757) caches each game's bests in memory: storage is cleared
+// between tests, so the cache must be too.
+beforeEach(() => {
+  jest
+    .requireActual<typeof import("./src/game/_shared/personalBest")>(
+      "./src/game/_shared/personalBest"
+    )
+    .__resetPersonalBestForTests();
+});

@@ -598,6 +598,54 @@ replays saves recorded from the pre-#2987 modules).
 - When a game saves is the screen's decision (most after every move;
   Mahjong debounced, #2961), not the slot's.
 
+**Personal best (#3757, owner decision #3798).** Every game that keeps a best
+keeps it through one module, `game/_shared/personalBest.ts`, not its own
+record. The device is the source of truth; nothing reads or writes the
+server (a one-off seed from the server's stats is #3802).
+
+- **API.** `getBest(game, variant?)` (0: none), `getBests(game)` (by
+  variant), `recordResult(game, variant?, value)` → `{ best, improved,
+  isNewBest }`, and `judgeResult(game, prior, value)` for screens that read
+  the best when a game starts and decide its end synchronously. The "new
+  best" rule stays `bestOf`: the first result sets the best but is never a new
+  best (Yacht's solo end beat counts the first game as a win itself).
+- **What "best" means** is each game's metric from before #3757
+  (`personalBestGames.ts`): highest score (Cascade, Star Swarm, 2048, Yacht
+  solo, at most 1575), fewest moves in a win (FreeCell), fastest win
+  (Solitaire), fastest solve per mode and difficulty (Sudoku,
+  `"classic.easy"`), fastest clear per layout, never under the 36 s floor
+  (Mahjong). A value that can't be a best (a 0 score, a broken clock) is never
+  stored. Sort's best moves per level are not in it yet (still
+  `@sort/best_moves`, `game/sort/storage.ts`); Blackjack, Hearts and Daily
+  Word keep no best.
+- **Format.** One AsyncStorage key per game, `personal_best_v1:<game>`:
+  `{"v":1,"b":{"<variant>":<best>}}`, variant `"_"` for a game with none; a
+  few dozen bytes per variant.
+- **Older saves** (`cascade_best_score`, `starswarm.bestScore`,
+  `twenty48_best_score_v1`, `yacht_best_score_v1`, `freecell_stats_v1`,
+  `solitaire_stats_v1`, `sudoku_stats_v1`, `mahjong_stats_v1`) are moved in on
+  the game's first read: merged with any new-format best (the better one wins,
+  so nothing is lowered or lost), written once, and the old key removed only
+  after that write lands. A failed write leaves the old key for the next read;
+  the move is idempotent.
+- **Fail-safe.** Nothing rejects. A record that can't be parsed reads as no
+  best (a Sentry warning, and the record is removed); a value that can't be a
+  best is dropped. A record in a format version this build doesn't know (a
+  newer build's, kept across a rollback) reads as no best and is left exactly
+  as stored: nothing is written over it, and an older save still counts in
+  memory but stays stored. A failed read writes nothing either, so a best it
+  couldn't see is never overwritten. A game's reads and writes run in order.
+  Each kind of failure (read, write, moving an older save in, a corrupt
+  record) is reported to Sentry at most once per app session per game
+  (`sentryThrottle`), so broken storage can't send an event per move.
+- **Cost.** No server I/O; Sentry bounded as above. Storage writes only when a best improves (plus the
+  one-off move of an older save); no work on the frame or gesture path: the
+  best is read when a game starts and recorded once when it ends (2048
+  records as the live score passes the best, as its old record did). Each
+  game's bests are cached in memory once read or written, so storage is read
+  about once per game per session: a 2048 move that raises the best costs one
+  small `setItem` and no read (it was one `getMany` plus one `setItem`).
+
 **Identity and leaderboard name (#2624, #2519 decisions 17–18, #2778).** A
 player is their player id: the app's `game_session_id`, sent as `X-Session-ID`
 (one per install; a reinstall or a new device is a new player until accounts,
@@ -1364,6 +1412,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
 | `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
 | `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
+| `STARSWARM_HITS_BY_TIER` | `true`: `false` strips `damage.hitsByTier` from every stored Star Swarm `wave_completed` (the unpruned per-tier hit grid, #3710); the rest of the event is unchanged. A no-release dial finer than the replay switches, which stop the whole wave | `starswarm/models.py` (lazy) |
 | `CLIENT_SENTRY_ENABLED` | `true`: `false` stops the apps' Sentry events but the keep-list, served on `GET /games/catalog` as `client_sentry.enabled` (#3437) | `observability/client_sentry_dial.py` (lazy) |
 | `CLIENT_SENTRY_SAMPLE_RATE` | `1.0` (0–1): share of the apps' Sentry events sent, served as `client_sentry.sample_rate` (#3437) | `observability/client_sentry_dial.py` (lazy) |
 | `SORT_CATALOG_EDITION_ENFORCED` | `false`: `true` makes the Sort board and Stats "Best" rank only solves of the current level catalog (#2761; set once the catalog builds are live); also moves Sort's daily-challenge goals from 3/8/15 to 10/30/60 for unfrozen days (#3728) | `games/boards/editions.py` (lazy) |

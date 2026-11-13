@@ -247,6 +247,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 - Metadata model: `SortMetadata` — `player_name: str = ""` (max 64 chars, `LegacyPlayerName`; 32 before #2995). Current builds send no metadata.
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `catalog_version`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
+- **Replay recording (backend, #3387, epic #3383).** Sort records a level as `moves` events, validated by `backend/sort/replay.py` (`validate_moves`, hooked in `SortModule.validate_event`) and seeded by `0047_sort_replay_events` (deploy it before the app that sends the event, or the server answers `400 unknown_event_type`). `data` is the recorder's envelope (`v` 1, `unit`, `t_ms`, optional `part` / `parts`) plus `m`, 1..32 actions (the app sends 25), each an array of strict ints: pour `[0, from, to]`, undo `[1]`, hint `[2, from, to]`, rewind `[3, n]` (`0 <= from, to < 16` and `from != to`, `1 <= n <= 1000`). 1,024 B of compact JSON per event (`MAX_MOVES_BYTES`, equal to the app's `SORT_MOVES_MAX_BYTES`; a test holds the two equal). A bad event is dropped, not the batch, with a throttled Sentry report by reason only. `game_started` is not validated and carries `{ level, catalog, engine_version: 1 }`; `game_ended` and `SortResult` are unchanged. Per-level cap `SORT_CAP` (`games/replay_caps.py`): 12 events and 14,688 B. The full section (the app's recorder, the replay format and its cost) is written with story #3389.
 
 ## Colour palette
 

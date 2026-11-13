@@ -30,7 +30,7 @@ export function boardSize(width: number, height: number, wordLength: number): Bo
   // n tiles and n - 1 gaps, each gap GAP_RATIO of a tile.
   const byWidth = width / (cols + (cols - 1) * GAP_RATIO);
   const byHeight = height / (BOARD_ROWS + (BOARD_ROWS - 1) * GAP_RATIO);
-  // No floor: a tile shrinks rather than let the board overflow its area (a landscape phone, a
+  // No floor: a tile shrinks rather than let the board overflow its area (a short window, a
   // long word on a narrow screen).
   const tile = Math.max(1, Math.floor(Math.min(byWidth, byHeight, MAX_TILE)));
   return {

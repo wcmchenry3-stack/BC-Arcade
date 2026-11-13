@@ -68,6 +68,8 @@ VALIDATED: frozenset[Pair] = frozenset(
         ("mahjong", "moves"),
         ("solitaire", "moves"),
         ("freecell", "moves"),
+        # Bottle Sort's step log (#3387): sort/replay.py
+        ("sort", "moves"),
     }
 )
 

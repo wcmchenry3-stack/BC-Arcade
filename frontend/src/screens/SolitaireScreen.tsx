@@ -49,7 +49,6 @@ import { useReduceMotion } from "../components/shared/useReduceMotion";
 import { TABLE_STAT_LINE_HEIGHT, TableStatLine } from "../components/shared/TableStatLine";
 import { PlayClockText } from "../components/shared/PlayClockText";
 import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
-import { bestOf } from "../game/_shared/bestOf";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
@@ -84,7 +83,7 @@ import PreGameModal from "../components/solitaire/PreGameModal";
 import TestDealControl from "../components/solitaire/TestDealControl";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
-import { useSound } from "../game/_shared/useSound";
+import { LAZY_SOUND, useSound } from "../game/_shared/useSound";
 import { useSoundVariants } from "../game/_shared/useSoundVariants";
 import { useAutoCompleteRiffle } from "../game/_shared/useRunSound";
 import {
@@ -143,14 +142,8 @@ import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { legalTargets, type SolitaireSelection } from "../game/solitaire/targets";
 import { areTestHooksEnabled } from "../game/_shared/envFlags";
 import { registerSolitaireTestHooks } from "../game/solitaire/testHooks";
-import {
-  clearGame,
-  loadGame,
-  loadStats,
-  saveGame,
-  saveStats,
-  type SolitaireStats,
-} from "../game/solitaire/storage";
+import { clearGame, loadGame, saveGame } from "../game/solitaire/storage";
+import { getBest, judgeResult, recordResult } from "../game/_shared/personalBest";
 import { formatMs } from "../game/_shared/formatMs";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useCardSelection } from "../game/_shared/useCardSelection";
@@ -206,19 +199,19 @@ export default function SolitaireScreen() {
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  // The device's cached best time (`solitaire_stats_v1`), for the result
+  // The device's best time (the shared personal best, #3757), for the result
   // card's best time and "New best" badge only (#2636): the player's history
   // is the Stats screen, fed by the server.
-  const statsRef = useRef<SolitaireStats>({ bestTimeMs: 0 });
+  const bestTimeMsRef = useRef(0);
   // #597 — the saved game (usePersistedGameState, #3087): loaded with the
-  // stats on mount, then saved on every state change once that load has
+  // best on mount, then saved on every state change once that load has
   // landed, so a fresh deal can't clobber a resumable save still being read
   // from disk. Called before the completion effect, so a winning move is
   // saved before the completion clears it. The restore is below.
   const game = usePersistedGameState<SolitaireState>({
     load: async () => {
-      const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
-      statsRef.current = savedStats;
+      const [saved, bestTimeMs] = await Promise.all([loadGame(), getBest("solitaire")]);
+      bestTimeMsRef.current = bestTimeMs;
       return saved;
     },
     save: saveGame,
@@ -289,13 +282,29 @@ export default function SolitaireScreen() {
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const { play: playCardFlip } = useSoundVariants(SOLITAIRE_CARD_FLIP, SOLITAIRE_SOUNDS);
-  const { play: playCardFan } = useSoundVariants(SOLITAIRE_CARD_FAN, SOLITAIRE_SOUNDS);
+  const { play: playCardFan } = useSoundVariants(
+    SOLITAIRE_CARD_FAN,
+    SOLITAIRE_SOUNDS,
+    1.0,
+    Math.random,
+    LAZY_SOUND
+  );
   const { play: playCardPlace } = useSoundVariants(SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS);
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
-  const { play: playMultiCardMove } = useSound("solitaire.multiCardMove", SOLITAIRE_SOUNDS);
-  const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
+  const { play: playMultiCardMove } = useSound(
+    "solitaire.multiCardMove",
+    SOLITAIRE_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
+  const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS, 1.0, LAZY_SOUND);
   // The recycle's squared deck (#3572, owner): the riffle's settle on the deck's contact.
-  const { play: playRecycleSettle } = useSound("solitaire.autoCompleteSettle", SOLITAIRE_SOUNDS);
+  const { play: playRecycleSettle } = useSound(
+    "solitaire.autoCompleteSettle",
+    SOLITAIRE_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
   // A tap is ignored without feedback during Auto-Complete, so a refused drop
   // is too. Read through a ref so the provider's callback is never stale.
@@ -453,18 +462,18 @@ export default function SolitaireScreen() {
         const finalMoves = movesRef.current;
         // Only a win that happened this session has a session to rank.
         if (gameId) void lookupRank(gameId);
-        const priorBest = statsRef.current.bestTimeMs;
-        const { best, improved, isNewBest } = bestOf(priorBest, finalMs, true);
+        const priorBest = bestTimeMsRef.current;
+        const { best, improved, isNewBest } = judgeResult("solitaire", priorBest, finalMs);
         setWinSummary({
           timeMs: finalMs,
           moves: finalMoves,
           bestTimeMs: best,
           isNewBest,
         });
-        // The cache is written only when the best improves.
+        // The best is written only when it improves.
         if (improved) {
-          statsRef.current = { bestTimeMs: finalMs };
-          saveStats(statsRef.current);
+          bestTimeMsRef.current = finalMs;
+          void recordResult("solitaire", finalMs);
         }
       },
       onAlreadyComplete: (s) => {
@@ -472,7 +481,7 @@ export default function SolitaireScreen() {
         setWinSummary({
           timeMs: s.accumulatedMs,
           moves: movesRef.current,
-          bestTimeMs: statsRef.current.bestTimeMs,
+          bestTimeMs: bestTimeMsRef.current,
           isNewBest: false,
         });
       },

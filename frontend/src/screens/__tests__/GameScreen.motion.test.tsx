@@ -9,6 +9,7 @@ import React from "react";
 import { render, fireEvent, act } from "@testing-library/react-native";
 import { AccessibilityInfo, AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getBest, storageKey } from "../../game/_shared/personalBest";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
@@ -304,7 +305,7 @@ describe("the end beat (solo): a new best is a win (1.0 s), else a tie (0.6 s)",
     expect(announce).not.toHaveBeenCalled();
     await advance(1);
     expect(cardShown(r)).toBe(true);
-    expect(await AsyncStorage.getItem(BEST_KEY)).toBe("130");
+    expect(await getBest("yacht")).toBe(130);
   });
 
   it("not a new best: the card waits the tie beat, and the best stays", async () => {
@@ -315,7 +316,7 @@ describe("the end beat (solo): a new best is a win (1.0 s), else a tie (0.6 s)",
     expect(announce).not.toHaveBeenCalled();
     await advance(1);
     expect(cardShown(r)).toBe(true);
-    expect(await AsyncStorage.getItem(BEST_KEY)).toBe("500");
+    expect(await getBest("yacht")).toBe(500);
   });
 
   it("the first finished game (no best stored) is a new best: the win beat", async () => {
@@ -324,7 +325,15 @@ describe("the end beat (solo): a new best is a win (1.0 s), else a tie (0.6 s)",
     expect(cardShown(r)).toBe(false);
     await advance(WIN_BEAT_MS - TIE_BEAT_MS);
     expect(cardShown(r)).toBe(true);
-    expect(await AsyncStorage.getItem(BEST_KEY)).toBe("30");
+    expect(await getBest("yacht")).toBe(30);
+  });
+
+  it("reads the best from the shared personal best (#3757): beating it is the win beat", async () => {
+    await AsyncStorage.setItem(storageKey("yacht"), JSON.stringify({ v: 1, b: { _: 120 } }));
+    const r = await finishSolo(100); // 130 > 120
+    await advance(WIN_BEAT_MS);
+    expect(cardShown(r)).toBe(true);
+    expect(await getBest("yacht")).toBe(130);
   });
 
   it("a last-score Yacht: the celebration plays out, then the beat, then the card (bug 1)", async () => {
@@ -526,11 +535,15 @@ describe("the tray during the end beat (owner, review round 1)", () => {
 describe("the solo best not read yet (review round 1)", () => {
   it("the beat waits for it, so its outcome is right: a new best is still a win", async () => {
     let answer: (v: string | null) => void = () => undefined;
-    jest
-      .spyOn(AsyncStorage, "getItem")
-      .mockImplementation((key: string) =>
-        key === BEST_KEY ? new Promise((resolve) => (answer = resolve)) : Promise.resolve(null)
-      );
+    jest.spyOn(AsyncStorage, "getItem").mockImplementation(() => Promise.resolve(null));
+    // The best is read with the shared personal best (#3757), which also reads the old key.
+    jest.spyOn(AsyncStorage, "getMany").mockImplementationOnce(
+      (keys: string[]) =>
+        new Promise((resolve) => {
+          answer = (v) =>
+            resolve({ ...Object.fromEntries(keys.map((k) => [k, null])), [BEST_KEY]: v });
+        })
+    );
     const setItem = jest.spyOn(AsyncStorage, "setItem");
     const r = await renderGame({ initialState: lastRound("chance", 100) });
     await press(r, "score-row-chance");
@@ -543,7 +556,10 @@ describe("the solo best not read yet (review round 1)", () => {
     expect(cardShown(r)).toBe(false);
     await advance(1);
     expect(cardShown(r)).toBe(true);
-    expect(setItem).toHaveBeenCalledWith(BEST_KEY, "130");
+    expect(setItem).toHaveBeenCalledWith(
+      storageKey("yacht"),
+      JSON.stringify({ v: 1, b: { _: 130 } })
+    );
   });
 });
 

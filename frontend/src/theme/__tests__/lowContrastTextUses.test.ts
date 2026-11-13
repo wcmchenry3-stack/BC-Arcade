@@ -1,13 +1,17 @@
 /**
- * Guards #3754 / #3755: green (`colors.bonus`) or teal (`colors.accent`) must not colour TEXT,
- * because in the light theme they read ~3:1 and ~2:1 on cream. Text uses `colors.bonusText` /
- * `colors.accentText`; icons, borders, rings and fills keep the raw token (3:1 non-text rule).
+ * Guards #3754 / #3755 / #3819: green (`colors.bonus`), teal (`colors.accent`), purple
+ * (`colors.secondary`), lime (`colors.tertiary`) and gold (`colors.celebration`, `#ffd700`) must not
+ * colour TEXT, because in the light theme they read 1.2-4.4:1 on cream. Text uses `bonusText` /
+ * `accentText` / `secondaryText` / `tertiaryText` / `goldText` (and `warnText` for the amber);
+ * icons, borders, rings and fills keep the raw token (3:1 non-text rule).
  *
  * A TypeScript AST scan of every non-test source file under `src`. It flags a style property named
  * `color` (the text colour on a <Text>; `borderColor`, `backgroundColor`, `tintColor` and so on are
  * other names) whose value, over any number of lines, mentions:
- *   - `colors.accent` / `colors.bonus` (also `c.accent`, `palette.bonus`, `colors["bonus"]`);
- *   - a destructured `accent` / `bonus` binding (`const { accent } = colors`);
+ *   - `colors.accent` / `bonus` / `secondary` / `tertiary` / `celebration` (also `c.accent`,
+ *     `palette.bonus`, `colors["bonus"]`);
+ *   - a raw amber / gold constant (`BLACKJACK_CHIPS_LOW`, `MAHJONG_BORDER_SELECTED`);
+ *   - a destructured `accent` / `bonus` / ... binding (`const { accent } = colors`);
  *   - a local alias of one of those (`const acc = colors.accent; ... color: acc`).
  * Comments are never looked at.
  *
@@ -15,6 +19,10 @@
  * `colors.bonus` and whose `labelColor` resolves to `colors.bonusText` (the icon may be the 3:1
  * green, the label is AA), directly or through a local `const`. `accentAsText(colors, x)` is a
  * sanitizer: its arguments are not scanned. `color: colors.accent` with any `labelColor` fails.
+ *
+ * No allow-list: every text use of these colours was moved to a text token in #3819. Table
+ * accents reach text through `accentAsText`. Do not add exemptions to get new low-contrast text
+ * past this; text on a fixed dark surface would need a documented, commented entry here.
  *
  * Limits: it does not follow a raw colour through a function call, a prop or another file
  * (`accentColor` props, `colors[config.accentKey]`), and it ignores an icon's `color=` JSX prop,
@@ -26,7 +34,9 @@ import { join, relative } from "path";
 import ts from "typescript";
 
 const SRC = join(__dirname, "../..");
-const RAW = new Set(["accent", "bonus"]);
+const RAW = new Set(["accent", "bonus", "secondary", "tertiary", "celebration"]);
+/** Raw gold / amber constants (theme.constants / theme.mahjong): not text colours in light. */
+const RAW_CONSTS = new Set(["BLACKJACK_CHIPS_LOW", "MAHJONG_BORDER_SELECTED"]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -83,7 +93,8 @@ export function findOffenders(source: string, fileName = "x.tsx"): string[] {
     ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "accentAsText";
   const mentionsRaw = (root: ts.Node): boolean => {
     if (isSanitizer(root)) return false;
-    if (isRawRef(root) || (ts.isIdentifier(root) && aliases.has(root.text))) return true;
+    if (isRawRef(root)) return true;
+    if (ts.isIdentifier(root) && (aliases.has(root.text) || RAW_CONSTS.has(root.text))) return true;
     let hit = false;
     ts.forEachChild(root, (c) => {
       if (!hit && mentionsRaw(c)) hit = true;
@@ -152,8 +163,8 @@ export function findOffenders(source: string, fileName = "x.tsx"): string[] {
   return out;
 }
 
-describe("no low-contrast bonus/accent text (#3754, #3755)", () => {
-  it("uses bonusText / accentText for text colour across src", () => {
+describe("no low-contrast bonus/accent/secondary/tertiary/gold text (#3754, #3755, #3819)", () => {
+  it("uses the text tokens for text colour across src", () => {
     const offenders: string[] = [];
     for (const file of walk(SRC)) {
       const rel = relative(SRC, file).split("\\").join("/");
@@ -171,6 +182,23 @@ describe("the scan itself", () => {
     it.each([
       ["a plain accent", "const s = { color: colors.accent };"],
       ["a plain bonus", "const s = { color: colors.bonus };"],
+      ["a plain secondary", "const s = { color: colors.secondary };"],
+      ["a plain tertiary", "const s = { color: colors.tertiary };"],
+      ["the celebration gold", "const s = { color: colors.celebration };"],
+      [
+        "the low-chips amber constant",
+        "const s = { color: isLow ? BLACKJACK_CHIPS_LOW : c.text };",
+      ],
+      ["the Mahjong gold constant", "const s = { color: MAHJONG_BORDER_SELECTED };"],
+      ["an alias of the amber", "const amber = BLACKJACK_CHIPS_LOW;\nconst s = { color: amber };"],
+      [
+        "a destructured secondary",
+        "const { secondary } = colors;\nconst s = { color: secondary };",
+      ],
+      [
+        "a secondary icon colour with a goldText label",
+        "const a = { icon: 'x', color: colors.secondary, labelColor: colors.goldText };",
+      ],
       ["a value split across lines", "const s = {\n  color:\n    colors.accent,\n};"],
       [
         "a ternary with the raw token on a later line",
@@ -225,6 +253,22 @@ describe("the scan itself", () => {
   describe("ignores", () => {
     it.each([
       ["the text tokens", "const s = { color: colors.accentText, k: colors.bonusText };"],
+      [
+        "the new text tokens",
+        "const s = [{ color: colors.secondaryText }, { color: colors.tertiaryText }, { color: colors.goldText }, { color: colors.warnText }];",
+      ],
+      [
+        "the fill label tokens",
+        "const s = { color: colors.textOnSecondary, k: colors.textOnBonus };",
+      ],
+      ["a secondary border", "const s = { borderColor: colors.secondary };"],
+      ["a tertiary fill", "const s = { backgroundColor: colors.tertiary };"],
+      ["the amber as a bar fill", "const s = { backgroundColor: BLACKJACK_CHIPS_LOW };"],
+      ["a secondary icon prop", "const x = <Icon color={colors.secondary} />;"],
+      [
+        "a table accent through accentAsText",
+        "const s = { color: accentAsText(colors, colors.secondary) };",
+      ],
       ["a border", "const s = { borderColor: colors.accent };"],
       ["a fill", "const s = { backgroundColor: colors.bonus };"],
       ["an icon's JSX prop", "const x = <Icon color={colors.bonus} />;"],
