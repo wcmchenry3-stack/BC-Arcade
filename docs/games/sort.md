@@ -86,7 +86,31 @@ One empty bottle makes a spec tight, two relaxed. One empty bottle stops at 9 co
 
 ## Screen layout
 
-To be written by #3658.
+Top to bottom (and the order a screen reader reads it), #3658:
+
+1. **Header** (`GameShell` / `AppHeader`): back, the title, and the ⋯ menu. The menu holds New Game (restart the level), Level select, Leaderboard, Stats, **Colorblind Mode** (a checkable `menuToggle` item, test id `sort-colorblind-toggle`) and Feedback. Hint and Undo are no longer in the header, so the title has the room (it is not truncated at 390 pt, in es or fr-CA).
+2. **HUD row** (`HudStatRow`): Level, Moves, Undos.
+3. **Board** (`sort-board`, `flex: 1`): 16 pt side padding and 8 pt top and bottom padding (`BOARD_PADDING`, `BOARD_VERTICAL_PADDING`). `SortBoard` gets `availableHeight = boardHeight - 2 * 8`. The "No way to win" notice is an overlay in this container and never resizes the board.
+4. **Action bar** (`sort-action-bar`, 54 pt, `SORT_ACTION_BAR_H`): the shared `GameActionBar` (also Mahjong's and 2048's), Hint (`sort-hint-button`, spinner while the solver runs) and Undo (`sort-undo-button`), each at least 44 x 44 pt. The gap under it is `GameShell`'s `GAME_SHELL_BOTTOM_GAP`, reserved once (#3624); the tab bar and home indicator sit below that.
+
+**Hint** selects the source bottle and rings the destination (`hint-dst-ring`, drawn inside the destination's cell, in `colors.bonus`). The ring clears on any tap, a pour, an undo, a restart or a level change. The ring is hidden from screen readers, so the destination bottle's label gains ". Hint: pour here" (`a11y.hintDestination`) while it is the destination.
+
+**Colorblind Mode symbols** (`COLORBLIND_SYMBOLS` in `BottleView.tsx`) are single plain text glyphs with no emoji property at all (so no presentation selector is needed inside SVG text on Android), one shape family per colour: ▲ ● ■ ★ ⬡ ◆ ✱ ✚ ↑ ✿ ♪ ∞ ☾ ✕. A test pins that none is emoji-capable and that all families differ. How the system fonts draw them was not checked on a device.
+
+**Bottle size** (`computeBoardLayout` in `components/sort/gridGeometry.ts`): bottles fill the board. The 1:3 shape is kept; the size is the largest that fits the content height (rows share it, 8 pt `ROW_GAP`) and the content width (a cell per column, at least 12 pt between bottles), up to `MAX_BOTTLE_SCALE` (2x the 52x156 default, so at most 104x312). When a row has room to spare the gap grows to 0.2 of the bottle's width. The tap cell is never narrower than 48 pt and is the bottle's whole hit area (#2207). `BottleView` draws in a viewBox, so strokes, the ball symbols and the neck scale with it. The grid shape is still a function of the bottle count only (single row up to 4, at most 3 a row for 5-6, at most 4 for 7 and up). A wider grid (5 a row) was checked for 12 and 16 bottles: both are height-limited, so more columns only mean the same rows or more of them, and no bottle gets bigger; 4 a row stays.
+
+Measured on a 390 x 844 phone. The board container was 639 tall before (31 pt of the screen was the Colorblind row, now gone); it is 616 now with the 54 pt bar, so the content box is 358 x 600 (it was 358 x 607):
+
+| Bottles | Before (pt)  | After (pt)   | Tap cell after |
+| ------- | ------------ | ------------ | -------------- |
+| 4       | 52 x 156     | 77.5 x 232.5 | 89.5 wide      |
+| 8       | 52 x 156     | 77.5 x 232.5 | 89.5 wide      |
+| 12      | 52 x 156     | 64.9 x 194.7 | 77.9 wide      |
+| 16      | 47.6 x 142.8 | 48 x 144     | 60 wide        |
+
+The after numbers are pinned in `gridGeometry.test.ts` ("390x844 phone"). The 16-bottle level is height-limited, so the 8 pt row gap and 8 pt vertical padding are what pay for the 54 pt bar; it ends 0.4 pt wider than before.
+
+Smaller phones (375 x 667 and 360 x 640; their old board heights are estimated from the 390 x 844 one minus the height and safe-area differences, not measured) were checked too: at every bottle count from 4 to 16, bottles are at least as wide as before (`gridGeometry.test.ts`, "never smaller than before"). With a 56 pt bar the 9 to 12 bottle levels came out 0.1 pt narrower there, so the bar is 54 pt (its buttons are 52 pt tall).
 
 ## Motion
 

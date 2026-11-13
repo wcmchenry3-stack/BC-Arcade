@@ -63,21 +63,30 @@ const FLASK_OUTLINE = `M 18 0 L 18 36 Q 6 52 6 154 Q 6 ${BODY_BOTTOM} 18 ${BODY_
 // Per-theme liquid color map — subscribers select by theme key.
 export const LIQUID_COLORS: Record<Theme, Record<Color, string>> = BOTTLE_LIQUID_COLORS;
 
-const COLORBLIND_SYMBOLS: Record<Color, string> = {
+/**
+ * One glyph per colour for Colorblind Mode (#3658). Each is a plain text glyph
+ * from the Geometric Shapes, Dingbats, Arrows or Math blocks that is not emoji
+ * at all (no Emoji property), so it needs no presentation selector and draws
+ * the same inside SVG text on iOS and Android. The shape families are all
+ * different, so no two colours look alike at a glance:
+ *   triangle ▲, circle ●, square ■, star ★, hexagon ⬡, diamond ◆, asterisk ✱,
+ *   plus ✚, arrow ↑, flower ✿, note ♪, infinity ∞, crescent ☾, cross ✕.
+ */
+export const COLORBLIND_SYMBOLS: Record<Color, string> = {
   red: "▲",
   blue: "●",
   green: "■",
   yellow: "★",
   orange: "⬡",
   purple: "◆",
-  pink: "✦",
+  pink: "✱",
   teal: "✚",
   brown: "↑",
-  lime: "♥",
-  navy: "△",
-  maroon: "⚡",
-  gold: "◎",
-  indigo: "⊕",
+  lime: "✿",
+  navy: "♪",
+  maroon: "∞",
+  gold: "☾",
+  indigo: "✕",
 };
 
 export const DEFAULT_BOTTLE_WIDTH = 52;
@@ -99,6 +108,8 @@ export interface BottleViewProps {
   readonly bottleWidth?: number;
   readonly bottleHeight?: number;
   readonly onTap?: () => void;
+  /** A Hint says to pour into this bottle: its label says so, for screen readers (#3658). */
+  readonly hintTarget?: boolean;
   /**
    * Extends the tap area past the bottle's visual bounds, so narrow bottles on
    * dense levels still get a full-size touch target (#2207). SortBoard sizes it
@@ -119,6 +130,7 @@ export default function BottleView({
   bottleWidth = DEFAULT_BOTTLE_WIDTH,
   bottleHeight = DEFAULT_BOTTLE_HEIGHT,
   onTap,
+  hintTarget = false,
   hitSlop,
   isGhost = false,
 }: BottleViewProps) {
@@ -175,6 +187,8 @@ export default function BottleView({
       depth: BOTTLE_DEPTH,
     });
   }
+  // The ring is hidden from screen readers, so the label carries the hint's destination.
+  if (hintTarget) accessibilityLabel = `${accessibilityLabel}. ${t("a11y.hintDestination")}`;
 
   const clipId = `bv-clip-${index}`;
   const gradId = `bv-grad-${index}`;

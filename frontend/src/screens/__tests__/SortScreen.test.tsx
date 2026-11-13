@@ -648,10 +648,10 @@ describe("SortScreen — board sizing (#2207)", () => {
         nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 500 } },
       });
     });
-    // 500 tall minus 16 of padding top and bottom: the grid must fit in 468,
+    // 500 tall minus 8 of padding top and bottom (#3658): the grid must fit in 484,
     // not overflow into the padding (and out of the board's touch bounds).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((global as any).__sortBoardLastProps.availableHeight).toBe(468);
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(484);
   });
 });
 
@@ -1613,7 +1613,7 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const heightBefore = (global as any).__sortBoardLastProps.availableHeight;
-    expect(heightBefore).toBe(600 - 32);
+    expect(heightBefore).toBe(600 - 16);
     await tapHint(r);
     const notice = await r.findByTestId("sort-hint-notice");
     expect(StyleSheet.flatten(notice.props.style).position).toBe("absolute");
@@ -1624,5 +1624,160 @@ describe("SortScreen — Hint notice search and layout (#2768)", () => {
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((global as any).__sortBoardLastProps.availableHeight).toBe(heightBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3658 — the bottom action bar, Colorblind Mode in the ⋯ menu, the hint's destination
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — action bar, menu toggle and hint destination (#3658)", () => {
+  const LEVEL = [{ id: 1, bottles: [["blue", "red"], ["red"], []] }];
+  type Rendered = Awaited<ReturnType<typeof renderScreen>>;
+
+  async function openLevel() {
+    playOnLevels(LEVEL);
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    return r;
+  }
+  const tapHint = (r: Rendered) =>
+    act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+  const lastProps = () =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).__sortBoardLastProps;
+
+  afterEach(() => mockSolveBoard.mockReset());
+
+  it("puts Hint and Undo in the bar under the board, not in the header", async () => {
+    const r = await openLevel();
+    const bar = r.getByTestId("sort-action-bar");
+    expect(within(bar).getByRole("button", { name: "Hint" })).toBeTruthy();
+    expect(within(bar).getByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(r.getByTestId("sort-hint-button")).toBeTruthy();
+    expect(r.getByTestId("sort-undo-button")).toBeTruthy();
+    expect(StyleSheet.flatten(bar.props.style).height).toBe(54);
+  });
+
+  it("keeps the bar after the board in reading order", async () => {
+    const r = await openLevel();
+    const flat = JSON.stringify(r.toJSON());
+    const at = (id: string) => flat.indexOf(`"testID":"${id}"`);
+    expect(at("sort-board")).toBeGreaterThan(-1);
+    expect(at("sort-action-bar")).toBeGreaterThan(at("sort-board"));
+  });
+
+  it("Undo is off with no history and on after a pour; Hint is on", async () => {
+    const r = await openLevel();
+    expect(r.getByRole("button", { name: "Undo" }).props.accessibilityState.disabled).toBe(true);
+    expect(r.getByRole("button", { name: "Hint" }).props.accessibilityState.disabled).toBe(false);
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 2,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      lastProps().onPourComplete();
+    });
+    expect(r.getByRole("button", { name: "Undo" }).props.accessibilityState.disabled).toBe(false);
+  });
+
+  it("shows Hint's busy state in the bar while the solver runs", async () => {
+    mockSolveBoard.mockImplementation(() => new Promise(() => {}));
+    const r = await openLevel();
+    // Not awaited: the solver promise is held open on purpose.
+    await act(async () => {
+      void fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+    const hint = r.getByRole("button", { name: "Hint" });
+    expect(hint.props.accessibilityState).toEqual({ disabled: true, busy: true });
+    expect(r.getByTestId("sort-hint-button-busy")).toBeTruthy();
+  });
+
+  it("has no Colorblind row on the screen; the menu item toggles the mode and is checked", async () => {
+    const r = await openLevel();
+    expect(r.queryByRole("switch")).toBeNull();
+    expect(lastProps().colorblindMode).toBe(false);
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "More options" }));
+    });
+    const item = r.getByTestId("sort-colorblind-toggle");
+    expect(item.props.accessibilityState).toEqual({ checked: false });
+    expect(within(item).getByText("Colorblind Mode")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(item);
+    });
+    expect(lastProps().colorblindMode).toBe(true);
+    expect(r.getByTestId("sort-colorblind-toggle").props.accessibilityState).toEqual({
+      checked: true,
+    });
+  });
+
+  it("a hint selects the source and rings the destination", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+    const r = await openLevel();
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+    await tapHint(r);
+    expect(await r.findByLabelText(/Bottle 2 selected/)).toBeTruthy();
+    expect(lastProps().hintTo).toBe(0);
+    // Screen readers learn the destination from its label (the ring is hidden from them).
+    expect(r.getByLabelText(/^Bottle 1,.*Hint: pour here$/)).toBeTruthy();
+    expect(
+      within(r.getByTestId("bottle-cell-0")).getByTestId("hint-dst-ring", {
+        includeHiddenElements: true,
+      })
+    ).toBeTruthy();
+  });
+
+  it("clears the destination ring when the selection changes", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+    const r = await openLevel();
+    await tapHint(r);
+    await r.findByTestId("hint-dst-ring", { includeHiddenElements: true });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(/Bottle 2 selected/));
+    });
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("clears the destination ring when a pour starts, and on undo", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+    const r = await openLevel();
+    await tapHint(r);
+    await r.findByTestId("hint-dst-ring", { includeHiddenElements: true });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(/^Bottle 1,/));
+    });
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+    expect(lastProps().hintTo).toBeNull();
+    await act(async () => {
+      lastProps().onPourComplete();
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Undo" }));
+    });
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("clears the destination ring on restart", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+    const r = await openLevel();
+    await tapHint(r);
+    await r.findByTestId("hint-dst-ring", { includeHiddenElements: true });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "More options" }));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+    });
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
   });
 });
