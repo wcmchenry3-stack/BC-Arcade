@@ -1,4 +1,13 @@
-import { joinSentence } from "../joinSentence";
+import { endsWithSentenceMark, joinSentence } from "../joinSentence";
+
+describe("endsWithSentenceMark (#3824)", () => {
+  it("detects ASCII and full-width marks, ignoring trailing spaces", () => {
+    expect(endsWithSentenceMark("You Win!")).toBe(true);
+    expect(endsWithSentenceMark("Gagné !  ")).toBe(true);
+    expect(endsWithSentenceMark("你赢了！")).toBe(true);
+    expect(endsWithSentenceMark("Push")).toBe(false);
+  });
+});
 
 describe("joinSentence (#3796)", () => {
   it("adds no extra period after an ASCII mark", () => {

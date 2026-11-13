@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet } from "react-native";
 import { render } from "@testing-library/react-native";
+import i18n from "i18next";
 import ResultBanner from "../ResultBanner";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 
@@ -64,6 +65,35 @@ describe("ResultBanner", () => {
   it("has payout accessibility label", async () => {
     const { getByLabelText } = await renderBanner("win", 100);
     expect(getByLabelText(/payout/i)).toBeTruthy();
+  });
+
+  // #3828: Hebrew stores "ניצחת!" in logical order, so the spoken split label has one pause, not two.
+  describe("felt split label, Hebrew", () => {
+    beforeEach(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      i18n.addResourceBundle("he", "blackjack", require("../../../i18n/locales/he/blackjack.json"));
+      await i18n.changeLanguage("he");
+    });
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+    });
+
+    it("reads the outcome, summary and payout without a doubled mark", async () => {
+      const summary = `${i18n.t("blackjack:result.splitWon", { count: 2 })} · ${i18n.t("blackjack:result.splitLost", { count: 1 })}`;
+      const { getByLabelText } = await render(
+        <ThemeProvider>
+          <ResultBanner
+            variant="felt"
+            compact
+            netOnly
+            outcome="win"
+            payout={25}
+            summary={summary}
+          />
+        </ThemeProvider>
+      );
+      expect(getByLabelText("ניצחת! ניצחונות: 2 · הפסדים: 1. תשלום: 25 שבבים")).toBeTruthy();
+    });
   });
 
   // #3781: beside a collapsed dealer the band is too narrow for a split round's summary.
