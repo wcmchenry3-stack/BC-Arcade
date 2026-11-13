@@ -36,7 +36,7 @@ const WON_STATE = {
   undoStack: [],
   isComplete: true,
   recycleCount: 0,
-  events: ["foundationComplete", "gameWin"],
+  events: ["gameWin"],
 };
 
 const NEAR_WIN_STATE = {

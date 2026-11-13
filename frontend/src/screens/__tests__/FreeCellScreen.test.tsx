@@ -789,7 +789,7 @@ describe("FreeCellScreen — result card (#2508)", () => {
         { type: "cardPlace" },
         { type: "foundationComplete", suit: "spades" },
         { type: "gameWin" },
-      ],
+      ] as never,
     });
     const r = await renderScreen();
     await act(async () => {

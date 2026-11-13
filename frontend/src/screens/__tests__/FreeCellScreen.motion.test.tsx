@@ -70,27 +70,6 @@ jest.mock("../../game/_shared/useLoopSound", () => ({
     stop: () => mockLog.push({ name: `stop:${name}`, at: Date.now() }),
   }),
 }));
-// The foundation effect (#3567): each time it is shown, logged, and ended at once.
-jest.mock("../../components/freecell/FreeCellFoundationAnimation", () => {
-  const { useEffect } = jest.requireActual("react");
-  return {
-    FreeCellFoundationAnimation: ({
-      visible,
-      onAnimationEnd,
-    }: {
-      visible: boolean;
-      onAnimationEnd: () => void;
-    }) => {
-      useEffect(() => {
-        if (!visible) return;
-        mockLog.push({ name: "foundationEffect", at: Date.now() });
-        onAnimationEnd();
-      }, [visible, onAnimationEnd]);
-      return null;
-    },
-  };
-});
-
 const mockDrops = createDropSink();
 jest.mock("../../game/_shared/drag/DropTarget", () =>
   mockScreenDeps().mockDropTarget(() => mockDrops)
@@ -238,7 +217,6 @@ const WIN = "freecell.gameWin";
 const SETTLE = "freecell.autoCompleteSettle";
 const RIFFLE_START = "freecell.autoCompleteStart";
 const LOOP_STOP = "stop:freecell.autoCompleteLoop";
-const EFFECT = "foundationEffect";
 
 const flying = (api: Api, key: string) =>
   api.queryByTestId(`card-flight-${key}`, HIDDEN_TOO) !== null;
@@ -556,43 +534,6 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(resultShown(api)).toBe(true);
     // The run's own cards stay quiet; the trigger keeps its card place.
     expect(playedAt(PLACE, t)).toEqual([160]);
-    // The suit it completed: one foundation effect, on the last landing.
-    expect(playedAt(EFFECT, t)).toEqual([460]);
-  });
-
-  it("Auto-Complete completing two suits: one foundation effect, after the last landing", async () => {
-    const api = await mountOn(blockedKing(true));
-    const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
-    // Steps at 120 (Q♠), 240 (K♠: spades complete) and 360 (K♥: hearts, the win), landing 580.
-    await advance(579);
-    expect(playedAt(EFFECT, t)).toEqual([]);
-    await advance(1);
-    expect(playedAt(EFFECT, t)).toEqual([580]);
-    await advance(1000);
-    expect(playedAt(EFFECT, t)).toEqual([580]);
-  });
-
-  it("a suit completed by hand shows its effect on the card's own landing", async () => {
-    // Spades A to Q home; the K♠ alone in column 1, with a black 8 blocking the board's finish.
-    const api = await mountOn(
-      boardState([[c("spades", 13)], [c("clubs", 8), c("hearts", 7)]], {
-        foundations: {
-          spades: upTo("spades", 12),
-          hearts: upTo("hearts", 6),
-          diamonds: upTo("diamonds", 13),
-          clubs: upTo("clubs", 7),
-        },
-        freeCells: [c("hearts", 8), c("hearts", 9), null, null],
-      })
-    );
-    const t = Date.now();
-    // A double-tap sends the K♠ home.
-    await press(api, "K of Spades");
-    await press(api, "K of Spades (selected)");
-    await advance(199);
-    expect(playedAt(EFFECT, t)).toEqual([]);
-    await advance(1);
-    expect(playedAt(EFFECT, t)).toEqual([200]);
   });
 
   it("during the win hold the board is still: no selection, no sound, no drag, no Undo", async () => {
@@ -666,7 +607,6 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     await advance(1000);
     expect(playedAt(SETTLE, t)).toEqual([]);
     expect(playedAt(WIN, t)).toEqual([]);
-    expect(playedAt(EFFECT, t)).toEqual([]);
   });
 
   it("leaving the game mid-flight lands every card and drops the cues", async () => {
@@ -872,7 +812,6 @@ describe("with Reduce Motion", () => {
     expect(inFlight(api)).toEqual([]);
     expect(playedAt(SETTLE, t)).toEqual([240]);
     expect(playedAt(WIN, t)).toEqual([240]);
-    expect(playedAt(EFFECT, t)).toEqual([240]);
     expect(resultShown(api)).toBe(true);
   });
 });

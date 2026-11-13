@@ -25,7 +25,6 @@ export type Foundations = SharedFoundations<Card>;
 export type GameEvent =
   | { readonly type: "cardPlace" }
   | { readonly type: "supermove"; readonly cardCount: number }
-  | { readonly type: "foundationComplete"; readonly suit: Suit }
   | { readonly type: "gameWin" }
   | { readonly type: "invalidMove" }
   | { readonly type: "noMovesAvailable" };
