@@ -82,6 +82,7 @@
   "score.blackjacks": "Blackjacks",
   "score.busts": "Busts",
   "hud.goalProgressAccessibilityLabel": "Goal progress: {{chips}} of {{goal}} chips",
+  "hud.chipsAccessibilityLabel": "Chips: {{chips}}",
   "hud.criticalWarning": "⚠ Critical bankroll",
   "hud.winStreakBadge": "🔥 {{count}} WIN STREAK",
   "table.beginner": "Beginner",

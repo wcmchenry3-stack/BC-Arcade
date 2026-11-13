@@ -82,6 +82,7 @@
   "score.blackjacks": "블랙잭",
   "score.busts": "버스트",
   "hud.goalProgressAccessibilityLabel": "목표 진행: {{chips}} / {{goal}} 칩",
+  "hud.chipsAccessibilityLabel": "칩: {{chips}}",
   "table.beginner": "초보자",
   "table.intermediate": "중급자",
   "table.highRoller": "하이롤러",
