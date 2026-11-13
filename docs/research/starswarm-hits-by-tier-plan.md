@@ -196,7 +196,9 @@ Not affected. The change adds a key to an object that is created anyway, no `rng
 (`engineCounters()`, which includes id and rng counters) were identical to the fixture, and only
 the state hash differed. That also confirms no gameplay change.
 
-## 4. Data cost estimate (CLAUDE.md: Cost > Performance > Data)
+## 4. Data cost estimate
+
+This section follows the CLAUDE.md priorities: Cost, then Performance, then Data.
 
 ### 4.1 Where wave stats go (traced)
 
