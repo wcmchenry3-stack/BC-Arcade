@@ -10,6 +10,7 @@
 import React from "react";
 import { StyleSheet } from "react-native";
 import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import i18n from "i18next";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
@@ -19,6 +20,7 @@ import { newGame } from "../../game/blackjack/engine";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 import { estimateFeltSize, FELT_BORDER, MIN_CARD_WIDTH } from "../../game/blackjack/layout";
 import { APP_HEADER_HEIGHT } from "../../components/shared/AppHeader";
+import RuBlackjack from "../../i18n/locales/ru/blackjack.json";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({ navigate: jest.fn() }), { actual: true })
@@ -523,7 +525,41 @@ describe("the split result banner", () => {
     }
   );
 
-  it.each(SIZES)(
+  // #3784: at 320×568 the summary and payout spilled past the felt in de, es, fr-CA, nl, pt and ru,
+  // and the detail line fell below the band in ja, ko and zh. A 2-hand split shows the net alone
+  // there, as 3–4 hands do; each hand's label shows its own tag and payout.
+  describe("at 320×568 with 2 hands", () => {
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+    });
+
+    it("shows the net payout alone and reads the whole result", async () => {
+      await renderAt(320, 568, split(2));
+      expect(screen.getByTestId("result-net").props.children).toBe("+25 chips");
+      expect(screen.queryByTestId("result-outcome")).toBeNull();
+      expect(screen.queryByText("Won: 1 · Push: 1")).toBeNull();
+      expect(screen.getByLabelText("You Win!. Won: 1 · Push: 1. Payout: 25 chips")).toBeTruthy();
+      // The detail line still shows under it, and each hand its own payout.
+      expect(screen.getByTestId("result-detail").props.children).toBe("Dealer has 17");
+      expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
+        "+25",
+        "0",
+      ]);
+    });
+
+    it("in Russian (the widest locale) too", async () => {
+      i18n.addResourceBundle("ru", "blackjack", RuBlackjack, true, true);
+      await i18n.changeLanguage("ru");
+      await renderAt(320, 568, split(2));
+      expect(screen.getByTestId("result-net").props.children).toBe("+25 фишек");
+      expect(screen.queryByText("Победы: 1 · Ничьи: 1")).toBeNull();
+      expect(
+        screen.getByLabelText("Победа!. Победы: 1 · Ничьи: 1. Выплата: 25 фишек")
+      ).toBeTruthy();
+    });
+  });
+
+  it.each(SIZES.filter((s) => s.width >= 375))(
     "at $name with 2 hands, keeps the summary beside the payout",
     async ({ width, height }) => {
       await renderAt(width, height, split(2));

@@ -17,6 +17,9 @@ import {
   DOCK_HEIGHT,
   DOCK_PADDING_BOTTOM,
   DOCK_PADDING_TOP,
+  FANS_SUMMARY_MIN_BAND_HEIGHT,
+  FANS_SUMMARY_MIN_BAND_WIDTH,
+  feltBannerNetOnly,
   MIN_ROW_H,
   ROW_LABEL_CONTENT_HEIGHT,
   ROW_LABEL_WIDTH,
@@ -773,3 +776,233 @@ describe.each([SMALLEST, ...PHONES])(
     });
   }
 );
+
+// #3784: a 2-hand split's felt banner, the summary beside the net payout ("Won: 1 · Push: 1
+// +25 chips", 19 px and 14 px bold in a pill with 16 px padding), in every locale. Measured in the
+// web build's fonts (the system font) for these exact strings, as #3781 measured; pinned by hand,
+// so a changed string fails the coverage test until it is measured again.
+// - usual: "Won: 1 · Push: 1" and "+25 chips", the beginner table's line.
+// - widest: over every summary and net a 2-hand split can show (bets up to 200, either hand
+//   doubled): de and nl "Gewonnen: 1 · Verloren: 1  Unverändert"/"Ongewijzigd", ru "Победы: 1 ·
+//   Проигрыши: 1  +200 фишек".
+// - net: the net-only pill (15 px bold), its widest net ("Sem mudança" in pt).
+const MEASURED_FANS_BANNER: Record<
+  string,
+  { strings: string; usual: number; widest: number; net: number }
+> = {
+  ar: {
+    strings:
+      "فوز: {{count}} | خسارة: {{count}} | تعادل: {{count}} | +{{amount}} رقائق | {{amount}} رقائق | لا تغيير",
+    usual: 232,
+    widest: 266,
+    net: 114,
+  },
+  de: {
+    strings:
+      "Gewonnen: {{count}} | Verloren: {{count}} | Remis: {{count}} | +{{amount}} Chips | {{amount}} Chips | Unverändert",
+    usual: 324,
+    widest: 363,
+    net: 126,
+  },
+  en: {
+    strings:
+      "Won: {{count}} | Lost: {{count}} | Push: {{count}} | +{{amount}} chips | {{amount}} chips | No change",
+    usual: 254,
+    widest: 265,
+    net: 119,
+  },
+  es: {
+    strings:
+      "Ganadas: {{count}} | Perdidas: {{count}} | Empates: {{count}} | +{{amount}} fichas | {{amount}} fichas | Sin cambio",
+    usual: 333,
+    widest: 344,
+    net: 124,
+  },
+  "fr-CA": {
+    strings:
+      "Gagnées\u00a0: {{count}} | Perdues\u00a0: {{count}} | Égalités\u00a0: {{count}} | +{{amount}} jetons | {{amount}} jetons | Mise rendue",
+    usual: 335,
+    widest: 350,
+    net: 125,
+  },
+  he: {
+    strings:
+      "ניצחונות: {{count}} | הפסדים: {{count}} | תיקו: {{count}} | +{{amount}} שבבים | {{amount}} שבבים | אין שינוי",
+    usual: 281,
+    widest: 322,
+    net: 125,
+  },
+  hi: {
+    strings:
+      "जीते: {{count}} | हारे: {{count}} | बराबरी: {{count}} | +{{amount}} चिप्स | {{amount}} चिप्स | बदलाव नहीं",
+    usual: 225,
+    widest: 236,
+    net: 105,
+  },
+  ja: {
+    strings:
+      "勝ち: {{count}} | 負け: {{count}} | 引き分け: {{count}} | +{{amount}} チップ | {{amount}} チップ | 変化なし",
+    usual: 287,
+    widest: 297,
+    net: 125,
+  },
+  ko: {
+    strings:
+      "승: {{count}} | 패: {{count}} | 무: {{count}} | +{{amount}} 칩 | {{amount}} 칩 | 변동 없음",
+    usual: 180,
+    widest: 195,
+    net: 98,
+  },
+  nl: {
+    strings:
+      "Gewonnen: {{count}} | Verloren: {{count}} | Gelijk: {{count}} | +{{amount}} chips | {{amount}} chips | Ongewijzigd",
+    usual: 317,
+    widest: 363,
+    net: 126,
+  },
+  pt: {
+    strings:
+      "Vitórias: {{count}} | Derrotas: {{count}} | Empates: {{count}} | +{{amount}} fichas | {{amount}} fichas | Sem mudança",
+    usual: 324,
+    widest: 348,
+    net: 139,
+  },
+  ru: {
+    strings:
+      "Победы: {{count}} | Проигрыши: {{count}} | Ничьи: {{count}} | +{{amount}} фишек | {{amount}} фишек | Возврат",
+    usual: 314,
+    widest: 377,
+    net: 130,
+  },
+  zh: {
+    strings:
+      "赢: {{count}} | 输: {{count}} | 平: {{count}} | +{{amount}} 筹码 | {{amount}} 筹码 | 无变化",
+    usual: 194,
+    widest: 205,
+    net: 109,
+  },
+};
+/** The banner's height with its detail line: 55 px in ja, ko and zh (51 in English, 52 in he). */
+const FULL_BANNER_HEIGHT = 55;
+/** The net-only banner with its detail line: 49 px in ja, ko and zh (47 in English). */
+const NET_ONLY_BANNER_HEIGHT = 49;
+const fansBanner = (k: "usual" | "widest" | "net") =>
+  Math.max(...Object.values(MEASURED_FANS_BANNER).map((m) => m[k]));
+const wider = (k: "usual" | "widest", band: number) =>
+  Object.entries(MEASURED_FANS_BANNER)
+    .filter(([, m]) => m[k] > band)
+    .map(([l]) => l)
+    .sort();
+
+describe("a 2-hand split's felt banner measured in every locale (#3784)", () => {
+  const dir = path.join(__dirname, "../../../i18n/locales");
+  const locales = fs.readdirSync(dir).filter((d) => !d.startsWith("_") && !d.endsWith(".json"));
+  const KEYS = [
+    "result.splitWon",
+    "result.splitLost",
+    "result.splitPush",
+    "payout.positive",
+    "payout.negative",
+    "payout.zero",
+  ];
+
+  it("covers every locale's current summary and payout strings (re-measure when one changes)", () => {
+    expect(Object.keys(MEASURED_FANS_BANNER).sort()).toEqual([...locales].sort());
+    for (const l of locales) {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, l, "blackjack.json"), "utf8"));
+      expect({ l, strings: KEYS.map((k) => j[k]).join(" | ") }).toEqual({
+        l,
+        strings: MEASURED_FANS_BANNER[l]!.strings,
+      });
+    }
+  });
+
+  it("the widest: fr-CA's usual line, ru's widest, pt's net; the CJK banners the tallest", () => {
+    expect(fansBanner("usual")).toBe(MEASURED_FANS_BANNER["fr-CA"]!.usual);
+    expect(fansBanner("widest")).toBe(MEASURED_FANS_BANNER.ru!.widest);
+    expect(fansBanner("net")).toBe(MEASURED_FANS_BANNER.pt!.net);
+    expect(FANS_SUMMARY_MIN_BAND_HEIGHT).toBeGreaterThan(FULL_BANNER_HEIGHT);
+    expect(NET_ONLY_BANNER_HEIGHT).toBeLessThanOrEqual(RESULT_BANNER_HEIGHT);
+  });
+});
+
+const PHONE_360: Phone = { name: "360×640", width: 360, height: 640, insetTop: 0, insetBottom: 0 };
+const fansAtResult = (phone: Phone, cards: number) =>
+  geometry(phone, {
+    dealerCards: 3,
+    handCards: [cards, 2],
+    activeHandIndex: null,
+    showResult: true,
+  });
+
+describe.each([
+  { phone: SMALLEST, overflowing: ["de", "es", "fr-CA", "he", "ja", "nl", "pt", "ru"] },
+  { phone: PHONE_360, overflowing: ["de", "es", "fr-CA", "nl", "pt"] },
+])(
+  "a 2-hand split's banner at $phone.name shows the net alone (#3784)",
+  ({ phone, overflowing }) => {
+    it.each([2, 3, 5])("hands of %i cards: inside the band in every locale", (cards) => {
+      const g = fansAtResult(phone, cards);
+      expect(g.mode).toBe("fans");
+      const band = g.result!;
+      expect(feltBannerNetOnly(g, 2)).toBe(true);
+      // The summary and payout would spill past the band in these locales (#3784's bug).
+      expect(wider("usual", band.width)).toEqual(overflowing);
+      // The net alone fits in every locale, the detail line inside the band.
+      expect(fansBanner("net")).toBeLessThanOrEqual(band.width);
+      expect(NET_ONLY_BANNER_HEIGHT).toBeLessThanOrEqual(band.height);
+    });
+  }
+);
+
+it("at 320×568 the 2-hand band is too short for the summary banner in ja, ko and zh (#3784)", () => {
+  const band = fansAtResult(SMALLEST, 2).result!;
+  expect(band.height).toBeLessThan(FULL_BANNER_HEIGHT);
+});
+
+describe.each(PHONES)("a 2-hand split's banner at $name keeps the summary (#3784)", (phone) => {
+  it.each([2, 3, 5])("hands of %i cards: unchanged, every usual line inside the felt", (cards) => {
+    const g = fansAtResult(phone, cards);
+    expect(g.mode).toBe("fans");
+    const band = g.result!;
+    expect(feltBannerNetOnly(g, 2)).toBe(false);
+    expect(band.height).toBeGreaterThanOrEqual(FULL_BANNER_HEIGHT);
+    expect(fansBanner("usual")).toBeLessThanOrEqual(g.feltWidth);
+  });
+
+  // Known gap (#3784, reported): a high-stakes line is wider than the band below a 430 phone.
+  it("known gap: the locales whose widest line is wider than the band", () => {
+    const band = fansAtResult(phone, 2).result!;
+    const expected: Record<number, string[]> = {
+      375: ["de", "es", "fr-CA", "nl", "pt", "ru"],
+      390: ["de", "fr-CA", "nl", "pt", "ru"],
+      430: [],
+    };
+    expect(wider("widest", band.width)).toEqual(expected[phone.width]);
+  });
+});
+
+describe("feltBannerNetOnly", () => {
+  const band = (width: number, height: number): Rect => ({ x: 14, y: 100, width, height });
+
+  it("every 3–4 hand split shows the net alone (#3781), in any arrangement", () => {
+    for (const mode of ["rows", "grid", "wide"] as const) {
+      expect(feltBannerNetOnly({ mode, result: band(384, 40) }, 3)).toBe(true);
+      expect(feltBannerNetOnly({ mode, result: band(384, 40) }, 4)).toBe(true);
+    }
+  });
+
+  it("2 hands: the net alone below the band's width or height for the summary", () => {
+    const W = FANS_SUMMARY_MIN_BAND_WIDTH;
+    const H = FANS_SUMMARY_MIN_BAND_HEIGHT;
+    expect(feltBannerNetOnly({ mode: "fans", result: band(W - 0.5, H) }, 2)).toBe(true);
+    expect(feltBannerNetOnly({ mode: "fans", result: band(W, H - 0.5) }, 2)).toBe(true);
+    expect(feltBannerNetOnly({ mode: "fans", result: band(W, H) }, 2)).toBe(false);
+  });
+
+  it("one hand, a 2-hand wide arrangement or no band: the usual banner", () => {
+    expect(feltBannerNetOnly({ mode: "single", result: band(200, 40) }, 1)).toBe(false);
+    expect(feltBannerNetOnly({ mode: "wide", result: band(150, 40) }, 2)).toBe(false);
+    expect(feltBannerNetOnly({ mode: "fans", result: null }, 2)).toBe(false);
+  });
+});

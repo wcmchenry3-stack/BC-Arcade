@@ -134,6 +134,39 @@ export function splitResultLabel(mode: TableMode): SplitResultLabel {
   return { column, named: column, totalBesideName: column };
 }
 
+/**
+ * 2-hand fans (#3784): the narrowest result band that shows the split's summary beside the payout
+ * ("Won: 1 · Push: 1  +25 chips"). Measured in the web build (pinned in tableGeometry.test.ts):
+ * the usual line (+25) is up to 335 px (fr-CA), wider than the 320-wide phone's band (274) in 8
+ * locales (past the felt itself in de, es, fr-CA, nl, pt and ru) and than the 360-wide phone's
+ * (314) in 5. From the 375-wide phone (band 329) up the banner is unchanged: every usual line stays
+ * inside the felt. Known gap: a high-stakes line is wider still (up to 377 px, Russian "Победы: 1
+ * · Проигрыши: 1  +200 фишек"), wider than the band at 375 and 390 in up to 6 locales.
+ */
+export const FANS_SUMMARY_MIN_BAND_WIDTH = 320;
+/**
+ * 2-hand fans (#3784): the shortest result band that holds the summary banner and its detail line.
+ * The banner is 55 px tall in Japanese, Korean and Chinese (51 in English): their detail line fell
+ * below the 52 px band at 320×568. The net-only banner is shorter (its 15 px line).
+ */
+export const FANS_SUMMARY_MIN_BAND_HEIGHT = 56;
+
+/**
+ * The felt banner shows the round's net payout alone (`ResultBanner`'s `netOnly`): every 3–4 hand
+ * split (#3781, owner decision), and a 2-hand split whose band is too narrow or too short for the
+ * summary beside the payout and the detail line under them (#3784). Each split hand's label shows
+ * its own tag and payout either way, and the banner's accessibility label still reads it all.
+ */
+export function feltBannerNetOnly(
+  geometry: Pick<TableGeometry, "mode" | "result">,
+  handCount: number
+): boolean {
+  if (handCount >= 3) return true;
+  const band = geometry.result;
+  if (geometry.mode !== "fans" || band === null) return false;
+  return band.width < FANS_SUMMARY_MIN_BAND_WIDTH || band.height < FANS_SUMMARY_MIN_BAND_HEIGHT;
+}
+
 /** True in the phases whose felt shows the round's result (the result and the run's goal). */
 export function showsResult(phase: string | null | undefined): boolean {
   return phase === "result" || phase === "victory";
