@@ -145,6 +145,12 @@ function canStand(): boolean {
   const btn = screen.queryByLabelText(/^Stand/);
   return btn !== null && btn.props.accessibilityState?.disabled !== true;
 }
+/** Any of the dock's actions (Hit, Stand, Double, Split) can be pressed: `actionsOff` gates all four. */
+function canAny(): boolean {
+  return [/^Hit/, /^Stand/, /^Double down/, /^Split/].some((label) =>
+    screen.queryAllByLabelText(label).some((btn) => btn.props.accessibilityState?.disabled !== true)
+  );
+}
 
 /** The hand the felt outlines as the one to play: a split's outlined box, else the one hand. */
 function handToPlay(): number {
@@ -170,7 +176,7 @@ const scoreOf = (i: number) =>
 async function stepChecking(ms: number) {
   for (let t = 0; t < ms; t += 10) {
     await advance(10);
-    if (canHit() || canStand()) expect(scoreOf(handToPlay())).not.toBe(21);
+    if (canAny()) expect(scoreOf(handToPlay())).not.toBe(21);
   }
 }
 
@@ -300,7 +306,7 @@ describe("split hands dealt 21", () => {
       const boxes = screen.queryAllByTestId(/^hand-box-\d+$/).length;
       const active = handToPlay();
       const scores = Array.from({ length: boxes }, (_, i) => scoreOf(i));
-      const canAct = canHit() || canStand();
+      const canAct = canAny();
       if (canAct) expect(scores[active]).not.toBe(21);
       const hand2Cards = screen.queryAllByTestId(/^hand-1-card-\d+$/).length;
       out.push({ t: Date.now() - since, active, scores, hand2Cards, canAct });
@@ -326,7 +332,7 @@ describe("split hands dealt 21", () => {
     const at = Date.now();
     await press(/^Split —/);
     // The engine is on hand 2 at once; the felt still outlines hand 1: the dock is greyed.
-    expect(canHit() || canStand()).toBe(false);
+    expect(canAny()).toBe(false);
     const log = await sample(at, 2500);
     const aceLands = firstAt(log, (x) => x.scores[0] === 21);
     const outlineMoves = firstAt(log, (x) => x.active === 1);
@@ -422,7 +428,7 @@ describe("a Stand that passes a held hand dealt 21 to a later hand", () => {
     const at = Date.now();
     for (let t = 0; t < 1500; t += 10) {
       await advance(10);
-      canAct.push([Date.now() - at, canHit() || canStand(), handToPlay()]);
+      canAct.push([Date.now() - at, canAny(), handToPlay()]);
     }
     // Hand 2 outlined from the Stand, its Ace landing at 590; then hand 3, its 7 at 940 / 1180.
     const live = canAct.find(([, on]) => on)![0];

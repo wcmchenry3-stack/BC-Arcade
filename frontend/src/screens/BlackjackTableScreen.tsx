@@ -154,10 +154,12 @@ export function feltResultFor(state: BlackjackState, t: Translate): FeltResult |
 /**
  * The dock's actions (Hit, Stand, Double, Split) are greyed and off: outside the player's phase,
  * and while the felt outlines a hand other than the one the engine plays (#3764 review). A hand
- * that stands on its own on 21 moves the engine on at once, while the felt still outlines it (or a
- * hand passed over on the way) until its cards land; a tap then would act on a hand the player has
- * not seen outlined, or whose held card has not been dealt yet. A normal move to the next hand
- * outlines the engine's hand at once, so it is never greyed by this.
+ * that stands on its own on 21, busts or doubles moves the engine on at once, while the felt still
+ * outlines it (or a hand passed over on the way) until its cards land; a tap then would act on a
+ * hand the player has not seen outlined. A Stand onto the next hand outlines the engine's hand at
+ * once, so it is never greyed by this; nor is a hand outlined with its held card still to come
+ * (#3720), which is the engine's hand. `outlined` null (no outlined hand) is greyed by `!playing`
+ * already; the check is kept as a guard.
  */
 function actionsOff(
   playing: boolean,

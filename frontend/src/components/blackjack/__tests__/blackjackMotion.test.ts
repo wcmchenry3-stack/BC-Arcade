@@ -325,6 +325,8 @@ describe("planMotion", () => {
     expect(dealt.at).toBe(ACTIVATE_DEAL_MS);
     expect(dealt.stage.active).toBe(1);
     expect(t.frames[0]!.stage.active).toBe(1);
+    // The outline moves (a held hand is dealt), so the hands re-lay at the moving pace.
+    expect(t.slideMs).toBe(300);
   });
 
   // #3764 review round 2 (S2): play ends at a hand that takes a card while a later hand, dealt 21,
