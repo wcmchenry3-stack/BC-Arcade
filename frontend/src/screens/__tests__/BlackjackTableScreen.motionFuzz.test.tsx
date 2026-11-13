@@ -42,6 +42,10 @@ const KEY: Record<SoundCue, string> = {
   payout: "blackjack.chipPayout",
   collect: "blackjack.chipCollect",
   nudge: "blackjack.chipNudge",
+  mixed: "blackjack.mixed",
+  allIn: "blackjack.allIn",
+  milestone: "blackjack.milestone",
+  comeback: "blackjack.comeback",
 };
 
 jest.mock("@react-navigation/native", () =>
@@ -400,7 +404,8 @@ describe("fuzz: random play with taps mid-motion", () => {
       expect(playedOf(/^blackjack\.cardDeal\d?$/)).toBeLessThanOrEqual(dealt);
       pressIdx = mockPlayed.length;
       endRound();
-      const chimes = playedOf(/^blackjack\.(win|lose|push|blackjack)$/);
+      // A mixed split (#3770) is a result chime too.
+      const chimes = playedOf(/^blackjack\.(win|lose|push|blackjack|mixed)$/);
       expect(chimes).toBeLessThanOrEqual(settledRounds);
       expect(chimes + playedOf(/^blackjack\.bust$/)).toBeGreaterThanOrEqual(settledRounds);
       // Exactly the sounds due: none twice, none missing (a variation counts as its sound).

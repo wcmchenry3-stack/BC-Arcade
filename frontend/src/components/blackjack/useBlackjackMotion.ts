@@ -16,6 +16,10 @@
  *   plays once at once (as for a motion, #3720). The round is settled at once, so the toasts, the
  *   victory screen and the out-of-chips card do not wait for them.
  * - Every pending cue is cancelled on New Game (`reset()`) and on unmount (`useCueClock`).
+ * - The run's cues (#3582, `runCue`): one per round, comeback over milestone, played with their
+ *   toast as the round settles (after every hand's chips), or under Reduce Motion 100 ms after the
+ *   last spaced sound. A round cut short (a tap, Rebet, leaving, New Game) drops it: its toast
+ *   still shows, but the cue would stack on the chime played at once or on the next deal.
  *
  * JS runs only at a stage's start (a handful per action), never per frame: the cards' and
  * chips' motion runs on the UI thread (FeltCard, ChipSprite), and so does a natural's moment
@@ -41,6 +45,7 @@ import {
   type CardIds,
   type ChipShown,
   type NaturalEdges,
+  type RunCue,
   type SoundCue,
   type Stage,
   type Timeline,
@@ -124,6 +129,12 @@ export interface BlackjackMotion {
   betChip(): void;
   /** Runs `fn` once the round is settled (at once when it is). */
   whenSettled(fn: () => void): void;
+  /**
+   * The round just played crossed a milestone or made a comeback (#3582): its cue plays with the
+   * toast as the round settles. One per round, comeback over milestone; dropped when the round is
+   * cut short, and for a round no action played (a restore).
+   */
+  runCue(sound: RunCue): void;
 }
 
 interface Shown {
@@ -158,6 +169,9 @@ const SPACED = 4;
 export const REDUCE_MOTION_SOUND_GAP_MS = 100;
 const NONE: ReadonlySet<string> = new Set();
 const STILL: CardMotion = { dealing: NONE, flipping: NONE, slideMs: 0, epoch: 0 };
+
+/** Of two run cues for one round, the one that plays (#3582): a comeback over a milestone. */
+const RUN_CUE_RANK: Record<RunCue, number> = { milestone: 1, comeback: 2 };
 
 /** Each sound of `cues` once, in order: an action's sounds under Reduce Motion (spaced, #3751). */
 function onceEach(cues: readonly { readonly sound: SoundCue }[]): SoundCue[] {
@@ -343,6 +357,24 @@ function useTimelineRunner(input: {
   const spacedChimeRef = useRef<SoundCue | null>(null);
   /** Spaced sounds are still due: a tap on the felt lands them (#3751). */
   const [sounding, setSounding] = useState(false);
+  /** The spaced sounds: when the first played, how many there are, and how many are still due. */
+  const spacedRef = useRef({ start: 0, count: 0, left: 0 });
+  /**
+   * Where the round's run cue plays (#3582): as the motion settles, after the spaced sounds, or
+   * nowhere (no action settled a round, or it was cut short). And the cue, once one is due.
+   */
+  const runSlotRef = useRef<"motion" | "spaced" | null>(null);
+  const runCueRef = useRef<RunCue | null>(null);
+  const dropRunCue = useCallback(() => {
+    runSlotRef.current = null;
+    runCueRef.current = null;
+  }, []);
+  /** Plays the round's run cue, if one is due: once. */
+  const playRunCue = useCallback(() => {
+    const due = runCueRef.current;
+    dropRunCue();
+    if (due !== null) cue(due);
+  }, [cue, dropRunCue]);
 
   /**
    * Drops the spaced sounds not yet played. `chime`: a result chime still due among them plays
@@ -351,6 +383,7 @@ function useTimelineRunner(input: {
   const dropSpaced = useCallback(
     (chime: boolean) => {
       clock.cancelGroup(SPACED);
+      spacedRef.current.left = 0;
       setSounding(false);
       const due = spacedChimeRef.current;
       spacedChimeRef.current = null;
@@ -359,24 +392,57 @@ function useTimelineRunner(input: {
     [clock, cue]
   );
 
+  /** Plays `play` as the next spaced sound, `REDUCE_MOTION_SOUND_GAP_MS` after the last. */
+  const spaceNext = useCallback(
+    (play: () => void) => {
+      const spaced = spacedRef.current;
+      const at = spaced.start + spaced.count * REDUCE_MOTION_SOUND_GAP_MS - Date.now();
+      spaced.count += 1;
+      spaced.left += 1;
+      const once = () => {
+        spaced.left -= 1;
+        if (spaced.left === 0) setSounding(false);
+        play();
+      };
+      clock.schedule(once, at, SPACED);
+      if (spaced.left > 0) setSounding(true);
+    },
+    [clock]
+  );
+
   /**
    * Plays `sounds` in order, `REDUCE_MOTION_SOUND_GAP_MS` apart, the first at once (#3751).
-   * `chime`: the one among them that is the round's result chime, if any.
+   * `chime`: the one among them that is the round's result chime, if any. `settles`: the action
+   * settled the round, so its run cue (#3582) joins the end of the queue.
    */
   const spread = useCallback(
-    (sounds: readonly SoundCue[], chime: SoundCue | null) => {
+    (sounds: readonly SoundCue[], chime: SoundCue | null, settles: boolean) => {
       spacedChimeRef.current = chime !== null && sounds.includes(chime) ? chime : null;
-      sounds.forEach((sound, i) => {
-        const play = () => {
+      spacedRef.current = { start: Date.now(), count: 0, left: 0 };
+      runSlotRef.current = settles ? "spaced" : null;
+      sounds.forEach((sound) =>
+        spaceNext(() => {
           if (sound === spacedChimeRef.current) spacedChimeRef.current = null;
-          if (i === sounds.length - 1) setSounding(false);
           cue(sound);
-        };
-        clock.schedule(play, i * REDUCE_MOTION_SOUND_GAP_MS, SPACED);
-      });
-      if (sounds.length > 1) setSounding(true);
+        })
+      );
     },
-    [clock, cue]
+    [cue, spaceNext]
+  );
+
+  /**
+   * The round's run cue (#3582): one per round, comeback over milestone. It plays as the motion
+   * settles, with its toast, or under Reduce Motion as the next spaced sound after the chips.
+   */
+  const runCue = useCallback(
+    (sound: RunCue) => {
+      const slot = runSlotRef.current;
+      const due = runCueRef.current;
+      if (slot === null || (due !== null && RUN_CUE_RANK[due] >= RUN_CUE_RANK[sound])) return;
+      runCueRef.current = sound;
+      if (slot === "spaced" && due === null) spaceNext(playRunCue);
+    },
+    [spaceNext, playRunCue]
   );
 
   /**
@@ -385,6 +451,8 @@ function useTimelineRunner(input: {
    */
   const land = useCallback(
     (chime: boolean, always = false) => {
+      // A round cut short drops its run cue: it would stack on the chime or the next deal (#3582).
+      dropRunCue();
       dropSpaced(chime);
       clock.cancelGroup(MOTION);
       const due = chimeRef.current;
@@ -404,13 +472,14 @@ function useTimelineRunner(input: {
         momentSince: null,
       }));
     },
-    [clock, cue, dropSpaced, runSettled, setShown, stageRef]
+    [clock, cue, dropRunCue, dropSpaced, runSettled, setShown, stageRef]
   );
 
   /** Runs an action's timeline: each stage and each sound at its time. */
   const run = useCallback(
     (plan: Timeline) => {
       const lastFrame = plan.frames[plan.frames.length - 1]!;
+      runSlotRef.current = plan.resultAt !== null ? "motion" : null;
       for (const f of plan.frames.slice(1)) {
         const isLast = f === lastFrame;
         // The player's natural moment starts with its stage, in the same render (#3621).
@@ -423,7 +492,11 @@ function useTimelineRunner(input: {
             stage: stageRef.current,
             momentSince: isLast ? null : (since ?? s.momentSince),
           }));
-          if (isLast) runSettled();
+          if (isLast) {
+            runSettled();
+            // The run's cue with its toast (#3582): after every hand's chips.
+            playRunCue();
+          }
         };
         clock.schedule(show, f.at, MOTION);
       }
@@ -438,9 +511,9 @@ function useTimelineRunner(input: {
         clock.schedule(play, c.at, MOTION);
       }
     },
-    [clock, cue, runSettled, setShown, stageRef]
+    [clock, cue, runSettled, setShown, stageRef, playRunCue]
   );
-  return { land, run, spread, sounding };
+  return { land, run, spread, runCue, sounding };
 }
 
 export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion {
@@ -477,13 +550,8 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
 
   const { whenSettled, runSettled, dropSettled } = useSettledQueue(stageRef);
 
-  const { land, run, spread, sounding } = useTimelineRunner({
-    clock,
-    cue,
-    runSettled,
-    setShown,
-    stageRef,
-  });
+  const runner = useTimelineRunner({ clock, cue, runSettled, setShown, stageRef });
+  const { land, run, spread, runCue, sounding } = runner;
 
   useLayoutEffect(() => {
     if (engine === null) {
@@ -512,7 +580,7 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
       // `REDUCE_MOTION_SOUND_GAP_MS` apart (#3751); none while away.
       if (plan !== null && !awayRef.current) {
         const chime = plan.cues.find((c) => RESULT_CUES.includes(c.sound) && c.at === plan.chimeAt);
-        spread(onceEach(plan.cues), chime?.sound ?? null);
+        spread(onceEach(plan.cues), chime?.sound ?? null, plan.resultAt !== null);
       }
       heldRef.current = [];
       resultRef.current = false;
@@ -617,5 +685,6 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
     reset,
     betChip,
     whenSettled,
+    runCue,
   };
 }

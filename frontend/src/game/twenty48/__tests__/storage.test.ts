@@ -201,3 +201,33 @@ describe("twenty48 storage — play clock across a relaunch (#2750)", () => {
     expect(loaded!.accumulatedMs).toBe(9_000);
   });
 });
+
+describe("twenty48 storage - negative banked time (#3738)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it.each([
+    ["negative", -5_000],
+    ["a string", "12"],
+  ])("loads %s accumulatedMs as 0", async (_label, bad) => {
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...sample, startedAt: null, accumulatedMs: bad })
+    );
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(0);
+  });
+
+  it("loads an Infinity accumulatedMs as 0", async () => {
+    // JSON.parse("1e999") is Infinity: a true non-finite value after parsing.
+    const raw = JSON.stringify({ ...sample, startedAt: null, accumulatedMs: 0 }).replace(
+      '"accumulatedMs":0',
+      '"accumulatedMs":1e999'
+    );
+    expect(raw).toContain("1e999");
+    await AsyncStorage.setItem(GAME_KEY, raw);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(0);
+  });
+});
