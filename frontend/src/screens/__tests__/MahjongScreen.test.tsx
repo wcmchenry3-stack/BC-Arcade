@@ -10,6 +10,7 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getBests, storageKey } from "../../game/_shared/personalBest";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 
@@ -291,7 +292,7 @@ describe("MahjongScreen — save/resume lifecycle", () => {
     const saved: MahjongState = makeWinState({ isComplete: false, pairsRemoved: 4, score: 200 });
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(saved));
     await mount();
-    expect(await AsyncStorage.getItem("mahjong_stats_v1")).toBeNull();
+    expect(await AsyncStorage.getItem(storageKey("mahjong"))).toBeNull();
   });
 });
 
@@ -420,7 +421,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     const api = await winInOneSitting();
     await api.findByTestId("mahjong-result");
     await waitFor(async () => {
-      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      const stats = { bestTimeMsByLayout: await getBests("mahjong") };
       // Per layout (#2747): the last-pair board is a Pyramid deal.
       expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
       expect(stats.bestTimeMsByLayout.pyramid).toBeLessThan(100_000);
@@ -457,7 +458,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     expect(card.queryByText("New best")).toBeNull();
     expect(card.queryByText("Best")).toBeNull();
     await waitFor(async () => {
-      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      const stats = { bestTimeMsByLayout: await getBests("mahjong") };
       expect(stats.bestTimeMsByLayout).toEqual({});
     });
   });
@@ -477,7 +478,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     expect(card.queryByText("New best")).toBeNull(); // a first clear is no new best (#2977)
     expect(card.getAllByText("1:30")).toHaveLength(2); // the hero and Best
     await waitFor(async () => {
-      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      const stats = { bestTimeMsByLayout: await getBests("mahjong") };
       expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
     });
   });
@@ -513,9 +514,25 @@ describe("MahjongScreen — win result card (#2510)", () => {
     const card = within(await api.findByTestId("mahjong-result"));
     expect(card.getByText("New best")).toBeTruthy();
     await waitFor(async () => {
-      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      const stats = { bestTimeMsByLayout: await getBests("mahjong") };
       expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
       expect(stats.bestTimeMsByLayout.pyramid).toBeLessThan(120_000);
+    });
+  });
+
+  it("reads the layout's best from the shared personal best (#3757)", async () => {
+    await AsyncStorage.setItem(
+      storageKey("mahjong"),
+      JSON.stringify({ v: 1, b: { pyramid: 120_000, turtle: 40_000 } })
+    );
+    const api = await winInOneSitting(); // 1:30 on Pyramid, faster than 2:00
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getByText("New best")).toBeTruthy();
+    await waitFor(async () => {
+      const bests = await getBests("mahjong");
+      expect(bests.pyramid).toBeGreaterThanOrEqual(90_000);
+      expect(bests.pyramid).toBeLessThan(120_000);
+      expect(bests.turtle).toBe(40_000);
     });
   });
 
@@ -536,7 +553,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     expect(card.getAllByText("1:30")).toHaveLength(2); // the hero and Best
     expect(card.queryByText("0:40")).toBeNull();
     await waitFor(async () => {
-      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      const stats = { bestTimeMsByLayout: await getBests("mahjong") };
       expect(stats.bestTimeMsByLayout.turtle).toBe(40_000);
       expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
     });
@@ -646,7 +663,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
 describe("MahjongScreen — stats tracking", () => {
   it("writes no play counters on a fresh deal", async () => {
     await mount();
-    expect(await AsyncStorage.getItem("mahjong_stats_v1")).toBeNull();
+    expect(await AsyncStorage.getItem(storageKey("mahjong"))).toBeNull();
   });
 
   it("keeps the stored best times when resuming an already-complete game", async () => {
@@ -656,8 +673,10 @@ describe("MahjongScreen — stats tracking", () => {
     );
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeWinState()));
     await mount();
-    const raw = await AsyncStorage.getItem("mahjong_stats_v1");
-    expect(JSON.parse(raw!)).toEqual({ bestTimeMsByLayout: { turtle: 180000 } });
+    // The old record is moved into the shared personal best (#3757) with its best unchanged.
+    expect({ bestTimeMsByLayout: await getBests("mahjong") }).toEqual({
+      bestTimeMsByLayout: { turtle: 180000 },
+    });
   });
 });
 

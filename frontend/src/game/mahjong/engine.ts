@@ -9,7 +9,6 @@
  * valid. Tests can pin the shuffle via `setRng(createSeededRng(seed))`.
  */
 
-import { bestOf } from "../_shared/bestOf";
 import {
   createRngSlot,
   createSeededRng,
@@ -53,25 +52,14 @@ const SCORE_COMPLETE_BONUS = 500;
  */
 export const MAHJONG_MIN_CLEAR_MS = 36000;
 
-/** A stored device best time, or 0 ("no best yet") when it is below the floor. */
+/**
+ * A device best time, or 0 ("no best yet") when it is below the floor. The shared personal best
+ * (`game/_shared/personalBestGames.ts`, #3757) counts only these as Mahjong bests.
+ */
 export function plausibleBestMs(ms: number): number {
   return Number.isFinite(ms) && ms >= MAHJONG_MIN_CLEAR_MS ? ms : 0;
 }
 
-/**
- * The device best after a clear taking `finalMs`: fastest wins, and a clear
- * below `MAHJONG_MIN_CLEAR_MS` neither counts nor is a new best. A sub-floor
- * `priorBestMs` (stored before the floor) is ignored.
- */
-export function nextBestTime(
-  priorBestMs: number,
-  finalMs: number
-): { bestTimeMs: number; isNewBest: boolean } {
-  const prior = plausibleBestMs(priorBestMs);
-  if (plausibleBestMs(finalMs) === 0) return { bestTimeMs: prior, isNewBest: false };
-  const { best, isNewBest } = bestOf(prior, finalMs, true);
-  return { bestTimeMs: best, isNewBest };
-}
 /** The most moves `undoMove` can take back; the oldest entry goes first. */
 export const UNDO_CAP = 50;
 export const MAX_SHUFFLES = 3;
