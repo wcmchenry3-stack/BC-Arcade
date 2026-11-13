@@ -193,13 +193,39 @@ describe("recordResult / getBest", () => {
 
 describe("fail-safe", () => {
   it("reads a corrupt record as no best, reports it once and removes it", async () => {
-    for (const raw of ["{x", "null", "[1]", '{"v":2,"b":{"_":5}}', '{"v":1,"b":[5]}']) {
+    for (const raw of ["{x", "null", "[1]", '{"b":{"_":5}}', '{"v":1,"b":[5]}']) {
       jest.clearAllMocks();
       await AsyncStorage.setItem(storageKey("cascade"), raw);
       await expect(getBest("cascade")).resolves.toBe(0);
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
       await expect(AsyncStorage.getItem(storageKey("cascade"))).resolves.toBeNull();
     }
+  });
+
+  it("leaves a record in another format version exactly as stored (#3757 review)", async () => {
+    const v2 = JSON.stringify({ v: 2, b: { _: 5000 }, extra: "a newer build's" });
+    await AsyncStorage.setItem(storageKey("cascade"), v2);
+    setItem.mockClear();
+    await expect(getBest("cascade")).resolves.toBe(0);
+    await expect(AsyncStorage.getItem(storageKey("cascade"))).resolves.toBe(v2);
+    await expect(recordResult("cascade", 9000)).resolves.toMatchObject({ best: 9000 });
+    await expect(AsyncStorage.getItem(storageKey("cascade"))).resolves.toBe(v2);
+    expect(setItem).not.toHaveBeenCalledWith(storageKey("cascade"), expect.anything());
+  });
+
+  it("over a record in another version, an older save counts in memory only and stays stored", async () => {
+    const v2 = JSON.stringify({ v: 2, b: { _: 5000 } });
+    await AsyncStorage.setItem(storageKey("cascade"), v2);
+    await AsyncStorage.setItem("cascade_best_score", "700");
+    setItem.mockClear();
+    await expect(getBest("cascade")).resolves.toBe(700);
+    await expect(recordResult("cascade", 600)).resolves.toMatchObject({
+      best: 700,
+      improved: false,
+    });
+    await expect(AsyncStorage.getItem(storageKey("cascade"))).resolves.toBe(v2);
+    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("700");
+    expect(setItem).not.toHaveBeenCalledWith(storageKey("cascade"), expect.anything());
   });
 
   it("drops stored values that can't be a best and keeps the rest", async () => {
@@ -292,7 +318,7 @@ describe.each(LEGACY)(
 
     it("the old best counts for the next result (a new best only when beaten)", async () => {
       await AsyncStorage.setItem(key, raw);
-      const [variant, best] = Object.entries(bests)[0];
+      const [variant, best] = Object.entries(bests)[0]!;
       const lower =
         game === "freecell" || game === "solitaire" || game === "sudoku" || game === "mahjong";
       const worse = lower ? best + 1000 : best - 1;
@@ -304,7 +330,7 @@ describe.each(LEGACY)(
     });
 
     it("never lowers a best already in the new format", async () => {
-      const [variant, best] = Object.entries(bests)[0];
+      const [variant, best] = Object.entries(bests)[0]!;
       const lower =
         game === "freecell" || game === "solitaire" || game === "sudoku" || game === "mahjong";
       const better = lower ? best - 1 : best + 1;

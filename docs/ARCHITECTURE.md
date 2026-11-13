@@ -628,10 +628,13 @@ server (a one-off seed from the server's stats is #3802).
   so nothing is lowered or lost), written once, and the old key removed only
   after that write lands. A failed write leaves the old key for the next read;
   the move is idempotent.
-- **Fail-safe.** Nothing rejects. A corrupt record reads as no best (a Sentry
-  warning, and the record is removed); a value that can't be a best is
-  dropped; a failed read writes nothing, so a best it couldn't see is never
-  overwritten. A game's reads and writes run in order.
+- **Fail-safe.** Nothing rejects. A record that can't be parsed reads as no
+  best (a Sentry warning, and the record is removed); a value that can't be a
+  best is dropped. A record in a format version this build doesn't know (a
+  newer build's, kept across a rollback) reads as no best and is left exactly
+  as stored: nothing is written over it, and an older save still counts in
+  memory but stays stored. A failed read writes nothing either, so a best it
+  couldn't see is never overwritten. A game's reads and writes run in order.
 - **Cost.** No server I/O. Storage writes only when a best improves (plus the
   one-off move of an older save); no work on the frame or gesture path: the
   best is read when a game starts and recorded once when it ends (2048

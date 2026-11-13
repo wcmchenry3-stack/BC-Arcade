@@ -21,8 +21,10 @@
  *   new format, and only once that write has landed is the old key removed. A failed write leaves
  *   the old key for the next read to try again, so the move is idempotent.
  * - **Fail-safe.** Nothing here throws. A payload that can't be parsed reads as no best (reported
- *   as a warning and removed); a stored value that can't be a best for its game is dropped. When
- *   storage can't be read at all, nothing is written, so a best it couldn't see is never
+ *   as a warning and removed); a stored value that can't be a best for its game is dropped. A
+ *   record in a format version this build doesn't know (a newer build's, kept across a rollback)
+ *   reads as no best and is left exactly as stored: nothing is written over it. When storage
+ *   can't be read at all, nothing is written either, so a best it couldn't see is never
  *   overwritten.
  *
  * Cost: no server I/O at all. Storage: one small key per game played; a write only when a best
@@ -127,19 +129,27 @@ interface Loaded {
   readable: boolean;
 }
 
-/** Parses the stored record; null when it is corrupt. */
-function parseRecord(spec: PersonalBestSpec, raw: string): Record<string, number> | null {
+type Parsed =
+  | { kind: "ok"; bests: Record<string, number> }
+  /** Another format version (a newer build's): not ours to read or to overwrite. */
+  | { kind: "unknown" }
+  | { kind: "corrupt" };
+
+/** Parses the stored record. */
+function parseRecord(spec: PersonalBestSpec, raw: string): Parsed {
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const { v, b } = parsed as { v?: unknown; b?: unknown };
-    if (v !== FORMAT_VERSION || b === null || typeof b !== "object" || Array.isArray(b)) {
-      return null;
-    }
-    return keepPlausible(spec, b);
+    parsed = JSON.parse(raw);
   } catch {
-    return null;
+    return { kind: "corrupt" };
   }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { kind: "corrupt" };
+  }
+  const { v, b } = parsed as { v?: unknown; b?: unknown };
+  if (v !== FORMAT_VERSION) return v === undefined ? { kind: "corrupt" } : { kind: "unknown" };
+  if (b === null || typeof b !== "object" || Array.isArray(b)) return { kind: "corrupt" };
+  return { kind: "ok", bests: keepPlausible(spec, b) };
 }
 
 async function write(game: PersonalBestGame, bests: Bests): Promise<boolean> {
@@ -166,11 +176,15 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
   }
 
   let current: Bests = {};
+  let readable = true;
   const raw = stored[key];
   if (raw != null) {
     const parsed = parseRecord(spec, raw);
-    if (parsed) {
-      current = parsed;
+    if (parsed.kind === "ok") {
+      current = parsed.bests;
+    } else if (parsed.kind === "unknown") {
+      // Left as stored, and nothing may be written over it.
+      readable = false;
     } else {
       Sentry.captureMessage(`${SUBSYSTEM}: corrupt record, reading as no best`, {
         level: "warning",
@@ -182,7 +196,7 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
   }
 
   const presentLegacy = legacyKeys.filter((k) => stored[k] != null);
-  if (presentLegacy.length === 0 || !spec.legacy) return { bests: current, readable: true };
+  if (presentLegacy.length === 0 || !spec.legacy) return { bests: current, readable };
 
   let imported: Bests = {};
   try {
@@ -191,6 +205,8 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
     // An older save that can't be read holds no best to keep.
   }
   const merged = mergeBests(game, current, imported);
+  // Over a record this build can't read, the older save counts in memory only, and stays stored.
+  if (!readable) return { bests: merged, readable };
   const saved = sameBests(merged, current) ? true : await write(game, merged);
   if (saved) {
     try {
