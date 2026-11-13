@@ -33,6 +33,39 @@ export interface Colors {
   accentBright: string;
   secondary: string;
   tertiary: string;
+  /**
+   * `secondary` (purple) as the colour of text (#3819). Dark is `secondary` itself; light is a
+   * deeper purple at >= 4.5:1 on every cream surface, where `secondary` reads 3.6-4.4:1. Borders,
+   * icons, fills and bars stay `secondary`.
+   */
+  secondaryText: string;
+  /**
+   * `tertiary` (lime) as the colour of text (#3819). Dark is `tertiary` itself; light is a deep
+   * olive at >= 4.5:1 on every cream surface, where the lime reads ~2:1. Fills, bars and borders
+   * stay `tertiary`.
+   */
+  tertiaryText: string;
+  /**
+   * Gold as the colour of text or a thin icon (#3819: Mahjong's Shuffle, a Blackjack stake on the
+   * split-row tray). Dark is the celebration gold `#ffd700`; light is a brown gold at >= 4.5:1 on
+   * every cream surface, where that gold reads 1.2:1.
+   */
+  goldText: string;
+  /**
+   * Amber warning as the colour of text (#3819: Blackjack's low-chips figure). Dark is the amber
+   * `#ffb547`; light is a brown amber at >= 4.5:1 on every cream surface (amber reads 1.6:1).
+   */
+  warnText: string;
+  /**
+   * Label on a `secondary` fill (#3819: the Intermediate Deal button, the ALL-IN badge). Dark is
+   * `surface` (today's dark label); light is white (4.7:1), which `surface` cream (4.3:1) is not.
+   */
+  textOnSecondary: string;
+  /**
+   * Label on a `bonus` fill (#3819: the comeback banner). Dark is `surface` (today's dark label);
+   * light is the dark `textOnAccent` (6.1:1), which cream (2.9:1) is not.
+   */
+  textOnBonus: string;
   potential: string;
   heldBg: string;
   heldBorder: string;
@@ -151,6 +184,15 @@ const TOKENS = {
   outcomeEndedLight: "#00737e",
   celebrationDark: "#ffd700",
   celebrationLight: "#8a6100",
+  // Text-safe variants (#3819); each dark value is the colour it replaces as text, so dark is
+  // unchanged. Light, on the tightest surface (surfaceAlt): secondaryText 4.65:1, tertiaryText
+  // 4.80, goldText 5.04, warnText 4.84.
+  goldTextDark: "#ffd700",
+  goldTextLight: "#7a5600",
+  warnTextDark: "#ffb547",
+  warnTextLight: "#8a5200",
+  secondaryTextLight: "#8a3fb0",
+  tertiaryTextLight: "#586600",
   white: "#ffffff",
   // Playing cards (#2983) — one physical deck, identical in both themes
   cardFace: "#fff",
@@ -182,6 +224,12 @@ export const dark: Colors = {
   accentBright: TOKENS.accentBrightDark,
   secondary: TOKENS.secondaryDark,
   tertiary: TOKENS.tertiaryDark,
+  secondaryText: TOKENS.secondaryDark,
+  tertiaryText: TOKENS.tertiaryDark,
+  goldText: TOKENS.goldTextDark,
+  warnText: TOKENS.warnTextDark,
+  textOnSecondary: TOKENS.darkSurface,
+  textOnBonus: TOKENS.darkSurface,
   potential: TOKENS.accentDark, // cyan on dark surface — high contrast
   heldBg: "#1a2e3a",
   heldBorder: TOKENS.accentDark,
@@ -240,6 +288,12 @@ export const light: Colors = {
   accentBright: TOKENS.accentBrightLight,
   secondary: TOKENS.secondaryLight,
   tertiary: TOKENS.tertiaryLight,
+  secondaryText: TOKENS.secondaryTextLight,
+  tertiaryText: TOKENS.tertiaryTextLight,
+  goldText: TOKENS.goldTextLight,
+  warnText: TOKENS.warnTextLight,
+  textOnSecondary: TOKENS.white,
+  textOnBonus: TOKENS.darkBg,
   potential: TOKENS.accentTextLight, // potential scores are text: the AA teal on cream
   heldBg: "#d7eff2", // cream-compatible light teal tint for highlighted dice
   heldBorder: TOKENS.accentLight,

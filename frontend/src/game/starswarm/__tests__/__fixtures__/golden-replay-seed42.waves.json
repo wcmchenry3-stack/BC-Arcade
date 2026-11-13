@@ -156,6 +156,14 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 1
+            },
+            "Carrier": {
+              "life": 1
+            }
+          },
           "deathCause": null
         }
       }
@@ -391,6 +399,15 @@
               "plating": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2,
+              "plating": 1
+            },
+            "Carrier": {
+              "life": 1
+            }
+          },
           "deathCause": null
         }
       },
@@ -618,6 +635,14 @@
             },
             "beam": {
               "life": 3
+            }
+          },
+          "hitsByTier": {
+            "Guardian": {
+              "life": 2
+            },
+            "Carrier": {
+              "life": 4
             }
           },
           "deathCause": null

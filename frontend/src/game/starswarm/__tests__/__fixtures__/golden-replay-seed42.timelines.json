@@ -122,6 +122,14 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 1
+            },
+            "Carrier": {
+              "life": 1
+            }
+          },
           "deathCause": null
         }
       }
@@ -349,6 +357,15 @@
             },
             "ram": {
               "plating": 1
+            }
+          },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2,
+              "plating": 1
+            },
+            "Carrier": {
+              "life": 1
             }
           },
           "deathCause": null
@@ -597,6 +614,14 @@
               "life": 3
             }
           },
+          "hitsByTier": {
+            "Guardian": {
+              "life": 2
+            },
+            "Carrier": {
+              "life": 4
+            }
+          },
           "deathCause": null
         }
       }
@@ -759,6 +784,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -887,6 +917,11 @@
               "life": 2
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -981,6 +1016,15 @@
             "bullet": {
               "life": 2,
               "plating": 1
+            }
+          },
+          "hitsByTier": {
+            "Elite": {
+              "life": 1,
+              "plating": 1
+            },
+            "Guardian": {
+              "life": 1
             }
           },
           "deathCause": "bullet",
@@ -1152,6 +1196,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 1
+            }
+          },
           "deathCause": null
         }
       },
@@ -1232,6 +1281,11 @@
         "damage": {
           "hits": {
             "bullet": {
+              "life": 1
+            }
+          },
+          "hitsByTier": {
+            "Grunt": {
               "life": 1
             }
           },
@@ -1318,6 +1372,14 @@
           "hits": {
             "bullet": {
               "life": 2
+            }
+          },
+          "hitsByTier": {
+            "Grunt": {
+              "life": 1
+            },
+            "Elite": {
+              "life": 1
             }
           },
           "deathCause": null
@@ -1426,6 +1488,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Grunt": {
+              "life": 1
+            }
+          },
           "deathCause": null
         }
       },
@@ -1511,6 +1578,14 @@
             },
             "beam": {
               "life": 1
+            }
+          },
+          "hitsByTier": {
+            "Guardian": {
+              "life": 1
+            },
+            "Carrier": {
+              "life": 2
             }
           },
           "deathCause": null
@@ -1727,6 +1802,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": "bullet",
           "deathPhase": "extraction"
         }
@@ -1901,6 +1981,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       }
@@ -2056,6 +2141,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -2184,6 +2274,11 @@
               "life": 2
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -2278,6 +2373,15 @@
             "bullet": {
               "life": 2,
               "plating": 1
+            }
+          },
+          "hitsByTier": {
+            "Elite": {
+              "life": 1,
+              "plating": 1
+            },
+            "Guardian": {
+              "life": 1
             }
           },
           "deathCause": "bullet",
@@ -2476,6 +2580,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -2604,6 +2713,11 @@
               "life": 2
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -2698,6 +2812,15 @@
             "bullet": {
               "life": 2,
               "plating": 1
+            }
+          },
+          "hitsByTier": {
+            "Elite": {
+              "life": 1,
+              "plating": 1
+            },
+            "Guardian": {
+              "life": 1
             }
           },
           "deathCause": "bullet",
@@ -2834,6 +2957,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -2959,6 +3087,11 @@
         "damage": {
           "hits": {
             "bullet": {
+              "life": 2
+            }
+          },
+          "hitsByTier": {
+            "Elite": {
               "life": 2
             }
           },
@@ -3378,6 +3511,11 @@
               "life": 1
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -3506,6 +3644,11 @@
               "life": 2
             }
           },
+          "hitsByTier": {
+            "Elite": {
+              "life": 2
+            }
+          },
           "deathCause": null
         }
       },
@@ -3600,6 +3743,15 @@
             "bullet": {
               "life": 2,
               "plating": 1
+            }
+          },
+          "hitsByTier": {
+            "Elite": {
+              "life": 1,
+              "plating": 1
+            },
+            "Guardian": {
+              "life": 1
             }
           },
           "deathCause": "bullet",
@@ -7678,6 +7830,14 @@
           "hits": {
             "bullet": {
               "life": 180
+            }
+          },
+          "hitsByTier": {
+            "Grunt": {
+              "life": 4
+            },
+            "Elite": {
+              "life": 1
             }
           },
           "deathCause": "bullet",

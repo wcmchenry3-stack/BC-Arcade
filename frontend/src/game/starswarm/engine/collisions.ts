@@ -60,6 +60,7 @@ import {
   SHOTS_ON_ROCKS,
   countBuddyHits,
   countKill,
+  bulletTier,
   countPlayerHit,
   countRockStrike,
   deathPhaseOf,
@@ -808,9 +809,12 @@ export function resolvePlayerHit(
       shieldAbsorbed: w.activePowerUp!.shieldAbsorbed + soaked,
     };
     // #3247/#3248: each projectile the shield took is one shield hit (a beam included)
-    w.waveStats = countPlayerHit(w.waveStats, "bullet", "shield", bulletHits.length);
-    w.waveStats = countPlayerHit(w.waveStats, "rock", "shield", hitByRock ? 1 : 0);
-    w.waveStats = countPlayerHit(w.waveStats, "beam", "shield", beamHitIds.size);
+    // #3710: each bullet to its own shooter's tier, a beam to the Carrier, a rock to no one
+    for (const b of bulletHits) {
+      w.waveStats = countPlayerHit(w.waveStats, "bullet", "shield", bulletTier(b));
+    }
+    w.waveStats = countPlayerHit(w.waveStats, "rock", "shield", null, hitByRock ? 1 : 0);
+    w.waveStats = countPlayerHit(w.waveStats, "beam", "shield", "Carrier", beamHitIds.size);
     w.waveStats = bumpWave(w.waveStats, SHIELD_ABSORBED_PATH, soaked); // #3246
   }
 
@@ -818,6 +822,7 @@ export function resolvePlayerHit(
   // Guardians collidable only in Stage 3 (guardianDeepThresholdCrossed); Elite Phase 1 always exempt
   // A projectile that already costs the life makes the ram check moot; an absorbed one doesn't.
   let rammingEnemyId: number | null = null;
+  let rammerTier: EnemyTier | null = null; // #3710
   const hitByShip =
     (absorbed || !projectileHit) &&
     w.enemies.some((e) => {
@@ -829,6 +834,7 @@ export function resolvePlayerHit(
       if (!collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, e.x, e.y, e.width, e.height))
         return false;
       rammingEnemyId = e.id;
+      rammerTier = e.tier;
       return true;
     });
 
@@ -837,6 +843,16 @@ export function resolvePlayerHit(
   // #3248: the tick costs one plate or one life however much landed, so it is charged to one
   // cause: the ram (only ever alone or beside absorbed projectiles), else beam > rock > bullet
   const cause: HitCause = hitByShip ? "ram" : hitByBeam ? "beam" : hitByRock ? "rock" : "bullet";
+  // #3710: …and to the tier behind that cause: the rammer, the Carrier (the only beam source), no
+  // one for a rock, and for bullets the first of the tick's in array (firing) order
+  const causeTier: EnemyTier | null =
+    cause === "ram"
+      ? rammerTier
+      : cause === "beam"
+        ? "Carrier"
+        : cause === "bullet"
+          ? bulletTier(bulletHits[0]!)
+          : null;
 
   // #2491/#2843: a beam that lands (plating or a life) counts once — it is spent on the
   // ship, so the same beam can never land twice
@@ -870,7 +886,7 @@ export function resolvePlayerHit(
   if (w.hull > 0) {
     w.hull = (w.hull - 1) as HullLevel;
     w.hullFlashTimer = HIT_FLASH_DURATION;
-    w.waveStats = countPlayerHit(w.waveStats, cause, "plating"); // #3247/#3248
+    w.waveStats = countPlayerHit(w.waveStats, cause, "plating", causeTier); // #3247/#3248
     if (w.timeline) {
       const ms = w.waveStats.pacing.durationMs;
       w.timeline = tlHullHit(w.timeline, ms, cause, player.x, state.canvasW, w.hull); // #3392
@@ -879,7 +895,7 @@ export function resolvePlayerHit(
   }
 
   const newLives = player.lives - 1;
-  w.waveStats = countPlayerHit(w.waveStats, cause, "life"); // #3247/#3248
+  w.waveStats = countPlayerHit(w.waveStats, cause, "life", causeTier); // #3247/#3248
   if (w.timeline) {
     // #3392: before tickBonusLives can rescue the ship; livesAfter 0 is the lethal blow
     const ms = w.waveStats.pacing.durationMs;

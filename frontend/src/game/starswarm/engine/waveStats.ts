@@ -18,7 +18,8 @@
  * close), #3246 `powerUps`, #3247 `rocks`, #3248 `combat`/`damage`/`buddy` (their paths and
  * paired bumps in `waveCounters.ts`), #3249 `carrier`/`rout`.
  * The schema is pinned on epic #3244 ("wave_completed v1 schema"); changing its shape is a `v`
- * bump — v2 (#3535) added `damage.deathPhase`. See docs/games/starswarm.md#per-wave-stats.
+ * bump — v2 (#3535) added `damage.deathPhase`. #3710's `damage.hitsByTier` is additive (no bump, like
+ * #3510's `gunsPeak`; the backend reads a missing key as 0). See docs/games/starswarm.md#per-wave-stats.
  */
 import type {
   DifficultyTier,
@@ -163,6 +164,12 @@ export interface WaveCombat {
 
 export interface WaveDamage {
   readonly hits: Readonly<Record<HitCause, Counts<HitResult>>>;
+  /**
+   * #3710: the same grid by the enemy tier that landed the hit (a rock is tierless, so it is in
+   * `hits` only). Per result, `Σ tier + hits.rock = Σ cause`, except for a shot restored from a
+   * save before #3710 (no tier, counted in none). Additive on schema v 2.
+   */
+  readonly hitsByTier: Readonly<Record<EnemyTier, Counts<HitResult>>>;
   /** The hit that ended the run, on a wave that closes "died"; null otherwise. */
   readonly deathCause: HitCause | null;
   /**
@@ -317,6 +324,7 @@ export function emptyWaveStats(start: Loadout): WaveStats {
     },
     damage: {
       hits: table(HIT_CAUSES, () => zeros(HIT_RESULTS)),
+      hitsByTier: table(ENEMY_TIERS, () => zeros(HIT_RESULTS)), // #3710
       deathCause: null,
       deathPhase: null,
     },
@@ -615,6 +623,21 @@ export function withSavedDeathPhase(v: unknown): unknown {
   const damage = (v as { damage?: unknown }).damage;
   if (damage === null || typeof damage !== "object" || "deathPhase" in damage) return v;
   return { ...v, damage: { ...damage, deathPhase: null } };
+}
+
+/**
+ * #3710: a saved `waveStats` from a build before `damage.hitsByTier`, with the table filled in as
+ * zeros: nothing was tiered before, so zeros are exact for what this wave recorded. Anything else
+ * comes back as is, for `isWaveStats` to judge.
+ */
+export function withSavedHitsByTier(v: unknown): unknown {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return v;
+  const damage = (v as { damage?: unknown }).damage;
+  if (damage === null || typeof damage !== "object" || "hitsByTier" in damage) return v;
+  return {
+    ...v,
+    damage: { ...damage, hitsByTier: table(ENEMY_TIERS, () => zeros(HIT_RESULTS)) },
+  };
 }
 
 /**

@@ -130,7 +130,12 @@ export function sha(state: StarSwarmState): string {
     ...rest
   } = state;
   // #3246: likewise a pickup's `source` — a label for the stats, never read by play
-  const unsourced = { ...rest, powerUps: rest.powerUps.map(({ source: _source, ...p }) => p) };
+  // #3710: and an enemy bullet's `tier` (which ship fired it), for the same reason
+  const unsourced = {
+    ...rest,
+    powerUps: rest.powerUps.map(({ source: _source, ...p }) => p),
+    enemyBullets: rest.enemyBullets.map(({ tier: _tier, ...b }) => b),
+  };
   // #3512: the banked power-up is play state, hashed whenever one is banked; with none it is left
   // out, so a checkpoint without one hashes as it did before banking existed
   const played = bankedPowerUp === null ? unsourced : { ...unsourced, bankedPowerUp };

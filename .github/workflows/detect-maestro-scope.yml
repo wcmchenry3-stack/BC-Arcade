@@ -23,9 +23,10 @@ name: Detect Maestro scope
 # and a label saying why. PRs into main, schedule and workflow_dispatch are
 # unaffected. Android (`platform: android`, the default) is not gated.
 #
-# Demo mode (#3705): `flows: cascade-demo`, passed through from the callers'
-# workflow_dispatch input, resolves to `projects=cascade` and `demo=true`. The
-# callers then run only the flows tagged `demo` in that directory
+# Demo mode (#3705, #3801): `flows: cascade-demo` or `flows: mahjong-demo`,
+# passed through from the callers' workflow_dispatch input, resolves to
+# `projects=cascade` or `projects=mahjong` and `demo=true`. The callers then
+# run only the flows tagged `demo` in that directory
 # (--include-tags=demo). Every other run leaves them out (--exclude-tags=demo).
 
 on:
@@ -37,7 +38,7 @@ on:
         required: false
         default: android
       flows:
-        description: "Flow set: `full` or empty (the scope rules below) or `cascade-demo` (only the Cascade demo flows, #3705). Callers pass their workflow_dispatch input, which is empty on every other event."
+        description: "Flow set: `full` or empty (the scope rules below), `cascade-demo` (only the Cascade demo flows, #3705) or `mahjong-demo` (only the Mahjong demo flows, #3801). Callers pass their workflow_dispatch input, which is empty on every other event."
         type: string
         required: false
         default: ""
@@ -49,7 +50,7 @@ on:
         description: Human-readable summary for job summaries/logs.
         value: ${{ jobs.detect.outputs.label }}
       demo:
-        description: "`true` when only the flows tagged `demo` run (flows: cascade-demo), else `false`."
+        description: "`true` when only the flows tagged `demo` run (flows: cascade-demo or mahjong-demo), else `false`."
         value: ${{ jobs.detect.outputs.demo }}
 
 # No `permissions:` block on purpose: a called workflow inherits its
@@ -132,7 +133,7 @@ jobs:
             android|ios) ;;
             *) echo "::error::detect-maestro-scope.yml: unknown platform '$PLATFORM' (expected android or ios)"; exit 1 ;;
           esac
-          # Demo mode (#3705): only the Cascade demo flows, whatever changed.
+          # Demo mode (#3705, #3801): only one game's demo flows, whatever changed.
           # Only a workflow_dispatch sets it: the callers' input is empty on
           # every other event.
           case "$FLOWS" in
@@ -143,7 +144,13 @@ jobs:
               echo "demo=true" >> "$GITHUB_OUTPUT"
               exit 0
               ;;
-            *) echo "::error::detect-maestro-scope.yml: unknown flows '$FLOWS' (expected full or cascade-demo)"; exit 1 ;;
+            mahjong-demo)
+              echo "projects=mahjong" >> "$GITHUB_OUTPUT"
+              echo "label=Mahjong demo flows (flows: mahjong-demo)" >> "$GITHUB_OUTPUT"
+              echo "demo=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            *) echo "::error::detect-maestro-scope.yml: unknown flows '$FLOWS' (expected full, cascade-demo or mahjong-demo)"; exit 1 ;;
           esac
           # Push events, manual dispatches, the schedule and PRs targeting
           # main always run the full suite on both legs (the release gate).

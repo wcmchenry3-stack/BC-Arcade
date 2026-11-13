@@ -48,6 +48,7 @@ e2e/maestro/
     │   ├── navigate-to.yaml     # Subflow: tap-game-tile + assert the game screen title
     │   ├── open-yacht.yaml      # Subflow: open Yacht, answer its mode picker, assert title
     │   ├── open-cascade.yaml    # Subflow: open Cascade and wait for its board (demo flows)
+    │   ├── open-mahjong.yaml    # Subflow: open Mahjong (Turtle) and wait for its board (demo flows)
     │   ├── warm-up.yaml         # iOS job only: launch once before the loop (#3677)
     │   └── assert-drag-ok.yaml  # Subflow: the last drag's ghost stayed under the finger (#3532)
     ├── home/                    # Home screen & navigation smoke tests
@@ -61,7 +62,7 @@ e2e/maestro/
     ├── sudoku/
     ├── daily-word/
     ├── starswarm/
-    ├── mahjong/
+    ├── mahjong/                 # smoke.yaml + demo-*.yaml (tag `demo`, see below)
     ├── sort/
     └── offline/                 # Offline mode: game logic without network
 ```
@@ -210,13 +211,14 @@ Flows tagged `demo` (`tags: [demo]` in the header) record a video
 (`startRecording: <name>` … `stopRecording`) and take named screenshots, for
 showing a change running on a device (#3705). CI leaves them out of every
 smoke run (`--exclude-tags=demo`) and runs only them in a `flows:
-cascade-demo` dispatch. Locally: `maestro test --include-tags=demo
+cascade-demo` or `flows: mahjong-demo` dispatch. Locally: `maestro test --include-tags=demo
 e2e/maestro/flows/cascade/`. Where `<name>.png` / `<name>.mp4` land depends on
 the CLI: Maestro 1.39.13 (Android in CI) writes them to the working directory;
 Maestro 2.12.1 (iOS in CI, with `--debug-output`) writes them into the flow's
 debug bundle, `<debug-output>/<flow>/takeScreenshot/` and `.../startRecording/`.
-CI uploads both as `maestro-<platform>-media`. See `docs/MAESTRO.md`, "Cascade demo flows", for
+CI uploads both as `maestro-<platform>-media`. See `docs/MAESTRO.md`, "Cascade demo flows" and "Mahjong demo flows", for
 the list, what they don't cover yet, and how to trigger them.
+Mahjong's screenshots: `mahjong-demo-open`, `mahjong-demo-open-late`, `mahjong-demo-open-late2`, `mahjong-demo-zoom`.
 
 ## Scope
 

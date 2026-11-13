@@ -605,6 +605,34 @@ describe("Enemy asteroid response (#2487)", () => {
     }
   });
 
+  it("#3710: a fighter's flak bolt carries the shooter's tier (asteroids.ts stamp site)", () => {
+    const q = { ...quiet(), enemyFireDisabled: false };
+    const guardian = q.enemies.find(
+      (e) => e.isAlive && e.tier === "Guardian" && e.phase === "Formation"
+    )!;
+    const base = {
+      ...q,
+      enemies: q.enemies.map((e) =>
+        e.id === guardian.id || e.tier === "Carrier" ? e : { ...e, isAlive: false, hp: 0 }
+      ),
+    };
+    let bolt: Bullet | undefined;
+    for (let seed = 1; seed <= 40 && !bolt; seed++) {
+      seedRng(seed);
+      const s = tick(
+        {
+          ...base,
+          asteroids: [rock("large", guardian.x, guardian.y - 90, { vy: 0.2 })],
+        },
+        16,
+        ASIDE
+      );
+      bolt = s.enemyBullets.filter((b) => b.flak).find((b) => Math.abs(b.x - guardian.x) < 6);
+    }
+    expect(bolt).toBeDefined();
+    expect(bolt!.tier).toBe("Guardian");
+  });
+
   it("no flak at a rock moving away, out of range, or when enemy fire is disabled", () => {
     let s = { ...quiet(), enemyFireDisabled: false };
     // far right, drifting right — away from everyone

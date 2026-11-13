@@ -592,6 +592,7 @@ A game screen (`frontend/src/screens/<Game>Screen.tsx`) sits above the five laye
     - **Yacht**, **Daily Word**, **Blackjack** and **Star Swarm** keep their own end-of-game flow. #3087 moved only the screens that had the `prevCompleteRef` / `winRecordedRef` edge.
     - **Cascade** is disabled (#3033).
 - **Engine events.** `useGameEvents(state.events, handlers)` for one-shot sounds and effects (Yacht, FreeCell, Hearts, Blackjack). Events are one-shot and must not replay on reload: Twenty48 and Blackjack strip them before `saveGame`.
+- **Sound players.** Each `useSound` / `useSoundVariants` key is an audio player. Players are shared per distinct asset, and a rarely heard sound (win/lose, a one-off cue) is marked `{ lazy: true }` (`LAZY_SOUND`) so its player is created on first play; frequent sounds stay eager so the first play has no latency. See [PERFORMANCE.md, Audio](PERFORMANCE.md#audio) (#3604).
 - **Result.** `GameResultModal` (`components/result/`, #2504, split in #2990), and nothing else: no screen builds its own result screen. Blackjack's Goal Reached screen renders the same `ResultCard` inline. See [GAME-CONTRACT §2.5](GAME-CONTRACT.md#25-result-card-and-leaderboard).
 - **Components.** Boards, piles, overlays, pickers and the dev panel live in `components/<game>/` (#2979). Dev panels build on `components/dev/DevPanelShell` (#2978) and only render in dev and internal builds. The screen file defines no board, overlay or panel component of its own (Star Swarm's `StarSwarmGame` is the screen body behind its hydration gate).
 
