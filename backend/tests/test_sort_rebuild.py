@@ -297,6 +297,31 @@ def test_a_prefix_with_more_moves_but_fewer_undos_is_incomplete_not_invalid() ->
     assert run(log(GOLDEN_UNITS[:1], ended=ended)).verdict == INVALID
 
 
+def test_an_abandon_without_undos_and_a_lost_undo_is_incomplete_not_invalid() -> None:
+    # Codex on #3874: an abandon sends {won: false, level, moves} and no undos. Two pours were
+    # recorded, the last chunk (one undo) was lost: the log shows 2 moves, the result 1.
+    # Without an undo count that is a possible prefix, not a contradiction.
+    ended = {"level": 1, "moves": 1, "won": False}
+    r = run(log([[[0, 1, 4], [0, 4, 0]]], ended=ended))
+    assert r.verdict == INCOMPLETE and flags(r) == ["truncated"]
+    assert r.reason == "log reaches 2 moves, game_ended says 1 (cut off, or past the cap)"
+
+
+def test_a_dropped_middle_part_is_a_gap_not_invalid() -> None:
+    # Codex on #3874: part 0 then part 2 of a three-part unit is a clean prefix with a hole
+    r = run(
+        [
+            ("game_started", STARTED),
+            moves_event(1, [[0, 1, 4]], part=0, parts=3),
+            moves_event(1, [[1]], part=2, parts=3),
+            ("game_ended", ENDED),
+        ]
+    )
+    assert r.verdict == INCOMPLETE and flags(r)[0] == "gap"
+    assert r.reason == "unit 1: part 1 of 3 is missing"
+    assert [s.kind for s in r.steps] == ["pour"]  # nothing after the hole is applied
+
+
 @pytest.mark.parametrize(
     ("ended", "text"),
     [

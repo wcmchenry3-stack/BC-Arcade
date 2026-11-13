@@ -343,6 +343,9 @@ class _Units:
         want_unit, total, nxt = self.split
         if part is None or unit != want_unit:
             return Flag("gap", INCOMPLETE, self.missing_part() or "")
+        if parts == total and part > nxt:
+            # a later part of the same unit: the ones between were dropped (a clean prefix)
+            return Flag("gap", INCOMPLETE, f"unit {unit}: part {nxt} of {total} is missing")
         if part != nxt or parts != total:
             msg = f"unit {unit}: expected part {nxt} of {total}, got {part} of {parts}"
             return Flag("bad_parts", INVALID, msg)
@@ -428,7 +431,10 @@ def _check_result(out: Rebuilt, ended: dict[str, Any]) -> None:
                 )
             )
     if _is_int(want_moves) and out.moves != want_moves:
-        if out.moves < want_moves or prefix:
+        # without an undo count (an abandon sends none) a lost tail of undos can leave the
+        # log above the final move count, so only a log with every undo accounted for is
+        # proven wrong by having more moves
+        if out.moves < want_moves or prefix or not _is_int(want_undos):
             prefix = True
             flags.append(
                 Flag(
