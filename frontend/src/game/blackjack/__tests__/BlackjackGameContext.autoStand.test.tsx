@@ -235,6 +235,10 @@ describe("a split hand saved on 21 before #3764", () => {
     );
     await idle();
     expect(recorded()).toEqual([]);
+    expect(mockSnapshots.length).toBeGreaterThan(0);
+    for (const snap of mockSnapshots) {
+      expect(snap.result).toMatchObject({ final_chips: 100 });
+    }
     await act(async () => result.current.apply(stand, "stand"));
     await idle();
     const rows = recorded();
@@ -247,6 +251,34 @@ describe("a split hand saved on 21 before #3764", () => {
       ],
       r: 1,
     });
+  });
+});
+
+describe("a split save on 21 in a build where Blackjack is hidden (#3328)", () => {
+  it("is moved on, but opens no round log: the rest of the round records nothing", async () => {
+    mockVisible.mockReturnValue(false);
+    const dealt = placeBet(game(100, [c("8"), c("6", "♣"), c("8", "♥"), c("9", "♦")]), 10);
+    const saved: EngineState = {
+      ...dealt,
+      deck: [...dealt.deck, c("5", "♦")],
+      split_count: 1,
+      player_hands: [
+        [c("8"), c("3", "♦"), c("K", "♣")],
+        [c("8", "♥"), c("2", "♣")],
+      ],
+      hand_bets: [10, 10],
+      hand_outcomes: [null, null],
+      hand_payouts: [0, 0],
+      active_hand_index: 0,
+      split_from_aces: [false, false],
+      events: undefined,
+      round: 2,
+    };
+    const { result } = await mountWith(saved);
+    expect(result.current.engine?.active_hand_index).toBe(1);
+    await act(async () => result.current.apply(stand, "stand"));
+    await idle();
+    expect(recorded().filter((r) => r.type === "round_played")).toEqual([]);
   });
 });
 
