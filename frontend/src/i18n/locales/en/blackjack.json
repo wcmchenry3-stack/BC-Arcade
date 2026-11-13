@@ -109,6 +109,7 @@
   "victory.nextTableLabel": "Play {{table}} Table — move up to next table",
   "victory.unlocked": "You unlocked: {{name}}",
   "milestone.toast": "Milestone reached: {{chips}} chips!",
+  "hud.milestone": "Milestone: {{chips}}",
   "hud.winStreakAccessibilityLabel": "Win streak: {{count}} wins",
   "comeback.banner": "What a comeback!",
   "comeback.bannerAccessibilityLabel": "Comeback: chips recovered",

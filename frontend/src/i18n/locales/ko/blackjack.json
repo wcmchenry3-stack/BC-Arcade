@@ -100,6 +100,7 @@
   "victory.nextTableLabel": "{{table}} 테이블 플레이 — 다음 테이블로 이동",
   "victory.unlocked": "잠금 해제: {{name}}",
   "milestone.toast": "마일스톤 달성: {{chips}} 칩!",
+  "hud.milestone": "마일스톤: {{chips}}",
   "hud.winStreakAccessibilityLabel": "연승: {{count}}승",
   "comeback.banner": "대역전!",
   "comeback.bannerAccessibilityLabel": "역전: 칩 회복",

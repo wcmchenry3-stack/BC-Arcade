@@ -98,6 +98,7 @@ import { isNaturalHand } from "../components/blackjack/blackjackMotion";
 import GameResultModal from "../components/shared/GameResultModal";
 import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
+import { pickHudNotice } from "../components/blackjack/HudNotice";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 
@@ -231,18 +232,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     opacity: winFlash.value * 0.35,
     pointerEvents: "none",
   }));
-  const milestoneStyle = useAnimatedStyle(() => ({
-    opacity: milestoneOpacity.value,
-    pointerEvents: "none",
-  }));
-  const comebackStyle = useAnimatedStyle(() => ({
-    opacity: comebackOpacity.value,
-    pointerEvents: "none",
-  }));
-  const allInStyle = useAnimatedStyle(() => ({
-    opacity: allInOpacity.value,
-    pointerEvents: "none",
-  }));
 
   const state = useMemo(() => (engine ? toViewState(engine) : null), [engine]);
 
@@ -315,6 +304,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
               withTiming(1, { duration: 150 }),
               withDelay(1400, withTiming(0, { duration: 250 }))
             );
+            setTimeout(() => setMilestoneChips(null), 1800); // 150+1400+250
           },
           { cue }
         );
@@ -372,6 +362,17 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
   const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableAccentColor = colors[activeTable.accentKey];
+  const hudNotice = pickHudNotice(
+    {
+      comebackVisible,
+      milestoneChips,
+      allInVisible,
+      opacities: { comeback: comebackOpacity, milestone: milestoneOpacity, allIn: allInOpacity },
+      accent: tableAccentColor,
+    },
+    t,
+    colors
+  );
   const phase = state?.phase ?? "betting";
   const betting = phase === "betting";
   const playing = phase === "player";
@@ -548,7 +549,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
           {/* Slim HUD strip: table, chips / goal, progress. Without a goal (Keep Playing) it keeps
               the table and chips (#3617). */}
           {state && engine && (
-            <View style={styles.hud}>
+            <View style={styles.hud} testID="blackjack-hud">
               <HudSidebar
                 // The settled count shows once the payout lands (#3581).
                 chips={motion.shownChips ?? engine.chips}
@@ -558,6 +559,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                 tableName={t(activeTable.labelKey as Parameters<typeof t>[0])}
                 tableAccentColor={tableAccentColor}
                 winStreak={sessionStats.winStreak}
+                notice={hudNotice}
               />
             </View>
           )}
@@ -658,43 +660,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                 )}
                 <Animated.View style={bustFlashStyle} />
                 <Animated.View style={winFlashStyle} />
-                {milestoneChips !== null && (
-                  <Animated.View
-                    style={[
-                      styles.milestoneToast,
-                      milestoneStyle,
-                      { backgroundColor: tableAccentColor },
-                    ]}
-                  >
-                    <Text style={[styles.toastText, { color: colors.surface }]}>
-                      {t("blackjack:milestone.toast", { chips: milestoneChips })}
-                    </Text>
-                  </Animated.View>
-                )}
-                {comebackVisible && (
-                  <Animated.View
-                    style={[
-                      styles.comebackBanner,
-                      comebackStyle,
-                      { backgroundColor: colors.bonus },
-                    ]}
-                    accessibilityLabel={t("blackjack:comeback.bannerAccessibilityLabel")}
-                  >
-                    <Text style={[styles.comebackText, { color: colors.surface }]}>
-                      {t("blackjack:comeback.banner")}
-                    </Text>
-                  </Animated.View>
-                )}
-                {allInVisible && (
-                  <Animated.View
-                    style={[styles.allInBadge, allInStyle, { backgroundColor: colors.secondary }]}
-                    accessibilityLabel={t("blackjack:allIn.badgeAccessibilityLabel")}
-                  >
-                    <Text style={[styles.allInText, { color: colors.surface }]}>
-                      {t("blackjack:allIn.badge")}
-                    </Text>
-                  </Animated.View>
-                )}
               </TableFelt>
               {/* An engine error overlays the felt's foot, so the dock never moves. */}
               {!!error && (
@@ -856,47 +821,5 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     overflow: "hidden",
-  },
-  milestoneToast: {
-    position: "absolute",
-    top: 8,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  toastText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  comebackBanner: {
-    position: "absolute",
-    top: "35%",
-    alignSelf: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
-    zIndex: 10,
-  },
-  comebackText: {
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  allInBadge: {
-    position: "absolute",
-    bottom: 12,
-    alignSelf: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  allInText: {
-    fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
   },
 });

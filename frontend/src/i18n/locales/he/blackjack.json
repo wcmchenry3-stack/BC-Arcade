@@ -100,6 +100,7 @@
   "victory.nextTableLabel": "שחק בשולחן {{table}} — עבור לשולחן הבא",
   "victory.unlocked": "פתחת: {{name}}",
   "milestone.toast": "אבן דרך הושגה: {{chips}} אסימונים!",
+  "hud.milestone": "אבן דרך: {{chips}}",
   "hud.winStreakAccessibilityLabel": "רצף ניצחונות: {{count}}",
   "comeback.banner": "איזו חזרה!",
   "comeback.bannerAccessibilityLabel": "חזרה: אסימונים שוחזרו",

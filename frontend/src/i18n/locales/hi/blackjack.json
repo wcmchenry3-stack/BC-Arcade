@@ -100,6 +100,7 @@
   "victory.nextTableLabel": "{{table}} टेबल खेलें — अगली टेबल पर जाएं",
   "victory.unlocked": "आपने अनलॉक किया: {{name}}",
   "milestone.toast": "माइलस्टोन पूरा हुआ: {{chips}} चिप्स!",
+  "hud.milestone": "माइलस्टोन: {{chips}}",
   "hud.winStreakAccessibilityLabel": "जीत की लड़ी: {{count}}",
   "comeback.banner": "क्या वापसी है!",
   "comeback.bannerAccessibilityLabel": "वापसी: चिप्स वापस मिले",

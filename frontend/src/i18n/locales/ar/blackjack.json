@@ -100,6 +100,7 @@
   "victory.nextTableLabel": "العب طاولة {{table}} — انتقل إلى الطاولة التالية",
   "victory.unlocked": "لقد فتحت: {{name}}",
   "milestone.toast": "تم تحقيق إنجاز: {{chips}} رقاقة!",
+  "hud.milestone": "إنجاز: {{chips}}",
   "hud.winStreakAccessibilityLabel": "سلسلة الانتصارات: {{count}}",
   "comeback.banner": "يا لها من عودة!",
   "comeback.bannerAccessibilityLabel": "عودة: تم استرداد الرقائق",

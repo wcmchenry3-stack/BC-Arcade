@@ -989,6 +989,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "hud.milestone": {
+    "component": "HudSidebar",
+    "description": "Short chip in the HUD strip announcing a chip milestone; the full sentence is milestone.toast, which a screen reader announces.",
+    "tone": "celebratory",
+    "characterLimit": 24,
+    "placeholders": ["{{chips}}"],
+    "doNotTranslate": [],
+    "notes": "Must fit one line at 320 px beside the chips and goal; keep it short."
+  },
   "hud.winStreakAccessibilityLabel": {
     "component": "HudSidebar",
     "description": "Accessibility label for the win streak badge.",

@@ -192,7 +192,7 @@ describe("blackjack natural", () => {
 describe("run toasts", () => {
   it("a milestone shows its chip count", async () => {
     await mountOn(withEvents({ type: "milestone", value: 2000 }));
-    expect(screen.getByText("Milestone reached: 2000 chips!")).toBeTruthy();
+    expect(screen.getByLabelText("Milestone reached: 2000 chips!")).toBeTruthy();
   });
 
   it("a comeback shows a banner that goes away by itself", async () => {
