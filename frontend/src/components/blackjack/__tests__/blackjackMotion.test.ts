@@ -38,6 +38,7 @@ import {
   planMotion,
   RESULT_CUES,
   RESULT_DELAY_MS,
+  resultCue,
   SPLIT_DEAL_MS,
   stageView,
   withHeld,
@@ -166,12 +167,13 @@ describe("planMotion", () => {
     expect(cuesOf(t2)).toEqual([["deal", 350]]);
     expect(t2.held).toEqual([0, 0]);
     expect(t2.frames[t2.frames.length - 1]!.stage.hands).toEqual([2, 2]);
-    // The second stand plays the dealer, one net chime, then hand by hand.
+    // The second stand plays the dealer, one chime, then hand by hand. A win and a loss: the mixed
+    // chime, not the net's push (#3770).
     const s3 = stand(s2);
     const end = planMotion(view(s2), view(s3), t2.held)!;
     expect(cuesOf(end)).toEqual([
       ["flip", 0],
-      ["push", 620],
+      ["mixed", 620],
       ["payout", 1040],
       ["collect", 1340],
     ]);
@@ -378,9 +380,94 @@ describe("planMotion", () => {
     }
   );
 
+  // #3582 (owner decision, AI2): the all-in cue is a timeline cue under the deal's first card, so
+  // the cue clock owns it (leaving, New Game and a tap drop it like every other sound).
+  it("an all-in deal: the all-in cue at 0, with the first card; under Reduce Motion after it", () => {
+    const s0 = betting(c("10"), c("7", "♣"), c("5", "♥"), c("9", "♥"));
+    const s1 = placeBet(s0, s0.chips > 25 ? 25 : s0.chips);
+    expect(s1.events?.some((e) => e.type === "allIn")).toBe(false);
+    expect(cuesOf(planMotion(view(s0), view(s1))!).map(([q]) => q)).not.toContain("allIn");
+    const poor = { ...s0, chips: 20 };
+    const all = placeBet(poor, 20);
+    expect(all.events?.some((e) => e.type === "allIn")).toBe(true);
+    const t = planMotion(view(poor), view(all))!;
+    // The cue order is also Reduce Motion's spaced order: the deal's sound, then the all-in.
+    expect(cuesOf(t)).toEqual([
+      ["deal", 0],
+      ["allIn", 0],
+      ["deal", 180],
+      ["deal", 360],
+      ["deal", 540],
+    ]);
+    // Only the deal plays it: a Stand after an all-in deal does not.
+    expect(cuesOf(planMotion(view(all), view(stand(all)))!).map(([q]) => q)).not.toContain(
+      "allIn"
+    );
+  });
+
   it("a new hand's betting has no motion", () => {
     const s0 = stand(placeBet(betting(c("10"), c("7", "♣"), c("5", "♥"), c("9", "♥")), 10));
     expect(planMotion(view(s0), view(newHand(s0)))).toBeNull();
+  });
+});
+
+// #3770 (owner decision, B1): a split with a winning and a losing hand plays the mixed chime,
+// whatever the net; every other split keeps its net chime (a push counts as neither).
+describe("a split's chime", () => {
+  /** 8s split against 17: hand 1 18 (a win), hand 2 13 (a loss). */
+  const splitRound = () =>
+    stand(
+      stand(
+        split(
+          placeBet(
+            betting(c("8"), c("10", "♣"), c("8", "♥"), c("7", "♦"), c("10", "♦"), c("5", "♣")),
+            10
+          )
+        )
+      )
+    );
+  /** The settled split, its hands' results set to `outcomes` (each 10 bet, doubled when ×2). */
+  const settled = (outcomes: string[], payouts: number[]): BlackjackState => {
+    const base = view(splitRound());
+    return {
+      ...base,
+      player_hands: outcomes.map(() => base.player_hands[0]!),
+      hand_bets: outcomes.map(() => 10),
+      hand_outcomes: outcomes,
+      hand_payouts: payouts,
+    };
+  };
+
+  it.each([
+    ["1 win + 1 loss, net 0", ["win", "lose"], [10, -10], "mixed"],
+    ["2 wins + 1 loss, net +", ["win", "lose", "win"], [10, -10, 10], "mixed"],
+    ["1 win + 2 losses, net -", ["lose", "lose", "win"], [-10, -10, 10], "mixed"],
+    ["a doubled loss and a win, net -", ["win", "lose"], [10, -20], "mixed"],
+    ["a win, a push and a loss", ["win", "push", "lose"], [10, 0, -10], "mixed"],
+    ["win + push", ["win", "push"], [10, 0], "win"],
+    ["lose + push", ["lose", "push"], [-10, 0], "lose"],
+    ["all push", ["push", "push"], [0, 0], "push"],
+    ["all win", ["win", "win", "win"], [10, 10, 10], "win"],
+    ["all lose", ["lose", "lose"], [-10, -10], "lose"],
+  ] as const)("%s: %s", (_name, outcomes, payouts, chime) => {
+    expect(resultCue(settled([...outcomes], [...payouts]))).toBe(chime);
+  });
+
+  it("is the round's result chime: it takes the chime's slot, before the chips (Reduce Motion's order too)", () => {
+    expect(RESULT_CUES).toContain("mixed");
+    const s2 = stand(
+      split(
+        placeBet(
+          betting(c("8"), c("10", "♣"), c("8", "♥"), c("7", "♦"), c("10", "♦"), c("5", "♣")),
+          10
+        )
+      )
+    );
+    const t = planMotion(view(s2), view(stand(s2)), [0, 0])!;
+    expect(t.chimeAt).toBe(t.resultAt);
+    // Reduce Motion plays each sound once in this order (#3751): flip, the chime, then the chips.
+    expect(cuesOf(t).map(([q]) => q)).toEqual(["flip", "mixed", "payout", "collect"]);
+    expect(t.cues.find((q) => q.sound === "mixed")!.at).toBe(t.resultAt);
   });
 });
 
