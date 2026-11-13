@@ -243,6 +243,25 @@ def test_result_rejects_malformed_values(bad: dict) -> None:
         SortResult.model_validate(bad)
 
 
+@pytest.mark.parametrize("stars", [1, 2, 3])
+def test_result_accepts_stars_one_to_three(stars: int) -> None:
+    result = _scored(5, 60)["result"] | {"stars": stars}
+    assert SortResult.model_validate(result).model_dump(exclude_unset=True) == result
+
+
+@pytest.mark.parametrize("stars", [0, 4, -1, "2", True, 2.0])
+def test_result_rejects_stars_outside_one_to_three_or_not_an_int(stars: object) -> None:
+    with pytest.raises(ValidationError):
+        SortResult.model_validate({"stars": stars})
+
+
+def test_result_without_stars_still_validates() -> None:
+    result = _scored(5, 60)["result"]
+    parsed = SortResult.model_validate(result)
+    assert parsed.stars is None
+    assert "stars" not in parsed.model_dump(exclude_unset=True)
+
+
 # ---------------------------------------------------------------------------
 # over HTTP: every current payload completes, and lands in games.metadata
 # ---------------------------------------------------------------------------
@@ -271,6 +290,26 @@ async def test_the_scored_result_is_stored_where_the_board_reads_it() -> None:
         "total_moves": 81,
         "catalog_version": CATALOG_VERSION,
     }
+
+
+async def test_stars_are_stored_and_do_not_change_the_board_score() -> None:
+    sid = await _player()
+    body = _scored(7, 81, moves=15)
+    body["result"] = {**body["result"], "stars": 2}
+    game_id = _play(sid, body)
+    row = client.get(f"/games/{game_id}", headers=_headers(sid)).json()
+    assert row["metadata"]["stars"] == 2
+    assert row["final_score"] == 7
+
+
+async def test_stars_out_of_range_are_rejected() -> None:
+    sid = await _player()
+    r = client.post("/games", headers=_headers(sid), json={"game_type": "sort", "metadata": {}})
+    game_id = r.json()["id"]
+    body = _scored(7, 81)
+    body["result"] = {**body["result"], "stars": 4}
+    r = client.patch(f"/games/{game_id}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 400, r.text
 
 
 async def test_unknown_result_keys_are_not_stored() -> None:
