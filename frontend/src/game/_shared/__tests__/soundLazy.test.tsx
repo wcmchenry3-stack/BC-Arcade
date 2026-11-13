@@ -446,6 +446,69 @@ describe("useLoopSound — lazy (#3604)", () => {
     expect(mockPlayers[0]!.remove).toHaveBeenCalledTimes(1);
   });
 
+  it("the first start() of a lazy loop does not seek (a not-yet-ready item may never complete the seek) and does play", async () => {
+    const { result } = await renderHook(() => useLoopSound("a", REG, 1, LAZY_SOUND), { wrapper });
+    await act(async () => {
+      result.current.start();
+      await Promise.resolve();
+    });
+    expect(mockPlayers[0]!.seekTo).not.toHaveBeenCalled();
+    expect(mockPlayers[0]!.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("an eager loop still rewinds before its first play", async () => {
+    const { result } = await renderHook(() => useLoopSound("a", REG, 1), { wrapper });
+    await act(async () => {
+      result.current.start();
+      await Promise.resolve();
+    });
+    expect(mockPlayers[0]!.seekTo).toHaveBeenCalledWith(0);
+    expect(mockPlayers[0]!.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("a seek that never completes on a later start() does not wedge the loop: stop() then start() retries", async () => {
+    const { result } = await renderHook(() => useLoopSound("a", REG, 1, LAZY_SOUND), { wrapper });
+    await act(async () => {
+      result.current.start();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      result.current.stop();
+    });
+    mockPlayers[0]!.seekTo.mockImplementationOnce(() => new Promise<void>(() => {})); // never settles
+    await act(async () => {
+      result.current.start(); // pending, play() not reached
+    });
+    expect(mockPlayers[0]!.play).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      result.current.stop();
+    });
+    await act(async () => {
+      result.current.start();
+      await Promise.resolve();
+    });
+    expect(mockPlayers[0]!.play).toHaveBeenCalledTimes(2);
+  });
+
+  it("a first start() whose play() fails can be retried", async () => {
+    const { result } = await renderHook(() => useLoopSound("a", REG, 1, LAZY_SOUND), { wrapper });
+    await act(async () => {
+      result.current.start();
+    });
+    mockPlayers[0]!.play.mockImplementationOnce(() => Promise.reject(new Error("not ready")));
+    await act(async () => {
+      result.current.stop();
+      result.current.start();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      result.current.start(); // idempotent only while it is really playing
+      await Promise.resolve();
+    });
+    expect(mockPlayers[0]!.play.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
   it("stop() before any start() creates nothing; a start() after unmount creates nothing", async () => {
     const { result, unmount } = await renderHook(() => useLoopSound("a", REG, 1, LAZY_SOUND), {
       wrapper,

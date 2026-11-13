@@ -35,6 +35,9 @@ export function useLoopSound(
   // True between the registry effect's setup and cleanup; a stale start() must not create a
   // lazy player nobody would remove.
   const aliveRef = useRef(false);
+  // True for a lazily created player until its first start: it is already at position 0, and a
+  // seekTo on a not-yet-ready item may never complete (iOS), which would leave play() unreached.
+  const freshRef = useRef(false);
 
   const sync = useCallback(() => {
     const shouldPlay = wantedRef.current && !mutedRef.current;
@@ -47,6 +50,7 @@ export function useLoopSound(
       created.loop = true;
       created.volume = volumeRef.current;
       playerRef.current = created;
+      freshRef.current = true;
       releaseRef.current = retainAudioSession();
     }
     const player = playerRef.current;
@@ -55,12 +59,18 @@ export function useLoopSound(
     try {
       if (shouldPlay) {
         player.loop = true;
-        Promise.resolve(player.seekTo(0))
+        const rewind = freshRef.current ? undefined : player.seekTo(0);
+        freshRef.current = false;
+        Promise.resolve(rewind)
           .then(() => {
             // stop() may have landed while the seek was pending
             if (playingRef.current && playerRef.current === player) return player.play();
           })
-          .catch(() => {});
+          .catch(() => {
+            // A failed start must not leave the loop marked as playing, or no later start()
+            // could retry it.
+            if (playerRef.current === player) playingRef.current = false;
+          });
       } else {
         player.pause();
         Promise.resolve(player.seekTo(0)).catch(() => {});
