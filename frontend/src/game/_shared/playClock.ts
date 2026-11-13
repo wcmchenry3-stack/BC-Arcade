@@ -55,7 +55,9 @@ export function withClock<T extends PlayClock>(target: T, clock: PlayClock): T {
 
 /** Play time so far: what is banked plus the running segment, if any. */
 export function clockElapsedMs(clock: PlayClock, now: number = Date.now()): number {
-  return clock.accumulatedMs + (clock.startedAt !== null ? now - clock.startedAt : 0);
+  // A device clock set back mid-segment makes `now - startedAt` negative: a
+  // segment banks 0 at the least, never a negative play time (#3738).
+  return clock.accumulatedMs + (clock.startedAt !== null ? Math.max(0, now - clock.startedAt) : 0);
 }
 
 /**
@@ -99,7 +101,7 @@ export function clockForSave<T extends PlayClock>(state: T, now: number = Date.n
   if (state.startedAt === null) return state;
   return {
     ...state,
-    accumulatedMs: state.accumulatedMs + (now - state.startedAt),
+    accumulatedMs: state.accumulatedMs + Math.max(0, now - state.startedAt),
     startedAt: now,
   };
 }
