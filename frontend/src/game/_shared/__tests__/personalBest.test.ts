@@ -1,0 +1,539 @@
+/**
+ * The shared personal best (#3757): format, comparators, variants, fail-safes, and moving every
+ * game's save from before #3757 in without losing or lowering a best.
+ *
+ * The legacy fixtures are the bytes each game's own storage wrote before #3757 (the same strings
+ * `storageCompat.test.ts` seeded for those keys).
+ */
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Sentry from "@sentry/react-native";
+
+import {
+  __resetPersonalBestForTests,
+  DEFAULT_VARIANT,
+  getBest,
+  getBests,
+  judgeResult,
+  mergeBests,
+  recordResult,
+  storageKey,
+} from "../personalBest";
+import { MAX_YACHT_SCORE, sudokuVariant, type PersonalBestGame } from "../personalBestGames";
+import { resetSentryThrottle } from "../sentryThrottle";
+
+const record = (b: Record<string, number>) => JSON.stringify({ v: 1, b });
+
+async function stored(game: PersonalBestGame): Promise<unknown> {
+  const raw = await AsyncStorage.getItem(storageKey(game));
+  return raw === null ? null : JSON.parse(raw);
+}
+
+const setItem = jest.mocked(AsyncStorage.setItem);
+const getMany = jest.mocked(AsyncStorage.getMany);
+
+beforeEach(async () => {
+  await AsyncStorage.clear();
+  jest.clearAllMocks();
+});
+
+describe("judgeResult: per-game comparator", () => {
+  it("higher is better (Cascade, Star Swarm, 2048, Yacht)", () => {
+    for (const game of ["cascade", "starswarm", "twenty48", "yacht"] as const) {
+      expect(judgeResult(game, 100, 120)).toEqual({ best: 120, improved: true, isNewBest: true });
+      expect(judgeResult(game, 100, 80)).toEqual({ best: 100, improved: false, isNewBest: false });
+      expect(judgeResult(game, 100, 100)).toEqual({ best: 100, improved: false, isNewBest: false });
+    }
+  });
+
+  it("lower is better (FreeCell, Solitaire, Sudoku, Mahjong)", () => {
+    for (const game of ["freecell", "solitaire", "sudoku"] as const) {
+      expect(judgeResult(game, 100, 80)).toEqual({ best: 80, improved: true, isNewBest: true });
+      expect(judgeResult(game, 100, 120)).toEqual({ best: 100, improved: false, isNewBest: false });
+    }
+    expect(judgeResult("mahjong", 300_000, 200_000)).toEqual({
+      best: 200_000,
+      improved: true,
+      isNewBest: true,
+    });
+  });
+
+  it("the first result sets the best but is not a new best (bestOf's rule)", () => {
+    expect(judgeResult("cascade", 0, 50)).toEqual({ best: 50, improved: true, isNewBest: false });
+    expect(judgeResult("freecell", 0, 90)).toEqual({ best: 90, improved: true, isNewBest: false });
+  });
+
+  it("a value that can't be a best changes nothing", () => {
+    // A 0 score never set a Cascade or Star Swarm best.
+    expect(judgeResult("cascade", 0, 0)).toEqual({ best: 0, improved: false, isNewBest: false });
+    expect(judgeResult("starswarm", 40, 0)).toEqual({
+      best: 40,
+      improved: false,
+      isNewBest: false,
+    });
+    // A Mahjong clear under the floor is a broken clock.
+    expect(judgeResult("mahjong", 300_000, 1_000)).toEqual({
+      best: 300_000,
+      improved: false,
+      isNewBest: false,
+    });
+    expect(judgeResult("yacht", 0, MAX_YACHT_SCORE + 1).improved).toBe(false);
+    expect(judgeResult("twenty48", 0, Number.NaN).improved).toBe(false);
+  });
+
+  it("a prior that can't be a best counts as none", () => {
+    expect(judgeResult("mahjong", 1_000, 200_000)).toEqual({
+      best: 200_000,
+      improved: true,
+      isNewBest: false,
+    });
+  });
+});
+
+describe("judgeResult: Mahjong's fastest plausible clear (was `nextBestTime`, #2747)", () => {
+  const next = (prior: number, ms: number) => {
+    const { best, isNewBest } = judgeResult("mahjong", prior, ms);
+    return { bestTimeMs: best, isNewBest };
+  };
+
+  it("keeps the fastest plausible clear; a first clear is a best but not a new best (#2977)", () => {
+    expect(next(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
+    expect(next(90_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: true });
+    expect(next(60_000, 90_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
+    expect(next(60_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
+  });
+
+  it("never takes a clear under the floor as a best", () => {
+    expect(next(0, 5_000)).toEqual({ bestTimeMs: 0, isNewBest: false });
+    expect(next(90_000, 5_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
+  });
+
+  it("ignores a stored best under the floor: a real clear replaces it but is a first best", () => {
+    expect(next(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
+  });
+});
+
+describe("mergeBests", () => {
+  it("keeps the better value per variant, by the game's comparator", () => {
+    expect(mergeBests("freecell", { a: 90, b: 70 }, { a: 80, b: 75, c: 60 })).toEqual({
+      a: 80,
+      b: 70,
+      c: 60,
+    });
+    expect(mergeBests("cascade", { _: 500 }, { _: 400 })).toEqual({ _: 500 });
+  });
+});
+
+describe("recordResult / getBest", () => {
+  it("stores the first result, then only an improvement", async () => {
+    await expect(getBest("cascade")).resolves.toBe(0);
+    await expect(recordResult("cascade", 500)).resolves.toEqual({
+      best: 500,
+      improved: true,
+      isNewBest: false,
+    });
+    await expect(recordResult("cascade", 700)).resolves.toEqual({
+      best: 700,
+      improved: true,
+      isNewBest: true,
+    });
+    await expect(getBest("cascade")).resolves.toBe(700);
+    expect(await stored("cascade")).toEqual({ v: 1, b: { _: 700 } });
+  });
+
+  it("writes nothing when the result doesn't improve the best", async () => {
+    await recordResult("freecell", 80);
+    setItem.mockClear();
+    await expect(recordResult("freecell", 95)).resolves.toEqual({
+      best: 80,
+      improved: false,
+      isNewBest: false,
+    });
+    await expect(recordResult("freecell", 80)).resolves.toMatchObject({ improved: false });
+    await getBest("freecell");
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing for a value that can't be a best", async () => {
+    setItem.mockClear();
+    await recordResult("starswarm", 0);
+    await recordResult("mahjong", "turtle", 1_000);
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("keeps a best per variant", async () => {
+    await recordResult("sudoku", sudokuVariant("classic", "easy"), 120);
+    await recordResult("sudoku", sudokuVariant("mini", "easy"), 40);
+    await recordResult("sudoku", sudokuVariant("classic", "easy"), 100);
+    await expect(getBest("sudoku", "classic.easy")).resolves.toBe(100);
+    await expect(getBest("sudoku", "mini.easy")).resolves.toBe(40);
+    await expect(getBest("sudoku", "classic.hard")).resolves.toBe(0);
+    await expect(getBests("sudoku")).resolves.toEqual({ "classic.easy": 100, "mini.easy": 40 });
+  });
+
+  it("a game without variants uses the default variant", async () => {
+    await recordResult("twenty48", undefined, 2048);
+    await expect(getBest("twenty48", DEFAULT_VARIANT)).resolves.toBe(2048);
+    await expect(getBests("twenty48")).resolves.toEqual({ _: 2048 });
+  });
+
+  it("keeps games apart", async () => {
+    await recordResult("cascade", 500);
+    await recordResult("starswarm", 900);
+    await expect(getBest("cascade")).resolves.toBe(500);
+    await expect(getBest("starswarm")).resolves.toBe(900);
+  });
+
+  it("results finishing together never lower the best", async () => {
+    await Promise.all([
+      recordResult("cascade", 300),
+      recordResult("cascade", 900),
+      recordResult("cascade", 600),
+    ]);
+    await expect(getBest("cascade")).resolves.toBe(900);
+  });
+});
+
+describe("cache (#3757 review): storage is read once per session per game", () => {
+  it("a second call doesn't read storage again, and an improvement still writes", async () => {
+    await AsyncStorage.setItem(storageKey("twenty48"), JSON.stringify({ v: 1, b: { _: 100 } }));
+    await expect(getBest("twenty48")).resolves.toBe(100);
+    expect(getMany).toHaveBeenCalledTimes(1);
+    setItem.mockClear();
+    for (const score of [120, 140, 160]) await recordResult("twenty48", score);
+    await expect(recordResult("twenty48", 150)).resolves.toMatchObject({ improved: false });
+    await expect(getBest("twenty48")).resolves.toBe(160);
+    expect(getMany).toHaveBeenCalledTimes(1);
+    expect(setItem.mock.calls).toEqual([
+      [storageKey("twenty48"), JSON.stringify({ v: 1, b: { _: 120 } })],
+      [storageKey("twenty48"), JSON.stringify({ v: 1, b: { _: 140 } })],
+      [storageKey("twenty48"), JSON.stringify({ v: 1, b: { _: 160 } })],
+    ]);
+  });
+
+  it("after the first write, a game with no record yet reads storage no more", async () => {
+    await getBest("twenty48");
+    await recordResult("twenty48", 8);
+    await recordResult("twenty48", 16);
+    // One read before the first best (none stored), none after it was written.
+    expect(getMany).toHaveBeenCalledTimes(2);
+    await expect(getBest("twenty48")).resolves.toBe(16);
+    expect(getMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("two games never share a cache", async () => {
+    await recordResult("cascade", 500);
+    await recordResult("starswarm", 900);
+    await expect(getBest("cascade")).resolves.toBe(500);
+    await expect(getBest("starswarm")).resolves.toBe(900);
+    await expect(getBests("twenty48")).resolves.toEqual({});
+  });
+
+  it("a failed write forgets the cache, so the next call reads storage again", async () => {
+    await recordResult("cascade", 500);
+    setItem.mockRejectedValueOnce(new Error("full"));
+    await recordResult("cascade", 700);
+    getMany.mockClear();
+    await expect(getBest("cascade")).resolves.toBe(500);
+    expect(getMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("a corrupt record is not cached", async () => {
+    await AsyncStorage.setItem(storageKey("cascade"), "{x");
+    await getBest("cascade");
+    await AsyncStorage.setItem(storageKey("cascade"), JSON.stringify({ v: 1, b: { _: 42 } }));
+    await expect(getBest("cascade")).resolves.toBe(42);
+  });
+
+  it("the older save is moved in once: later calls don't read or merge it again", async () => {
+    await AsyncStorage.setItem("cascade_best_score", "300");
+    await expect(getBest("cascade")).resolves.toBe(300);
+    getMany.mockClear();
+    await expect(recordResult("cascade", 400)).resolves.toMatchObject({ isNewBest: true });
+    expect(getMany).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBeNull();
+  });
+});
+
+describe("fail-safe", () => {
+  it("reads a corrupt record as no best, reports it once and removes it", async () => {
+    for (const raw of ["{x", "null", "[1]", '{"b":{"_":5}}', '{"v":1,"b":[5]}']) {
+      jest.clearAllMocks();
+      resetSentryThrottle();
+      await AsyncStorage.setItem(storageKey("cascade"), raw);
+      await expect(getBest("cascade")).resolves.toBe(0);
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      await expect(AsyncStorage.getItem(storageKey("cascade"))).resolves.toBeNull();
+    }
+  });
+
+  it("leaves a record in another format version exactly as stored (#3757 review)", async () => {
+    const v2 = JSON.stringify({ v: 2, b: { _: 5000 }, extra: "a newer build's" });
+    await AsyncStorage.setItem(storageKey("cascade"), v2);
+    setItem.mockClear();
+    await expect(getBest("cascade")).resolves.toBe(0);
+    await expect(AsyncStorage.getItem(storageKey("cascade"))).resolves.toBe(v2);
+    await expect(recordResult("cascade", 9000)).resolves.toMatchObject({ best: 9000 });
+    await expect(AsyncStorage.getItem(storageKey("cascade"))).resolves.toBe(v2);
+    expect(setItem).not.toHaveBeenCalledWith(storageKey("cascade"), expect.anything());
+  });
+
+  it("over a record in another version, an older save counts in memory only and stays stored", async () => {
+    const v2 = JSON.stringify({ v: 2, b: { _: 5000 } });
+    await AsyncStorage.setItem(storageKey("cascade"), v2);
+    await AsyncStorage.setItem("cascade_best_score", "700");
+    setItem.mockClear();
+    await expect(getBest("cascade")).resolves.toBe(700);
+    await expect(recordResult("cascade", 600)).resolves.toMatchObject({
+      best: 700,
+      improved: false,
+    });
+    await expect(AsyncStorage.getItem(storageKey("cascade"))).resolves.toBe(v2);
+    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("700");
+    expect(setItem).not.toHaveBeenCalledWith(storageKey("cascade"), expect.anything());
+  });
+
+  it("drops stored values that can't be a best and keeps the rest", async () => {
+    await AsyncStorage.setItem(
+      storageKey("mahjong"),
+      JSON.stringify({ v: 1, b: { turtle: 200_000, fort: 5, pyramid: "x", "": 300_000 } })
+    );
+    await expect(getBests("mahjong")).resolves.toEqual({ turtle: 200_000 });
+  });
+
+  it("never rejects, and never writes when storage can't be read", async () => {
+    await recordResult("cascade", 900);
+    __resetPersonalBestForTests(); // a new session: nothing cached
+    getMany.mockRejectedValueOnce(new Error("disk")).mockRejectedValueOnce(new Error("disk"));
+    setItem.mockClear();
+    await expect(getBest("cascade")).resolves.toBe(0);
+    await expect(recordResult("cascade", 100)).resolves.toMatchObject({ best: 100 });
+    expect(setItem).not.toHaveBeenCalled();
+    expect(Sentry.captureException).toHaveBeenCalled();
+    await expect(getBest("cascade")).resolves.toBe(900);
+  });
+
+  it("a failed write resolves and is reported", async () => {
+    setItem.mockRejectedValueOnce(new Error("full"));
+    await expect(recordResult("cascade", 100)).resolves.toMatchObject({ improved: true });
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { subsystem: "personalBest", op: "save", game: "cascade" },
+    });
+  });
+});
+
+/** Each game's save from before #3757, and the bests it holds. */
+const LEGACY: ReadonlyArray<{
+  game: PersonalBestGame;
+  key: string;
+  raw: string;
+  bests: Record<string, number>;
+}> = [
+  { game: "cascade", key: "cascade_best_score", raw: "1234", bests: { _: 1234 } },
+  { game: "starswarm", key: "starswarm.bestScore", raw: "8150", bests: { _: 8150 } },
+  { game: "twenty48", key: "twenty48_best_score_v1", raw: "2048", bests: { _: 2048 } },
+  { game: "yacht", key: "yacht_best_score_v1", raw: "245", bests: { _: 245 } },
+  { game: "freecell", key: "freecell_stats_v1", raw: '{"bestMoves":80}', bests: { _: 80 } },
+  {
+    game: "solitaire",
+    key: "solitaire_stats_v1",
+    raw: '{"bestTimeMs":5000,"bestMoves":80,"gamesPlayed":4}',
+    bests: { _: 5000 },
+  },
+  {
+    game: "mahjong",
+    key: "mahjong_stats_v1",
+    raw: '{"bestScore":5,"bestTimeMs":1000,"bestTimeMsByLayout":{"turtle":1,"fort":"x","pyramid":400000}}',
+    bests: { pyramid: 400_000 },
+  },
+  {
+    game: "sudoku",
+    key: "sudoku_stats_v1",
+    raw: JSON.stringify({
+      classic: { easy: { bestTimeS: 100 }, medium: { bestTimeS: 0 }, hard: { bestTimeS: 0 } },
+      mini: { easy: { bestTimeS: 40 }, medium: { bestTimeS: 0 }, hard: { bestTimeS: 9 } },
+    }),
+    bests: { "classic.easy": 100, "mini.easy": 40, "mini.hard": 9 },
+  },
+  {
+    game: "sudoku",
+    key: "sudoku_stats_v1",
+    // Before #748: the classic difficulties at the top level.
+    raw: '{"easy":{"bestTimeS":50,"gamesSolved":3},"hard":null}',
+    bests: { "classic.easy": 50 },
+  },
+];
+
+describe.each(LEGACY)(
+  "moving $game's save from before #3757 in ($key)",
+  ({ game, key, raw, bests }) => {
+    it("reads the old best, writes it in the new format and removes the old key", async () => {
+      await AsyncStorage.setItem(key, raw);
+      await expect(getBests(game)).resolves.toEqual(bests);
+      expect(await stored(game)).toEqual({ v: 1, b: bests });
+      await expect(AsyncStorage.getItem(key)).resolves.toBeNull();
+    });
+
+    it("is idempotent: a second read changes nothing", async () => {
+      await AsyncStorage.setItem(key, raw);
+      await getBests(game);
+      setItem.mockClear();
+      await expect(getBests(game)).resolves.toEqual(bests);
+      expect(setItem).not.toHaveBeenCalled();
+    });
+
+    it("the old best counts for the next result (a new best only when beaten)", async () => {
+      await AsyncStorage.setItem(key, raw);
+      const [variant, best] = Object.entries(bests)[0]!;
+      const lower =
+        game === "freecell" || game === "solitaire" || game === "sudoku" || game === "mahjong";
+      const worse = lower ? best + 1000 : best - 1;
+      await expect(recordResult(game, variant, worse)).resolves.toEqual({
+        best,
+        improved: false,
+        isNewBest: false,
+      });
+    });
+
+    it("never lowers a best already in the new format", async () => {
+      const [variant, best] = Object.entries(bests)[0]!;
+      const lower =
+        game === "freecell" || game === "solitaire" || game === "sudoku" || game === "mahjong";
+      const better = lower ? best - 1 : best + 1;
+      await AsyncStorage.setItem(storageKey(game), record({ [variant]: better }));
+      await AsyncStorage.setItem(key, raw);
+      await expect(getBest(game, variant)).resolves.toBe(better);
+      await expect(AsyncStorage.getItem(key)).resolves.toBeNull();
+    });
+
+    it("keeps the old key when the new record can't be written, and moves it in next time", async () => {
+      await AsyncStorage.setItem(key, raw);
+      setItem.mockRejectedValueOnce(new Error("full"));
+      await expect(getBests(game)).resolves.toEqual(bests);
+      await expect(AsyncStorage.getItem(key)).resolves.toBe(raw);
+      await expect(getBests(game)).resolves.toEqual(bests);
+      await expect(AsyncStorage.getItem(key)).resolves.toBeNull();
+    });
+  }
+);
+
+describe("Sentry volume (#3757 review): each kind of failure is reported once per session", () => {
+  const reportsOf = (op: string) =>
+    jest
+      .mocked(Sentry.captureException)
+      .mock.calls.filter(([, ctx]) => (ctx as { tags?: { op?: string } })?.tags?.op === op);
+
+  it("50 failing writes in a row send one report", async () => {
+    for (let i = 1; i <= 50; i++) {
+      setItem.mockRejectedValueOnce(new Error("full"));
+      await recordResult("twenty48", i * 10);
+    }
+    expect(reportsOf("save")).toHaveLength(1);
+  });
+
+  it("50 failing reads in a row send one report, per game", async () => {
+    for (let i = 0; i < 50; i++) {
+      getMany.mockRejectedValueOnce(new Error("disk"));
+      await recordResult("twenty48", 100 + i);
+    }
+    getMany.mockRejectedValueOnce(new Error("disk"));
+    await getBest("cascade");
+    expect(reportsOf("load")).toHaveLength(2);
+  });
+
+  it("a corrupt record whose removal keeps failing is reported once", async () => {
+    const removeItem = jest.mocked(AsyncStorage.removeItem);
+    for (let i = 0; i < 50; i++) {
+      await AsyncStorage.setItem(storageKey("cascade"), "{x");
+      removeItem.mockRejectedValueOnce(new Error("disk"));
+      await getBest("cascade");
+    }
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("removing an older save fails", () => {
+  it("keeps the moved best, reports it, and moves it in again (idempotently) next read", async () => {
+    await AsyncStorage.setItem("cascade_best_score", "500");
+    jest.mocked(AsyncStorage.removeMany).mockRejectedValueOnce(new Error("disk"));
+    await expect(getBest("cascade")).resolves.toBe(500);
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { subsystem: "personalBest", op: "migrate", game: "cascade" },
+    });
+    await recordResult("cascade", 800);
+    await expect(getBest("cascade")).resolves.toBe(800);
+    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBeNull();
+  });
+});
+
+describe("older saves that hold no best", () => {
+  it.each([
+    ["cascade", "cascade_best_score", "abc"],
+    ["cascade", "cascade_best_score", "0"],
+    ["starswarm", "starswarm.bestScore", "-5"],
+    ["twenty48", "twenty48_best_score_v1", "abc"],
+    ["yacht", "yacht_best_score_v1", String(MAX_YACHT_SCORE + 1)],
+    ["freecell", "freecell_stats_v1", "{x"],
+    ["freecell", "freecell_stats_v1", "null"],
+    ["freecell", "freecell_stats_v1", '{"gamesWon":4,"bestMoves":"x"}'],
+    ["solitaire", "solitaire_stats_v1", "null"],
+    ["mahjong", "mahjong_stats_v1", "{x"],
+    ["sudoku", "sudoku_stats_v1", "null"],
+  ] as const)("%s: %s = %s reads as no best and is cleaned up", async (game, key, raw) => {
+    await AsyncStorage.setItem(key, raw);
+    await expect(getBests(game)).resolves.toEqual({});
+    await expect(AsyncStorage.getItem(key)).resolves.toBeNull();
+    await expect(AsyncStorage.getItem(storageKey(game))).resolves.toBeNull();
+  });
+
+  it.each([
+    ["starswarm", "starswarm.bestScore", "not a number"],
+    ["freecell", "freecell_stats_v1", "{}"],
+    ["solitaire", "solitaire_stats_v1", "not-json{"],
+    ["solitaire", "solitaire_stats_v1", '{"gamesPlayed":5}'],
+    ["sudoku", "sudoku_stats_v1", "{{bad json"],
+    ["sudoku", "sudoku_stats_v1", '{"easy":{"gamesSolved":4},"medium":{},"hard":null}'],
+    ["mahjong", "mahjong_stats_v1", '{"bestScore":1220,"bestTimeMs":90000,"gamesPlayed":2}'],
+  ] as const)("%s: %s = %s holds no best", async (game, key, raw) => {
+    await AsyncStorage.setItem(key, raw);
+    await expect(getBests(game)).resolves.toEqual({});
+  });
+
+  it("keeps only the best from records with the old counters", async () => {
+    await AsyncStorage.setItem(
+      "freecell_stats_v1",
+      JSON.stringify({ bestMoves: 60, gamesPlayed: 5, gamesWon: 2 })
+    );
+    await expect(getBests("freecell")).resolves.toEqual({ _: 60 });
+    await AsyncStorage.setItem(
+      "solitaire_stats_v1",
+      JSON.stringify({ bestTimeMs: 81000, bestMoves: 99, gamesPlayed: 12, gamesWon: 4 })
+    );
+    await expect(getBests("solitaire")).resolves.toEqual({ _: 81000 });
+    await AsyncStorage.setItem(
+      "sudoku_stats_v1",
+      JSON.stringify({
+        classic: {
+          easy: { bestTimeS: 95, gamesSolved: 12 },
+          medium: { bestTimeS: 0, gamesSolved: 0 },
+          hard: { bestTimeS: 400, gamesSolved: 2 },
+        },
+        mini: { easy: { bestTimeS: 30, gamesSolved: 1 } },
+      })
+    );
+    await expect(getBests("sudoku")).resolves.toEqual({
+      "classic.easy": 95,
+      "classic.hard": 400,
+      "mini.easy": 30,
+    });
+  });
+
+  it("Yacht's most possible score is a best; one above it is corrupt", async () => {
+    await AsyncStorage.setItem("yacht_best_score_v1", String(MAX_YACHT_SCORE));
+    await expect(getBest("yacht")).resolves.toBe(MAX_YACHT_SCORE);
+  });
+
+  it("floors a fractional score as the old Cascade and Star Swarm reads did", async () => {
+    await AsyncStorage.setItem("cascade_best_score", "1234.9");
+    await expect(getBest("cascade")).resolves.toBe(1234);
+  });
+});

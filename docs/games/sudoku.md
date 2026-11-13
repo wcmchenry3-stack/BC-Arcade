@@ -209,7 +209,7 @@ It pauses while:
 
 A saved puzzle restores the board, notes, errors, and undo history after relaunch, but **elapsed time is not persisted**. If the restored puzzle already contains play, its timer restarts from 0 for the new process. This is current intentional behavior.
 
-The device also keeps local best-time data for result-card presentation; server Stats/history remain authoritative for historical reporting.
+The device also keeps the best time per mode and difficulty for result-card presentation: the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:sudoku`, variants such as `classic.easy`; the old `sudoku_stats_v1` is moved in on the first read), read with the saved puzzle and written only when a solve beats it. No server I/O. Server Stats/history remain authoritative for historical reporting.
 
 ## Save / resume
 

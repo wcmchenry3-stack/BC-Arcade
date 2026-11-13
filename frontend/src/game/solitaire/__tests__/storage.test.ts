@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
-import { clearGame, loadGame, saveGame, loadStats, saveStats } from "../storage";
+import { clearGame, loadGame, saveGame } from "../storage";
 import { dealGame, applyMove, drawFromStock } from "../engine";
 import type { SolitaireState } from "../types";
 
@@ -184,43 +184,5 @@ describe("solitaire storage — play clock across a relaunch (#2750)", () => {
     const loaded = await loadGame();
     expect(loaded!.startedAt).toBeNull();
     expect(loaded!.accumulatedMs).toBe(9_000);
-  });
-});
-
-describe("solitaire stats storage", () => {
-  beforeEach(async () => {
-    await AsyncStorage.clear();
-    (Sentry.captureException as jest.Mock).mockClear();
-  });
-
-  it("returns a zero best when nothing is saved", async () => {
-    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
-  });
-
-  it("saves and loads the best round-trip, storing only the best", async () => {
-    await saveStats({ bestTimeMs: 95000 });
-    expect(await loadStats()).toEqual({ bestTimeMs: 95000 });
-    expect(JSON.parse((await AsyncStorage.getItem("solitaire_stats_v1"))!)).toEqual({
-      bestTimeMs: 95000,
-    });
-  });
-
-  it("returns a zero best on a corrupt payload", async () => {
-    await AsyncStorage.setItem("solitaire_stats_v1", "not-json{");
-    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
-  });
-
-  // #2636: the counters are gone; an older build's record still loads.
-  it("loads the best from a record with the old counters", async () => {
-    await AsyncStorage.setItem(
-      "solitaire_stats_v1",
-      JSON.stringify({ bestTimeMs: 81000, bestMoves: 99, gamesPlayed: 12, gamesWon: 4 })
-    );
-    expect(await loadStats()).toEqual({ bestTimeMs: 81000 });
-  });
-
-  it("coerces a missing best to 0 on a partial payload", async () => {
-    await AsyncStorage.setItem("solitaire_stats_v1", JSON.stringify({ gamesPlayed: 5 }));
-    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
   });
 });

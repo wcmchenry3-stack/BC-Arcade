@@ -6,7 +6,8 @@ import React from "react";
 import { render, act, waitFor, fireEvent, within } from "@testing-library/react-native";
 import Twenty48Screen from "../Twenty48Screen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { saveGame, clearGame, loadGame, loadBestScore } from "../../game/twenty48/storage";
+import { saveGame, clearGame, loadGame } from "../../game/twenty48/storage";
+import { getBest, recordResult } from "../../game/_shared/personalBest";
 import type * as StorageModule from "../../game/twenty48/storage";
 import { Twenty48State } from "../../game/twenty48/types";
 import { MAX_RECORDED_MOVES, MAX_RECORDED_ROWS } from "../../game/twenty48/replay";
@@ -29,12 +30,16 @@ jest.mock("../../game/twenty48/storage", () => ({
   saveGame: jest.fn(() => Promise.resolve()),
   clearGame: jest.fn(() => Promise.resolve()),
   loadGame: jest.fn().mockResolvedValue(null),
-  saveBestScore: jest.fn(),
-  loadBestScore: jest.fn().mockResolvedValue(0),
   // The old `twenty48_stats_v1` accessors, gone since #2636. Still mocked so
   // a test can prove the screen calls neither.
   loadStats: jest.fn().mockResolvedValue({ bestTile: 0, gamesPlayed: 0, gamesWon: 0 }),
   saveStats: jest.fn(),
+}));
+// The best score is the shared personal best (#3757): none stored, no-op persistence.
+jest.mock("../../game/_shared/personalBest", () => ({
+  ...jest.requireActual("../../game/_shared/personalBest"),
+  getBest: jest.fn().mockResolvedValue(0),
+  recordResult: jest.fn(() => Promise.resolve({ best: 0, improved: false, isNewBest: false })),
 }));
 
 // Reduce Motion is on here (#3689): the result card follows a win or a game over at once, so these
@@ -404,7 +409,7 @@ describe("Twenty48Screen — initial load", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
     });
-    expect(loadBestScore).toHaveBeenCalled();
+    expect(getBest).toHaveBeenCalledWith("twenty48");
     expect(storage.loadStats).not.toHaveBeenCalled();
     expect(storage.saveStats).not.toHaveBeenCalled();
   });
@@ -1247,7 +1252,7 @@ describe("Twenty48Screen — result card (#2513)", () => {
   });
 
   it("game-over card says no more moves and shows best and highest tile", async () => {
-    (loadBestScore as jest.Mock).mockResolvedValueOnce(9000);
+    (getBest as jest.Mock).mockResolvedValueOnce(9000);
     (loadGame as jest.Mock).mockResolvedValueOnce({ ...GAME_OVER_STATE, score: 1234 });
     const { getByTestId } = await mountAndSettle();
     await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());
@@ -1260,8 +1265,24 @@ describe("Twenty48Screen — result card (#2513)", () => {
     expect(card.queryByText("New best")).toBeNull();
   });
 
+  it("records a score above the best in the shared personal best (#3757)", async () => {
+    (getBest as jest.Mock).mockResolvedValueOnce(1000);
+    (loadGame as jest.Mock).mockResolvedValueOnce({ ...GAME_OVER_STATE, score: 1234 });
+    const { getByTestId } = await mountAndSettle();
+    await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());
+    expect(recordResult).toHaveBeenCalledWith("twenty48", 1234);
+  });
+
+  it("records nothing for a score below the best (#3757)", async () => {
+    (getBest as jest.Mock).mockResolvedValueOnce(9000);
+    (loadGame as jest.Mock).mockResolvedValueOnce({ ...GAME_OVER_STATE, score: 1234 });
+    const { getByTestId } = await mountAndSettle();
+    await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());
+    expect(recordResult).not.toHaveBeenCalled();
+  });
+
   it("marks New Best against the best from before this game", async () => {
-    (loadBestScore as jest.Mock).mockResolvedValueOnce(1000);
+    (getBest as jest.Mock).mockResolvedValueOnce(1000);
     (loadGame as jest.Mock).mockResolvedValueOnce({ ...GAME_OVER_STATE, score: 1234 });
     const { getByTestId } = await mountAndSettle();
     await waitFor(() => expect(getByTestId("twenty48-result")).toBeTruthy());

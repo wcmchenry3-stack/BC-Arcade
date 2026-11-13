@@ -37,7 +37,6 @@ import { STARSWARM_HULL_BLUE } from "../theme/theme.starswarm";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
-import { bestOf } from "../game/_shared/bestOf";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
@@ -75,7 +74,7 @@ import StarSwarmDevPanel, {
   type StarSwarmDevOptions,
 } from "../components/starswarm/StarSwarmDevPanel";
 import { DevButton } from "../components/dev/DevPanelShell";
-import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
+import { getBest, judgeResult, recordResult } from "../game/_shared/personalBest";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
@@ -261,10 +260,11 @@ function StarSwarmGame() {
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
 
-  // The best score survives restarts (#2516); it was session-only before.
+  // The best score survives restarts (#2516); it was session-only before. It is the shared
+  // personal best (#3757), read once here so the end of a run is decided synchronously.
   useEffect(() => {
     let alive = true;
-    loadBestScore().then((best) => {
+    getBest("starswarm").then((best) => {
       if (!alive || best <= highScoreRef.current) return;
       highScoreRef.current = best;
       setHighScore(best);
@@ -371,12 +371,12 @@ function StarSwarmGame() {
       playGameOver();
       // The result card's haptic marks the end of the run (#2516).
       const priorBest = highScoreRef.current;
-      const { improved, isNewBest } = bestOf(priorBest, finalScore, false);
-      // bestOf counts any result as improving on no best; a 0 score never set one.
-      if (improved && finalScore > 0) {
+      // A 0 score never sets a best (the game's rule in `personalBestGames.ts`).
+      const { improved, isNewBest } = judgeResult("starswarm", priorBest, finalScore);
+      if (improved) {
         highScoreRef.current = finalScore;
         setHighScore(finalScore);
-        void saveBestScore(finalScore);
+        void recordResult("starswarm", finalScore);
       }
       // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
       const engineEnd = canvasRef.current?.getState();
