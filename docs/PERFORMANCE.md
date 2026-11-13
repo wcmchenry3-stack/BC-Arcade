@@ -195,18 +195,19 @@ Everything in this section is current. The April 2026 sections further down are 
 
 The source of truth is the `android-bundle-check` job in `.github/workflows/ci.yml` (flags to `frontend/scripts/size-report.mjs`) and `frontend/package.json`.
 
-| Budget                     | Value                              | Measured on                                       | Enforced by                                                      | Effect                                                |
-| -------------------------- | ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
-| JS hard limit              | 8,388,608 B (8 MiB)                | Store bundle, `dist/index.android.bundle`         | `--max-js 8388608` in step "Size budgets"                        | CI fails                                              |
-| JS warn threshold          | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
-| Packaged assets hard limit | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
-| Hidden-premium asset guard | 0 files                            | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
-| All-games JS ceiling       | 8,650,752 B (8.25 MiB), temporary  | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
-| `bundlesize`               | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
-| Hidden-locale guard        | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
-| PR comment baseline        | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
-| Release APK size report    | none                               | `android-release-smoke` universal arm64 APK       | Step "APK size report (non-blocking)"                            | Step summary only                                     |
-| New game JS delta          | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
+| Budget                         | Value                              | Measured on                                       | Enforced by                                                      | Effect                                                |
+| ------------------------------ | ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
+| JS hard limit                  | 8,388,608 B (8 MiB)                | Store bundle, `dist/index.android.bundle`         | `--max-js 8388608` in step "Size budgets"                        | CI fails                                              |
+| JS warn threshold              | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
+| Packaged assets hard limit     | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
+| Packaged assets warn threshold | 3,932,160 B (3.75 MiB)             | Store `dist/assets`                               | `--warn-assets 3932160`                                          | `::warning`, CI passes                                |
+| Hidden-premium asset guard     | 0 files                            | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
+| All-games JS ceiling           | 8,650,752 B (8.25 MiB), temporary  | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
+| `bundlesize`                   | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
+| Hidden-locale guard            | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
+| PR comment baseline            | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
+| Release APK size report        | none                               | `android-release-smoke` universal arm64 APK       | Step "APK size report (non-blocking)"                            | Step summary only                                     |
+| New game JS delta              | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
 
 Why 8 MiB stays the JS limit (decided in #2829): the store bundle was 6.24 MiB then (5.55 MiB since #3150), but the premium release un-hides the games and becomes the 7.11 MiB all-games bundle. 8 MiB leaves about 0.89 MiB (12%) of growth over that ceiling. Lowering the limit now would only fail the premium launch. Drift on today's store bundle is caught by the 6.0 MiB warning (about 8% over 5.55 MiB; it was 6.75 MiB before #3150). The all-games ceiling is checked now, not at launch. The assets limit (4 MiB, about 23% over the 3.25 MiB store payload) will fail by design when games are un-hidden: that needs a deliberate re-budget, not a quiet increase.
 
@@ -231,7 +232,7 @@ Store-config packaged assets were 3,699,614 B (3.53 MiB, 127 files) on 2026-11-1
 - The PR description states the packaged-assets delta in bytes (before and after, from the `android-bundle-check` comment or `node frontend/scripts/size-report.mjs`) and which of the numbers above it spends.
 - A PR that takes the store total past the warn line, or that needs more than the budget for its set, stops for an owner decision recorded on the issue; it does not raise a limit by itself.
 - Import fonts and icon sets by subpath (`@expo-google-fonts/manrope/400Regular`), never from the package barrel: the barrel makes Metro package every weight.
-- Warn line wiring: `size-report.mjs --warn-assets <bytes>` exists (non-blocking `::warning::`). Passing `--warn-assets 3932160` in the "Size budgets" step of `ci.yml` is a separate owner-approved workflow PR, so until then the 3.75 MiB line is a review check, not a CI check.
+- Warn line wiring: the "Size budgets" step in `ci.yml` passes `--warn-assets 3932160`, so crossing 3.75 MiB prints a non-blocking `::warning::` and sets `status=warn`; the "Bundle size report" PR comment then shows a warning line and lists "3.75 MiB warn" next to the assets row (#3844). Current store assets are 3,051,428 B, well under the line.
 
 CI builds the store bundle with the env set explicitly. A gitignored `frontend/.env` on a dev machine points at the pre-launch API and would otherwise make a bundle with all 12 games, because Expo loads `.env` before Metro runs.
 
@@ -732,7 +733,7 @@ These were looked at for #2869 and left alone, either because they wouldn't redu
 
 When a deliberate size increase is approved (e.g. a new game or major feature, or un-hiding premium games), update everything that carries the number, in the same PR as the size-increasing change so reviewers see them together:
 
-1. The `android-bundle-check` flags in `.github/workflows/ci.yml`: `--max-js`, `--warn-js`, `--max-assets` (store step) and `--max-js` (all-games step), plus the budget comment block above them.
+1. The `android-bundle-check` flags in `.github/workflows/ci.yml`: `--max-js`, `--warn-js`, `--max-assets`, `--warn-assets` (store step) and `--max-js` (all-games step), plus the budget comment block above them.
 2. `frontend/package.json`: the `"bundlesize"` `maxSize` field.
 3. `BASELINE_BYTES` and the "Delta vs ... baseline" label in the PR-comment step, and the numbers in this doc.
 
