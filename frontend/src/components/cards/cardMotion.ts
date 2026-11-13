@@ -279,7 +279,7 @@ export interface CueTimes {
   readonly fan: number;
   /** The riffle's settle (and the win; the recycle's settle): its peak on the last contact. */
   readonly settle: number;
-  /** The last contact itself: the foundation effect. */
+  /** The last contact itself: FreeCell's no-moves cue, and the wait before Auto-Complete's first step. */
   readonly landed: number;
 }
 
