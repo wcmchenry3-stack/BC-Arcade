@@ -18,6 +18,7 @@ import {
   noteFaceRaster,
   resetRenderDiag,
   setRenderVariant,
+  useRenderVariant,
 } from "../renderDiag";
 import type { DiagLive } from "../renderDiag";
 import { createGame } from "../engine";
@@ -87,6 +88,30 @@ describe("the test-build gate", () => {
     expect(getRenderVariant()).toBe("a");
     setRenderVariant("c");
     expect(getRenderVariant()).toBe("c");
+  });
+
+  it("useRenderVariant follows a pick in a test build", async () => {
+    const hook = await renderHook(() => useRenderVariant());
+    expect(hook.result.current).toBe("a");
+    await act(async () => {
+      setRenderVariant("c");
+    });
+    expect(hook.result.current).toBe("c");
+  });
+
+  it("useRenderVariant stays a and is never notified when the flag is off", async () => {
+    hooksOff();
+    let renders = 0;
+    const hook = await renderHook(() => {
+      renders += 1;
+      return useRenderVariant();
+    });
+    const before = renders;
+    await act(async () => {
+      setRenderVariant("b");
+    });
+    expect(hook.result.current).toBe("a");
+    expect(renders).toBe(before);
   });
 
   it("outside a test build the variant is always a, whatever was picked", () => {

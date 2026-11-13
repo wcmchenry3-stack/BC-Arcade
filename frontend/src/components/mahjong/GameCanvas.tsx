@@ -30,7 +30,7 @@ import { MatchGhostNode, TileNode, WinCascadeNode } from "./TileNode";
 import { boardResolution } from "../../game/mahjong/zoom";
 import {
   canvasPlan,
-  getRenderVariant,
+  useRenderVariant,
   isRenderDiagEnabled,
   noteCanvas,
 } from "../../game/mahjong/renderDiag";
@@ -92,7 +92,7 @@ export default function GameCanvas({
   const boardRes = boardResolution(camera.scale, camera.tileWidth);
   // Always variant "a" (exactly the above) outside a test build; test builds can pick another
   // to diagnose #3684 (renderDiag.ts).
-  const variant = getRenderVariant();
+  const variant = useRenderVariant();
   const plan = canvasPlan(variant, boardRes);
   const res = plan.tileRes;
   const faces = useTileFaces(faceWidth, faceHeight, plan.faceRes);

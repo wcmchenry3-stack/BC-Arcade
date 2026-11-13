@@ -14,6 +14,7 @@
  *   (`tileFaces`) and the canvas, and read by the readout (`MahjongRenderDiag`) twice a
  *   second. Module state only: no storage, no network, no Sentry.
  */
+import { useSyncExternalStore } from "react";
 import { areTestHooksEnabled } from "../_shared/envFlags";
 
 /** a: today's renderer; b: resolution 1; c: resolution in the face bitmaps only. */
@@ -32,10 +33,29 @@ export function getRenderVariant(): RenderVariant {
   return isRenderDiagEnabled() ? variant : "a";
 }
 
-/** Picks the variant for the next deal (test builds only; a no-op otherwise). */
+const listeners = new Set<() => void>();
+const subscribeVariant = (listener: () => void): (() => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
+/** Picks the variant for the next deal (test builds only; a no-op otherwise, nothing notified). */
 export function setRenderVariant(next: RenderVariant): void {
   if (!isRenderDiagEnabled()) return;
+  if (variant === next) return;
   variant = next;
+  listeners.forEach((l) => l());
+}
+
+/**
+ * The variant as a subscribed value: a component using it re-renders when a test build picks
+ * another. Outside a test build it is always "a" and never notifies (`setRenderVariant` is a
+ * no-op there), so the subscription costs nothing.
+ */
+export function useRenderVariant(): RenderVariant {
+  return useSyncExternalStore(subscribeVariant, getRenderVariant, () => "a");
 }
 
 /** How the native canvas turns the board's resolution into sizes and transforms. */
@@ -192,6 +212,7 @@ export function diagSnapshot(): DiagSnapshot {
 export function resetRenderDiag(): void {
   counters = fresh();
   variant = "a";
+  listeners.forEach((l) => l());
 }
 
 // ---------------------------------------------------------------------------

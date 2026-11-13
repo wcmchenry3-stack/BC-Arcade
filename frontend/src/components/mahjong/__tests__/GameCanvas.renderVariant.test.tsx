@@ -171,4 +171,25 @@ describe("GameCanvas render variants (#3684)", () => {
     for (const t of tileTransforms) expect(t).toEqual([{ scale: 1 }]);
     expect(mockRaster).toHaveBeenCalledWith(...rasterSize(RES));
   });
+
+  it("counts only the passes that rasterised: a cache hit is not a raster", async () => {
+    await mount();
+    expect(diagSnapshot().rasters).toBe(1);
+    // A second canvas at the same size finds the faces cached: its pass draws nothing.
+    await mount();
+    expect(diagSnapshot().rasters).toBe(1);
+    // Another size does rasterise.
+    setRenderVariant("b");
+    await mount();
+    expect(diagSnapshot().rasters).toBe(2);
+  });
+
+  it("re-renders a mounted canvas when the variant changes", async () => {
+    await mount();
+    expectVariantA();
+    await act(async () => {
+      setRenderVariant("b");
+    });
+    expect(diagSnapshot().canvas).toMatchObject({ variant: "b" });
+  });
 });

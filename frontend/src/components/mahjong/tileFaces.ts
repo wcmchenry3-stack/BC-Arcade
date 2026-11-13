@@ -221,9 +221,11 @@ export function useTileFaces(
       // Test builds time each pass for the #3684 readout (renderDiag.ts).
       const diag = isRenderDiagEnabled();
       const t0 = diag ? Date.now() : 0;
-      const faces = tileFacesFor(svgs, faceWidth, faceHeight, scale);
       const k = sizeKey(faceWidth, faceHeight, scale);
-      if (diag) {
+      // A cache hit draws nothing: the readout counts only passes that rasterised.
+      const cached = diag && rasterised.get(k)?.svgs === svgs;
+      const faces = tileFacesFor(svgs, faceWidth, faceHeight, scale);
+      if (diag && !cached) {
         const ready = faces.filter(Boolean).length;
         noteFaceRaster({ key: k, ms: Date.now() - t0, ready, nulls: faces.length - ready });
       }

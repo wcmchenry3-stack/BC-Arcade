@@ -24,7 +24,7 @@ import {
   RENDER_VARIANTS,
   diagSnapshot,
   formatDiag,
-  getRenderVariant,
+  useRenderVariant,
   isRenderDiagEnabled,
   setRenderVariant,
 } from "../../game/mahjong/renderDiag";
@@ -107,7 +107,7 @@ function RenderDiagBody({ motionTiles, dealing, reduceMotion, onRedeal }: Mahjon
     onRedeal();
   }
 
-  const current = getRenderVariant();
+  const current = useRenderVariant();
 
   return (
     <View style={styles.root} pointerEvents="box-none">

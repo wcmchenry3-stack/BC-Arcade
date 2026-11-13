@@ -28,6 +28,8 @@ jest.mock("react-native-gesture-handler", () =>
 
 /** The free set the screen gave the canvas, per render (#2962). */
 const mockCanvasFreeIds: (ReadonlySet<number> | undefined)[] = [];
+/** Mounts of the mocked canvas (a `key` change remounts it; a re-render does not). */
+let mockCanvasMounts = 0;
 jest.mock("../../components/mahjong/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View, Pressable, Text } = require("react-native");
@@ -43,6 +45,11 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     freeIds?: ReadonlySet<number>;
   }) {
     mockCanvasFreeIds.push(freeIds);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useEffect } = require("react");
+    useEffect(() => {
+      mockCanvasMounts += 1;
+    }, []);
     return (
       <View testID="game-canvas">
         {state.tiles.map((tile) => (
@@ -141,6 +148,7 @@ beforeEach(async () => {
   jest.clearAllMocks();
   mockDetected.length = 0;
   mockCanvasFreeIds.length = 0;
+  mockCanvasMounts = 0;
   await AsyncStorage.clear();
 });
 
@@ -668,7 +676,6 @@ describe("#3684 render readout (test builds only)", () => {
     expect(screen.queryByTestId("mahjong-diag-toggle")).toBeNull();
     expect(screen.queryByTestId("mahjong-diag")).toBeNull();
     expect(screen.queryByTestId("mahjong-variant-a")).toBeNull();
-    expect(getRenderVariant()).toBe("a");
   });
 
   it("in a test build, a variant button deals the layout again with that variant", async () => {
@@ -688,5 +695,44 @@ describe("#3684 render readout (test builds only)", () => {
     expect(getRenderVariant()).toBe("b");
     // A fresh Turtle deal.
     expect(screen.getAllByLabelText(/^mock-tile-/)).toHaveLength(144);
+  });
+
+  it("a variant change remounts the canvas (the key), and a re-render alone does not", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    jest
+      .spyOn(Reanimated, "useFrameCallback")
+      .mockImplementation((() => ({ setActive: jest.fn() })) as never);
+    await mountOn(pairBoard({ currentLayoutId: "turtle" }));
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("mahjong-diag-toggle"));
+    });
+    const before = mockCanvasMounts;
+    expect(before).toBeGreaterThan(0);
+    // Picking the variant already in use deals again but keeps the canvas.
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("mahjong-variant-a"));
+    });
+    expect(mockCanvasMounts).toBe(before);
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("mahjong-variant-b"));
+    });
+    expect(mockCanvasMounts).toBe(before + 1);
+  });
+
+  it("turning the flag off releases a picked variant: the canvas is back to a", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    jest
+      .spyOn(Reanimated, "useFrameCallback")
+      .mockImplementation((() => ({ setActive: jest.fn() })) as never);
+    await mountOn(pairBoard({ currentLayoutId: "turtle" }));
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("mahjong-diag-toggle"));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("mahjong-variant-c"));
+    });
+    expect(getRenderVariant()).toBe("c");
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    expect(getRenderVariant()).toBe("a");
   });
 });
