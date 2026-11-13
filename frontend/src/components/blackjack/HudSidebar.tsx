@@ -5,7 +5,7 @@ import { useTheme } from "../../theme/ThemeContext";
 import { formatNumber } from "../../api/statsDisplay";
 import { BLACKJACK_CHIPS_LOW } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
-import { accentAsText } from "./tableAccentText";
+import { accentAsText, labelOnFill } from "./tableAccentText";
 import HudNotice, { GoalPulse, type HudNoticeData } from "./HudNotice";
 
 interface HudSidebarProps {
@@ -31,8 +31,18 @@ function TagOrNotice({
   tableName: string;
   accent: string;
 }) {
-  const { colors } = useTheme();
-  if (notice) return <HudNotice notice={notice} textColor={colors.surface} />;
+  const { colors, theme } = useTheme();
+  if (notice) {
+    // Dark keeps the surface text it always had; light picks the label that reads on the chip's
+    // fill (#3819): textOnBonus on the comeback fill, the secondary/accent labels on the rest.
+    const textColor =
+      theme === "dark"
+        ? colors.surface
+        : notice.kind === "comeback"
+          ? colors.textOnBonus
+          : labelOnFill(colors, theme, notice.background);
+    return <HudNotice notice={notice} textColor={textColor} />;
+  }
   return (
     <View style={styles.tableTag} accessibilityElementsHidden testID="blackjack-hud-tag">
       <View style={[styles.dot, { backgroundColor: accent }]} />
@@ -60,7 +70,7 @@ export default function HudSidebar({
   const isCritical = startingChips > 0 && chips < startingChips * 0.2;
   const showStreak = winStreak >= 3;
 
-  const hudColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : colors.text;
+  const hudColor = isCritical ? colors.error : isLowChips ? colors.warnText : colors.text;
   const barColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : tableAccentColor;
   const hasGoal = runGoal != null;
   const goalProgress = hasGoal ? Math.min(1, chips / runGoal) : 0;

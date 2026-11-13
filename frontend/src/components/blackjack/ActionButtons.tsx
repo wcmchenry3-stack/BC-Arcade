@@ -86,7 +86,7 @@ export default function ActionButtons({
       >
         {/* hand-back-right is the closest MCI equivalent to Material Symbols front_hand */}
         <MaterialCommunityIcons name="hand-back-right" size={ICON_SIZE} color={colors.secondary} />
-        <Text style={[styles.btnLabel, { color: colors.secondary }]}>{t("actions.stand")}</Text>
+        <Text style={[styles.btnLabel, { color: colors.secondaryText }]}>{t("actions.stand")}</Text>
       </Pressable>
 
       {/* Double Down — tertiary outline, disabled when unavailable */}

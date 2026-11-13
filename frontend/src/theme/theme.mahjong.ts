@@ -109,9 +109,3 @@ export const MAHJONG_FP_BORDER = MAHJONG_BORDER_SELECTED;
 export const MAHJONG_FP_SIDE_R = MAHJONG_SIDE_R;
 /** @alias */
 export const MAHJONG_FP_SIDE_B = MAHJONG_SIDE_B;
-
-/**
- * Shuffle button in the HUD — the same gold as a selected tile.
- * @alias
- */
-export const MAHJONG_SHUFFLE_COLOR = MAHJONG_BORDER_SELECTED;
