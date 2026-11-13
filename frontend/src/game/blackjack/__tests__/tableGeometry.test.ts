@@ -773,3 +773,74 @@ describe.each([SMALLEST, ...PHONES])(
     });
   }
 );
+
+// #3784 (owner decision): every split's felt banner, 2–4 hands at every size, shows the round's net
+// payout alone ("+25 chips", 15 px bold in a pill with 16 px padding). Its widest text per locale,
+// over every net a split can show (bets up to 200, any hand doubled), measured in the web build's
+// fonts (the system font) for these exact strings, as #3781 measured; pinned by hand, so a changed
+// payout string fails the coverage test until it is measured again.
+const MEASURED_NET_PILL: Record<string, { strings: string; net: number }> = {
+  ar: { strings: "+{{amount}} رقائق | {{amount}} رقائق | لا تغيير", net: 114 },
+  de: { strings: "+{{amount}} Chips | {{amount}} Chips | Unverändert", net: 126 },
+  en: { strings: "+{{amount}} chips | {{amount}} chips | No change", net: 119 },
+  es: { strings: "+{{amount}} fichas | {{amount}} fichas | Sin cambio", net: 124 },
+  "fr-CA": { strings: "+{{amount}} jetons | {{amount}} jetons | Mise rendue", net: 125 },
+  he: { strings: "+{{amount}} שבבים | {{amount}} שבבים | אין שינוי", net: 125 },
+  hi: { strings: "+{{amount}} चिप्स | {{amount}} चिप्स | बदलाव नहीं", net: 105 },
+  ja: { strings: "+{{amount}} チップ | {{amount}} チップ | 変化なし", net: 125 },
+  ko: { strings: "+{{amount}} 칩 | {{amount}} 칩 | 변동 없음", net: 98 },
+  nl: { strings: "+{{amount}} chips | {{amount}} chips | Ongewijzigd", net: 126 },
+  pt: { strings: "+{{amount}} fichas | {{amount}} fichas | Sem mudança", net: 139 },
+  ru: { strings: "+{{amount}} фишек | {{amount}} фишек | Возврат", net: 130 },
+  zh: { strings: "+{{amount}} 筹码 | {{amount}} 筹码 | 无变化", net: 109 },
+};
+/** The net-only banner with its detail line (fans): 49 px in ja, ko and zh (47 in English). */
+const NET_ONLY_BANNER_HEIGHT = 49;
+/** The net-only pill alone (rows, grid: no detail line): 30 px in ja, ko and zh. */
+const NET_ONLY_PILL_HEIGHT = 30;
+const widestNet = () => Math.max(...Object.values(MEASURED_NET_PILL).map((m) => m.net));
+
+describe("the split banner's net pill measured in every locale (#3784)", () => {
+  const dir = path.join(__dirname, "../../../i18n/locales");
+  const locales = fs.readdirSync(dir).filter((d) => !d.startsWith("_") && !d.endsWith(".json"));
+  const KEYS = ["payout.positive", "payout.negative", "payout.zero"];
+
+  it("covers every locale's current payout strings (re-measure when one changes)", () => {
+    expect(Object.keys(MEASURED_NET_PILL).sort()).toEqual([...locales].sort());
+    for (const l of locales) {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, l, "blackjack.json"), "utf8"));
+      expect({ l, strings: KEYS.map((k) => j[k]).join(" | ") }).toEqual({
+        l,
+        strings: MEASURED_NET_PILL[l]!.strings,
+      });
+    }
+  });
+
+  it("the widest is pt's 'Sem mudança'", () => {
+    expect(widestNet()).toBe(MEASURED_NET_PILL.pt!.net);
+  });
+});
+
+const PHONE_360: Phone = { name: "360×640", width: 360, height: 640, insetTop: 0, insetBottom: 0 };
+
+describe.each([SMALLEST, PHONE_360, ...PHONES])(
+  "every locale's net pill fits a split's result band at $name (#3784)",
+  (phone) => {
+    it.each([2, 3, 4])("%i hands: inside the band, the detail line too", (n) => {
+      for (const cards of [2, 3, 5]) {
+        const g = geometry(phone, {
+          dealerCards: 3,
+          handCards: same(n, cards),
+          activeHandIndex: null,
+          showResult: true,
+        });
+        const band = g.result!;
+        expect(widestNet()).toBeLessThanOrEqual(band.width);
+        // 2-hand fans show the detail line under the pill (#3784: at 320×568 the summary banner,
+        // 55 px tall in ja, ko and zh, put it below the 52 px band); rows and the grid do not.
+        const height = g.mode === "fans" ? NET_ONLY_BANNER_HEIGHT : NET_ONLY_PILL_HEIGHT;
+        expect(height).toBeLessThanOrEqual(band.height);
+      }
+    });
+  }
+);

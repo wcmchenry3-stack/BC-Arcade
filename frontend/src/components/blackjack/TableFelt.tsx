@@ -278,7 +278,7 @@ function HandLabel({
       testID="hand-name"
       style={[
         styles.zoneLabel,
-        { color: active ? colors.accent : colors.textMuted, fontFamily: typography.label },
+        { color: active ? colors.accentText : colors.textMuted, fontFamily: typography.label },
         styles.shrink,
         dimmed && styles.dimmed,
       ]}
@@ -372,7 +372,7 @@ function HandTag({ outcome }: { outcome: string }) {
   const { colors } = useTheme();
   const key = tagKeyOf(outcome);
   const color =
-    key === "tag.win" ? colors.bonus : key === "tag.lose" ? colors.error : colors.textMuted;
+    key === "tag.win" ? colors.bonusText : key === "tag.lose" ? colors.error : colors.textMuted;
   return (
     <Text
       testID="hand-tag"
@@ -409,7 +409,7 @@ function PayoutText({ payout }: { payout: number }) {
       style={[
         styles.payout,
         styles.shrink,
-        { color: payout > 0 ? colors.bonus : payout < 0 ? colors.error : colors.textMuted },
+        { color: payout > 0 ? colors.bonusText : payout < 0 ? colors.error : colors.textMuted },
       ]}
       numberOfLines={1}
       adjustsFontSizeToFit
@@ -590,9 +590,10 @@ export default function TableFelt({
             payout={result.payout}
             detail={result.detail}
             summary={result.summary ?? null}
-            // 3–4 hands: each hand shows its own tag and payout, so the banner shows the net
-            // alone; the summary does not fit beside it in every locale (#3781, owner decision).
-            netOnly={hands.length >= 3}
+            // Every split (owner decision, #3784; 3–4 hands #3781): each hand shows its own tag and
+            // payout, so the banner shows the net alone, at every size; the summary beside it did
+            // not fit the band in every locale.
+            netOnly={split}
           />
         </PopIn>
       )}

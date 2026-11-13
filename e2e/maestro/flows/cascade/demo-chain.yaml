@@ -1,0 +1,39 @@
+appId: com.buffingchi.games
+# Cascade demo flow (#3719): a chain of 3 merges from two drops. Tagged `demo`, so only the
+# `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
+#
+# `cascade-test-chain` (test-build-only, see demo-loss.yaml) restores tiers 1, 2 and 3 side by
+# side and scripts the queue as cherries. Two drops down the middle: the first rolls aside, the
+# second merges with it (0+0), then the result merges with the 1 and the 2 in turn: 3 merges,
+# 2 + 4 + 8 = 14 points. The score label reads "Score: 14"; the check accepts any two-digit
+# score or more (a lone merge scores at most 8), so a small layout difference cannot fail it.
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: cascade-demo-chain
+- runFlow: ../_shared/open-cascade.yaml
+- tapOn:
+    id: "cascade-test-chain"
+    retryTapIfNoChange: false
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: cascade-demo-chain-before
+- tapOn:
+    id: "cascade-game-area"
+    retryTapIfNoChange: false
+# The first piece has to fall below the lid before the next drop is allowed.
+- waitForAnimationToEnd:
+    timeout: 2500
+- tapOn:
+    id: "cascade-game-area"
+    retryTapIfNoChange: false
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible:
+      id: "cascade-score"
+      text: "Score: [1-9][0-9]+.*"
+    timeout: 10000
+- takeScreenshot: cascade-demo-chain-after
+- stopRecording

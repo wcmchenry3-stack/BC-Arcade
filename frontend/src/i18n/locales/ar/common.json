@@ -109,5 +109,6 @@
   "locked.back": "العودة إلى الردهة",
   "locked.back_label": "العودة إلى الردهة",
   "offline.windowExhausted": "مرّت 3 أيام منذ آخر اتصال لك. اتصل بالإنترنت للحصول على أحدث لغز.",
-  "offline.windowExhaustedStreak": "اتصل بالإنترنت لتواصل سلسلتك."
+  "offline.windowExhaustedStreak": "اتصل بالإنترنت لتواصل سلسلتك.",
+  "action.autoComplete": "إكمال تلقائي"
 }

@@ -535,7 +535,7 @@ describe("game events", () => {
     expect(next.events).toContain("cardPlace" as GameEvent);
   });
 
-  it("applyMove emits foundationComplete when a suit reaches 13 cards", () => {
+  it("applyMove emits only cardPlace when a suit reaches 13 cards (no suit-complete event)", () => {
     const foundations: Foundations = {
       spades: Array.from({ length: 12 }, (_, i) => c("spades", (i + 1) as Rank)),
       hearts: [],
@@ -547,7 +547,7 @@ describe("game events", () => {
       tableau: [[c("spades", 13)], [], [], [], [], [], []],
     });
     const next = applyMove(state, { type: "tableau-to-foundation", fromCol: 0 });
-    expect(next.events).toContain("foundationComplete" as GameEvent);
+    expect(next.events).toEqual(["cardPlace"]);
   });
 
   it("applyMove emits gameWin when the last card completes all foundations", () => {
@@ -593,7 +593,7 @@ describe("game events", () => {
     expect(reverted.events).toBeUndefined();
   });
 
-  it("applyMove does not emit foundationComplete on subsequent moves once already won", () => {
+  it("applyMove emits no gameWin on subsequent moves once already won", () => {
     const foundations: Foundations = {
       spades: Array.from({ length: 13 }, (_, i) => c("spades", (i + 1) as Rank)),
       hearts: Array.from({ length: 13 }, (_, i) => c("hearts", (i + 1) as Rank)),
@@ -617,7 +617,7 @@ describe("game events", () => {
       tableau: [[c("spades", 13)], [], [], [], [], [], []],
     };
     const reMove = applyMove(withSpadeOnTableau, { type: "tableau-to-foundation", fromCol: 0 });
-    expect(reMove.events).not.toContain("foundationComplete" as GameEvent);
+    expect(reMove.events).toEqual(["cardPlace"]);
     expect(reMove.events).not.toContain("gameWin" as GameEvent);
   });
 });

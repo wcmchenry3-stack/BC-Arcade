@@ -2,7 +2,8 @@
  * Blackjack's sounds (#3563, wired with the card and chip motion in #3581). Each plays at its
  * moment in the motion (docs/games/blackjack.md, "Motion and sound timing"): a card as it is
  * dealt, the hole card as it starts to turn, a chip as it leaves, the result with its banner and
- * the chips ~420 ms after it.
+ * the chips ~420 ms after it. A milestone or comeback (#3582) sounds with its toast, after the
+ * chips; an all-in with the deal's first card.
  */
 export const BLACKJACK_SOUNDS: Record<string, number> = {
   // card deal: "dealer's toss", three variations, its landing at 240 ms (#3563)
@@ -26,6 +27,12 @@ export const BLACKJACK_SOUNDS: Record<string, number> = {
   "blackjack.bust": require("../../../assets/sounds/result-bust.ogg"),
   "blackjack.push": require("../../../assets/sounds/result-push.ogg"),
   "blackjack.blackjack": require("../../../assets/sounds/result-blackjack.ogg"),
+  // a split that both won and lost a hand, "up and back" (#3770)
+  "blackjack.mixed": require("../../../assets/sounds/result-mixed.ogg"),
+  // the run's cues with their toasts, and the all-in deal (#3582)
+  "blackjack.milestone": require("../../../assets/sounds/run-milestone.ogg"),
+  "blackjack.comeback": require("../../../assets/sounds/run-comeback.ogg"),
+  "blackjack.allIn": require("../../../assets/sounds/bet-all-in.ogg"),
 };
 
 /** The card deal variations, for `useSoundVariants`. */

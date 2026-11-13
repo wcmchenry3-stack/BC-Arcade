@@ -40,5 +40,9 @@
   "hint.unknown": "No se encontró una pista",
   "hint.backToLastGoodMove": "Volver a la última buena jugada",
   "hint.restartLevel": "Reiniciar nivel",
-  "hint.dismiss": "Cerrar"
+  "hint.dismiss": "Cerrar",
+  "levelSelect.chapter": "Capítulo {{chapter}}",
+  "levelSelect.levelStars": "Nivel {{level}}, {{stars}} de 3 estrellas",
+  "stars.summary": "{{stars}} de 3 estrellas. Movimientos {{moves}}, objetivo {{par}}.",
+  "stars.movesTarget": "Movimientos {{moves}} · Objetivo {{par}}"
 }

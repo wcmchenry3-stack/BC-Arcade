@@ -40,5 +40,9 @@
   "hint.unknown": "تعذر العثور على تلميح",
   "hint.backToLastGoodMove": "العودة لآخر حركة جيدة",
   "hint.restartLevel": "إعادة المستوى",
-  "hint.dismiss": "إغلاق"
+  "hint.dismiss": "إغلاق",
+  "levelSelect.chapter": "الفصل {{chapter}}",
+  "levelSelect.levelStars": "المستوى {{level}}، {{stars}} من 3 نجوم",
+  "stars.summary": "{{stars}} من 3 نجوم. الحركات {{moves}}، الهدف {{par}}.",
+  "stars.movesTarget": "الحركات {{moves}} · الهدف {{par}}"
 }

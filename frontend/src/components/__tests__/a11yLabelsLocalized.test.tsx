@@ -14,13 +14,11 @@ import SudokuGrid from "../sudoku/SudokuGrid";
 import Grid from "../twenty48/Grid";
 import AnimatedTile from "../twenty48/AnimatedTile";
 import { TileRow } from "../daily_word/WordTile";
-import { FreeCellFoundationAnimation } from "../freecell/FreeCellFoundationAnimation";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { initialState } from "../../game/daily_word/engine";
 import type { DailyWordState } from "../../game/daily_word/types";
 import type { Grid as SudokuGridData, NoteDigit } from "../../game/sudoku/types";
 import type { TileData } from "../../game/twenty48/types";
-import { mockReduceMotion } from "../hearts/__tests__/helpers/animationFixtures";
 
 const NAMESPACES = ["blackjack", "sudoku", "twenty48", "daily_word", "freecell"];
 
@@ -174,15 +172,5 @@ describe("Daily Word tile labels", () => {
     expect(screen.getByTestId("tile-0-0").props.accessibilityLabel).toBe(
       "Fila 1, columna 1, letra C, correcta"
     );
-  });
-});
-
-describe("FreeCell foundation live region", () => {
-  it("announces in the active language", async () => {
-    mockReduceMotion(false);
-    await i18n.changeLanguage("es");
-    await render(<FreeCellFoundationAnimation visible onAnimationEnd={jest.fn()} />);
-    const icon = screen.getByLabelText("Base completa");
-    expect(icon.props.accessibilityLiveRegion).toBe("polite");
   });
 });

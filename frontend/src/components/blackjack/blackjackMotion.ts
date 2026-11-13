@@ -170,12 +170,31 @@ export type SoundCue =
   | "bust"
   | "push"
   | "blackjack"
+  | "mixed"
   | "payout"
   | "collect"
-  | "nudge";
+  | "nudge"
+  | "allIn"
+  | RunCue;
 
-/** The result chimes: one per round (a split's net), with the banner. */
-export const RESULT_CUES: readonly SoundCue[] = ["win", "lose", "bust", "push", "blackjack"];
+/**
+ * The run's cues (#3582), played with their toast as the round settles: a milestone crossed, and
+ * a comeback. Not on the action's timeline: the motion plays them (`whenSettled(fn, { cue })`).
+ */
+export type RunCue = "milestone" | "comeback";
+
+/**
+ * The result chimes: one per round, with the banner. A split plays its net, or the mixed chime
+ * when it both won and lost a hand (#3770).
+ */
+export const RESULT_CUES: readonly SoundCue[] = [
+  "win",
+  "lose",
+  "bust",
+  "push",
+  "blackjack",
+  "mixed",
+];
 
 export interface Cue {
   readonly at: number;
@@ -252,9 +271,15 @@ export function naturalEdges(v: BlackjackState): NaturalEdges {
 
 const counts = (v: BlackjackState) => v.player_hands.map((h) => h.cards.length);
 
-/** The chime for a settled round (a split round's net). */
+/**
+ * The chime for a settled round. A split round (owner decision, #3770): the mixed chime when at
+ * least one hand won (a win or a blackjack) and at least one lost, whatever the net; else its net
+ * (a push counts as neither: win + push is a win, an all-push split a push).
+ */
 export function resultCue(v: BlackjackState): SoundCue {
   if (v.player_hands.length > 1) {
+    const won = v.hand_outcomes.some((o) => o === "win" || o === "blackjack");
+    if (won && v.hand_outcomes.includes("lose")) return "mixed";
     const net = v.hand_payouts.reduce((a, b) => a + b, 0);
     return net > 0 ? "win" : net < 0 ? "lose" : "push";
   }
@@ -380,6 +405,10 @@ function planDeal(b: TimelineBuilder, next: BlackjackState): PlayerPart | null {
     natural: NO_NATURALS,
   };
   b.cue(0, "deal");
+  // The whole stack bet (#3582): the all-in cue under the deal's tosses, on the cue clock, so
+  // leaving, New Game or a tap drop it like every other sound (under Reduce Motion it is spaced
+  // after the deal's sound).
+  if (next.events?.some((e) => e.type === "allIn")) b.cue(0, "allIn");
   b.at(DEAL_STAGGER_MS, (s) => ({ ...s, dealer: 1 }));
   b.cue(DEAL_STAGGER_MS, "deal");
   b.at(2 * DEAL_STAGGER_MS, (s) => ({ ...s, hands: [2] }));

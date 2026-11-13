@@ -40,5 +40,9 @@
   "hint.unknown": "Geen hint gevonden",
   "hint.backToLastGoodMove": "Terug naar de laatste goede zet",
   "hint.restartLevel": "Niveau opnieuw starten",
-  "hint.dismiss": "Sluiten"
+  "hint.dismiss": "Sluiten",
+  "levelSelect.chapter": "Hoofdstuk {{chapter}}",
+  "levelSelect.levelStars": "Niveau {{level}}, {{stars}} van 3 sterren",
+  "stars.summary": "{{stars}} van 3 sterren. Zetten {{moves}}, doel {{par}}.",
+  "stars.movesTarget": "Zetten {{moves}} · Doel {{par}}"
 }

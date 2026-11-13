@@ -25,6 +25,7 @@ import { bonusLifeThreshold } from "../engine/tuning";
 import { killMethod, scoreSource } from "../scoreLedger";
 import type { EnemyTier, StarSwarmInput, StarSwarmState } from "../types";
 import { FIRE_INPUT, NO_INPUT, makeBeam, reinforceTick } from "./helpers/engineFixtures";
+import { stubMathRandom } from "./helpers/timelineRuns";
 import {
   OPEN,
   arena,
@@ -414,8 +415,21 @@ interface WaveDeaths {
  * (lives topped up) so the run goes on, launches a Buddy and throws a rock now and then. Returns
  * every closed snapshot, the final state, and each wave's ship deaths by tier (alive → dead
  * between ticks, less the routed grunts that escaped).
+ *
+ * The engine's power-up drops (pickup type, drop x) use an unseeded `Math.random` by design
+ * (docs/ARCHITECTURE.md §3.2), and Lightning / Bomb / Buddy pickups change how ships die, so the
+ * run stubs `Math.random` with a seeded PRNG (`mathSeed`) and restores it afterwards (#3680).
  */
-function seededRun(seed: number, waves: number) {
+function seededRun(seed: number, waves: number, mathSeed: number = seed) {
+  const random = stubMathRandom(mathSeed);
+  try {
+    return playSeededRun(seed, waves);
+  } finally {
+    random.mockRestore();
+  }
+}
+
+function playSeededRun(seed: number, waves: number) {
   let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, seed, "Commander");
   const closed: WaveStatsSnapshot[] = [];
   const deaths: WaveDeaths[] = [
@@ -441,12 +455,74 @@ function seededRun(seed: number, waves: number) {
     }
     const was = new Map(prev.enemies.map((e) => [e.id, e.isAlive] as const));
     const tally = deaths[deaths.length - 1]!.deaths;
-    for (const e of s.enemies) if (was.get(e.id) && !e.isAlive) tally[e.tier]++;
+    // A ship absent from the previous roster was launched this tick (a reinforcement): if it is
+    // already dead it was born and killed in one tick, which is a death too (#3680).
+    for (const e of s.enemies) if (!e.isAlive && was.get(e.id) !== false) tally[e.tier]++;
     tally.Grunt -= s.runStats.routEscaped - prev.runStats.routEscaped;
     if (s.phase === "GameOver") break;
   }
   return { closed, end: s, deaths, rosters };
 }
+
+describe("seeded run determinism (#3680)", () => {
+  const killsByWave = (r: ReturnType<typeof seededRun>) =>
+    [...r.closed, r.end.waveStats].map((w) => JSON.stringify(w.combat.kills));
+
+  it("the same seeds replay identically, with Math.random stubbed inside the run", () => {
+    _resetIds();
+    const a = killsByWave(seededRun(7, 2));
+    _resetIds();
+    const b = killsByWave(seededRun(7, 2));
+    expect(b).toEqual(a);
+  });
+
+  it("pins Math.random for the run (the caller's stand-in is never reached) and restores it", () => {
+    const outer = jest.fn(() => 0.5);
+    const original = Math.random;
+    Math.random = outer;
+    try {
+      seededRun(7, 1);
+      expect(outer).not.toHaveBeenCalled();
+      expect(Math.random).toBe(outer);
+    } finally {
+      Math.random = original;
+    }
+  });
+
+  // One test per Math.random sequence: the invariant must hold for every one of them.
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])(
+    "kills by method equal the ships that died with Math.random sequence %i",
+    (m) => {
+      _resetIds();
+      const { closed, end, deaths } = seededRun(7, 3, m * 7919);
+      [...closed, end.waveStats].forEach((w, i) => {
+        for (const tier of ENEMY_TIERS) {
+          const byMethod = KILL_METHODS.reduce((t, k) => t + w.combat.kills[tier][k], 0);
+          expect(byMethod).toBe(deaths[i]!.deaths[tier]);
+        }
+      });
+    }
+  );
+
+  // Pinned from a 500-pair sweep: a reinforcement Grunt is launched and killed by Buddy in the
+  // same tick, so it was never in the previous roster (its kill counts, its death was missed).
+  it.each([
+    { seed: 5914, mathSeed: 3043382, waves: 1 },
+    { seed: 5875, mathSeed: 3019625, waves: 2 },
+  ])(
+    "counts a ship born and killed in one tick (seed $seed, Math.random $mathSeed)",
+    ({ seed, mathSeed, waves }) => {
+      _resetIds();
+      const { closed, end, deaths } = seededRun(seed, waves, mathSeed);
+      [...closed, end.waveStats].forEach((w, i) => {
+        for (const tier of ENEMY_TIERS) {
+          const byMethod = KILL_METHODS.reduce((t, k) => t + w.combat.kills[tier][k], 0);
+          expect(byMethod).toBe(deaths[i]!.deaths[tier]);
+        }
+      });
+    }
+  );
+});
 
 describe("seeded multi-wave invariants (#3247/#3248)", () => {
   const { closed, end, deaths, rosters } = seededRun(7, 3);

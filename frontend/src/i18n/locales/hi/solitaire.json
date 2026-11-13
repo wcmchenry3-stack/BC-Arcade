@@ -14,7 +14,6 @@
   "stat.timeA11y": "समय: {{time}}",
   "action.undo": "पूर्ववत",
   "action.hint": "सुझाव",
-  "action.autoComplete": "ऑटो-कंप्लीट",
   "action.dealAgain": "फिर डील करें",
   "stock.recycle": "दूसरी बार और बाद में रिसायकल करने पर 50 पॉइंट्स लगेंगे।",
   "pile.stock.label": "स्टॉक से {{count}} खींचें, {{remaining}} कार्ड्स बचे हैं",

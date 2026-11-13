@@ -431,8 +431,8 @@ def test_mahjong_clear_time_floor_is_half_a_second_per_pair() -> None:
     assert MIN_CLEAR_MS == 72 * 500 == 36_000
     assert _board("mahjong").min_value == MIN_CLEAR_MS
     # The app's device best time uses the same floor (MAHJONG_MIN_CLEAR_MS).
-    engine = _ts_constants(_FRONTEND_GAME / "mahjong" / "engine.ts")
-    assert engine["MAHJONG_MIN_CLEAR_MS"] == MIN_CLEAR_MS
+    clear_time = _ts_constants(_FRONTEND_GAME / "mahjong" / "clearTime.ts")
+    assert clear_time["MAHJONG_MIN_CLEAR_MS"] == MIN_CLEAR_MS
 
 
 @pytest.mark.parametrize(

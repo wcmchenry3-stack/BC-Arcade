@@ -40,5 +40,9 @@
   "hint.unknown": "未能找到提示",
   "hint.backToLastGoodMove": "回到上一步好棋",
   "hint.restartLevel": "重新开始关卡",
-  "hint.dismiss": "关闭"
+  "hint.dismiss": "关闭",
+  "levelSelect.chapter": "第 {{chapter}} 章",
+  "levelSelect.levelStars": "第 {{level}} 关，{{stars}} 颗星（共 3 颗）",
+  "stars.summary": "{{stars}} 颗星（共 3 颗）。步数 {{moves}}，目标 {{par}}。",
+  "stars.movesTarget": "步数 {{moves}} · 目标 {{par}}"
 }

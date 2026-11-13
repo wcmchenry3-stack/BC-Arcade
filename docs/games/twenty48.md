@@ -195,7 +195,7 @@ The saved clock banks elapsed active time before a pause/relaunch, so time spent
 
 The board is saved locally after moves and when play is paused.
 
-A saved in-progress board restores after relaunch, including its accumulated active-play clock.
+A saved in-progress board restores after relaunch, including its accumulated active-play clock. A device clock set back never yields a negative play time (#3738): a running segment banks at least 0 (`clockElapsedMs` / `clockForSave`), `loadGame` clamps a saved `accumulatedMs` to a finite value >= 0, and `computeDurationMs` in `Twenty48Screen.tsx` never reports below 0.
 
 The local save is cleared when the game is over so the next launch starts fresh.
 
@@ -266,7 +266,7 @@ A game resumed after a kill continues its session (#2654), and its log continues
 
 ## Local "Best" vs server history
 
-The screen retains a local best score only to support immediate result-card/UI presentation such as a "New best" badge.
+The screen retains a local best score only to support immediate result-card/UI presentation such as a "New best" badge. It is the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:twenty48`; the old `twenty48_best_score_v1` is moved in on the first read): read with the saved game, recorded as the live score passes it (a write only when it improves), and "New best" compares the final score with the best from before the game. No server I/O.
 
 Historical Stats and public ranking come from the shared server reporting model, not legacy local counters.
 

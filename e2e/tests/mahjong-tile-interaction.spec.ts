@@ -20,6 +20,7 @@ test.describe("Mahjong — tile interaction", () => {
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
       localStorage.removeItem("mahjong_stats_v1");
+      localStorage.removeItem("personal_best_v1:mahjong");
     });
   });
 

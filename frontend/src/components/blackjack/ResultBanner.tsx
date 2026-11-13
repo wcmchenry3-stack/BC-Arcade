@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { joinSentence } from "../../utils/joinSentence";
 
 interface Props {
   outcome: string;
@@ -17,9 +18,9 @@ interface Props {
   /** "felt": a split round's summary ("Won: 1 · Lost: 2") in place of the outcome's words. */
   summary?: string | null;
   /**
-   * "felt", a 3–4 hand split (#3781, owner decision): the pill shows the round's net payout alone
-   * ("+25 chips"), at every size; each hand's row or cell shows its own tag and payout, and the
-   * summary and the payout do not fit the band together in every locale.
+   * "felt", every split, 2–4 hands (owner decisions, #3781, #3784): the pill shows the round's net
+   * payout alone ("+25 chips"), at every size; each hand's label shows its own tag and payout, and
+   * the summary and the payout do not fit the band together in every locale.
    * Its accessibility label still reads the whole result: outcome, summary and payout.
    */
   netOnly?: boolean;
@@ -42,7 +43,7 @@ function feltLabelOf(
   outcomeText: string,
   summary: string | null
 ): string | undefined {
-  if (summary !== null) return `${outcomeText}. ${summary}`;
+  if (summary !== null) return joinSentence(outcomeText, summary);
   return outcome === "blackjack" ? t("outcome.blackjackNaturalLabel") : undefined;
 }
 
@@ -115,10 +116,12 @@ export default function ResultBanner({
   }
 
   let payoutText: string;
+  // The outcome's text: the win green needs its AA variant (the border keeps `bonus`)
+  const outcomeTextColor = outcome === "win" ? colors.bonusText : accentColor;
   let payoutColor: string;
   if (payout > 0) {
     payoutText = t("payout.positive", { amount: payout });
-    payoutColor = colors.bonus;
+    payoutColor = colors.bonusText;
   } else if (payout < 0) {
     payoutText = t("payout.negative", { amount: payout });
     payoutColor = colors.error;
@@ -149,14 +152,18 @@ export default function ResultBanner({
               testID="result-net"
               style={[styles.feltOutcome, styles.feltOutcomeCompact, { color: payoutColor }]}
               numberOfLines={1}
-              accessibilityLabel={`${outcomeLabel ?? outcomeText}. ${payoutLabel}`}
+              accessibilityLabel={joinSentence(outcomeLabel ?? outcomeText, payoutLabel)}
             >
               {payoutText}
             </Text>
           ) : (
             <FeltOutcomeAndPayout
               compact={compact}
-              outcome={{ text: summary ?? outcomeText, label: outcomeLabel, color: accentColor }}
+              outcome={{
+                text: summary ?? outcomeText,
+                label: outcomeLabel,
+                color: outcomeTextColor,
+              }}
               payout={{ text: payoutText, label: payoutLabel, color: payoutColor }}
             />
           )}
@@ -189,7 +196,7 @@ export default function ResultBanner({
     >
       <Text
         testID="result-outcome"
-        style={[styles.outcome, compact && styles.outcomeCompact, { color: accentColor }]}
+        style={[styles.outcome, compact && styles.outcomeCompact, { color: outcomeTextColor }]}
       >
         {outcomeText}
       </Text>

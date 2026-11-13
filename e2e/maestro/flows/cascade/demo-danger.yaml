@@ -1,0 +1,24 @@
+appId: com.buffingchi.games
+# Cascade demo flow (#3719): the danger state, the spawner's clock ring draining. Tagged
+# `demo`, so only the `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
+#
+# `cascade-test-near-lid` (test-build-only, see demo-loss.yaml) restores a pile over the lid and
+# fast-forwards past the restore grace, so the ring is already draining when the board shows it.
+# Left alone the lid ends the game about 2.5 s later (the video shows the ring drain to red and
+# the result card). The screenshots are taken straight away, while the ring still has time on it.
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: cascade-demo-danger
+- runFlow: ../_shared/open-cascade.yaml
+- tapOn:
+    id: "cascade-test-near-lid"
+    retryTapIfNoChange: false
+- takeScreenshot: cascade-demo-danger-ring
+- extendedWaitUntil:
+    visible:
+      id: "cascade-result-title"
+    timeout: 20000
+- takeScreenshot: cascade-demo-danger-result
+- stopRecording

@@ -668,7 +668,7 @@ This supplements the backend checklist in [`GAME-CONTRACT.md §3`](GAME-CONTRACT
 - [ ] Everything renders inside `GameShell` with `gameType="<game>"`
 - [ ] Boards, piles, overlays and the dev panel live in `components/<game>/`; the screen defines none of its own
 - [ ] A game with its own clock pauses it through `usePauseWhileAway` / `usePausableClock`; saved progress restores on mount and calls `resume()` (through `usePersistedGameState` where it fits, §8)
-- [ ] Game over fires once per game, through `useCompletionTransition` where it fits (§8); a game restored already complete records nothing; "new best" comes from `bestOf`
+- [ ] Game over fires once per game, through `useCompletionTransition` where it fits (§8); a game restored already complete records nothing; "new best" comes from the shared personal best (`game/_shared/personalBest.ts`, #3757: `judgeResult`/`recordResult`, which apply `bestOf` with the game's metric)
 - [ ] No React state is set once per frame
 
 ### Reporting

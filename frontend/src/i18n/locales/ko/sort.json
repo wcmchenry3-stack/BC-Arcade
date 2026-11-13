@@ -40,5 +40,9 @@
   "hint.unknown": "힌트를 찾지 못했어요",
   "hint.backToLastGoodMove": "마지막 좋은 수로 되돌리기",
   "hint.restartLevel": "레벨 다시 시작",
-  "hint.dismiss": "닫기"
+  "hint.dismiss": "닫기",
+  "levelSelect.chapter": "챕터 {{chapter}}",
+  "levelSelect.levelStars": "레벨 {{level}}, 별 {{stars}}/3개",
+  "stars.summary": "별 {{stars}}/3개. 이동 {{moves}}회, 목표 {{par}}회.",
+  "stars.movesTarget": "이동 {{moves}} · 목표 {{par}}"
 }
