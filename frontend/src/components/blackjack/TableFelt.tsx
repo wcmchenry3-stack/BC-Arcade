@@ -28,7 +28,6 @@ import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { HandResponse } from "../../game/blackjack/types";
 import {
-  feltBannerNetOnly,
   showsResult,
   splitResultLabel,
   type TableGeometry,
@@ -591,10 +590,10 @@ export default function TableFelt({
             payout={result.payout}
             detail={result.detail}
             summary={result.summary ?? null}
-            // Each hand shows its own tag and payout, so the banner shows the net alone where the
-            // summary does not fit beside it in every locale: 3–4 hands (#3781, owner decision),
-            // 2 hands on a narrow or short band (#3784).
-            netOnly={feltBannerNetOnly(geometry, hands.length)}
+            // Every split (owner decision, #3784; 3–4 hands #3781): each hand shows its own tag and
+            // payout, so the banner shows the net alone, at every size; the summary beside it did
+            // not fit the band in every locale.
+            netOnly={split}
           />
         </PopIn>
       )}
