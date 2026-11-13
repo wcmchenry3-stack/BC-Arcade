@@ -296,6 +296,29 @@ def test_yacht_win_is_louder_than_the_tie_and_the_tie_louder_than_the_loss():
     assert lv["tie"] - lv["loss"] == pytest.approx(2, abs=0.2)
 
 
+# --- Sort "glass and water" (#3661) -------------------------------------------------------------
+
+SORT_SOUND_NAMES = [
+    *[f"sort-select-{i}" for i in (1, 2, 3)],
+    *[f"sort-pour-lift-{i}" for i in (1, 2, 3)],
+    *[f"sort-pour-stream-{u}u-{v}" for u in (1, 2, 3, 4) for v in (1, 2, 3)],
+    "sort-refused",
+    "sort-complete",
+    "sort-undo",
+    "sort-hint",
+    "sort-win",
+]
+
+
+def _peak(x: np.ndarray, t0: float, t1: float) -> float:
+    return float(np.abs(x[int(t0 * SR) : int(t1 * SR)]).max())
+
+
+def _sort(name: str) -> np.ndarray:
+    recipe, level = synth_puzzle_sfx.SOUNDS[name]
+    return level(recipe())
+
+
 # --- Sudoku (#3775), option A "crisp graphite" -------------------------------------------------
 
 SUDOKU_SOUNDS = (
@@ -311,6 +334,138 @@ SUDOKU_SOUNDS = (
 def _sudoku(name: str) -> np.ndarray:
     recipe, level = synth_puzzle_sfx.SOUNDS[name]
     return level(recipe())
+
+
+def test_sort_writes_every_file_the_registry_ships():
+    assert [n for n in SORT_SOUND_NAMES if n not in synth_puzzle_sfx.SOUNDS] == []
+    assert sorted(n for n in synth_puzzle_sfx.SOUNDS if n.startswith("sort-")) == sorted(
+        SORT_SOUND_NAMES
+    )
+
+
+def test_sort_timings_follow_motion_ts():
+    # game/sort/motion.ts (#3660, #3783): POUR_UNIT_MS 300, WIN_CASCADE_MS 1380.
+    assert pytest.approx(0.300) == synth_puzzle_sfx.SORT_UNIT_AT
+    assert pytest.approx(1.38) == synth_puzzle_sfx.SORT_WIN_CARD_AT
+
+
+@pytest.mark.parametrize("units", [1, 2, 3, 4])
+def test_sort_stream_runs_the_length_of_the_pour(units):
+    # game/sort/motion.ts: the stream runs POUR_UNIT_MS (300 ms) per unit from flowStartMs, then
+    # the pour returns (POUR_RETURN_MS 180 ms): the file is the flow plus an 180 ms tail.
+    for v in (1, 2, 3):
+        x = _sort(f"sort-pour-stream-{units}u-{v}")
+        assert len(x) / SR == pytest.approx(0.3 * units + 0.18, abs=0.001), (units, v)
+        # It starts at once (the stream starts at the file's start) and is over by its end.
+        assert _peak(x, 0.0, 0.03) > 0.2 * np.abs(x).max(), (units, v)
+        assert np.abs(x[-int(0.01 * SR) :]).max() < np.abs(x).max() * 0.1, (units, v)
+        # Continuous: no 100 ms gap in the flow.
+        for t0 in np.arange(0.02, 0.3 * units - 0.1, 0.05):
+            assert _peak(x, t0, t0 + 0.1) > 0.05 * np.abs(x).max(), (units, v, t0)
+
+
+def test_sort_stream_variations_differ_and_are_loudness_matched():
+    for units in (1, 2, 3, 4):
+        xs = [_sort(f"sort-pour-stream-{units}u-{v}") for v in (1, 2, 3)]
+        assert not np.array_equal(xs[0], xs[1]) and not np.array_equal(xs[1], xs[2])
+        levels = [_rms50_db(x) for x in xs]
+        assert max(levels) - min(levels) < 0.5, units
+
+
+def test_sort_stream_pitch_rises_as_the_destination_fills():
+    # Radii shrink by 0.20 octave per unit as the bottle fills: the spectral centroid of the last
+    # third of a 4-unit stream is above the first third's.
+    x = _sort("sort-pour-stream-4u-1")
+
+    def centroid(a: np.ndarray) -> float:
+        sp = np.abs(np.fft.rfft(a)) ** 2
+        f = np.fft.rfftfreq(len(a), 1 / SR)
+        return float((sp * f).sum() / sp.sum())
+
+    n = int(1.2 * SR)
+    assert centroid(x[int(0.8 * n) : n]) > centroid(x[int(0.05 * SR) : int(0.4 * n)])
+
+
+def test_sort_stream_is_deterministic_per_seed():
+    a, b = synth_puzzle_sfx.sort_stream(2, 1), synth_puzzle_sfx.sort_stream(2, 1)
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, synth_puzzle_sfx.sort_stream(2, 2))
+
+
+def test_sort_select_and_lift_are_on_the_tap():
+    for i in (1, 2, 3):
+        assert _loudest_5ms_at(_sort(f"sort-select-{i}")) <= 0.02
+        assert len(_sort(f"sort-select-{i}")) / SR == pytest.approx(0.12, abs=0.001)
+        assert len(_sort(f"sort-pour-lift-{i}")) / SR == pytest.approx(0.2, abs=0.001)
+
+
+def test_sort_refused_is_two_dull_taps_inside_the_shake():
+    x = _sort("sort-refused")
+    # game/sort/motion.ts: REFUSED_SHAKE_MS 240.
+    assert len(x) / SR <= 0.26
+    # Tap one on the shake's first swing (0 ms), tap two 120 ms on; silence between them.
+    assert _peak(x, 0.0, 0.02) > 0.5 * np.abs(x).max()
+    assert _peak(x, 0.1, 0.118) < 0.02 * np.abs(x).max()
+    assert _peak(x, 0.12, 0.14) > 0.5 * np.abs(x).max()
+
+
+def test_sort_complete_chimes_two_notes_a_fifth_apart():
+    x = _sort("sort-complete")
+    # E6 on the pop, then B6 70 ms on: the second note is the louder, a fifth up.
+    assert _peak(x, 0.0, 0.02) > 0.5 * np.abs(x).max()
+    assert _peak(x, 0.07, 0.09) == pytest.approx(np.abs(x).max())
+    assert _peak(x, 0.04, 0.065) < _peak(x, 0.0, 0.02)
+    assert len(x) / SR == pytest.approx(0.5, abs=0.001)
+
+
+def test_sort_undo_swells_into_a_tick():
+    x = _sort("sort-undo")
+    # A reversed clink: the swell is loudest just before the tick at 255 ms; UNDO_FADE_MS 280.
+    assert len(x) / SR == pytest.approx(0.3, abs=0.001)
+    assert 0.2 <= _loudest_5ms_at(x) <= 0.27
+
+
+def test_sort_hint_is_three_rising_pings_100_ms_apart():
+    x = _sort("sort-hint")
+    # A strike every 100 ms, each louder than the ring of the one before.
+    for k in (1, 2):
+        assert _peak(x, 0.1 * k, 0.1 * k + 0.02) > 2 * _peak(x, 0.1 * k - 0.02, 0.1 * k)
+    assert _peak(x, 0.2, 0.22) == pytest.approx(np.abs(x).max())
+    assert len(x) / SR == pytest.approx(0.65, abs=0.001)
+
+
+def test_sort_win_lands_its_chord_on_the_cascade_end():
+    x = _sort("sort-win")
+    card = synth_puzzle_sfx.SORT_WIN_CARD_AT
+    assert len(x) / SR == pytest.approx(2.0, abs=0.001)
+    hits = _onsets(x)
+    assert any(abs(t - card) <= 0.01 for t in hits), hits
+    # The chord and tick are the loudest moment, as the card opens.
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+
+
+def test_sort_levels_are_the_designed_loudness_and_carry_on_phones():
+    expect = {
+        "sort-select-1": -24,
+        "sort-pour-lift-1": -28,
+        "sort-pour-stream-1u-1": -21,
+        "sort-pour-stream-4u-3": -21,
+        "sort-refused": -23,
+        "sort-complete": -20,
+        "sort-undo": -27,
+        "sort-hint": -26,
+        "sort-win": -17,
+    }
+    for name, db in expect.items():
+        x = _sort(name)
+        assert _rms50_db(x) == pytest.approx(db, abs=0.15), name
+        assert np.max(np.abs(x)) <= 10 ** (-3 / 20) + 1e-6, name
+    for name in SORT_SOUND_NAMES:
+        x = _sort(name)
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        # Little below 300 Hz (phone speakers).
+        assert spec[f < 300].sum() / spec.sum() < 0.03, name
 
 
 def _low_share(x: np.ndarray) -> float:

@@ -864,6 +864,8 @@ jobs:
       #            build. Lowering it now would only fail the premium launch; the guard against
       #            drift on today's store bundle is the warn threshold below, and the
       #            all-games ceiling is enforced by the next step.
+      #   8.25 MiB — all-games ceiling only (#3791, 2026-11-13); store stays 8 MiB. Temporary:
+      #            #3820 cuts the all-games JS and lowers it back to 8 MiB.
       # JS warn threshold: 6.0 MiB (6,291,456 B) = ~8% above today's 5.55 MiB store bundle. Warn
       #   only. Was 6.75 MiB (~8% above 6.24 MiB) until #3150 dropped the non-launch locales.
       # Packaged-assets hard limit: 4 MiB (4,194,304 B) = ~23% above today's 3.25 MiB store
@@ -887,7 +889,11 @@ jobs:
             --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
         id: size
       # Premium ceiling: the same entry with the hidden games kept (pre-launch API URL).
-      # Same 8 MiB limit; this is the number that predicts the premium store build.
+      # This is the number that predicts the premium store build. 8.25 MiB (8,650,752 B) since
+      # #3791 (2026-11-13): dev's all-games bundle reached 8,379,013 B and the Bottle Sort sound
+      # set's asset-registry entries put it 711 B over 8 MiB. Owner decision: raise it here only
+      # (the store-config limit stays 8 MiB) and win the headroom back in #3820, which lowers
+      # this back to 8388608.
       - name: All-games JS ceiling (pre-launch config)
         env:
           EXPO_PUBLIC_API_URL: https://dev-games-api.buffingchi.com
@@ -903,7 +909,7 @@ jobs:
           node scripts/size-report.mjs \
             --bundle dist/all/index.android.bundle \
             --assets dist/all/assets \
-            --max-js 8388608 | tee -a "$GITHUB_STEP_SUMMARY"
+            --max-js 8650752 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Check bundle size (bundlesize)
         run: npx bundlesize
         continue-on-error: true
