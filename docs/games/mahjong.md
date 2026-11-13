@@ -203,6 +203,10 @@ The owner chose **fastest clear: time to clear, lower is better**, with a visibl
 
 Active implementation bugs and future gameplay work stay in GitHub rather than being copied into a stale Known Issues list.
 
+## Device screenshots (Maestro demo flows, #3801)
+
+A cloud session can't see the board on iOS or Android, so the faded and blurry tile reports (#3684) are checked from CI. Dispatch `mobile-smoke-android.yml` or `mobile-smoke-ios.yml` with `flows: mahjong-demo` to run only `e2e/maestro/flows/mahjong/demo-*.yaml` and upload `maestro-<platform>-media`: `mahjong-demo-open` (the untouched Turtle board, no hint) and `mahjong-demo-zoom` (after a double-tap zoom, see "Board camera"), each with a video. `mahjong/smoke.yaml` is unchanged and still takes its own `mahjong-smoke` after a hint tap. Commands and notes: [MAESTRO.md, "Mahjong demo flows"](../MAESTRO.md#mahjong-demo-flows-3801).
+
 ## Sound
 
 Registry: `frontend/src/game/mahjong/sounds.ts` (`MAHJONG_SOUNDS`), played through the shared `useSound` hook (select and match through `useSoundVariants`, which wraps it), which honours the player's sound setting. All five effects are original synthesized sounds in the "real tiles" material (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.

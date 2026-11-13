@@ -1,0 +1,19 @@
+appId: com.buffingchi.games
+# Mahjong demo flow (#3801). Tagged `demo`: the per-PR and weekly smoke runs
+# pass --exclude-tags=demo, and only the `flows: mahjong-demo` dispatch runs
+# it (docs/MAESTRO.md, "Mahjong demo flows"). It records a video and takes a
+# named screenshot, both uploaded as the maestro-<platform>-media artifact.
+#
+# The untouched Turtle board: no hint tap (smoke.yaml's screenshot has a hint
+# glow in the frame), no tile tap.
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: mahjong-demo-open
+- runFlow: ../_shared/open-mahjong.yaml
+# Let the deal-in animation land and the tiles render.
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: mahjong-demo-open
+- stopRecording
