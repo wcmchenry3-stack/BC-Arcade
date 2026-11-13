@@ -91,6 +91,9 @@ jobs:
           cache-dependency-path: tools/assets/requirements.txt
       - name: Install tools requirements
         run: pip install -r tools/assets/requirements.txt
+      # The sound tests encode and decode Ogg Vorbis (#3672); without ffmpeg they would skip or fail.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: pytest
         working-directory: tools
         run: python -m pytest

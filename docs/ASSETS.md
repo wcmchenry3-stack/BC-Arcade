@@ -168,6 +168,19 @@ cd frontend && npm run prebuild      # or: node scripts/optimize-assets.js
 
 The script is idempotent.
 
+## Tweaking a generated asset
+
+The in-house sounds (`synth_starswarm_sfx.py`, `synth_arcade_sfx.py`, `synth_puzzle_sfx.py`) and the Star Swarm sprites (`draw_starswarm_art.py`) are the output of their scripts in `tools/assets/`. Tests fail when a shipped file stops matching its generator (#3672), so a change always goes through the script:
+
+1. Edit the recipe in the generator script.
+2. Rerun the generator for that name into a scratch folder, e.g. `python tools/assets/synth_puzzle_sfx.py /tmp/out daily-word-win` (sprites: `python tools/assets/draw_starswarm_art.py --out /tmp/out <name>`).
+3. Listen to or look at the result, then copy it over the shipped file in `frontend/assets/`.
+4. Run `cd tools && python -m pytest`. `synth_shipped_test.py` (sounds, decoded samples compared with a relative RMS tolerance of 2%, so an encoder change does not trip it but a 0.5 dB level change does) and `draw_starswarm_art_test.py` (sprites, pixel for pixel) must pass. The sound comparison needs ffmpeg with libvorbis; CI installs it, and under CI a missing ffmpeg fails the test instead of skipping.
+
+### Pinned generator libraries
+
+`tools/assets/requirements.txt` pins numpy, scipy, Pillow and colour-science to exact versions, and CI's `Test tools (pytest)` job installs that file, so local, cloud and CI runs produce the same output (#3816: a cloud container with Pillow 12.3 instead of 13 failed the sprite tests, because Pillow 12's LANCZOS downscale differs). Install the file; do not rely on whatever is preinstalled. To upgrade one of them, bump the pin, regenerate **every** generated asset into scratch folders, review the diff (decoded PCM hashes for sounds, pixel diffs for sprites), and ship any changed files in the same PR. The audio encoder is the system `ffmpeg`/libvorbis, not a Python package, so it cannot be pinned there; that is why the sound tests compare decoded samples with a tolerance.
+
 ## Regenerating baked Cascade sprites
 
 **This pipeline no longer runs** (#3692): its source art and the vertices JSON files it read were deleted, and it is removed in #3698.
