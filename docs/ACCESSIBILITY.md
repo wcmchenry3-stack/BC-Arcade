@@ -120,7 +120,7 @@ Run this before shipping any new game or screen.
 | Hearts      | No                 | Card labels must include suit + rank (e.g. "Queen of Spades")         |
 | Blackjack   | No                 | Card labels must include suit + rank; chip count must use live region |
 | Solitaire   | No                 | Pile positions and card labels required                               |
-| Sudoku      | No                 | Cell coordinates + value in labels (e.g. "Row 3, Column 5, empty")    |
+| Sudoku      | No                 | Done (#3773): labels give box, given, notes, errors; keys give count  |
 | Cascade     | Yes (Skia)         | Score + game state must have native text overlay; keyboard alt TBD    |
 | 2048        | No                 | Done (#2222): merge announced on iOS/Android only (web pending)       |
 | FreeCell    | No                 | Same card label convention as Solitaire; Large cards setting (#3347)  |

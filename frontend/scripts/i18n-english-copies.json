@@ -141,7 +141,7 @@
       "fr-CA": ["premiumLevel.ok", "premiumLevel.tag"]
     },
     "sudoku": {
-      "es": ["game.title", "hud.errorsOne", "variant.mini"],
+      "es": ["game.title", "hud.errors_one", "variant.mini"],
       "pt": ["game.title", "variant.mini"],
       "ru": ["variant.mini"],
       "ko": ["game.title"],
