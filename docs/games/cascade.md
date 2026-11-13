@@ -62,22 +62,22 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 
 ### Module Map
 
-| File                     | Purpose                                                                     |
-| ------------------------ | --------------------------------------------------------------------------- |
-| `engine.ts`              | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)          |
-| `tiers.ts`               | The tier ladder: the one table of radius, score, density, droppable, names  |
-| `pieceDefs.ts`           | Engine piece definitions built from `tiers.ts`: color, score, shape         |
-| `constants.ts`           | All tunable physics & gameplay parameters                                   |
-| `pieceQueue.ts`          | Current + next piece queue (preview UI data)                                |
-| `spawnSelector.ts`       | Weighted random tier selection with drought correction & danger suppression |
-| `storage.ts`             | AsyncStorage save/load — versioned `SavedState` (v4), discards v3           |
-| `layout.ts`              | `calculateCascadeLayout()`: world-to-screen scale for the measured board    |
-| `testHooks.ts`           | `__cascade_*` E2E hooks through the shared `registerTestHooks`              |
-| `render/frame.ts`        | The per-frame board buffer, its packer and the publish gate (#2960)         |
-| `render/drawFrame.ts`    | UI-thread worklet that draws a frame into the board's Skia Picture          |
-| `render/boardStyle.ts`   | Per-tier sizes and placeholder colours handed to the renderer               |
-| `scoreStore.ts`          | The live score outside React state; `ScoreDisplay` subscribes               |
-| `useTieredMergeSound.ts` | The tier-scaled merge sound                                                 |
+| File                     | Purpose                                                                                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine.ts`              | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)                                                                                                      |
+| `tiers.ts`               | The tier ladder: the one table of radius, score, density, droppable, names                                                                                              |
+| `pieceDefs.ts`           | Engine piece definitions built from `tiers.ts`: color, score, shape                                                                                                     |
+| `constants.ts`           | All tunable physics & gameplay parameters                                                                                                                               |
+| `pieceQueue.ts`          | Current + next piece queue (preview UI data)                                                                                                                            |
+| `spawnSelector.ts`       | Weighted random tier selection with drought correction & danger suppression                                                                                             |
+| `storage.ts`             | AsyncStorage save/load — versioned `SavedState` (v4), discards v3                                                                                                       |
+| `layout.ts`              | `calculateCascadeLayout()`: world-to-screen scale for the measured board                                                                                                |
+| `testHooks.ts`           | `__cascade_*` E2E hooks through the shared `registerTestHooks`; `cascadeSetup(id)` demo set-ups (chain, near-lid, fill-bin) shared with the test-build controls (#3719) |
+| `render/frame.ts`        | The per-frame board buffer, its packer and the publish gate (#2960)                                                                                                     |
+| `render/drawFrame.ts`    | UI-thread worklet that draws a frame into the board's Skia Picture                                                                                                      |
+| `render/boardStyle.ts`   | Per-tier sizes and placeholder colours handed to the renderer                                                                                                           |
+| `scoreStore.ts`          | The live score outside React state; `ScoreDisplay` subscribes                                                                                                           |
+| `useTieredMergeSound.ts` | The tier-scaled merge sound                                                                                                                                             |
 
 ### Physics
 

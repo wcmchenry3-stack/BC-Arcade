@@ -293,6 +293,15 @@ jobs:
         if: failure()
         run: python3 e2e/maestro/diagnose.py maestro-debug
 
+      # A recording that never stops once left a 1.35 GB video in the artifact
+      # (the 2026-11-12 demo dispatch). Any .mp4/.png over MAX_MEDIA_MB is
+      # deleted, with a warning annotation, before either upload (#3719).
+      - name: Cap media size
+        if: always()
+        env:
+          MAX_MEDIA_MB: "100"
+        run: python3 e2e/maestro/cap_media.py *.mp4 *.png maestro-debug "$HOME/.maestro/tests"
+
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7
         if: always()

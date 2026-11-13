@@ -86,13 +86,34 @@ Visual and audio stories must show the owner the change running on iOS and Andro
 | `demo-open.yaml` | Home → Cascade board | `cascade-demo-open` | `cascade-demo-open` |
 | `demo-drop.yaml` | one drop down the middle | `cascade-demo-drop-before`, `cascade-demo-drop-after` | `cascade-demo-drop` |
 | `demo-merge.yaml` | drops until the score container (`cascade-score`, label "Score: N") leaves 0, i.e. a merge | `cascade-demo-merge-before`, `cascade-demo-merge-after` | `cascade-demo-merge` |
+| `demo-chain.yaml` | `cascade-test-chain`, then two drops: a chain of 3 merges (14 points; score check "Score: ≥10") | `cascade-demo-chain-before`, `cascade-demo-chain-after` | `cascade-demo-chain` |
+| `demo-danger.yaml` | `cascade-test-near-lid`: the spawner's clock ring draining, then the lid ends the game | `cascade-demo-danger-ring`, `cascade-demo-danger-result` | `cascade-demo-danger` |
+| `demo-loss.yaml` | `cascade-test-fill-bin`: the lid rule ends the game, then the result card (`cascade-result-title`) | `cascade-demo-loss-before`, `cascade-demo-loss-filled`, `cascade-demo-loss-result` | `cascade-demo-loss` |
+
+#### Test controls (#3719)
+
+Maestro cannot call the app's `__cascade_*` hooks (`game/cascade/testHooks.ts`): they live on the app's JavaScript `globalThis`, and Maestro's `runScript`/`evalScript` run in Maestro's own engine on the host. So the Cascade screen shows a small, faint row of buttons under the board (`components/cascade/CascadeTestControls.tsx`) **only when `EXPO_PUBLIC_TEST_HOOKS=1`**. One row of four buttons, not a menu: each is one `tapOn`, and an open menu would need a second tap and a wait. Each runs a set-up that restores a pile into the real engine (`cascadeSetup` in `testHooks.ts`), so the engine's rules play out; the same set-ups are hooks too (`__cascade_setupChain`, `__cascade_setupNearLid`, `__cascade_fillBin`, `__cascade_seedQueue(tiers)`) for Playwright.
+
+| testID | Set-up | What follows |
+|---|---|---|
+| `cascade-test-chain` | tiers 1, 2, 3 side by side on the floor; queue scripted as cherries | two taps on the board make 3 merges (holds for a drop within 3 px of the middle) |
+| `cascade-test-near-lid` | a capstone, a tier 10 and a tier 9 stacked over the lid, then 1.5 s simulated (past the restore grace) | the ring drains and the lid ends the game about 2.5 s later |
+| `cascade-test-fill-bin` | that tower plus a second tower, both over the lid | the lid ends the game about 4 s after (overflow rule; nothing is forced) |
+| `cascade-test-game-over` | none: forces the result card | an extra, not used by the demos |
+
+Win set-up is blocked on #3699: `testHooks.ts` has a marked TODO for `setupWin` and the component for a `cascade-test-win` button; there is no UI yet.
+
+Store builds: the Cascade screen resolves to an empty stub in a store bundle (`metro/storeBundle.js`, #2830), so the controls and set-ups are not in it. The control also checks the flag itself. `storeBundle.test.ts` pins both the stub and that only `CascadeScreen` imports them; `CascadeScreen.hooks.test.tsx` pins that the buttons are absent without the flag.
+
+#### Artifact size cap (#3719)
+
+Both smoke workflows run `e2e/maestro/cap_media.py` before the uploads: any `.mp4`/`.png` over `MAX_MEDIA_MB` (100) in the workspace root, `maestro-debug/` or (Android) `~/.maestro/tests/` is deleted and a `::warning::` annotation names it. The cap is per file and drops the file rather than failing the run: a demo's other screenshots and videos still arrive, and the warning says what is missing. It is a cap on size, not on recording time: Maestro has no recording time limit, and Android's recorder stops at 3 minutes by itself. A normal demo video is a few MB, so 100 MB leaves wide headroom.
 
 Not covered yet, and why:
 
-- **Loss**: dropping down the middle mostly makes merges, so the pile rarely reaches the lid. In the 2026-11-12 dispatch, 150 taps took about 21 minutes on each platform. iOS lost (111 merges) and left a 1.35 GB video; Android never lost. Tapping can't make a dependable loss demo. `demo-loss.yaml` comes back with #3719's test-build control that fills the bin.
-- **Win**: Cascade has no win state yet (#3699). Add `demo-win.yaml` with it.
-- **Chain** and **danger**: there is no visible danger state yet (the overflow line is always drawn the same way), and a chain needs a known piece sequence. The queue is random in test builds.
-- **Test hooks**: Maestro cannot call the `__cascade_*` hooks (`game/cascade/testHooks.ts`). They live on the app's JavaScript `globalThis`, and Maestro's `runScript`/`evalScript` run in Maestro's own JavaScript engine on the host, not in the app. No Maestro flow in this repo calls a hook. Solitaire and FreeCell get fixed deals from the `EXPO_PUBLIC_TEST_HOOKS=1` build flag and a test-build-only button instead. So the loss is reached by play, and seeding the queue (for a chain) would need a similar test-build-only control on the Cascade screen.
+- **Win**: Cascade has no win state yet (#3699). Add `demo-win.yaml` and the `cascade-test-win` control with it.
+- **Chain sensitivity**: the chain depends on the first cherry landing within about 3 px of the middle; a tap lands there give or take 1 px. If the layout changes, re-check `testSetups.test.ts`.
+- **Not run on a device yet**: the three flows and the controls were written without Maestro; the first dispatch of `flows: cascade-demo` after #3719 merges is their first run.
 
 The demo flows are tagged `demo` (`tags: [demo]` in each file's header). Every PR, weekly and full run passes `--exclude-tags=demo`, so they never slow down or break the smoke suite. To run **only** them, dispatch either smoke workflow with `flows: cascade-demo`:
 
@@ -107,9 +128,9 @@ gh run download <run-id> -n maestro-android-media
 
 Or in the GitHub UI: Actions → **Mobile Smoke — Android** (or **— iOS**) → **Run workflow** → pick the branch and `cascade-demo`. A dispatched run is not attached to the PR's checks, so it neither gates nor replaces the PR's own smoke run. It uses the workflow file **on that branch**, so the branch needs this change (from `dev` on).
 
-Expected run time (from the 2026-11-12 run, without `demo-loss`): Android about 15 minutes (setup and APK build about 10, emulator boot about 3, the three demos about 2). iOS about 40 to 55 minutes (setup, CocoaPods and the Release build about 27, warm-up about 2, the demos about 3). Android's screen recorder stops at 3 minutes, so a demo that runs longer loses the end of its video; keep each demo well under that.
+Expected run time (from the 2026-11-12 run, before `demo-chain`, `demo-danger` and `demo-loss`; each adds about 30 to 60 s): Android about 15 minutes (setup and APK build about 10, emulator boot about 3, the three demos about 2). iOS about 40 to 55 minutes (setup, CocoaPods and the Release build about 27, warm-up about 2, the demos about 3). Android's screen recorder stops at 3 minutes, so a demo that runs longer loses the end of its video; keep each demo well under that.
 
-Can a Claude session start the dispatch? Unverified. The session's GitHub integration got 403 "Resource not accessible by integration" when re-running jobs (#3674); a dispatch needs the same `actions: write` access, so expect the same until it has been tried. If it fails, the owner starts the run (command or UI above) and the design-review demo step says so.
+Can a Claude session start the dispatch? Unverified (the 2026-11-12 dispatches were started by the owner). The session's GitHub integration got 403 "Resource not accessible by integration" when re-running jobs (#3674); a dispatch needs the same `actions: write` access, so expect the same until it has been tried. If it fails, the owner starts the run (command or UI above) and the design-review demo step says so.
 
 To add demo flows for another game: tag them `demo`, add a `flows` option to both workflows' `workflow_dispatch` input, and a matching case in `detect-maestro-scope.yml`'s `scope` step.
 
