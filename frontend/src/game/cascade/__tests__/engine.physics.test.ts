@@ -320,3 +320,57 @@ describe("replays (#3858): the same frame deltas replay the same board", () => {
     expect(b.getState().pieces[0]!.id).toBe(1);
   });
 });
+
+describe("drop nudge: the same drop x does not stack into a column", () => {
+  const DROP_X = 200;
+
+  // Merges are off (the bench switch) so a tumbling pile can't merge itself away: 8 pieces stay.
+  function dropColumn(seed?: number): CascadeEngine {
+    const engine = new CascadeEngine({
+      bench: { noMerges: true },
+      ...(seed === undefined ? {} : { seed }),
+    });
+    for (let i = 0; i < 8; i++) {
+      engine.drop(i % 2 === 0 ? 1 : 3, DROP_X);
+      run(engine, 40);
+    }
+    run(engine, 60 * 10);
+    return engine;
+  }
+
+  it("no merges, and the pile is not a single vertical column", () => {
+    const engine = dropColumn();
+    const pieces = engine.getState().pieces;
+    expect(pieces).toHaveLength(8);
+    const spread = pieces.map((p) => Math.abs(p.x - DROP_X) - tierRadius(p.tier) / 2);
+    expect(Math.max(...spread)).toBeGreaterThan(0);
+  });
+
+  it("the pile is well below the height of a column of 8 stacked pieces", () => {
+    const pieces = dropColumn().getState().pieces;
+    const stacked = pieces.reduce((sum, p) => sum + 2 * tierRadius(p.tier), 0);
+    const top = Math.min(...pieces.map((p) => p.y - tierRadius(p.tier)));
+    expect(FLOOR_TOP - top).toBeLessThan(stacked * 0.85);
+  });
+
+  it("the nudge is sub-pixel, and the wall clamp still holds after it", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(0, DROP_X);
+    expect(Math.abs(engine.getState().pieces[0]!.x - DROP_X)).toBeLessThanOrEqual(0.4);
+    const r = tierRadius(3);
+    for (let i = 0; i < 20; i++) {
+      const e = new CascadeEngine({ seed: i });
+      e.drop(3, 0);
+      expect(e.getState().pieces[0]!.x).toBe(WALL_THICKNESS + r);
+      const f = new CascadeEngine({ seed: i });
+      f.drop(3, 10_000);
+      expect(f.getState().pieces[0]!.x).toBe(WORLD_WIDTH - WALL_THICKNESS - r);
+    }
+  });
+
+  it("the same seed and drops replay the same board; another seed nudges differently", () => {
+    const board = (e: CascadeEngine) => JSON.stringify(e.getState().pieces);
+    expect(board(dropColumn(7))).toEqual(board(dropColumn(7)));
+    expect(board(dropColumn(7))).not.toEqual(board(dropColumn(8)));
+  });
+});

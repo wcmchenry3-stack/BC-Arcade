@@ -68,6 +68,7 @@
  * the screen logs in dev builds and the sim gate requires to be 0.
  */
 import type { Body, Fixture } from "planck";
+import { createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { PIECE_DEFS, MAX_TIER } from "./pieceDefs";
 import { TIERS, tierRadius } from "./tiers";
 import {
@@ -107,14 +108,25 @@ import {
 
 // Pixels above the overflow line where a newly dropped piece's centroid starts.
 const DROP_SPAWN_INSET = 5;
+// A drop's x is nudged by up to this many px either way (seeded, before the wall clamp). Without
+// it, pieces dropped at one x land dead centre on each other, where there is no lateral force,
+// and stack into a column that never topples.
+const DROP_NUDGE_PX = 0.4;
+const DEFAULT_SEED = 0x2545f491;
 const FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;
 
 export interface EngineConfig {
   /**
    * Step-cost bench only (`stepBench.ts`, the dev panel): `noMerges` / `noLid` keep a full board
-   * of small pieces so a step can be timed with ~90 of them. Never set in a game.
+   * of small pieces so a step can be timed with ~90 of them. `noDropNudge` (lid tests) lands a drop
+   * dead centre on a restored column, which the nudge would roll off. Never set in a game.
    */
-  bench?: { noMerges?: boolean; noLid?: boolean };
+  bench?: { noMerges?: boolean; noLid?: boolean; noDropNudge?: boolean };
+  /**
+   * Seeds the engine's own RNG, which draws the drop nudge (`DROP_NUDGE_PX`). The same seed and
+   * the same drops replay bit-for-bit. Omitted: a fixed default seed, so still deterministic.
+   */
+  seed?: number;
 }
 
 export interface PieceSnapshot {
@@ -258,8 +270,11 @@ export class CascadeEngine {
   private _comboTicksLeft = 0;
   private _comboEmitted = false;
 
+  private _rng: RandomSource = createSeededRng(DEFAULT_SEED);
+
   constructor(config: EngineConfig = {}) {
     this._bench = config.bench ?? {};
+    if (config.seed !== undefined) this.seed(config.seed);
     this._physics = createPhysicsWorld<PieceEntry>(this._onBegin);
   }
 
@@ -695,13 +710,28 @@ export class CascadeEngine {
     if (airborne.length === 1) this._drop = airborne[0]!;
   }
 
+  /** Reseeds the engine's RNG (the drop nudge). The screen calls it with the queue's seed. */
+  seed(seed: number): void {
+    // The LCG's first draws of nearby seeds are nearly equal: mix the seed and discard a few.
+    let h = (seed ^ 0x9e3779b1) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+    h = (h ^ (h >>> 16)) >>> 0;
+    const rng = createSeededRng(h);
+    for (let i = 0; i < 4; i++) rng();
+    this._rng = rng;
+  }
+
   drop(tier: number, x: number): void {
     if (this._gameOver) return;
     if (!PIECE_DEFS[tier]) return;
     const r = tierRadius(tier);
     // A tap at the edge of the bin (the screen clamps it to the walls' inner faces) places the
     // piece against the wall, not inside it: Box2D would push it out by position, a visible jump.
-    const cx = clamp(x, WALL_THICKNESS + r, WORLD_WIDTH - WALL_THICKNESS - r);
+    // The nudge comes first and the clamp after, so the wall rule still holds. One draw per drop.
+    const draw = this._rng();
+    const nudged = this._bench.noDropNudge ? x : x + (draw * 2 - 1) * DROP_NUDGE_PX;
+    const cx = clamp(nudged, WALL_THICKNESS + r, WORLD_WIDTH - WALL_THICKNESS - r);
     const e = this._addPiece(tier, cx, OVERFLOW_LINE_Y - r - DROP_SPAWN_INSET, r);
     // It spawns over the lid: the gate holds until it falls below, and the lid rule ignores it
     // until it lands (#3694).

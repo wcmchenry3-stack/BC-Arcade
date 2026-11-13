@@ -572,7 +572,8 @@ function CascadeGame() {
 
   // RAF game loop — recreated on gameKey change (restart / theme switch)
   useEffect(() => {
-    const engine = new CascadeEngine({});
+    // Live play seeds the drop nudge from the clock; a test seed replaces it (`handleSetSeed`).
+    const engine = new CascadeEngine({ seed: (Math.random() * 0x100000000) >>> 0 });
     engineRef.current = engine;
     engine.start();
 
@@ -707,6 +708,7 @@ function CascadeGame() {
     (seed: number) => {
       const rng = createSeededRng(seed);
       queueRngRef.current = rng;
+      engineRef.current?.seed(seed);
       const seeded = makeQueue(rng);
       queueRef.current = seeded.queue;
       queueHistoryRef.current = seeded.history;

@@ -415,8 +415,10 @@ describe("pure physics-feel measures", () => {
 describe("bots", () => {
   it("the heuristic bot merges more than the random bot on the same seeds", () => {
     const seeds = [1, 2, 3];
+    // A full-length game (180 s, the full suite's): over 60 s the two bots are within noise of each
+    // other (40-seed means 1233 vs 1336 before the drop nudge), so a 3-seed check was a coin flip.
     const score = (bot: typeof heuristicBot) =>
-      seeds.reduce((s, seed) => s + runGame({ seed, hz: 60, bot, maxSimMs: 60_000 }).score, 0);
+      seeds.reduce((s, seed) => s + runGame({ seed, hz: 60, bot, maxSimMs: 180_000 }).score, 0);
     expect(score(heuristicBot)).toBeGreaterThan(score(randomBot));
   });
 

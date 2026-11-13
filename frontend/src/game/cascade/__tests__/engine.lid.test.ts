@@ -218,7 +218,8 @@ describe("the lid: hard stop grace for the dropped piece", () => {
   });
 
   it("a dropped piece that really rests with its top edge above the canvas still hard-stops, after the run", () => {
-    const engine = new CascadeEngine({});
+    // The drop must land dead centre on the column (the nudge would roll it off the top).
+    const engine = new CascadeEngine({ bench: { noDropNudge: true } });
     // The tall stack's top edge is at y = 38: a tier-2 piece (radius 23) dropped on it comes to
     // rest on top, its top edge at about y = -8, above the canvas.
     engine.restore(TALL, 0);
@@ -272,7 +273,8 @@ describe("the lid: drop gating", () => {
 
   it("a piece that lands and rests over the lid cannot deadlock: the game ends", () => {
     // A capstone and tiers 10, 9, 8 and 5: the stack's top edge is at y = 88, under the lid.
-    const engine = new CascadeEngine({});
+    // The drop must land dead centre on the column (the nudge would roll it off the top).
+    const engine = new CascadeEngine({ bench: { noDropNudge: true } });
     const under = stack([11, 10, 9, 8, 5]);
     expect(stackTop(under)).toBeGreaterThan(OVERFLOW_LINE_Y);
     engine.restore(under, 0);
