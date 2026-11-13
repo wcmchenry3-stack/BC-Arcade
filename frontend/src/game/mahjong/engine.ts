@@ -43,9 +43,6 @@ import {
 const SCORE_PER_PAIR = 10;
 const SCORE_COMPLETE_BONUS = 500;
 
-// The clear-time floor and the device-best check live in `clearTime.ts` (#3757); re-exported here.
-export { MAHJONG_MIN_CLEAR_MS, plausibleBestMs } from "./clearTime";
-
 /** The most moves `undoMove` can take back; the oldest entry goes first. */
 export const UNDO_CAP = 50;
 export const MAX_SHUFFLES = 3;

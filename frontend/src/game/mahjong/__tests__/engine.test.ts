@@ -4,9 +4,8 @@
  * All tests use a seeded RNG so results are deterministic.
  */
 
+import { MAHJONG_MIN_CLEAR_MS, plausibleBestMs } from "../clearTime";
 import {
-  MAHJONG_MIN_CLEAR_MS,
-  plausibleBestMs,
   createGame,
   createSeededRng,
   elapsedMs,
