@@ -326,7 +326,7 @@ A build counts as a store build when `!context.dev && EXPO_PUBLIC_TEST_HOOKS !==
 **What remains in the store bundle (known limitation).**
 
 - Small shared modules that free surfaces import: hidden games' i18n namespaces (all locales), the `GameDetail` Hearts and Star Swarm sections, Hearts and Blackjack scorecards and models, the Blackjack and Hearts contexts and storage, and the Star Swarm engine (reached through `scoreLedger`, `GameDetail` and `LeaderboardScreen`). All pure JS, no large assets.
-- Three sounds that look premium by name (`hearts-moon-shot.mp3`, `cascade-fruit-merge.ogg`, `cascade-game-over.ogg`) are required by free games through the shared sound registry (`blackjack-win.ogg` was deleted with #3581). The guard deliberately does not flag SFX.
+- Two sounds that look premium by name (`hearts-moon-shot.mp3`, `cascade-game-over.ogg`) are required by free games through the shared sound registry (`blackjack-win.ogg` was deleted with #3581). The guard deliberately does not flag SFX.
 - The Blackjack and Hearts providers stay mounted at startup (about 26 KB of source).
 - No premium-only native dependency exists (`matter-js` is pure JS), so native size is unchanged by #2830.
 

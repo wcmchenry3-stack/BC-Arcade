@@ -79,7 +79,9 @@ describe("Sort sound triggers", () => {
     const { result } = await mount();
     result.current.playPour(4, false);
     const { flowStartMs } = pourTimeline(4);
-    const slots = [0, 1, 2, 3].map((i) => POUR_START_LATENCY_BUDGET_MS + flowStartMs + i * 300);
+    const slots = [0, 1, 2, 3].map(
+      (i) => POUR_START_LATENCY_BUDGET_MS + flowStartMs + i * POUR_UNIT_MS
+    );
     expect(slots).toEqual([350, 650, 950, 1250]);
     let now = 0;
     for (const [i, at] of slots.entries()) {
