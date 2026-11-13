@@ -37,7 +37,7 @@
   "payout.zero": "Возврат",
   "payout.accessibilityLabel": "Выплата: {{amount}} фишек",
   "tag.win": "Победа",
-  "tag.lose": "Проигрыш",
+  "tag.lose": "Минус",
   "tag.push": "Ничья",
   "result.splitWon": "Победы: {{count}}",
   "result.splitLost": "Проигрыши: {{count}}",

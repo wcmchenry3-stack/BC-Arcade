@@ -7,6 +7,8 @@
  * GameShell's bottom padding); 320×568 and 375×667 match the felt measured in
  * the web build's screenshots (216 / 315 high).
  */
+import * as fs from "fs";
+import * as path from "path";
 import {
   ACTIVE_ROW_SHARE,
   DOCK_BUTTON_HEIGHT,
@@ -548,8 +550,8 @@ describe.each([SMALLEST, ...PHONES])("a split hand's label at the result at $nam
     for (const h of g.hands) {
       const label = splitResultLabel(g.mode, h.label.width);
       if (g.mode === "rows") {
-        // A row's label is a column: the name on its own line, over the total, tag and payout.
-        expect(label).toEqual({ named: true, compactPayout: true });
+        // A row's label is a column: the name and total, over the tag and payout (#3782).
+        expect(label).toEqual({ named: true, compactPayout: true, totalBesideName: true });
         expect(h.label.width).toBe(ROW_LABEL_WIDTH);
         expect(h.label.height).toBeGreaterThanOrEqual(ROW_LABEL_CONTENT_HEIGHT);
         continue;
@@ -576,17 +578,185 @@ describe.each([SMALLEST, ...PHONES])("a split hand's label at the result at $nam
 
 describe("splitResultLabel", () => {
   it("keeps the name only in a row's label; words the payout only on a wide one-line label", () => {
-    expect(splitResultLabel("rows", ROW_LABEL_WIDTH)).toEqual({ named: true, compactPayout: true });
-    expect(splitResultLabel("grid", 400)).toEqual({ named: false, compactPayout: true });
+    expect(splitResultLabel("rows", ROW_LABEL_WIDTH)).toEqual({
+      named: true,
+      compactPayout: true,
+      totalBesideName: true,
+    });
+    expect(splitResultLabel("grid", 400)).toEqual({
+      named: false,
+      compactPayout: true,
+      totalBesideName: false,
+    });
     for (const mode of ["fans", "wide"] as const) {
       expect(splitResultLabel(mode, WORDED_PAYOUT_MIN_LABEL_WIDTH - 1)).toEqual({
         named: false,
         compactPayout: true,
+        totalBesideName: false,
       });
       expect(splitResultLabel(mode, WORDED_PAYOUT_MIN_LABEL_WIDTH)).toEqual({
         named: false,
         compactPayout: false,
+        totalBesideName: false,
       });
     }
   });
 });
+
+// #3782: a split hand's result line in every locale, with a 3-digit payout (a doubled 200 bet at
+// the top table shows -400). Measured in the app's fonts (web build: Space Grotesk tag and total,
+// Manrope name, the system font payout), as #3771 measured, for these exact strings; a changed
+// tag or hand name fails here until it is measured again.
+// - oneLine: total + tag + payout, one line (fans, the grid): the 320 px phone's labels are 140.
+// - nameAndTotal / tagAndPayout: a row's two lines at the result, in its 100 px column.
+// Before #3782 Russian's "Проигрыш" made the one-line label 158 px (cut off at 320 px) and a
+// row's one line (total + tag + payout) was 116 px in English and 158 in Russian.
+const MEASURED_RESULT_LINES: Record<
+  string,
+  { hand: string; tags: string[]; oneLine: number; nameAndTotal: number; tagAndPayout: number }
+> = {
+  ar: {
+    hand: "اليد",
+    tags: ["فوز", "تعادل", "خسارة"],
+    oneLine: 117,
+    nameAndTotal: 70,
+    tagAndPayout: 71,
+  },
+  de: {
+    hand: "Hand",
+    tags: ["Gewinn", "Remis", "Verlust"],
+    oneLine: 136,
+    nameAndTotal: 90,
+    tagAndPayout: 90,
+  },
+  en: {
+    hand: "Hand",
+    tags: ["Win", "Push", "Lose"],
+    oneLine: 116,
+    nameAndTotal: 90,
+    tagAndPayout: 70,
+  },
+  es: {
+    hand: "Mano",
+    tags: ["Gana", "Empate", "Pierde"],
+    oneLine: 127,
+    nameAndTotal: 92,
+    tagAndPayout: 80,
+  },
+  "fr-CA": {
+    hand: "Main",
+    tags: ["Gagné", "Égalité", "Perdu"],
+    oneLine: 127,
+    nameAndTotal: 87,
+    tagAndPayout: 81,
+  },
+  he: {
+    hand: "יד",
+    tags: ["ניצחון", "תיקו", "הפסד"],
+    oneLine: 118,
+    nameAndTotal: 67,
+    tagAndPayout: 72,
+  },
+  hi: {
+    hand: "हाथ",
+    tags: ["जीत", "बराबरी", "हार"],
+    oneLine: 108,
+    nameAndTotal: 73,
+    tagAndPayout: 62,
+  },
+  ja: {
+    hand: "ハンド",
+    tags: ["勝ち", "引き分け", "負け"],
+    oneLine: 113,
+    nameAndTotal: 91,
+    tagAndPayout: 67,
+  },
+  ko: { hand: "핸드", tags: ["승", "무", "패"], oneLine: 102, nameAndTotal: 80, tagAndPayout: 56 },
+  nl: {
+    hand: "Hand",
+    tags: ["Winst", "Gelijk", "Verlies"],
+    oneLine: 132,
+    nameAndTotal: 90,
+    tagAndPayout: 86,
+  },
+  pt: {
+    hand: "Mão",
+    tags: ["Vitória", "Empate", "Derrota"],
+    oneLine: 138,
+    nameAndTotal: 83,
+    tagAndPayout: 91,
+  },
+  ru: {
+    hand: "Рука",
+    tags: ["Победа", "Ничья", "Минус"],
+    oneLine: 139,
+    nameAndTotal: 88,
+    tagAndPayout: 93,
+  },
+  zh: { hand: "手牌", tags: ["赢", "平", "输"], oneLine: 102, nameAndTotal: 80, tagAndPayout: 56 },
+};
+const widest = (k: "oneLine" | "nameAndTotal" | "tagAndPayout") =>
+  Math.max(...Object.values(MEASURED_RESULT_LINES).map((m) => m[k]));
+/** A row's two lines at the result: the total pill (21 px), the gap (3), the tag (16, CJK). */
+const ROW_RESULT_CONTENT_HEIGHT = 21 + 3 + 16;
+
+describe("the split result lines measured in every locale (#3782)", () => {
+  const dir = path.join(__dirname, "../../../i18n/locales");
+  const locales = fs.readdirSync(dir).filter((d) => !d.startsWith("_") && !d.endsWith(".json"));
+
+  it("covers every locale's current tags and hand name (re-measure when one changes)", () => {
+    expect(Object.keys(MEASURED_RESULT_LINES).sort()).toEqual([...locales].sort());
+    for (const l of locales) {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, l, "blackjack.json"), "utf8"));
+      expect({
+        l,
+        hand: j["hand.playerHand"],
+        tags: [j["tag.win"], j["tag.push"], j["tag.lose"]],
+      }).toEqual({
+        l,
+        hand: `${MEASURED_RESULT_LINES[l]!.hand} {{number}}`,
+        tags: MEASURED_RESULT_LINES[l]!.tags,
+      });
+    }
+  });
+
+  it("the widest are Russian (one line, row line 2) and Spanish (row line 1)", () => {
+    expect(widest("oneLine")).toBe(139);
+    expect(widest("nameAndTotal")).toBe(92);
+    expect(widest("tagAndPayout")).toBe(93);
+  });
+
+  it("a row's single line (total + tag + payout) would not fit its column even in English", () => {
+    expect(MEASURED_RESULT_LINES.en!.oneLine).toBeGreaterThan(ROW_LABEL_WIDTH);
+  });
+});
+
+describe.each([SMALLEST, ...PHONES])(
+  "every locale's result line fits at $name (#3782)",
+  (phone) => {
+    it.each([2, 3, 4])("%i hands, a 3-digit payout: no label narrower than its line", (n) => {
+      for (const cards of [2, 3, 5]) {
+        const g = geometry(phone, {
+          dealerCards: 3,
+          handCards: same(n, cards),
+          activeHandIndex: null,
+          showResult: true,
+        });
+        for (const h of g.hands) {
+          const label = splitResultLabel(g.mode, h.label.width);
+          if (label.totalBesideName) {
+            expect(h.label.width).toBeGreaterThanOrEqual(widest("nameAndTotal"));
+            expect(h.label.width).toBeGreaterThanOrEqual(widest("tagAndPayout"));
+            expect(h.label.height).toBeGreaterThanOrEqual(ROW_RESULT_CONTENT_HEIGHT);
+            expect(ROW_LABEL_CONTENT_HEIGHT).toBeGreaterThanOrEqual(ROW_RESULT_CONTENT_HEIGHT);
+          } else {
+            expect(label.compactPayout || h.label.width >= WORDED_PAYOUT_MIN_LABEL_WIDTH).toBe(
+              true
+            );
+            expect(h.label.width).toBeGreaterThanOrEqual(widest("oneLine"));
+          }
+        }
+      }
+    });
+  }
+);

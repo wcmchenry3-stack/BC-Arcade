@@ -47,9 +47,15 @@ const ZONE_GAP = 6;
 const BOX_PAD = 4;
 /** Vertical padding inside a split row around its cards. */
 const ROW_PAD = 2;
-/** Left column of a split row: hand number over the total pill with the bet or payout beside it. */
+/**
+ * Left column of a split row: the hand number over the total pill and bet; at the result the
+ * number and total over the tag and payout (`splitResultLabel`, #3782).
+ */
 export const ROW_LABEL_WIDTH = 100;
-/** Height of a row label's content: the hand name (one line) over the total pill and payout. */
+/**
+ * Height of a row label's content, two lines: in play the hand name over the total pill and bet;
+ * at the result the name and total over the tag and payout (#3782).
+ */
 export const ROW_LABEL_CONTENT_HEIGHT = 40;
 /** Height kept free for the result banner (outcome and payout, then one detail line). */
 export const RESULT_BANNER_HEIGHT = 52;
@@ -106,11 +112,16 @@ export interface SplitResultLabel {
   named: boolean;
   /** The payout as a signed number ("+25") rather than in words ("+25 chips"). */
   compactPayout: boolean;
+  /**
+   * Two lines (rows, #3782): the name and total, then the tag and payout. A row's 100 px column
+   * cannot hold the total, tag and a 3-digit payout on one line in any locale (English 116 px).
+   */
+  totalBesideName: boolean;
 }
 
 /**
- * A split hand's label at the result (#3771). A row's label is a column (the name on its own
- * line over the total, tag and payout), so it keeps its name. Every other label is one line, too
+ * A split hand's label at the result (#3771). A row's label is a column, so it keeps its name:
+ * the name and total on one line, the tag and payout on the next (#3782). Every other label is one line, too
  * narrow on a phone for the name, the total, the tag and the payout together (the name was cut
  * to "HA…"): the name gives way to the result, the hand still known by its place and outline.
  * The cards never shrink for it: the label keeps its height.
@@ -120,6 +131,7 @@ export function splitResultLabel(mode: TableMode, labelWidth: number): SplitResu
   return {
     named: rows,
     compactPayout: rows || mode === "grid" || labelWidth < WORDED_PAYOUT_MIN_LABEL_WIDTH,
+    totalBesideName: rows,
   };
 }
 

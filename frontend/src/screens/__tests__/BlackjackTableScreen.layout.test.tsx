@@ -298,6 +298,18 @@ describe.each(PHONES)("the table at $name", (phone) => {
           if (/chips|change/.test(payout)) {
             expect(l.width).toBeGreaterThanOrEqual(WORDED_PAYOUT_MIN_LABEL_WIDTH);
           }
+          // #3782: a row's label is two lines at the result, the name and total over the tag and
+          // payout (the longest locale's tag fits its 100 px column only so); a one-line label
+          // keeps the total, tag and payout on its one line.
+          // The total's line: the nearest row-direction view around it.
+          let line = within(node).getByTestId("hand-total").parent!;
+          while (StyleSheet.flatten(line.props.style)?.flexDirection !== "row") {
+            line = line.parent!;
+          }
+          const has = (id: string) => within(line).queryAllByTestId(id).length > 0;
+          expect(has("hand-name")).toBe(column);
+          expect(has("hand-result")).toBe(!column);
+          expect(within(node).getAllByTestId("hand-result")).toHaveLength(1);
         }
       });
     }

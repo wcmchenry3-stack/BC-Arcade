@@ -7,7 +7,8 @@
  *   - Three or four: one full-width row per hand (number, total and bet on the
  *     left), the active row larger and outlined; hands already played dimmed.
  *   - A split hand's result (total, tag, payout) on a one-line label (fans, the
- *     grid) takes the name's place (`splitResultLabel`, #3771); a row keeps it.
+ *     grid) takes the name's place (`splitResultLabel`, #3771); a row keeps it,
+ *     the name and total over the tag and payout (#3782).
  *
  * All positions come from `computeTableGeometry` (game/blackjack/layout.ts),
  * which keeps every corner index readable and the result band clear of the
@@ -108,7 +109,24 @@ function toneForOutcome(outcome: string | null | undefined): Tone {
   return "plain";
 }
 
-function TotalPill({ text, tone, label }: { text: string; tone: Tone; label: string }) {
+/** A hand's total pill tone: bust, the active hand, its outcome once shown, else plain. */
+function handTone(value: number, active: boolean, outcome: string | null): Tone {
+  if (value > 21) return "bust";
+  if (active) return "active";
+  return outcome !== null ? toneForOutcome(outcome) : "plain";
+}
+
+function TotalPill({
+  text,
+  tone,
+  label,
+  testID,
+}: {
+  text: string;
+  tone: Tone;
+  label: string;
+  testID?: string;
+}) {
   const { colors } = useTheme();
   const bg =
     tone === "active"
@@ -122,6 +140,7 @@ function TotalPill({ text, tone, label }: { text: string; tone: Tone; label: str
   const border = tone === "plain" ? colors.border : tone === "push" ? colors.textMuted : bg;
   return (
     <View
+      testID={testID}
       style={[styles.pill, { backgroundColor: bg, borderColor: border }]}
       accessibilityLabel={label}
     >
@@ -184,6 +203,11 @@ interface HandLabelProps {
    * no room for it beside the total, tag and payout. Its accessibility label always names it.
    */
   namedAtResult: boolean;
+  /**
+   * Once its result shows, the label is two lines (`splitResultLabel`, rows, #3782): the name and
+   * total, then the tag and payout, so the longest locale's tag fits the row's column.
+   */
+  totalBesideName: boolean;
   split: boolean;
   active: boolean;
   played: boolean;
@@ -231,6 +255,7 @@ function HandLabel({
   rows,
   compact,
   namedAtResult,
+  totalBesideName,
   split,
   active,
   played,
@@ -245,10 +270,7 @@ function HandLabel({
   const { colors } = useTheme();
   const name = split ? t("hand.playerHand", { number: index + 1 }) : t("hand.player");
   const valueText = hand.soft ? `${hand.value}*` : String(hand.value);
-  let tone: Tone = "plain";
-  if (hand.value > 21) tone = "bust";
-  else if (active) tone = "active";
-  else if (outcome !== null) tone = toneForOutcome(outcome);
+  const tone = handTone(hand.value, active, outcome);
   const payoutText = payout === null ? null : payoutTextFor(payout, t);
   const named = payoutText === null || namedAtResult;
   const a11y = handA11yLabel(
@@ -260,6 +282,45 @@ function HandLabel({
     payoutText
   );
 
+  const twoLines = payoutText !== null && totalBesideName;
+  const nameText = (dimmed: boolean) => (
+    <Text
+      testID="hand-name"
+      style={[
+        styles.zoneLabel,
+        { color: active ? colors.accent : colors.textMuted, fontFamily: typography.label },
+        styles.shrink,
+        dimmed && styles.dimmed,
+      ]}
+      numberOfLines={1}
+    >
+      {name}
+    </Text>
+  );
+  const total = (
+    <TotalPill
+      testID="hand-total"
+      text={valueText}
+      tone={tone}
+      label={t("a11y.playerScore", { score: valueText })}
+    />
+  );
+  // A split hand's own result: it pops in as the hands are revealed in turn (#3581).
+  const resultTag = payoutText !== null && payout !== null && (
+    <PopIn
+      animate={pops}
+      epoch={epoch}
+      durationMs={TAG_POP_MS}
+      fromScale={0.8}
+      style={styles.shrink}
+    >
+      <View testID="hand-result" style={[styles.labelLine, styles.shrink]}>
+        {outcome !== null && <HandTag outcome={outcome} />}
+        <PayoutText payout={payout} text={payoutText} compact={compact} />
+      </View>
+    </PopIn>
+  );
+
   return (
     <View
       testID={`hand-label-${index}`}
@@ -267,62 +328,50 @@ function HandLabel({
       accessible
       accessibilityLabel={a11y}
     >
-      {named && (
-        <Text
-          testID="hand-name"
-          style={[
-            styles.zoneLabel,
-            { color: active ? colors.accent : colors.textMuted, fontFamily: typography.label },
-            styles.shrink,
-            played && styles.dimmed,
-          ]}
-          numberOfLines={1}
-        >
-          {name}
-        </Text>
-      )}
-      <View style={[styles.labelLine, played && styles.dimmed]}>
-        <TotalPill
-          text={valueText}
-          tone={tone}
-          label={t("a11y.playerScore", { score: valueText })}
-        />
-        {bet != null && payoutText === null && (
-          // The stake: a chip (decorative) beside the amount (#3720, as the mockup). The amount
-          // shrinks to fit a tight row label; the label's accessibility name says the bet.
-          <View style={[styles.stake, styles.shrink]}>
-            <ChipFace testID="hand-stake-chip" size={STAKE_CHIP} color={chipColor} />
-            <Text
-              testID="hand-bet"
-              style={[
-                styles.bet,
-                styles.shrink,
-                { color: colors.celebration, fontFamily: typography.heading },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-            >
-              {bet}
-            </Text>
+      {twoLines ? (
+        <>
+          <View style={[styles.labelLine, played && styles.dimmed]}>
+            {nameText(false)}
+            {total}
           </View>
-        )}
-        {payoutText !== null && payout !== null && (
-          // A split hand's own result: it pops in as the hands are revealed in turn (#3581).
-          <PopIn
-            animate={pops}
-            epoch={epoch}
-            durationMs={TAG_POP_MS}
-            fromScale={0.8}
-            style={styles.shrink}
-          >
-            <View style={[styles.labelLine, styles.shrink]}>
-              {outcome !== null && <HandTag outcome={outcome} />}
-              <PayoutText payout={payout} text={payoutText} compact={compact} />
-            </View>
-          </PopIn>
-        )}
-      </View>
+          <View style={[styles.labelLine, played && styles.dimmed]}>{resultTag}</View>
+        </>
+      ) : (
+        <>
+          {named && nameText(played)}
+          <View style={[styles.labelLine, played && styles.dimmed]}>
+            {total}
+            {bet != null && payoutText === null && <HandStake bet={bet} chipColor={chipColor} />}
+            {resultTag}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+/**
+ * The stake: a chip (decorative) beside the amount (#3720, as the mockup). The amount shrinks to
+ * fit a tight row label; the label's accessibility name says the bet.
+ */
+function HandStake({ bet, chipColor }: { bet: number; chipColor: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.stake, styles.shrink]}>
+      <ChipFace testID="hand-stake-chip" size={STAKE_CHIP} color={chipColor} />
+      <Text
+        testID="hand-bet"
+        style={[
+          styles.bet,
+          styles.shrink,
+          { color: colors.celebration, fontFamily: typography.heading },
+        ]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
+        {bet}
+      </Text>
     </View>
   );
 }
@@ -342,7 +391,7 @@ function HandTag({ outcome }: { outcome: string }) {
         styles.shrink,
         { color, borderColor: color, fontFamily: typography.heading },
       ]}
-      // A longer word (a translation) shrinks to fit the row's label column, never overflows it.
+      // Every locale's tag fits its line (#3782, tableGeometry.test.ts); the shrink is a backstop.
       numberOfLines={1}
       adjustsFontSizeToFit
       minimumFontScale={0.7}
@@ -566,6 +615,7 @@ export default function TableFelt({
             rows={rows}
             compact={resultLabel.compactPayout}
             namedAtResult={resultLabel.named}
+            totalBesideName={resultLabel.totalBesideName}
             split={split}
             active={playing && i === activeHandIndex}
             played={played}
