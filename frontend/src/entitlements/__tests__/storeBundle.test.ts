@@ -131,6 +131,37 @@ describe("isExcludedScreen", () => {
     }
   });
 
+  // #2960: Cascade's web route loads CanvasKit and its `.wasm`; it must be stubbed out of a
+  // store web build like the screen itself (until #3703 ships Cascade there).
+  it("excludes Cascade's route and its web variant, so the store bundle has no CanvasKit", () => {
+    for (const file of ["CascadeRoute.tsx", "CascadeRoute.web.tsx", "CascadeScreen.tsx"]) {
+      expect({
+        file,
+        excluded: storeBundle.isExcludedScreen(path.join(SCREENS_DIR, file)),
+      }).toEqual({ file, excluded: true });
+    }
+    expect(fs.existsSync(path.join(SCREENS_DIR, "CascadeRoute.web.tsx"))).toBe(true);
+  });
+
+  it("stubs CascadeRoute.web.tsx in a store web bundle, and keeps it in dev", () => {
+    const route = path.join(SCREENS_DIR, "CascadeRoute.web.tsx");
+    const config = storeBundle.withStoreBundleExclusions({ resolver: {} }, STORE_ENV);
+    const resolve = (dev: boolean) =>
+      config.resolver.resolveRequest!(
+        {
+          dev,
+          resolveRequest: (_ctx: object, moduleName: string) => ({
+            type: "sourceFile",
+            filePath: moduleName,
+          }),
+        },
+        route,
+        "web"
+      );
+    expect(resolve(false)).toEqual({ type: "sourceFile", filePath: storeBundle.STUB_SCREEN });
+    expect(resolve(true).filePath).toBe(route);
+  });
+
   it("ignores free screens, lookalikes and other directories", () => {
     for (const file of [
       path.join(SCREENS_DIR, "SudokuScreen.tsx"),
