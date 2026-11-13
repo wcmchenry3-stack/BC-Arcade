@@ -460,3 +460,41 @@ Adds 35,883 B now; nothing is deleted, since the fanfare is shared. Daily Word n
 | **Total**        | —   | 56.0 KB (57,389 B) |        |
 
 Adds 57,389 B now; nothing is deleted.
+
+### Sudoku sounds (#3775)
+
+- **Brief (#3775, from #3578).** Only the win played, and it was the borrowed 10 s, 321 KB `hearts-moon-shot.mp3`, which kept playing into the next puzzle (audit bug). Four originals for the keys the engine already emits, timed to `game/sudoku/motion.ts` (#3774). The owner chose the material (pencil and paper, Sudoku's own identity) and the options.
+- **Which actions make a sound (owner).** Placing a digit, an error, a completed unit and solving. Notes, Erase, Undo and the Hint button stay silent. A hint that fills a cell places a digit, so it plays the place sound.
+- **One sound per move.** A move's events arrive together (`digitPlace`, then `errorEntered` or the units it completes, then `puzzleComplete`), and the screen plays the most notable one: the solve over an error over a unit over the plain place. A unit's sound and the win each open with the place tick, so the move still sounds like a digit landing. A restored game carries no events, so it is silent; so is a remount.
+- **Timing.**
+  - Place: the mark is at t = 0 (the entry, `PLACE_MS` 150).
+  - Error: inside the 380 ms pulse, with the three strokes at 0, 110 and 230 ms (the pulse and the clash ring's blink).
+  - Unit: the tap run follows the sweep, which starts at `UNIT_SWEEP_START_MS` 50 and runs `UNIT_SWEEP_MS` 450; four taps at 50, 165, 280 and 395 ms.
+  - Win: starts at the solving render (t = 0); the chord lands at +1.0 s, as the card shows (`SOLVED_BEAT_MS`). The recipes pin the constants (`SUDOKU_WIN_CARD_AT`, `SUDOKU_UNIT_SWEEP_START`, `SUDOKU_UNIT_SWEEP`), and a Jest test reads them from the generator and compares them with `motion.ts`. Under Reduce Motion the card shows at once, so the chord lands 1.0 s after it, as in the other games.
+- **Options** (previewed as three digit ticks, an error, a tick, a row completing, then the win):
+
+| Sound         | A: crisp graphite (picked)                                                                  | B: soft pencil on thick paper                        | C: light and airy                                   |
+| ------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------- |
+| Place         | a hard pencil-point tick, 80 ms                                                             | a rounded tip and a short soft stroke, 130 ms        | a tiny high tick and a feathery flick, 90 ms        |
+| Error         | three hard back-and-forth scratches (0, 110, 230 ms)                                        | two duller strokes and a dab                         | a five-stroke zig-zag cross-out                     |
+| Unit complete | four rising pencil taps across the sweep, the last a check-mark stroke                      | four tuned paper taps C5 E5 G5 C6                    | nine tiny taps, one per cell as its glow starts     |
+| Win           | a double underline, a check tick, then a felt-piano C major chord and a faint bell at 1.0 s | tuned paper taps up the wave, a rolled marimba chord | a signature flourish, then a small glass-bell chord |
+
+- **Pick: A, for all four** (owner), with three alternating place variations (`useSoundVariants`), as 2048 and Daily Word do (default; the owner did not choose). It is the quietest, most newspaper-puzzle voice, and the win's felt-piano chord is a warm "done" with none of the mallet family's fanfare, which Yacht, 2048 and Mahjong already own.
+- **Levels** (dBFS over the loudest 50 ms): place -26 (level with 2048's spawn: about 60 a game), error -24 (level with Daily Word's refusal), unit -22 (level with 2048's merge), win -17 (level with Daily Word's win). Under 0.1 % of the win's energy is below 300 Hz (tested: 0.057 %); the short sounds are clicks, all under 1.2 %.
+- **Exactness.** The committed Oggs decode to the same PCM as the approved previews (`decoded_pcm_sha256`, see the story's thread), and `synth_puzzle_sfx_test.py` checks each against its recipe.
+- **Trigger changes.**
+  - `sudoku.digitPlace` (+ `digitPlace2`, `digitPlace3`), `sudoku.errorEntered`, `sudoku.unitComplete` and `sudoku.puzzleComplete` all play, from `useSudokuSounds` (events in, one sound out).
+  - `sudoku.errorEntered` no longer borrows `solitaire-invalid-move.ogg`, nor `puzzleComplete` `hearts-moon-shot.mp3`.
+  - The win is stopped by New Game, Play Again, Change Difficulty and unmount.
+- **Why it works.** One material for the whole game: every sound is a pencil on newsprint, and what changes is how much is written (a tick, a scratch-out, a run of taps, an underline and a check). The reward grows with the moment, and the chord lands as the card does.
+
+| File                                         | Old                    | New size                | Length |
+| -------------------------------------------- | ---------------------- | ----------------------- | ------ |
+| `sudoku-digit-place.ogg`, `-2.ogg`, `-3.ogg` | 6,019 B (not played)   | 4,659 + 4,639 + 4,689 B | 0.08 s |
+| `sudoku-error-entered.ogg`                   | — (borrowed 5,956 B)   | 7,534 B                 | 0.34 s |
+| `sudoku-unit-complete.ogg`                   | 7,390 B (not played)   | 7,635 B                 | 0.60 s |
+| `sudoku-puzzle-complete.ogg`                 | — (borrowed 321,024 B) | 19,749 B                | 2.30 s |
+| **Total**                                    | 13,409 B               | 48,905 B                |        |
+
+The files on disk grow by 35,496 B (+48,905 B new, -13,409 B replaced). The bundle shrinks: no code requires `hearts-moon-shot.mp3` (321,024 B) or `solitaire-invalid-move.ogg` (5,956 B) any more, so Metro leaves them out, by 291,484 B net. Neither file is deleted: other games' histories and the house rule keep them in the repo (`ASSET-RIGHTS-AUDIT.md`, Section 3.4).
