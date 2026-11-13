@@ -1,5 +1,6 @@
 """pytest suite for synth_puzzle_sfx.py (#3578)."""
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -378,6 +379,7 @@ def test_sudoku_place_variations_differ():
     assert len(a) / SR <= 0.1
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg to decode the Ogg")
 @pytest.mark.parametrize("name", SUDOKU_SOUNDS)
 def test_sudoku_committed_ogg_is_the_generators_audio(name):
     # Ogg bytes differ between runs; the decoded audio is what must match the recipe.
