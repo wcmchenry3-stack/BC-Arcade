@@ -51,7 +51,7 @@ The game randomly selects a puzzle from the chosen local bank. The last **diffic
 - Each digit key shows how many instances of that digit remain; a digit is dimmed and disabled once all instances are on the grid.
 - **Erase** clears the selected editable cell's value and notes.
 - **Notes** toggles pencil-mark mode.
-- **Undo** restores the previous placement/erase snapshot; the history is capped at 50 entries.
+- **Undo** restores the previous placement/erase snapshot; the history is capped at 50 entries. It restores the **board only** (#3785): digits, notes, the error count and conflicts. **Notes mode and the selection stay as they are**, except that the cell Undo changed becomes selected so the player sees it.
 - **Hint** fills the selected empty editable cell with its correct solution digit (or, on a full grid that is not the solution, corrects a wrong cell; see Errors and completion).
 - **New Game** asks "Start new game?", then opens the New Game picker (variant and difficulty, **Start**, **Quick Restart**, **Cancel**); Android Back or Escape closes the picker like Cancel. The ⋯ menu's New Game still does the same, through its own abandon confirm.
 - **Show mistakes** is a checkable item in the ⋯ header menu (see Errors and completion).
@@ -108,7 +108,7 @@ Notes:
 - do not complete a cell;
 - do not create an undo snapshot.
 
-Normal digit placement clears that cell's pencil marks.
+Normal digit placement clears that cell's pencil marks, and **removes the placed digit from the notes of its row, column and box peers** (#3785; Mini uses its 2×3 box). A hint does the same. Undo brings the cleared notes back with the cell. Notes mode itself never auto-clears: toggling a note changes only the selected cell, whatever its peers hold.
 
 ### Hints
 
@@ -127,7 +127,7 @@ Only **illegal moves** are errors (#2943). A digit is illegal when it duplicates
 - an illegal digit stays on the board, is drawn as a conflict (see UI), increments `errorCount` and flashes the screen. Entering the same illegal digit again in that cell does nothing, so it is counted once;
 - a **legal but incorrect** digit (one that breaks no rule but is not the solution digit) is not an error: it is not counted, does not flash, costs no score and is not coloured, unless Show mistakes is on (below);
 - the error colour follows the current board: erasing or changing the conflicting digit clears the highlight, and both cells of a conflict between two player digits are highlighted. `errorCount` counts illegal **entries** made, so removing the duplicate afterwards does not refund the error (undo does);
-- a legal placement can trigger row/column/box completion feedback;
+- a row, column or box completes (the `unitComplete` event, and so the sweep and sound) only when it **matches the solution** (#3785): a full unit with a wrong digit, even one without duplicates, does not. Accepted side effect: a full unit that gets no completion feedback hints at a mistake even with Show mistakes off. The event is still raised only for a legal placement;
 - the puzzle finishes only when every cell matches the solution (completion stays solution-based).
 
 Undo restores the previous error count, so undoing an illegal placement removes that error from the eventual score.
@@ -232,7 +232,9 @@ The puzzle is recorded once, in `game_started`: `{ difficulty, variant, puzzle }
 
 Not recorded: selecting a cell, switching pencil mode, and any action that changes nothing (a digit on a given or with nothing selected, an erase of an empty cell, an undo with nothing to undo, a hint with nothing to give). `applyRecorded` (`game/sudoku/replay.ts`) runs the engine and returns the entry only when the state changed, and the screen and the golden test both go through it.
 
-To replay: start from the givens; a digit, a hint or an erase pushes an undo snapshot (50 at most, the engine's `UNDO_STACK_LIMIT`) and a digit or hint clears the cell's notes; a note toggles one digit and pushes nothing; an undo restores the last snapshot, notes and error count with it. The golden test's reader (`__tests__/helpers/rebuild.ts`) and the backend test's (`tests/test_sudoku_replay_events.py`) are exactly this.
+To replay: start from the givens; a digit, a hint or an erase pushes an undo snapshot (50 at most, the engine's `UNDO_STACK_LIMIT`) and a digit or hint clears the cell's notes and removes that digit from the notes of its row, column and box peers (#3785); a note toggles one digit in its cell only and pushes nothing; an undo restores the last snapshot, notes and error count with it. The golden test's reader (`__tests__/helpers/rebuild.ts`) and the backend test's (`tests/test_sudoku_replay_events.py`) are exactly this.
+
+**Rules change #3785 and old recordings.** The entries carry no notes-mode or selection state (each names its cell, and undo is `[3]`), so the new undo (keeps Notes mode and selection) and the notes auto-clear change nothing an entry does to the **values or the error count**: a recording made under the old rules rebuilds to the same final grid and errors. Only the **notes** it shows differ: the readers now clear a placed digit from its peers' notes, which the old engine did not, and no longer trim a digit from a peer when a note is toggled. Notes are display-only (not scored), the `entries` wire format and `v` are unchanged, and the readers cannot tell which rules a recording was played under (a game resumed across the update mixes both), so there is no per-recording version: the final grid and errors are exact, the notes follow the current rules. The fixture's events are unchanged by #3785 except for the golden script's extra undo.
 
 **An `entries` event** is `{ v: 1, unit, t_ms, i, e: [entry, ...] }`: the recorder's envelope plus `i`, the ordinal of the chunk's first entry in the game, and `e`, up to **32** entries (`ENTRIES_PER_CHUNK`). A chunk is one recorder unit, numbered by where it starts (`unitOfEntry(i)` = `⌊i / 32⌋ + 1`). Chunks end at multiples of 32, so a chunk saved early (below) is finished by the next event under the same unit. The type is registered `REPLAY`, with a 512 B cap (`SUDOKU_ENTRIES_MAX_BYTES`, the backend's `MAX_ENTRIES_BYTES`) and **no `chunkField`**: it is never split into parts, because `i` has to stay unique. A chunk is at most 411 B, so the cap never bites.
 

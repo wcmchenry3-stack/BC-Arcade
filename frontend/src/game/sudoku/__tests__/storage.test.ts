@@ -11,7 +11,7 @@ import {
   loadShowMistakes,
   saveShowMistakes,
 } from "../storage";
-import { enterDigit, getConflicts, loadPuzzle, selectCell, toggleNotesMode } from "../engine";
+import { enterDigit, getConflicts, loadPuzzle, selectCell, toggleNotesMode, undo } from "../engine";
 import type { CellValue, NoteDigit, SudokuState } from "../types";
 
 const GAME_KEY = "sudoku_game";
@@ -101,6 +101,23 @@ describe("sudoku storage", () => {
     expect(loaded!.notesMode).toBe(true);
     expect(loaded!.grid[row]![col]!.isError).toBe(true);
     expect(loaded!.grid[row]![col]!.value).toBe(wrong);
+  });
+
+  it("a saved game resumes under the #3785 rules: undo keeps Notes mode and selects the changed cell", async () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findFirstEmpty(s0);
+    // saved with a digit in the undo stack, Notes mode on, another cell selected
+    const placed = enterDigit(selectCell(s0, row, col), 5);
+    const other = placed.grid.flatMap((r, ri) =>
+      r.flatMap((c, ci) => (!c.given && c.value === 0 ? [[ri, ci] as const] : []))
+    )[0]!;
+    await saveGame(toggleNotesMode(selectCell(placed, other[0], other[1])));
+    const loaded = (await loadGame())!;
+    expect(loaded.undoStack).toHaveLength(1);
+    const undone = undo(loaded);
+    expect(undone.notesMode).toBe(true);
+    expect([undone.selectedRow, undone.selectedCol]).toEqual([row, col]);
+    expect(undone.grid[row]![col]!.value).toBe(0);
   });
 
   it("strips nested undoStack snapshots at save time", async () => {
