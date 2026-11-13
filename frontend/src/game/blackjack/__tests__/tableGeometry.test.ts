@@ -602,8 +602,11 @@ describe("a split hand's label in the wide arrangement (landscape fallback)", ()
         compactPayout: true,
       });
       for (const hand of g.hands) expect(hand.label.width).toBeCloseTo(widths[k]!, 1);
+      // The known gap, from the geometry itself: which hand counts get a label narrower than the
+      // compact line (3–4 hands at 568×320, 4 hands at 667×375; 2 hands always fit).
+      expect(g.hands[0]!.label.width < EN_COMPACT_RESULT_LINE).toBe(
+        n === 4 || (n === 3 && w === 568)
+      );
     });
-    // The gap: 4 hands are narrower than the compact line on both.
-    expect(widths[2]!).toBeLessThan(EN_COMPACT_RESULT_LINE);
   });
 });

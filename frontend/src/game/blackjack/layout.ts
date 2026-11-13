@@ -113,8 +113,8 @@ export interface SplitResultLabel {
  * height, so no card shrinks for it.
  *
  * Known gap: the wide arrangement (a landscape window, a fallback: phones are locked to portrait,
- * #3603) gives 3–4 hands labels of about 96 / 76 px (568×320) and 120 / 94 px (667×375), with
- * 4 hands narrower than the ~105 px the compact line needs, so it can still be cut there.
+ * #3603) gives 3–4 hands labels of about 96 / 76 px (568×320) and 120 / 94 px (667×375), so
+ * the ~105 px compact line can still be cut with 3–4 hands at 568×320 and 4 hands at 667×375.
  */
 export function splitResultLabel(mode: TableMode): SplitResultLabel {
   const column = mode === "rows";
