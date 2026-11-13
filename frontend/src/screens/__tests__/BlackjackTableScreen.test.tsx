@@ -114,6 +114,11 @@ async function renderScreen(nav = mockNav()) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // clearAllMocks keeps implementations and queued *Once values, so a
+  // mockResolvedValue(...) set by one test leaks into whichever test runs next
+  // (#3752). Reset loadGame to its documented default: no saved game.
+  (loadGame as jest.Mock).mockReset();
+  (loadGame as jest.Mock).mockResolvedValue(null);
   mockStartGame.mockReturnValue("game-uuid-test");
 });
 
