@@ -6,7 +6,16 @@ import { useTheme, type Colors } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { SUDOKU_WASHES } from "../../theme/theme.sudoku";
 import type { NoteDigit, SudokuCell as SudokuCellData } from "../../game/sudoku/types";
+import {
+  ERROR_PULSE_MS,
+  ERROR_PULSE_PEAK,
+  UNIT_CELL_MS,
+  UNIT_PEAK,
+  WAVE_CELL_MS,
+  WAVE_PEAK,
+} from "../../game/sudoku/motion";
 import { cellBackground, cellMetrics } from "./cellStyle";
+import { BlinkRing, PlaceIn, PulseOverlay } from "./cellMotion";
 
 interface Props {
   cell: SudokuCellData;
@@ -32,6 +41,24 @@ interface Props {
    * half of the clash. Drawn as a red ring (#3773).
    */
   clash?: boolean;
+  /**
+   * Motion (#3774). Each is a primitive that is undefined for every cell the effect does not
+   * touch, so a move re-renders only the cells it affects (this component is memoised). The ids
+   * are the move's (`SudokuMotion.id`): a cell plays an effect when its id appears or changes.
+   */
+  /** A digit or hint landed here: it fades and scales in. */
+  placeId?: number;
+  /** An illegal digit landed here: the cell pulses red once. */
+  errorId?: number;
+  /** This cell clashes with the illegal digit: its ring blinks once. */
+  blinkId?: number;
+  /** A unit this cell is in was completed: a glow passes over it after `sweepDelay` ms. */
+  sweepId?: number;
+  sweepDelay?: number;
+  /** The puzzle was solved: the wave brightens this cell after `waveDelay` ms. */
+  waveDelay?: number;
+  /** Reduce Motion, read live by the board: none of the above moves. */
+  reduceMotion?: boolean;
   /** Stable across renders (the screen's `useCallback`): the cell passes its own row and column. */
   onPress: (row: number, col: number) => void;
 }
@@ -95,6 +122,13 @@ function SudokuCellImpl({
   peer,
   mistake = false,
   clash = false,
+  placeId,
+  errorId,
+  blinkId,
+  sweepId,
+  sweepDelay,
+  waveDelay,
+  reduceMotion = false,
   onPress,
 }: Props) {
   const { t } = useTranslation("sudoku");
@@ -151,8 +185,37 @@ function SudokuCellImpl({
       testID={`sudoku-cell-${row}-${col}`}
       style={[styles.cell, { backgroundColor: background }]}
     >
+      {/* Under the digit: it is drawn before it. None under Reduce Motion. */}
+      {!reduceMotion && errorId !== undefined ? (
+        <PulseOverlay
+          key={`error-${errorId}`}
+          testID={`sudoku-cell-${row}-${col}-error`}
+          color={colors.error}
+          peak={ERROR_PULSE_PEAK}
+          ms={ERROR_PULSE_MS}
+        />
+      ) : null}
+      {!reduceMotion && sweepId !== undefined ? (
+        <PulseOverlay
+          key={`sweep-${sweepId}`}
+          testID={`sudoku-cell-${row}-${col}-sweep`}
+          color={colors.accent}
+          peak={UNIT_PEAK}
+          ms={UNIT_CELL_MS}
+          delayMs={sweepDelay}
+        />
+      ) : null}
+      {!reduceMotion && waveDelay !== undefined ? (
+        <PulseOverlay
+          testID={`sudoku-cell-${row}-${col}-wave`}
+          color={colors.accent}
+          peak={WAVE_PEAK}
+          ms={WAVE_CELL_MS}
+          delayMs={waveDelay}
+        />
+      ) : null}
       {cell.value !== 0 ? (
-        <View>
+        <PlaceIn id={placeId} reduceMotion={reduceMotion}>
           <Text
             allowFontScaling={false}
             style={[
@@ -175,7 +238,7 @@ function SudokuCellImpl({
               ]}
             />
           ) : null}
-        </View>
+        </PlaceIn>
       ) : cell.notes.size > 0 ? (
         <View style={styles.notesGrid}>
           {noteDigits.map((d) => (
@@ -197,7 +260,13 @@ function SudokuCellImpl({
           ))}
         </View>
       ) : null}
-      {clash ? (
+      {clash && blinkId !== undefined && !reduceMotion ? (
+        <BlinkRing
+          key={blinkId}
+          testID={`sudoku-cell-${row}-${col}-clash`}
+          style={[styles.ring, { borderColor: colors.error }]}
+        />
+      ) : clash ? (
         <View
           pointerEvents="none"
           testID={`sudoku-cell-${row}-${col}-clash`}

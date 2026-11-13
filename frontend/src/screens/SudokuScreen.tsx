@@ -21,7 +21,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  Animated,
   Platform,
   StyleSheet,
   ScrollView,
@@ -50,9 +49,11 @@ import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
 import { boardFit } from "../components/sudoku/cellStyle";
 import NumberPad from "../components/sudoku/NumberPad";
+import { useSolveBeat } from "../components/sudoku/useSolveBeat";
 import PreGame from "../components/sudoku/PreGame";
 import NewGameModal from "../components/sudoku/NewGameModal";
 import { isFullButWrong, loadPuzzle, selectCell, toggleNotesMode } from "../game/sudoku/engine";
+import { deriveMotion } from "../game/sudoku/motion";
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
 import { DIFFICULTIES } from "../game/sudoku/types";
 import { useSound } from "../game/_shared/useSound";
@@ -73,8 +74,6 @@ import { applyRecorded, createEntryLog, unitOfEntry, type EntryTuple } from "../
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
-
-const FLASH_MS = 200;
 
 // The bottom-anchored play area (#3773): HUD, the board (as big as the space left allows), the
 // action bar, then the digit keys in two rows. A phone shorter than COMPACT_BELOW_H trades some
@@ -232,9 +231,20 @@ export default function SudokuScreen() {
   const startMsRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
 
-  const flashOpacity = useRef(new Animated.Value(0)).current;
-  const unitFlashOpacity = useRef(new Animated.Value(0)).current;
   const isComplete = state?.isComplete ?? false;
+  // The solved beat (#3774): the wave, and the card held until it is over. Derived from `isComplete`
+  // in the render, so the solving move, the wave and the held card land together.
+  const { holding: solveBeat, reduceMotion, skip: skipSolveBeat } = useSolveBeat(isComplete);
+  // The last move's motion, shown on the cells it touches (an error on its cell and the cells it
+  // clashes with, a unit's sweep, the digit landing). Keyed on the engine's events: each digit or
+  // hint makes a new array, a selection or an erase keeps it, so nothing replays and the board
+  // re-renders only the cells this changes. The selection is the one that came with the events:
+  // a digit and a hint both land in the selected cell.
+  const motion = useMemo(
+    () => (state ? deriveMotion(state) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state?.events]
+  );
 
   const { play: playPuzzleComplete } = useSound("sudoku.puzzleComplete", SUDOKU_SOUNDS);
 
@@ -406,6 +416,8 @@ export default function SudokuScreen() {
       saved.undoStack.length > 0 ||
       saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
     skipReplayRef.current = cannotRebuildReplay(saved, anyMoves, resumed);
+    // Already solved: its card shows at once, with no beat (#3774).
+    if (saved.isComplete) skipSolveBeat();
     if (anyMoves) {
       startMsRef.current = Date.now();
       // A load that lands while the player is away (#2750) starts
@@ -515,31 +527,9 @@ export default function SudokuScreen() {
     [syncRestart, flushEntries, resetEntries]
   );
 
-  const flashError = useCallback(() => {
-    Animated.sequence([
-      Animated.timing(flashOpacity, {
-        toValue: 0.3,
-        duration: 80,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashOpacity, {
-        toValue: 0,
-        duration: FLASH_MS - 80,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [flashOpacity]);
-
-  // The engine emits a new array on each digit entry; the events stay in
-  // state (a save drops them), so no clear is needed.
+  // The engine emits a new array on each digit entry; the events stay in state (a save drops
+  // them), so no clear is needed. The error and the unit sweep are on the board (`motion`).
   useGameEvents(state?.events, {
-    errorEntered: () => flashError(),
-    unitComplete: () => {
-      Animated.sequence([
-        Animated.timing(unitFlashOpacity, { toValue: 0.35, duration: 80, useNativeDriver: true }),
-        Animated.timing(unitFlashOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
-      ]).start();
-    },
     puzzleComplete: () => playPuzzleComplete(),
   });
 
@@ -784,6 +774,9 @@ export default function SudokuScreen() {
                 solution={state.solution}
                 showMistakes={showMistakes}
                 boardSize={boardSize}
+                motion={motion}
+                wave={solveBeat}
+                reduceMotion={reduceMotion}
                 onCellPress={handleCellPress}
               />
             </View>
@@ -858,33 +851,12 @@ export default function SudokuScreen() {
             gap={compact ? KEY_GAP_COMPACT : KEY_GAP}
             message={fullButWrong ? t("fullWrong.message") : undefined}
           />
-
-          <Animated.View
-            pointerEvents="none"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: colors.error, opacity: flashOpacity },
-            ]}
-            testID="sudoku-invalid-flash"
-          />
-          <Animated.View
-            pointerEvents="none"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: colors.bonus, opacity: unitFlashOpacity },
-            ]}
-            testID="sudoku-unit-flash"
-          />
         </View>
       )}
 
       {state !== null ? (
         <GameResultModal
-          visible={isComplete}
+          visible={isComplete && !solveBeat}
           outcome="win"
           eyebrow={`${t("game.title")} · ${t(`difficulty.${state.difficulty}`)}`}
           subtitle={t(`variant.${state.variant}`)}

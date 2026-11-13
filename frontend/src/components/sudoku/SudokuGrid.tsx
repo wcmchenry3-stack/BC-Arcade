@@ -4,6 +4,12 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import type { Grid, Variant } from "../../game/sudoku/types";
 import { variantConfig } from "../../game/sudoku/types";
+import {
+  unitCells,
+  unitSweepDelayMs,
+  waveDelayMs,
+  type SudokuMotion,
+} from "../../game/sudoku/motion";
 import SudokuCell from "./SudokuCell";
 
 interface Props {
@@ -19,6 +25,15 @@ interface Props {
    * the controls; the digits and notes scale with it. Omitted, the board fills its parent's width.
    */
   boardSize?: number;
+  /**
+   * The last move's motion (#3774): where its digit landed, whether it was an error, the units it
+   * completed. Only the cells it touches get props, so a move re-renders only those.
+   */
+  motion?: SudokuMotion | null;
+  /** The solved wave is running (the beat before the result card). */
+  wave?: boolean;
+  /** Reduce Motion: no cell moves. */
+  reduceMotion?: boolean;
   onCellPress: (row: number, col: number) => void;
 }
 
@@ -33,6 +48,9 @@ export default function SudokuGrid({
   solution,
   showMistakes = false,
   boardSize,
+  motion = null,
+  wave = false,
+  reduceMotion = false,
   onCellPress,
 }: Props) {
   const { t } = useTranslation("sudoku");
@@ -81,6 +99,21 @@ export default function SudokuGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grid, size, boxRows, boxCols]);
 
+  // When each cell of a completed unit starts to glow (a cell in two units takes the earlier).
+  const sweepDelays = useMemo(() => {
+    const out = new Map<number, number>();
+    if (!motion) return out;
+    for (const { unit, index } of motion.units) {
+      const cells = unitCells(unit, index, variant);
+      cells.forEach((cellIndex, i) => {
+        const delay = unitSweepDelayMs(i, cells.length);
+        const prev = out.get(cellIndex);
+        if (prev === undefined || delay < prev) out.set(cellIndex, delay);
+      });
+    }
+    return out;
+  }, [motion, variant]);
+
   const cellPx = boardSize === undefined ? undefined : (boardSize - 2 * BOARD_BORDER) / size;
   const hairline = 1 / PixelRatio.get();
 
@@ -102,6 +135,10 @@ export default function SudokuGrid({
         },
       ]}
     >
+      {wave && !reduceMotion ? (
+        // A mark for tests and tooling that the wave is running; it has no size and no role.
+        <View pointerEvents="none" testID="sudoku-solved-wave" style={styles.waveMark} />
+      ) : null}
       {grid.map((row, r) => (
         <View key={r} style={styles.row}>
           {row.map((cell, c) => {
@@ -110,6 +147,8 @@ export default function SudokuGrid({
             const isBoxRight = (c + 1) % boxCols === 0;
             const isBoxBottom = (r + 1) % boxRows === 0;
             const isSelected = r === selectedRow && c === selectedCol;
+            const idx = r * size + c;
+            const sweepDelay = motion ? sweepDelays.get(idx) : undefined;
             return (
               <View
                 key={`${r}-${c}`}
@@ -139,7 +178,14 @@ export default function SudokuGrid({
                   selected={isSelected}
                   highlighted={selectedValue !== 0 && cell.value === selectedValue && !isSelected}
                   peer={isPeer(r, c)}
-                  clash={clashes.has(r * size + c)}
+                  clash={clashes.has(idx)}
+                  placeId={motion && motion.placed === idx ? motion.id : undefined}
+                  errorId={motion && motion.error && motion.placed === idx ? motion.id : undefined}
+                  blinkId={motion && motion.error && clashes.has(idx) ? motion.id : undefined}
+                  sweepId={sweepDelay === undefined ? undefined : motion?.id}
+                  sweepDelay={sweepDelay}
+                  waveDelay={wave ? waveDelayMs(r, c, size) : undefined}
+                  reduceMotion={reduceMotion}
                   mistake={
                     showMistakes &&
                     solution !== undefined &&
@@ -169,5 +215,10 @@ const styles = StyleSheet.create({
   row: {
     flex: 1,
     flexDirection: "row",
+  },
+  waveMark: {
+    position: "absolute",
+    width: 0,
+    height: 0,
   },
 });
