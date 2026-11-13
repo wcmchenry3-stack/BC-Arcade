@@ -579,6 +579,172 @@ describe("refetch on reconnect after a failed first fetch (#3868)", () => {
     expect(mockRequest).toHaveBeenCalledTimes(1);
     expect(ctx.canPlay("hearts")).toBe(true);
   });
+
+  const networkFailure = () => new TypeError("Network request failed");
+  function deferRequest() {
+    let resolve: (v: unknown) => void = () => {};
+    let reject: (e: unknown) => void = () => {};
+    mockRequest.mockReturnValueOnce(
+      new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+      })
+    );
+    return { resolve: (v: unknown) => resolve(v), reject: (e: unknown) => reject(e) };
+  }
+
+  it("a stale successful refresh does not disarm the retry armed by a newer failure", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider();
+
+    const older = deferRequest();
+    const newer = deferRequest();
+    let olderDone!: Promise<void>;
+    await act(async () => {
+      olderDone = ctx.refresh();
+    });
+    await act(async () => {
+      newer.reject(networkFailure());
+      await ctx.refresh();
+    });
+    await act(async () => {
+      older.resolve(entitledResponse());
+      await olderDone;
+    });
+    expect(ctx.canPlay("hearts")).toBe(false);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+
+    expect(mockRequest).toHaveBeenCalledTimes(4);
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("loads entitlements when the network returns while the launch fetch is in flight", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    const boot = deferRequest();
+    await renderProvider();
+
+    await goOnline(); // edge while the launch fetch is pending: not armed yet
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await act(async () => boot.reject(networkFailure()));
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("loads entitlements when the network returns while the launch cache read is in flight", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    let releaseCache: () => void = () => {};
+    const gate = new Promise<void>((r) => (releaseCache = r));
+    const realGetMany = AsyncStorage.getMany.bind(AsyncStorage);
+    const spy = jest.spyOn(AsyncStorage, "getMany").mockImplementationOnce(async (keys) => {
+      await gate;
+      return realGetMany(keys);
+    });
+    await renderProvider();
+    expect(ctx.isLoading).toBe(true);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    await act(async () => releaseCache());
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.canPlay("hearts")).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("makes at most one immediate retry when NetInfo is online but the launch fetch fails", async () => {
+    mockNetworkStatus = { isOnline: true, isInitialized: true };
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider();
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.canPlay("hearts")).toBe(false);
+  });
+
+  it("arms the retry when a foreground refresh supersedes the launch fetch and fails offline", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    const boot = deferRequest();
+    await render(
+      <EntitlementProvider>
+        <Probe />
+      </EntitlementProvider>
+    );
+    await flushAsync();
+
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    await act(async () => boot.reject(networkFailure()));
+    await flushAsync();
+    await flushAsync();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("a non-network failure on a reconnect refresh disarms the retry", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider();
+
+    mockRequest.mockRejectedValue(new Error("HTTP 503"));
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not refetch when NetInfo initializes while already online", async () => {
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider(); // armed: online but not initialized, so no immediate retry
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    // A real offline → online edge afterwards still retries.
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips a reconnect refresh while the previous one is still in flight", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider();
+
+    const first = deferRequest();
+    await goOnline();
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    await act(async () => first.resolve(entitledResponse()));
+    await flushAsync();
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
 });
 
 describe("stale fetch vs applyToken race (#841)", () => {
