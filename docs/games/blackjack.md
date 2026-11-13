@@ -173,7 +173,7 @@ Default table rules use:
 - 6 decks;
 - dealer stands on soft 17 (`hit_soft_17 = false`);
 - configured deck penetration of 0.75;
-- automatic reshuffle when the remaining engine deck is low.
+- automatic reshuffle when the remaining engine deck is low, and a reshuffle when the shoe runs dry mid-round (every in-round draw goes through `dealFrom(state)` in `engine.ts`, so the new shoe is always the table's `deck_count` decks, never one, #3769).
 
 The engine supports a rules object, but player-facing difficulty variants are separate future work and should not be inferred from the current table tiers.
 
