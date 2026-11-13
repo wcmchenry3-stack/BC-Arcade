@@ -32,6 +32,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { clockElapsedMs } from "../game/_shared/playClock";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
@@ -82,8 +83,10 @@ function highestTile(board: number[][]): number {
   return Math.max(0, ...board.flat());
 }
 
-function computeDurationMs(s: Twenty48State): number {
-  return s.accumulatedMs + (s.startedAt !== null ? Date.now() - s.startedAt : 0);
+/** The play time to report: never negative or non-finite, whatever the device clock did (#3738). */
+export function computeDurationMs(s: Twenty48State, now: number = Date.now()): number {
+  const ms = clockElapsedMs(s, now);
+  return Number.isFinite(ms) ? Math.max(0, ms) : 0;
 }
 
 /** How long (ms) a hint, or the "no hint" message, stays up: the same 2 s as the other games. */

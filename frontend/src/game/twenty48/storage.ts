@@ -66,7 +66,11 @@ function restore(parsed: Twenty48State): Twenty48State {
   }
   // Normalize timer fields — absent in states saved before timer was added.
   parsed.startedAt = parsed.startedAt ?? null;
-  parsed.accumulatedMs = parsed.accumulatedMs ?? 0;
+  // Finite and >= 0: a device clock set back saved a negative banked time (#3738).
+  parsed.accumulatedMs =
+    typeof parsed.accumulatedMs === "number" && Number.isFinite(parsed.accumulatedMs)
+      ? Math.max(0, parsed.accumulatedMs)
+      : 0;
   // Re-seed the engine's tile-ID counter above every restored ID so
   // subsequent spawns/merges don't collide with surviving tiles (#698).
   const maxId = parsed.tiles.reduce((m, t) => (t.id > m ? t.id : m), 0);

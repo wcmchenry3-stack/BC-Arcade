@@ -4,7 +4,9 @@
  * The motion (useBlackjackMotion) says when; this plays the sound, and hands the result's own
  * effect (a flash) to the screen. A result the player cut short (`skipped`) still sounds, once,
  * with no effect over the next hand. A natural's sting has no effect of its own here: its moment
- * is on the felt, drawn by the motion (#3621; the old overlay is gone).
+ * is on the felt, drawn by the motion (#3621; the old overlay is gone). A mixed split's chime
+ * (#3770) has no flash: the round did not simply win. The run's cues (milestone, comeback) and the
+ * all-in (#3582) have no effect of their own: their toasts are the screen's.
  */
 import { useCallback, useLayoutEffect, useRef } from "react";
 
@@ -33,6 +35,10 @@ export function useBlackjackCues(effects: CueEffects): (cue: SoundCue, skipped: 
   const win = useSound("blackjack.win", BLACKJACK_SOUNDS);
   const lose = useSound("blackjack.lose", BLACKJACK_SOUNDS);
   const push = useSound("blackjack.push", BLACKJACK_SOUNDS);
+  const mixed = useSound("blackjack.mixed", BLACKJACK_SOUNDS);
+  const allIn = useSound("blackjack.allIn", BLACKJACK_SOUNDS);
+  const milestone = useSound("blackjack.milestone", BLACKJACK_SOUNDS);
+  const comeback = useSound("blackjack.comeback", BLACKJACK_SOUNDS);
   const payout = useSound("blackjack.chipPayout", BLACKJACK_SOUNDS);
   const collect = useSound("blackjack.chipCollect", BLACKJACK_SOUNDS);
   const nudge = useSound("blackjack.chipNudge", BLACKJACK_SOUNDS);
@@ -51,9 +57,13 @@ export function useBlackjackCues(effects: CueEffects): (cue: SoundCue, skipped: 
     win,
     lose,
     push,
+    mixed,
     payout,
     collect,
     nudge,
+    allIn,
+    milestone,
+    comeback,
   };
   const playersRef = useRef(players);
   useLayoutEffect(() => {

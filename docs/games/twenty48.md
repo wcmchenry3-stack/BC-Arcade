@@ -195,7 +195,7 @@ The saved clock banks elapsed active time before a pause/relaunch, so time spent
 
 The board is saved locally after moves and when play is paused.
 
-A saved in-progress board restores after relaunch, including its accumulated active-play clock.
+A saved in-progress board restores after relaunch, including its accumulated active-play clock. A device clock set back never yields a negative play time (#3738): a running segment banks at least 0 (`clockElapsedMs` / `clockForSave`), `loadGame` clamps a saved `accumulatedMs` to a finite value >= 0, and `computeDurationMs` in `Twenty48Screen.tsx` never reports below 0.
 
 The local save is cleared when the game is over so the next launch starts fresh.
 
