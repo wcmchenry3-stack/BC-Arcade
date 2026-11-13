@@ -213,6 +213,98 @@ describe("SudokuScreen — mount resume", () => {
   });
 });
 
+describe("SudokuScreen — thumb pad layout (#3773)", () => {
+  async function startEasy() {
+    const rendered = await renderAndAwaitLoad();
+    await fireEvent.press(rendered.getByLabelText(/start/i));
+    return rendered;
+  }
+
+  it("puts Undo, Erase, Notes, Hint and New Game in the action bar, in that order", async () => {
+    const r = await startEasy();
+    const bar = r.getByTestId("sudoku-action-bar");
+    const buttons = within(bar).getAllByRole("button");
+    expect(buttons.map((b) => b.props.testID)).toEqual([
+      "sudoku-undo",
+      "sudoku-erase",
+      "sudoku-notes",
+      "sudoku-hint",
+      "sudoku-new-game",
+    ]);
+    expect(within(bar).getByText("Undo")).toBeTruthy();
+    expect(within(bar).getByText("Erase")).toBeTruthy();
+    expect(within(bar).getByText("Notes")).toBeTruthy();
+    expect(within(bar).getByText("Hint")).toBeTruthy();
+    expect(within(bar).getByText("New game")).toBeTruthy();
+  });
+
+  it("has no Undo pill in the header", async () => {
+    const r = await startEasy();
+    expect(r.getAllByLabelText(/^undo$/i)).toHaveLength(1);
+    expect(within(r.getByTestId("sudoku-action-bar")).getByLabelText(/^undo$/i)).toBeTruthy();
+  });
+
+  it("shows Notes on or off in the bar, with selected state", async () => {
+    const r = await startEasy();
+    const notes = r.getByTestId("sudoku-notes");
+    expect(notes.props.accessibilityState).toEqual(expect.objectContaining({ selected: false }));
+    await act(async () => {
+      await fireEvent.press(notes);
+    });
+    expect(r.getByTestId("sudoku-notes").props.accessibilityState).toEqual(
+      expect.objectContaining({ selected: true })
+    );
+    // the digit keys turn into dashed note keys
+    expect(r.getByTestId("sudoku-digit-5")).toHaveStyle({ borderStyle: "dashed" });
+  });
+
+  it("lays the keys out in two rows under the action bar", async () => {
+    const r = await startEasy();
+    expect(r.getByTestId("sudoku-keys-row-1").children).toHaveLength(5);
+    expect(r.getByTestId("sudoku-keys-row-2").children).toHaveLength(4);
+  });
+
+  it("a bar New Game asks first, then opens the New Game picker; Cancel keeps the puzzle", async () => {
+    const r = await startEasy();
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game"));
+    });
+    // the abandon confirm, with the shared copy
+    expect(r.getByText("Start new game?")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start new game"));
+    });
+    expect(r.getByText("New Game")).toBeTruthy(); // the picker's title
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game-cancel"));
+    });
+    expect(r.queryByText("Quick Restart")).toBeNull();
+    expect(r.getByTestId("sudoku-board")).toBeTruthy(); // still playing
+  });
+
+  it("declining the confirm leaves the puzzle as it is", async () => {
+    const r = await startEasy();
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Cancel"));
+    });
+    expect(r.queryByText("Quick Restart")).toBeNull();
+  });
+
+  it("the board is a labelled grid", async () => {
+    const r = await startEasy();
+    expect(r.getByLabelText("Sudoku board").props.role).toBe("grid");
+  });
+
+  it("counts errors with a plural-aware label, in the error colour once above 0", async () => {
+    const r = await startEasy();
+    expect(r.getByText("0 errors")).toBeTruthy();
+    expect(r.getByText("0 errors")).toHaveStyle({ color: darkColors.textMuted });
+  });
+});
+
 describe("SudokuScreen — in-game input", () => {
   // These tests press a digit the number pad has left enabled (#2584). The
   // screen picks an Easy puzzle with Math.random and the pad disables a digit

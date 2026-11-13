@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import { StyleSheet, Text } from "react-native";
-import { ThemeProvider } from "../../../theme/ThemeContext";
+import { dark as darkColors, ThemeProvider } from "../../../theme/ThemeContext";
 import { HudStatRow } from "../HudStatRow";
 
 async function renderRow(props: React.ComponentProps<typeof HudStatRow>) {
@@ -36,6 +36,18 @@ describe("HudStatRow", () => {
       ],
     });
     expect(style("12 moves").color).not.toBe(style("Easy").color);
+  });
+
+  it("draws an error stat in the theme's error colour, over muted (#3773)", async () => {
+    await renderRow({
+      stats: [
+        { key: "a", text: "Easy" },
+        { key: "b", text: "2 errors", muted: true, error: true },
+        { key: "c", text: "0 errors", muted: true },
+      ],
+    });
+    expect(style("2 errors").color).toBe(darkColors.error);
+    expect(style("0 errors").color).toBe(darkColors.textMuted);
   });
 
   it("switches to 16pt for size lg and bolds bold stats", async () => {

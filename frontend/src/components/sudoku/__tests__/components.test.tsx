@@ -2,6 +2,9 @@ import React from "react";
 import { PixelRatio } from "react-native";
 import { render, fireEvent } from "@testing-library/react-native";
 import { dark as darkColors, ThemeProvider } from "../../../theme/ThemeContext";
+import { typography } from "../../../theme/typography";
+import { SUDOKU_WASHES } from "../../../theme/theme.sudoku";
+import { composite } from "../cellStyle";
 import SudokuCell from "../SudokuCell";
 import SudokuGrid from "../SudokuGrid";
 import NumberPad from "../NumberPad";
@@ -45,7 +48,7 @@ function asGrid(g: SudokuCellData[][]): Grid {
 }
 
 // WCAG 2.2 contrast ratio (relative luminance per 1.4.3), computed against
-// each cell background's *composited* color (accent alpha-blended over the
+// each cell background's *composited* color (the wash alpha-blended over the
 // surface) rather than the flat surface token — that composite is what was
 // missed when the note/value colors were originally tuned, causing #2298.
 function relativeLuminance(hex: string): number {
@@ -63,21 +66,6 @@ function contrastRatio(hexA: string, hexB: string): number {
   const [la, lb] = [relativeLuminance(hexA), relativeLuminance(hexB)];
   const [lighter, darker] = la > lb ? [la, lb] : [lb, la];
   return (lighter + 0.05) / (darker + 0.05);
-}
-
-// Alpha-blend `fgHex` (with a two-hex-digit alpha suffix, e.g. "AA") over
-// `bgHex`, matching the `colors.accent + "<alpha>"` composition used for
-// selected/highlighted/peer cell backgrounds in SudokuCell.
-function compositeOver(fgHex: string, alphaHex: string, bgHex: string): string {
-  const alpha = parseInt(alphaHex, 16) / 255;
-  const [fn, bn] = [parseInt(fgHex.slice(1), 16), parseInt(bgHex.slice(1), 16)];
-  const mix = (shift: number) => {
-    const fc = (fn >> shift) & 255;
-    const bc = (bn >> shift) & 255;
-    return Math.round(alpha * fc + (1 - alpha) * bc);
-  };
-  const [r, g, b] = [mix(16), mix(8), mix(0)];
-  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,13 +157,14 @@ describe("SudokuCell", () => {
         onPress={() => {}}
       />
     );
-    const btn = getByRole("button", { name: "Cell row 1, column 1, 7" });
+    const btn = getByRole("button", { name: /^Cell row 1, column 1, 7, given/ });
     expect(btn.props.accessibilityState).toEqual(expect.objectContaining({ selected: false }));
-    expect(btn).toHaveStyle({ backgroundColor: darkColors.surface, aspectRatio: 1 });
+    expect(btn).toHaveStyle({ backgroundColor: darkColors.surface });
+    // The digit is the registered Space Grotesk Bold, sized from the cell (#3773).
     expect(getByText("7")).toHaveStyle({
       color: darkColors.text,
-      fontWeight: "700",
-      fontSize: 18,
+      fontFamily: typography.heading,
+      fontSize: 19,
       fontVariant: ["tabular-nums"],
     });
   });
@@ -193,13 +182,13 @@ describe("SudokuCell", () => {
         onPress={() => {}}
       />
     );
-    const btn = getByRole("button", { name: "Cell row 4, column 4, 2" });
+    const btn = getByRole("button", { name: /^Cell row 4, column 4, 2, entered/ });
     expect(btn.props.accessibilityState).toEqual(expect.objectContaining({ selected: true }));
-    expect(btn).toHaveStyle({ backgroundColor: darkColors.accent + "AA" });
-    expect(getByText("2")).toHaveStyle({ color: darkColors.errorOnAccent, fontWeight: "600" });
+    expect(btn).toHaveStyle({ backgroundColor: darkColors.accent });
+    expect(getByText("2")).toHaveStyle({ color: darkColors.errorOnAccent });
   });
 
-  it("peer cell: accent user digit on the peer tint", async () => {
+  it("peer cell: accentText user digit on the peer wash (#3773)", async () => {
     const { getByRole, getByText } = await wrap(
       <SudokuCell
         size={9}
@@ -212,9 +201,11 @@ describe("SudokuCell", () => {
         onPress={() => {}}
       />
     );
-    const btn = getByRole("button", { name: "Cell row 1, column 4, 4" });
-    expect(btn).toHaveStyle({ backgroundColor: darkColors.accent + "22" });
-    expect(getByText("4")).toHaveStyle({ color: darkColors.accent, fontWeight: "600" });
+    const btn = getByRole("button", { name: /^Cell row 1, column 4, 4, entered/ });
+    expect(btn).toHaveStyle({
+      backgroundColor: composite(darkColors.surface, SUDOKU_WASHES.dark.peer),
+    });
+    expect(getByText("4")).toHaveStyle({ color: darkColors.accentText });
   });
 
   // Regression test for the notes-invisible-when-selected bug: the selected
@@ -269,12 +260,11 @@ describe("SudokuCell", () => {
     const DARK_TEXT_ON_ACCENT = darkColors.textOnAccent;
 
     it("meets WCAG AA (4.5:1) for note text on the selected-cell background", () => {
-      const bg = compositeOver(DARK_ACCENT, "AA", DARK_SURFACE);
-      expect(contrastRatio(DARK_TEXT_ON_ACCENT, bg)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(DARK_TEXT_ON_ACCENT, DARK_ACCENT)).toBeGreaterThanOrEqual(4.5);
     });
 
     it("meets WCAG AA (4.5:1) for note text on the peer-cell background", () => {
-      const bg = compositeOver(DARK_ACCENT, "22", DARK_SURFACE);
+      const bg = composite(DARK_SURFACE, SUDOKU_WASHES.dark.peer);
       expect(contrastRatio(DARK_TEXT_MUTED, bg)).toBeGreaterThanOrEqual(4.5);
     });
 
@@ -362,18 +352,15 @@ describe("SudokuCell", () => {
     });
 
     const DARK_ACCENT = darkColors.accent;
-    const DARK_SURFACE = darkColors.surface;
     const DARK_TEXT_ON_ACCENT = darkColors.textOnAccent;
     const DARK_ERROR_ON_ACCENT = darkColors.errorOnAccent;
 
     it("meets WCAG AA (4.5:1) for a given/user-entered digit on the selected-cell background", () => {
-      const bg = compositeOver(DARK_ACCENT, "AA", DARK_SURFACE);
-      expect(contrastRatio(DARK_TEXT_ON_ACCENT, bg)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(DARK_TEXT_ON_ACCENT, DARK_ACCENT)).toBeGreaterThanOrEqual(4.5);
     });
 
     it("meets WCAG AA (4.5:1) for an error digit on the selected-cell background", () => {
-      const bg = compositeOver(DARK_ACCENT, "AA", DARK_SURFACE);
-      expect(contrastRatio(DARK_ERROR_ON_ACCENT, bg)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(DARK_ERROR_ON_ACCENT, DARK_ACCENT)).toBeGreaterThanOrEqual(4.5);
     });
   });
 });
@@ -434,20 +421,21 @@ describe("SudokuGrid", () => {
     const cells = getAllByRole("button");
     expect(cells).toHaveLength(81);
     const at = (r: number, c: number) => cells[r * 9 + c]!;
-    // Selected (4,4), its row/column peers, and a box-only neighbour that is not a peer.
-    expect(at(4, 4)).toHaveStyle({ backgroundColor: darkColors.accent + "AA" });
-    expect(at(4, 0)).toHaveStyle({ backgroundColor: darkColors.accent + "22" });
-    expect(at(0, 4)).toHaveStyle({ backgroundColor: darkColors.accent + "22" });
-    expect(at(3, 3)).toHaveStyle({ backgroundColor: darkColors.surface });
+    // Selected (4,4), its row/column peers, and a box-only neighbour, which is a peer too (#3773).
+    const peerWash = composite(darkColors.surface, SUDOKU_WASHES.dark.peer);
+    expect(at(4, 4)).toHaveStyle({ backgroundColor: darkColors.accent });
+    expect(at(4, 0)).toHaveStyle({ backgroundColor: peerWash });
+    expect(at(0, 4)).toHaveStyle({ backgroundColor: peerWash });
+    expect(at(3, 3)).toHaveStyle({ backgroundColor: peerWash });
+    expect(at(0, 0)).toHaveStyle({ backgroundColor: darkColors.surface }); // no relation to (4,4)
     // Digits: given (text), selected user entry (textOnAccent), unselected error (error).
-    expect(getByText("5")).toHaveStyle({ color: darkColors.text, fontWeight: "700" });
+    expect(getByText("5")).toHaveStyle({ color: darkColors.text });
     expect(getByText("3")).toHaveStyle({ color: darkColors.textOnAccent });
     expect(getByText("7")).toHaveStyle({ color: darkColors.error });
     // Box separators are 2px boxBorder; inner separators are hairline border.
     const wrapperOf = (r: number, c: number) => at(r, c).parent!;
     expect(wrapperOf(0, 3)).toHaveStyle({
       backgroundColor: darkColors.surface,
-      padding: 2,
       borderLeftWidth: 2,
       borderLeftColor: darkColors.boxBorder,
       borderTopWidth: 0,
@@ -460,6 +448,7 @@ describe("SudokuGrid", () => {
   });
 
   describe("peer highlighting", () => {
+    const PEER_DARK = composite(darkColors.surface, SUDOKU_WASHES.dark.peer);
     // Select cell (4,4): same row = row 4, same col = col 4,
     // same 3×3 box = rows 3-5, cols 3-5.
 
@@ -473,16 +462,13 @@ describe("SudokuGrid", () => {
           onCellPress={() => {}}
         />
       );
-      // Row 4, col 0 — index 36 in row-major order. Not the selected cell.
       const cells = getAllByRole("button");
-      // Row 4, col 0 = index 4*9+0 = 36; check backgroundColor via style.
-      // We verify the selected cell itself is NOT a peer by confirming it has
-      // the translucent accent selected tint, not the peer tint.
-      const selectedCell = cells[4 * 9 + 4]!;
-      expect(selectedCell.props.style).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ backgroundColor: "#8ff5ffAA" }), // accent+AA selected tint
-        ])
+      // Row 4, col 0 = index 4*9+0 = 36: washed. The selected cell itself is solid accent.
+      expect(cells[4 * 9 + 0]!.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ backgroundColor: PEER_DARK })])
+      );
+      expect(cells[4 * 9 + 4]!.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ backgroundColor: darkColors.accent })])
       );
     });
 
@@ -500,12 +486,12 @@ describe("SudokuGrid", () => {
       const selectedCell = cells[2 * 9 + 2]!;
       expect(selectedCell.props.style).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ backgroundColor: "#8ff5ffAA" }), // selected tint, not peer tint
+          expect.objectContaining({ backgroundColor: darkColors.accent }), // selected fill, not the peer wash
         ])
       );
     });
 
-    it("does not mark box-only cells as peers", async () => {
+    it("marks box-only cells as peers (#3773)", async () => {
       const { getAllByRole } = await wrap(
         <SudokuGrid
           variant="classic"
@@ -516,10 +502,14 @@ describe("SudokuGrid", () => {
         />
       );
       const cells = getAllByRole("button");
-      // (1,1) shares a box with (0,0) but not its row or column — must not be highlighted.
+      // (1,1) shares a box with (0,0) but not its row or column: washed like the row and column.
       const boxOnlyCell = cells[1 * 9 + 1]!;
-      expect(boxOnlyCell.props.style).not.toEqual(
-        expect.arrayContaining([expect.objectContaining({ backgroundColor: "#8ff5ff22" })])
+      expect(boxOnlyCell.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ backgroundColor: PEER_DARK })])
+      );
+      // (4,4) is in no shared row, column or box with (0,0).
+      expect(cells[4 * 9 + 4]!.props.style).toEqual(
+        expect.arrayContaining([expect.objectContaining({ backgroundColor: darkColors.surface })])
       );
     });
 
@@ -537,7 +527,7 @@ describe("SudokuGrid", () => {
       cells.forEach((c) => {
         expect(c.props.style).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ backgroundColor: "#19191f" }), // default surface
+            expect.objectContaining({ backgroundColor: darkColors.surface }), // default surface
           ])
         );
       });
@@ -550,60 +540,25 @@ describe("SudokuGrid", () => {
 // ---------------------------------------------------------------------------
 
 describe("NumberPad", () => {
-  it("renders 9 digits + erase + notes + hint actions", async () => {
-    const { getAllByRole, getByLabelText } = await wrap(
+  it("renders the 9 digit keys and nothing else (the tools are the action bar's, #3773)", async () => {
+    const { getAllByRole } = await wrap(
       <NumberPad
         variant="classic"
         grid={asGrid(emptyGrid())}
         notesMode={false}
         onDigit={() => {}}
-        onErase={() => {}}
-        onToggleNotes={() => {}}
-        onHint={() => {}}
       />
     );
-    const buttons = getAllByRole("button");
-    expect(buttons.length).toBe(12);
-    expect(getByLabelText(/erase/i)).toBeTruthy();
-    expect(getByLabelText(/pencil/i)).toBeTruthy();
-    expect(getByLabelText(/hint/i)).toBeTruthy();
+    expect(getAllByRole("button")).toHaveLength(9);
   });
 
   it("fires onDigit with the placed digit", async () => {
     const onDigit = jest.fn();
     const { getByLabelText } = await wrap(
-      <NumberPad
-        variant="classic"
-        grid={asGrid(emptyGrid())}
-        notesMode={false}
-        onDigit={onDigit}
-        onErase={() => {}}
-        onToggleNotes={() => {}}
-        onHint={() => {}}
-      />
+      <NumberPad variant="classic" grid={asGrid(emptyGrid())} notesMode={false} onDigit={onDigit} />
     );
     await fireEvent.press(getByLabelText(/enter digit 5/i));
     expect(onDigit).toHaveBeenCalledWith(5);
-  });
-
-  it("fires onErase and onToggleNotes", async () => {
-    const onErase = jest.fn();
-    const onToggleNotes = jest.fn();
-    const { getByLabelText } = await wrap(
-      <NumberPad
-        variant="classic"
-        grid={asGrid(emptyGrid())}
-        notesMode={false}
-        onDigit={() => {}}
-        onErase={onErase}
-        onToggleNotes={onToggleNotes}
-        onHint={() => {}}
-      />
-    );
-    await fireEvent.press(getByLabelText(/erase/i));
-    await fireEvent.press(getByLabelText(/pencil/i));
-    expect(onErase).toHaveBeenCalledTimes(1);
-    expect(onToggleNotes).toHaveBeenCalledTimes(1);
   });
 
   it("dims digits where all 9 instances are placed", async () => {
@@ -625,61 +580,35 @@ describe("NumberPad", () => {
     }
     const onDigit = jest.fn();
     const { getByLabelText } = await wrap(
-      <NumberPad
-        variant="classic"
-        grid={asGrid(g)}
-        notesMode={false}
-        onDigit={onDigit}
-        onErase={() => {}}
-        onToggleNotes={() => {}}
-        onHint={() => {}}
-      />
+      <NumberPad variant="classic" grid={asGrid(g)} notesMode={false} onDigit={onDigit} />
     );
     const btn = getByLabelText(/enter digit 4/i);
     expect(btn.props.accessibilityState?.disabled).toBe(true);
+    expect(btn).toHaveStyle({ opacity: 0.32 });
     await fireEvent.press(btn);
     // Disabled Pressable shouldn't fire onPress.
     expect(onDigit).not.toHaveBeenCalled();
   });
 
-  it("notes mode active: filled Notes chip, outlined tools, full remaining counts", async () => {
-    const { getByLabelText, getByTestId, getByText, getAllByText } = await wrap(
-      <NumberPad
-        variant="classic"
-        grid={asGrid(emptyGrid())}
-        notesMode={true}
-        onDigit={() => {}}
-        onErase={() => {}}
-        onToggleNotes={() => {}}
-        onHint={() => {}}
-      />
+  it("notes mode active: dashed accent keys, full remaining counts", async () => {
+    const { getByTestId, getAllByText } = await wrap(
+      <NumberPad variant="classic" grid={asGrid(emptyGrid())} notesMode={true} onDigit={() => {}} />
     );
-    const notes = getByLabelText("Toggle pencil marks");
-    expect(notes.props.accessibilityState).toEqual(expect.objectContaining({ selected: true }));
-    expect(notes).toHaveStyle({
-      backgroundColor: darkColors.accent,
-      borderColor: darkColors.accent,
-    });
-    expect(getByText("Notes")).toHaveStyle({
-      color: darkColors.textOnAccent,
-      textTransform: "uppercase",
-    });
-    expect(getByLabelText("Erase cell")).toHaveStyle({ borderColor: darkColors.accent });
-    expect(getByText("Erase")).toHaveStyle({ color: darkColors.accent });
-    expect(getByText("Hint")).toHaveStyle({ color: darkColors.accent });
     for (let d = 1; d <= 9; d++) {
       const btn = getByTestId(`sudoku-digit-${d}`);
-      expect(btn.props.accessibilityLabel).toBe(`Enter digit ${d}`);
+      expect(btn.props.accessibilityLabel).toBe(`Enter digit ${d}. Remaining: 9`);
       expect(btn.props.accessibilityState).toEqual(expect.objectContaining({ disabled: false }));
       expect(btn).toHaveStyle({
         backgroundColor: darkColors.surfaceHigh,
-        borderColor: darkColors.border,
+        borderColor: darkColors.accentText,
+        borderStyle: "dashed",
         opacity: 1,
       });
     }
     // Empty grid: every digit has 9 left. "9" is also the digit-9 label, hence 10.
     expect(getAllByText("9")).toHaveLength(10);
-    expect(getAllByText("9")[0]).toHaveStyle({ color: darkColors.textMuted, fontSize: 9 });
+    expect(getAllByText("9")[0]).toHaveStyle({ color: darkColors.textMuted }); // a remaining count
+    expect(getAllByText("9")[8]).toHaveStyle({ color: darkColors.accentText }); // the 9 key's digit
   });
 });
 
@@ -745,7 +674,7 @@ describe("SudokuCell mistake colouring (#2943)", () => {
 
   it("colours a legal-but-wrong digit as an error only when flagged as a mistake", async () => {
     const off = await wrap(<SudokuCell {...props} cell={cell({ value: 5 })} />);
-    expect(off.getByText("5")).toHaveStyle({ color: darkColors.accent });
+    expect(off.getByText("5")).toHaveStyle({ color: darkColors.accentText });
     await off.unmount();
     const on = await wrap(<SudokuCell {...props} cell={cell({ value: 5 })} mistake />);
     expect(on.getByText("5")).toHaveStyle({ color: darkColors.error });
@@ -778,7 +707,7 @@ describe("SudokuGrid showMistakes (#2943)", () => {
         onCellPress={() => {}}
       />
     );
-    expect(off.getAllByText("2")[0]).toHaveStyle({ color: darkColors.accent });
+    expect(off.getAllByText("2")[0]).toHaveStyle({ color: darkColors.accentText });
     await off.unmount();
     const on = await wrap(
       <SudokuGrid
@@ -794,6 +723,6 @@ describe("SudokuGrid showMistakes (#2943)", () => {
     const twos = on.getAllByText("2");
     expect(twos[0]).toHaveStyle({ color: darkColors.error }); // the player's wrong digit
     expect(twos[1]).toHaveStyle({ color: darkColors.text }); // the given
-    expect(on.getByText("1")).toHaveStyle({ color: darkColors.accent }); // correct digit
+    expect(on.getByText("1")).toHaveStyle({ color: darkColors.accentText }); // correct digit
   });
 });

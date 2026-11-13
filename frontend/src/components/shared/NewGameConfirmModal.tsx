@@ -10,10 +10,19 @@ interface Props {
   title?: string;
   /** Override the default body copy about losing progress. */
   body?: string;
+  /** Buttons get `${testID}-confirm` and `${testID}-cancel` (ConfirmModal). */
+  testID?: string;
 }
 
 /** "Start new game?" confirm. A ConfirmModal with the common new-game copy. */
-export default function NewGameConfirmModal({ visible, onConfirm, onCancel, title, body }: Props) {
+export default function NewGameConfirmModal({
+  visible,
+  onConfirm,
+  onCancel,
+  title,
+  body,
+  testID,
+}: Props) {
   const { t } = useTranslation("common");
   return (
     <ConfirmModal
@@ -24,6 +33,7 @@ export default function NewGameConfirmModal({ visible, onConfirm, onCancel, titl
       cancelLabel={t("newGame.confirm.cancel")}
       onConfirm={onConfirm}
       onCancel={onCancel}
+      testID={testID}
     />
   );
 }
