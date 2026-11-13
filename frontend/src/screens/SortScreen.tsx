@@ -16,9 +16,13 @@
  *      reset, level change or back-navigation cancels it (#2297).
  *   4. Persistence — the in-play board is saved on every change and on app
  *      background; a solve unlocks the next level.
- *   5. Instrumentation — one `useGameSync("sort")` session per level played,
- *      opened at the first pour, completed on a solve with the player's
- *      standing (#2625, #2746) and abandoned otherwise (#2619).
+ *   5. Instrumentation — one `useGameRecorder("sort")` session per level
+ *      played, opened at the first pour, completed on a solve with the
+ *      player's standing (#2625, #2746) and abandoned otherwise (#2619). The
+ *      level's replay (#3385, `useSortReplay`): each landed pour, undo, hint
+ *      shown and "back to last good move", flushed before the session ends,
+ *      on leaving the board, on background, blur and unmount; its unit count
+ *      is saved with the board (#3386).
  *   6. Result (#2512) — the shared GameResultModal with the level's best
  *      moves (a new best only once a prior best exists) and the synced
  *      game's rank (#2633). A solve is handled on a `useCompletionTransition`
@@ -66,6 +70,13 @@ import {
 } from "../game/sort/storage";
 import { usePourAnimation, type Pour } from "../game/sort/usePourAnimation";
 import { useSortLevels } from "../game/sort/useSortLevels";
+import {
+  restoreReplay,
+  sortStartData,
+  useSortReplay,
+  withBoardInProgress,
+  withNoBoard,
+} from "../game/sort/useSortReplay";
 import { SORT_CATALOG_VERSION } from "../game/sort/catalog";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
@@ -78,7 +89,7 @@ import { SolveStars } from "../components/sort/SolveStars";
 import { starsFor, type Stars } from "../game/sort/stars";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
-import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 import { useScreenReaderEnabled } from "../components/shared/useScreenReaderEnabled";
 
@@ -143,12 +154,74 @@ export default function SortScreen() {
   const screenReader = useScreenReaderEnabled();
   const audio = useSortAudio();
 
+  // On unmount this cleanup runs before the recorder's own (cleanups run in
+  // declaration order): the chunk in progress reaches the recorder, which saves
+  // the session ahead of the abandon's game_ended (#3385).
+  const flushReplayRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => flushReplayRef.current(), []);
+
+  // One `games` row per level played (#2512): XP, Profile history, stats and
+  // the leaderboard (#2625). Every solve, replays included, is scored with the
+  // player's standing after it (see the solve effect); the board keeps each
+  // named player's best row. The levels are the fixed catalog (#2761), the
+  // same for everyone, so a tie on level goes to fewer `total_moves`; only
+  // solves sent with the current `catalog_version` rank.
+  const {
+    start: syncStart,
+    resume: syncResume,
+    markStarted: syncMarkStarted,
+    complete: syncComplete,
+    getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
+    resetPlayWindow: syncResetPlayWindow,
+    beginUnit: recorderBeginUnit,
+    record: recorderRecord,
+    closeUnit: recorderCloseUnit,
+    flush: recorderFlush,
+    isFull: recorderIsFull,
+  } = useGameRecorder("sort");
+  // The level's replay (#3385): collected in memory, handed to the recorder in chunks.
+  const replay = useSortReplay({
+    getGameId: syncGetGameId,
+    beginUnit: recorderBeginUnit,
+    record: recorderRecord,
+    closeUnit: recorderCloseUnit,
+    flush: recorderFlush,
+    isFull: recorderIsFull,
+  });
+  const gameStateRef = useRef<SortState | null>(null);
+  gameStateRef.current = gameState;
+  const currentLevelIdRef = useRef<number | null>(null);
+  currentLevelIdRef.current = currentLevelId;
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+  /**
+   * Bumped whenever the board changes under the player (a level change, a
+   * restart, a pour or an undo), so a hint or a search back through the
+   * history that finished for an older board is dropped.
+   */
+  const levelGenRef = useRef(0);
+  /** `levelGenRef` when the pour in flight started: a pour landing on another board records nothing. */
+  const pourGenRef = useRef(-1);
+  /**
+   * The board on screen was restored from the save (Continue), not dealt from
+   * the level's opening: a session the first pour opens on it has no
+   * `game_started` its moves could be rebuilt from (#3386).
+   */
+  const restoredBoardRef = useRef(false);
+
   // The pour in flight (#2981). Its move lands when the animation ends, on
   // the board it was made on.
   const landPour = useCallback(
     (snapshot: SortState, from: number, to: number) => {
       const nextState = applyPour(snapshot, from, to);
       setGameState(nextState);
+      // Recorded only here, as the pour lands: never at the tap, and never for a
+      // pour cancelled before it landed (#3385). A pour that was made on another
+      // board (a cancel always comes first, so this is defence in depth) is not.
+      if (pourGenRef.current === levelGenRef.current) replay.pour(from, to);
       // Haptics (#3660), once per landing, from the event and never a frame: a success
       // pulse if the pour completed a bottle, a medium one otherwise. The winning pour gets
       // the medium one only: the result card pulses success when it opens, after the cascade.
@@ -172,7 +245,7 @@ export default function SortScreen() {
         audio.playWin();
       }
     },
-    [audio]
+    [audio, replay]
   );
   const {
     pour,
@@ -211,32 +284,6 @@ export default function SortScreen() {
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("sort", navigation);
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
-
-  // One `games` row per level played (#2512): XP, Profile history, stats and
-  // the leaderboard (#2625). Every solve, replays included, is scored with the
-  // player's standing after it (see the solve effect); the board keeps each
-  // named player's best row. The levels are the fixed catalog (#2761), the
-  // same for everyone, so a tie on level goes to fewer `total_moves`; only
-  // solves sent with the current `catalog_version` rank.
-  const {
-    start: syncStart,
-    resume: syncResume,
-    markStarted: syncMarkStarted,
-    complete: syncComplete,
-    getGameId: syncGetGameId,
-    setProgressSnapshot: syncSetProgressSnapshot,
-    resetPlayWindow: syncResetPlayWindow,
-  } = useGameSync("sort");
-  const gameStateRef = useRef<SortState | null>(null);
-  gameStateRef.current = gameState;
-  const currentLevelIdRef = useRef<number | null>(null);
-  currentLevelIdRef.current = currentLevelId;
-  /**
-   * Bumped whenever the board changes under the player (a level change, a
-   * restart, a pour or an undo), so a hint or a search back through the
-   * history that finished for an older board is dropped.
-   */
-  const levelGenRef = useRef(0);
 
   /** A Hint (or the search back to the last good move) is running. */
   const [isHinting, setIsHinting] = useState(false);
@@ -290,46 +337,76 @@ export default function SortScreen() {
   /** Closes an open, unfinished session as abandoned (a no-op otherwise). */
   const abandonSession = useCallback(() => {
     if (!syncGetGameId()) return;
+    // What is waiting belongs to the level being left: saved before its session closes.
+    replay.flush();
     const result = progressResult();
     syncComplete({ outcome: "abandoned", result }, { outcome: "abandoned", ...result });
-  }, [syncGetGameId, syncComplete, progressResult]);
+  }, [syncGetGameId, syncComplete, progressResult, replay]);
 
   // ---------------------------------------------------------------------------
   // Persistence effects
   // ---------------------------------------------------------------------------
 
+  /**
+   * Saves `state` as `levelId`'s board in progress, with the replay's unit
+   * count and the actions still waiting (#3386), so a resume carries the
+   * numbering on, or knows the log has a hole.
+   */
+  const saveBoard = useCallback(
+    (levelId: number, state: SortState) => {
+      void saveProgress(withBoardInProgress(progressRef.current, levelId, state, replay));
+    },
+    [replay]
+  );
+
   // Save whenever the in-play game state changes
   useEffect(() => {
     if (view !== "play" || currentLevelId === null || gameState === null) return;
-    const inProgress = !gameState.isComplete;
-    void saveProgress({
-      ...progressRef.current,
-      currentLevelId: inProgress ? currentLevelId : null,
-      currentState: inProgress ? gameState : null,
+    if (gameState.isComplete) void saveProgress(withNoBoard(progressRef.current));
+    else saveBoard(currentLevelId, gameState);
+  }, [gameState, view, currentLevelId, saveBoard]);
+
+  // The replay stopped for good (the recorder's byte cap, a chunk it threw on, or
+  // a restored board in a session that never saw it): the board is saved now with
+  // the count at its cap, so a later load stays blocked (#3386). A block while
+  // Continue is restoring a board is saved by the effect above.
+  useEffect(() => {
+    replay.setOnBlocked(() => {
+      const state = gameStateRef.current;
+      const levelId = currentLevelIdRef.current;
+      if (viewRef.current === "play" && levelId !== null && state && !state.isComplete) {
+        saveBoard(levelId, state);
+      }
     });
-  }, [gameState, view, currentLevelId]);
+    flushReplayRef.current = () => replay.flush();
+  }, [replay, saveBoard]);
 
   // Save on app background: each move of the app to "background" or
-  // "inactive" (not a blur — the board is saved on every change anyway, and
-  // nothing here pauses). The handler reads this render's board.
+  // "inactive" (a blur saves only a new replay count — the board is saved on
+  // every change anyway, and nothing here pauses). The handler reads this
+  // render's board.
+  //
+  // The replay's chunk in progress is handed to the recorder and the queue on
+  // "background" (not "inactive": iOS reports it for the notification shade and
+  // the app switcher, and each flush spends a row) and on a blur (another screen
+  // over the game), before the save, so the save carries the new unit count
+  // (#3385, #3386).
   usePauseWhileAway(navigation, noop, noop, {
     onLeave: (event) => {
+      const levelId = view === "play" && gameState?.isComplete === false ? currentLevelId : null;
+      if (event.reason === "blur") {
+        const before = replay.unit;
+        replay.flush();
+        // The board is saved on every change: only a new unit count needs a write.
+        if (levelId !== null && gameState && replay.unit !== before) saveBoard(levelId, gameState);
+        return;
+      }
       if (event.reason !== "appState") return;
       // The pending stream would fire late, in a clump, on resume (#3661): drop them. The pour
       // animation itself is unchanged.
       audio.cancelPour();
-      if (
-        view === "play" &&
-        currentLevelId !== null &&
-        gameState !== null &&
-        !gameState.isComplete
-      ) {
-        void saveProgress({
-          ...progressRef.current,
-          currentLevelId,
-          currentState: gameState,
-        });
-      }
+      if (event.status === "background") replay.flush();
+      if (levelId !== null && gameState) saveBoard(levelId, gameState);
     },
   });
 
@@ -396,6 +473,9 @@ export default function SortScreen() {
     if (stars !== undefined) result.stars = stars;
     const totalMoves = totalBestMoves(bests, frontier);
     if (totalMoves !== null) result.total_moves = totalMoves;
+    // The last chunk (the winning pour's) goes to the recorder first: `syncComplete`
+    // ends its session, so the moves precede game_ended (#3385).
+    replay.flush();
     const gameId = syncComplete(
       { outcome: "completed", finalScore: frontier, result },
       { outcome: "completed", ...result }
@@ -408,10 +488,8 @@ export default function SortScreen() {
       levels.length || solvedLevel + 1
     );
     const updated: SortProgress = {
-      ...progressRef.current,
+      ...withNoBoard(progressRef.current),
       unlockedLevel: newUnlocked,
-      currentLevelId: null,
-      currentState: null,
     };
     setProgress(updated);
     void saveProgress(updated);
@@ -453,11 +531,19 @@ export default function SortScreen() {
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
       // The move lands when the animation ends (usePourAnimation).
       if (!startPour(snapshot, selectedBottleIndex, index, pourFlowMs(units))) return;
+      // The level's session opens here, at the tap of its first pour, with the
+      // level's identity (`game_started`, #3385). The pour itself is recorded
+      // only when it lands (`landPour`), which is never inside this handler (a
+      // timer or SortBoard's callback), so game_started always comes first.
       if (!syncGetGameId()) {
-        syncStart({ level: currentLevelId });
+        syncStart(sortStartData(currentLevelId));
         syncMarkStarted();
+        // A restored board in a new session: `game_started` names the level's
+        // opening board, not this one, so its moves could never be rebuilt (#3386).
+        if (restoredBoardRef.current) replay.block();
       }
       boardChanged();
+      pourGenRef.current = levelGenRef.current;
       setHistory((h) => [...h, snapshot]);
       setGameState({ ...gameState, selectedBottleIndex: null });
       // The lift now, the stream for the unit count at the pour's flowStartMs (#3661).
@@ -474,6 +560,8 @@ export default function SortScreen() {
   function handleUndo() {
     if (!gameState || isPouring || winCascade) return;
     audio.playUndo();
+    // Only an undo with something to take back is recorded (the engine ignores the rest).
+    if (history.length > 0) replay.undo();
     const { state: newState, history: newHistory } = undoState(gameState, history);
     setUndoSeq((n) => n + 1);
     boardChanged();
@@ -496,6 +584,9 @@ export default function SortScreen() {
         if (first) {
           setHintTo({ from: first.from, to: first.to });
           audio.playHint();
+          // Only a hint shown on the board it was asked for (the gen check above);
+          // a "no move" notice is not recorded (#3385).
+          replay.hint(first.from, first.to);
           setGameState((cur) =>
             cur && !cur.isComplete ? { ...cur, selectedBottleIndex: first.from } : cur
           );
@@ -560,6 +651,9 @@ export default function SortScreen() {
       while (rest.length > lo) {
         ({ state, history: rest } = undoState(state, rest));
       }
+      // One action for the whole rewind: the undos it applied (#3385).
+      const undone = past.length - rest.length;
+      if (undone > 0) replay.rewind(undone);
       setHintNotice(null);
       setHintTo(null);
       audio.playUndo();
@@ -610,6 +704,9 @@ export default function SortScreen() {
     // grid or the previous level's result card does not (#2710).
     syncResetPlayWindow();
     levelGenRef.current += 1;
+    // The level's opening board: its replay starts from unit 1 (#3385).
+    replay.reset();
+    restoredBoardRef.current = false;
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
     // Play Again keeps the mounted board (same key), which plays no level-in: only a board
@@ -628,13 +725,19 @@ export default function SortScreen() {
     // A restored game continues the session a killed app left open (#2654);
     // resume() counts its play time from here. With no session to resume the
     // level's play time still starts now, not on the level grid (#2710).
-    if (!syncResume()) syncResetPlayWindow();
+    const resumed = syncResume();
+    if (!resumed) syncResetPlayWindow();
+    // The replay carries on in a resumed session from the saved unit count, or
+    // stops; with no session resumed, the first pour's new session blocks it (#3386).
+    restoredBoardRef.current = true;
+    restoreReplay(replay, prog, resumed);
     enterPlay();
   }
 
   function handleBackToSelect() {
     leaveBoard();
     levelGenRef.current += 1;
+    replay.reset();
     setView("select");
     setShowWinModal(false);
   }
@@ -649,6 +752,9 @@ export default function SortScreen() {
     // (#2710).
     syncResetPlayWindow();
     levelGenRef.current += 1;
+    // The level's opening board again: its replay starts from unit 1 (#3385).
+    replay.reset();
+    restoredBoardRef.current = false;
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
     cascadeRef.current = "idle";

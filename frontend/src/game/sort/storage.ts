@@ -20,6 +20,19 @@ export interface SortProgress {
   readonly unlockedLevel: number;
   readonly currentLevelId: number | null;
   readonly currentState: SortState | null;
+  /**
+   * With a level in progress (#3386): the replay chunks handed to the recorder
+   * so far (`SortReplay.unit`), so a resumed session carries its unit numbers
+   * on (`resumeAt`). At `SORT_MAX_UNITS` the level's replay is stopped for good.
+   * Missing on saves from before replay recording: such a board is not recorded.
+   */
+  readonly replayUnit?: number;
+  /**
+   * The actions collected and not yet handed over when the board was saved
+   * (`SortReplay.pending`). Above 0 on a load, a kill lost them: the replay
+   * stops rather than carry on past the hole.
+   */
+  readonly replayPending?: number;
 }
 
 const SUBSYSTEM = "sort.storage";
@@ -60,8 +73,18 @@ export async function saveProgress(progress: SortProgress): Promise<void> {
   await progressSlot.save(progress);
 }
 
+const isCount = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0;
+
 export async function loadProgress(): Promise<SortProgress> {
-  return (await progressSlot.load()) ?? DEFAULT;
+  const loaded = await progressSlot.load();
+  if (!loaded) return DEFAULT;
+  // A replay count that isn't a count reads as missing: the board is not recorded.
+  const { replayUnit, replayPending, ...rest } = loaded;
+  return {
+    ...rest,
+    ...(isCount(replayUnit) ? { replayUnit } : {}),
+    ...(isCount(replayPending) ? { replayPending } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

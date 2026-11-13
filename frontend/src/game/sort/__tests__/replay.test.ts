@@ -520,6 +520,23 @@ describe("SortReplay", () => {
     });
   });
 
+  it("pending counts the actions collected and not yet handed over", () => {
+    const { sink } = spySink();
+    const replay = new SortReplay(sink, 3);
+    expect(replay.pending).toBe(0);
+    replay.pour(0, 1);
+    replay.hint(0, 1);
+    expect(replay.pending).toBe(2);
+    replay.undo();
+    expect(replay.pending).toBe(0);
+    replay.undo();
+    replay.flush();
+    expect(replay.pending).toBe(0);
+    replay.undo();
+    replay.reset();
+    expect(replay.pending).toBe(0);
+  });
+
   describe("block / the recorder's byte cap", () => {
     it("block records nothing, drops what was collected, spends the budget and tells the screen", () => {
       const { sink, calls } = spySink();
@@ -673,7 +690,7 @@ describe("isolation", () => {
     return { sink, fail, recorded };
   }
 
-  it("a sink that throws does not reach the caller, and recording resumes when it recovers", () => {
+  it("a sink that throws does not reach the caller; a chunk it threw on stops the level's replay (#3385)", () => {
     const { sink, fail, recorded } = throwingSink();
     const replay = new SortReplay(sink, 1);
     expect(() => replay.hint(0, 1)).not.toThrow();
@@ -682,8 +699,81 @@ describe("isolation", () => {
     expect(() => replay.rewind(2)).not.toThrow();
     expect(() => replay.flush()).not.toThrow();
     fail.on = false;
+    // The first chunk's unit number was spent with nothing stored: carrying on
+    // would leave a hole, so the level records nothing more.
+    replay.hint(0, 1);
+    expect(recorded).toEqual([]);
+    expect(replay.unit).toBe(SORT_MAX_UNITS);
+    // A new level records again.
+    replay.reset();
     replay.hint(0, 1);
     expect(recorded).toEqual([1]);
+  });
+
+  it("a recorder flush that throws does not stop the replay (no unit was spent)", () => {
+    const { sink, fail } = throwingSink();
+    const recorded: number[] = [];
+    const replay = new SortReplay(
+      {
+        ...sink,
+        record: (_type, data) => {
+          recorded.push(data.m.length);
+        },
+      },
+      5
+    );
+    replay.hint(0, 1);
+    expect(() => replay.flush()).not.toThrow();
+    expect(recorded).toEqual([1]);
+    fail.on = false;
+    replay.hint(0, 1);
+    replay.flush();
+    expect(recorded).toEqual([1, 1]);
+    expect(replay.unit).toBe(2);
+  });
+
+  describe("a chunk the recorder throws on blocks the replay (gap safety, #3385)", () => {
+    function failingAt(step: "beginUnit" | "record" | "closeUnit") {
+      const { sink, calls } = spySink();
+      const fail = { on: true };
+      const real = sink[step] as (...a: unknown[]) => unknown;
+      const wrapped = {
+        ...sink,
+        [step]: jest.fn((...args: unknown[]) => {
+          if (fail.on) throw new Error(`${step} broke`);
+          return real(...args);
+        }),
+      } as ReplaySink;
+      const replay = new SortReplay(wrapped, 2);
+      const onBlocked = jest.fn();
+      replay.setOnBlocked(onBlocked);
+      return { replay, calls, fail, onBlocked, sink: wrapped };
+    }
+
+    it.each(["beginUnit", "record", "closeUnit"] as const)(
+      "%s throwing: blocked at once, the screen is told, nothing later is recorded",
+      (step) => {
+        const { replay, calls, fail, onBlocked } = failingAt(step);
+        replay.pour(0, 1);
+        expect(() => replay.pour(1, 0)).not.toThrow();
+        expect(onBlocked).toHaveBeenCalledTimes(1);
+        expect(replay.unit).toBe(SORT_MAX_UNITS);
+        fail.on = false;
+        calls.length = 0;
+        replay.pour(0, 1);
+        replay.pour(1, 0);
+        replay.flush();
+        expect(calls).toEqual(["flush"]);
+        expect(replay.pending).toBe(0);
+      }
+    );
+
+    it("a unit the throw left open is closed, so the recorder is not left mid-unit", () => {
+      const { replay, sink } = failingAt("record");
+      replay.pour(0, 1);
+      replay.pour(1, 0);
+      expect(sink.closeUnit).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("a sink that cannot say whether a game is open does not break play either", () => {

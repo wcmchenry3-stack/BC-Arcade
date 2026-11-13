@@ -134,6 +134,29 @@ describe("saveProgress / loadProgress / clearGame (#2957)", () => {
     await expect(loadProgress()).resolves.toEqual(progress);
   });
 
+  it("reads back the replay counts saved with a board in progress (#3386)", async () => {
+    await saveProgress({ ...progress, replayUnit: 2, replayPending: 7 });
+    await expect(loadProgress()).resolves.toEqual({ ...progress, replayUnit: 2, replayPending: 7 });
+  });
+
+  it("loads an older save with no replay counts as it was (#3386)", async () => {
+    await AsyncStorage.setItem("@sort/progress", JSON.stringify(progress));
+    const loaded = await loadProgress();
+    expect(loaded).toEqual(progress);
+    expect(loaded).not.toHaveProperty("replayUnit");
+  });
+
+  it("drops a replay count that is not a count, keeping the board (#3386)", async () => {
+    await AsyncStorage.setItem(
+      "@sort/progress",
+      JSON.stringify({ ...progress, replayUnit: "lots", replayPending: -1 })
+    );
+    const loaded = await loadProgress();
+    expect(loaded).toEqual(progress);
+    expect(loaded).not.toHaveProperty("replayUnit");
+    expect(loaded).not.toHaveProperty("replayPending");
+  });
+
   it("starts at level 1 with no game when nothing is stored", async () => {
     await expect(loadProgress()).resolves.toEqual(fresh);
   });
