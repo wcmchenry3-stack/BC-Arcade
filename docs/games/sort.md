@@ -240,7 +240,7 @@ UPDATE_SORT_REPLAY_FIXTURE=1 npx jest src/screens/__tests__/SortScreen.replay.te
 
 then `cd backend && python -m pytest tests/test_sort_golden.py` and, if the bytes moved, update the pinned numbers in that file and the table below. Without the flag the frontend test fails on any difference, so the file cannot go stale unnoticed.
 
-**Storage, measured** (`backend/tests/test_sort_golden.py`; bytes; compact JSON is what the app sends and the validator caps, `jsonb::text` what the database stores and the counters charge, plus `ROW_OVERHEAD_BYTES` = 200 a row). The worst row of a level is 25 actions of the widest pour `[0,15,14]` with a 7-digit `t_ms`; a 288 B chunk is far under 1 KB, so it is never split into parts.
+**Storage, measured** (`backend/tests/test_sort_golden.py`; bytes; compact JSON is what the app sends and the validator caps, `jsonb::text` what the database stores and the counters charge, plus `ROW_OVERHEAD_BYTES` = 200 a row). The worst row of a level is 25 actions of the widest pour `[0,15,14]` with a 7-digit `t_ms`; a chunk of about 288 B is far under 1 KB, so it is never split into parts.
 
 | Level                                        | `moves` rows | Compact JSON | `jsonb::text` | Stored (with row overhead) |
 | -------------------------------------------- | ------------ | ------------ | ------------- | -------------------------- |
@@ -249,7 +249,7 @@ then `cd backend && python -m pytest tests/test_sort_golden.py` and, if the byte
 | Worst a level can record (12 full chunks)    | 12           | 3,447 B      | 4,419 B       | 6,819 B                    |
 | Cap (`SORT_CAP`, the validator's widest row) | 12           | 12,288 B     | -             | 14,688 B                   |
 
-A level's lifecycle rows add `game_started` 47 B and `game_ended` 165 B of `jsonb::text` (plus 200 B each), outside `SORT_CAP`. The golden level is a typical one, 765 B stored, inside the 0.5-1 KB the epic planned (a 60-action level, 3 rows, reaches about 1.2 KB); the worst honest level stores 6.8 KB, under half of the 14.7 KB cap. At 1,000 levels played a day that is about 0.8-1 MB a day, bounded by the per-game sample rate and the storage-budget job, which lowers every rate at 90 % of the budget; the worst 12-row level is a level of 300 actions (the longest level's par is 63).
+A level's lifecycle rows add `game_started` 47 B and `game_ended` 165 B of `jsonb::text` (plus 200 B each), outside `SORT_CAP`. The golden level is a typical one, 765 B stored, inside the 0.5-1 KB the epic planned; a longer level (60 actions, 3 rows) reaches about 1.2 KB, hence the table's 0.8-1.2 KB for 30-60 actions; the worst honest level stores 6.8 KB, under half of the 14.7 KB cap. At 1,000 levels played a day that is about 0.8-1 MB a day, bounded by the per-game sample rate and the storage-budget job, which lowers every rate at 90 % of the budget; the worst 12-row level is a level of 300 actions (the longest level's par is 63).
 
 ## Scoring (Persistence)
 

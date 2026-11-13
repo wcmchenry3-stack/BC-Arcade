@@ -176,7 +176,8 @@ def test_the_golden_level_storage_is_pinned() -> None:
     assert sum(json_bytes(d) for d in rows) == PINNED["golden_compact"]
     assert sum(jsonb_bytes(d) for d in rows) == PINNED["golden_jsonb"]
     assert _stored(rows) == PINNED["golden_stored"]
-    # the estimate in the docs: a typical level is about 0.5 - 1 KB stored
+    # the golden level (27 actions, 2 rows) sits in the epic's 0.5 - 1 KB estimate;
+    # the docs' 0.8 - 1.2 KB is for 30 - 60 action levels
     assert 500 <= _stored(rows) <= 1_024
 
 

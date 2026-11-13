@@ -909,8 +909,17 @@ async function tapBottle(r: Rendered, index: number) {
   });
 }
 
-/** Lets the real (async, time-sliced) solver answer. */
+/** Lets the real (async, time-sliced) solver run a little. */
 const settle = () => act(async () => new Promise<void>((resolve) => setTimeout(resolve, 30)));
+
+/** Waits until the real solver has answered: the Hint button is no longer busy (a slow CI machine may need several slices). */
+async function hintAnswered(r: Rendered) {
+  for (let slice = 0; slice < 200; slice += 1) {
+    await settle();
+    if (r.getByTestId("sort-hint-button").props.accessibilityState?.busy !== true) return;
+  }
+  throw new Error("the hint never answered");
+}
 
 /**
  * A player taking the hint: asks three times (each answer replaces the last, and each shown is recorded), then taps
@@ -919,7 +928,7 @@ const settle = () => act(async () => new Promise<void>((resolve) => setTimeout(r
 async function takeHint(r: Rendered, from: number, to: number) {
   for (let ask = 0; ask < 3; ask += 1) {
     await press(r, "Hint");
-    await settle();
+    await hintAnswered(r);
   }
   await tapBottle(r, to);
   await land();
@@ -990,7 +999,15 @@ describe("SortScreen — the golden level (#3389)", () => {
     const kinds = new Set(entries().map((a) => a[0]));
     expect([...kinds].sort()).toEqual([0, 1, 2, 3]);
 
-    const events = normalised(capturedEvents());
+    // The recorder's own byte count, before normalising rewrites it: it must equal the
+    // JSON length of the chunks it actually handed over.
+    const raw = capturedEvents();
+    const rawReplay = (raw.at(-1)!.data as { replay: { b: number } }).replay;
+    expect(rawReplay.b).toBe(
+      raw.filter((e) => e.type === "moves").reduce((n, e) => n + JSON.stringify(e.data).length, 0)
+    );
+
+    const events = normalised(raw);
     expect(events.map((e) => e.type)).toEqual(["game_started", "moves", "moves", "game_ended"]);
     if (process.env.UPDATE_SORT_REPLAY_FIXTURE === "1") {
       // one event per line: a readable diff, a small file
