@@ -40,5 +40,9 @@
   "hint.unknown": "לא נמצא רמז",
   "hint.backToLastGoodMove": "חזרה למהלך הטוב האחרון",
   "hint.restartLevel": "התחלה מחדש של הרמה",
-  "hint.dismiss": "סגירה"
+  "hint.dismiss": "סגירה",
+  "levelSelect.chapter": "פרק {{chapter}}",
+  "levelSelect.levelStars": "רמה {{level}}, {{stars}} מתוך 3 כוכבים",
+  "stars.summary": "{{stars}} מתוך 3 כוכבים. מהלכים {{moves}}, יעד {{par}}.",
+  "stars.movesTarget": "מהלכים {{moves}} · יעד {{par}}"
 }

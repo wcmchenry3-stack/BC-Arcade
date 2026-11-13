@@ -83,7 +83,7 @@ The board sits on a rounded green **felt** (shared `FeltTable`, `theme.table.ts`
 - **Selection.** The selected card or run lifts 6 dp with an accent glow. With Reduce Motion on there is no lift or pop; the glow stays as a static highlight (`SelectableCard`'s `reduceMotion`).
 - **Targets.** While something is selected, each legal destination (`game/solitaire/targets.ts`, built on `validateMove`) gets a green outline (`bonus` token) and the accessibility hint "Can move here". The Hint highlight is unchanged and still draws on top.
 - **Empty columns** show a faint "K" marker, because only a King can go there.
-- **Bottom band.** The selection label and the Auto-Complete pill share a band at the bottom of the felt (at least 44 dp; it wraps and is measured like the stat line), and the tableau area ends above it, so neither covers a column's last cards.
+- **Bottom band.** The selection label and the Auto-Complete pill (the shared `components/shared/AutoCompleteButton.tsx`, also used by FreeCell, #3566) share a band at the bottom of the felt (at least 44 dp; it wraps and is measured like the stat line), and the tableau area ends above it, so neither covers a column's last cards.
 - **Accessibility.** A legal destination's top card carries the hint "Can move here" (an empty slot carries it itself); the green outline is not announced. The screen reads Reduce Motion once and passes it to every pile.
 
 ## Input

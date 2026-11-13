@@ -13,6 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import CascadeScreen from "../CascadeScreen";
 import { WORLD_WIDTH } from "../../game/cascade/constants";
 import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
+import { cascadeSetup } from "../../game/cascade/testHooks";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -89,6 +90,10 @@ type Hooks = {
   __cascade_fastForward?: (ms: number) => void;
   __cascade_triggerGameOver?: () => void;
   __cascade_spawnTierAt?: (tier: number, x: number) => void;
+  __cascade_seedQueue?: (tiers: number[]) => void;
+  __cascade_setupChain?: () => void;
+  __cascade_setupNearLid?: () => void;
+  __cascade_fillBin?: () => void;
 };
 const hooks = globalThis as typeof globalThis & Hooks;
 const HOOK_NAMES = [
@@ -99,6 +104,10 @@ const HOOK_NAMES = [
   "__cascade_fastForward",
   "__cascade_triggerGameOver",
   "__cascade_spawnTierAt",
+  "__cascade_seedQueue",
+  "__cascade_setupChain",
+  "__cascade_setupNearLid",
+  "__cascade_fillBin",
 ] as const;
 
 async function mount() {
@@ -252,6 +261,111 @@ describe("E2E test hooks", () => {
     await run(() => hooks.__cascade_dropAt!(100));
     await run(() => hooks.__cascade_spawnTierAt!(2, 100));
     expect(mockEngine.drop).not.toHaveBeenCalled();
+  });
+});
+
+describe("test controls (#3719)", () => {
+  const IDS = [
+    "cascade-test-chain",
+    "cascade-test-near-lid",
+    "cascade-test-fill-bin",
+    "cascade-test-game-over",
+  ];
+
+  it("are absent from a build without EXPO_PUBLIC_TEST_HOOKS", async () => {
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    await mount();
+    expect(screen.queryByTestId("cascade-test-controls")).toBeNull();
+    for (const id of IDS) expect(screen.queryByTestId(id)).toBeNull();
+  });
+
+  it("are absent when the flag is anything but 1", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "0";
+    await mount();
+    expect(screen.queryByTestId("cascade-test-controls")).toBeNull();
+  });
+
+  describe("in a test build", () => {
+    beforeEach(() => {
+      process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    });
+
+    it("show every button, each findable by testID", async () => {
+      await mount();
+      for (const id of IDS) expect(screen.getByTestId(id)).toBeTruthy();
+    });
+
+    it("the chain button restores the pile into the engine and scripts the queue", async () => {
+      await mount();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-chain"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("chain").pieces,
+        expect.any(Number)
+      );
+      // The next two drops are cherries (the script), not random picks.
+      expect(hooks.__cascade_getState!().nextFruitTier).toBe(0);
+      await run(() => hooks.__cascade_dropAt!(200));
+      await run(() => hooks.__cascade_dropAt!(200));
+      expect(mockEngine.drop.mock.calls.map(([tier]) => tier)).toEqual([0, 0]);
+    });
+
+    it("the near-lid and fill-bin buttons restore their piles and settle the engine", async () => {
+      await mount();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-near-lid"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("nearLid").pieces,
+        expect.any(Number)
+      );
+      expect(mockEngine.step).toHaveBeenCalled(); // settled by a fast-forward
+      mockEngine.step.mockClear();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-fill-bin"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("fillBin").pieces,
+        expect.any(Number)
+      );
+      // The loss is the engine's to decide: the button did not end the game itself.
+      expect(hooks.__cascade_getState!().gameOver).toBe(false);
+      expect(screen.queryByTestId("cascade-result")).toBeNull();
+    });
+
+    it("the game-over button is a separate, forced end", async () => {
+      await mount();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-game-over"));
+      });
+      expect(screen.getByTestId("cascade-result")).toBeTruthy();
+    });
+
+    it("the hooks run the same set-ups", async () => {
+      await mount();
+      await run(() => hooks.__cascade_fillBin!());
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("fillBin").pieces,
+        expect.any(Number)
+      );
+      await run(() => hooks.__cascade_seedQueue!([2, 3, 1]));
+      expect(hooks.__cascade_getState!().nextFruitTier).toBe(2);
+      await run(() => hooks.__cascade_dropAt!(100));
+      await run(() => hooks.__cascade_dropAt!(100));
+      await run(() => hooks.__cascade_dropAt!(100));
+      expect(mockEngine.drop.mock.calls.map(([tier]) => tier)).toEqual([2, 3, 1]);
+    });
+
+    it("do nothing once the game is over", async () => {
+      await mount();
+      await act(async () => {
+        hooks.__cascade_triggerGameOver!();
+      });
+      await run(() => hooks.__cascade_setupChain!());
+      await run(() => hooks.__cascade_fillBin!());
+      expect(mockEngine.restore).not.toHaveBeenCalled();
+    });
   });
 });
 

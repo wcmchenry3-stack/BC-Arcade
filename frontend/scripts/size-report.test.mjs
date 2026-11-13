@@ -148,10 +148,11 @@ test("hiddenOnlySoundNames: premium-only sounds, not ones a free game shares", (
   assert.ok(names.has("assets_sounds_heartsbrokenheartbeat.ogg"));
   assert.ok(names.has("assets_sounds_starswarmbombblast.ogg"));
   assert.ok(names.has("assets_sounds_mahjongmatch1.ogg"));
-  // Hidden games share these with free games (solitaire, yacht, sort, 2048...).
+  // Cascade's own: Sort, the last free game to borrow it, has its own pour since #3661.
+  assert.ok(names.has("assets_sounds_cascadefruitmerge.ogg"));
+  // Hidden games share these with free games (solitaire, yacht, 2048...).
   assert.ok(!names.has("assets_sounds_heartsmoonshot.mp3"));
   assert.ok(!names.has("assets_sounds_cardplace1.ogg"));
-  assert.ok(!names.has("assets_sounds_cascadefruitmerge.ogg"));
   // Free games' own sounds are never flagged.
   assert.ok(!names.has("assets_sounds_yachtdiceroll.ogg"));
   const hits = findHiddenPremiumAssets(

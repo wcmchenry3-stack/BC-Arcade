@@ -22,9 +22,10 @@ name: Mobile Smoke — iOS
 #   refreshes the CocoaPods cache that PR runs only read (a cache saved from a
 #   PR ref is invisible to other PRs) and gives a weekly signal. It never gates
 #   a PR or a Render deploy. Android's weekly run is Mon 09:23 UTC.
-# - workflow_dispatch: the full suite, or with `flows: cascade-demo` only the
-#   Cascade demo flows (#3705; docs/MAESTRO.md, "Cascade demo flows"). Every
-#   other run leaves the `demo`-tagged flows out.
+# - workflow_dispatch: the full suite, or with `flows: cascade-demo` or
+#   `flows: mahjong-demo` only that game's demo flows (#3705, #3801;
+#   docs/MAESTRO.md, "Cascade demo flows", "Mahjong demo flows"). Every other
+#   run leaves the `demo`-tagged flows out.
 # - NOT push to main (2026-09-23): prod auto-deploys `main` with Render's "After
 #   CI Checks Pass" trigger, which waits for EVERY check on the commit, so a red
 #   smoke check here would block prod deploys (it blocked #2522). PR runs gate
@@ -53,9 +54,9 @@ on:
   workflow_dispatch:
     inputs:
       flows:
-        description: "full = every flow directory; cascade-demo = only the Cascade demo flows (records video, #3705)"
+        description: "full = every flow directory; cascade-demo / mahjong-demo = only that game's demo flows (records video, #3705, #3801)"
         type: choice
-        options: [full, cascade-demo]
+        options: [full, cascade-demo, mahjong-demo]
         default: full
 
 permissions:
@@ -106,7 +107,7 @@ jobs:
       MAESTRO_DRIVER_STARTUP_TIMEOUT: "180000"
       MAESTRO_CLI_NO_ANALYTICS: "1"
       # Demo flows (tag `demo`, #3705) run only in a `flows: cascade-demo`
-      # dispatch; every other run leaves them out.
+      # or `flows: mahjong-demo` dispatch; every other run leaves them out.
       MAESTRO_TAG_ARG: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && '--include-tags=demo' || '--exclude-tags=demo' }}
       # Scope outputs go to the scripts through env, never `${{ }}` inside a
       # run: body, so no output text is ever parsed as shell.
@@ -286,7 +287,8 @@ jobs:
           # with no results.
           #
           # $MAESTRO_TAG_ARG (job env) is --exclude-tags=demo, or
-          # --include-tags=demo in a `flows: cascade-demo` dispatch (#3705).
+          # --include-tags=demo in a `flows: cascade-demo` or `flows: mahjong-demo`
+          # dispatch (#3705, #3801).
           #
           # NOTE: this per-directory split does NOT fix — and was never the
           # cause of — the "Unrecognized field \"timeout\"" parse error on
@@ -336,6 +338,15 @@ jobs:
         run: |
           PROJECTS_IOS=$(echo "$MAESTRO_PROJECTS" | tr ' ' '\n' | grep -vx offline | tr '\n' ' ' | xargs)
           python3 e2e/maestro/summarize.py "iOS" "$MAESTRO_LABEL" "$PROJECTS_IOS"
+
+      # A recording that never stops once left a 1.35 GB video in the artifact
+      # (the 2026-11-12 demo dispatch). Any .mp4/.png over MAX_MEDIA_MB is
+      # deleted, with a warning annotation, before either upload (#3719).
+      - name: Cap media size
+        if: always()
+        env:
+          MAX_MEDIA_MB: "100"
+        run: python3 e2e/maestro/cap_media.py *.mp4 *.png maestro-debug
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7

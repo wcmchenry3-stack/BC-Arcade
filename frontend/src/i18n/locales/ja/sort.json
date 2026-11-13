@@ -40,5 +40,9 @@
   "hint.unknown": "ヒントが見つかりませんでした",
   "hint.backToLastGoodMove": "最後の良い手に戻る",
   "hint.restartLevel": "レベルをやり直す",
-  "hint.dismiss": "閉じる"
+  "hint.dismiss": "閉じる",
+  "levelSelect.chapter": "チャプター{{chapter}}",
+  "levelSelect.levelStars": "レベル{{level}}、星{{stars}}／3",
+  "stars.summary": "星{{stars}}／3。手数{{moves}}、目標{{par}}。",
+  "stars.movesTarget": "手数 {{moves}} · 目標 {{par}}"
 }

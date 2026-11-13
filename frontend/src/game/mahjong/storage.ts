@@ -28,35 +28,11 @@
 import type { LayoutMeta, MahjongState } from "./types";
 import { resolveLayoutId } from "./layouts/registry";
 import { clockForSave, clockOnLoad } from "../_shared/playClock";
-import { plausibleBestMs } from "./engine";
 import { migrateLegacyUndoStack } from "./legacyUndo";
 import { loadUndoEntries } from "./undoEntries";
 import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "mahjong.storage";
-
-export interface MahjongStats {
-  /**
-   * The fastest clear on this device, per layout id (#2747): each layout has
-   * its own board, so a fast clear on an easy layout is no best on a hard
-   * one. Only clears at or above MAHJONG_MIN_CLEAR_MS count. Saves from
-   * before #2747 kept one `bestTimeMs` across every layout; it can't be
-   * attributed to a layout, so it is dropped on load (it would otherwise
-   * show as a false best on some layout).
-   */
-  bestTimeMsByLayout: Readonly<Record<string, number>>;
-}
-
-/** The stored per-layout bests: plausible numbers only (see `plausibleBestMs`). */
-function loadBestTimes(raw: unknown): Record<string, number> {
-  const out: Record<string, number> = {};
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return out;
-  for (const [layoutId, ms] of Object.entries(raw as Record<string, unknown>)) {
-    const best = typeof ms === "number" ? plausibleBestMs(ms) : 0;
-    if (best > 0) out[layoutId] = best;
-  }
-  return out;
-}
 
 /** A save as parsed, before `loadGame` has checked and normalised it. */
 type ParsedSave = {
@@ -155,21 +131,9 @@ export const {
   beforeSave: (state) => clockForSave(withoutEvents(state)),
 });
 
-export const { load: loadStats, save: saveStats } = createRecord<MahjongStats>({
-  key: "mahjong_stats_v1",
-  subsystem: SUBSYSTEM,
-  ops: { load: "loadStats", save: "saveStats" },
-  fallback: () => ({ bestTimeMsByLayout: {} }),
-  read: (raw) => {
-    const parsed = JSON.parse(raw);
-    return {
-      // Per layout (#2747); a best under the ranking floor is a broken clock
-      // and is dropped, and the old cross-layout `bestTimeMs` is ignored.
-      bestTimeMsByLayout: loadBestTimes(parsed.bestTimeMsByLayout),
-    };
-  },
-  write: (stats) => JSON.stringify(stats),
-});
+// The fastest clear per layout (#2747), for the result card's best time and "New best" badge, is
+// the shared personal best (`game/_shared/personalBest.ts`, #3757, keyed by layout id); its old
+// record `mahjong_stats_v1` is moved in there on the first read.
 
 // ---------------------------------------------------------------------------
 // Progress — unlock state for the layout select screen (#1689)

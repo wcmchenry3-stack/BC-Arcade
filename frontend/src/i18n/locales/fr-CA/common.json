@@ -106,5 +106,6 @@
   "locked.back": "Retour à l'accueil",
   "locked.back_label": "Retourner à l'accueil",
   "offline.windowExhausted": "Cela fait 3 jours que vous ne vous êtes pas connecté. Connectez-vous à Internet pour obtenir le dernier casse-tête.",
-  "offline.windowExhaustedStreak": "Connectez-vous pour poursuivre votre série."
+  "offline.windowExhaustedStreak": "Connectez-vous pour poursuivre votre série.",
+  "action.autoComplete": "Auto-Compléter"
 }

@@ -40,5 +40,9 @@
   "hint.unknown": "कोई संकेत नहीं मिला",
   "hint.backToLastGoodMove": "आखिरी सही चाल पर लौटें",
   "hint.restartLevel": "लेवल फिर से शुरू करें",
-  "hint.dismiss": "बंद करें"
+  "hint.dismiss": "बंद करें",
+  "levelSelect.chapter": "अध्याय {{chapter}}",
+  "levelSelect.levelStars": "लेवल {{level}}, 3 में से {{stars}} सितारे",
+  "stars.summary": "3 में से {{stars}} सितारे। चालें {{moves}}, लक्ष्य {{par}}।",
+  "stars.movesTarget": "चालें {{moves}} · लक्ष्य {{par}}"
 }

@@ -40,5 +40,9 @@
   "hint.unknown": "Aucun indice trouvé",
   "hint.backToLastGoodMove": "Retour au dernier bon coup",
   "hint.restartLevel": "Recommencer le niveau",
-  "hint.dismiss": "Fermer"
+  "hint.dismiss": "Fermer",
+  "levelSelect.chapter": "Chapitre {{chapter}}",
+  "levelSelect.levelStars": "Niveau {{level}}, {{stars}} étoiles sur 3",
+  "stars.summary": "{{stars}} étoiles sur 3. Coups {{moves}}, objectif {{par}}.",
+  "stars.movesTarget": "Coups {{moves}} · Objectif {{par}}"
 }

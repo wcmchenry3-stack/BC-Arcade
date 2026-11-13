@@ -40,5 +40,9 @@
   "hint.unknown": "Не удалось найти подсказку",
   "hint.backToLastGoodMove": "К последнему удачному ходу",
   "hint.restartLevel": "Начать уровень заново",
-  "hint.dismiss": "Закрыть"
+  "hint.dismiss": "Закрыть",
+  "levelSelect.chapter": "Глава {{chapter}}",
+  "levelSelect.levelStars": "Уровень {{level}}, звёзд: {{stars}} из 3",
+  "stars.summary": "Звёзд: {{stars}} из 3. Ходов {{moves}}, цель {{par}}.",
+  "stars.movesTarget": "Ходов {{moves}} · Цель {{par}}"
 }

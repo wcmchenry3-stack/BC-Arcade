@@ -1,5 +1,5 @@
 /**
- * Cascade's E2E hooks (#3693): the same seven `__cascade_*` names in a test build, nothing in a
+ * Cascade's E2E hooks (#3693): the same eleven `__cascade_*` names in a test build, nothing in a
  * store build.
  */
 import { registerCascadeTestHooks, type CascadeHookDeps } from "../testHooks";
@@ -13,6 +13,10 @@ const NAMES = [
   "triggerGameOver",
   "isReady",
   "spawnTierAt",
+  "seedQueue",
+  "setupChain",
+  "setupNearLid",
+  "fillBin",
 ] as const;
 const g = globalThis as unknown as Record<string, unknown>;
 
@@ -33,6 +37,10 @@ function deps(): CascadeHookDeps {
     triggerGameOver: jest.fn(),
     isReady: jest.fn(() => true),
     spawnTierAt: jest.fn(),
+    seedQueue: jest.fn(),
+    setupChain: jest.fn(),
+    setupNearLid: jest.fn(),
+    fillBin: jest.fn(),
   };
 }
 
@@ -59,6 +67,14 @@ describe("registerCascadeTestHooks", () => {
     expect(d.fastForward).toHaveBeenCalledWith(500);
     expect(d.spawnTierAt).toHaveBeenCalledWith(3, 200);
     expect(d.triggerGameOver).toHaveBeenCalledTimes(1);
+    (g.__cascade_seedQueue as (t: number[]) => void)([0, 0, 1]);
+    (g.__cascade_setupChain as () => void)();
+    (g.__cascade_setupNearLid as () => void)();
+    (g.__cascade_fillBin as () => void)();
+    expect(d.seedQueue).toHaveBeenCalledWith([0, 0, 1]);
+    expect(d.setupChain).toHaveBeenCalledTimes(1);
+    expect(d.setupNearLid).toHaveBeenCalledTimes(1);
+    expect(d.fillBin).toHaveBeenCalledTimes(1);
     expect((g.__cascade_isReady as () => boolean)()).toBe(true);
     expect((g.__cascade_getState as () => { score: number })().score).toBe(0);
 

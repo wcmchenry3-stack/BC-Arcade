@@ -27,7 +27,8 @@ import {
   type YachtEndOutcome,
 } from "../../game/yacht/motion";
 import type { GameEvent, GameState } from "../../game/yacht/types";
-import { loadBestScore, saveBestScore, soloEndOutcome } from "../../game/yacht/bestScore";
+import { soloEndOutcome } from "../../game/yacht/bestScore";
+import { getBest, recordResult } from "../../game/_shared/personalBest";
 import { scoreSoundFor } from "../../game/yacht/useScoreSound";
 import { useReduceMotion } from "../shared/useReduceMotion";
 import { useYachtEndBeat, type YachtEndBeatOptions } from "./useYachtEndBeat";
@@ -115,11 +116,11 @@ export function useYachtMotion({ player, reopenedFinished, onStart }: YachtMotio
     [startEndBeat]
   );
 
-  // The best before this game, read at mount.
+  // The best before this game (the shared personal best, #3757), read at mount.
   const best = useRef<number | null>(null);
   const bestRead = useRef<Promise<number> | null>(null);
   useEffect(() => {
-    bestRead.current = loadBestScore().then((b) => {
+    bestRead.current = getBest("yacht").then((b) => {
       if (best.current === null) best.current = b;
       return best.current;
     });
@@ -131,13 +132,13 @@ export function useYachtMotion({ player, reopenedFinished, onStart }: YachtMotio
       const { outcome, newBest } = soloEndOutcome(prior, total);
       if (newBest !== null) {
         best.current = newBest;
-        void saveBestScore(newBest);
+        void recordResult("yacht", newBest);
       }
       return outcome;
     };
     if (best.current !== null) return decide(best.current);
     // Not read yet (rare: it is read at mount): the beat waits for it.
-    return (bestRead.current ?? loadBestScore()).then(decide);
+    return (bestRead.current ?? getBest("yacht")).then(decide);
   }, []);
 
   /** Your last score in solo: the beat, a win on a new best, after its celebration if any. */
