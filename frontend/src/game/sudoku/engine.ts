@@ -322,6 +322,8 @@ function isBoxComplete(
  *   - Pushes the previous state to the undo stack (capped at
  *     UNDO_STACK_LIMIT)
  *   - Checks for completion
+ *   - A digit the cell already holds changes nothing (#3773): the same state
+ *     comes back, so no error, undo step, replay entry or event
  *
  * Notes mode (`notesMode === true`):
  *   - Toggles the digit in the cell's notes set
@@ -359,7 +361,9 @@ export function enterDigit(state: SudokuState, digit: CellValue): SudokuState {
     return { ...state, grid: nextGrid };
   }
 
-  // Normal mode.
+  // Normal mode. A cell that already holds this digit stays as it is (#3773): a repeat tap
+  // costs no error, undo step, replay entry or event.
+  if (cell.value === digit) return state;
   return placeDigit(state, row, col, digit, true);
 }
 
