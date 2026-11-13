@@ -3,9 +3,9 @@
  *
  * Concerns:
  *   1. Data — `useSortLevels` (#2981) owns the view (`loading | select |
- *      play`), the level definitions (API, cached for offline play), the
- *      player's progress and the load error with its Retry. The stored best
- *      moves load with it and merge into `bestMovesRef`.
+ *      play`), the level definitions (the fixed catalog shipped in the app,
+ *      #2761) and the player's progress. The stored best moves load with it
+ *      and merge into `bestMovesRef`.
  *   2. Game logic — taps go to the pure engine (`isValidPour`, `applyPour`,
  *      `undo`); Hint asks the solver (only on tap, #2768) and drops its answer
  *      once the board has changed (`levelGenRef`). A dead board gets a notice
@@ -26,7 +26,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutChangeEvent, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -34,21 +34,26 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { useTheme } from "../theme/ThemeContext";
-import { typography } from "../theme/typography";
 import {
   applyPour,
   initState,
+  isBottleSolved,
   isValidPour,
   pourUnits,
   undo as undoState,
 } from "../game/sort/engine";
+import { POUR_UNIT_MS, pourFlowMs } from "../game/sort/motion";
+import { fireSortHaptic } from "../game/sort/haptics";
 import { solveBoardAsync } from "../game/sort/solver";
 import type { Color, SortState } from "../game/sort/types";
-import SortBoard, { POUR_PER_UNIT_MS } from "../components/sort/SortBoard";
-import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../components/sort/BottleView";
+import SortBoard from "../components/sort/SortBoard";
 import HintNotice, { type HintNoticeKind } from "../components/sort/HintNotice";
 import LevelSelectScreen from "../components/sort/LevelSelectScreen";
-import { BOARD_PADDING } from "../components/sort/gridGeometry";
+import {
+  BOARD_PADDING,
+  BOARD_VERTICAL_PADDING,
+  SORT_ACTION_BAR_H,
+} from "../components/sort/gridGeometry";
 import {
   applyLevelSolve,
   highestSolvedLevel,
@@ -61,17 +66,21 @@ import {
 } from "../game/sort/storage";
 import { usePourAnimation, type Pour } from "../game/sort/usePourAnimation";
 import { useSortLevels } from "../game/sort/useSortLevels";
+import { SORT_CATALOG_VERSION } from "../game/sort/catalog";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { HudStatRow } from "../components/shared/HudStatRow";
-import { PillButton } from "../components/shared/PillButton";
+import GameActionBar from "../components/shared/GameActionBar";
 import { useSortAudio } from "../game/sort/useSortAudio";
+import { SolveStars } from "../components/sort/SolveStars";
+import { starsFor, type Stars } from "../game/sort/stars";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { useScreenReaderEnabled } from "../components/shared/useScreenReaderEnabled";
 
 /** "Back to last good move" stops solving after this many solves or ms. */
 const UNDO_SEARCH_MAX_SOLVES = 24;
@@ -85,7 +94,7 @@ function boardPourProps(pour: Pour | null) {
   return {
     pouringFrom: pour?.from ?? null,
     pouringTo: pour?.to ?? null,
-    pourHoldMs: pour?.holdMs ?? POUR_PER_UNIT_MS,
+    pourHoldMs: pour?.holdMs ?? POUR_UNIT_MS,
   };
 }
 
@@ -103,20 +112,24 @@ export default function SortScreen() {
   const bestMovesRef = useRef<BestMoves>({});
   /** Storage was read, so writing `bestMovesRef` can't lose a stored best. */
   const bestsStoredRef = useRef(false);
+  /** The same bests as state, for the level grid's stars (#3687); the ref decides solves. */
+  const [bestMoves, setBestMoves] = useState<BestMoves>({});
   const adoptStoredBests = useCallback((stored: BestMoves) => {
     // Merge, never replace: a Retry must keep a best still only in memory
     // (its write failed, or storage couldn't be read before).
     const merged = mergeBestMoves(bestMovesRef.current, stored);
     bestMovesRef.current = merged;
+    setBestMoves(merged);
     bestsStoredRef.current = true;
     if (Object.entries(merged).some(([level, moves]) => stored[level] !== moves)) {
       void saveBestMoves(merged);
     }
   }, []);
 
-  // Top-level view, levels and progress (loaded on mount; Retry re-runs loadScreen)
-  const { view, setView, levels, loadError, progress, setProgress, loadScreen, refreshLevels } =
-    useSortLevels({ onStoredBests: adoptStoredBests });
+  // Top-level view, the catalog's levels and the progress (loaded on mount)
+  const { view, setView, levels, progress, setProgress } = useSortLevels({
+    onStoredBests: adoptStoredBests,
+  });
 
   // Active game
   const [currentLevelId, setCurrentLevelId] = useState<number | null>(null);
@@ -126,6 +139,8 @@ export default function SortScreen() {
 
   const [boardHeight, setBoardHeight] = useState(0);
   const reduceMotion = useReduceMotion();
+  // A screen reader skips the win cascade too: the card and its announcement come at once.
+  const screenReader = useScreenReaderEnabled();
   const audio = useSortAudio();
 
   // The pour in flight (#2981). Its move lands when the animation ends, on
@@ -134,7 +149,26 @@ export default function SortScreen() {
     (snapshot: SortState, from: number, to: number) => {
       const nextState = applyPour(snapshot, from, to);
       setGameState(nextState);
+      // Haptics (#3660), once per landing, from the event and never a frame: a success
+      // pulse if the pour completed a bottle, a medium one otherwise. The winning pour gets
+      // the medium one only: the result card pulses success when it opens, after the cascade.
+      const filled = nextState.bottles[to] ?? [];
+      const before = snapshot.bottles[to] ?? [];
+      if (
+        !nextState.isComplete &&
+        filled.length > 0 &&
+        isBottleSolved(filled) &&
+        !(before.length > 0 && isBottleSolved(before))
+      ) {
+        fireSortHaptic("complete");
+        audio.playComplete(); // as the badge pops (#3661); not the winning pour: the win covers it
+      } else {
+        fireSortHaptic("land");
+      }
       if (nextState.isComplete) {
+        // The win chimes start with the cascade (the landing), so their chord lands as the card
+        // opens (#3661). Under Reduce Motion or a screen reader the card opens at once and the
+        // sound plays as it is.
         audio.playWin();
       }
     },
@@ -147,17 +181,33 @@ export default function SortScreen() {
     cancel: cancelPour,
   } = usePourAnimation<SortState>({
     reduceMotion,
-    // Reduce Motion: BottleView only tilts, with no ghost overlay, so SortBoard
-    // never calls onPourComplete; the hook lands the pour on this timer.
-    reduceMotionMs: TILT_IN_MS + TILT_HOLD_MS + TILT_OUT_MS + 50,
+    // Reduce Motion: no ghost overlay, so SortBoard never calls onPourComplete; the
+    // hook lands the pour on its timer (REDUCE_MOTION_POUR_MS, motion.ts: at once).
     onLand: landPour,
   });
   const isPouring = pour !== null;
 
   // Result card (#2512)
   const [showWinModal, setShowWinModal] = useState(false);
+  // The win cascade (#3660): the card waits for it. "idle" before a solve, "playing" until
+  // SortBoard reports its end (or a tap, or Reduce Motion), "done" after, so closing the card
+  // on a solved board never plays it again. A fresh board makes it "idle".
+  const [winCascade, setWinCascade] = useState(false);
+  const cascadeRef = useRef<"idle" | "playing" | "done">("idle");
+  // A new level drops its bottles in; a restored game plays nothing (#3660).
+  const [levelIn, setLevelIn] = useState(false);
+  // Bumped per undo (the board fades in) and per refused pour (the destination shakes).
+  const [undoSeq, setUndoSeq] = useState(0);
+  const [refused, setRefused] = useState<{ index: number; seq: number } | null>(null);
+  const refusedSeqRef = useRef(0);
   /** The solved level's best (fewest) moves, including this solve. */
-  const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
+  const [winSummary, setWinSummary] = useState<{
+    best: number;
+    isNewBest: boolean;
+    /** This solve's stars (#3687) and the level's target moves they were judged against. */
+    stars?: Stars;
+    par?: number;
+  } | null>(null);
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("sort", navigation);
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
@@ -165,9 +215,9 @@ export default function SortScreen() {
   // One `games` row per level played (#2512): XP, Profile history, stats and
   // the leaderboard (#2625). Every solve, replays included, is scored with the
   // player's standing after it (see the solve effect); the board keeps each
-  // named player's best row. Levels are random per fetch, not seeded, so the
-  // board doesn't rank `total_moves`: a tie on level goes to the earliest
-  // completion (#2746).
+  // named player's best row. The levels are the fixed catalog (#2761), the
+  // same for everyone, so a tie on level goes to fewer `total_moves`; only
+  // solves sent with the current `catalog_version` rank.
   const {
     start: syncStart,
     resume: syncResume,
@@ -190,6 +240,12 @@ export default function SortScreen() {
 
   /** A Hint (or the search back to the last good move) is running. */
   const [isHinting, setIsHinting] = useState(false);
+  /**
+   * The bottle the last Hint said to pour into (#3658), ringed on the board while
+   * the hint's source is still selected. Cleared by any tap, pour, undo, restart
+   * or level change.
+   */
+  const [hintTo, setHintTo] = useState<{ from: number; to: number } | null>(null);
   /** The notice in the play area after a Hint with no pour to offer (#2768). */
   const [hintNotice, setHintNotice] = useState<{
     kind: HintNoticeKind;
@@ -210,6 +266,7 @@ export default function SortScreen() {
   function boardChanged() {
     levelGenRef.current += 1;
     setHintNotice(null);
+    setHintTo(null);
     setIsHinting(false);
   }
 
@@ -258,6 +315,9 @@ export default function SortScreen() {
   usePauseWhileAway(navigation, noop, noop, {
     onLeave: (event) => {
       if (event.reason !== "appState") return;
+      // The pending stream would fire late, in a clump, on resume (#3661): drop them. The pour
+      // animation itself is unchanged.
+      audio.cancelPour();
       if (
         view === "play" &&
         currentLevelId !== null &&
@@ -286,7 +346,15 @@ export default function SortScreen() {
   // Sort never restores a solved board (only an unfinished one is saved), so
   // there is nothing to mark with `markRestoredComplete`.
   useCompletionTransition(gameState, !!gameState?.isComplete && !showWinModal, (solved) => {
-    setShowWinModal(true);
+    // The card follows the win cascade (#3660); at once under Reduce Motion, and when it
+    // comes back for a solved board whose cascade already played. Everything below
+    // (the session, the best, the unlock) still happens now, not after the cascade.
+    if (!reduceMotion && !screenReader && cascadeRef.current === "idle") {
+      cascadeRef.current = "playing";
+      setWinCascade(true);
+    } else {
+      setShowWinModal(true);
+    }
     if (currentLevelId === null) return;
     const solvedLevel = currentLevelId;
     const moves = solved.moveCount;
@@ -294,21 +362,24 @@ export default function SortScreen() {
     // the player can leave the card (#2625).
     const { solve, bests } = applyLevelSolve(bestMovesRef.current, solvedLevel, moves);
     bestMovesRef.current = bests;
-    setWinSummary(solve);
+    setBestMoves(bests);
+    // The level's target (#3687). Every level in the shipped catalog has one.
+    const par = levels.find((l) => l.id === solvedLevel)?.par;
+    const stars = par === undefined ? undefined : starsFor(moves, par);
+    setWinSummary(stars !== undefined && par !== undefined ? { ...solve, stars, par } : solve);
     // Storage mirrors memory; skipped while it couldn't be read, so a failed
     // read never overwrites the stored bests.
     if (solve.improved && bestsStoredRef.current) void saveBestMoves(bests);
     // Every solve is scored with the player's standing after it (#2625): the
-    // highest level solved, and the sum of best moves up to it (recorded,
-    // not ranked: #2746). The board keeps each player's best row, their
-    // first solve of their highest level. `level`/`moves`/`undos` are the
-    // level actually played.
+    // highest level solved, and the sum of best moves up to it (the
+    // tie-break, #2761), from this catalog. The board keeps each player's
+    // best row. `level`/`moves`/`undos` are the level actually played.
+    // The frontier counts only levels solved on this catalog (their bests),
+    // never the unlocked level: a save moved from the random levels unlocks
+    // far ahead without having solved anything here, and must not rank there
+    // (#2761).
     const frontier = Math.min(
-      Math.max(
-        solvedLevel,
-        progressRef.current.unlockedLevel - 1, // read before the unlock below
-        highestSolvedLevel(bests)
-      ),
+      Math.max(solvedLevel, highestSolvedLevel(bests)),
       // Never past the last level: the server rejects (and the sync worker
       // would drop) a level_reached above its cap.
       Math.max(levels.length, solvedLevel)
@@ -319,7 +390,10 @@ export default function SortScreen() {
       moves,
       undos: solved.undosUsed,
       level_reached: frontier,
+      catalog_version: SORT_CATALOG_VERSION,
     };
+    // This solve's stars (1 to 3, #3687) ride on the row already sent.
+    if (stars !== undefined) result.stars = stars;
     const totalMoves = totalBestMoves(bests, frontier);
     if (totalMoves !== null) result.total_moves = totalMoves;
     const gameId = syncComplete(
@@ -347,13 +421,24 @@ export default function SortScreen() {
   // Game handlers
   // ---------------------------------------------------------------------------
 
+  /** SortBoard's win cascade ended, or a tap skipped it: the result card opens. */
+  function handleWinCascadeDone() {
+    if (cascadeRef.current !== "playing") return;
+    cascadeRef.current = "done";
+    setWinCascade(false);
+    setShowWinModal(true);
+  }
+
   function handleBottleTap(index: number) {
     if (!gameState || gameState.isComplete || isPouring) return;
+    setHintTo(null);
     const { selectedBottleIndex } = gameState;
 
     if (selectedBottleIndex === null) {
       if ((gameState.bottles[index]?.length ?? 0) > 0) {
         setGameState({ ...gameState, selectedBottleIndex: index });
+        fireSortHaptic("select");
+        audio.playSelect();
       }
       return;
     }
@@ -367,7 +452,7 @@ export default function SortScreen() {
       const snapshot = gameState;
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
       // The move lands when the animation ends (usePourAnimation).
-      if (!startPour(snapshot, selectedBottleIndex, index, POUR_PER_UNIT_MS * units)) return;
+      if (!startPour(snapshot, selectedBottleIndex, index, pourFlowMs(units))) return;
       if (!syncGetGameId()) {
         syncStart({ level: currentLevelId });
         syncMarkStarted();
@@ -375,15 +460,22 @@ export default function SortScreen() {
       boardChanged();
       setHistory((h) => [...h, snapshot]);
       setGameState({ ...gameState, selectedBottleIndex: null });
-      audio.playPour();
+      // The lift now, the stream for the unit count at the pour's flowStartMs (#3661).
+      audio.playPour(units, reduceMotion);
     } else {
+      // Refused (#3660): the destination shakes "no" and the selection clears, as before.
+      setRefused({ index, seq: ++refusedSeqRef.current });
+      fireSortHaptic("refused");
+      audio.playRefused();
       setGameState({ ...gameState, selectedBottleIndex: null });
     }
   }
 
   function handleUndo() {
-    if (!gameState || isPouring) return;
+    if (!gameState || isPouring || winCascade) return;
+    audio.playUndo();
     const { state: newState, history: newHistory } = undoState(gameState, history);
+    setUndoSeq((n) => n + 1);
     boardChanged();
     setGameState(newState);
     setHistory(newHistory);
@@ -402,6 +494,8 @@ export default function SortScreen() {
         setHintNotice(null);
         const first = result.moves[0];
         if (first) {
+          setHintTo({ from: first.from, to: first.to });
+          audio.playHint();
           setGameState((cur) =>
             cur && !cur.isComplete ? { ...cur, selectedBottleIndex: first.from } : cur
           );
@@ -467,6 +561,9 @@ export default function SortScreen() {
         ({ state, history: rest } = undoState(state, rest));
       }
       setHintNotice(null);
+      setHintTo(null);
+      audio.playUndo();
+      setUndoSeq((n) => n + 1);
       setGameState(state);
       setHistory(rest);
     } finally {
@@ -481,8 +578,13 @@ export default function SortScreen() {
    */
   function leaveBoard() {
     setHintNotice(null);
+    setHintTo(null);
     setIsHinting(false);
     cancelPour();
+    audio.cancelPour(); // no stream for a pour that was dropped (#3661)
+    // A cascade cut short by leaving the board must not come back as the card.
+    if (cascadeRef.current === "playing") cascadeRef.current = "done";
+    setWinCascade(false);
     abandonSession();
   }
 
@@ -490,9 +592,11 @@ export default function SortScreen() {
   function enterPlay() {
     setHistory([]);
     setHintNotice(null);
+    setHintTo(null);
     setIsHinting(false);
     setShowWinModal(false);
     setWinSummary(null);
+    cascadeRef.current = "idle";
     resetSubmission();
     setView("play");
   }
@@ -508,6 +612,9 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
+    // Play Again keeps the mounted board (same key), which plays no level-in: only a board
+    // that will mount (from the level grid, or the next level) is told to.
+    setLevelIn(!(view === "play" && levelId === currentLevelId));
     enterPlay();
   }
 
@@ -517,6 +624,7 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setCurrentLevelId(prog.currentLevelId);
     setGameState(prog.currentState);
+    setLevelIn(false);
     // A restored game continues the session a killed app left open (#2654);
     // resume() counts its play time from here. With no session to resume the
     // level's play time still starts now, not on the level grid (#2710).
@@ -529,8 +637,6 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setView("select");
     setShowWinModal(false);
-    // Silently refresh levels in the background so the next session gets new mixtures
-    refreshLevels();
   }
 
   function handleResetLevel() {
@@ -545,6 +651,7 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
+    cascadeRef.current = "idle";
   }
 
   function handleNextLevel() {
@@ -586,29 +693,12 @@ export default function SortScreen() {
         gutter={null}
         onOpenLeaderboard={openLeaderboard}
       >
-        {/* Error banner with retry */}
-        {loadError && (
-          <View style={styles.errorRow}>
-            <Text style={[styles.loadErrorText, { color: colors.error }]}>
-              {t("error.loadFailed")}
-            </Text>
-            <Pressable
-              onPress={() => void loadScreen()}
-              accessibilityRole="button"
-              accessibilityLabel={t("error.submitRetry")}
-            >
-              <Text style={[styles.retryText, { color: colors.accent }]}>
-                {t("error.submitRetry")}
-              </Text>
-            </Pressable>
-          </View>
-        )}
-
         {/* The board is the shared leaderboard screen now (#2633), from the
             ⋯ menu and the result card; the inline Leaderboard tab is gone. */}
         <LevelSelectScreen
           levels={levels}
           progress={progress}
+          bestMoves={bestMoves}
           onSelectLevel={handleSelectLevel}
           onContinue={handleContinue}
         />
@@ -629,22 +719,14 @@ export default function SortScreen() {
       onNewGame={handleResetLevel}
       onLevelSelect={handleBackToSelect}
       onOpenLeaderboard={openLeaderboard}
-      rightSlot={
-        <View style={styles.headerBtnRow}>
-          <PillButton
-            label={t("action.hint")}
-            onPress={handleHint}
-            busy={isHinting}
-            disabled={isPouring || !!gameState?.isComplete}
-            color={colors.bonus}
-          />
-          <PillButton
-            label={t("action.undo")}
-            onPress={handleUndo}
-            disabled={history.length === 0}
-          />
-        </View>
-      }
+      // Colorblind Mode lives in the ⋯ menu (#3658); Hint and Undo are in the bar under the
+      // board, so the header holds only back, the title and ⋯.
+      menuToggle={{
+        label: t("settings.colorblindMode"),
+        value: colorblindMode,
+        onToggle: setColorblindMode,
+        testID: "sort-colorblind-toggle",
+      }}
     >
       <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
 
@@ -677,10 +759,16 @@ export default function SortScreen() {
             colorblindMode={colorblindMode}
             onBottleTap={handleBottleTap}
             {...boardPourProps(pour)}
+            hintTo={gameState.selectedBottleIndex === hintTo?.from ? (hintTo?.to ?? null) : null}
             // onLayout reports the container's full height, padding included;
             // the board itself only gets the space inside the padding (#2207).
-            availableHeight={Math.max(0, boardHeight - 2 * BOARD_PADDING)}
+            availableHeight={Math.max(0, boardHeight - 2 * BOARD_VERTICAL_PADDING)}
             onPourComplete={completePour}
+            refused={refused}
+            undoSeq={undoSeq}
+            levelIn={levelIn}
+            winCascade={winCascade}
+            onWinCascadeDone={handleWinCascadeDone}
           />
         )}
         {/* An overlay (absolute), so showing or dismissing it never resizes the
@@ -701,20 +789,36 @@ export default function SortScreen() {
         )}
       </View>
 
-      {/* Colorblind toggle */}
-      <Pressable
-        onPress={() => setColorblindMode((m) => !m)}
-        style={styles.colorblindToggle}
-        accessibilityRole="switch"
-        accessibilityLabel={t("action.colorblindToggle")}
-        accessibilityState={{ checked: colorblindMode }}
-        // RN Web 0.21 drops accessibilityState; aria-checked reaches the DOM.
-        aria-checked={colorblindMode}
-      >
-        <Text style={[styles.colorblindToggleText, { color: colors.textMuted }]}>
-          {t("settings.colorblindMode")}
-        </Text>
-      </Pressable>
+      {/* Hint and Undo in thumb reach, after the board in reading order (#3658). The labels
+          are the header pills' (the e2e specs find the buttons by name). */}
+      <GameActionBar
+        testID="sort-action-bar"
+        height={SORT_ACTION_BAR_H}
+        actions={[
+          {
+            key: "hint",
+            icon: "lightbulb",
+            label: t("action.hint"),
+            accessibilityLabel: t("action.hint"),
+            color: colors.bonus,
+            labelColor: colors.bonusText,
+            busy: isHinting,
+            disabled: isPouring || !!gameState?.isComplete,
+            onPress: handleHint,
+            testID: "sort-hint-button",
+          },
+          {
+            key: "undo",
+            icon: "undo",
+            label: t("action.undo"),
+            accessibilityLabel: t("action.undo"),
+            color: colors.accentText,
+            disabled: history.length === 0 || winCascade,
+            onPress: handleUndo,
+            testID: "sort-undo-button",
+          },
+        ]}
+      />
 
       {gameState !== null && currentLevelId !== null ? (
         <GameResultModal
@@ -727,6 +831,15 @@ export default function SortScreen() {
             { label: tResult("stat.undos"), value: gameState.undosUsed },
             ...(winSummary ? [{ label: tResult("stat.best"), value: winSummary.best }] : []),
           ]}
+          detail={
+            winSummary?.stars !== undefined && winSummary.par !== undefined ? (
+              <SolveStars
+                stars={winSummary.stars}
+                moves={gameState.moveCount}
+                par={winSummary.par}
+              />
+            ) : undefined
+          }
           submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           // The next level when there is one; the last level replays.
@@ -747,26 +860,13 @@ export default function SortScreen() {
 
 const styles = StyleSheet.create({
   offlineBannerWrap: { paddingHorizontal: 12, paddingTop: 4 },
-  headerBtnRow: { flexDirection: "row", gap: 6 },
   hud: { paddingHorizontal: 12 },
 
-  errorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  loadErrorText: { fontFamily: typography.body, fontSize: 13 },
-  retryText: { fontFamily: typography.label, fontSize: 13, textDecorationLine: "underline" },
   boardContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: BOARD_PADDING,
+    paddingHorizontal: BOARD_PADDING,
+    paddingVertical: BOARD_VERTICAL_PADDING,
   },
-
-  colorblindToggle: { alignItems: "center", paddingVertical: 8 },
-  colorblindToggleText: { fontFamily: typography.body, fontSize: 11 },
 });

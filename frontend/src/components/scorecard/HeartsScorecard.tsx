@@ -104,7 +104,7 @@ export default function HeartsScorecard({
                 let display = String(value);
                 if (moon) {
                   if (i === moon.shooterIndex) {
-                    cellColor = colors.bonus;
+                    cellColor = colors.bonusText;
                     display = "0★";
                   } else {
                     cellColor = colors.error;

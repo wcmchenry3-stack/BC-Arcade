@@ -114,7 +114,7 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 | ----------- | ------------------------------------------------------------------- | ------------------------------------------------------------- |
 | Solitaire   | `computeTableGeometry()` in `game/_shared/cards/tableLayout.ts`     | Felt table (#3606): card width and steps from the felt's size |
 | FreeCell    | `freeCellGeometry()` in `game/freecell/layout.ts`                   | Same felt helper, 8 columns, top row at 0.92 (#3607)          |
-| Bottle Sort | Inline in `SortBoard.tsx`                                           | `bottleH = min(defaultH, maxBottleH)` from `availableHeight`  |
+| Bottle Sort | `computeBoardLayout()` in `components/sort/gridGeometry.ts`         | Fills the board, at most 2x the default bottle (#3658)        |
 | Mahjong     | `calculateMahjongLayout()` in `frontend/src/game/mahjong/layout.ts` | Responsive layout with tested fit/clamp behavior              |
 
 The card games (Solitaire, FreeCell, Hearts, Blackjack) report a measured layout whose cards run off the table to Sentry, with a screenshot: see [Cards off the table (#3653)](#cards-off-the-table-3653).
@@ -203,6 +203,7 @@ All per-frame animation uses `react-native-reanimated` shared values and worklet
 | Solitaire   | Win cascade, card lift/glow, shake             | `frontend/src/components/solitaire/SolitaireWinCascade.tsx`     |
 | FreeCell    | Foundation complete, game win, auto-complete   | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx` |
 | Bottle Sort | Pour choreography (lift, travel, tilt, stream) | `frontend/src/components/sort/SortBoard.tsx`                    |
+| Bottle Sort | Every duration, ceiling and `pourTimeline`     | `frontend/src/game/sort/motion.ts`                              |
 | Mahjong     | Match burst (FlyingPair)                       | `frontend/src/components/mahjong/FlyingPair.tsx`                |
 | Mahjong     | Shuffle pulse, deadlock shake                  | `frontend/src/components/mahjong/useMahjongFeedback.ts`         |
 
@@ -667,7 +668,7 @@ This supplements the backend checklist in [`GAME-CONTRACT.md §3`](GAME-CONTRACT
 - [ ] Everything renders inside `GameShell` with `gameType="<game>"`
 - [ ] Boards, piles, overlays and the dev panel live in `components/<game>/`; the screen defines none of its own
 - [ ] A game with its own clock pauses it through `usePauseWhileAway` / `usePausableClock`; saved progress restores on mount and calls `resume()` (through `usePersistedGameState` where it fits, §8)
-- [ ] Game over fires once per game, through `useCompletionTransition` where it fits (§8); a game restored already complete records nothing; "new best" comes from `bestOf`
+- [ ] Game over fires once per game, through `useCompletionTransition` where it fits (§8); a game restored already complete records nothing; "new best" comes from the shared personal best (`game/_shared/personalBest.ts`, #3757: `judgeResult`/`recordResult`, which apply `bestOf` with the game's metric)
 - [ ] No React state is set once per frame
 
 ### Reporting

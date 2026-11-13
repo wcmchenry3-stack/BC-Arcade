@@ -27,6 +27,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { installEntitlementsMock } from "./helpers/api-mock";
 import { mockSortApi } from "./helpers/sort";
 import { mockDailyWordApi } from "./helpers/daily_word";
+import { SUDOKU_STORAGE_KEY, midGameSudokuState } from "./helpers/sudoku";
 
 const VIEWPORT = { width: 375, height: 667 };
 const LOCALES = ["en", "es", "fr-CA"] as const;
@@ -290,7 +291,7 @@ async function detectSettled(page: Page): Promise<Finding[]> {
 async function measure(
   page: Page,
   screen: string,
-  locale: Locale,
+  locale: Locale | (typeof SUDOKU_BOARD_LOCALES)[number],
 ): Promise<Finding[]> {
   const all = await detectSettled(page);
   const entries = ALLOWLIST.filter(
@@ -311,7 +312,10 @@ async function measure(
   return [...unexpected, ...stale];
 }
 
-async function openLobby(page: Page, locale: Locale): Promise<void> {
+async function openLobby(
+  page: Page,
+  locale: Locale | (typeof SUDOKU_BOARD_LOCALES)[number],
+): Promise<void> {
   await page.goto("/");
   await page.getByTestId("game-tile-yacht").waitFor();
   if (locale !== "en") {
@@ -332,8 +336,7 @@ for (const locale of LOCALES) {
       // Registered first so the entitlements mock (registered later) wins.
       await page.route("http://localhost:8000/**", (route) => route.abort());
       await installEntitlementsMock(page);
-      // Sort fetches its levels from the API; without them it shows a retry
-      // state instead of the level-select screen a player sees.
+      // Sort's levels ship in the app (#2761); this mocks its leaderboard.
       await mockSortApi(page);
       // Daily Word fetches today's puzzle; without it the board never shows.
       await mockDailyWordApi(page);
@@ -394,4 +397,119 @@ for (const locale of LOCALES) {
       });
     }
   });
+}
+
+/**
+ * The Yacht board (#3748), not just its mode picker: the thumb tray's scorecard, hint, Roll and
+ * action bar in en, es and fr-CA (the longest words) at 320 pt (iPhone SE class and smaller) and
+ * 390 pt, solo and VS, after a roll with a die held, and during the computer's turn.
+ */
+const YACHT_BOARD_VIEWPORTS = [
+  { width: 320, height: 568 },
+  { width: 390, height: 844 },
+] as const;
+
+for (const locale of LOCALES) {
+  for (const viewport of YACHT_BOARD_VIEWPORTS) {
+    test.describe(`Yacht board overflow — ${locale} @ ${viewport.width}x${viewport.height}`, () => {
+      test.use({ viewport });
+
+      test.beforeEach(async ({ page }) => {
+        await page.route("http://localhost:8000/**", (route) => route.abort());
+        await installEntitlementsMock(page);
+      });
+
+      for (const mode of ["solo", "vs"] as const) {
+        test(`${mode} board has no clipped or spilling text`, async ({
+          page,
+        }) => {
+          await openLobby(page, locale);
+          await page.getByTestId("game-tile-yacht").click();
+          await expect(page.getByTestId("game-tile-yacht")).toBeHidden();
+          await page.getByTestId(`yacht-mode-${mode}`).click();
+          await expect(page.getByTestId("yacht-tray")).toBeVisible();
+          await expect(page.getByTestId("nav-menu")).toBeVisible();
+
+          // Before the first roll, then with potentials showing and a die held.
+          const problems: Record<string, Finding[]> = {};
+          problems.start = await measure(page, "yacht-board", locale);
+          await page.getByTestId("yacht-roll-button").click();
+          await page.getByTestId("yacht-die-4").click();
+          problems.rolled = await measure(page, "yacht-board", locale);
+
+          if (mode === "vs") {
+            // The computer's turn: its own hint text, its roll counter, "Computer's Turn" on Roll.
+            await page.getByTestId("score-row-chance").click();
+            await expect(page.getByTestId("yacht-roll-button")).toBeDisabled();
+            problems.computerTurn = await measure(page, "yacht-board", locale);
+          }
+
+          const bad = Object.fromEntries(
+            Object.entries(problems).filter(([, v]) => v.length),
+          );
+          expect(bad, JSON.stringify(bad, null, 2)).toEqual({});
+        });
+      }
+    });
+  }
+}
+
+/**
+ * The Sudoku board (#3773), not just its difficulty picker: the HUD (a plural error count), the
+ * five-action bar and the digit keys in en, es and fr-CA like Yacht, plus de and ru (the longest
+ * words and a plural-heavy language), at 320 pt and 390 pt, with Notes off and on and the New Game
+ * picker open. The action bar's labels share a ~59 pt slot each at 320.
+ */
+const SUDOKU_BOARD_LOCALES = [...LOCALES, "de", "ru"] as const;
+const SUDOKU_BOARD_VIEWPORTS = [
+  { width: 320, height: 568 },
+  { width: 390, height: 844 },
+] as const;
+
+for (const locale of SUDOKU_BOARD_LOCALES) {
+  for (const viewport of SUDOKU_BOARD_VIEWPORTS) {
+    test.describe(`Sudoku board overflow — ${locale} @ ${viewport.width}x${viewport.height}`, () => {
+      test.use({ viewport });
+
+      test.beforeEach(async ({ page }) => {
+        await page.route("http://localhost:8000/**", (route) => route.abort());
+        await installEntitlementsMock(page);
+      });
+
+      test("board, bar and keys have no clipped or spilling text", async ({
+        page,
+      }) => {
+        await openLobby(page, locale);
+        // A saved mid-game puzzle, so the game opens on the board with two errors on the count.
+        await page.evaluate(
+          ([key, state]) =>
+            localStorage.setItem(key as string, JSON.stringify(state)),
+          [SUDOKU_STORAGE_KEY, midGameSudokuState()] as const,
+        );
+        await page.getByTestId("game-tile-sudoku").click();
+        await expect(page.getByTestId("game-tile-sudoku")).toBeHidden();
+        await expect(page.getByTestId("sudoku-action-bar")).toBeVisible();
+        await expect(page.getByTestId("nav-menu")).toBeVisible();
+
+        const problems: Record<string, Finding[]> = {};
+        problems.board = await measure(page, "sudoku-board", locale);
+
+        await page.getByTestId("sudoku-notes").click();
+        problems.notesOn = await measure(page, "sudoku-board", locale);
+        await page.getByTestId("sudoku-notes").click();
+
+        // New Game: the confirm, then the picker with its Cancel.
+        await page.getByTestId("sudoku-new-game").click();
+        problems.confirm = await measure(page, "sudoku-board", locale);
+        await page.getByTestId("sudoku-abandon-confirm").click();
+        await expect(page.getByTestId("sudoku-new-game-cancel")).toBeVisible();
+        problems.picker = await measure(page, "sudoku-board", locale);
+
+        const bad = Object.fromEntries(
+          Object.entries(problems).filter(([, v]) => v.length),
+        );
+        expect(bad, JSON.stringify(bad, null, 2)).toEqual({});
+      });
+    });
+  }
 }

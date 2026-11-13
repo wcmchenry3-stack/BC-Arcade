@@ -28,12 +28,15 @@ export const CARD_SELECT_GLOW = "#ffffff";
 /** Neon deck: always dark, ignores ThemeContext light/dark mode. */
 export const NEON_DECK = {
   face: "#0f172a",
-  back: "#070d1a",
   border: "#334155",
   blackSuit: "#e2e8f0",
   redSuit: "#f43f5e",
   rank: "#f1f5f9",
-  backGrid: "#06b6d4",
+  /** The back (#3740): a cyan margin and lattice on a navy field. */
+  backRim: "#22d3ee",
+  backField: "#0b1b3a",
+  backLine: "#22d3ee",
+  backAccent: "#22d3ee",
 } as const;
 
 /**

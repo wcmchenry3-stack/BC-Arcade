@@ -7,7 +7,6 @@
   "hud.undos": "التراجعات: {{undos}}",
   "action.undo": "تراجع",
   "action.hint": "تلميح",
-  "action.colorblindToggle": "وضع عمى الألوان",
   "action.backToLevels": "العودة إلى المستويات",
   "color.red": "أحمر",
   "color.blue": "أزرق",
@@ -28,6 +27,7 @@
   "a11y.bottleSelected": "الزجاجة {{index}} محددة — اضغط على زجاجة أخرى للصب",
   "a11y.bottleEmpty": "الزجاجة {{index}}، فارغة",
   "a11y.bottleSolved": "الزجاجة {{index}}، مكتملة",
+  "a11y.hintDestination": "تلميح: اسكب هنا",
   "settings.colorblindMode": "وضع عمى الألوان",
   "settings.colorblindModeHint": "يعرض رمزًا على كل كرة بالإضافة إلى اللون",
   "error.loadFailed": "تعذر تحميل هذا المستوى.",
@@ -40,5 +40,9 @@
   "hint.unknown": "تعذر العثور على تلميح",
   "hint.backToLastGoodMove": "العودة لآخر حركة جيدة",
   "hint.restartLevel": "إعادة المستوى",
-  "hint.dismiss": "إغلاق"
+  "hint.dismiss": "إغلاق",
+  "levelSelect.chapter": "الفصل {{chapter}}",
+  "levelSelect.levelStars": "المستوى {{level}}، {{stars}} من 3 نجوم",
+  "stars.summary": "{{stars}} من 3 نجوم. الحركات {{moves}}، الهدف {{par}}.",
+  "stars.movesTarget": "الحركات {{moves}} · الهدف {{par}}"
 }

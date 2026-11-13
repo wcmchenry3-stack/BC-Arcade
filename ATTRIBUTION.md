@@ -135,14 +135,15 @@ script's own rules. The answer lists are filtered by hand (`answers_blocklist_fr
 
 ## Audio (CC BY 4.0)
 
-- **"Victory fanfare"** by humanoide9000 on Freesound, used as `frontend/assets/sounds/freecell-game-win.mp3` (FreeCell and Bottle Sort win sound; re-encoded to MP3)
+- **"Victory fanfare"** by humanoide9000 on Freesound, used as `frontend/assets/sounds/freecell-game-win.mp3` (FreeCell's and then Bottle Sort's win sound; no game uses it since #3661, so it is not bundled in the app; kept in the repo; re-encoded to MP3)
   - Source: https://freesound.org/people/humanoide9000/sounds/466133/
   - License: https://creativecommons.org/licenses/by/4.0/
 
 All other **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
 Star Swarm's sound effects are original sounds synthesized in-house (generator
 `tools/assets/synth_starswarm_sfx.py`, design log `docs/games/starswarm-sound-design.md`, #3560); they
-use no third-party audio and need no credit. Its background music is Pixabay Content License. Per-file
+use no third-party audio and need no credit. Its background music, `starswarm-bgm.mp3`, is an original,
+project-owned track (design log `docs/games/starswarm-music-design.md`, #3638) and needs no credit either. Per-file
 source names are in `frontend/assets/sounds/SOUND_CREDITS.md`.
 Every Star Swarm sprite (the player ship layers, Buddy, the enemies, asteroids, projectiles and
 pickups) is original art generated in-house (generator `tools/assets/draw_starswarm_art.py`, design

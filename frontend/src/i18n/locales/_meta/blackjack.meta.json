@@ -251,6 +251,24 @@
     "doNotTranslate": ["Blackjack"],
     "notes": null
   },
+  "outcome.blackjackNatural": {
+    "component": "ResultBanner",
+    "description": "Result banner on the table when the player's natural blackjack wins; says it pays 3 to 2 (#3621).",
+    "tone": "celebratory",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": ["Blackjack", "3:2"],
+    "notes": "Keep the ratio written as 3:2."
+  },
+  "outcome.blackjackNaturalLabel": {
+    "component": "ResultBanner",
+    "description": "Screen-reader label for the table's \"Blackjack! 3:2\" banner: says the 3:2 payout in words, so it is not read as \"3 colon 2\" (#3621).",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": ["Blackjack"],
+    "notes": "Spoken, not shown. Use the natural way to say a 3-to-2 payout in the language."
+  },
   "outcome.win": {
     "component": "ResultBanner",
     "description": "Result banner when player wins.",
@@ -313,6 +331,60 @@
     "placeholders": ["{{amount}}"],
     "doNotTranslate": [],
     "notes": null
+  },
+  "tag.win": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag, shown on the hand after the round (\"WIN\"; drawn in capitals).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Must fit a split hand's one-line result label with the total and a 3-digit payout (#3782): about 60 px drawn in capitals (German VERLUST, 7 Latin capitals, fits). Russian uses Минус for lose. Measure again (tableGeometry.test.ts) after a change."
+  },
+  "tag.lose": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag when it lost (\"LOSE\"; drawn in capitals).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "See tag.win: about 60 px drawn in capitals (#3782)."
+  },
+  "tag.push": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag when it tied the dealer (\"PUSH\"; drawn in capitals).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "See tag.win: about 60 px drawn in capitals (#3782)."
+  },
+  "result.splitWon": {
+    "component": "ResultBanner",
+    "description": "Split round summary under the dealer: how many hands won, e.g. \"Won: 1\". Joined with the losses and pushes by \" · \".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
+  },
+  "result.splitLost": {
+    "component": "ResultBanner",
+    "description": "Split round summary: how many hands lost, e.g. \"Lost: 2\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
+  },
+  "result.splitPush": {
+    "component": "ResultBanner",
+    "description": "Split round summary: how many hands tied the dealer, e.g. \"Push: 1\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
   },
   "gameOver.title": {
     "component": "BlackjackTableScreen (GameResultModal)",
@@ -557,6 +629,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "rules.standardTitle": {
+    "component": "TableRules",
+    "description": "Heading for the fixed rules every table plays by, under the adjustable ones.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.standard": {
+    "component": "TableRules",
+    "description": "The fixed rules (#3741): a blackjack (natural) pays 3:2; the dealer checks for blackjack when showing an Ace or a ten-value card, and a dealer blackjack ends the hand for the original bet only (a push against the player's blackjack); a blackjack beats any other 21.",
+    "tone": "instructional",
+    "characterLimit": 320,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Keep 3:2 as written. 'Blackjack' as each locale already writes it in this namespace."
+  },
   "score.heroLabel": {
     "component": "BlackjackScorecard",
     "description": "Hero label above the primary scorecard stat (net chip profit/loss for the session).",
@@ -653,6 +743,15 @@
     "tone": "functional",
     "characterLimit": 60,
     "placeholders": ["{{chips}}", "{{goal}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.chipsAccessibilityLabel": {
+    "component": "HudSidebar",
+    "description": "Accessibility label for the chip total in the HUD when the run has no goal (after Keep Playing).",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -889,6 +988,24 @@
     "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
+  },
+  "hud.milestone": {
+    "component": "HudSidebar",
+    "description": "Short chip in the HUD strip announcing a chip milestone; the full sentence is milestone.toast, which a screen reader announces.",
+    "tone": "celebratory",
+    "characterLimit": 24,
+    "placeholders": ["{{chips}}"],
+    "doNotTranslate": [],
+    "notes": "Must fit one line at 320 px beside the chips and goal; keep it short."
+  },
+  "hud.comeback": {
+    "component": "HudSidebar",
+    "description": "Short chip in the HUD strip announcing a comeback; the full sentence is comeback.banner, and the accessibility label is comeback.bannerAccessibilityLabel.",
+    "tone": "celebratory",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Must fit one line at 320 px beside the chips and goal; keep it short."
   },
   "hud.winStreakAccessibilityLabel": {
     "component": "HudSidebar",
@@ -1303,6 +1420,24 @@
     "placeholders": ["value"],
     "doNotTranslate": [],
     "notes": null
+  },
+  "result.dealerBlackjack": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the dealer's two-card 21 (a natural, found by its peek) beat the player.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "'Blackjack' as each locale already writes it in this namespace."
+  },
+  "result.bothBlackjack": {
+    "component": "TableFelt",
+    "description": "Result detail under the Push banner: the player and the dealer both have a two-card 21 (a natural).",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "'Blackjack' as each locale already writes it in this namespace."
   },
   "a11y.handBet": {
     "component": "TableFelt",

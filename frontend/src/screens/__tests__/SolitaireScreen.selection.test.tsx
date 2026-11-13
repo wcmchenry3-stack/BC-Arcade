@@ -352,7 +352,7 @@ describe("restoring a saved game (#3093)", () => {
   it("plays no sound for the last move's saved events", async () => {
     await mountOn(
       boardState({
-        events: ["cardPlace", "cardFlip", "foundationComplete", "gameWin"],
+        events: ["cardPlace", "cardFlip", "gameWin"],
       })
     );
     await act(async () => {

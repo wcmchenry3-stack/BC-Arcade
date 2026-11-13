@@ -9,7 +9,8 @@
  */
 import React from "react";
 import { StyleSheet } from "react-native";
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import i18n from "i18next";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
@@ -19,6 +20,7 @@ import { newGame } from "../../game/blackjack/engine";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 import { estimateFeltSize, FELT_BORDER, MIN_CARD_WIDTH } from "../../game/blackjack/layout";
 import { APP_HEADER_HEIGHT } from "../../components/shared/AppHeader";
+import RuBlackjack from "../../i18n/locales/ru/blackjack.json";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({ navigate: jest.fn() }), { actual: true })
@@ -46,6 +48,7 @@ const PHONES = [
   { name: "320×568", width: 320, height: 568, insetTop: 0, insetBottom: 0 },
   { name: "375×667", width: 375, height: 667, insetTop: 0, insetBottom: 0 },
   { name: "390×844", width: 390, height: 844, insetTop: 47, insetBottom: 34 },
+  { name: "430×932", width: 430, height: 932, insetTop: 59, insetBottom: 34 },
 ];
 
 function base(): EngineState {
@@ -89,6 +92,50 @@ const SCENES: [string, () => EngineState][] = [
       hand_payouts: [0, 0],
       split_from_aces: [false, false],
       active_hand_index: 1,
+    }),
+  ],
+  [
+    // #3771: the hand names were cut to "HA…" beside the total, tag and payout.
+    "a 2-hand split at the result",
+    () => ({
+      ...base(),
+      phase: "result",
+      bet: 25,
+      chips: 150,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("7", "♥"), c("10", "♣")],
+      split_count: 1,
+      player_hands: [
+        [c("8"), c("A"), c("2", "♦"), c("K", "♥")],
+        [c("8", "♥"), c("9", "♣")],
+      ],
+      hand_bets: [25, 25],
+      hand_outcomes: ["win", "push"],
+      hand_payouts: [25, 0],
+      split_from_aces: [false, false],
+      active_hand_index: 2,
+    }),
+  ],
+  [
+    "a 3-hand split at the result",
+    () => ({
+      ...base(),
+      phase: "result",
+      bet: 25,
+      chips: 150,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("7", "♥"), c("10", "♣")],
+      split_count: 2,
+      player_hands: [
+        [c("8"), c("A"), c("2", "♦"), c("K", "♥")],
+        [c("8", "♥"), c("9", "♣")],
+        [c("8", "♦"), c("4"), c("K", "♣")],
+      ],
+      hand_bets: [25, 25, 25],
+      hand_outcomes: ["win", "push", "lose"],
+      hand_payouts: [25, 0, -25],
+      split_from_aces: [false, false, false],
+      active_hand_index: 3,
     }),
   ],
   [
@@ -227,6 +274,49 @@ describe.each(PHONES)("the table at $name", (phone) => {
       expect(screen.getByLabelText(/^Hand 1, .*\+5 chips$/)).toBeTruthy();
       expect(screen.queryByTestId("result-detail")).toBeNull();
     }
+    // #3771: a split hand's label never cuts its name. At the result a one-line label (fans, the
+    // grid) has no room for the name beside the total, tag and payout, so it draws none; a row's
+    // label (a column) keeps it on its own line. The accessibility label always names the hand.
+    if (labels.length > 1) {
+      const atResult = result !== null;
+      labels.forEach((l, i) => {
+        const node = screen.getByTestId(l.id);
+        const column = StyleSheet.flatten(node.props.style).flexDirection === "column";
+        const names = within(node).queryAllByTestId("hand-name");
+        expect(names).toHaveLength(atResult && !column ? 0 : 1);
+        for (const n of names) expect(n.props.numberOfLines).toBe(1);
+        expect(node.props.accessibilityLabel).toMatch(new RegExp(`^Hand ${i + 1}, Player score`));
+        if (atResult) {
+          expect(node.props.accessibilityLabel).toMatch(
+            /, (Win|Push|Lose), ([+-]\d+ chips|No change)$/
+          );
+          // The payout is a signed number at every size, never in words (owner decision, #3779).
+          const payout = within(node).getByTestId("hand-payout").props.children as string;
+          expect(payout).toMatch(/^([+-]\d+|0)$/);
+          expect(payout).not.toMatch(/chips|No change/);
+          // #3782: a row's label is two lines at the result, the name and total over the tag and
+          // payout (the longest locale's tag fits its 100 px column only so); a one-line label
+          // keeps the total, tag and payout on its one line.
+          // The total's line: the nearest row-direction view around it.
+          let line = within(node).getByTestId("hand-total").parent!;
+          while (StyleSheet.flatten(line.props.style)?.flexDirection !== "row") {
+            line = line.parent!;
+          }
+          const has = (id: string) => within(line).queryAllByTestId(id).length > 0;
+          expect(has("hand-name")).toBe(column);
+          expect(has("hand-result")).toBe(!column);
+          expect(within(node).getAllByTestId("hand-result")).toHaveLength(1);
+        }
+      });
+      // The widest phone's 2-hand fans too (195 px: the worded Russian "-400" line is 196).
+      if (phone.width === 430 && atResult && labels.length === 2) {
+        expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
+          "+25",
+          "0",
+        ]);
+        expect(screen.getByLabelText(/^Hand 2, .*, Push, No change$/)).toBeTruthy();
+      }
+    }
     // Cards of different hands never overlap; the result and labels cover no card.
     for (let i = 0; i < cards.length; i++) {
       for (let j = i + 1; j < cards.length; j++) {
@@ -243,5 +333,249 @@ describe.each(PHONES)("the table at $name", (phone) => {
         expect(overlaps(labels[i]!, labels[j]!)).toBe(false);
       }
     }
+  });
+});
+
+// #3720: each hand's stake is a chip (decorative) beside its amount, in place of the "●" text.
+// The widest row labels are a 4-hand split's, at 375×667.
+describe("the stake at 375×667 with 4 split hands in play", () => {
+  it("is a chip beside the amount, which shrinks to fit; the labels stay on the felt, apart", async () => {
+    mockWindow.width = 375;
+    mockWindow.height = 667;
+    const two = (r: string) => [c(r), c("9", "♥")];
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...base(),
+      phase: "player",
+      bet: 25,
+      chips: 140,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("6", "♦"), c("10", "♣")],
+      split_count: 3,
+      player_hands: [two("8"), two("8"), two("8"), two("8")],
+      hand_bets: [25, 25, 25, 25],
+      hand_outcomes: [null, null, null, null],
+      hand_payouts: [0, 0, 0, 0],
+      split_from_aces: [false, false, false, false],
+      active_hand_index: 2,
+    } as EngineState);
+    await render(
+      <ThemeProvider>
+        <BlackjackGameProvider>
+          <BlackjackTableScreen
+            navigation={
+              {
+                navigate: jest.fn(),
+                replace: jest.fn(),
+                popToTop: jest.fn(),
+                goBack: jest.fn(),
+              } as never
+            }
+          />
+        </BlackjackGameProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryAllByText(/●/)).toHaveLength(0);
+    const bets = screen.getAllByTestId("hand-bet");
+    expect(bets.map((b) => b.props.children)).toEqual([25, 25, 25, 25]);
+    for (const b of bets) {
+      expect(b.props.numberOfLines).toBe(1);
+      expect(b.props.adjustsFontSizeToFit).toBe(true);
+    }
+    // The chip is decorative: hidden from screen readers; the label still says the bet.
+    const chips = screen.getAllByTestId("hand-stake-chip", { includeHiddenElements: true });
+    expect(chips).toHaveLength(4);
+    for (const chip of chips) expect(chip.props.accessibilityElementsHidden).toBe(true);
+    expect(screen.getByLabelText(/^Hand 1, Player score 17, Bet 25 chips$/)).toBeTruthy();
+    // The labels stay on the felt and apart (their rects come from the geometry, unchanged).
+    const labels = screen.getAllByTestId(/^hand-label-\d$/).map((n) => boxOf(n.props.testID));
+    const inner = estimateFeltSize({
+      screenWidth: 375,
+      screenHeight: 667,
+      insetTop: 0,
+      insetBottom: 0,
+      headerHeight: APP_HEADER_HEIGHT,
+    });
+    for (const l of labels) {
+      expect(l.x).toBeGreaterThanOrEqual(0);
+      expect(l.x + l.width).toBeLessThanOrEqual(inner.width + 0.001);
+    }
+    for (let i = 0; i < labels.length; i++) {
+      for (let j = i + 1; j < labels.length; j++) {
+        expect(overlaps(labels[i]!, labels[j]!)).toBe(false);
+      }
+    }
+  });
+});
+
+// #3781: a 3–4 hand split's banner was cut ("Won: 2 · Los… +2…" at 320×568; at 375×667 too in
+// de/es/fr/nl/pt/ru). It shows the net payout alone; the screen reader still hears it all.
+describe("the split result banner", () => {
+  const OUTS = ["win", "push", "lose", "win"] as const;
+  const PAYS = [25, 0, -25, 25];
+  function split(n: number): EngineState {
+    const hands = [
+      [c("8"), c("A"), c("2", "♦"), c("K", "♥")],
+      [c("8", "♥"), c("9", "♣")],
+      [c("8", "♦"), c("4"), c("K", "♣")],
+      [c("8", "♣"), c("Q", "♦")],
+    ].slice(0, n);
+    return {
+      ...base(),
+      phase: "result",
+      bet: 25,
+      outcome: "win",
+      payout: PAYS.slice(0, n).reduce((a, b) => a + b, 0),
+      chips: 150,
+      player_hand: [c("8"), c("8", "♥")],
+      dealer_hand: [c("7", "♥"), c("10", "♣")],
+      split_count: n - 1,
+      player_hands: hands,
+      hand_bets: hands.map(() => 25),
+      hand_outcomes: [...OUTS.slice(0, n)],
+      hand_payouts: PAYS.slice(0, n),
+      split_from_aces: hands.map(() => false),
+      active_hand_index: n,
+    } as EngineState;
+  }
+  async function renderAt(width: number, height: number, state: EngineState) {
+    mockWindow.width = width;
+    mockWindow.height = height;
+    (loadGame as jest.Mock).mockResolvedValue(state);
+    await render(
+      <ThemeProvider>
+        <BlackjackGameProvider>
+          <BlackjackTableScreen
+            navigation={
+              {
+                navigate: jest.fn(),
+                replace: jest.fn(),
+                popToTop: jest.fn(),
+                goBack: jest.fn(),
+              } as never
+            }
+          />
+        </BlackjackGameProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const inner = estimateFeltSize({
+      screenWidth: width,
+      screenHeight: height,
+      insetTop: 0,
+      insetBottom: 0,
+      headerHeight: APP_HEADER_HEIGHT,
+    });
+    await act(async () => {
+      fireEvent(screen.getByTestId("blackjack-felt"), "layout", {
+        nativeEvent: {
+          layout: {
+            x: 0,
+            y: 0,
+            width: inner.width + 2 * FELT_BORDER,
+            height: inner.height + 2 * FELT_BORDER,
+          },
+        },
+      });
+    });
+  }
+
+  const SIZES = [
+    { name: "320×568", width: 320, height: 568 },
+    { name: "375×667", width: 375, height: 667 },
+    { name: "390×844", width: 390, height: 844 },
+    { name: "430×932", width: 430, height: 932 },
+  ];
+  const NET_ONLY = SIZES.flatMap((s) => [
+    {
+      ...s,
+      n: 4,
+      summary: "Won: 2 · Lost: 1 · Push: 1",
+      outcome: "You Win!",
+      net: "+25 chips",
+      amount: 25,
+    },
+    {
+      ...s,
+      n: 3,
+      summary: "Won: 1 · Lost: 1 · Push: 1",
+      outcome: "Push",
+      net: "No change",
+      amount: 0,
+    },
+  ]);
+
+  // Owner decision (#3781): 3–4 hands show the net alone at every size, not only beside a
+  // collapsed dealer; each hand's row or cell shows its own tag and payout.
+  it.each(NET_ONLY)(
+    "at $name with $n hands, shows the net payout alone and reads the whole result",
+    async ({ width, height, n, summary, outcome, net, amount }) => {
+      await renderAt(width, height, split(n));
+      expect(screen.getByTestId("result-net").props.children).toBe(net);
+      expect(screen.queryByText(summary)).toBeNull();
+      expect(screen.queryByTestId("result-outcome")).toBeNull();
+      // The whole result is still read out.
+      expect(
+        screen.getByLabelText(
+          `${outcome}${outcome.endsWith("!") ? "" : "."} ${summary}. Payout: ${amount} chips`
+        )
+      ).toBeTruthy();
+      // Each hand still shows its own payout.
+      expect(screen.getAllByTestId("hand-payout")).toHaveLength(n);
+    }
+  );
+
+  // Owner decision (#3784): a 2-hand split shows the net alone too, at every size (it was the
+  // summary beside the payout: at 320×568 that spilled past the felt in de, es, fr-CA, nl, pt and
+  // ru, the detail line fell below the band in ja, ko and zh, and at 375 and 390 a high-stakes line
+  // was still wider than the band). Each hand's label shows its own tag and payout.
+  describe.each(SIZES)("at $name with 2 hands", ({ width, height }) => {
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+    });
+
+    it("shows the net payout alone and reads the whole result", async () => {
+      await renderAt(width, height, split(2));
+      expect(screen.getByTestId("result-net").props.children).toBe("+25 chips");
+      expect(screen.queryByTestId("result-outcome")).toBeNull();
+      expect(screen.queryByText("Won: 1 · Push: 1")).toBeNull();
+      expect(screen.getByLabelText("You Win! Won: 1 · Push: 1. Payout: 25 chips")).toBeTruthy();
+      // The detail line still shows under it, and each hand its own payout.
+      expect(screen.getByTestId("result-detail").props.children).toBe("Dealer has 17");
+      expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
+        "+25",
+        "0",
+      ]);
+    });
+
+    it("in Russian (the widest locale) too", async () => {
+      i18n.addResourceBundle("ru", "blackjack", RuBlackjack, true, true);
+      await i18n.changeLanguage("ru");
+      await renderAt(width, height, split(2));
+      expect(screen.getByTestId("result-net").props.children).toBe("+25 фишек");
+      expect(screen.queryByTestId("result-outcome")).toBeNull();
+      expect(screen.queryByText("Победы: 1 · Ничьи: 1")).toBeNull();
+      expect(screen.getByLabelText("Победа! Победы: 1 · Ничьи: 1. Выплата: 25 фишек")).toBeTruthy();
+    });
+  });
+
+  // A single hand is not a split: its banner keeps the outcome beside the payout.
+  it.each(SIZES)("at $name a single hand keeps the outcome beside the payout", async (s) => {
+    await renderAt(s.width, s.height, {
+      ...base(),
+      phase: "result",
+      bet: 25,
+      outcome: "win",
+      payout: 25,
+      player_hand: [c("10"), c("9", "♥")],
+      dealer_hand: [c("7", "♥"), c("10", "♣")],
+    });
+    expect(screen.getByTestId("result-outcome").props.children).toBe("You Win!");
+    expect(screen.getByLabelText("Payout: 25 chips")).toBeTruthy();
+    expect(screen.queryByTestId("result-net")).toBeNull();
   });
 });

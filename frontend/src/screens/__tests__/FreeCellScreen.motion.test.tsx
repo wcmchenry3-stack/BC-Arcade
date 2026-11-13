@@ -70,27 +70,6 @@ jest.mock("../../game/_shared/useLoopSound", () => ({
     stop: () => mockLog.push({ name: `stop:${name}`, at: Date.now() }),
   }),
 }));
-// The foundation effect (#3567): each time it is shown, logged, and ended at once.
-jest.mock("../../components/freecell/FreeCellFoundationAnimation", () => {
-  const { useEffect } = jest.requireActual("react");
-  return {
-    FreeCellFoundationAnimation: ({
-      visible,
-      onAnimationEnd,
-    }: {
-      visible: boolean;
-      onAnimationEnd: () => void;
-    }) => {
-      useEffect(() => {
-        if (!visible) return;
-        mockLog.push({ name: "foundationEffect", at: Date.now() });
-        onAnimationEnd();
-      }, [visible, onAnimationEnd]);
-      return null;
-    },
-  };
-});
-
 const mockDrops = createDropSink();
 jest.mock("../../game/_shared/drag/DropTarget", () =>
   mockScreenDeps().mockDropTarget(() => mockDrops)
@@ -183,6 +162,17 @@ async function move(api: Api, from: string, to: string): Promise<number> {
   return at;
 }
 
+/**
+ * A move that makes the board auto-completable, then a tap on the Auto-Complete button
+ * (#3566: no run starts by itself); returns the time of both. The run's first card is one
+ * step (120 ms) away.
+ */
+async function moveThenAutoComplete(api: Api, from: string, to: string): Promise<number> {
+  const at = await move(api, from, to);
+  await press(api, "Auto-Complete");
+  return at;
+}
+
 async function advance(ms: number) {
   await act(async () => {
     jest.advanceTimersByTime(ms);
@@ -227,7 +217,6 @@ const WIN = "freecell.gameWin";
 const SETTLE = "freecell.autoCompleteSettle";
 const RIFFLE_START = "freecell.autoCompleteStart";
 const LOOP_STOP = "stop:freecell.autoCompleteLoop";
-const EFFECT = "foundationEffect";
 
 const flying = (api: Api, key: string) =>
   api.queryByTestId(`card-flight-${key}`, HIDDEN_TOO) !== null;
@@ -506,32 +495,38 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(api.getByLabelText("Moves: 2")).toBeTruthy();
   });
 
-  it("Auto-Complete: the first card waits for the trigger's landing; the riffle starts with it", async () => {
+  it("Auto-Complete: no run starts by itself after the move; the button's first card goes one step after the tap (#3566)", async () => {
     const api = await mountOn(blockedKing());
     const t = await move(api, "K of Spades", "Empty free cell 1");
-    expect(playedAt(RIFFLE_START, t)).toEqual([]);
-    await advance(199);
+    // The move made the board auto-completable: the button is offered, nothing runs.
+    await advance(2000);
+    expect(api.getByLabelText("Auto-Complete")).toBeTruthy();
     expect(flying(api, "spades-12")).toBe(false);
     expect(playedAt(RIFFLE_START, t)).toEqual([]);
+    const tap = Date.now();
+    await press(api, "Auto-Complete");
+    await advance(119);
+    expect(flying(api, "spades-12")).toBe(false);
+    expect(playedAt(RIFFLE_START, tap)).toEqual([]);
     await advance(1);
-    // The trigger lands at 200: the Q♠ goes up, and the riffle starts with it.
+    // One step after the tap: the Q♠ goes up, and the riffle starts with it.
     expect(flying(api, "spades-12")).toBe(true);
-    expect(playedAt(RIFFLE_START, t)).toEqual([200]);
+    expect(playedAt(RIFFLE_START, tap)).toEqual([120]);
     expect(playedAt(PLACE, t)).toEqual([160]);
   });
 
   it("Auto-Complete: the riffle holds to the last landing; the settle and the win follow it; then the result", async () => {
     const api = await mountOn(blockedKing());
-    const t = await move(api, "K of Spades", "Empty free cell 1");
-    // Steps at 200 (Q♠) and 320 (K♠, the win); the K♠ lands at 320 + 220 = 540.
-    await advance(462);
+    const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
+    // Steps at 120 (Q♠) and 240 (K♠, the win); the K♠ lands at 240 + 220 = 460.
+    await advance(382);
     expect(playedAt(LOOP_STOP, t)).toEqual([]);
     expect(playedAt(WIN, t)).toEqual([]);
     await advance(1);
-    // The settle's 77 ms peak lands on the last contact: it starts at 463, with the win.
-    expect(playedAt(LOOP_STOP, t)).toEqual([463]);
-    expect(playedAt(SETTLE, t)).toEqual([463]);
-    expect(playedAt(WIN, t)).toEqual([463]);
+    // The settle's 77 ms peak lands on the last contact: it starts at 383, with the win.
+    expect(playedAt(LOOP_STOP, t)).toEqual([383]);
+    expect(playedAt(SETTLE, t)).toEqual([383]);
+    expect(playedAt(WIN, t)).toEqual([383]);
     // The result (its celebration first) waits for the last landing.
     await advance(76);
     expect(resultShown(api)).toBe(false);
@@ -539,50 +534,13 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(resultShown(api)).toBe(true);
     // The run's own cards stay quiet; the trigger keeps its card place.
     expect(playedAt(PLACE, t)).toEqual([160]);
-    // The suit it completed: one foundation effect, on the last landing.
-    expect(playedAt(EFFECT, t)).toEqual([540]);
-  });
-
-  it("Auto-Complete completing two suits: one foundation effect, after the last landing", async () => {
-    const api = await mountOn(blockedKing(true));
-    const t = await move(api, "K of Spades", "Empty free cell 1");
-    // Steps at 200 (Q♠), 320 (K♠: spades complete) and 440 (K♥: hearts, the win), landing 660.
-    await advance(659);
-    expect(playedAt(EFFECT, t)).toEqual([]);
-    await advance(1);
-    expect(playedAt(EFFECT, t)).toEqual([660]);
-    await advance(1000);
-    expect(playedAt(EFFECT, t)).toEqual([660]);
-  });
-
-  it("a suit completed by hand shows its effect on the card's own landing", async () => {
-    // Spades A to Q home; the K♠ alone in column 1, with a black 8 blocking the board's finish.
-    const api = await mountOn(
-      boardState([[c("spades", 13)], [c("clubs", 8), c("hearts", 7)]], {
-        foundations: {
-          spades: upTo("spades", 12),
-          hearts: upTo("hearts", 6),
-          diamonds: upTo("diamonds", 13),
-          clubs: upTo("clubs", 7),
-        },
-        freeCells: [c("hearts", 8), c("hearts", 9), null, null],
-      })
-    );
-    const t = Date.now();
-    // A double-tap sends the K♠ home.
-    await press(api, "K of Spades");
-    await press(api, "K of Spades (selected)");
-    await advance(199);
-    expect(playedAt(EFFECT, t)).toEqual([]);
-    await advance(1);
-    expect(playedAt(EFFECT, t)).toEqual([200]);
   });
 
   it("during the win hold the board is still: no selection, no sound, no drag, no Undo", async () => {
     const api = await mountOn(blockedKing());
-    await move(api, "K of Spades", "Empty free cell 1");
-    // The win step is at 320; its card is in the air until 540.
-    await advance(400);
+    await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
+    // The win step is at 240; its card is in the air until 460.
+    await advance(320);
     mockLog.length = 0;
     expect(resultShown(api)).toBe(false);
     // A tap and a double-tap on the foundation's top card (the K♠, still landing).
@@ -619,8 +577,8 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
 
   it("New Game during the win hold: no settle, no win sound, no result card", async () => {
     const api = await mountOn(blockedKing());
-    const t = await move(api, "K of Spades", "Empty free cell 1");
-    await advance(400);
+    const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
+    await advance(320); // in the win hold: the win step at 240, its landing at 460
     await newGameFromMenu(api);
     expect(inFlight(api)).toEqual([]);
     await advance(3000);
@@ -641,15 +599,14 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
 
   it("unmounting during the win hold plays nothing more", async () => {
     const api = await mountOn(blockedKing());
-    const t = await move(api, "K of Spades", "Empty free cell 1");
-    await advance(400);
+    const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
+    await advance(320); // in the win hold: the win step at 240, its landing at 460
     await act(async () => {
       await api.unmount();
     });
     await advance(1000);
     expect(playedAt(SETTLE, t)).toEqual([]);
     expect(playedAt(WIN, t)).toEqual([]);
-    expect(playedAt(EFFECT, t)).toEqual([]);
   });
 
   it("leaving the game mid-flight lands every card and drops the cues", async () => {
@@ -666,8 +623,8 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
 
   it("leaving during the win hold: the riffle stops without its settle or the win sound", async () => {
     const api = await mountOn(blockedKing());
-    const t = await move(api, "K of Spades", "Empty free cell 1");
-    await advance(400);
+    const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
+    await advance(320); // in the win hold: the win step at 240, its landing at 460
     await act(async () => {
       mockNavListeners.get("blur")?.forEach((h) => h());
     });
@@ -788,9 +745,10 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
   });
   it("Reduce Motion turned on mid-Auto-Complete: the run's later cards land at once (#3712 review)", async () => {
     const api = await mountOn(blockedKing(true));
-    const t = await move(api, "K of Spades", "Empty free cell 1");
-    // Steps at 200 (Q♠), 320 (K♠) and 440 (K♥, the win).
-    await advance(250);
+    const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
+    // Steps at 120 (Q♠), 240 (K♠) and 360 (K♥, the win). The toggle comes while Q♠ flies,
+    // before K♠'s and K♥'s steps, so both of those are queued after it (#3831 review).
+    await advance(170);
     expect(flying(api, "spades-12")).toBe(true);
     await act(async () => {
       reduceMotionListeners.forEach((h) => h(true));
@@ -803,7 +761,7 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     await advance(120);
     expect(inFlight(api)).toEqual([]);
     // The win lands at its step, not at a flight's contact.
-    expect(playedAt(WIN, t)).toEqual([440]);
+    expect(playedAt(WIN, t)).toEqual([360]);
   });
 });
 
@@ -821,13 +779,13 @@ describe("when a flight's end callback is lost (the default Reanimated mock drop
 
   it("the backstop releases the win (its celebration, then the result card)", async () => {
     const api = await mountOn(blockedKing());
-    const t = await move(api, "K of Spades", "Empty free cell 1");
-    // The win step's flight would land at 540; its backstop is 250 ms later.
-    await advance(789);
+    const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
+    // The win step's flight would land at 460; its backstop is 250 ms later.
+    await advance(709);
     expect(resultShown(api)).toBe(false);
     await advance(1);
     expect(resultShown(api)).toBe(true);
-    expect(playedAt(WIN, t)).toEqual([463]);
+    expect(playedAt(WIN, t)).toEqual([383]);
   });
 });
 
@@ -847,14 +805,13 @@ describe("with Reduce Motion", () => {
   it("Auto-Complete keeps its pace, the riffle starting with the run, and the result shows at the win", async () => {
     const api = await mountOn(blockedKing());
     await act(async () => {});
-    const t = await move(api, "K of Spades", "Empty free cell 1");
+    const t = await moveThenAutoComplete(api, "K of Spades", "Empty free cell 1");
     expect(playedAt(RIFFLE_START, t)).toEqual([0]);
     expect(playedAt(PLACE, t)).toEqual([0]);
     await advance(240);
     expect(inFlight(api)).toEqual([]);
     expect(playedAt(SETTLE, t)).toEqual([240]);
     expect(playedAt(WIN, t)).toEqual([240]);
-    expect(playedAt(EFFECT, t)).toEqual([240]);
     expect(resultShown(api)).toBe(true);
   });
 });

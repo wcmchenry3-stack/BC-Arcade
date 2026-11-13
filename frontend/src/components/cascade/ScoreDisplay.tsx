@@ -44,7 +44,11 @@ function ScoreDisplay({ score: scoreProp = 0, store, children }: Props) {
   }, [score, scale, reduceMotion]);
 
   return (
+    // testID: the Maestro Cascade demo waits on this view's accessibility label
+    // ("Score: N") to see a merge score points (#3705). The number Text below
+    // is hidden from accessibility, so Maestro may not see it on Android.
     <View
+      testID="cascade-score"
       style={styles.container}
       accessibilityLiveRegion="polite"
       accessibilityLabel={t("score.display", { score: formatNumber(t, score) })}
@@ -52,7 +56,7 @@ function ScoreDisplay({ score: scoreProp = 0, store, children }: Props) {
       <View style={styles.scoreSection}>
         <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.label")}</Text>
         <Animated.Text
-          style={[styles.score, { color: colors.accent, transform: [{ scale }] }]}
+          style={[styles.score, { color: colors.accentText, transform: [{ scale }] }]}
           importantForAccessibility="no"
         >
           {formatNumber(t, score)}

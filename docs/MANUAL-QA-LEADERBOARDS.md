@@ -89,4 +89,4 @@ Open each game's ⋯ menu and check its items.
 
 ## Known issues (not blockers for v1.0)
 
-- **Sort levels** differ per player, so players on the same level rank by who got there first, not by moves (#2746).
+- **Sort levels** are a fixed catalog, the same for everyone (#2761), so players on the same level rank by fewer total moves, then by who got there first. Solves from app builds before the catalog never rank.

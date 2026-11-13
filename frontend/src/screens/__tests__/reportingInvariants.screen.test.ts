@@ -144,13 +144,19 @@ function nearlyWon(spadesDone: number): FreeCellState {
   };
 }
 
-/** Loads a board `steps` auto-complete moves from a win and plays one move. */
+/**
+ * Loads a board `steps` auto-complete moves from a win, taps Auto-Complete (FreeCell offers it as
+ * a button and never starts it by itself, #3566) and plays one move.
+ */
 async function playFreeCell(steps: number) {
   (loadFreeCell as jest.Mock).mockResolvedValue(nearlyWon(13 - steps));
   const r = await render(
     React.createElement(ThemeProvider, null, React.createElement(FreeCellScreen))
   );
   await waitFor(() => r.getByLabelText("Hint"));
+  await act(async () => {
+    await fireEvent.press(r.getByLabelText("Auto-Complete"));
+  });
   await act(async () => {
     jest.advanceTimersByTime(AUTO_STEP_MS);
   });

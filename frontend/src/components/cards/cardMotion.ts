@@ -10,6 +10,9 @@
  * table's geometry, never from a measurement: a planner compares the card slots before and
  * after the action. See docs/games/solitaire.md and docs/games/freecell.md (Motion and sound
  * timing) and the design log, docs/games/arcade-sound-design.md.
+ *
+ * Blackjack (#3581) plans whole timelines instead (`components/blackjack/blackjackMotion.ts`) and
+ * uses only the shared parts that fit: `FLIGHT_BACKSTOP_MS`, `cubicBezier` and the cue clock.
  */
 import type { PlayingCard } from "../../game/_shared/cards/types";
 import type { PileCard } from "./pileTypes";
@@ -68,6 +71,37 @@ export function easeOutCubic(p: number): number {
   "worklet";
   const q = 1 - p;
   return 1 - q * q * q;
+}
+
+/**
+ * A CSS `cubic-bezier(x1, y1, x2, y2)` easing (Blackjack's deal, #3581), as a worklet: the flight
+ * eases on the UI thread, and JS works out where a card is shown from the same curve (a re-target
+ * starts from there, with no UI-thread read). `x1` and `x2` must lie in [0, 1], as in CSS.
+ */
+export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (p: number) => number {
+  return (p: number): number => {
+    "worklet";
+    if (p <= 0) return 0;
+    if (p >= 1) return 1;
+    const cx = 3 * x1;
+    const bx = 3 * (x2 - x1) - cx;
+    const ax = 1 - cx - bx;
+    const cy = 3 * y1;
+    const by = 3 * (y2 - y1) - cy;
+    const ay = 1 - cy - by;
+    // x(t) rises from 0 to 1 over t in [0, 1], so bisection always finds the t for this p.
+    let lo = 0;
+    let hi = 1;
+    let t = p;
+    for (let i = 0; i < 24; i++) {
+      const x = ((ax * t + bx) * t + cx) * t;
+      if (Math.abs(x - p) < 1e-6) break;
+      if (x < p) lo = t;
+      else hi = t;
+      t = (lo + hi) / 2;
+    }
+    return ((ay * t + by) * t + cy) * t;
+  };
 }
 
 // ── Flights ───────────────────────────────────────────────────────────────────
@@ -245,7 +279,7 @@ export interface CueTimes {
   readonly fan: number;
   /** The riffle's settle (and the win; the recycle's settle): its peak on the last contact. */
   readonly settle: number;
-  /** The last contact itself: the foundation effect. */
+  /** The last contact itself: FreeCell's no-moves cue, and the wait before Auto-Complete's first step. */
   readonly landed: number;
 }
 

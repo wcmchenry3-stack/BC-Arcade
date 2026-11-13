@@ -7,7 +7,6 @@
   "hud.undos": "Deshacer: {{undos}}",
   "action.undo": "Deshacer",
   "action.hint": "Pista",
-  "action.colorblindToggle": "Modo Daltónico",
   "action.backToLevels": "Volver a los niveles",
   "color.red": "Rojo",
   "color.blue": "Azul",
@@ -28,6 +27,7 @@
   "a11y.bottleSelected": "Botella {{index}} seleccionada — toca otra botella para verter",
   "a11y.bottleEmpty": "Botella {{index}}, vacía",
   "a11y.bottleSolved": "Botella {{index}}, completa",
+  "a11y.hintDestination": "Pista: vierte aquí",
   "settings.colorblindMode": "Modo Daltónico",
   "settings.colorblindModeHint": "Muestra un símbolo en cada bola además del color",
   "error.loadFailed": "No se pudo cargar este nivel.",
@@ -40,5 +40,9 @@
   "hint.unknown": "No se encontró una pista",
   "hint.backToLastGoodMove": "Volver a la última buena jugada",
   "hint.restartLevel": "Reiniciar nivel",
-  "hint.dismiss": "Cerrar"
+  "hint.dismiss": "Cerrar",
+  "levelSelect.chapter": "Capítulo {{chapter}}",
+  "levelSelect.levelStars": "Nivel {{level}}, {{stars}} de 3 estrellas",
+  "stars.summary": "{{stars}} de 3 estrellas. Movimientos {{moves}}, objetivo {{par}}.",
+  "stars.movesTarget": "Movimientos {{moves}} · Objetivo {{par}}"
 }

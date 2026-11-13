@@ -112,11 +112,14 @@ describe("Blackjack dev presets (#3576)", () => {
 
   it("6-card 21: player ends with 6 cards totalling 21", () => {
     let s = placeBet(stacked("6-card 21"), 10);
-    for (let i = 0; i < 4; i++) s = hit(s);
+    for (let i = 0; i < 3; i++) s = hit(s);
     expect(s.phase).toBe("player");
+    // The fourth hit makes 21, which stands on its own (#3764).
+    s = hit(s);
     expect(s.player_hand).toHaveLength(6);
     expect(handValue(s.player_hand)).toBe(21);
-    expect(stand(s).outcome).toBe("win");
+    expect(s.phase).toBe("result");
+    expect(s.outcome).toBe("win");
   });
 
   it("Player natural: settles as blackjack at the deal", () => {
@@ -125,11 +128,12 @@ describe("Blackjack dev presets (#3576)", () => {
     expect(s.outcome).toBe("blackjack");
   });
 
-  it("Dealer natural: dealer holds 21 in two cards and beats 19", () => {
+  it("Dealer natural: dealer holds 21 in two cards, peeks, and beats 19 at the deal (#3741)", () => {
     const dealt = placeBet(stacked("Dealer natural"), 10);
     expect(handValue(dealt.dealer_hand)).toBe(21);
     expect(handValue(dealt.player_hand)).toBe(19);
-    expect(stand(dealt).outcome).toBe("lose");
+    expect(dealt.phase).toBe("result");
+    expect(dealt.outcome).toBe("lose");
   });
 
   it("Dealer draws 4 and busts: dealer ends over 21 after four draws", () => {

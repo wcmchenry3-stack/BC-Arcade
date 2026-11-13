@@ -7,7 +7,6 @@
   "hud.undos": "Desfeitas: {{undos}}",
   "action.undo": "Desfazer",
   "action.hint": "Dica",
-  "action.colorblindToggle": "Modo Daltônico",
   "action.backToLevels": "Voltar aos níveis",
   "color.red": "Vermelho",
   "color.blue": "Azul",
@@ -28,6 +27,7 @@
   "a11y.bottleSelected": "Garrafa {{index}} selecionada — toque em outra garrafa para despejar",
   "a11y.bottleEmpty": "Garrafa {{index}}, vazia",
   "a11y.bottleSolved": "Garrafa {{index}}, completa",
+  "a11y.hintDestination": "Dica: despeje aqui",
   "settings.colorblindMode": "Modo Daltônico",
   "settings.colorblindModeHint": "Mostra um símbolo em cada bola além da cor",
   "error.loadFailed": "Não foi possível carregar este nível.",
@@ -40,5 +40,9 @@
   "hint.unknown": "Não foi possível encontrar uma dica",
   "hint.backToLastGoodMove": "Voltar à última boa jogada",
   "hint.restartLevel": "Reiniciar nível",
-  "hint.dismiss": "Fechar"
+  "hint.dismiss": "Fechar",
+  "levelSelect.chapter": "Capítulo {{chapter}}",
+  "levelSelect.levelStars": "Nível {{level}}, {{stars}} de 3 estrelas",
+  "stars.summary": "{{stars}} de 3 estrelas. Movimentos {{moves}}, meta {{par}}.",
+  "stars.movesTarget": "Movimentos {{moves}} · Meta {{par}}"
 }

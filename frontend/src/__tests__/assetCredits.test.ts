@@ -55,18 +55,8 @@ describe("Star Swarm asset credits (#2492)", () => {
     const missing = fs
       .readdirSync(SOUNDS)
       .filter((f) => f.startsWith("starswarm-"))
-      .filter((f) => {
-        const bg = /^starswarm-bg-(\d)\.mp3$/.exec(f);
-        if (bg) {
-          // the four BGM tracks share one heading: `starswarm-bg-1.mp3 — starswarm-bg-4.mp3`
-          return !(
-            credits.includes("starswarm-bg-1.mp3 — starswarm-bg-4.mp3") &&
-            Number(bg[1]) >= 1 &&
-            Number(bg[1]) <= 4
-          );
-        }
-        return !credits.includes(f);
-      });
+      // #3638: the music is one file (starswarm-bgm.mp3) with its own entry, like every sound
+      .filter((f) => !credits.includes(f));
     expect(missing).toEqual([]);
   });
 
@@ -129,13 +119,8 @@ const ARCADE_GAMES = [
   "sort",
   "daily_word",
 ];
-// No credits entry yet (ASSET-RIGHTS-AUDIT.md U5); #3563 replaces these with synthesized sounds.
-const UNCREDITED_PENDING_3563 = [
-  "blackjack-bust.ogg",
-  "blackjack-card-deal.ogg",
-  "blackjack-push.ogg",
-  "blackjack-win.ogg",
-];
+// Blackjack's last uncredited files (ASSET-RIGHTS-AUDIT.md U5) were retired with #3581: every
+// file the registries use now has an entry, with no exceptions.
 
 describe("card and puzzle game sound credits (#3563)", () => {
   const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
@@ -156,9 +141,7 @@ describe("card and puzzle game sound credits (#3563)", () => {
 
   it("every file the registries use has an entry in SOUND_CREDITS.md", () => {
     expect(files.length).toBeGreaterThan(20);
-    const missing = files.filter(
-      (f) => section(f) === null && !UNCREDITED_PENDING_3563.includes(f)
-    );
+    const missing = files.filter((f) => section(f) === null);
     expect(missing).toEqual([]);
   });
 
@@ -230,6 +213,39 @@ describe("puzzle, tile and dice game sound credits (#3578)", () => {
         "tile-spawn-3.ogg",
         "win-2048.ogg",
         "game-over-2048.ogg",
+        "yacht-win.ogg",
+        "yacht-loss.ogg",
+        "yacht-tie.ogg",
+        // Sort, "glass and water" (#3661)
+        "sort-select-1.ogg",
+        "sort-select-2.ogg",
+        "sort-select-3.ogg",
+        "sort-pour-lift-1.ogg",
+        "sort-pour-lift-2.ogg",
+        "sort-pour-lift-3.ogg",
+        "sort-pour-stream-1u-1.ogg",
+        "sort-pour-stream-1u-2.ogg",
+        "sort-pour-stream-1u-3.ogg",
+        "sort-pour-stream-2u-1.ogg",
+        "sort-pour-stream-2u-2.ogg",
+        "sort-pour-stream-2u-3.ogg",
+        "sort-pour-stream-3u-1.ogg",
+        "sort-pour-stream-3u-2.ogg",
+        "sort-pour-stream-3u-3.ogg",
+        "sort-pour-stream-4u-1.ogg",
+        "sort-pour-stream-4u-2.ogg",
+        "sort-pour-stream-4u-3.ogg",
+        "sort-refused.ogg",
+        "sort-complete.ogg",
+        "sort-undo.ogg",
+        "sort-hint.ogg",
+        "sort-win.ogg",
+        "sudoku-digit-place.ogg",
+        "sudoku-digit-place-2.ogg",
+        "sudoku-digit-place-3.ogg",
+        "sudoku-error-entered.ogg",
+        "sudoku-unit-complete.ogg",
+        "sudoku-puzzle-complete.ogg",
       ])
     );
     expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);

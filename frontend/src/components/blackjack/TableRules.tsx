@@ -1,6 +1,7 @@
 /**
  * TableRules — the "Table Rules" toggle on the felt while betting, and the
- * rules (dealer soft 17, decks, penetration) in a scrollable bottom sheet
+ * rules (dealer soft 17, decks, penetration, and the fixed standard rules,
+ * #3741) in a scrollable bottom sheet
  * (#3580; formerly part of BettingPanel). Collapsed, it is one line at the
  * felt's foot; opened, the sheet scrolls, so every rule and tooltip is
  * reachable on the shortest screens and nothing on the felt is covered.
@@ -19,7 +20,7 @@ import {
   PENETRATION_MIN,
   PENETRATION_STEP,
 } from "../../game/blackjack/constants";
-import RuleRow from "./RuleRow";
+import RuleRow, { ruleRowStyles } from "./RuleRow";
 import Stepper from "./Stepper";
 
 interface Props {
@@ -178,6 +179,16 @@ export default function TableRules({ rules, onRulesChange }: Props) {
                   incrementLabel={t("rules.increasePenetrationLabel")}
                 />
               </RuleRow>
+
+              {/* The rules every table plays by, not adjustable (#3741: standard rules). */}
+              <View testID="blackjack-rules-standard" accessible style={ruleRowStyles.section}>
+                <Text style={[ruleRowStyles.label, { color: colors.text }]}>
+                  {t("rules.standardTitle")}
+                </Text>
+                <Text style={[ruleRowStyles.tooltip, { color: colors.textMuted }]}>
+                  {t("rules.standard")}
+                </Text>
+              </View>
             </ScrollView>
           </View>
         </View>

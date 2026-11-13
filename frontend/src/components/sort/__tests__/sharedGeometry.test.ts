@@ -45,8 +45,9 @@ describe("board padding", () => {
 
   it("SortScreen's container and height math use the shared constant; SortBoard defines none", () => {
     const screen = read("../../../screens/SortScreen.tsx");
-    expect(screen).toMatch(/boardContainer: \{[^}]*padding: BOARD_PADDING,/s);
-    expect(screen).toContain("boardHeight - 2 * BOARD_PADDING");
+    expect(screen).toMatch(/boardContainer: \{[^}]*paddingHorizontal: BOARD_PADDING,/s);
+    expect(screen).toMatch(/boardContainer: \{[^}]*paddingVertical: BOARD_VERTICAL_PADDING,/s);
+    expect(screen).toContain("boardHeight - 2 * BOARD_VERTICAL_PADDING");
     expect(screen).not.toMatch(/const BOARD_PADDING\s*=/);
     expect(read("../SortBoard.tsx")).not.toMatch(/const BOARD_HORIZONTAL_PAD\s*=/);
   });

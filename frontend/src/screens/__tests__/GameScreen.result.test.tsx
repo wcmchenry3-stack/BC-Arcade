@@ -6,6 +6,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
 import { newGame } from "../../game/yacht/engine";
+import { JACKPOT_WAIT_MAX_MS, WIN_BEAT_MS, inputLockMaxMs } from "../../game/yacht/motion";
 import * as storage from "../../game/yacht/storage";
 import { gameEventClient } from "../../game/_shared/gameEventClient";
 import {
@@ -140,8 +141,19 @@ async function playLastTurn(r: Rendered, categoryLabel: RegExp) {
   await act(async () => {
     await fireEvent.press(r.getByRole("button", { name: /^Roll/i }));
   });
+  // Input is locked until the dice land (#3749).
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(inputLockMaxMs(5));
+  });
   await act(async () => {
     await fireEvent.press(r.getAllByRole("button", { name: categoryLabel })[0]!);
+  });
+}
+
+/** A solo game's card waits for its end beat, after the YACHT! celebration (#3749). */
+async function finishEndBeat() {
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(JACKPOT_WAIT_MAX_MS + WIN_BEAT_MS);
   });
 }
 
@@ -281,6 +293,7 @@ describe("Yacht play time between games (#2710)", () => {
     const r = await renderSolo("yacht");
     clock.advanceForegroundNow(10_000);
     await playLastTurn(r, /^Yacht/i);
+    await finishEndBeat();
     await settle();
     clock.advanceForegroundNow(3 * 60_000); // on the result card
     await act(async () => {
@@ -502,6 +515,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
     await storeAssignedDisplayName("Riley");
     const r = await renderSolo("yacht");
     await playLastTurn(r, /^Yacht/i);
+    await finishEndBeat();
     await settle();
 
     expect(mockGetRank).toHaveBeenCalledWith("yacht-game-id");
@@ -530,6 +544,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
   it("without a display name the card asks for one", async () => {
     const r = await renderSolo("yacht");
     await playLastTurn(r, /^Yacht/i);
+    await finishEndBeat();
     await settle();
 
     expect(mockGetRank).not.toHaveBeenCalled();
@@ -546,6 +561,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
     });
     const r = await renderSolo("yacht");
     await playLastTurn(r, /^Yacht/i);
+    await finishEndBeat();
     await settle();
 
     expect(mockGetRank).toHaveBeenCalled();
@@ -591,6 +607,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
     await storeAssignedDisplayName("Riley");
     const r = await renderSolo("yacht");
     await playLastTurn(r, /^Yacht/i);
+    await finishEndBeat();
     await settle();
     expect(r.getByText("Saved as Riley · #3 on the leaderboard")).toBeTruthy();
 

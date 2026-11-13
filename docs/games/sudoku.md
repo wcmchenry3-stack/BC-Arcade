@@ -47,13 +47,57 @@ The game randomly selects a puzzle from the chosen local bank. The last **diffic
 
 - Tap a cell to select it. Tapping the selected cell again deselects it.
 - Given cells can be selected/highlighted but cannot be edited.
-- Tap a digit to enter it in the selected editable cell.
-- The number pad shows how many instances of each digit remain; a digit is disabled once all instances are on the grid.
+- Tap a digit key to enter it in the selected editable cell. **Tapping the digit a cell already holds does nothing** (#3773): no error, undo step, replay entry or event, so a double tap cannot cost a second error or fill the undo history. (In Notes mode the same digit still toggles a note.)
+- Each digit key shows how many instances of that digit remain; a digit is dimmed and disabled once all instances are on the grid.
 - **Erase** clears the selected editable cell's value and notes.
 - **Notes** toggles pencil-mark mode.
-- **Undo** restores the previous placement/erase snapshot; the history is capped at 50 entries.
+- **Undo** restores the previous placement/erase snapshot; the history is capped at 50 entries. It restores the **board only** (#3785): digits, notes, the error count and conflicts. **Notes mode and the selection stay as they are**, except that the cell Undo changed becomes selected so the player sees it.
 - **Hint** fills the selected empty editable cell with its correct solution digit (or, on a full grid that is not the solution, corrects a wrong cell; see Errors and completion).
+- **New Game** asks "Start new game?", then opens the New Game picker (variant and difficulty, **Start**, **Quick Restart**, **Cancel**); Android Back or Escape closes the picker like Cancel. The ⋯ menu's New Game still does the same, through its own abandon confirm.
 - **Show mistakes** is a checkable item in the ⋯ header menu (see Errors and completion).
+
+## UI (#3773)
+
+The "thumb pad" layout, anchored to the bottom above the tab bar. Top to bottom:
+
+1. **HUD row** (`HudStatRow`): difficulty, the error count, the clock. The count is plural-aware (`hud.errors_one` / `_other`, plus the `few`/`many` forms ru needs and the six Arabic forms) and is drawn in the theme's `error` colour once above 0.
+2. **Board** (`components/sudoku/SudokuGrid.tsx`): square, as large as the width or the height left above the controls allows (the screen measures the space and passes `boardSize`). A taller phone's spare height goes above the HUD. Cell digits and notes scale with the cell (`cellStyle.ts`).
+3. **Action bar** (shared `components/shared/GameActionBar`, 56 pt, 48 pt on a phone shorter than 700 pt): Undo, Erase, Notes, Hint, New Game. **Notes shows its state** as a tinted, ringed chip behind the button (the bar's new `selected` prop; the button also reports `accessibilityState.selected`) and the digit keys turn into dashed, accent-coloured note keys. With five actions on a 320 pt phone each slot is ~59 pt, so below 64 pt per action the labels drop to 9 pt on one line; a locale's label must stay about 12 capitals or fewer (de Undo is "Zurück", the New Game label is a short form in de, es, fr-CA and ru).
+4. **Digit keys** (`NumberPad`): two centred rows, 5 over 4 on a 9×9 and 3 over 3 on a 6×6, each key the digit over how many remain. Keys are at least 44 pt tall and wide at 320 pt wide, even on a 568 pt tall phone (the board gives up height first). Digits are Space Grotesk Bold (`typography.heading`).
+
+The header holds only back, the title and ⋯ (the Undo pill is gone).
+
+### Highlights
+
+- The **selected cell** is a solid accent fill.
+- Its **row, column and 3×3 box** (2×3 on a 6×6) get a soft wash (`peer`).
+- **Every other cell with the same digit** gets a stronger wash (`same`).
+- A cell paints **one** wash, never two stacked: a conflict, else the same digit, else a peer. That keeps each digit colour above its contrast on every background.
+- The washes are theme tokens in `theme/theme.sudoku.ts` (dark: the accent; light: the lighter teal, which a 4.5:1 `accentText` digit can still sit on). A cell's background is composited from them in `components/sudoku/cellStyle.ts`.
+
+### Digits
+
+- Digits the player enters use `accentText` (the plain accent is 1.6-2:1 on cream); givens use the text colour.
+- Notes are a 3×3 grid inside the cell (2×3 on a 6×6), each digit in its fixed slot, sized from the cell, so seven notes fit a 31 pt cell at 320 pt wide.
+- `components/sudoku/__tests__/boardContrast.test.ts` composites every wash over the board surface in both themes and holds the entered digit, a given and a pencil note to 4.5:1, an error digit (large bold text) to 3:1, and the selected cell's digits to 4.5:1.
+
+### Two kinds of error, told apart
+
+| | Meaning | Style | Label |
+| --- | --- | --- | --- |
+| Conflict | The digit repeats one in its row, column or box (an illegal move) | red digit on a red wash, and a **red ring on each cell it clashes with** (the same digit in its row, column or box) | "conflict, repeats a digit in its row, column or box"; the clashing cells say "clashes with a conflict" |
+| Mistake | Show mistakes is on and the legal digit is not the solution | red digit with a red **underline** bar, no wash | "mistake, wrong digit" |
+
+A conflict that is also not the solution shows the conflict. These are static styles; motion for errors is a later story.
+
+### Accessibility
+
+- A cell's label is `Cell row R, column C, <digit or empty>` then, where they apply, `given` or `entered`, `box N`, `notes 1 4 7`, and the conflict, mistake or clash text. The row, column and value stay first so a short query still matches.
+- Each digit key says `Enter digit D. Remaining: N` (0 when used up, and the key is disabled).
+- The board is a labelled grid (`role="grid"` on native; a labelled group on web, where a `grid` needs row and cell roles).
+- The Notes button reports `accessibilityState.selected`.
+- Every control is at least 44 pt (`e2e/tests/sudoku-layout.spec.ts`, at 390x844 and 320x568); `e2e/tests/i18n-overflow.spec.ts` checks the board, the bar and the picker for clipped or spilling text in en, es, fr-CA, de and ru at both sizes.
+- Board digits and notes do not follow the system font scale (the board is fixed geometry); the HUD and the bar do, up to the bar's own cap.
 
 ### Notes
 
@@ -64,7 +108,7 @@ Notes:
 - do not complete a cell;
 - do not create an undo snapshot.
 
-Normal digit placement clears that cell's pencil marks.
+Normal digit placement clears that cell's pencil marks, and **removes the placed digit from the notes of its row, column and box peers** (#3785; Mini uses its 2×3 box). A hint does the same. Undo brings the cleared notes back with the cell. Notes mode itself never auto-clears: toggling a note changes only the selected cell, whatever its peers hold.
 
 ### Hints
 
@@ -76,25 +120,51 @@ A hint:
 - places the digit even in Notes mode (it never toggles a pencil mark, and Notes mode stays on);
 - does **not** add an error or carry a separate score penalty.
 
+## Motion (#3774)
+
+The owner picked proposal 1, "Calm". Every timing is in [`frontend/src/game/sudoku/motion.ts`](../../frontend/src/game/sudoku/motion.ts); `__tests__/motion.test.ts` holds the ceilings. Every animation is a single run: no loops, no timer left running, nothing on the frame path for data collection. Times are from the move that caused them.
+
+| What | Constant(s) | When / how long | Notes |
+| --- | --- | --- | --- |
+| Place (a digit or a hint landing) | `PLACE_MS` 150, `PLACE_FROM_SCALE` 0.9 | 0 to 150 ms | the cell's digit fades in and scales 0.9 to 1 (`PlaceIn`, Reanimated) |
+| Error (an illegal digit) | `ERROR_PULSE_MS` 380, `ERROR_PULSE_PEAK` 0.55 | 0 to 380 ms | the cell pulses red once; replaces the full-screen red flash. The resting conflict and mistake styles (see UI) are unchanged |
+| Clash ring | `CLASH_BLINK_DELAY_MS` 100, `CLASH_BLINK_OFF_MS` 120, `CLASH_BLINK_DIM` 0.15, `CLASH_BLINK_EDGE_MS` 20 | 100 to 260 ms | the red ring of each clashing cell blinks once (dims, then back) |
+| Unit complete | `UNIT_SWEEP_START_MS` 50, `UNIT_SWEEP_MS` 450, `UNIT_CELL_MS` 200, `UNIT_PEAK` 0.34, `UNIT_SWEEP_TOTAL_MS` 550 | 50 to 500 ms, over by 550 ms | a soft teal glow passes along the completed row (left to right), column (top to bottom) or box (reading order), cell by cell; replaces the full-screen glow. The cells come from the engine event's `unit` and `index` (`unitCells`; a box's `index` is its top-left cell's `row * size + col`), so Mini's 2 × 3 boxes work |
+| Solved wave | `WAVE_CELL_MS` 300, `WAVE_STAGGER_MS` 600, `WAVE_TOTAL_MS` 900, `WAVE_PEAK` 0.3 | 0 to 900 ms | a teal brighten along the diagonals: each cell 300 ms, starting up to 600 ms after the top-left one. The solving move's unit sweeps are not drawn: the wave stands in for them |
+| **Result card** | `SOLVED_BEAT_MS` 1000 | **+1.0 s after the solving entry** | held until then (`useSolveBeat`) |
+| Key press | none (a style) | while the finger is down | digit keys and the action bar's buttons dip (scale 0.96 and 0.94) and dim; this is press feedback, not motion, so it stays under Reduce Motion |
+
+**The moment the card shows, for the sound story #3775.** The solving entry lands at t = 0: that render has the last digit, the wave and the card held. `useGameEvents` runs the `puzzleComplete` handler (`playPuzzleComplete`) in the effect of that same commit, so a sound played from it starts at t = 0 and the card comes **1.0 s later** (`SOLVED_BEAT_MS`), after the 0.9 s wave. A sound that should land with the card is started 1.0 s after t = 0 (the hook has no `onStart` yet: add one as `useYachtEndBeat` has if the sound needs it). Under Reduce Motion the card shows at t = 0. A game restored already solved shows the card at once and has no beat (and no `puzzleComplete` event, since a save drops its events).
+
+**How the card is held.** `components/sudoku/useSolveBeat.ts` derives `holding = solved && !over && !reduceMotion` in the render itself, and the screen shows the card when `isComplete && !holding` and the wave while `holding`. Sudoku's moves run inside `setState` updaters, so a handler cannot know a move solved the puzzle; but the render that commits the solved state also reads `holding`, so the board, the wave and the held card land together and the card never flashes before the beat. The timer starts in that commit's effect. Unmounting clears it; a new game (solved turns false) clears the beat; a restore that finds the game solved calls `skip()` in the restore handler, in the same batch as the state.
+
+**Only the affected cells re-render.** `SudokuScreen` derives the move's motion from `state.events` (`deriveMotion`, memoised on the events array, which each digit or hint replaces and a selection or an erase keeps), and `SudokuGrid` turns it into primitive per-cell props (`placeId`, `errorId`, `blinkId`, `sweepId` / `sweepDelay`, `waveDelay`) that are `undefined` for every cell the move does not touch, so the memoised cells skip their render. An effect's views (`cellMotion.tsx`) are mounted only on the cells it reaches and play once when they mount, keyed by the move's id; an idle board has no animated views. The test ids are `sudoku-cell-<row>-<col>-error`, `-sweep`, `-wave` and the board's `sudoku-solved-wave` mark (up while the wave runs).
+
+**Reduce Motion** (read live with `useReduceMotion`, [ACCESSIBILITY §3](../ACCESSIBILITY.md)): nothing moves. Digits appear at once, an error shows only its static style (the red digit and wash, and the clash ring), there is no sweep and no wave, and the card shows the moment the puzzle is solved. Turning it on mid-beat cancels the beat and shows the card; turning it on mid-sweep or mid-pulse unmounts the overlays, so the cells snap to rest. Turning it off again replays nothing.
+
+### Alternatives considered
+
+The owner also saw proposals 2 · Pop (a pop on place, a shake on error, a per-cell pop along a unit, a ripple from the last cell, the card at +1.2 s) and 3 · Ink (a wipe on place, an underline and tint on error, a line drawn through a unit, the boxes filling in turn). They were not chosen and are kept for a later story: their timings are recorded in the [owner comment on #3774](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3774#issuecomment-6843435443) (find "Alternatives kept for future reference"). Pop's shake could be a "lively" motion setting later.
+
 ## Errors and completion
 
 Only **illegal moves** are errors (#2943). A digit is illegal when it duplicates a digit already in its row, column or box (givens included). The check is against the board, not the stored solution:
 
-- an illegal digit stays on the board, is coloured as an error, increments `errorCount` and flashes the screen;
-- a **legal but incorrect** digit (one that breaks no rule but is not the solution digit) is not an error: it is not counted, does not flash, costs no score and is not coloured, unless Show mistakes is on (below);
+- an illegal digit stays on the board, is drawn as a conflict (see UI), increments `errorCount` and pulses its cell (see Motion). Entering the same illegal digit again in that cell does nothing, so it is counted once;
+- a **legal but incorrect** digit (one that breaks no rule but is not the solution digit) is not an error: it is not counted, shows no pulse, costs no score and is not coloured, unless Show mistakes is on (below);
 - the error colour follows the current board: erasing or changing the conflicting digit clears the highlight, and both cells of a conflict between two player digits are highlighted. `errorCount` counts illegal **entries** made, so removing the duplicate afterwards does not refund the error (undo does);
-- a legal placement can trigger row/column/box completion feedback;
+- a row, column or box completes (the `unitComplete` event, and so the sweep (see Motion) and sound) only when it **matches the solution** (#3785): a full unit with a wrong digit, even one without duplicates, does not. Accepted side effect: a full unit that gets no completion feedback hints at a mistake even with Show mistakes off. The event is still raised only for a legal placement;
 - the puzzle finishes only when every cell matches the solution (completion stays solution-based).
 
 Undo restores the previous error count, so undoing an illegal placement removes that error from the eventual score.
 
 ### Full grid that is not the solution
 
-When every cell is filled but the grid is not the solution, a message says that something is off and points to the **Hint** button. It replaces the number pad's digit row (every digit is used up by then, so the row is disabled anyway), so the layout keeps its height; the pad's own **Hint** button (Erase, Notes, Hint row) stays in place and is the action. The message is announced to screen readers (live region on Android, an announcement on iOS). That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
+When every cell is filled but the grid is not the solution, a message says that something is off and points to the **Hint** button. It replaces the digit keys (every digit is used up by then, so they are disabled anyway) and keeps their height, so the layout does not move; the action bar's **Hint** button stays in place and is the action. The message is announced to screen readers (live region on Android, an announcement on iOS). That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
 
 ### Show mistakes
 
-A checkable item in the ⋯ header menu (it adds no height to the play layout) colours legal-but-incorrect digits as mistakes. It is visual only: no count, no flash, no score effect. Illegal digits are always highlighted regardless of it. The default is **on for Easy, off for Medium and Hard**; once the player flips it, that choice is stored on the device (`sudoku_show_mistakes`) and applies to every puzzle, whatever its difficulty.
+A checkable item in the ⋯ header menu (it adds no height to the play layout) colours legal-but-incorrect digits as mistakes. It is visual only: no count, no pulse, no score effect. Illegal digits are always highlighted regardless of it. The default is **on for Easy, off for Medium and Hard**; once the player flips it, that choice is stored on the device (`sudoku_show_mistakes`) and applies to every puzzle, whatever its difficulty.
 
 ### Old saves
 
@@ -139,7 +209,7 @@ It pauses while:
 
 A saved puzzle restores the board, notes, errors, and undo history after relaunch, but **elapsed time is not persisted**. If the restored puzzle already contains play, its timer restarts from 0 for the new process. This is current intentional behavior.
 
-The device also keeps local best-time data for result-card presentation; server Stats/history remain authoritative for historical reporting.
+The device also keeps the best time per mode and difficulty for result-card presentation: the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:sudoku`, variants such as `classic.easy`; the old `sudoku_stats_v1` is moved in on the first read), read with the saved puzzle and written only when a solve beats it. No server I/O. Server Stats/history remain authoritative for historical reporting.
 
 ## Save / resume
 
@@ -188,7 +258,9 @@ The puzzle is recorded once, in `game_started`: `{ difficulty, variant, puzzle }
 
 Not recorded: selecting a cell, switching pencil mode, and any action that changes nothing (a digit on a given or with nothing selected, an erase of an empty cell, an undo with nothing to undo, a hint with nothing to give). `applyRecorded` (`game/sudoku/replay.ts`) runs the engine and returns the entry only when the state changed, and the screen and the golden test both go through it.
 
-To replay: start from the givens; a digit, a hint or an erase pushes an undo snapshot (50 at most, the engine's `UNDO_STACK_LIMIT`) and a digit or hint clears the cell's notes; a note toggles one digit and pushes nothing; an undo restores the last snapshot, notes and error count with it. The golden test's reader (`__tests__/helpers/rebuild.ts`) and the backend test's (`tests/test_sudoku_replay_events.py`) are exactly this.
+To replay: start from the givens; a digit, a hint or an erase pushes an undo snapshot (50 at most, the engine's `UNDO_STACK_LIMIT`) and a digit or hint clears the cell's notes and removes that digit from the notes of its row, column and box peers (#3785); a note toggles one digit in its cell only and pushes nothing; an undo restores the last snapshot, notes and error count with it. The golden test's reader (`__tests__/helpers/rebuild.ts`) and the backend test's (`tests/test_sudoku_replay_events.py`) are exactly this.
+
+**Rules change #3785 and old recordings.** The entries carry no notes-mode or selection state (each names its cell, and undo is `[3]`), so the new undo (keeps Notes mode and selection) and the notes auto-clear change nothing an entry does to the **values or the error count**: a recording made under the old rules rebuilds to the same final grid and errors. Only the **notes** it shows differ: the readers now clear a placed digit from its peers' notes, which the old engine did not, and no longer trim a digit from a peer when a note is toggled. Notes are display-only (not scored), the `entries` wire format and `v` are unchanged, and the readers cannot tell which rules a recording was played under (a game resumed across the update mixes both), so there is no per-recording version: the final grid and errors are exact, the notes follow the current rules. The fixture's events are unchanged by #3785 except for the golden script's extra undo.
 
 **An `entries` event** is `{ v: 1, unit, t_ms, i, e: [entry, ...] }`: the recorder's envelope plus `i`, the ordinal of the chunk's first entry in the game, and `e`, up to **32** entries (`ENTRIES_PER_CHUNK`). A chunk is one recorder unit, numbered by where it starts (`unitOfEntry(i)` = `⌊i / 32⌋ + 1`). Chunks end at multiples of 32, so a chunk saved early (below) is finished by the next event under the same unit. The type is registered `REPLAY`, with a 512 B cap (`SUDOKU_ENTRIES_MAX_BYTES`, the backend's `MAX_ENTRIES_BYTES`) and **no `chunkField`**: it is never split into parts, because `i` has to stay unique. A chunk is at most 411 B, so the cap never bites.
 
@@ -231,6 +303,7 @@ The heavy hard game above (315 entries) over the real GameEventClient → EventS
 - Replay recording: `frontend/src/game/sudoku/replay.ts` (entries, `applyRecorded`, the chunked entry log); backend `backend/sudoku/models.py` (`validate_entries`), migration `backend/alembic/versions/0043_sudoku_replay_events.py`
 - Engine: `frontend/src/game/sudoku/engine.ts`
 - Types/config: `frontend/src/game/sudoku/types.ts`
+- Board UI: `frontend/src/components/sudoku/` (`SudokuGrid`, `SudokuCell`, `NumberPad`, `NewGameModal`, `cellStyle.ts`); motion: `frontend/src/game/sudoku/motion.ts`, `components/sudoku/cellMotion.tsx`, `components/sudoku/useSolveBeat.ts`, palette `frontend/src/theme/theme.sudoku.ts`
 - Screen: [`frontend/src/screens/SudokuScreen.tsx`](../../frontend/src/screens/SudokuScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Storage: `frontend/src/game/sudoku/storage.ts`
 - Classic bank: `frontend/src/game/sudoku/puzzles.json`
@@ -242,12 +315,15 @@ The heavy hard game above (315 entries) over the real GameEventClient → EventS
 
 ## Sound
 
-Registry: `frontend/src/game/sudoku/sounds.ts` (`SUDOKU_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/sudoku/sounds.ts` (`SUDOKU_SOUNDS`), played through the shared `useSound` and `useSoundVariants` hooks, which honour the player's sound setting. The five sounds are original, synthesized by `tools/assets/synth_puzzle_sfx.py` in the "crisp graphite" pencil-and-paper material (#3775); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is the hooks' default (1.0).
 
-Triggers are in `frontend/src/screens/SudokuScreen.tsx`.
+Triggers are in `frontend/src/components/sudoku/useSudokuSounds.ts`, called from `frontend/src/screens/SudokuScreen.tsx`. **One sound per move**, picked from the engine's events: the solve over an error over a completed unit over the plain place. A unit's sound and the win open with the place tick, so they replace it for that move.
 
-| Key | File | Plays when | Volume |
-| --- | --- | --- | --- |
-| `sudoku.puzzleComplete` | `hearts-moon-shot.mp3` (shared fanfare) | the puzzle is solved | 1.0 |
+| Key                                                  | File                                 | Plays when                                                               | Timing                                                          |
+| ---------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| `sudoku.digitPlace` (+ `digitPlace2`, `digitPlace3`) | `sudoku-digit-place.ogg`, `-2`, `-3` | a digit or a hint lands (alternating variations)                         | at the entry                                                    |
+| `sudoku.errorEntered`                                | `sudoku-error-entered.ogg`           | an illegal digit (not a hint)                                            | three scratches inside the 380 ms pulse                         |
+| `sudoku.unitComplete`                                | `sudoku-unit-complete.ogg`           | a row, column or box is completed correctly, in place of the place tick  | four taps along the 50-500 ms sweep                             |
+| `sudoku.puzzleComplete`                              | `sudoku-puzzle-complete.ogg`         | the puzzle is solved, at the solving render; the only sound of that move | its chord lands at +1.0 s, as the card shows (`SOLVED_BEAT_MS`) |
 
-`sudoku.digitPlace`, `sudoku.errorEntered` and `sudoku.unitComplete` are in the registry and the engine emits their events, but nothing plays them yet (#3578).
+Notes, Erase, Undo and the Hint button are silent (a hint that fills a cell plays the place sound, as it places a digit). A game restored already solved, or a remount, is silent. The win is stopped by New Game, Play Again, Change Difficulty and unmount. The generator's timings (`SUDOKU_WIN_CARD_AT`, `SUDOKU_UNIT_SWEEP_START`, `SUDOKU_UNIT_SWEEP`) are checked against `motion.ts` in `frontend/src/game/sudoku/__tests__/sounds.test.ts`.

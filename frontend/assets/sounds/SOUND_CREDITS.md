@@ -48,7 +48,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-flip-1.ogg
 
-- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 1 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 1 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete. Also Blackjack's hole-card flip, `blackjack.cardFlip`, at the turn's start (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-1`), fixed seeds, so the decoded audio is reproducible.
@@ -56,7 +56,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-flip-2.ogg
 
-- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 2 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 2 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete. Also Blackjack's hole-card flip, `blackjack.cardFlip2`, at the turn's start (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-2`), fixed seeds, so the decoded audio is reproducible.
@@ -64,7 +64,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-flip-3.ogg
 
-- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 3 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete
+- **Event:** Solitaire card flip, `solitaire.cardFlip` (variation 3 of 3, played by `useSoundVariants`): a Draw-1 stock draw, or a face-down tableau card revealed by a move (with card place); silent during Auto-Complete. Also Blackjack's hole-card flip, `blackjack.cardFlip3`, at the turn's start (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-flip-3`), fixed seeds, so the decoded audio is reproducible.
@@ -96,7 +96,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-deal-1.ogg
 
-- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 1 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 1 of 3, played by `useSoundVariants`), played as a card is launched for its hand; it lands with the card at 240 ms (wired with the deal motion, #3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-1`), fixed seeds, so the decoded audio is reproducible.
@@ -104,7 +104,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-deal-2.ogg
 
-- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 2 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Event:** Blackjack card deal, `blackjack.cardDeal2` (variation 2 of 3, played by `useSoundVariants`), played as a card is launched for its hand; it lands with the card at 240 ms (wired with the deal motion, #3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-2`), fixed seeds, so the decoded audio is reproducible.
@@ -112,7 +112,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### card-deal-3.ogg
 
-- **Event:** Blackjack card deal, `blackjack.cardDeal` (variation 3 of 3), played as a card leaves for its hand. **Not wired yet:** it goes live with the deal motion in #3571, which flies each card in 240 ms. Until then the game still plays `blackjack-card-deal.ogg`.
+- **Event:** Blackjack card deal, `blackjack.cardDeal3` (variation 3 of 3, played by `useSoundVariants`), played as a card is launched for its hand; it lands with the card at 240 ms (wired with the deal motion, #3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds card-deal-3`), fixed seeds, so the decoded audio is reproducible.
@@ -120,7 +120,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-bet-1.ogg
 
-- **Event:** Blackjack bet (variation 1 of 3): a chip tapped from the tray slides into the betting circle. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack bet, `blackjack.chipBet` (variation 1 of 3, played by `useSoundVariants`): a chip tapped from the tray slides into the betting circle, or a split's second stake slides to the new hand; played at the chip's launch (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-1`), fixed seeds, so the decoded audio is reproducible.
@@ -128,7 +128,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-bet-2.ogg
 
-- **Event:** Blackjack bet (variation 2 of 3). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack bet, `blackjack.chipBet2` (variation 2 of 3), as chip-bet-1 (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-2`), fixed seeds, so the decoded audio is reproducible.
@@ -136,7 +136,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-bet-3.ogg
 
-- **Event:** Blackjack bet (variation 3 of 3). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack bet, `blackjack.chipBet3` (variation 3 of 3), as chip-bet-1 (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-bet-3`), fixed seeds, so the decoded audio is reproducible.
@@ -144,7 +144,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-payout.ogg
 
-- **Event:** Blackjack payout on a win: the chips slide over and land on the stake. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack payout on a win, `blackjack.chipPayout`: the payout chip slides onto the stake, ~420 ms after the win's chime (on a split, each winning hand in turn) (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-payout`), fixed seeds, so the decoded audio is reproducible.
@@ -152,7 +152,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-collect.ogg
 
-- **Event:** Blackjack loss: the stake swept away. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack loss, `blackjack.chipCollect`: the stake swept away, ~420 ms after the loss's or bust's chime (on a split, each losing hand in turn) (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-collect`), fixed seeds, so the decoded audio is reproducible.
@@ -160,7 +160,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### chip-nudge.ogg
 
-- **Event:** Blackjack push: the stake nudged back to the player. **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack push, `blackjack.chipNudge`: the stake nudged toward the player and back, ~420 ms after the push's chime (on a split, each push hand in turn) (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds chip-nudge`), fixed seeds, so the decoded audio is reproducible.
@@ -168,7 +168,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-win.ogg
 
-- **Event:** Blackjack hand won (`blackjack.win`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack win (`blackjack.win`), with the result banner; a split round's net win (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-win`), fixed seeds, so the decoded audio is reproducible.
@@ -176,7 +176,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-push.ogg
 
-- **Event:** Blackjack push (`blackjack.push`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack push (`blackjack.push`), with the result banner; a split round that comes out even (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-push`), fixed seeds, so the decoded audio is reproducible.
@@ -184,7 +184,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-lose.ogg
 
-- **Event:** Blackjack plain loss (new trigger; silent today). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack plain loss (`blackjack.lose`, a new trigger: a plain loss was silent before), with the result banner; a split round's net loss (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-lose`), fixed seeds, so the decoded audio is reproducible.
@@ -192,7 +192,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-bust.ogg
 
-- **Event:** Blackjack bust (`blackjack.bust`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack bust (`blackjack.bust`), with the result banner and the red flash; a split hand's own bust as its card lands (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-bust`), fixed seeds, so the decoded audio is reproducible.
@@ -200,11 +200,43 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### result-blackjack.ogg
 
-- **Event:** Blackjack natural (`blackjack.blackjack`). **Not wired yet:** it goes live with the chip and result motion in #3571's motion story (#3581).
+- **Event:** Blackjack natural (`blackjack.blackjack`): the player's natural, as its second card lands, with the gold edge and the lift; it is the round's result chime (#3621). It replaced Blackjack's use of `hearts-moon-shot.mp3` (#3581).
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3563). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-blackjack`), fixed seeds, so the decoded audio is reproducible.
 - **Recipe:** 1.08 s: a quick sparkle arpeggio (C5 E5 G5 C6) with a soft bell shimmer an octave up.
+
+### result-mixed.ogg
+
+- **Event:** Blackjack mixed split (`blackjack.mixed`): a split round with at least one winning hand and at least one losing hand, whatever the net, with the result banner; it is the round's result chime (#3770, owner pick B1 from the audition of 2026-11-13).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3770). No samples or third-party audio: built from oscillators and envelopes.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-mixed`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.77 s "up and back": three soft mallet notes, E5 → A5 → E5, 90 ms apart (a fourth up and home again), at rms50 −21 dB.
+
+### run-milestone.ogg
+
+- **Event:** Blackjack milestone (`blackjack.milestone`): the chips first cross one of the table's milestones in the run, with the milestone toast once the round's chips have landed; one cue a round, a comeback taking its place (#3582, owner pick MS1 from the audition of 2026-11-13).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3582). No samples or third-party audio: built from oscillators, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds run-milestone`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "tick up": two tiny sine-bell ticks, E6 then B6, 60 ms apart, at rms50 −25 dB (6 dB under the win).
+
+### run-comeback.ogg
+
+- **Event:** Blackjack comeback (`blackjack.comeback`): the chips recover to 75% of the start after falling below 25% in the run (at most once a run), with the comeback banner once the round's chips have landed (#3582, owner pick CB3 from the audition of 2026-11-13).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3582). No samples or third-party audio: built from oscillators and envelopes.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds run-comeback`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.05 s "turnaround": two soft mallet notes of E minor (E5 G5), then E major rising (G♯5 B5 E6) with a bell an octave over E6, at rms50 −19.5 dB.
+
+### bet-all-in.ogg
+
+- **Event:** Blackjack all-in (`blackjack.allIn`): the whole stack bet on the deal, with the all-in badge, under the deal's first card (#3582, owner pick AI2 from the audition of 2026-11-13).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3582). No samples or third-party audio: built from oscillators, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds bet-all-in`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.70 s "held breath": a quiet pad of detuned saws (E4 + B4) through an opening lowpass, swelling, gliding up a semitone and cut short at 0.55 s, at rms50 −24 dB.
 
 ### riffle-start.ogg
 
@@ -324,7 +356,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Shared win fanfare for Sudoku and Blackjack (until #3578 / #3581 replace it; Yacht, 2048 and Mahjong moved off it with #3578, Daily Word with #3665). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
+- **Event:** No game plays it any more (kept in the repo, not bundled). Sudoku, its last user, moved to `sudoku-puzzle-complete.ogg` with #3775; Yacht, 2048 and Mahjong moved off it with #3578, Daily Word with #3665, Blackjack with #3581 (now `result-blackjack.ogg`). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -352,6 +384,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Commercial use:** Yes (with attribution)
 - **Download date:** 2026-04-25
 - **Notes:** Short victory fanfare. Triumphant conclusion to a completed FreeCell game.
+- **Status (#3661):** No game uses this file any more: FreeCell moved to synthesized sounds (#3563) and Bottle Sort to its own set (#3661, `sort-win.ogg`). It is not bundled in the app, so the CC BY duty applies again only if it ships; kept in the repo.
 
 ### freecell-invalid-move.mp3
 
@@ -626,87 +659,67 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ### starswarm-bgm.mp3
 
-- **Event:** Background music (one 7:00 looping track; wired up in #3638, replacing `starswarm-bg-1..4`)
-- **Source:** Original, project-owned. Generated by the owner with procedural Python synthesis scripts produced in a ChatGPT workspace, Rounds 1-23. Archive: `docs/games/starswarm-music/` (#3675); decision #3642; design log `docs/games/starswarm-music-design.md` (#3637).
-- **SHA-256 (track):** `11acf79c322822775dee43a0b587b9e583885d527aa3e827b78db8ba748106f5` (`Rounds/Round_23/starswarm-round23-integrated-rough.mp3`)
-- **SHA-256 (generator):** `8d5e9224f55b59e5a105d9a7fdddb0802c70cc7422f2d180b2ccf0a7aa0bf3dd` (`starswarm_round23_integrated_rough.py`)
+- **Event:** Background music, played since #3638: one 6:52.7 looping track (Round 46, starting points 0:00, 1:06.5, 2:36.5, 3:43.5, 4:50.5), carried over between games, opening each visit at a starting point with a 1.5 s fade-in; volume 0.57. It replaced the four audiopapkin (Pixabay) tracks `starswarm-bg-1..4.mp3`, deleted in #3638.
+- **Source:** Original, project-owned. Generated by the owner with procedural Python synthesis scripts produced in a ChatGPT workspace, Rounds 1-46 (the track is Round 46, the "Seven Minute Signature Mix", owner-approved 2026-11-12). Archive: `docs/games/starswarm-music/` (#3675); decision #3642; design log `docs/games/starswarm-music-design.md` (#3637).
+- **Edit:** one loop edit only, owner-approved 2026-11-12: baked-in fades trimmed (2.5 s head, tail after 418.2 s), 3 s equal-power seam, +2.9 dB, one libmp3lame 128 kbps encode (`tools/assets/make_starswarm_bgm_loop.py`, SHA-256 `6e054c25581d6b04f2ec29ed826a04488a2b3363b20ed1b23dbce3d58d02680e`). The composition is unchanged.
+- **SHA-256 (track):** `85950430fbfaf0ed9c6425e7b79ee238a44fd6be40c99de934709f661a13426c` (6,604,461 B, 412.700 s, -21.5 LUFS)
+- **SHA-256 (source render):** `29b0a1604e458fa1b0cb92d0502c283b836d1b1f9b2a63a3f012fd3c815f442a` (`docs/games/starswarm-music/Rounds/Round_46/starswarm-round46-seven-minute-signature-mix.mp3`, #3734; unpacked from its zip in #3762)
+- **SHA-256 (generator):** `777de55dbf1eff9fbe8f85c3bcfa6b9be96dfce03a59bbd32d2839e874702e4f` (the Round 46 generator in the same zip)
 - **Third-party material:** None. No third-party samples. `starswarm-bg-1..4` were listening and analysis references only, never sampled.
 - **License:** Owned by the project
 - **Attribution required:** No
 
-### starswarm-bg-1.mp3 — starswarm-bg-4.mp3
-
-- **Event:** Background music (looping ambient track, one chosen at random per game)
-- **Original filenames:**
-  - `audiopapkin-ambient-soundscapes-003-space-atmosphere-303242.mp3` → bg-1
-  - `audiopapkin-ambient-soundscapes-001-space-atmosphere-303246.mp3` → bg-2
-  - `audiopapkin-ambient-soundscapes-004-space-atmosphere-303243.mp3` → bg-3
-  - `audiopapkin-ambient-soundscapes-007-space-atmosphere-304974.mp3` → bg-4
-- **Source URL:** https://pixabay.com/users/audiopapkin-42202696/ (Pixabay)
-- **Creator:** audiopapkin on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Ambient space-atmosphere soundscapes. Played at 20% volume (BG_VOLUME = 0.2) looped.
-  File sizes are 4.4–6.1 MB each — exceed the 500 KB spec target. Compress with ffmpeg if needed:
-  `ffmpeg -i starswarm-bg-N.mp3 -b:a 32k starswarm-bg-N-compressed.mp3`
-
 ---
 
-## Sudoku (#833)
+## Sudoku (#833, #3775)
 
 ### sudoku-digit-place.ogg
 
-- **Event:** Digit placed in a cell (normal mode, any digit)
-- **Original filename:** `pepSound1.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Short upbeat pep sound — subtle confirmation of each digit placement.
+- **Event:** A digit or a hint placed in a cell: `sudoku.digitPlace` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-digit-place`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.08 s "crisp graphite": a hard pencil point tapped on newsprint (a tiny band-passed noise click plus a short ring at 3.6 kHz and a faint stroke), level with 2048's spawn (-26 dBFS). Replaced the Kenney `pepSound1.ogg` of the same name, which was never played.
+
+### sudoku-digit-place-2.ogg
+
+- **Event:** A digit or a hint placed in a cell: `sudoku.digitPlace2` (variation 2 of 3)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-digit-place-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** As variation 1, a different noise seed and the ring at 3.75 kHz.
+
+### sudoku-digit-place-3.ogg
+
+- **Event:** A digit or a hint placed in a cell: `sudoku.digitPlace3` (variation 3 of 3)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-digit-place-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** As variation 1, a different noise seed and the ring at 3.9 kHz.
 
 ### sudoku-error-entered.ogg
 
-- **Event:** Wrong digit entered (value doesn't match solution)
-- **Original filename:** `lowDown.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Descending digital tone. Accompanies the red flash on an incorrect digit.
+- **Event:** An illegal digit entered (it repeats in its row, column or box; a hint never counts): `sudoku.errorEntered`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-error-entered`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.34 s: a pencil scratch-out, three fast hard strokes back and forth (0, 110 and 230 ms, on the 380 ms pulse and the clash ring's blink), each a little duller, over the place tick; level with Daily Word's refusal (-24 dBFS). New: Sudoku played the card games' `solitaire-invalid-move.ogg` for this event (the old entry here described a Kenney `lowDown.ogg` file that never shipped under this name).
 
 ### sudoku-unit-complete.ogg
 
-- **Event:** A full row, column, or 3×3/2×3 box is completed correctly
-- **Original filename:** `phaserUp1.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Rising phaser sting. Fires once per completed unit; multiple units completing on the same digit play the sound once each.
+- **Event:** A full row, column or box completed correctly: `sudoku.unitComplete`; it plays instead of the place sound for that move, and on the solving move only the win plays
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-unit-complete`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.6 s: the place tick, then four rising pencil-point taps along the unit sweep (50, 165, 280 and 395 ms; `UNIT_SWEEP_START_MS` 50 and `UNIT_SWEEP_MS` 450), the last with a quick check-mark stroke; level with 2048's merge (-22 dBFS). Replaced the Kenney `phaserUp1.ogg` of the same name, which was never played.
 
-### sudoku-puzzle-complete (reuses hearts-moon-shot.mp3)
+### sudoku-puzzle-complete.ogg
 
-- **Event:** Puzzle fully solved (all cells filled correctly)
-- **Original filename:** (reuses `hearts-moon-shot.mp3` — see Hearts section above)
-- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
-- **Creator:** u_it78ck90s3 on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Blackjack and Solitaire.
+- **Event:** Puzzle solved: `sudoku.puzzleComplete`, from the solving render (the last digit's place tick, then the wave); never on a restored solved game, and it is stopped by New Game, Play Again, Change Difficulty and unmount
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters, and a felt-piano chord.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-puzzle-complete`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.3 s "crisp graphite and felt piano": the place tick, a quick double underline under the wave (0.3 and 0.55 s), a check-mark tick at 0.8 s, then a soft felt-piano C major chord (C5 E5 G5 C6) with a quiet high bell as the result card shows (+1.0 s, `SOLVED_BEAT_MS`); level with Daily Word's win (-17 dBFS), under 0.1 % of the energy below 300 Hz. Replaced `hearts-moon-shot.mp3` for Sudoku.
 
 ---
 
@@ -727,7 +740,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ### solitaire-invalid-move.ogg
 
-- **Event:** Sudoku's error entered (`sudoku.errorEntered`). Solitaire and FreeCell used it for a rejected move until #3563 (now `card-invalid-move.ogg`).
+- **Event:** No game plays it any more (kept in the repo, not bundled). Sudoku's error entered (`sudoku.errorEntered`) used it until #3775 (now `sudoku-error-entered.ogg`); Solitaire and FreeCell used it for a rejected move until #3563 (now `card-invalid-move.ogg`).
 - **Original filename:** `lowDown.ogg` from Kenney Digital Audio
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
@@ -748,7 +761,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare reused by Yacht, Twenty48, and Blackjack for big moments.
+- **Notes:** No longer used: Solitaire's game win plays `card-game-won.ogg` since #3563. The fanfare's other former users moved off it too (Yacht and 2048 with #3578, Blackjack with #3581, Sudoku with #3775): no game plays it now.
 
 ---
 
@@ -962,7 +975,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-1`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 100 ms, as the two sliding tiles meet and the merged tile pops (#3690) (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
 
 ### tile-merge-2.ogg
 
@@ -970,7 +983,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-2`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 100 ms, as the two sliding tiles meet and the merged tile pops (#3690) (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
 
 ### tile-merge-3.ogg
 
@@ -978,7 +991,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds tile-merge-3`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 90 ms, on the merge pop (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
+- **Recipe:** 0.22 s "wooden tiles": a faint slide of air (0.9–3.5 kHz noise, 85 ms), then two wooden tiles clacking together at 100 ms, as the two sliding tiles meet and the merged tile pops (#3690) (a noise click rung at wood resonances, with a softer double 6 ms later); no tonal body. Replaced `twenty48-tile-merge.ogg` (Kenney Interface Sounds).
 
 ### tile-spawn-1.ogg
 
@@ -1010,7 +1023,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds win-2048`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 3.1 s (rings ~2.7 s) "wood and mallet": a two-octave rising mallet run (C5 E5 G5 C6 E6 G6, 50 ms apart) into a held mallet roll on C major with falling glass sparkles, then a final "ta-da" mallet chord (C5 G5 C6 E6) with a high glass bell at 1.5 s. Replaced 2048's use of `hearts-moon-shot.mp3` (Pixabay), which other games still use.
+- **Recipe:** 2.6 s (rings ~2.5 s) "wood and mallet": from 100 ms, as the 2048 tile pops, a two-octave rising mallet run (C5 E5 G5 C6 E6 G6, 50 ms apart) into a held mallet roll on C major with falling glass sparkles, then a final "ta-da" mallet chord (C5 G5 C6 E6) with a high glass bell at 1.0 s, as the win card shows (#3690). Replaced 2048's use of `hearts-moon-shot.mp3` (Pixabay), which other games still use.
 
 ### game-over-2048.ogg
 
@@ -1018,7 +1031,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds game-over-2048`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 2.0 s (rings ~1.5 s): a last wooden tile clack, a gentle falling mallet line (G5 E5 D5 C5, 110 ms apart), settling on a soft low A minor chord (A4 C5 E5); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
+- **Recipe:** 2.1 s (rings ~2.0 s): a last wooden tile clack at 100 ms as the move lands, a gentle falling mallet line (G5 E5 D5 C5, 100 ms apart from 200 ms) over the board's dim and shake, settling on a soft low A minor chord (A4 C5 E5) at 0.6 s as the result card shows (#3690); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
 
 ### mahjong-select-1.ogg
 
@@ -1178,7 +1191,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-win`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 2.4 s "mallet run": a marimba note on each tile's hop, rising C5 E5 G5 C6 E6 70 ms apart, a glass shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the result card shows at 1.1 s. Replaced Daily Word's use of the shared `hearts-moon-shot.mp3` (10 s), which Sudoku and Blackjack keep.
+- **Recipe:** 2.4 s "mallet run": a marimba note on each tile's hop, rising C5 E5 G5 C6 E6 70 ms apart, a glass shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the result card shows at 1.1 s. Replaced Daily Word's use of the shared `hearts-moon-shot.mp3` (10 s), whose last user, Sudoku, moved off it with #3775 (Blackjack with #3581).
 
 ### daily-word-loss.ogg
 
@@ -1187,6 +1200,214 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-loss`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 1.9 s: a soft falling marimba line, one note as each answer tile shows (G5 E5 D5 C5 A4, 120 ms apart), then a low A minor chord as the result card shows at 0.78 s; gentle, not a punishment. New: a loss had no sound.
+
+### yacht-win.ogg
+
+- **Event:** Yacht game won (vs: you beat the computer; solo: a new personal best), as the end beat starts: `yacht.win`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3750, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds yacht-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.6 s "mallet fanfare": a two-octave marimba run (C5 E5 G5 C6 E6 G6), a rolled C major from 0.45 s, then a final "ta-da" chord with a high glass bell as the result card shows at 1.0 s; a step above the jackpot. New: a win had no sound (BC_GAMES-6S).
+
+### yacht-loss.ogg
+
+- **Event:** Yacht vs game lost, as the end beat starts: `yacht.loss`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3750, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds yacht-loss`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s: a gentle falling marimba line (G5 E5 D5 C5, 110 ms apart) into a soft low A minor chord as the result card shows at 0.6 s; gentle, like 2048's game over. New: a loss had no sound.
+
+### yacht-tie.ogg
+
+- **Event:** Yacht vs game tied, or a solo game that is not a new best, as the end beat starts: `yacht.tie`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3750, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds yacht-tie`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s: two level marimba notes (E5, G5) into an open, unresolved C-G-D chord with a faint bell as the result card shows at 0.6 s: "even". New: a tie had no sound.
+
+### sort-select-1.ogg
+
+- **Event:** Sort bottle selected, on the tap that lifts it: `sort.select` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-select-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "glass and water": a bright glass tick (a 12 ms noise burst, 2.5-9 kHz) and a tiny glass ping (3.1 kHz, inharmonic partials) as a fingertip touches the bottle. The three variations are pitched -5%, 0% and +5.5% with their own noise seeds. New: a select had no sound.
+
+### sort-select-2.ogg
+
+- **Event:** Sort bottle selected, on the tap that lifts it: `sort.select2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-select-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "glass and water": a bright glass tick (a 12 ms noise burst, 2.5-9 kHz) and a tiny glass ping (3.1 kHz, inharmonic partials) as a fingertip touches the bottle. The three variations are pitched -5%, 0% and +5.5% with their own noise seeds. New: a select had no sound.
+
+### sort-select-3.ogg
+
+- **Event:** Sort bottle selected, on the tap that lifts it: `sort.select3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-select-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s "glass and water": a bright glass tick (a 12 ms noise burst, 2.5-9 kHz) and a tiny glass ping (3.1 kHz, inharmonic partials) as a fingertip touches the bottle. The three variations are pitched -5%, 0% and +5.5% with their own noise seeds. New: a select had no sound.
+
+### sort-pour-lift-1.ogg
+
+- **Event:** Sort pour starts, at the tap: `sort.pourLift` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-lift-2.ogg
+
+- **Event:** Sort pour starts, at the tap: `sort.pourLift2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-lift-3.ogg
+
+- **Event:** Sort pour starts, at the tap: `sort.pourLift3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-1u-1.ogg
+
+- **Event:** Sort pour of 1 unit, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream1u` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-1u-2.ogg
+
+- **Event:** Sort pour of 1 unit, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream1u2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-1u-3.ogg
+
+- **Event:** Sort pour of 1 unit, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream1u3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-2u-1.ogg
+
+- **Event:** Sort pour of 2 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream2u` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-2u-2.ogg
+
+- **Event:** Sort pour of 2 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream2u2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-2u-3.ogg
+
+- **Event:** Sort pour of 2 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream2u3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-3u-1.ogg
+
+- **Event:** Sort pour of 3 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream3u` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-3u-2.ogg
+
+- **Event:** Sort pour of 3 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream3u2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-3u-3.ogg
+
+- **Event:** Sort pour of 3 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream3u3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-4u-1.ogg
+
+- **Event:** Sort pour of 4 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream4u` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-4u-2.ogg
+
+- **Event:** Sort pour of 4 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream4u2` (variation 2 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-pour-stream-4u-3.ogg
+
+- **Event:** Sort pour of 4 units, once, when the stream starts (`flowStartMs`, `motion.ts`): `sort.pourStream4u3` (variation 3 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+
+### sort-refused.ogg
+
+- **Event:** Sort pour refused, on the destination's shake: `sort.refused`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-refused`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.26 s "glass and water": two dull glass taps, falling (900 Hz, then 760 Hz 120 ms later), like a bottle knocking its neighbour, on the shake's first swings (`REFUSED_SHAKE_MS` 240). New: a refused pour had no sound.
+
+### sort-complete.ogg
+
+- **Event:** Sort pour completes a bottle (not the winning pour), as the badge pops: `sort.complete`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-complete`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.5 s "glass and water": a two-note glass chime rising a fifth (E6, then B6 70 ms later). New: a completed bottle had no sound.
+
+### sort-undo.ogg
+
+- **Event:** Sort Undo, or "Back to last good move" (once per action): `sort.undo`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-undo`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.3 s "glass and water": a reversed clink (a 1.8 kHz glass ping played backward, a swell) ending in a tiny tick at 255 ms, as the board fades back in (`UNDO_FADE_MS` 280). New: undo had no sound.
+
+### sort-hint.ogg
+
+- **Event:** Sort hint shown (the source lifts and the destination rings; not the no-solution notice): `sort.hint`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-hint`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.65 s "glass and water": three soft rising glass pings 100 ms apart (G6, B6, D7), each a little louder. New: a hint had no sound.
+
+### sort-win.ogg
+
+- **Event:** Sort level solved, from the start of the win cascade: `sort.win`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s "glass and water": a glass chime cascade, one rising C major pentatonic note per cascade piece (C6, E6, G6, B6, D7, E7, 170 ms apart), then a bright glass chord (C6, G6, C7, G7) and a tick at 1.38 s (`WIN_CASCADE_MS`), as the result card opens. Replaces `freecell-game-win.mp3` (87,960 B, 10.56 s) as Sort's win sound; FreeCell keeps the file and its CC BY credit.
 
 ---
 
@@ -1204,6 +1425,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Commercial use:** Yes
 - **Download date:** 2026-04-26
 - **Notes:** Satisfying merge thud. Volume scales from 0.35 (tier 0) to 1.0 (tier 10) to reward higher-tier merges.
+- **Status (#3661):** Cascade only: Bottle Sort moved to its own synthesized pour sounds.
 
 ### cascade-combo.ogg
 

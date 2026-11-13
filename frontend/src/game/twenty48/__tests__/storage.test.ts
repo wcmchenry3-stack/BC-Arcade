@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { saveGame, loadGame, clearGame, saveBestScore, loadBestScore } from "../storage";
+import { saveGame, loadGame, clearGame } from "../storage";
 import { _resetTileIds, move, setRng, createSeededRng } from "../engine";
 import { Twenty48State } from "../types";
 
@@ -111,15 +111,6 @@ describe("twenty48 storage", () => {
     expect(await loadGame()).toBeNull();
   });
 
-  it("saves and loads best score", async () => {
-    await saveBestScore(1234);
-    expect(await loadBestScore()).toBe(1234);
-  });
-
-  it("loadBestScore returns 0 when nothing is saved", async () => {
-    expect(await loadBestScore()).toBe(0);
-  });
-
   // #698: on app reload, the engine's module-level tile-ID counter restarts
   // at 1. Without re-seeding on load, subsequent spawns/merges issue IDs
   // that collide with surviving tiles and React warns about duplicate keys
@@ -199,5 +190,35 @@ describe("twenty48 storage — play clock across a relaunch (#2750)", () => {
     const loaded = await loadGame();
     expect(loaded!.startedAt).toBeNull();
     expect(loaded!.accumulatedMs).toBe(9_000);
+  });
+});
+
+describe("twenty48 storage - negative banked time (#3738)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it.each([
+    ["negative", -5_000],
+    ["a string", "12"],
+  ])("loads %s accumulatedMs as 0", async (_label, bad) => {
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...sample, startedAt: null, accumulatedMs: bad })
+    );
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(0);
+  });
+
+  it("loads an Infinity accumulatedMs as 0", async () => {
+    // JSON.parse("1e999") is Infinity: a true non-finite value after parsing.
+    const raw = JSON.stringify({ ...sample, startedAt: null, accumulatedMs: 0 }).replace(
+      '"accumulatedMs":0',
+      '"accumulatedMs":1e999'
+    );
+    expect(raw).toContain("1e999");
+    await AsyncStorage.setItem(GAME_KEY, raw);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(0);
   });
 });

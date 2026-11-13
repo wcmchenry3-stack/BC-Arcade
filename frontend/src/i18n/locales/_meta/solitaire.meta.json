@@ -134,15 +134,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "action.autoComplete": {
-    "component": "SolitaireScreen",
-    "description": "Button that finishes a trivially-winnable deal in one tap.",
-    "tone": "functional",
-    "characterLimit": 18,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "action.dealAgain": {
     "component": "SolitaireScreen",
     "description": "Button label to deal a fresh game after finishing one.",

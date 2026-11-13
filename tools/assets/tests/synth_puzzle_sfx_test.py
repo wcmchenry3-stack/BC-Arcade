@@ -1,5 +1,6 @@
 """pytest suite for synth_puzzle_sfx.py (#3578)."""
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -163,3 +164,390 @@ def test_daily_word_win_is_louder_than_the_loss_and_both_carry_on_phones():
         f = np.fft.rfftfreq(len(x), 1 / SR)
         assert spec[f < 300].sum() / spec.sum() < 0.05, name
     assert levels["daily-word-win"] - levels["daily-word-loss"] == pytest.approx(4, abs=0.2)
+
+
+def _onsets(x: np.ndarray, rise_db: float = 9.0) -> list[float]:
+    """Times (s) where the 5 ms energy jumps by `rise_db` over the 20 ms before: the strikes.
+
+    The window is centred, so a strike reads up to 2.5 ms early."""
+    w = int(0.005 * SR)
+    e = np.convolve(x**2, np.ones(w) / w, "same") + 1e-12
+    db = 10 * np.log10(e)
+    look = int(0.02 * SR)
+    hop = int(0.002 * SR)
+    out: list[float] = []
+    for i in range(look, len(x), hop):
+        if db[i] - db[i - look] >= rise_db and db[i] > db.max() - 30:
+            t = i / SR
+            if not out or t - out[-1] > 0.03:
+                out.append(t)
+    return out
+
+
+def _first_at_pitch(x: np.ndarray, semis: float, frac: float = 0.3) -> float:
+    """When (s) a note first sounds: its pitch's energy (40 ms frames, +-4%) reaches `frac` of its peak.
+
+    Reads up to ~5 ms late (the frame centre)."""
+    n, hop = int(0.04 * SR), int(0.005 * SR)
+    f = np.fft.rfftfreq(n, 1 / SR)
+    hz = synth_puzzle_sfx.hz(semis)
+    band = (f > hz * 0.96) & (f < hz * 1.04)
+    w = np.hanning(n)
+    e = np.array(
+        [
+            (np.abs(np.fft.rfft(x[i : i + n] * w))[band] ** 2).sum()
+            for i in range(0, len(x) - n, hop)
+        ]
+    )
+    return (np.nonzero(e >= e.max() * frac)[0][0] * hop + n / 2) / SR
+
+
+def test_twenty48_timings_follow_the_motion():
+    # game/twenty48/motion.ts (#3689): SLIDE_MS 100, SPAWN_AT_MS 60, the 2048 tile pops at the
+    # end of the slide, WIN_BEAT_MS 1000, GAME_OVER_DIM_AT_MS 220, GAME_OVER_BEAT_MS 600 (#3690).
+    m = synth_puzzle_sfx
+    assert (m.TILE_MERGE_AT, m.TILE_SPAWN_AT, m.WIN_POP_AT) == (0.10, 0.06, 0.10)
+    assert (m.WIN_CARD_AT, m.GAME_OVER_LAND_AT) == (1.0, 0.10)
+    assert (m.GAME_OVER_DIM_AT, m.GAME_OVER_CARD_AT) == (0.22, 0.6)
+
+
+def test_twenty48_merge_clacks_as_the_tiles_meet_and_spawn_as_the_tile_shows():
+    for i in range(3):
+        at = _loudest_5ms_at(synth_puzzle_sfx.tile_merge(i))
+        assert synth_puzzle_sfx.TILE_MERGE_AT <= at <= synth_puzzle_sfx.TILE_MERGE_AT + 0.015
+        at = _loudest_5ms_at(synth_puzzle_sfx.tile_spawn(i))
+        assert synth_puzzle_sfx.TILE_SPAWN_AT <= at <= synth_puzzle_sfx.TILE_SPAWN_AT + 0.015
+
+
+def test_twenty48_win_starts_on_the_pop_and_lands_its_chord_on_the_card():
+    x = synth_puzzle_sfx.win_2048()
+    # Silent until the 2048 tile pops; the run starts there.
+    assert np.max(np.abs(x[: int(synth_puzzle_sfx.WIN_POP_AT * SR)])) == 0
+    card = synth_puzzle_sfx.WIN_CARD_AT
+    # The "ta-da" is struck as the card shows, and nothing is struck between the roll and it.
+    hits = _onsets(x)
+    assert any(card - 0.005 <= t <= card + 0.02 for t in hits), hits
+    assert not any(0.75 < t < card - 0.005 for t in hits), hits
+    assert len(x) / SR <= 2.7
+
+
+def test_twenty48_game_over_lands_then_falls_then_settles_on_the_card():
+    x = synth_puzzle_sfx.game_over_2048()
+    land = synth_puzzle_sfx.GAME_OVER_LAND_AT
+    card = synth_puzzle_sfx.GAME_OVER_CARD_AT
+    assert np.max(np.abs(x[: int(land * SR)])) == 0
+    hits = _onsets(x)
+    assert land - 0.005 <= hits[0] <= land + 0.01, hits
+    # The falling line, G5 E5 D5 C5 100 ms apart, is inside the dim and shake (220-520 ms): each
+    # note found by its own pitch, since the line's later notes ring over each other.
+    m = synth_puzzle_sfx
+    line = [_first_at_pitch(x, n) for n in (m.G5, m.E5, m.D5, m.C5)]
+    start = m.GAME_OVER_DIM_AT - 0.02
+    for k, t in enumerate(line):
+        assert start + 0.1 * k <= t <= start + 0.1 * k + 0.015, line
+    # The chord is on the card.
+    assert any(card - 0.005 <= t <= card + 0.02 for t in hits), hits
+    assert len(x) / SR <= 2.2
+
+
+def test_yacht_end_cards_follow_the_motion():
+    # game/yacht/motion.ts (#3749): WIN_BEAT_MS 1000, LOSS_BEAT_MS 600 (a tie shares the loss beat).
+    assert synth_puzzle_sfx.YACHT_WIN_CARD_AT == 1.0
+    assert synth_puzzle_sfx.YACHT_END_CARD_AT == 0.6
+
+
+def test_yacht_win_lands_its_chord_on_the_card():
+    x = synth_puzzle_sfx.yacht_win()
+    card = synth_puzzle_sfx.YACHT_WIN_CARD_AT
+    assert np.max(np.abs(x[: int(0.05 * SR)])) > 0  # the run starts with the beat
+    assert any(abs(t - card) <= 0.01 for t in _onsets(x)), _onsets(x)
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+    assert len(x) / SR <= 2.7
+
+
+@pytest.mark.parametrize("name", ["yacht_loss", "yacht_tie"])
+def test_yacht_loss_and_tie_land_their_chord_on_the_card(name):
+    x = getattr(synth_puzzle_sfx, name)()
+    card = synth_puzzle_sfx.YACHT_END_CARD_AT
+    assert any(abs(t - card) <= 0.01 for t in _onsets(x)), _onsets(x)
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+    assert len(x) / SR <= 2.1
+
+
+def test_yacht_end_sounds_are_silent_before_the_beat_and_carry_on_phones():
+    for n in ("win", "loss", "tie"):
+        recipe, level = synth_puzzle_sfx.SOUNDS[f"yacht-{n}"]
+        x = level(recipe())
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        assert spec[f < 300].sum() / spec.sum() < 0.001, n  # under 0.1 %
+    # Each sound is generated from silence: nothing before the first note (sample 0 is zero).
+    for fn in (synth_puzzle_sfx.yacht_win, synth_puzzle_sfx.yacht_loss, synth_puzzle_sfx.yacht_tie):
+        assert fn()[0] == 0
+
+
+def test_yacht_win_is_louder_than_the_tie_and_the_tie_louder_than_the_loss():
+    lv = {}
+    for n in ("win", "tie", "loss"):
+        recipe, level = synth_puzzle_sfx.SOUNDS[f"yacht-{n}"]
+        lv[n] = _rms50_db(level(recipe()))
+    assert lv["win"] > lv["tie"] > lv["loss"]
+    assert lv["win"] - lv["tie"] == pytest.approx(4, abs=0.2)
+    assert lv["tie"] - lv["loss"] == pytest.approx(2, abs=0.2)
+
+
+# --- Sort "glass and water" (#3661) -------------------------------------------------------------
+
+SORT_SOUND_NAMES = [
+    *[f"sort-select-{i}" for i in (1, 2, 3)],
+    *[f"sort-pour-lift-{i}" for i in (1, 2, 3)],
+    *[f"sort-pour-stream-{u}u-{v}" for u in (1, 2, 3, 4) for v in (1, 2, 3)],
+    "sort-refused",
+    "sort-complete",
+    "sort-undo",
+    "sort-hint",
+    "sort-win",
+]
+
+
+def _peak(x: np.ndarray, t0: float, t1: float) -> float:
+    return float(np.abs(x[int(t0 * SR) : int(t1 * SR)]).max())
+
+
+def _sort(name: str) -> np.ndarray:
+    recipe, level = synth_puzzle_sfx.SOUNDS[name]
+    return level(recipe())
+
+
+# --- Sudoku (#3775), option A "crisp graphite" -------------------------------------------------
+
+SUDOKU_SOUNDS = (
+    "sudoku-digit-place",
+    "sudoku-digit-place-2",
+    "sudoku-digit-place-3",
+    "sudoku-error-entered",
+    "sudoku-unit-complete",
+    "sudoku-puzzle-complete",
+)
+
+
+def _sudoku(name: str) -> np.ndarray:
+    recipe, level = synth_puzzle_sfx.SOUNDS[name]
+    return level(recipe())
+
+
+def test_sort_writes_every_file_the_registry_ships():
+    assert [n for n in SORT_SOUND_NAMES if n not in synth_puzzle_sfx.SOUNDS] == []
+    assert sorted(n for n in synth_puzzle_sfx.SOUNDS if n.startswith("sort-")) == sorted(
+        SORT_SOUND_NAMES
+    )
+
+
+def test_sort_timings_follow_motion_ts():
+    # game/sort/motion.ts (#3660, #3783): POUR_UNIT_MS 300, WIN_CASCADE_MS 1380.
+    assert pytest.approx(0.300) == synth_puzzle_sfx.SORT_UNIT_AT
+    assert pytest.approx(1.38) == synth_puzzle_sfx.SORT_WIN_CARD_AT
+
+
+@pytest.mark.parametrize("units", [1, 2, 3, 4])
+def test_sort_stream_runs_the_length_of_the_pour(units):
+    # game/sort/motion.ts: the stream runs POUR_UNIT_MS (300 ms) per unit from flowStartMs, then
+    # the pour returns (POUR_RETURN_MS 180 ms): the file is the flow plus an 180 ms tail.
+    for v in (1, 2, 3):
+        x = _sort(f"sort-pour-stream-{units}u-{v}")
+        assert len(x) / SR == pytest.approx(0.3 * units + 0.18, abs=0.001), (units, v)
+        # It starts at once (the stream starts at the file's start) and is over by its end.
+        assert _peak(x, 0.0, 0.03) > 0.2 * np.abs(x).max(), (units, v)
+        assert np.abs(x[-int(0.01 * SR) :]).max() < np.abs(x).max() * 0.1, (units, v)
+        # Continuous: no 100 ms gap in the flow.
+        for t0 in np.arange(0.02, 0.3 * units - 0.1, 0.05):
+            assert _peak(x, t0, t0 + 0.1) > 0.05 * np.abs(x).max(), (units, v, t0)
+
+
+def test_sort_stream_variations_differ_and_are_loudness_matched():
+    for units in (1, 2, 3, 4):
+        xs = [_sort(f"sort-pour-stream-{units}u-{v}") for v in (1, 2, 3)]
+        assert not np.array_equal(xs[0], xs[1]) and not np.array_equal(xs[1], xs[2])
+        levels = [_rms50_db(x) for x in xs]
+        assert max(levels) - min(levels) < 0.5, units
+
+
+def test_sort_stream_pitch_rises_as_the_destination_fills():
+    # Radii shrink by 0.20 octave per unit as the bottle fills: the spectral centroid of the last
+    # third of a 4-unit stream is above the first third's.
+    x = _sort("sort-pour-stream-4u-1")
+
+    def centroid(a: np.ndarray) -> float:
+        sp = np.abs(np.fft.rfft(a)) ** 2
+        f = np.fft.rfftfreq(len(a), 1 / SR)
+        return float((sp * f).sum() / sp.sum())
+
+    n = int(1.2 * SR)
+    assert centroid(x[int(0.8 * n) : n]) > centroid(x[int(0.05 * SR) : int(0.4 * n)])
+
+
+def test_sort_stream_is_deterministic_per_seed():
+    a, b = synth_puzzle_sfx.sort_stream(2, 1), synth_puzzle_sfx.sort_stream(2, 1)
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, synth_puzzle_sfx.sort_stream(2, 2))
+
+
+def test_sort_select_and_lift_are_on_the_tap():
+    for i in (1, 2, 3):
+        assert _loudest_5ms_at(_sort(f"sort-select-{i}")) <= 0.02
+        assert len(_sort(f"sort-select-{i}")) / SR == pytest.approx(0.12, abs=0.001)
+        assert len(_sort(f"sort-pour-lift-{i}")) / SR == pytest.approx(0.2, abs=0.001)
+
+
+def test_sort_refused_is_two_dull_taps_inside_the_shake():
+    x = _sort("sort-refused")
+    # game/sort/motion.ts: REFUSED_SHAKE_MS 240.
+    assert len(x) / SR <= 0.26
+    # Tap one on the shake's first swing (0 ms), tap two 120 ms on; silence between them.
+    assert _peak(x, 0.0, 0.02) > 0.5 * np.abs(x).max()
+    assert _peak(x, 0.1, 0.118) < 0.02 * np.abs(x).max()
+    assert _peak(x, 0.12, 0.14) > 0.5 * np.abs(x).max()
+
+
+def test_sort_complete_chimes_two_notes_a_fifth_apart():
+    x = _sort("sort-complete")
+    # E6 on the pop, then B6 70 ms on: the second note is the louder, a fifth up.
+    assert _peak(x, 0.0, 0.02) > 0.5 * np.abs(x).max()
+    assert _peak(x, 0.07, 0.09) == pytest.approx(np.abs(x).max())
+    assert _peak(x, 0.04, 0.065) < _peak(x, 0.0, 0.02)
+    assert len(x) / SR == pytest.approx(0.5, abs=0.001)
+
+
+def test_sort_undo_swells_into_a_tick():
+    x = _sort("sort-undo")
+    # A reversed clink: the swell is loudest just before the tick at 255 ms; UNDO_FADE_MS 280.
+    assert len(x) / SR == pytest.approx(0.3, abs=0.001)
+    assert 0.2 <= _loudest_5ms_at(x) <= 0.27
+
+
+def test_sort_hint_is_three_rising_pings_100_ms_apart():
+    x = _sort("sort-hint")
+    # A strike every 100 ms, each louder than the ring of the one before.
+    for k in (1, 2):
+        assert _peak(x, 0.1 * k, 0.1 * k + 0.02) > 2 * _peak(x, 0.1 * k - 0.02, 0.1 * k)
+    assert _peak(x, 0.2, 0.22) == pytest.approx(np.abs(x).max())
+    assert len(x) / SR == pytest.approx(0.65, abs=0.001)
+
+
+def test_sort_win_lands_its_chord_on_the_cascade_end():
+    x = _sort("sort-win")
+    card = synth_puzzle_sfx.SORT_WIN_CARD_AT
+    assert len(x) / SR == pytest.approx(2.0, abs=0.001)
+    hits = _onsets(x)
+    assert any(abs(t - card) <= 0.01 for t in hits), hits
+    # The chord and tick are the loudest moment, as the card opens.
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+
+
+def test_sort_levels_are_the_designed_loudness_and_carry_on_phones():
+    expect = {
+        "sort-select-1": -24,
+        "sort-pour-lift-1": -28,
+        "sort-pour-stream-1u-1": -21,
+        "sort-pour-stream-4u-3": -21,
+        "sort-refused": -23,
+        "sort-complete": -20,
+        "sort-undo": -27,
+        "sort-hint": -26,
+        "sort-win": -17,
+    }
+    for name, db in expect.items():
+        x = _sort(name)
+        assert _rms50_db(x) == pytest.approx(db, abs=0.15), name
+        assert np.max(np.abs(x)) <= 10 ** (-3 / 20) + 1e-6, name
+    for name in SORT_SOUND_NAMES:
+        x = _sort(name)
+        spec = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        # Little below 300 Hz (phone speakers).
+        assert spec[f < 300].sum() / spec.sum() < 0.03, name
+
+
+def _low_share(x: np.ndarray) -> float:
+    spec = np.abs(np.fft.rfft(x)) ** 2
+    f = np.fft.rfftfreq(len(x), 1 / SR)
+    return float(spec[f < 300].sum() / spec.sum())
+
+
+def test_sudoku_timings_follow_the_motion():
+    # game/sudoku/motion.ts (#3774): SOLVED_BEAT_MS 1000, UNIT_SWEEP_START_MS 50, UNIT_SWEEP_MS 450.
+    assert synth_puzzle_sfx.SUDOKU_WIN_CARD_AT == 1.0
+    assert synth_puzzle_sfx.SUDOKU_UNIT_SWEEP_START == 0.05
+    assert synth_puzzle_sfx.SUDOKU_UNIT_SWEEP == 0.45
+
+
+def test_sudoku_win_lands_its_chord_on_the_card():
+    x = _sudoku("sudoku-puzzle-complete")
+    card = synth_puzzle_sfx.SUDOKU_WIN_CARD_AT
+    assert any(abs(t - card) <= 0.01 for t in _onsets(x)), _onsets(x)
+    assert card <= _loudest_5ms_at(x) <= card + 0.06
+    assert 2.0 <= len(x) / SR <= 2.4
+    # It opens with the place tick: the solving digit sounds like every other, then the underline.
+    assert _loudest_5ms_at(x[: int(0.2 * SR)]) <= 0.02
+
+
+def test_sudoku_unit_taps_run_along_the_sweep():
+    x = _sudoku("sudoku-unit-complete")
+    start = synth_puzzle_sfx.SUDOKU_UNIT_SWEEP_START
+    end = start + synth_puzzle_sfx.SUDOKU_UNIT_SWEEP
+    # The place tick opens it (the unit replaces the place sound); four taps follow inside the sweep.
+    assert _loudest_5ms_at(x[: int(0.03 * SR)]) <= 0.02
+    taps = [t for t in _onsets(x[int(0.03 * SR) :]) if t < 1]
+    taps = [t + 0.03 for t in taps]
+    assert len(taps) == 4, taps
+    assert start - 0.005 <= taps[0] <= start + 0.02
+    assert all(start <= t <= end for t in taps)
+    assert len(x) / SR <= 0.65
+
+
+def test_sudoku_error_scratches_inside_the_pulse():
+    # ERROR_PULSE_MS 380: the scratch-out is over before the pulse is.
+    x = _sudoku("sudoku-error-entered")
+    assert len(x) / SR <= 0.38
+
+
+def test_sudoku_levels_sit_in_the_family():
+    place = [_rms50_db(_sudoku(n)) for n in SUDOKU_SOUNDS[:3]]
+    assert place == [pytest.approx(-26, abs=0.2)] * 3  # level with 2048's spawn
+    assert _rms50_db(_sudoku("sudoku-error-entered")) == pytest.approx(-24, abs=0.2)
+    assert _rms50_db(_sudoku("sudoku-unit-complete")) == pytest.approx(-22, abs=0.2)
+    assert _rms50_db(_sudoku("sudoku-puzzle-complete")) == pytest.approx(-17, abs=0.2)
+    for n in SUDOKU_SOUNDS:
+        assert 20 * np.log10(np.max(np.abs(_sudoku(n)))) <= -1.0 + 0.01, n
+
+
+def test_sudoku_sounds_carry_on_phone_speakers():
+    # The win under 0.1 % below 300 Hz (as Yacht's); the short ones, being clicks, under 2 %.
+    assert _low_share(_sudoku("sudoku-puzzle-complete")) < 0.001
+    for n in SUDOKU_SOUNDS[:5]:
+        assert _low_share(_sudoku(n)) < 0.02, n
+
+
+def test_sudoku_place_variations_differ():
+    a, b, c = (_sudoku(n) for n in SUDOKU_SOUNDS[:3])
+    assert not np.array_equal(a, b) and not np.array_equal(b, c)
+    assert len(a) / SR <= 0.1
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg to decode the Ogg")
+@pytest.mark.parametrize("name", SUDOKU_SOUNDS)
+def test_sudoku_committed_ogg_is_the_generators_audio(name):
+    # Ogg bytes differ between runs; the decoded audio is what must match the recipe.
+    import subprocess
+
+    committed = (
+        Path(__file__).resolve().parents[3] / "frontend" / "assets" / "sounds" / f"{name}.ogg"
+    )
+    cmd = ["ffmpeg", "-v", "error", "-i", str(committed), "-f", "s16le", "-ac", "1", "-"]
+    pcm = np.frombuffer(subprocess.run(cmd, capture_output=True, check=True).stdout, np.int16)
+    got = pcm.astype(np.float64) / 32768
+    want = _sudoku(name)
+    n = min(len(got), len(want))
+    assert abs(len(got) - len(want)) < 0.05 * SR, name
+    corr = np.corrcoef(got[:n], want[:n])[0, 1]
+    assert corr > 0.95, (name, corr)  # lossy q5 clicks: ~0.96-0.99 when the recipe is the same

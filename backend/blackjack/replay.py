@@ -7,7 +7,13 @@ The input is the game's events in ``event_index`` order, as ``(type, data)``
 pairs; the shapes are in ``blackjack/events.py``: a ``round_played`` per round
 and a ``hand_resolved`` per hand.
 
-Read only: nothing here validates, stores or changes anything. Events from
+Read only: nothing here validates, stores or changes anything. Outcomes are
+printed as the app recorded them, never worked out again here, so a round reads
+right under the rules of the build that played it: before #3741 the dealer did not
+peek and a 3-card 21 pushed a dealer natural; since, a dealer natural ends the
+round at the deal (no actions, no dealer play) and beats any other 21. Since #3764 a
+hand that reaches 21 stands on its own, and the app records that stand as ``["s", i]``,
+the entry a tapped Stand makes, so it reads here as "stand hand N on 21". Events from
 builds before #3284 carry no cards, so a round made of them is listed as such
 and not rebuilt. A round with events missing (the app drops an event over its
 cap, or a batch is lost) is shown as far as it goes.
@@ -33,6 +39,11 @@ def hand_value(cards: Iterable[str]) -> int:
         total -= 10
         aces -= 1
     return total
+
+
+def _natural(cards: list[str]) -> bool:
+    """Two cards that make 21."""
+    return len(cards) == 2 and hand_value(cards) == 21
 
 
 def show(cards: Iterable[str]) -> str:
@@ -94,6 +105,10 @@ def _played(data: Mapping[str, Any]) -> Round:
         )
     for item in data.get("a", []):
         _action(r, item)
+    if "p" in data and "a" not in data and "dl" not in data and _natural(r.dealer):
+        # The dealer's natural settled the round at the deal: found by the peek (#3741), or,
+        # from a build before it, beside the player's own natural. Either way it showed then.
+        r.steps.append(f"dealer   hole {show(r.dealer[:1])} -> {show(r.dealer)} = 21 BLACKJACK")
     dl = data.get("dl")
     if dl:
         drew = list(dl["d"])

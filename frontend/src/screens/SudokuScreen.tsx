@@ -19,7 +19,15 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, Platform, StyleSheet, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Platform,
+  StyleSheet,
+  ScrollView,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+} from "react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -27,43 +35,54 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { bestOf } from "../game/_shared/bestOf";
 import { captureThrottledMessage } from "../game/_shared/sentryThrottle";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
-import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { ElapsedText, createClockActivity } from "../components/shared/ElapsedText";
-import { PillButton } from "../components/shared/PillButton";
+import GameActionBar from "../components/shared/GameActionBar";
+import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
+import { boardFit } from "../components/sudoku/cellStyle";
 import NumberPad from "../components/sudoku/NumberPad";
+import { useSolveBeat } from "../components/sudoku/useSolveBeat";
+import { useSudokuSounds } from "../components/sudoku/useSudokuSounds";
+import { useLiveMotion } from "../components/sudoku/useLiveMotion";
 import PreGame from "../components/sudoku/PreGame";
 import NewGameModal from "../components/sudoku/NewGameModal";
 import { isFullButWrong, loadPuzzle, selectCell, toggleNotesMode } from "../game/sudoku/engine";
+import { deriveMotion } from "../game/sudoku/motion";
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
 import { DIFFICULTIES } from "../game/sudoku/types";
-import { useSound } from "../game/_shared/useSound";
-import { SUDOKU_SOUNDS } from "../game/sudoku/sounds";
 import {
   clearGame,
   loadGame,
   saveGame,
-  loadStats,
-  saveStats,
   loadShowMistakes,
   saveShowMistakes,
-  EMPTY_SUDOKU_STATS,
-  type SudokuStats,
 } from "../game/sudoku/storage";
+import { getBests, judgeResult, recordResult, type Bests } from "../game/_shared/personalBest";
+import { sudokuVariant } from "../game/_shared/personalBestGames";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { applyRecorded, createEntryLog, unitOfEntry, type EntryTuple } from "../game/sudoku/replay";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 
-const FLASH_MS = 200;
+// The bottom-anchored play area (#3773): HUD, the board (as big as the space left allows), the
+// action bar, then the digit keys in two rows. A phone shorter than COMPACT_BELOW_H trades some
+// bar and key height for a bigger board; the keys stay at 44 pt, the touch minimum.
+const COMPACT_BELOW_H = 700;
+const BAR_H = 56;
+const BAR_H_COMPACT = 48;
+const KEY_H = 58;
+const KEY_H_COMPACT = 44;
+const KEY_GAP = 5;
+const KEY_GAP_COMPACT = 3;
+/** Space between the board and the action bar, and between the bar and the keys. */
+const BLOCK_GAP = 4;
 
 /**
  * Whether a restored game's replay could not be rebuilt from its first entry
@@ -129,11 +148,11 @@ export default function SudokuScreen() {
     "easy"
   );
   const [variant, setVariant] = useState<Variant>("classic");
-  // The device's cached best time per puzzle kind (`sudoku_stats_v1`), for the
-  // result card's best time and "New best" badge only (#2636): the player's
-  // history is the Stats screen, fed by the server.
-  const statsRef = useRef<SudokuStats>(EMPTY_SUDOKU_STATS);
-  // The saved puzzle (usePersistedGameState, #3087): loaded with the stats on
+  // The device's best time per puzzle kind (the shared personal best, #3757, by
+  // `sudokuVariant`), for the result card's best time and "New best" badge only
+  // (#2636): the player's history is the Stats screen, fed by the server.
+  const bestsRef = useRef<Bests>({});
+  // The saved puzzle (usePersistedGameState, #3087): loaded with the bests on
   // mount, then saved on every state change once that load has landed, so a
   // fresh puzzle can't clobber a resumable save still being read off disk.
   // `state === null` is pre-game: nothing is saved, and the callers clear
@@ -141,8 +160,8 @@ export default function SudokuScreen() {
   // before the completion clears it. The restore is below.
   const game = usePersistedGameState<SudokuState>({
     load: async () => {
-      const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
-      statsRef.current = savedStats;
+      const [saved, bests] = await Promise.all([loadGame(), getBests("sudoku")]);
+      bestsRef.current = bests;
       return saved;
     },
     save: saveGame,
@@ -180,6 +199,13 @@ export default function SudokuScreen() {
   // `ElapsedText` without re-rendering the screen, grid and pad (#2964).
   const [clockActivity] = useState(createClockActivity);
   const [newGameModalVisible, setNewGameModalVisible] = useState(false);
+  // The action bar's New Game asks first (the header menu's has its own confirm): the same copy as 2048.
+  const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
+  const { width: windowW, height: windowH } = useWindowDimensions();
+  const compact = windowH < COMPACT_BELOW_H;
+  // The play area above the bar, and its HUD: the board takes what is left.
+  const [slot, setSlot] = useState<{ w: number; h: number } | null>(null);
+  const [hudH, setHudH] = useState(0);
   // What the result card shows, captured when the puzzle is solved.
   const [result, setResult] = useState<{
     /** Null when the clock gave no usable time (the device clock stepped back). */
@@ -201,11 +227,25 @@ export default function SudokuScreen() {
   const startMsRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
 
-  const flashOpacity = useRef(new Animated.Value(0)).current;
-  const unitFlashOpacity = useRef(new Animated.Value(0)).current;
   const isComplete = state?.isComplete ?? false;
+  // The solved beat (#3774): the wave, and the card held until it is over. Derived from `isComplete`
+  // in the render, so the solving move, the wave and the held card land together.
+  const { holding: solveBeat, reduceMotion, skip: skipSolveBeat } = useSolveBeat(isComplete);
+  // The last move's motion, shown on the cells it touches (an error on its cell and the cells it
+  // clashes with, a unit's sweep, the digit landing). Keyed on the engine's events: each digit or
+  // hint makes a new array, a selection or an erase keeps it, so nothing replays and the board
+  // re-renders only the cells this changes. The selection is the one that came with the events:
+  // a digit and a hint both land in the selected cell.
+  const moveMotion = useMemo(
+    () => (state ? deriveMotion(state) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state?.events]
+  );
+  // Played once, then gone: no replay when Reduce Motion is turned off later.
+  const motion = useLiveMotion(moveMotion, reduceMotion);
 
-  const { play: playPuzzleComplete } = useSound("sudoku.puzzleComplete", SUDOKU_SOUNDS);
+  // One sound per move, from the engine's events (#3775); the win is cut off by a new puzzle.
+  const { stopPuzzleComplete } = useSudokuSounds(state?.events);
 
   // The player's actions are recorded through the shared recorder (#3288):
   // `entryLog` collects them in memory and hands a chunk of ENTRIES_PER_CHUNK
@@ -375,6 +415,8 @@ export default function SudokuScreen() {
       saved.undoStack.length > 0 ||
       saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
     skipReplayRef.current = cannotRebuildReplay(saved, anyMoves, resumed);
+    // Already solved: its card shows at once, with no beat (#3774).
+    if (saved.isComplete) skipSolveBeat();
     if (anyMoves) {
       startMsRef.current = Date.now();
       // A load that lands while the player is away (#2750) starts
@@ -431,22 +473,17 @@ export default function SudokuScreen() {
     }
     clearSavedGame();
 
-    const diff = s.difficulty;
-    const variantKey = s.variant;
-    const prev = statsRef.current[variantKey][diff];
-    const outcome = finalElapsed !== null ? bestOf(prev.bestTimeS, finalElapsed, true) : null;
-    const improved = outcome?.improved ?? false;
-    // The cache is written only when this puzzle kind's best improves.
-    if (improved) {
-      statsRef.current = {
-        ...statsRef.current,
-        [variantKey]: { ...statsRef.current[variantKey], [diff]: { bestTimeS: finalElapsed } },
-      };
-      saveStats(statsRef.current).catch(() => {});
+    const kind = sudokuVariant(s.variant, s.difficulty);
+    const prevBestS = bestsRef.current[kind] ?? 0;
+    const outcome = finalElapsed !== null ? judgeResult("sudoku", prevBestS, finalElapsed) : null;
+    // The best is written only when this puzzle kind's best improves.
+    if (outcome?.improved && finalElapsed !== null) {
+      bestsRef.current = { ...bestsRef.current, [kind]: finalElapsed };
+      void recordResult("sudoku", kind, finalElapsed);
     }
     setResult({
       elapsedS: finalElapsed,
-      bestTimeS: outcome?.best ?? prev.bestTimeS,
+      bestTimeS: outcome?.best ?? prevBestS,
       isNewBest: outcome?.isNewBest ?? false,
     });
   });
@@ -484,35 +521,8 @@ export default function SudokuScreen() {
     [syncRestart, flushEntries, resetEntries]
   );
 
-  const flashError = useCallback(() => {
-    Animated.sequence([
-      Animated.timing(flashOpacity, {
-        toValue: 0.3,
-        duration: 80,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashOpacity, {
-        toValue: 0,
-        duration: FLASH_MS - 80,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [flashOpacity]);
-
-  // The engine emits a new array on each digit entry; the events stay in
-  // state (a save drops them), so no clear is needed.
-  useGameEvents(state?.events, {
-    errorEntered: () => flashError(),
-    unitComplete: () => {
-      Animated.sequence([
-        Animated.timing(unitFlashOpacity, { toValue: 0.35, duration: 80, useNativeDriver: true }),
-        Animated.timing(unitFlashOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
-      ]).start();
-    },
-    puzzleComplete: () => playPuzzleComplete(),
-  });
-
   const handleStart = useCallback(() => {
+    stopPuzzleComplete();
     clearSavedGame();
     const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
     openPuzzleSession(fresh);
@@ -530,10 +540,12 @@ export default function SudokuScreen() {
     openPuzzleSession,
     clearSavedGame,
     setState,
+    stopPuzzleComplete,
   ]);
 
   const handleStartWithSettings = useCallback(
     (d: Difficulty, v: Variant) => {
+      stopPuzzleComplete();
       setNewGameModalVisible(false);
       setVariant(v);
       clearSavedGame();
@@ -547,7 +559,14 @@ export default function SudokuScreen() {
       startMsRef.current = null;
       pausedAtRef.current = null;
     },
-    [resetScore, rememberDifficulty, openPuzzleSession, clearSavedGame, setState]
+    [
+      resetScore,
+      rememberDifficulty,
+      openPuzzleSession,
+      clearSavedGame,
+      setState,
+      stopPuzzleComplete,
+    ]
   );
 
   const handleNewGameRequest = useCallback(() => {
@@ -556,17 +575,21 @@ export default function SudokuScreen() {
 
   const handleCellPress = useCallback(
     (row: number, col: number) => {
+      // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+      if (stateRef.current?.isComplete) return;
       // Selecting a cell starts the clock but not the sync session: a puzzle
       // that was only looked at is discarded, not abandoned (#2942).
       startClockRef();
       syncClockActivity(); // an event handler: tell the HUD directly
       setState((s) => (s ? selectCell(s, row, col) : s));
     },
-    [startClockRef, syncClockActivity, setState]
+    [startClockRef, syncClockActivity, setState, stateRef]
   );
 
   const handleDigit = useCallback(
     (digit: CellValue) => {
+      // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+      if (stateRef.current?.isComplete) return;
       // Any number pad press is a first interaction, even one that changes
       // nothing (no cell selected): it starts the clock. Done here, not in the
       // updater, because a no-op leaves the state (and the [state] effect) alone.
@@ -583,32 +606,39 @@ export default function SudokuScreen() {
         return recordEntry(s, applied.next, applied.entry);
       });
     },
-    [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState]
+    [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState, stateRef]
   );
 
   const handleErase = useCallback(() => {
+    // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+    if (stateRef.current?.isComplete) return;
     setState((s) => {
       if (!s) return s;
       const applied = applyRecorded(s, { kind: "erase" });
       if (!applied) return s;
       return recordEntry(s, applied.next, applied.entry);
     });
-  }, [recordEntry, setState]);
+  }, [recordEntry, setState, stateRef]);
 
   const handleToggleNotes = useCallback(() => {
+    // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+    if (stateRef.current?.isComplete) return;
     setState((s) => (s ? toggleNotesMode(s) : s));
-  }, [setState]);
+  }, [setState, stateRef]);
 
   const handleUndo = useCallback(() => {
+    // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+    if (stateRef.current?.isComplete) return;
     setState((s) => {
       if (!s) return s;
       const applied = applyRecorded(s, { kind: "undo" });
       if (!applied) return s;
       return recordEntry(s, applied.next, applied.entry);
     });
-  }, [recordEntry, setState]);
+  }, [recordEntry, setState, stateRef]);
 
   const handleChangeDifficulty = useCallback(() => {
+    stopPuzzleComplete();
     // #2690: close this puzzle's session now, while the snapshot still reads
     // it (abandoned if started, discarded if not). The next puzzle opens its own.
     // Its last chunk goes to the recorder first (#3288): `close` ends the session.
@@ -622,9 +652,19 @@ export default function SudokuScreen() {
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [resetScore, syncClose, flushEntries, resetEntries, clearSavedGame, setState]);
+  }, [
+    resetScore,
+    syncClose,
+    flushEntries,
+    resetEntries,
+    clearSavedGame,
+    setState,
+    stopPuzzleComplete,
+  ]);
 
   const handleHint = useCallback(() => {
+    // A solved puzzle is final (#3774): during the solved beat the board takes no actions.
+    if (stateRef.current?.isComplete) return;
     // Like a number pad press, a hint press is a first interaction even when
     // it does nothing (no cell selected): it starts the clock, here and not in
     // the updater because a no-op leaves the state alone.
@@ -639,7 +679,7 @@ export default function SudokuScreen() {
       ensureSyncStarted(s);
       return recordEntry(s, applied.next, applied.entry);
     });
-  }, [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState]);
+  }, [startClockRef, syncClockActivity, ensureSyncStarted, recordEntry, setState, stateRef]);
 
   const showMistakes = showMistakesLoaded && (showMistakesPref ?? state?.difficulty === "easy");
   const fullButWrong = state !== null && isFullButWrong(state);
@@ -652,16 +692,27 @@ export default function SudokuScreen() {
     }
   }, [fullButWrong, t]);
 
-  const headerRight = useMemo(() => {
-    if (!state) return null;
-    return (
-      <PillButton
-        label={t("action.undo")}
-        onPress={handleUndo}
-        disabled={state.undoStack.length === 0}
-      />
+  const onSlotLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setSlot((prev) =>
+      prev && prev.w === width && prev.h === height ? prev : { w: width, h: height }
     );
-  }, [state, handleUndo, t]);
+  }, []);
+  const onHudLayout = useCallback((e: LayoutChangeEvent) => {
+    setHudH(e.nativeEvent.layout.height);
+  }, []);
+  // As large as the width or the height left above the bar allows; until measured, the grid fills the width.
+  // The board is hidden until then (opacity 0, still laid out) so it does not snap from full width.
+  // On a window too short for even the smallest board the play area scrolls instead of overlapping.
+  const fit = slot === null ? null : boardFit(slot.w, slot.h, hudH);
+  const boardSize = fit?.size;
+  const Slot = fit !== null && !fit.fits ? ScrollView : View;
+
+  const handleNewGameBarPress = useCallback(() => setConfirmNewGameVisible(true), []);
+  const handleConfirmNewGame = useCallback(() => {
+    setConfirmNewGameVisible(false);
+    setNewGameModalVisible(true);
+  }, []);
 
   return (
     <GameShell
@@ -681,8 +732,8 @@ export default function SudokuScreen() {
           : undefined
       }
       onOpenLeaderboard={openLeaderboard}
-      rightSlot={headerRight}
-      style={{ paddingBottom: 16 }}
+      gutter={windowW >= 360 ? 16 : 12}
+      style={{ paddingBottom: 8 }}
     >
       {state === null ? (
         <PreGame
@@ -694,94 +745,141 @@ export default function SudokuScreen() {
         />
       ) : (
         <View style={styles.body}>
-          <HudStatRow
-            style={styles.hudTight}
-            stats={[
-              { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
+          <Slot
+            testID="sudoku-play-area"
+            // A ScrollView takes child alignment only through contentContainerStyle (RN throws otherwise).
+            style={Slot === ScrollView ? styles.slotOuter : styles.slot}
+            onLayout={onSlotLayout}
+            {...(Slot === ScrollView ? { contentContainerStyle: styles.slotScroll } : null)}
+          >
+            <View onLayout={onHudLayout}>
+              <HudStatRow
+                style={styles.hudTight}
+                testID="sudoku-hud"
+                stats={[
+                  { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
+                  {
+                    key: "errors",
+                    text: t("hud.errors", { count: state.errorCount }),
+                    muted: state.errorCount === 0,
+                    error: state.errorCount > 0,
+                  },
+                  {
+                    key: "elapsed",
+                    muted: true,
+                    render: (textStyle) => (
+                      <ElapsedText
+                        getElapsedMs={playedMs}
+                        running={!isComplete}
+                        activity={clockActivity}
+                        frozenS={result?.elapsedS ?? null}
+                        resetKey={clockEpoch}
+                        format={formatElapsed}
+                        accessibilityLabel={elapsedA11yLabel}
+                        style={textStyle}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={[styles.gridWrap, slot === null && styles.unmeasured]}>
+              <SudokuGrid
+                grid={state.grid}
+                selectedRow={state.selectedRow}
+                selectedCol={state.selectedCol}
+                variant={state.variant}
+                solution={state.solution}
+                showMistakes={showMistakes}
+                boardSize={boardSize}
+                motion={motion}
+                wave={solveBeat}
+                reduceMotion={reduceMotion}
+                onCellPress={handleCellPress}
+              />
+            </View>
+          </Slot>
+
+          <View style={{ height: BLOCK_GAP }} />
+
+          {/* Undo, Erase, Notes, Hint and New Game: in thumb reach, right under the board. */}
+          <GameActionBar
+            testID="sudoku-action-bar"
+            height={compact ? BAR_H_COMPACT : BAR_H}
+            bordered={false}
+            actions={[
               {
-                key: "errors",
-                text:
-                  state.errorCount === 1
-                    ? t("hud.errorsOne")
-                    : t("hud.errors", { count: state.errorCount }),
-                muted: true,
+                key: "undo",
+                icon: "undo",
+                label: t("action.undo"),
+                accessibilityLabel: t("action.undo"),
+                color: colors.accentText,
+                disabled: state.undoStack.length === 0 || isComplete,
+                onPress: handleUndo,
+                testID: "sudoku-undo",
               },
               {
-                key: "elapsed",
-                muted: true,
-                render: (textStyle) => (
-                  <ElapsedText
-                    getElapsedMs={playedMs}
-                    running={!isComplete}
-                    activity={clockActivity}
-                    frozenS={result?.elapsedS ?? null}
-                    resetKey={clockEpoch}
-                    format={formatElapsed}
-                    accessibilityLabel={elapsedA11yLabel}
-                    style={textStyle}
-                  />
-                ),
+                key: "erase",
+                icon: "backspace",
+                label: t("numberPad.eraseShort"),
+                accessibilityLabel: t("numberPad.erase"),
+                color: colors.accentText,
+                disabled: isComplete,
+                onPress: handleErase,
+                testID: "sudoku-erase",
+              },
+              {
+                key: "notes",
+                icon: "edit",
+                label: t("numberPad.notes"),
+                accessibilityLabel: t("numberPad.toggleNotes"),
+                color: colors.accentText,
+                selected: state.notesMode,
+                disabled: isComplete,
+                onPress: handleToggleNotes,
+                testID: "sudoku-notes",
+              },
+              {
+                key: "hint",
+                icon: "lightbulb",
+                label: t("action.hint"),
+                accessibilityLabel: t("action.hint"),
+                color: colors.outcomeWin, // the AA green on cream, as Yacht's Hint
+                disabled: isComplete,
+                onPress: handleHint,
+                testID: "sudoku-hint",
+              },
+              {
+                key: "newGame",
+                icon: "refresh",
+                label: t("action.newGame"),
+                accessibilityLabel: t("action.newGame"),
+                color: colors.accentText,
+                onPress: handleNewGameBarPress,
+                testID: "sudoku-new-game",
               },
             ]}
           />
 
-          <View style={styles.gridWrap}>
-            <SudokuGrid
-              grid={state.grid}
-              selectedRow={state.selectedRow}
-              selectedCol={state.selectedCol}
-              variant={state.variant}
-              solution={state.solution}
-              showMistakes={showMistakes}
-              onCellPress={handleCellPress}
-            />
-          </View>
+          <View style={{ height: BLOCK_GAP }} />
 
-          <View
-            style={[styles.gridPadDivider, { backgroundColor: colors.border }]}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          />
-
-          <View style={styles.padWrap}>
-            <NumberPad
-              grid={state.grid}
-              variant={state.variant}
-              notesMode={state.notesMode}
-              onDigit={handleDigit}
-              onErase={handleErase}
-              onToggleNotes={handleToggleNotes}
-              onHint={handleHint}
-              message={fullButWrong ? t("fullWrong.message") : undefined}
-            />
-          </View>
-
-          <Animated.View
-            pointerEvents="none"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: colors.error, opacity: flashOpacity },
-            ]}
-            testID="sudoku-invalid-flash"
-          />
-          <Animated.View
-            pointerEvents="none"
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: colors.bonus, opacity: unitFlashOpacity },
-            ]}
-            testID="sudoku-unit-flash"
+          <NumberPad
+            grid={state.grid}
+            variant={state.variant}
+            notesMode={state.notesMode}
+            onDigit={handleDigit}
+            disabled={isComplete}
+            keyHeight={compact ? KEY_H_COMPACT : KEY_H}
+            gap={compact ? KEY_GAP_COMPACT : KEY_GAP}
+            message={fullButWrong ? t("fullWrong.message") : undefined}
           />
         </View>
       )}
 
       {state !== null ? (
         <GameResultModal
-          visible={isComplete}
+          visible={isComplete && !solveBeat}
           outcome="win"
           eyebrow={`${t("game.title")} · ${t(`difficulty.${state.difficulty}`)}`}
           subtitle={t(`variant.${state.variant}`)}
@@ -820,8 +918,16 @@ export default function SudokuScreen() {
           currentVariant={variant}
           onQuickRestart={() => handleStartWithSettings(difficulty, variant)}
           onStart={handleStartWithSettings}
+          onCancel={() => setNewGameModalVisible(false)}
         />
       ) : null}
+
+      <NewGameConfirmModal
+        visible={confirmNewGameVisible}
+        onConfirm={handleConfirmNewGame}
+        onCancel={() => setConfirmNewGameVisible(false)}
+        testID="sudoku-abandon"
+      />
     </GameShell>
   );
 }
@@ -833,24 +939,30 @@ export default function SudokuScreen() {
 const styles = StyleSheet.create({
   body: {
     flex: 1,
-    gap: 12,
   },
-  // Sudoku's grid fills the height, so its HUD keeps the tighter padding.
+  // The HUD and the board sit at the bottom of the space above the action bar; a tall phone's
+  // spare height goes above them.
+  slot: {
+    flex: 1,
+    justifyContent: "flex-end",
+    minHeight: 0,
+  },
+  // Sudoku's board fills the height, so its HUD keeps the tighter padding.
   hudTight: {
     paddingVertical: 4,
   },
-  gridWrap: {
-    alignSelf: "stretch",
-  },
-  gridPadDivider: {
-    alignSelf: "stretch",
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: 4,
-  },
-  padWrap: {
+  slotOuter: {
     flex: 1,
-    alignSelf: "stretch",
+    minHeight: 0,
+  },
+  slotScroll: {
+    flexGrow: 1,
+    justifyContent: "flex-end",
+  },
+  gridWrap: {
     alignItems: "center",
-    justifyContent: "center",
+  },
+  unmeasured: {
+    opacity: 0,
   },
 });

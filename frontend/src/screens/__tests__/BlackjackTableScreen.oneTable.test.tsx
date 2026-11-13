@@ -4,7 +4,7 @@
  * result kept clear of the hands; the split layout chosen by hand count.
  */
 import React, { useEffect } from "react";
-import { StyleSheet } from "react-native";
+import { AccessibilityInfo, StyleSheet } from "react-native";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 
 import BlackjackTableScreen from "../BlackjackTableScreen";
@@ -13,6 +13,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame, loadRuns, saveGame } from "../../game/blackjack/storage";
 import { newGame, newHand, placeBet } from "../../game/blackjack/engine";
 import { DOCK_HEIGHT } from "../../game/blackjack/layout";
+import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 
 jest.mock("@react-navigation/native", () =>
@@ -106,10 +107,17 @@ function resultState(o: Partial<EngineState> = {}): EngineState {
 
 afterEach(() => {
   (loadGame as jest.Mock).mockResolvedValue(null);
+  // A test that turned Reduce Motion on leaves it off for the next, even if it failed (#3720 review).
+  jest.restoreAllMocks();
+  resetReduceMotionForTests();
 });
 
 describe("a full hand on one screen", () => {
   it("bet → deal → stand → result → Rebet → next hand dealt, with no screen swap", async () => {
+    // The flow, not the motion (#3581, BlackjackTableScreen.motion.test.tsx): with Reduce Motion
+    // the result shows at the instant of the Stand.
+    resetReduceMotionForTests();
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     const n = await mountOn(newGame(knownDeck(), BEGINNER));
     await screen.findByText("Deal");
 
@@ -484,11 +492,12 @@ describe("the felt", () => {
       ...placeBet(newGame(knownDeck(), BEGINNER), 10),
     });
     expect(screen.getByLabelText("Dealer score hidden")).toBeTruthy();
-    // The hole card is a real card back from the shared PlayingCard, outlined
-    // by the table so it reads against the felt (review round 1, #6).
+    // The hole card is a real card back from the shared PlayingCard; the back
+    // reads against the felt by itself, so the table draws no outline (#3740).
     expect(screen.getByLabelText("Face-down card")).toBeTruthy();
-    expect(screen.getByTestId("dealer-card-0-outline")).toBeTruthy();
-    expect(screen.queryByTestId("dealer-card-1-outline")).toBeNull();
+    expect(within(screen.getByTestId("dealer-card-0")).getByTestId("minimal-back")).toBeTruthy();
+    expect(screen.queryByTestId("dealer-card-0-outline")).toBeNull();
+    expect(within(screen.getByTestId("dealer-card-1")).queryByTestId("minimal-back")).toBeNull();
   });
 
   // Review round 1, #3: one show-result predicate; the victory felt shows the result too.

@@ -83,7 +83,7 @@ export function HeartsSection({ breakdown }: { breakdown: HeartsBreakdown }) {
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.6}
-                    style={[styles.cell, styles.moon, { color: colors.bonus }]}
+                    style={[styles.cell, styles.moon, { color: colors.bonusText }]}
                   >
                     {`${MOON_MARK} ${formatNumber(t, hand.scores[seat] ?? 0)}`}
                   </Text>

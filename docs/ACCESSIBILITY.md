@@ -34,7 +34,7 @@ BC Arcade uses React Native Reanimated and Matter.js physics. Both must respect 
 
 - All animations must check `useReduceMotion()` from `frontend/src/components/shared/useReduceMotion.ts` and skip or simplify motion when it returns `true`. It follows the setting live, so a player can toggle Reduce Motion mid-session. Don't use Reanimated's `useReducedMotion()` on its own: it only reports the value from app launch and never updates. Don't call `AccessibilityInfo.isReduceMotionEnabled()` directly either: a one-off read misses a mid-session change (#2984).
 - When the setting changes mid-session, how soon it applies depends on the animation:
-  - **Event overlays and long-running sequences** (celebrations, Hearts/FreeCell event overlays, win cascades, Sort's pour) must react mid-sequence: cancel the running sequence (including its timers), clear any frame it left behind, and take the reduced path. Overlays do this by starting their timers with `playTimedPhases` (`components/shared/timedPhases.ts`) from the same effect that starts the animation, keyed on `reduceMotion`, and drawing repeated particles with `Particle` (`components/shared/Particle.tsx`).
+  - **Event overlays and long-running sequences** (celebrations, Hearts/FreeCell event overlays, win cascades, Sort's pour) must react mid-sequence: cancel the running sequence (including its timers), clear any frame it left behind, and take the reduced path. Overlays do this by starting their timers with `playTimedPhases` (`components/shared/timedPhases.ts`) from the same effect that starts the animation, keyed on `reduceMotion`.
   - **Short animations started by one action** (a score pop, a die roll, a merge burst, a tile-match flight, a board shake or zoom-to-fit) read the setting when the action happens, so a change applies from the next action. They need no cancellation code.
 - An animation that starts the moment it mounts (a win celebration) must not start on a stale value: `useReduceMotion()` starts from the value another mounted consumer is tracking, else from the launch-time value, which can be out of date. Gate such a mount on `useReduceMotionStatus().known`, as `SolitaireWinCascade` does.
 - Physics simulations (Cascade) must resolve immediately to final state when reduce motion is active — no dropping, bouncing, or sliding.
@@ -116,11 +116,11 @@ Run this before shipping any new game or screen.
 
 | Game        | Canvas?            | Known accessibility work                                              |
 | ----------- | ------------------ | --------------------------------------------------------------------- |
-| Yacht       | No                 | Dice faces need `accessibilityLabel` (e.g. "Die showing 4")           |
+| Yacht       | No                 | Done (#3748): dice say face and held; rows say score or potential     |
 | Hearts      | No                 | Card labels must include suit + rank (e.g. "Queen of Spades")         |
 | Blackjack   | No                 | Card labels must include suit + rank; chip count must use live region |
 | Solitaire   | No                 | Pile positions and card labels required                               |
-| Sudoku      | No                 | Cell coordinates + value in labels (e.g. "Row 3, Column 5, empty")    |
+| Sudoku      | No                 | Done (#3773, #3774): labels, keys; Reduce Motion stills all motion    |
 | Cascade     | Yes (Skia)         | Score + game state must have native text overlay; keyboard alt TBD    |
 | 2048        | No                 | Done (#2222): merge announced on iOS/Android only (web pending)       |
 | FreeCell    | No                 | Same card label convention as Solitaire; Large cards setting (#3347)  |

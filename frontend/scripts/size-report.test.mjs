@@ -41,6 +41,12 @@ test("bucketPackagedAsset groups Metro-flattened android asset names", () => {
   assert.equal(bucketPackagedAsset("raw/keep.xml"), "other");
 });
 
+test("findHiddenPremiumAssets flags Star Swarm's one music track (#3638)", () => {
+  const hits = findHiddenPremiumAssets([f("raw/assets_sounds_starswarmbgm.mp3")]);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].pattern, "Star Swarm / Mahjong BGM");
+});
+
 test("findHiddenPremiumAssets flags premium-only art and BGM but not shared sounds", () => {
   const hits = findHiddenPremiumAssets([
     f("raw/assets_sounds_starswarmbg1.mp3"),
@@ -142,10 +148,11 @@ test("hiddenOnlySoundNames: premium-only sounds, not ones a free game shares", (
   assert.ok(names.has("assets_sounds_heartsbrokenheartbeat.ogg"));
   assert.ok(names.has("assets_sounds_starswarmbombblast.ogg"));
   assert.ok(names.has("assets_sounds_mahjongmatch1.ogg"));
-  // Hidden games share these with free games (solitaire, yacht, sort, 2048...).
+  // Cascade's own: Sort, the last free game to borrow it, has its own pour since #3661.
+  assert.ok(names.has("assets_sounds_cascadefruitmerge.ogg"));
+  // Hidden games share these with free games (solitaire, yacht, 2048...).
   assert.ok(!names.has("assets_sounds_heartsmoonshot.mp3"));
   assert.ok(!names.has("assets_sounds_cardplace1.ogg"));
-  assert.ok(!names.has("assets_sounds_cascadefruitmerge.ogg"));
   // Free games' own sounds are never flagged.
   assert.ok(!names.has("assets_sounds_yachtdiceroll.ogg"));
   const hits = findHiddenPremiumAssets(

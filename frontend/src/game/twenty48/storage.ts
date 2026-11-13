@@ -21,7 +21,7 @@
 import { Twenty48State } from "./types";
 import { seedNextTileId } from "./engine";
 import { clockForSave, clockOnLoad } from "../_shared/playClock";
-import { createJsonSlot, createRecord } from "../_shared/storageSlot";
+import { createJsonSlot } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "twenty48.storage";
 
@@ -50,6 +50,11 @@ function restore(parsed: Twenty48State): Twenty48State {
         .filter((t): t is NonNullable<typeof t> => t !== null)
     );
   }
+  // A saved board opens at rest: the last move's merge (#3689) is not slid again. `mergedFrom` is
+  // absent from saves made before it, and those load as they always did.
+  if (parsed.tiles.some((tile) => tile.mergedFrom !== undefined)) {
+    parsed.tiles = parsed.tiles.map(({ mergedFrom: _slid, ...tile }) => tile);
+  }
   if (typeof parsed.scoreDelta !== "number") {
     parsed.scoreDelta = 0;
   }
@@ -61,7 +66,11 @@ function restore(parsed: Twenty48State): Twenty48State {
   }
   // Normalize timer fields — absent in states saved before timer was added.
   parsed.startedAt = parsed.startedAt ?? null;
-  parsed.accumulatedMs = parsed.accumulatedMs ?? 0;
+  // Finite and >= 0: a device clock set back saved a negative banked time (#3738).
+  parsed.accumulatedMs =
+    typeof parsed.accumulatedMs === "number" && Number.isFinite(parsed.accumulatedMs)
+      ? Math.max(0, parsed.accumulatedMs)
+      : 0;
   // Re-seed the engine's tile-ID counter above every restored ID so
   // subsequent spawns/merges don't collide with surviving tiles (#698).
   const maxId = parsed.tiles.reduce((m, t) => (t.id > m ? t.id : m), 0);
@@ -71,6 +80,20 @@ function restore(parsed: Twenty48State): Twenty48State {
   // Twenty48Screen stripped them at the call site.
   parsed.events = undefined;
   return clockOnLoad(parsed, parsed.game_over);
+}
+
+/**
+ * The state as it is stored: without `mergedFrom` (#3689). It is for the slide of the move just
+ * made, which a reopened game does not replay, so it never reaches storage and the stored format
+ * (and its size) is what it was.
+ */
+function forStorage(state: Twenty48State): Twenty48State {
+  const withClock = clockForSave(state);
+  if (!withClock.tiles.some((tile) => tile.mergedFrom !== undefined)) return withClock;
+  return {
+    ...withClock,
+    tiles: withClock.tiles.map(({ mergedFrom: _slid, ...tile }) => tile),
+  };
 }
 
 export const {
@@ -90,17 +113,8 @@ export const {
   keepInvalid: true,
   corruptExtra: "keyAndRaw",
   onLoad: restore,
-  beforeSave: clockForSave,
+  beforeSave: forStorage,
 });
 
-export const { save: saveBestScore, load: loadBestScore } = createRecord<number>({
-  key: "twenty48_best_score_v1",
-  subsystem: SUBSYSTEM,
-  ops: { load: "loadBest", save: "saveBest" },
-  fallback: () => 0,
-  read: (raw) => {
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-  },
-  write: String,
-});
+// The best score is the shared personal best (`game/_shared/personalBest.ts`, #3757); its old key
+// `twenty48_best_score_v1` is moved in there on the first read.

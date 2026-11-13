@@ -239,6 +239,8 @@ export function loadPuzzle(
 
 /** Select a cell. Selecting the already-selected cell deselects it. */
 export function selectCell(state: SudokuState, row: number, col: number): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   if (state.selectedRow === row && state.selectedCol === col) {
     return { ...state, selectedRow: null, selectedCol: null };
   }
@@ -246,6 +248,8 @@ export function selectCell(state: SudokuState, row: number, col: number): Sudoku
 }
 
 export function toggleNotesMode(state: SudokuState): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   return { ...state, notesMode: !state.notesMode };
 }
 
@@ -277,24 +281,31 @@ export function isComplete(grid: Grid, solution: string): boolean {
   return isGridComplete(grid, solution);
 }
 
-function isRowComplete(grid: Grid, row: number, size: number): boolean {
-  for (let c = 0; c < size; c++) {
-    const cell = grid[row]?.[c];
-    if (!cell || cell.value === 0 || cell.isError) return false;
-  }
+/** Whether the cell holds the solution's digit. Givens always do. */
+function isSolved(grid: Grid, solution: string, row: number, col: number): boolean {
+  const size = grid.length;
+  const cell = grid[row]?.[col];
+  return !!cell && cell.value !== 0 && cell.value === solution.charCodeAt(row * size + col) - 48;
+}
+
+/**
+ * A row, column or box counts as complete only when every cell holds the
+ * solution's digit (#3785): a full unit with a wrong digit is not complete,
+ * even when it has no duplicates.
+ */
+function isRowComplete(grid: Grid, solution: string, row: number): boolean {
+  for (let c = 0; c < grid.length; c++) if (!isSolved(grid, solution, row, c)) return false;
   return true;
 }
 
-function isColComplete(grid: Grid, col: number, size: number): boolean {
-  for (let r = 0; r < size; r++) {
-    const cell = grid[r]?.[col];
-    if (!cell || cell.value === 0 || cell.isError) return false;
-  }
+function isColComplete(grid: Grid, solution: string, col: number): boolean {
+  for (let r = 0; r < grid.length; r++) if (!isSolved(grid, solution, r, col)) return false;
   return true;
 }
 
 function isBoxComplete(
   grid: Grid,
+  solution: string,
   boxRow: number,
   boxCol: number,
   boxRows: number,
@@ -302,8 +313,7 @@ function isBoxComplete(
 ): boolean {
   for (let r = 0; r < boxRows; r++) {
     for (let c = 0; c < boxCols; c++) {
-      const cell = grid[boxRow + r]?.[boxCol + c];
-      if (!cell || cell.value === 0 || cell.isError) return false;
+      if (!isSolved(grid, solution, boxRow + r, boxCol + c)) return false;
     }
   }
   return true;
@@ -313,7 +323,8 @@ function isBoxComplete(
  *
  * Normal mode (`notesMode === false`):
  *   - Sets `cell.value = digit`
- *   - Clears the cell's pencil notes
+ *   - Clears the cell's pencil notes and removes `digit` from the notes of its
+ *     row, column and box peers (#3785; a hint does the same)
  *   - A digit that duplicates one in its row, column or box (an illegal
  *     move) increments `errorCount` and emits `errorEntered`. A legal digit
  *     that merely disagrees with the solution is NOT an error (#2943): no
@@ -322,14 +333,18 @@ function isBoxComplete(
  *   - Pushes the previous state to the undo stack (capped at
  *     UNDO_STACK_LIMIT)
  *   - Checks for completion
+ *   - A digit the cell already holds changes nothing (#3773): the same state
+ *     comes back, so no error, undo step, replay entry or event
  *
  * Notes mode (`notesMode === true`):
- *   - Toggles the digit in the cell's notes set
+ *   - Toggles the digit in the cell's notes set (never touches other cells)
  *   - Does NOT affect `cell.value`, `errorCount`, or completion
  *   - Does NOT push to the undo stack
  *
  * No-op when nothing is selected or the selected cell is a given. */
 export function enterDigit(state: SudokuState, digit: CellValue): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   if (state.selectedRow === null || state.selectedCol === null) return state;
   const row = state.selectedRow;
   const col = state.selectedCol;
@@ -337,29 +352,21 @@ export function enterDigit(state: SudokuState, digit: CellValue): SudokuState {
   if (cell.given) return state;
   if (digit === 0) return state;
 
-  const cfg = variantConfig(state.variant);
-
   if (state.notesMode) {
     const d = digit as NoteDigit;
     const nextNotes = new Set(cell.notes);
     if (nextNotes.has(d)) nextNotes.delete(d);
     else nextNotes.add(d);
-    const nextGrid = mapGrid(state.grid, (c, ri, ci) => {
-      if (ri === row && ci === col) {
-        return { ...c, notes: nextNotes };
-      }
-      if (!peers(row, col, ri, ci, cfg)) return c;
-      if (c.value === d && c.notes.has(d)) {
-        const trimmed = new Set(c.notes);
-        trimmed.delete(d);
-        return { ...c, notes: trimmed };
-      }
-      return c;
-    });
-    return { ...state, grid: nextGrid };
+    // Notes mode never touches another cell's notes (#3785).
+    return {
+      ...state,
+      grid: replaceCell(state.grid, row, col, (c) => ({ ...c, notes: nextNotes })),
+    };
   }
 
-  // Normal mode.
+  // Normal mode. A cell that already holds this digit stays as it is (#3773): a repeat tap
+  // costs no error, undo step, replay entry or event.
+  if (cell.value === digit) return state;
   return placeDigit(state, row, col, digit, true);
 }
 
@@ -380,11 +387,15 @@ function placeDigit(
   const undoStack = pushUndo(state);
   // Illegal = the digit already stands in the cell's row, column or box.
   const illegal = getConflicts(state.grid, row, col, digit, cfg).length > 0;
-  const placed = replaceCell(state.grid, row, col, (c) => ({
-    ...c,
-    value: digit,
-    notes: new Set<NoteDigit>(),
-  }));
+  // The digit leaves the notes of its row, column and box peers (#3785); the
+  // undo snapshot above holds them, so undo brings them back.
+  const placed = mapGrid(state.grid, (c, ri, ci) => {
+    if (ri === row && ci === col) return { ...c, value: digit, notes: new Set<NoteDigit>() };
+    if (!c.notes.has(digit as NoteDigit) || !peers(row, col, ri, ci, cfg)) return c;
+    const trimmed = new Set(c.notes);
+    trimmed.delete(digit as NoteDigit);
+    return { ...c, notes: trimmed };
+  });
   const nextGrid = recomputeConflicts(placed, cfg);
   const countsAsError = illegal && countErrors;
   const nextErrorCount = countsAsError ? state.errorCount + 1 : state.errorCount;
@@ -395,13 +406,13 @@ function placeDigit(
     events.push({ type: "errorEntered" });
   } else if (!illegal) {
     const { boxRows, boxCols } = cfg;
-    if (isRowComplete(nextGrid, row, size))
+    if (isRowComplete(nextGrid, state.solution, row))
       events.push({ type: "unitComplete", unit: "row", index: row });
-    if (isColComplete(nextGrid, col, size))
+    if (isColComplete(nextGrid, state.solution, col))
       events.push({ type: "unitComplete", unit: "col", index: col });
     const boxRow = Math.floor(row / boxRows) * boxRows;
     const boxCol = Math.floor(col / boxCols) * boxCols;
-    if (isBoxComplete(nextGrid, boxRow, boxCol, boxRows, boxCols))
+    if (isBoxComplete(nextGrid, state.solution, boxRow, boxCol, boxRows, boxCols))
       events.push({ type: "unitComplete", unit: "box", index: boxRow * size + boxCol });
   }
   if (complete) events.push({ type: "puzzleComplete" });
@@ -433,6 +444,8 @@ export function isFullButWrong(state: SudokuState): boolean {
  * Returns the same state when there is nothing to do. Never costs an error.
  */
 export function applyHint(state: SudokuState): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   const { size } = variantConfig(state.variant);
   const solutionAt = (r: number, c: number) =>
     (state.solution.charCodeAt(r * size + c) - 48) as CellValue;
@@ -473,6 +486,8 @@ export function applyHint(state: SudokuState): SudokuState {
 /** Clear the value AND notes of the selected cell. No-op on given cells
  * or when nothing is selected. Pushes to the undo stack. */
 export function eraseCell(state: SudokuState): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   if (state.selectedRow === null || state.selectedCol === null) return state;
   const row = state.selectedRow;
   const col = state.selectedCol;
@@ -497,17 +512,57 @@ export function eraseCell(state: SudokuState): SudokuState {
   };
 }
 
-/** Pop the most recent undo snapshot. Returns the current state if the
- * stack is empty. The popped snapshot is re-threaded with the caller's
- * now-shortened history so subsequent undos continue walking backwards. */
+/**
+ * Pop the most recent undo snapshot. Returns the current state if the stack is
+ * empty. Undo restores the board only (#3785): digits, notes, error count,
+ * conflicts and completion. The Notes mode and the selection stay as they are,
+ * except that the cell the undone action changed becomes selected, so the
+ * player sees what changed. That cell is the first one whose value differs from
+ * the snapshot, else the first whose notes differ (an erase of a notes-only
+ * cell); with no difference the selection stays. The popped snapshot is
+ * re-threaded with the caller's now-shortened history so subsequent undos
+ * continue walking backwards.
+ */
 export function undo(state: SudokuState): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   if (state.undoStack.length === 0) return state;
   const prev = state.undoStack[state.undoStack.length - 1];
   if (!prev) return state;
+  let byValue: [number, number] | null = null;
+  let byNotes: [number, number] | null = null;
+  prev.grid.forEach((row, r) =>
+    row.forEach((cell, c) => {
+      const now = cellAt(state.grid, r, c);
+      if (!byValue && cell.value !== now.value) byValue = [r, c];
+      if (!byNotes && !sameNotes(cell.notes, now.notes)) byNotes = [r, c];
+    })
+  );
+  // Notes-only changes: prefer the cell the undone action was taken on (the snapshot's selection),
+  // since a later note toggle (which pushes no snapshot) can also differ in an earlier cell.
+  const actedOn: [number, number] | null =
+    prev.selectedRow !== null &&
+    prev.selectedCol !== null &&
+    !sameNotes(
+      cellAt(prev.grid, prev.selectedRow, prev.selectedCol).notes,
+      cellAt(state.grid, prev.selectedRow, prev.selectedCol).notes
+    )
+      ? [prev.selectedRow, prev.selectedCol]
+      : null;
+  const changed: [number, number] | null = byValue ?? actedOn ?? byNotes;
   return {
     ...prev,
+    notesMode: state.notesMode,
+    selectedRow: changed ? changed[0] : state.selectedRow,
+    selectedCol: changed ? changed[1] : state.selectedCol,
     undoStack: state.undoStack.slice(0, -1),
   };
+}
+
+function sameNotes(a: ReadonlySet<NoteDigit>, b: ReadonlySet<NoteDigit>): boolean {
+  if (a.size !== b.size) return false;
+  for (const d of a) if (!b.has(d)) return false;
+  return true;
 }
 
 // ---------------------------------------------------------------------------

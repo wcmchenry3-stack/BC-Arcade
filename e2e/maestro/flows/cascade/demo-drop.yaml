@@ -1,0 +1,28 @@
+appId: com.buffingchi.games
+# Cascade demo flow (#3705): one drop. Tagged `demo`, so only the
+# `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
+#
+# A tap on `cascade-game-area` drops the current piece at the tap's x
+# (CascadeScreen handleTap). Maestro taps an element at its centre, so the
+# piece falls down the middle. The queue is random: the Cascade test hooks
+# (`__cascade_setSeed` and the rest, game/cascade/testHooks.ts) live on the
+# app's JS globalThis, which Maestro cannot call, so which piece drops varies
+# from run to run.
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: cascade-demo-drop
+- runFlow: ../_shared/open-cascade.yaml
+- takeScreenshot: cascade-demo-drop-before
+- tapOn:
+    id: "cascade-game-area"
+    retryTapIfNoChange: false
+# The physics loop never stops animating, so this waits the full timeout:
+# long enough for the piece to fall and settle.
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: cascade-demo-drop-after
+- assertNotVisible:
+    id: "cascade-result-title"
+- stopRecording

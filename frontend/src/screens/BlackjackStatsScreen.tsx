@@ -90,7 +90,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       value: t("stats.comebackLow", {
         chips: formatNumber(t, comebackLow(biggestComebackRun)),
       }),
-      valueColor: colors.accent,
+      valueColor: colors.accentText,
     });
   }
 
@@ -102,8 +102,8 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
   }
 
   function outcomeColor(outcome: RunBadge): string {
-    if (outcome === "comeback") return colors.accent;
-    if (outcome === "completed") return colors.bonus;
+    if (outcome === "comeback") return colors.accentText;
+    if (outcome === "completed") return colors.bonusText;
     if (outcome === "abandoned") return colors.textMuted;
     return colors.error;
   }
@@ -155,7 +155,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                     sessionStats.plChips >= 0
                       ? t("stats.netPLPositive", { amount: sessionStats.plChips })
                       : t("stats.netPLNegative", { amount: sessionStats.plChips }),
-                  valueColor: sessionStats.plChips >= 0 ? colors.bonus : colors.error,
+                  valueColor: sessionStats.plChips >= 0 ? colors.bonusText : colors.error,
                 },
               ]}
             />

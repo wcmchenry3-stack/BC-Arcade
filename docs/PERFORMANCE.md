@@ -201,7 +201,7 @@ The source of truth is the `android-bundle-check` job in `.github/workflows/ci.y
 | JS warn threshold          | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
 | Packaged assets hard limit | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
 | Hidden-premium asset guard | 0 files                            | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
-| All-games JS ceiling       | 8,388,608 B (8 MiB)                | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
+| All-games JS ceiling       | 8,650,752 B (8.25 MiB), temporary  | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
 | `bundlesize`               | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
 | Hidden-locale guard        | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
 | PR comment baseline        | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
@@ -209,6 +209,8 @@ The source of truth is the `android-bundle-check` job in `.github/workflows/ci.y
 | New game JS delta          | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
 
 Why 8 MiB stays the JS limit (decided in #2829): the store bundle was 6.24 MiB then (5.55 MiB since #3150), but the premium release un-hides the games and becomes the 7.11 MiB all-games bundle. 8 MiB leaves about 0.89 MiB (12%) of growth over that ceiling. Lowering the limit now would only fail the premium launch. Drift on today's store bundle is caught by the 6.0 MiB warning (about 8% over 5.55 MiB; it was 6.75 MiB before #3150). The all-games ceiling is checked now, not at launch. The assets limit (4 MiB, about 23% over the 3.25 MiB store payload) will fail by design when games are un-hidden: that needs a deliberate re-budget, not a quiet increase.
+
+The all-games ceiling is 8.25 MiB for now (#3791, 2026-11-13, owner decision). Dev's all-games bundle had reached 8,379,013 B, and the Bottle Sort sound set's 23 asset-registry entries (about 10 KB of JS) put it 711 B over 8 MiB. The store-config limit is unchanged. [#3820](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3820) cuts the all-games JS and lowers the ceiling back to 8 MiB.
 
 CI builds the store bundle with the env set explicitly. A gitignored `frontend/.env` on a dev machine points at the pre-launch API and would otherwise make a bundle with all 12 games, because Expo loads `.env` before Metro runs.
 
@@ -245,13 +247,13 @@ What the Android build copies into the APK/AAB besides native code. Source: `siz
 
 **Store config** (JS 6,544,825 B + assets 3,403,575 B):
 
-| Bucket                  | Files |      KB | Notes                                                               |
-| ----------------------- | ----: | ------: | ------------------------------------------------------------------- |
-| Fonts                   |    14 | 2,710.8 | Manrope ×7, Space Grotesk ×5, MaterialIcons, MaterialCommunityIcons |
-| Sounds                  |    19 |   567.0 | SFX only (see residuals below)                                      |
-| App logo                |     1 |    37.6 | `assets/logo.png` via `AppHeader`                                   |
-| React Navigation images |    17 |     6.2 | Library images                                                      |
-| Other                   |     1 |     2.2 | `raw/keep.xml`                                                      |
+| Bucket                  | Files |      KB | Notes                                                                                                                                                                                                       |
+| ----------------------- | ----: | ------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fonts                   |    14 | 2,710.8 | Manrope ×7, Space Grotesk ×5, MaterialIcons, MaterialCommunityIcons (measured before #3839; per-weight subpath imports now package 7 fonts, 2,128,172 B, and take total assets to 3,051,428 B in 120 files) |
+| Sounds                  |    19 |   567.0 | SFX only (see residuals below)                                                                                                                                                                              |
+| App logo                |     1 |    37.6 | `assets/logo.png` via `AppHeader`                                                                                                                                                                           |
+| React Navigation images |    17 |     6.2 | Library images                                                                                                                                                                                              |
+| Other                   |     1 |     2.2 | `raw/keep.xml`                                                                                                                                                                                              |
 
 **All-games config** (JS 7,460,309 B + assets 28,744,159 B):
 
@@ -326,7 +328,7 @@ A build counts as a store build when `!context.dev && EXPO_PUBLIC_TEST_HOOKS !==
 **What remains in the store bundle (known limitation).**
 
 - Small shared modules that free surfaces import: hidden games' i18n namespaces (all locales), the `GameDetail` Hearts and Star Swarm sections, Hearts and Blackjack scorecards and models, the Blackjack and Hearts contexts and storage, and the Star Swarm engine (reached through `scoreLedger`, `GameDetail` and `LeaderboardScreen`). All pure JS, no large assets.
-- Four sounds that look premium by name (`hearts-moon-shot.mp3`, `blackjack-win.ogg`, `cascade-fruit-merge.ogg`, `cascade-game-over.ogg`) are required by free games through the shared sound registry. The guard deliberately does not flag SFX.
+- No sound that looks premium by name is required by a free game any more: `cascade-fruit-merge.ogg` stopped being Bottle Sort's with #3661, `hearts-moon-shot.mp3` stopped being Sudoku's with #3775 (it is not bundled at all), and `cascade-game-over.ogg` and `cascade-combo.ogg` are used by Cascade only, so the store bundle leaves out all three Cascade sounds with the hidden-premium exclusion (`blackjack-win.ogg` was deleted with #3581). `freecell-game-win.mp3` is bundled by no game either. The guard deliberately does not flag SFX.
 - The Blackjack and Hearts providers stay mounted at startup (about 26 KB of source).
 - No premium-only native dependency exists (`matter-js` is pure JS), so native size is unchanged by #2830.
 
@@ -557,7 +559,7 @@ The one heavy one-shot is the **Yacht oracle**: `getOracleTable()` 197 ms cold (
 | P1       | Lobby prefetch contention (545 KB evaluated right after Home paints). Only if the P0 trace shows JS-thread contention in the first 2 s: stagger the prefetch (for example start about 1.5 s after Home, one task per tick), and/or `require()` the Sudoku bank lazily inside `poolFor` as the Yacht oracle does (same decode work, identical behaviour). |
 | P1       | Yacht VS-start freeze. If the device measurement is above about 250 ms: compute `targetIndex` with index arithmetic instead of sort/join, chunk `buildHoldOptions` across ticks during the VS intro, or ship the hold options as packed data. Output must stay bit-identical (oracle and AI golden tests, `yacht-sim-gate.yml`).                         |
 | P2       | Sentry and reanimated are about 40% of eager source. Check whether Sentry init and module evaluation is a measurable share of T0 to T1 before touching them; any removal must pass the A/B protocol.                                                                                                                                                     |
-| P2       | Five TTFs (466 KB) gate the first React frame. Measure `useFonts` resolve time on the low-end device; if material, render the shell with system fonts or cut unused weights.                                                                                                                                                                             |
+| P2       | Five TTFs (466 KB) gate the first React frame. Measure `useFonts` resolve time on the low-end device; if material, render the shell with system fonts. Unused weights are already cut (#3839: only the 5 used weights are imported, by subpath).                                                                                                         |
 | P3       | `fflate` (34 KB), the plural-rules polyfill and locale data (39 KB) and the glyph maps (231 KB) are small eager costs. Leave them unless the P0 trace shows them.                                                                                                                                                                                        |
 | P3       | `LeaderboardScreen`'s lazy chunk (118 KB) pulls in the hidden Star Swarm engine (about 38 KB). Not a startup issue; worth a look in dead-code work.                                                                                                                                                                                                      |
 | P3       | Add a one-line `console.info` of `cold_start_ms` in non-store builds so the number is readable with `adb logcat -s ReactNativeJS` where Sentry is disabled.                                                                                                                                                                                              |
@@ -625,6 +627,7 @@ The current enforced numbers (JS limit, warn threshold, packaged-assets limit, a
 - 5.5 MB: limit raised for `react-native-svg` and the Classic card deck (#688).
 - 6.0 MB: limit raised for Expo SDK 56 and new games (#1977).
 - 8.0 MB: limit raised for `@sentry/react-native` 7 → 8 (#1965).
+- **All-games ceiling 8.25 MiB (2026-11-13, #3791).** Temporary, store limit unchanged; #3820 brings it back to 8 MiB.
 - **8.0 MiB kept, meaning changed (2026-10-10, #2829).** The store bundle is 6.24 MiB after #2830 and #2832; 8 MiB now guards the 7.11 MiB all-games ceiling that the premium release will reach, with a 6.75 MiB warning on the store bundle and a 4 MiB packaged-assets limit. See [Enforced budgets](#enforced-budgets).
 - **7.74 MB → 7.27 MB (2026-09-30, #2869).** The bundle had reached 7.74 MB (8,114,007 bytes), 280 KB under the limit, before the premium client work (`expo-iap`, the five premium games made visible). Two behaviour-preserving changes cut 483 KB and left **752 KB of headroom** (769,634 bytes):
 

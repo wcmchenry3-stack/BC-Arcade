@@ -7,7 +7,6 @@
   "hud.undos": "ביטולים: {{undos}}",
   "action.undo": "ביטול",
   "action.hint": "רמז",
-  "action.colorblindToggle": "מצב עיוורון צבעים",
   "action.backToLevels": "חזרה לרמות",
   "color.red": "אדום",
   "color.blue": "כחול",
@@ -28,6 +27,7 @@
   "a11y.bottleSelected": "בקבוק {{index}} נבחר — הקש על בקבוק אחר כדי לשפוך",
   "a11y.bottleEmpty": "בקבוק {{index}}, ריק",
   "a11y.bottleSolved": "בקבוק {{index}}, הושלם",
+  "a11y.hintDestination": "רמז: שפכו לכאן",
   "settings.colorblindMode": "מצב עיוורון צבעים",
   "settings.colorblindModeHint": "מציג סמל על כל כדור בנוסף לצבע",
   "error.loadFailed": "לא ניתן לטעון את הרמה הזו.",
@@ -40,5 +40,9 @@
   "hint.unknown": "לא נמצא רמז",
   "hint.backToLastGoodMove": "חזרה למהלך הטוב האחרון",
   "hint.restartLevel": "התחלה מחדש של הרמה",
-  "hint.dismiss": "סגירה"
+  "hint.dismiss": "סגירה",
+  "levelSelect.chapter": "פרק {{chapter}}",
+  "levelSelect.levelStars": "רמה {{level}}, {{stars}} מתוך 3 כוכבים",
+  "stars.summary": "{{stars}} מתוך 3 כוכבים. מהלכים {{moves}}, יעד {{par}}.",
+  "stars.movesTarget": "מהלכים {{moves}} · יעד {{par}}"
 }

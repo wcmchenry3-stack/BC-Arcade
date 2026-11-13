@@ -170,12 +170,12 @@ export function CapacityWarningToast({
       </View>
       <Pressable
         onPress={onDismiss}
-        style={[styles.dismissButton, { borderColor: colors.accent }]}
+        style={[styles.dismissButton, { borderColor: colors.accentText }]}
         accessibilityRole="button"
         accessibilityLabel={t("capacityWarning.dismiss")}
         testID="capacity-warning-dismiss"
       >
-        <Text style={[styles.dismissText, { color: colors.accent }]}>
+        <Text style={[styles.dismissText, { color: colors.accentText }]}>
           {t("capacityWarning.dismiss")}
         </Text>
       </Pressable>

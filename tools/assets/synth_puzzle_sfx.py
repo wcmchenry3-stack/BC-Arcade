@@ -15,6 +15,11 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
 
 With no sound names, every sound is written.
 
+Runner-up options (#3673), kept next to each pick and never shipped:
+    python tools/assets/synth_puzzle_sfx.py --options daily-word-win [scratch_dir]
+writes the sound's A (the pick, the same recipe as `SOUNDS`), B and C to a scratch folder (the
+system temp dir by default; it refuses frontend/assets/sounds/). See `OPTIONS` below.
+
 Sounds:
 - dice-roll-1/2/3.ogg  Yacht "short cup and spill", 0.75 s each: a brief muffled rattle in a cup
   (~90 ms), then five dice spill onto a wooden tray and bounce to rest by ~0.42 s, inside the
@@ -35,12 +40,14 @@ Sounds:
   same a whole step higher, with a double "again!" bell). cpu-jackpot-yacht.ogg /
   cpu-jackpot-joker.ogg: the computer's, 0.7 s: a fast falling minor run into a low minor chord.
 - 2048 "wooden tiles": tile-merge-1/2/3.ogg (0.22 s: a faint slide of air, then two wooden tiles
-  clacking together at 90 ms, on the merge pop) and tile-spawn-1/2/3.ogg (0.16 s: a small tile set
+  clacking together at 100 ms, as the sliding tiles meet and pop) and tile-spawn-1/2/3.ogg (0.16 s: a small tile set
   down at 60 ms, as the new tile scales in). Three variations each; the spawn, on every swipe, is
   the quietest sound in the game.
-- 2048 win-2048.ogg (~2.7 s: the Yacht jackpot's rising mallet run and rolled chord, then a final
-  "ta-da" mallet chord with a high glass bell) and game-over-2048.ogg (~1.5 s: a last wooden tile
-  clack, a gentle falling mallet line G E D C, settling on a soft low A minor chord).
+- 2048 win-2048.ogg (~2.5 s: from the 2048 tile's pop, the Yacht jackpot's rising mallet run and
+  rolled chord, then a final "ta-da" mallet chord with a high glass bell as the win card shows at
+  1.0 s) and game-over-2048.ogg (~2.0 s: a last wooden tile clack as the move lands, a gentle
+  falling mallet line G E D C over the dim and shake, settling on a soft low A minor chord as the
+  card shows at 0.6 s). Timed to the motion (#3690).
 - Mahjong "real tiles", "crisp clack": mahjong-select-1/2/3.ogg (0.12 s: a bright fingertip tick
   on a dense tile, with a breath of cloth, on the tap) and mahjong-match-1/2/3.ogg (0.5 s: a tap
   on the second tile, the pair flying, a crisp clack and its double as they meet face to face at
@@ -62,6 +69,11 @@ Sounds:
   C E G C E, a glass shimmer over the sparks, then a rolled C major "ta-da" with a bell as the
   result card shows at 1.1 s) and daily-word-loss.ogg (1.9 s: a soft falling marimba line, one note
   as each answer tile shows, G E D C A, then a low A minor chord as the card shows at 0.78 s).
+- Yacht end of game, "mallet fanfare" (#3750), each starting with the end beat and landing its
+  chord as the result card shows: yacht-win.ogg (2.6 s: a two-octave mallet run, a rolled C
+  major, then a "ta-da" chord with a high glass bell at 1.0 s), yacht-loss.ogg (2.0 s: a gentle
+  falling line G E D C into a soft low A minor chord at 0.6 s) and yacht-tie.ogg (2.0 s: two
+  level notes, E and G, into an open C-G-D chord at 0.6 s).
 """
 
 from __future__ import annotations
@@ -75,6 +87,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from synth_common import (
     SR,
+    OptionTable,
     fade,
     highpass,
     level_rms,
@@ -83,6 +96,7 @@ from synth_common import (
     mallet,
     noise,
     norm,
+    options_cli,
     phase,
     place,
     t_axis,
@@ -439,10 +453,18 @@ def cpu_jackpot_joker() -> np.ndarray:
 
 # --- 2048 -------------------------------------------------------------------------------------
 
-# AnimatedTile.tsx: a slide takes 100 ms, the merge pop starts at 90 ms, a new tile scales in from
-# 60 ms. The sounds fire at the swipe, so each puts its accent on its animation.
-TILE_MERGE_AT = 0.09
+# game/twenty48/motion.ts (#3689). Every sound fires as the move lands, so each puts its accent on
+# its moment: the merge's two tiles meet at SLIDE_MS (100 ms) and the merged tile pops; a new tile
+# shows from SPAWN_AT_MS (60 ms); the 2048 tile pops at 100 ms and the win card shows at
+# WIN_BEAT_MS (1.0 s); a stuck board dims and shakes from GAME_OVER_DIM_AT_MS (220 ms) and the
+# game-over card shows at GAME_OVER_BEAT_MS (0.6 s) (#3690).
+TILE_MERGE_AT = 0.10
 TILE_SPAWN_AT = 0.06
+WIN_POP_AT = 0.10
+WIN_CARD_AT = 1.0
+GAME_OVER_LAND_AT = 0.10
+GAME_OVER_DIM_AT = 0.22
+GAME_OVER_CARD_AT = 0.6
 
 
 def swish(seed: int, dur: float, lo: float, hi: float, g: float) -> np.ndarray:
@@ -478,24 +500,31 @@ def tile_spawn(i: int) -> np.ndarray:
 
 
 def win_2048() -> np.ndarray:
-    """2048 reached, 3.1 s: the jackpot's run and roll, then a final "ta-da" chord and a bell."""
+    """2048 reached, 2.6 s: the jackpot's run and roll from the 2048 tile's pop, then a final
+    "ta-da" chord and a bell as the win card shows."""
     run = seq([C5, E5, G5, C6, E6, G6], marimba, 0.05, 0.8, [0.8, 0.85, 0.9, 0.95, 1, 1.1])
     final = seq([C5, G5, C6, E6], lambda n: marimba(n, 1.5, 0.32), 0.008, 1.5)
     return mix(
-        3.1,
-        (run, 0.0),
-        (roll_chord([C5, E5, G5, C6, E6], 1.1, 9001), 0.3),
-        (sparkle([G6 + 5, E6 + 12, C6 + 12, G6], 0.38, 0.1), 0.0),
-        (final * 1.2, 1.5),
-        (glass(C7, 1.5, 0.4) * 0.25, 1.5),
+        2.6,
+        (run, WIN_POP_AT),
+        (roll_chord([C5, E5, G5, C6, E6], 1.1, 9001), WIN_POP_AT + 0.3),
+        (sparkle([G6 + 5, E6 + 12, C6 + 12, G6], 0.38, 0.1), WIN_POP_AT),
+        (final * 1.2, WIN_CARD_AT),
+        (glass(C7, 1.5, 0.4) * 0.25, WIN_CARD_AT),
     )
 
 
 def game_over_2048() -> np.ndarray:
-    """No moves left, 2.0 s: a last tile clack, a gentle falling line, a soft low A minor chord."""
-    line = seq([G5, E5, D5, C5], lambda n: marimba(n, 0.6, 0.2), 0.11, 0.9, [0.9, 0.8, 0.75, 0.7])
+    """No moves left, 2.1 s: a last tile clack as the move lands, a gentle falling line over the
+    dim and shake, a soft low A minor chord as the game-over card shows."""
+    line = seq([G5, E5, D5, C5], lambda n: marimba(n, 0.6, 0.2), 0.1, 0.9, [0.9, 0.8, 0.75, 0.7])
     settle = seq([A4, C5, E5], lambda n: marimba(n, 1.5, 0.35), 0.01, 1.5)
-    return mix(2.0, (block_clack(9010, 0.6), 0.0), (line, 0.05), (settle * 0.8, 0.5))
+    return mix(
+        2.1,
+        (block_clack(9010, 0.6), GAME_OVER_LAND_AT),
+        (line, GAME_OVER_DIM_AT - 0.02),
+        (settle * 0.8, GAME_OVER_CARD_AT),
+    )
 
 
 # --- Mahjong ----------------------------------------------------------------------------------
@@ -725,6 +754,336 @@ def daily_word_loss() -> np.ndarray:
     return fade(x, 0.0, 0.25)
 
 
+# --- Yacht end of game (#3750): option A, "mallet fanfare" -------------------------------------
+
+# From game/yacht/motion.ts (#3749): WIN_BEAT_MS 1000 and LOSS_BEAT_MS 600. Each sound starts with
+# the end beat, and its chord lands as the result card shows.
+YACHT_WIN_CARD_AT = 1.0
+YACHT_END_CARD_AT = 0.6
+
+
+def yacht_win() -> np.ndarray:
+    """Win, 2.6 s: a two-octave mallet run (C E G C E G), a rolled C major from 0.45 s, then a
+    final "ta-da" chord with a high glass bell as the card shows (1.0 s). A step above the jackpot.
+    """
+    x = np.zeros(int(2.6 * SR))
+    for k, n in enumerate([C5, E5, G5, C6, E6, G6]):
+        place(x, marimba(n, 0.6, 0.18) * (0.75 + 0.06 * k), 0.06 * k)
+    place(x, roll_chord([C5, E5, G5, C6], 0.5, 15301) * 0.55, 0.42)
+    for k, n in enumerate([C5, G5, C6, E6]):
+        place(x, marimba(n, 1.5, 0.4), YACHT_WIN_CARD_AT + 0.01 * k)
+    place(x, glass(C7, 1.4, 0.45) * 0.28, YACHT_WIN_CARD_AT + 0.02)
+    return fade(x, 0.0, 0.3)
+
+
+def yacht_loss() -> np.ndarray:
+    """Loss, 2.0 s: a gentle falling mallet line (G E D C, 110 ms apart) into a soft low A minor
+    chord as the card shows (0.6 s); gentle, like 2048's game over."""
+    x = np.zeros(int(2.0 * SR))
+    for k, n in enumerate([G5, E5, D5, C5]):
+        place(x, marimba(n, 0.55, 0.18) * (0.8 - 0.06 * k), 0.11 * k)
+    for k, n in enumerate([A4, C5, E5]):
+        place(x, marimba(n, 1.3, 0.38) * 0.75, YACHT_END_CARD_AT + 0.015 * k)
+    return fade(x, 0.0, 0.3)
+
+
+def yacht_tie() -> np.ndarray:
+    """Tie, 2.0 s: two level mallet notes (E then G, neither rising to C nor falling to A) into
+    an open, unresolved chord (C G D) as the card shows (0.6 s): "even"."""
+    x = np.zeros(int(2.0 * SR))
+    place(x, marimba(E5, 0.6, 0.2) * 0.8, 0.0)
+    place(x, marimba(G5, 0.6, 0.2) * 0.8, 0.22)
+    for k, n in enumerate([C5, G5, D5 + 12]):
+        place(x, marimba(n, 1.3, 0.38) * 0.75, YACHT_END_CARD_AT + 0.015 * k)
+    place(x, glass(G6, 1.0, 0.3) * 0.12, YACHT_END_CARD_AT + 0.03)
+    return fade(x, 0.0, 0.3)
+
+
+# --- Sort "glass and water" (#3661): option A for every sound -----------------------------------
+
+# From game/sort/motion.ts (#3660, #3783): a pour's stream starts at flowStartMs (300 ms) and
+# runs 300 ms (POUR_UNIT_MS) per unit, so one stream file per unit count plays at flowStartMs.
+# The win cascade is WIN_CASCADE_MS (1380 ms).
+SORT_UNIT_AT = 0.300
+SORT_WIN_CARD_AT = 1.38
+SORT_WIN_LEN = 2.0
+SORT_GLASS = [(1.0, 1.0, 1.0), (2.32, 0.45, 0.55), (4.25, 0.22, 0.3), (6.63, 0.10, 0.18)]
+
+
+def sort_ping(f, dur, decay, parts=SORT_GLASS, att=0.002, g=1.0):
+    """Glass ping: inharmonic partials, a short attack, exponential decays."""
+    t = t_axis(dur)
+    x = np.zeros_like(t)
+    for r, a, ds in parts:
+        if f * r < 9000:
+            x += a * np.sin(phase(np.full_like(t, f * r))) * np.exp(-t / (decay * ds))
+    return g * x * np.clip(t / att, 0, 1)
+
+
+def sort_tick(seed, dur=0.02, lo=2500, hi=9000, g=1.0):
+    """A bright noise tick: a fingertip or glass edge."""
+    t = t_axis(dur)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    return g * x / (np.std(x) + 1e-12) * np.exp(-t / (dur / 5)) * np.clip(t / 0.0004, 0, 1)
+
+
+def sort_air(seed, dur, lo, hi, peak=0.5, power=1.5):
+    """A smooth band of air, swelling to `peak` (0..1 of dur) then falling."""
+    t = t_axis(dur)
+    x = lp2(highpass(noise(len(t), seed), lo), hi)
+    x /= np.std(x) + 1e-12
+    p = t / t[-1]
+    up = np.clip(p / peak, 0, 1) ** power
+    dn = (1 - np.clip((p - peak) / (1 - peak + 1e-9), 0, 1)) ** 2
+    return x * up * dn
+
+
+def sort_jit(i, spread=0.05):
+    """Variation i's pitch scale: 1.0, -5%, +5.5%."""
+    return [1.0, 1 - spread, 1 + spread * 1.1][i % 3]
+
+
+def sort_select(i: int = 0) -> np.ndarray:
+    """Select, 0.12 s: a bright glass tick, a fingertip on a bottle with a tiny ping, on the tap."""
+    j = sort_jit(i)
+    x = np.zeros(int(0.12 * SR))
+    place(x, sort_tick(100 + i, 0.012, 2500, 9000, 0.9), 0)
+    place(x, sort_ping(3100 * j, 0.1, 0.018, [(1, 1, 1), (2.32, 0.3, 0.5)], g=0.9), 0)
+    return fade(x, 0.002, 0.02)
+
+
+def sort_lift(i: int = 0) -> np.ndarray:
+    """Pour lift, 0.2 s: a faint glass touch, then a soft rising puff of air as the bottle leaves
+    the shelf, at the tap."""
+    j = sort_jit(i)
+    x = np.zeros(int(0.2 * SR))
+    place(x, sort_ping(1900 * j, 0.1, 0.03, [(1, 1, 1), (2.32, 0.35, 0.5)], g=0.35), 0.0)
+    place(x, sort_tick(200 + i, 0.012, 1500, 6000, 0.3), 0.0)
+    place(x, sort_air(210 + i, 0.17, 500, 2400, 0.7) * 0.5, 0.01)
+    return fade(x, 0.01, 0.03)
+
+
+SORT_STREAM_TAIL = 0.18  # s of tail after the stream's last unit
+SORT_BUBBLE_SIGMA = 0.1
+
+
+def sort_bubble(f0, a, rng):
+    """One bubble (van den Doel): a damped sinusoid at the Minnaert frequency `f0` with a rising
+    chirp, f(t) = f0 (1 + sigma d t), and the damping d = 0.043 f0 + 0.0014 f0^1.5 (1/s)."""
+    d = 0.043 * f0 + 0.0014 * f0**1.5
+    n = int(min(7 / d, 0.15) * SR)
+    t = np.arange(n) / SR
+    ph = 2 * np.pi * f0 * (t + SORT_BUBBLE_SIGMA * d * t * t / 2) + rng.uniform(0, 2 * np.pi)
+    return a * np.sin(ph) * np.exp(-d * t) * np.clip(t / 0.0004, 0, 1)
+
+
+def sort_stream(units: int, i: int = 0) -> np.ndarray:
+    """Pour stream for a pour of `units` units (1 to 4), 0.3 s per unit plus a 0.18 s tail,
+    variation `i` (0 to 2): "stream4 A", van den Doel's bubble model. A Poisson stream of
+    ~1,400 bubbles a second, radii 0.5-4 mm (power law r^-2.5, so 0.8-6.5 kHz, amplitude ~ r),
+    shrinking by 0.20 octave per unit as the destination fills (the pitch rises), plus a light
+    impact tap as the stream hits. No slow amplitude or formant modulation. Played once, at
+    flowStartMs, for the pour's unit count. Seed = 1000 + 100 * units + i."""
+    rate, rmin, rmax, beta, alpha, fill, imp = 1400, 0.5, 4.0, 2.5, 1.0, 0.20, -26
+    seed = 1000 + 100 * units + i
+    rng = np.random.default_rng(seed)
+    d_flow = 0.3 * units
+    dur = d_flow + SORT_STREAM_TAIL
+    n = int(dur * SR)
+    x = np.zeros(n + int(0.2 * SR))
+    # Exponential gaps, thinned: the rate ramps in over 15 ms, flows to d_flow, then dies away.
+    t = 0.0
+    while t < dur:
+        r_in = min(1.0, t / 0.015) if t < d_flow else np.exp(-(t - d_flow) / 0.05)
+        t += rng.exponential(1.0 / rate)
+        if rng.random() > max(r_in, 0.03):
+            continue
+        p = min(t / d_flow, 1.0)
+        b = 1 - beta  # inverse-CDF draw from a pdf ~ r^-beta on [rmin, rmax]
+        u = rng.random()
+        r = (rmin**b + u * (rmax**b - rmin**b)) ** (1 / b)
+        r *= 2 ** (-fill * units * p)  # the destination fills: radii shrink, the pitch rises
+        f0 = 3260.0 / r
+        if f0 > 9000 or f0 < 250:
+            continue
+        a = (r**alpha) * rng.lognormal(0, 0.25)
+        place(x, sort_bubble(f0, a, rng), t)
+    x = x[:n]
+    rb = np.sqrt(np.mean(x**2)) + 1e-12
+    tap = lp2(highpass(noise(n, seed + 9), 2000), 8000)
+    tap /= np.std(tap) + 1e-12
+    onset = np.exp(-t_axis(dur) / 0.03) * np.clip(t_axis(dur) / 0.001, 0, 1)
+    x = x + rb * 10 ** (imp / 20) * tap * (0.3 + 1.5 * onset)
+    x = highpass(x, 250)  # keep phone speakers clean
+    return fade(x, 0.002, 0.05)
+
+
+def sort_refused() -> np.ndarray:
+    """Refused pour, 0.26 s: two dull glass taps, falling, like a bottle knocking its neighbour,
+    on the shake's first swings (REFUSED_SHAKE_MS 240)."""
+    x = np.zeros(int(0.26 * SR))
+    parts = [(1, 1, 1), (2.5, 0.3, 0.4)]
+    place(x, sort_ping(900, 0.09, 0.02, parts, g=1.0), 0.0)
+    place(x, sort_tick(400, 0.008, 800, 3500, 0.4) * 0.5, 0.0)
+    place(x, sort_ping(760, 0.12, 0.028, parts, g=0.85), 0.12)
+    place(x, sort_tick(401, 0.008, 800, 3500, 0.4) * 0.4, 0.12)
+    return fade(x, 0.002, 0.04)
+
+
+def sort_complete() -> np.ndarray:
+    """Bottle complete, 0.5 s: a two-note glass chime rising a fifth (E6, B6), under the badge pop."""
+    x = np.zeros(int(0.5 * SR))
+    place(x, sort_ping(1319, 0.4, 0.14, g=0.8), 0.0)
+    place(x, sort_ping(1976, 0.4, 0.16, g=0.9), 0.07)
+    return fade(x, 0.002, 0.08)
+
+
+def sort_undo() -> np.ndarray:
+    """Undo, 0.3 s: a reversed clink, a swell that ends in a tiny tick (the move taken back)."""
+    x = np.zeros(int(0.3 * SR))
+    place(x, sort_ping(1800, 0.26, 0.07, g=1.0)[::-1] * 0.8, 0.0)
+    place(x, sort_tick(440, 0.008, 2500, 8000, 0.3), 0.255)
+    return fade(x, 0.004, 0.05)
+
+
+def sort_hint() -> np.ndarray:
+    """Hint, 0.65 s: three rising soft glass pings (G6, B6, D7), as the source lifts and the
+    destination ring shows."""
+    x = np.zeros(int(0.65 * SR))
+    for k, (at, f) in enumerate([(0.0, 1568), (0.1, 1976), (0.2, 2349)]):
+        place(x, sort_ping(f, 0.4, 0.1, [(1, 1, 1), (2.32, 0.25, 0.5)], g=0.7 + 0.15 * k), at)
+    return fade(x, 0.006, 0.08)
+
+
+def sort_win() -> np.ndarray:
+    """Win, 2.0 s: a glass chime cascade, one rising C major pentatonic note per 170 ms, then a
+    bright glass chord and tick at 1.38 s (WIN_CASCADE_MS), as the result card opens."""
+    x = np.zeros(int(SORT_WIN_LEN * SR))
+    for k, f in enumerate([1047, 1319, 1568, 1976, 2349, 2637]):
+        place(x, sort_ping(f, 0.9, 0.22, g=0.55 + 0.06 * k), 0.02 + k * 0.17)
+    for f, g in [(1047, 0.8), (1568, 0.7), (2093, 0.8), (3136, 0.5)]:
+        place(x, sort_ping(f, 0.6, 0.3, g=g), SORT_WIN_CARD_AT)
+    place(x, sort_tick(500, 0.02, 3000, 9000, 0.6), SORT_WIN_CARD_AT)
+    return fade(x, 0.004, 0.15)
+
+
+# --- Sudoku (#3775): option A, "crisp graphite" -----------------------------------------------
+
+# From game/sudoku/motion.ts (#3774): SOLVED_BEAT_MS 1000, and the unit sweep: its glow starts at
+# UNIT_SWEEP_START_MS 50 and runs over UNIT_SWEEP_MS 450, so a unit's tap run follows 50-500 ms.
+# The win and unit recipes hold only what follows the mark: each file's leveled place sound
+# (variation 1) is mixed in at t = 0 by `with_place_mark`, so the move's digit sounds like every
+# other one, because a unit or the win replaces the place sound for its move.
+SUDOKU_WIN_CARD_AT = 1.0
+SUDOKU_UNIT_SWEEP_START = 0.05
+SUDOKU_UNIT_SWEEP = 0.45
+
+
+def _unit_rms(x: np.ndarray) -> np.ndarray:
+    return x / (np.std(x) + 1e-12)
+
+
+def graphite_tick(  # noqa: PLR0913
+    seed: int,
+    g: float = 1.0,
+    bright: float = 9000,
+    ring: float = 3600,
+    q: float = 10,
+    dec: float = 0.0015,
+    ring_dec: float = 0.004,
+    dur: float = 0.04,
+) -> np.ndarray:
+    """The pencil tip meeting paper: a tiny band-passed noise click plus a short noise-driven
+    'pitched' ring (the pencil's wood, ~3-4 kHz)."""
+    rng = np.random.default_rng(seed)
+    t = t_axis(dur)
+    onset = np.clip(t / 0.0002, 0, 1)
+    c = _unit_rms(lp2(highpass(noise(len(t), seed), 1500), bright)) * onset * np.exp(-t / dec)
+    r = _unit_rms(resonate(noise(len(t), seed + 1), ring * rng.uniform(0.95, 1.05), q))
+    return (c + 0.45 * r * onset * np.exp(-t / ring_dec)) * g
+
+
+def stroke(
+    seed: int,
+    dur: float,
+    lo: float,
+    hi: float,
+    grain: float = 1200,
+    g: float = 1.0,
+    sweep: float = 0.0,
+) -> np.ndarray:
+    """One pencil stroke on paper: grainy band-limited noise (`scratch`), optionally with its band
+    sliding by `sweep` (a ratio, e.g. 1.3 rises) for a 'back' or 'forth' direction."""
+    x = scratch(seed, dur, lo, hi, grain)
+    if sweep:
+        t = t_axis(dur)
+        cut = hi * (1 + (sweep - 1) * t / t[-1])
+        x = lowpass(x, cut)
+    return _unit_rms(x) * g * 0.35
+
+
+def felt_piano(n: float, dur: float = 1.4, decay: float = 0.6, g: float = 1.0) -> np.ndarray:
+    """A soft felt piano note: a few harmonics (upper ones dying fast), two strings slightly
+    detuned for warmth, a 7 ms felt attack and a muted hammer breath."""
+    t = t_axis(dur)
+    f = hz(n)
+    x = np.zeros_like(t)
+    for k, a in [(1, 1.0), (2, 0.42), (3, 0.16), (4, 0.07), (5, 0.03)]:
+        fk = f * k * (1 + 0.0004 * k * k)
+        dk = decay / (1 + 0.9 * (k - 1))
+        s = 0.5 * (np.sin(phase(np.full_like(t, fk))) + np.sin(phase(np.full_like(t, fk * 1.0012))))
+        x += a * s * np.exp(-t / dk)
+    x *= np.clip(t / 0.007, 0, 1)
+    h = _unit_rms(lp2(highpass(noise(len(t), int(f)), 400), 2500)) * np.exp(-t / 0.008) * 0.06
+    return (x + h) * g
+
+
+def sudoku_place(i: int) -> np.ndarray:
+    """Digit place: a hard pencil point tapped on newsprint, 80 ms; three seeds, since a game
+    places about 60 digits."""
+    x = np.zeros(int(0.08 * SR))
+    place(x, graphite_tick(17000 + i, 1.0, 9000, 3600 + 150 * i, 10), 0.0)
+    place(x, stroke(17010 + i, 0.025, 2500, 7000, 2500, 0.18), 0.003)
+    return fade(x, 0.0, 0.015)
+
+
+def sudoku_error() -> np.ndarray:
+    """Error, 0.34 s: a scratch-out of three fast hard strokes back and forth (0, 110, 230 ms, on
+    the pulse and the ring's blink), each a little duller, over the place tick."""
+    x = np.zeros(int(0.34 * SR))
+    place(x, graphite_tick(17300, 0.7), 0.0)
+    for k, (t0, hi) in enumerate([(0.0, 6500), (0.11, 5500), (0.23, 4500)]):
+        s = stroke(17310 + k, 0.085, 1200, hi, 1800, 0.9 - 0.15 * k, sweep=(1.25, 0.8, 1.2)[k])
+        place(x, s, t0 + 0.004)
+    return fade(x, 0.0, 0.03)
+
+
+def sudoku_unit() -> np.ndarray:
+    """Unit complete, 0.6 s: four pencil-point taps rising along the sweep (50, 165, 280, 395 ms;
+    ring 2.6 to 4.4 kHz), the last one a quick check-mark stroke. The place tick is mixed in."""
+    x = np.zeros(int(0.6 * SR))
+    for k, at in enumerate([0.05, 0.165, 0.28, 0.395]):
+        tick = graphite_tick(17600 + k, 0.6 + 0.12 * k, 9000, 2600 + 600 * k, 12, 0.0015, 0.007)
+        place(x, tick, at)
+    place(x, stroke(17610, 0.06, 2500, 8000, 2000, 0.35, sweep=1.4), 0.40)
+    return fade(x, 0.0, 0.04)
+
+
+def sudoku_win() -> np.ndarray:
+    """Win, 2.3 s: a quick double underline under the solving wave (two strokes, 0.3 and 0.55 s),
+    a check-mark tick at 0.8 s, then a soft felt-piano C major chord (C5 E5 G5 C6) with a quiet
+    high bell as the card shows (1.0 s). The place tick is mixed in."""
+    x = np.zeros(int(2.3 * SR))
+    place(x, stroke(17900, 0.16, 1500, 6000, 1600, 0.5, sweep=1.3), 0.30)
+    place(x, stroke(17901, 0.13, 1500, 6500, 1600, 0.45, sweep=1.35), 0.55)
+    place(x, graphite_tick(17902, 0.5, 9000, 4200, 12), 0.80)
+    place(x, stroke(17903, 0.05, 2500, 8000, 2000, 0.25, sweep=1.4), 0.805)
+    for k, n in enumerate([C5, E5, G5, C6]):
+        place(x, felt_piano(n, 1.3, 0.55, 0.8 - 0.06 * k), SUDOKU_WIN_CARD_AT + 0.012 * k)
+    place(x, glass(C7, 1.2, 0.4) * 0.12, SUDOKU_WIN_CARD_AT + 0.03)
+    return fade(x, 0.0, 0.3)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -736,6 +1095,21 @@ def peak(db: float) -> Level:
 
 def rms50(db: float, peak_max: float) -> Level:
     return lambda x: level_rms(x, db, peak_max)
+
+
+SUDOKU_PLACE_LEVEL = rms50(-26.0, -3.0)  # ~60 a game: level with 2048's spawn, the quietest here
+
+
+def with_place_mark(db: float, peak_max: float) -> Level:
+    """Level a sound, then mix the leveled place tick (variation 1) in at t = 0 (Sudoku's unit
+    and win replace the place sound for their move, so they open with the same mark)."""
+
+    def level(x: np.ndarray) -> np.ndarray:
+        y = level_rms(x, db, peak_max)
+        place(y, SUDOKU_PLACE_LEVEL(sudoku_place(0)), 0.0)
+        return y
+
+    return level
 
 
 DICE_ROLL_LEVEL = rms50(-20.0, -1.0)  # ~1.5 dB over card place: a roll is a bigger event
@@ -758,6 +1132,9 @@ MAHJONG_SELECT_LEVEL = rms50(-23.0, -3.0)  # the most frequent Mahjong sound: 3 
 MAHJONG_MATCH_LEVEL = rms50(-20.0, -1.0)  # the reward, ~72 times a game
 # A reveal plays on every tile (5 per guess): grey quietest, green 4 dB over it.
 DAILY_WORD_REVEAL_LEVEL = {"miss": -28.0, "present": -26.0, "correct": -24.0}
+SORT_SELECT_LEVEL = rms50(-24.0, -3.0)  # the most frequent Sort sound, with the lift
+SORT_LIFT_LEVEL = rms50(-28.0, -3.0)  # a soft touch under every pour: the quietest
+SORT_STREAM_LEVEL = rms50(-21.0, -3.0)  # one per pour: the body of the pour
 JACKPOT_LEVEL = rms50(-16.0, -1.0)  # the top of the ladder, 2 dB over the upper bonus
 CPU_JACKPOT_LEVEL = rms50(-19.0, -1.0)  # the computer's, 3 dB under yours
 
@@ -822,7 +1199,119 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "daily-word-refused": (daily_word_refused, rms50(-24.0, -3.0)),  # level with a green tile
     "daily-word-win": (daily_word_win, rms50(-17.0, -1.0)),  # once a day: 1 dB under Mahjong's
     "daily-word-loss": (daily_word_loss, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
+    "yacht-win": (yacht_win, rms50(-15.0, -1.0)),  # 1 dB over the jackpot: the top of the ladder
+    "yacht-loss": (yacht_loss, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
+    "yacht-tie": (yacht_tie, rms50(-19.0, -1.0)),  # between the win and the loss
+    "sort-select-1": (lambda: sort_select(0), SORT_SELECT_LEVEL),
+    "sort-select-2": (lambda: sort_select(1), SORT_SELECT_LEVEL),
+    "sort-select-3": (lambda: sort_select(2), SORT_SELECT_LEVEL),
+    "sort-pour-lift-1": (lambda: sort_lift(0), SORT_LIFT_LEVEL),
+    "sort-pour-lift-2": (lambda: sort_lift(1), SORT_LIFT_LEVEL),
+    "sort-pour-lift-3": (lambda: sort_lift(2), SORT_LIFT_LEVEL),
+    "sort-pour-stream-1u-1": (lambda: sort_stream(1, 0), SORT_STREAM_LEVEL),
+    "sort-pour-stream-1u-2": (lambda: sort_stream(1, 1), SORT_STREAM_LEVEL),
+    "sort-pour-stream-1u-3": (lambda: sort_stream(1, 2), SORT_STREAM_LEVEL),
+    "sort-pour-stream-2u-1": (lambda: sort_stream(2, 0), SORT_STREAM_LEVEL),
+    "sort-pour-stream-2u-2": (lambda: sort_stream(2, 1), SORT_STREAM_LEVEL),
+    "sort-pour-stream-2u-3": (lambda: sort_stream(2, 2), SORT_STREAM_LEVEL),
+    "sort-pour-stream-3u-1": (lambda: sort_stream(3, 0), SORT_STREAM_LEVEL),
+    "sort-pour-stream-3u-2": (lambda: sort_stream(3, 1), SORT_STREAM_LEVEL),
+    "sort-pour-stream-3u-3": (lambda: sort_stream(3, 2), SORT_STREAM_LEVEL),
+    "sort-pour-stream-4u-1": (lambda: sort_stream(4, 0), SORT_STREAM_LEVEL),
+    "sort-pour-stream-4u-2": (lambda: sort_stream(4, 1), SORT_STREAM_LEVEL),
+    "sort-pour-stream-4u-3": (lambda: sort_stream(4, 2), SORT_STREAM_LEVEL),
+    "sort-refused": (sort_refused, rms50(-23.0, -3.0)),
+    "sort-complete": (sort_complete, rms50(-20.0, -3.0)),
+    "sort-undo": (sort_undo, rms50(-27.0, -3.0)),
+    "sort-hint": (sort_hint, rms50(-26.0, -3.0)),
+    "sort-win": (sort_win, rms50(-17.0, -3.0)),
+    "sudoku-digit-place": (lambda: sudoku_place(0), SUDOKU_PLACE_LEVEL),
+    "sudoku-digit-place-2": (lambda: sudoku_place(1), SUDOKU_PLACE_LEVEL),
+    "sudoku-digit-place-3": (lambda: sudoku_place(2), SUDOKU_PLACE_LEVEL),
+    "sudoku-error-entered": (sudoku_error, rms50(-24.0, -3.0)),  # level with Daily Word's refusal
+    "sudoku-unit-complete": (sudoku_unit, with_place_mark(-22.0, -1.0)),  # level with 2048's merge
+    "sudoku-puzzle-complete": (sudoku_win, with_place_mark(-17.0, -1.0)),  # level with Daily Word's
 }
+
+
+# --- Runner-up options (#3673): never shipped ---------------------------------------------------
+
+# The Daily Word win and loss options B and C the owner heard on 2026-11-09, recovered from the
+# scratch script in the #3665 thread. A is the shipped pick above. The tick seeds match that script,
+# so each option reproduces the audition's audio.
+# TODO(#3673): the other runner-ups in docs/games/puzzle-sound-design.md (dice roll, die hold,
+# scoring ladder, jackpot, 2048, Mahjong, Daily Word reveal and refusal, Yacht end of game, Sudoku)
+# are described there in words only, with no recipe. Recreate one only when the owner asks for it
+# and the log's description is enough; don't invent a recipe.
+
+
+def daily_word_win_b() -> np.ndarray:
+    """B, tiles and chimes (2.4 s): a wooden click as each tile lands from its hop, a rising glass
+    chime run over the sparks, landing on a warm marimba roll as the card shows."""
+    x = np.zeros(int(2.4 * SR))
+    for k in range(5):
+        place(x, word_tick(15000 + k, 0.8, 6500), k * DAILY_WORD_HOP_STAGGER + 0.24)
+    for k, n in enumerate([C6, D5 + 12, E6, G6, C6 + 9, C7]):
+        place(x, glass(n, 0.8, 0.28) * 0.18, 0.12 + 0.13 * k)
+    roll = roll_chord([C5, E5, G5, C6], 1.1, 15100)
+    place(x, roll * 0.9, DAILY_WORD_WIN_CARD_AT - 0.02)
+    return fade(x, 0.0, 0.25)
+
+
+def daily_word_loss_b() -> np.ndarray:
+    """B, tiles and chimes (1.6 s): a soft wooden tick on each answer tile, then one gentle low
+    marimba minor third (A4, C5) as the card shows."""
+    x = np.zeros(int(1.6 * SR))
+    for k in range(5):
+        at = k * DAILY_WORD_ANSWER_STAGGER + DAILY_WORD_ANSWER_MID
+        place(x, word_tick(15200 + k, 0.6, 3500, thud=0.3), at)
+    place(x, marimba(A4, 1.0, 0.35) * 0.7, DAILY_WORD_LOSS_CARD_AT)
+    place(x, marimba(C5, 1.0, 0.35) * 0.55, DAILY_WORD_LOSS_CARD_AT + 0.02)
+    return fade(x, 0.0, 0.25)
+
+
+def daily_word_win_c() -> np.ndarray:
+    """C, small and sweet (1.9 s): a quick pentatonic mallet run over the hops (C D E G A), then a
+    two-note "ding-ding" (G5, then C6 with a bell) as the card shows."""
+    x = np.zeros(int(1.9 * SR))
+    for k, n in enumerate([C5, D5, E5, G5, C6 - 3]):
+        hop = k * DAILY_WORD_HOP_STAGGER + DAILY_WORD_HOP_PEAK
+        place(x, marimba(n, 0.4, 0.12) * 0.7, hop - 0.004)
+    place(x, marimba(G5, 0.9, 0.3) * 0.85, DAILY_WORD_WIN_CARD_AT - 0.12)
+    place(x, marimba(C6, 1.0, 0.35), DAILY_WORD_WIN_CARD_AT)
+    place(x, glass(C7, 0.9, 0.3) * 0.18, DAILY_WORD_WIN_CARD_AT)
+    return fade(x, 0.0, 0.25)
+
+
+def daily_word_loss_c() -> np.ndarray:
+    """C, small and sweet (1.5 s): a soft falling two-note sigh (E5 to C5) as the answer begins,
+    the last answer tile met by a quiet low A4."""
+    x = np.zeros(int(1.5 * SR))
+    place(x, marimba(E5, 0.7, 0.25) * 0.75, DAILY_WORD_ANSWER_MID)
+    place(x, marimba(C5, 0.9, 0.3) * 0.7, DAILY_WORD_ANSWER_MID + 0.28)
+    place(x, marimba(A4, 0.9, 0.3) * 0.5, DAILY_WORD_LOSS_CARD_AT)
+    return fade(x, 0.0, 0.25)
+
+
+# sound -> {option label: (recipe, level)}. A is the shipped pick, so it is the very entry in
+# `SOUNDS`; B and C take A's level. `--options <sound>` writes them to a scratch folder; nothing
+# here is in `SOUNDS`, so the generator's normal run never writes or ships an option.
+OPTIONS: OptionTable = {
+    "daily-word-win": {
+        "A": SOUNDS["daily-word-win"],
+        "B": (daily_word_win_b, SOUNDS["daily-word-win"][1]),
+        "C": (daily_word_win_c, SOUNDS["daily-word-win"][1]),
+    },
+    "daily-word-loss": {
+        "A": SOUNDS["daily-word-loss"],
+        "B": (daily_word_loss_b, SOUNDS["daily-word-loss"][1]),
+        "C": (daily_word_loss_c, SOUNDS["daily-word-loss"][1]),
+    },
+}
+
+
+def _finish(recipe: Callable[[], np.ndarray], level: Level) -> np.ndarray:
+    return level(recipe())
 
 
 def main(out_dir: Path, names: list[str]) -> None:
@@ -836,4 +1325,5 @@ def main(out_dir: Path, names: list[str]) -> None:
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    main(Path(args[0]) if args else OUT_DEFAULT, args[1:])
+    if not options_cli(args, OPTIONS, _finish):
+        main(Path(args[0]) if args else OUT_DEFAULT, args[1:])

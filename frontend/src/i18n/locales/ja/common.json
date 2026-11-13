@@ -105,5 +105,6 @@
   "locked.back": "ロビーに戻る",
   "locked.back_label": "ロビーに戻る",
   "offline.windowExhausted": "接続してから3日が経ちました。最新のパズルを取得するには、インターネットに接続してください。",
-  "offline.windowExhaustedStreak": "連続記録を続けるには、接続してください。"
+  "offline.windowExhaustedStreak": "連続記録を続けるには、接続してください。",
+  "action.autoComplete": "自動完了"
 }

@@ -18,14 +18,19 @@
  *      player low, the result between) and the dock (TableDock: one control set
  *      at a time). Card geometry is `computeTableGeometry` (game/blackjack/
  *      layout.ts), memoised on the felt's measured size and the card counts.
- *   3. Events and feedback — `useGameEvents` plays the sounds and drives the
- *      bust/win flashes, milestone, comeback and all-in banners (Reanimated)
- *      and the blackjack celebration.
+ *   3. Motion, sounds and feedback (#3581) — `useBlackjackMotion` replays
+ *      each action from the settled round: the deal, the hole-card flip, the
+ *      dealer's turn, the result and the chips, with each sound at its moment
+ *      (and the bust/win flashes with the result; a natural's moment on the
+ *      felt, #3621). Input stays live: an action lands any motion at once first.
+ *      `useGameEvents` drives the milestone and comeback toasts (once the
+ *      round settles, each with its cue: `motion.whenSettled(fn, { cue })`, #3582) and the
+ *      all-in badge (its sound is planned with the deal's motion).
  *   4. Navigation — the run's goal opens BlackjackVictory; the run history opens
  *      BlackjackStats; New Game is in the header's ⋯ menu (with its confirm).
  *   5. Result (#2628) — the shared GameResultModal when the chips run out.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -64,7 +69,7 @@ import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { loadRuns, type RunRecord } from "../game/blackjack/storage";
 import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
 import {
-  computeTableGeometry,
+  tableGeometryForTurn,
   DOCK_HEIGHT,
   DOCK_PADDING_BOTTOM,
   DOCK_PADDING_TOP,
@@ -78,8 +83,10 @@ import { isLegalBet, maxBet, quickBets, trayChips } from "../game/blackjack/betR
 import { reportCardsOffTable } from "../game/_shared/cards/offTableReport";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { useGameEvents } from "../game/_shared/useGameEvents";
-import { useSound } from "../game/_shared/useSound";
-import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";
+import { useBlackjackMotion } from "../components/blackjack/useBlackjackMotion";
+import { useBlackjackCues } from "../components/blackjack/useBlackjackCues";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { usePauseWhileAway, type FocusEventSource } from "../hooks/usePauseWhileAway";
 import TableFelt, { type FeltResult } from "../components/blackjack/TableFelt";
 import { BettingDock, ResultDock } from "../components/blackjack/TableDock";
 import TableRules from "../components/blackjack/TableRules";
@@ -87,12 +94,13 @@ import BettingCircle from "../components/blackjack/BettingCircle";
 import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import BlackjackDevPanel from "../components/blackjack/BlackjackDevPanel";
 import ActionButtons from "../components/blackjack/ActionButtons";
+import { isNaturalHand } from "../components/blackjack/blackjackMotion";
 import GameResultModal from "../components/shared/GameResultModal";
 import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
+import { pickHudNotice, useHudNoticeHolds } from "../components/blackjack/HudNotice";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import { BlackjackCelebrationAnimation } from "../components/blackjack/BlackjackCelebrationAnimation";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackTable" | "BlackjackBetting">;
@@ -107,9 +115,21 @@ export function feltResultFor(state: BlackjackState, t: Translate): FeltResult |
   const dealer = state.dealer_hand.value;
   if (split) {
     const net = state.hand_payouts.reduce((a, b) => a + b, 0);
+    const count = (o: string) => state.hand_outcomes.filter((h) => h === o).length;
+    const won = count("win") + count("blackjack");
+    const lost = count("lose");
+    const pushed = state.player_hands.length - won - lost;
+    const summary = [
+      won > 0 ? t("blackjack:result.splitWon", { count: won }) : null,
+      lost > 0 ? t("blackjack:result.splitLost", { count: lost }) : null,
+      pushed > 0 ? t("blackjack:result.splitPush", { count: pushed }) : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     return {
       outcome: net > 0 ? "win" : net < 0 ? "lose" : "push",
       payout: net,
+      summary,
       detail:
         dealer > 21
           ? t("blackjack:result.dealerBusts", { value: dealer })
@@ -118,12 +138,37 @@ export function feltResultFor(state: BlackjackState, t: Translate): FeltResult |
   }
   if (state.outcome === null) return null;
   const player = state.player_hand.value;
+  // The dealer's natural (#3741): the peek settles it at the deal, so it decides the round.
+  const dealerNatural = isNaturalHand(state.dealer_hand);
   let detail: string | null;
   if (player > 21) detail = t("blackjack:result.playerBusts", { value: player });
   else if (dealer > 21) detail = t("blackjack:result.dealerBusts", { value: dealer });
   else if (state.outcome === "blackjack") detail = null;
-  else detail = t("blackjack:result.versus", { player, dealer });
+  // Any loss to the dealer's natural (it beats any other 21).
+  else if (dealerNatural && state.outcome === "lose")
+    detail = t("blackjack:result.dealerBlackjack");
+  else if (dealerNatural && state.outcome === "push" && isNaturalHand(state.player_hand)) {
+    detail = t("blackjack:result.bothBlackjack");
+  } else detail = t("blackjack:result.versus", { player, dealer });
   return { outcome: state.outcome, payout: state.payout, detail };
+}
+
+/**
+ * The dock's actions (Hit, Stand, Double, Split) are greyed and off: outside the player's phase,
+ * and while the felt outlines a hand other than the one the engine plays (#3764 review). A hand
+ * that stands on its own on 21, busts or doubles moves the engine on at once, while the felt still
+ * outlines it (or a hand passed over on the way) until its cards land; a tap then would act on a
+ * hand the player has not seen outlined. A Stand onto the next hand outlines the engine's hand at
+ * once, so it is never greyed by this; nor is a hand outlined with its held card still to come
+ * (#3720), which is the engine's hand. `outlined` null (no outlined hand) is greyed by `!playing`
+ * already; the check is kept as a guard.
+ */
+function actionsOff(
+  playing: boolean,
+  outlined: number | null,
+  state: BlackjackState | null
+): boolean {
+  return !playing || (outlined !== null && outlined !== state?.active_hand_index);
 }
 
 export default function BlackjackTableScreen({ navigation }: Props) {
@@ -147,10 +192,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     sessionStats,
     runResult,
   } = useBlackjackGame();
-  const [celebrationVisible, setCelebrationVisible] = useState(false);
-  const [milestoneChips, setMilestoneChips] = useState<number | null>(null);
-  const [comebackVisible, setComebackVisible] = useState(false);
-  const [allInVisible, setAllInVisible] = useState(false);
+  const holds = useHudNoticeHolds();
+  const { milestone: milestoneChips, comeback: comebackVisible, allIn: allInVisible } = holds;
   const [runs, setRuns] = useState<RunRecord[]>([]);
   // The bet being built in the dock (chips tapped so far). It only means
   // something while betting: once a hand is dealt (Deal, Rebet, 2×) it is
@@ -160,12 +203,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const milestoneOpacity = useSharedValue(0);
   const comebackOpacity = useSharedValue(0);
   const allInOpacity = useSharedValue(0);
-
-  const cardDealSound = useSound("blackjack.cardDeal", BLACKJACK_SOUNDS);
-  const blackjackSound = useSound("blackjack.blackjack", BLACKJACK_SOUNDS);
-  const bustSound = useSound("blackjack.bust", BLACKJACK_SOUNDS);
-  const winSound = useSound("blackjack.win", BLACKJACK_SOUNDS);
-  const pushSound = useSound("blackjack.push", BLACKJACK_SOUNDS);
 
   // Flash animations for the felt
   const bustFlash = useSharedValue(0);
@@ -194,79 +231,102 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     opacity: winFlash.value * 0.35,
     pointerEvents: "none",
   }));
-  const milestoneStyle = useAnimatedStyle(() => ({
-    opacity: milestoneOpacity.value,
-    pointerEvents: "none",
-  }));
-  const comebackStyle = useAnimatedStyle(() => ({
-    opacity: comebackOpacity.value,
-    pointerEvents: "none",
-  }));
-  const allInStyle = useAnimatedStyle(() => ({
-    opacity: allInOpacity.value,
-    pointerEvents: "none",
-  }));
 
   const state = useMemo(() => (engine ? toViewState(engine) : null), [engine]);
+
+  // Each moment's sound, and the result's effect on the felt (#3581).
+  const engineChips = engine?.chips ?? 0;
+  const startingChips = engine?.startingChips ?? 0;
+  const playCue = useBlackjackCues({
+    onWin: () =>
+      winFlash.set(withSequence(withTiming(1, { duration: 80 }), withTiming(0, { duration: 500 }))),
+    onBust: () => {
+      // The settled chips: close enough to the bust point for this threshold.
+      const isCriticalLow = startingChips > 0 && engineChips < startingChips * 0.2;
+      bustFlash.set(
+        isCriticalLow
+          ? withSequence(
+              withTiming(1, { duration: 120 }),
+              withTiming(0.6, { duration: 200 }),
+              withTiming(1, { duration: 100 }),
+              withTiming(0, { duration: 700 })
+            )
+          : withSequence(withTiming(1, { duration: 80 }), withTiming(0, { duration: 400 }))
+      );
+    },
+  });
+
+  // The player away (another screen, the background, the ⋯ menu): the motion lands, silently.
+  // The test navigation stubs have no listeners, hence the guard.
+  const focusSource = useMemo<FocusEventSource>(
+    () => ({
+      addListener: (type, callback) =>
+        typeof navigation.addListener === "function"
+          ? navigation.addListener(type, callback)
+          : () => undefined,
+      isFocused:
+        typeof navigation.isFocused === "function" ? () => navigation.isFocused() : undefined,
+    }),
+    [navigation]
+  );
+  const leaveMotionRef = useRef<() => void>(() => undefined);
+  const awayRef = usePauseWhileAway(
+    focusSource,
+    () => leaveMotionRef.current(),
+    () => undefined
+  );
+  const reduceMotion = useReduceMotion();
+  const motion = useBlackjackMotion({ engine, reduceMotion, awayRef, playCue });
+  const leaveMotion = motion.leave;
+  // The round that wins the run opens the victory screen as the motion settles, which would cut
+  // its run cue off: that round plays none (#3582). Read at event time, hence the ref.
+  const wonRunRef = useRef(false);
+  const wonRun = engine?.phase === "victory";
+  useLayoutEffect(() => {
+    leaveMotionRef.current = leaveMotion;
+    wonRunRef.current = wonRun;
+  }, [leaveMotion, wonRun]);
+  /** What the felt draws: the settled round, cut to what the motion has shown so far. */
+  const shown = motion.view;
 
   useGameEvents(
     state?.events,
     {
-      cardDeal: () => cardDealSound.play(),
-      blackjack: () => {
-        blackjackSound.play();
-        setCelebrationVisible(true);
-      },
-      bust: () => {
-        bustSound.play();
-        // engine.chips reflects post-settlement state; close enough to the bust point for this threshold
-        const isCriticalLow =
-          engine != null && engine.startingChips > 0 && engine.chips < engine.startingChips * 0.2;
-        if (isCriticalLow) {
-          bustFlash.value = withSequence(
-            withTiming(1, { duration: 120 }),
-            withTiming(0.6, { duration: 200 }),
-            withTiming(1, { duration: 100 }),
-            withTiming(0, { duration: 700 })
-          );
-        } else {
-          bustFlash.value = withSequence(
-            withTiming(1, { duration: 80 }),
-            withTiming(0, { duration: 400 })
-          );
-        }
-      },
-      win: () => {
-        winSound.play();
-        // 300ms delay creates suspense after dealer reveals hole card
-        winFlash.value = withDelay(
-          300,
-          withSequence(withTiming(1, { duration: 80 }), withTiming(0, { duration: 500 }))
-        );
-      },
-      push: () => pushSound.play(),
+      // The cards', the result's and the chips' sounds and effects are the motion's (#3581).
+      // The run's cues (#3582) play with their toasts, as the round settles: one per round.
       milestone: (event) => {
-        setMilestoneChips(event.value);
-        milestoneOpacity.value = withSequence(
-          withTiming(1, { duration: 150 }),
-          withDelay(1400, withTiming(0, { duration: 250 }))
+        const cue = wonRunRef.current ? undefined : "milestone";
+        motion.whenSettled(
+          () => {
+            holds.show("milestone", 1800, event.value); // 150+1400+250
+            milestoneOpacity.value = withSequence(
+              withTiming(1, { duration: 150 }),
+              withDelay(1400, withTiming(0, { duration: 250 }))
+            );
+          },
+          { cue }
         );
       },
       comeback: () => {
-        setComebackVisible(true);
-        comebackOpacity.value = withSequence(
-          withTiming(1, { duration: 200 }),
-          withDelay(2200, withTiming(0, { duration: 400 }))
+        const cue = wonRunRef.current ? undefined : "comeback";
+        motion.whenSettled(
+          () => {
+            holds.show("comeback", 2800); // 200+2200+400
+            comebackOpacity.value = withSequence(
+              withTiming(1, { duration: 200 }),
+              withDelay(2200, withTiming(0, { duration: 400 }))
+            );
+          },
+          { cue }
         );
-        setTimeout(() => setComebackVisible(false), 2800); // 200+2200+400
       },
+      // The badge only: its sound is the deal's, planned with the motion (#3582).
       allIn: () => {
-        setAllInVisible(true);
+        holds.show("allIn", 1300); // 150+900+250
         allInOpacity.value = withSequence(
           withTiming(1, { duration: 150 }),
           withDelay(900, withTiming(0, { duration: 250 }))
         );
-        setTimeout(() => setAllInVisible(false), 1300); // 150+900+250
       },
     },
     clearEvents
@@ -278,35 +338,59 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     if (enginePhase !== undefined && enginePhase !== "betting") setBet(0);
   }, [enginePhase]);
 
-  // The run's goal opens the victory screen; nothing else leaves the table.
+  // The run's goal opens the victory screen, once the winning hand has played out and paid;
+  // nothing else leaves the table.
+  const motionSettled = motion.settled;
   useEffect(() => {
-    if (loading || !engine) return;
+    if (loading || !engine || !motionSettled) return;
     if (engine.phase === "victory") navigation.replace("BlackjackVictory");
-  }, [loading, engine, navigation]);
+  }, [loading, engine, navigation, motionSettled]);
 
+  const resetMotion = motion.reset;
+  const resetHolds = holds.reset;
   const handleNewGame = useCallback(() => {
     setBet(0);
+    resetMotion();
+    resetHolds();
     handlePlayAgain();
-  }, [handlePlayAgain]);
+  }, [handlePlayAgain, resetMotion, resetHolds]);
 
   // Table select: explicit context state, set for a fresh run until a table is picked.
   const showTableSelect = engine !== null && tablePickPending;
 
   const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableAccentColor = colors[activeTable.accentKey];
+  const hudNotice = pickHudNotice(
+    {
+      comebackVisible,
+      milestoneChips,
+      allInVisible,
+      opacities: { comeback: comebackOpacity, milestone: milestoneOpacity, allIn: allInOpacity },
+      accent: tableAccentColor,
+    },
+    t,
+    colors
+  );
   const phase = state?.phase ?? "betting";
   const betting = phase === "betting";
   const playing = phase === "player";
   const showResult = showsResult(phase);
+  // The felt's phase: the player's until the result shows (the dealer's turn replays first).
+  const feltPhase = shown?.phase ?? phase;
+  const feltBetting = feltPhase === "betting";
+  const feltShowsResult = showsResult(feltPhase);
+  // The dock follows the felt: the actions while the felt shows the player's turn (greyed once the
+  // engine has moved on to the result), the result's controls once the result shows.
+  const dockPlaying = !feltBetting && feltPhase === "player" && (playing || showResult);
 
   // --- geometry: memoised on the felt's size and the card counts ---
   const handCards = useMemo(
-    () => (state && !betting ? state.player_hands.map((h) => h.cards.length) : []),
-    [state, betting]
+    () => (shown && !feltBetting ? shown.player_hands.map((h) => h.cards.length) : []),
+    [shown, feltBetting]
   );
   const handCardsKey = handCards.join(",");
-  const dealerCards = state && !betting ? state.dealer_hand.cards.length : 0;
-  const activeHandIndex = playing ? (state?.active_hand_index ?? 0) : null;
+  const dealerCards = shown && !feltBetting ? shown.dealer_hand.cards.length : 0;
+  const activeHandIndex = feltPhase === "player" ? (shown?.active_hand_index ?? 0) : null;
   const feltEstimate = useMemo(
     () =>
       estimateFeltSize({
@@ -319,18 +403,26 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     [window.width, window.height, insets.top, insets.bottom]
   );
   const felt = feltSize ?? feltEstimate;
+  // The dealer's turn is playing out (every hand played, the result still to show): the result's
+  // band is kept free already, so the banner appearing moves no hand (#3720).
+  const handCount = handCards.length;
+  const dealerTurn =
+    !feltShowsResult && showResult && activeHandIndex !== null && activeHandIndex >= handCount;
   const geometry = useMemo(
     () =>
-      computeTableGeometry({
-        feltWidth: felt.width,
-        feltHeight: felt.height,
-        screenWidth: window.width,
-        screenHeight: window.height,
-        dealerCards,
-        handCards: handCardsKey ? handCardsKey.split(",").map(Number) : [],
-        activeHandIndex,
-        showResult,
-      }),
+      tableGeometryForTurn(
+        {
+          feltWidth: felt.width,
+          feltHeight: felt.height,
+          screenWidth: window.width,
+          screenHeight: window.height,
+          dealerCards,
+          handCards: handCardsKey ? handCardsKey.split(",").map(Number) : [],
+          activeHandIndex,
+          showResult: feltShowsResult,
+        },
+        dealerTurn
+      ),
     [
       felt.width,
       felt.height,
@@ -339,7 +431,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       dealerCards,
       handCardsKey,
       activeHandIndex,
-      showResult,
+      feltShowsResult,
+      dealerTurn,
     ]
   );
   // Cards off the felt (#3653): the dealer's and the player's fans against the measured felt,
@@ -383,7 +476,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     );
   }, []);
 
-  const feltResult = useMemo(() => (state ? feltResultFor(state, t) : null), [state, t]);
+  const feltResult = useMemo(() => (shown ? feltResultFor(shown, t) : null), [shown, t]);
 
   // --- bets ---
   const limits = engine
@@ -392,9 +485,17 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const chips = trayChips(activeTable.chipDenominations, limits);
   const quick = engine ? quickBets(engine) : null;
 
-  const addChip = (chip: number) => setBet((b) => Math.min(maxBet(limits), b + chip));
+  const addChip = (chip: number) => {
+    motion.betChip();
+    setBet((b) => Math.min(maxBet(limits), b + chip));
+  };
   const canAddChip = (chip: number) => bet + chip <= maxBet(limits);
-  const deal = () => apply((s) => enginePlaceBet(s, bet));
+  /**
+   * The player's action: any motion still running lands at once (a result still playing out shows
+   * first and holds a beat, #3720), and this one is replayed.
+   */
+  const act = motion.act;
+  const deal = () => act(() => apply((s) => enginePlaceBet(s, bet)));
   /**
    * Leave the result for the next hand: its betting with this bet started
    * (0 = none), or, with `dealAmount` (Rebet / 2×), straight on to the deal.
@@ -407,13 +508,18 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         ? [engineNewHand]
         : [engineNewHand, (s: EngineState) => enginePlaceBet(s, dealAmount)];
     // Change / a chip start the next bet; Rebet / 2× deal at once (no bet left building).
-    if (applySteps(steps, ["result"])) setBet(dealAmount === null ? startBet : 0);
+    act(() => {
+      if (!applySteps(steps, ["result"])) return;
+      setBet(dealAmount === null ? startBet : 0);
+      // A chip from the result's tray goes into the betting circle.
+      if (dealAmount === null && startBet > 0) motion.betChip();
+    });
   };
 
-  const handleHit = () => apply(engineHit, "hit");
-  const handleStand = () => apply(engineStand, "stand");
-  const handleDoubleDown = () => apply(engineDoubleDown, "double");
-  const handleSplit = () => apply(engineSplit, "split");
+  const handleHit = () => act(() => apply(engineHit, "hit"));
+  const handleStand = () => act(() => apply(engineStand, "stand"));
+  const handleDoubleDown = () => act(() => apply(engineDoubleDown, "double"));
+  const handleSplit = () => act(() => apply(engineSplit, "split"));
 
   const canContinue = !!state && !state.game_over && phase === "result";
 
@@ -438,37 +544,60 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         </ScrollView>
       ) : (
         <>
-          {/* Slim HUD strip: table, chips / goal, progress */}
-          {state && engine?.runGoal != null && (
-            <View style={styles.hud}>
+          {/* Slim HUD strip: table, chips / goal, progress. Without a goal (Keep Playing) it keeps
+              the table and chips (#3617). */}
+          {state && engine && (
+            <View style={styles.hud} testID="blackjack-hud">
               <HudSidebar
-                chips={engine.chips}
+                // The settled count shows once the payout lands (#3581).
+                chips={motion.shownChips ?? engine.chips}
                 startingChips={engine.startingChips}
-                runGoal={engine.runGoal}
+                runGoal={engine.runGoal ?? null}
                 milestones={activeTable.milestones}
                 tableName={t(activeTable.labelKey as Parameters<typeof t>[0])}
                 tableAccentColor={tableAccentColor}
                 winStreak={sessionStats.winStreak}
+                notice={hudNotice}
               />
             </View>
           )}
 
           {/* The felt */}
           {state && (
-            <View testID="blackjack-table-area" style={styles.feltArea}>
+            // A tap on the felt mid-motion lands it at once (input stays live, #3575); a result
+            // still playing out shows, and holds a beat (#3720). Off while nothing moves, so the
+            // felt's own controls (the rules, the stats link) take their taps as before.
+            <Pressable
+              testID="blackjack-table-area"
+              style={styles.feltArea}
+              onPress={motion.skip}
+              disabled={motion.settled && !motion.sounding}
+              accessible={false}
+              // Not a stop for TalkBack, the D-pad or web tab focus; its children stay reachable.
+              focusable={false}
+              importantForAccessibility="no"
+            >
               <TableFelt
                 geometry={geometry}
-                phase={phase}
-                dealerHand={state.dealer_hand}
-                hands={betting ? [] : state.player_hands}
-                handBets={state.hand_bets}
-                activeHandIndex={state.active_hand_index}
-                handOutcomes={state.hand_outcomes}
-                handPayouts={state.hand_payouts}
+                phase={feltPhase}
+                dealerHand={(shown ?? state).dealer_hand}
+                hands={feltBetting ? [] : (shown ?? state).player_hands}
+                handBets={(shown ?? state).hand_bets}
+                activeHandIndex={(shown ?? state).active_hand_index}
+                handOutcomes={(shown ?? state).hand_outcomes}
+                handPayouts={(shown ?? state).hand_payouts}
+                revealedHands={motion.revealedHands}
+                dealerConcealed={motion.dealerConcealed}
                 result={feltResult}
+                cardIds={motion.ids}
+                cardMotion={motion.cards}
+                chips={motion.chips}
+                chipColor={tableAccentColor}
+                animating={motion.animating}
+                natural={motion.natural}
                 onLayout={onFeltLayout}
               >
-                {betting && geometry.betSpot && (
+                {feltBetting && geometry.betSpot && (
                   <>
                     <View
                       style={[
@@ -529,43 +658,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                 )}
                 <Animated.View style={bustFlashStyle} />
                 <Animated.View style={winFlashStyle} />
-                {milestoneChips !== null && (
-                  <Animated.View
-                    style={[
-                      styles.milestoneToast,
-                      milestoneStyle,
-                      { backgroundColor: tableAccentColor },
-                    ]}
-                  >
-                    <Text style={[styles.toastText, { color: colors.surface }]}>
-                      {t("blackjack:milestone.toast", { chips: milestoneChips })}
-                    </Text>
-                  </Animated.View>
-                )}
-                {comebackVisible && (
-                  <Animated.View
-                    style={[
-                      styles.comebackBanner,
-                      comebackStyle,
-                      { backgroundColor: colors.bonus },
-                    ]}
-                    accessibilityLabel={t("blackjack:comeback.bannerAccessibilityLabel")}
-                  >
-                    <Text style={[styles.comebackText, { color: colors.surface }]}>
-                      {t("blackjack:comeback.banner")}
-                    </Text>
-                  </Animated.View>
-                )}
-                {allInVisible && (
-                  <Animated.View
-                    style={[styles.allInBadge, allInStyle, { backgroundColor: colors.secondary }]}
-                    accessibilityLabel={t("blackjack:allIn.badgeAccessibilityLabel")}
-                  >
-                    <Text style={[styles.allInText, { color: colors.surface }]}>
-                      {t("blackjack:allIn.badge")}
-                    </Text>
-                  </Animated.View>
-                )}
               </TableFelt>
               {/* An engine error overlays the felt's foot, so the dock never moves. */}
               {!!error && (
@@ -579,7 +671,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   {error}
                 </Text>
               )}
-            </View>
+            </Pressable>
           )}
 
           {/* The dock: one control set at a time */}
@@ -597,8 +689,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   accentColor={tableAccentColor}
                 />
               )}
-              {playing && (
+              {/* The dealer's turn plays out under greyed actions; the result's dock replaces them
+                  only when the result shows on the felt (owner decision, #3720). */}
+              {dockPlaying && (
                 <ActionButtons
+                  disabled={actionsOff(playing, activeHandIndex, state)}
                   onHit={handleHit}
                   onStand={handleStand}
                   onDoubleDown={handleDoubleDown}
@@ -607,7 +702,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   splitAvailable={state.split_available}
                 />
               )}
-              {showResult && quick && (
+              {feltShowsResult && quick && (
                 <ResultDock
                   chips={chips}
                   canAdd={(chip) => chip <= maxBet(limits)}
@@ -630,7 +725,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
       {state && (
         <GameResultModal
-          visible={state.game_over}
+          // Once the last hand has played out and its stake is swept (#3581).
+          visible={state.game_over && motionSettled}
           // The result the run recorded (#2628): a win if it reached its goal
           // before Keep Playing, else a loss.
           outcome={runResult ?? "ended"}
@@ -648,10 +744,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         />
       )}
 
-      <BlackjackCelebrationAnimation
-        visible={celebrationVisible}
-        onDismiss={() => setCelebrationVisible(false)}
-      />
       <BlackjackDevPanel />
     </GameShell>
   );
@@ -727,47 +819,5 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     overflow: "hidden",
-  },
-  milestoneToast: {
-    position: "absolute",
-    top: 8,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  toastText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  comebackBanner: {
-    position: "absolute",
-    top: "35%",
-    alignSelf: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
-    zIndex: 10,
-  },
-  comebackText: {
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  allInBadge: {
-    position: "absolute",
-    bottom: 12,
-    alignSelf: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 10,
-  },
-  allInText: {
-    fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
   },
 });

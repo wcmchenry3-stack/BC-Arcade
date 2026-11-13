@@ -23,6 +23,13 @@ export interface Colors {
   /** Error-state text sitting on the accent color (e.g. a wrong Sudoku digit in a selected cell). */
   errorOnAccent: string;
   accent: string;
+  /**
+   * The accent as the colour of TEXT (and thin strokes) on the page surfaces. Dark: the accent
+   * itself. Light: a darker teal that reaches WCAG AA (>= 4.5:1) on every cream surface, which the
+   * accent fill (1.6-2:1) does not. Use it wherever the accent colours text; backgrounds, button
+   * fills and borders stay `accent`.
+   */
+  accentText: string;
   accentBright: string;
   secondary: string;
   tertiary: string;
@@ -46,7 +53,25 @@ export interface Colors {
   /** Native `shadowOpacity` value to pair with `chromeShadowColor`. */
   chromeShadowOpacity: number;
   error: string;
+  /**
+   * The error red as the colour of TEXT (the HUD error count, a wrong Sudoku digit) on the page
+   * surfaces. `error` reaches only ~3.6:1 on cream, so it can't colour text there. Both themes
+   * reach WCAG AA (>= 4.5:1) on every surface and on the Sudoku washes. Rings, fills, washes and
+   * underlines stay `error`.
+   */
+  errorText: string;
   bonus: string;
+  /**
+   * `bonus` as the colour of text (#3754): green labels and figures (Hint labels, winning totals,
+   * payouts). Dark is `bonus` itself; light is a deeper green at >= 4.5:1 on every cream surface,
+   * where `bonus` reads ~3:1. Icons, borders, rings and fills stay `bonus` (3:1 non-text rule).
+   */
+  bonusText: string;
+  /**
+   * Bottle Sort's hint destination ring (#3660), a 2 px border on `background`: reaches the
+   * 3:1 non-text minimum (WCAG 1.4.11) in both themes, which `bonus` does not on cream.
+   */
+  hintRing: string;
   /**
    * End-of-game outcome colours (#2501). Each foreground reaches WCAG AA
    * (≥ 4.5:1) on `surfaceHigh` in its theme; the matching `*Tint` is a
@@ -70,6 +95,13 @@ export interface Colors {
   cardFace: string;
   cardInk: string;
   cardRedSuit: string;
+  /**
+   * The card back (#3740): the field colour (BC teal) and the line and lattice drawn on it. The
+   * margin is `cardFace`. Same in both themes, like the face. The back holds 3:1 against every
+   * felt through the margin or the field (theme/__tests__/cardBackContrast.test.ts).
+   */
+  cardBack: string;
+  cardBackInk: string;
   fruitContainer: string;
   fruitBackground: string;
 }
@@ -95,6 +127,8 @@ const TOKENS = {
   accentLight: "#1bc5d4",
   accentBrightDark: "#00eefc",
   accentBrightLight: "#00a8b8",
+  // Accent as text on cream: 4.6:1 on the darkest cream surface, 5.1-5.8:1 on the rest
+  accentTextLight: "#006d77",
   secondaryDark: "#d674ff",
   secondaryLight: "#a34fc4",
   tertiaryDark: "#cafd00",
@@ -102,8 +136,14 @@ const TOKENS = {
   // Semantic
   errorDark: "#ff716c",
   errorLight: "#d94a42",
+  // Error as text: 4.7-5.9:1 on every cream surface and the Sudoku washes (a lighter red in dark,
+  // where the same-digit wash would hold `error` to 3.5:1)
+  errorTextDark: "#ff9a95",
+  errorTextLight: "#b52d26",
   bonusDark: "#4ade80",
   bonusLight: "#2da557",
+  // Bonus as text on cream: 5.8:1 on the page, 5.1:1 on surfaceAlt
+  bonusTextLight: "#17692f",
   // Outcome — light variants darkened to clear 4.5:1 on cream surfaceHigh
   outcomeWinLight: "#1f7a3c",
   outcomeDrawDark: "#d674ff",
@@ -116,6 +156,9 @@ const TOKENS = {
   cardFace: "#fff",
   cardInk: "#0e0e13",
   cardRedSuit: CARD_RED_SUIT,
+  // Card back (#3740): BC teal field, white line and lattice
+  cardBack: "#00737e",
+  cardBackInk: "#fff",
 } as const;
 
 export const dark: Colors = {
@@ -135,6 +178,7 @@ export const dark: Colors = {
   // WCAG AA: 4.79:1 on the selected-cell background (accent "AA" over surface)
   errorOnAccent: "#631b18",
   accent: TOKENS.accentDark,
+  accentText: TOKENS.accentDark,
   accentBright: TOKENS.accentBrightDark,
   secondary: TOKENS.secondaryDark,
   tertiary: TOKENS.tertiaryDark,
@@ -154,7 +198,10 @@ export const dark: Colors = {
   chromeShadowColor: TOKENS.accentDark,
   chromeShadowOpacity: 0.08,
   error: TOKENS.errorDark,
+  errorText: TOKENS.errorTextDark,
   bonus: TOKENS.bonusDark,
+  bonusText: TOKENS.bonusDark,
+  hintRing: TOKENS.bonusDark,
   outcomeWin: TOKENS.bonusDark,
   outcomeWinTint: "rgba(74,222,128,0.14)",
   outcomeLoss: "#a0a0ac",
@@ -167,6 +214,8 @@ export const dark: Colors = {
   cardFace: TOKENS.cardFace,
   cardInk: TOKENS.cardInk,
   cardRedSuit: TOKENS.cardRedSuit,
+  cardBack: TOKENS.cardBack,
+  cardBackInk: TOKENS.cardBackInk,
   fruitContainer: TOKENS.darkSurface,
   fruitBackground: TOKENS.darkBg,
 };
@@ -187,10 +236,11 @@ export const light: Colors = {
   // WCAG AA: 7.11:1 on the selected-cell background (accent "AA" over surface)
   errorOnAccent: "#631b18",
   accent: TOKENS.accentLight,
+  accentText: TOKENS.accentTextLight,
   accentBright: TOKENS.accentBrightLight,
   secondary: TOKENS.secondaryLight,
   tertiary: TOKENS.tertiaryLight,
-  potential: TOKENS.accentLight, // desaturated teal on cream
+  potential: TOKENS.accentTextLight, // potential scores are text: the AA teal on cream
   heldBg: "#d7eff2", // cream-compatible light teal tint for highlighted dice
   heldBorder: TOKENS.accentLight,
   dieBg: TOKENS.lightSurface,
@@ -207,7 +257,10 @@ export const light: Colors = {
   chromeShadowColor: "#000000",
   chromeShadowOpacity: 0.06,
   error: TOKENS.errorLight,
+  errorText: TOKENS.errorTextLight,
   bonus: TOKENS.bonusLight,
+  bonusText: TOKENS.bonusTextLight,
+  hintRing: TOKENS.outcomeWinLight,
   outcomeWin: TOKENS.outcomeWinLight,
   outcomeWinTint: "rgba(31,122,60,0.12)",
   outcomeLoss: "#6b5e4a",
@@ -220,6 +273,8 @@ export const light: Colors = {
   cardFace: TOKENS.cardFace,
   cardInk: TOKENS.cardInk,
   cardRedSuit: TOKENS.cardRedSuit,
+  cardBack: TOKENS.cardBack,
+  cardBackInk: TOKENS.cardBackInk,
   fruitContainer: TOKENS.lightSurfaceAlt,
   fruitBackground: TOKENS.lightSurfaceHigh,
 };

@@ -5,8 +5,8 @@ export type CanonicalSuit = "spades" | "hearts" | "diamonds" | "clubs";
 /**
  * Props passed by PlayingCard to whichever deck renderer is active.
  * The face, ink and red-suit colours come from the ThemeContext card tokens
- * (`cardFace`, `cardInk`, `cardRedSuit`, #2983); the back and borders come from
- * the surface/border/accent tokens. Colours no token covers (the card shadow,
+ * (`cardFace`, `cardInk`, `cardRedSuit`, #2983); the back is `cardBack` / `cardBackInk` (#3740) on a `cardFace` margin; borders come from
+ * the border/accent tokens. Colours no token covers (the card shadow,
  * disabled scrim, selection glow and the Neon deck's own fixed dark palette) are
  * constants in `theme/theme.cards.ts` (#2989). A deck may ignore colours it
  * doesn't need (the Neon deck draws `NEON_DECK` in both themes) but must stay
@@ -20,7 +20,9 @@ export interface CardFaceProps {
   faceDown: boolean;
   // ThemeContext colours injected by PlayingCard
   cardBg: string; // card face background (colors.cardFace)
-  cardBgBack: string; // card back background
+  cardBgBack: string; // card back field (colors.cardBack, #3740)
+  /** The back's line and lattice (colors.cardBackInk). */
+  cardBackInk: string;
   border: string; // normal border colour
   borderHighlight: string; // accent border when highlighted/selected
   textColor: string; // rank text + black suits (colors.cardInk)

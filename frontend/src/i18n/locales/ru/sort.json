@@ -7,7 +7,6 @@
   "hud.undos": "Отмены: {{undos}}",
   "action.undo": "Отмена",
   "action.hint": "Подсказка",
-  "action.colorblindToggle": "Режим дальтоника",
   "action.backToLevels": "Назад к уровням",
   "color.red": "Красный",
   "color.blue": "Синий",
@@ -28,6 +27,7 @@
   "a11y.bottleSelected": "Бутылка {{index}} выбрана — нажмите на другую бутылку, чтобы перелить",
   "a11y.bottleEmpty": "Бутылка {{index}}, пустая",
   "a11y.bottleSolved": "Бутылка {{index}}, готова",
+  "a11y.hintDestination": "Подсказка: лейте сюда",
   "settings.colorblindMode": "Режим дальтоника",
   "settings.colorblindModeHint": "Показывает символ на каждом шаре в дополнение к цвету",
   "error.loadFailed": "Не удалось загрузить этот уровень.",
@@ -40,5 +40,9 @@
   "hint.unknown": "Не удалось найти подсказку",
   "hint.backToLastGoodMove": "К последнему удачному ходу",
   "hint.restartLevel": "Начать уровень заново",
-  "hint.dismiss": "Закрыть"
+  "hint.dismiss": "Закрыть",
+  "levelSelect.chapter": "Глава {{chapter}}",
+  "levelSelect.levelStars": "Уровень {{level}}, звёзд: {{stars}} из 3",
+  "stars.summary": "Звёзд: {{stars}} из 3. Ходов {{moves}}, цель {{par}}.",
+  "stars.movesTarget": "Ходов {{moves}} · Цель {{par}}"
 }

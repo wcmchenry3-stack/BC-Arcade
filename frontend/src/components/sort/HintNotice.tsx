@@ -76,13 +76,13 @@ export default function HintNotice({
             <Pressable
               onPress={onBackToLastGoodMove}
               disabled={busy}
-              style={[styles.action, { borderColor: colors.accent, opacity: busy ? 0.4 : 1 }]}
+              style={[styles.action, { borderColor: colors.accentText, opacity: busy ? 0.4 : 1 }]}
               accessibilityRole="button"
               accessibilityLabel={t("hint.backToLastGoodMove")}
               accessibilityState={{ disabled: busy, busy }}
               testID="sort-hint-undo"
             >
-              <Text style={[styles.actionText, { color: colors.accent }]}>
+              <Text style={[styles.actionText, { color: colors.accentText }]}>
                 {t("hint.backToLastGoodMove")}
               </Text>
             </Pressable>
@@ -91,13 +91,13 @@ export default function HintNotice({
             <Pressable
               onPress={onRestart}
               disabled={busy}
-              style={[styles.action, { borderColor: colors.accent, opacity: busy ? 0.4 : 1 }]}
+              style={[styles.action, { borderColor: colors.accentText, opacity: busy ? 0.4 : 1 }]}
               accessibilityRole="button"
               accessibilityLabel={t("hint.restartLevel")}
               accessibilityState={{ disabled: busy, busy }}
               testID="sort-hint-restart"
             >
-              <Text style={[styles.actionText, { color: colors.accent }]}>
+              <Text style={[styles.actionText, { color: colors.accentText }]}>
                 {t("hint.restartLevel")}
               </Text>
             </Pressable>

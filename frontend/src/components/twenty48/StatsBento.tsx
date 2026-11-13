@@ -10,7 +10,8 @@ interface Props {
 }
 
 export function formatTime(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
+  // Never a negative time: "-1:-2" read badly for a moment after a move (#3735).
+  const totalSeconds = Math.floor(Math.max(0, ms) / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
@@ -28,11 +29,16 @@ export default function StatsBento({ state }: Props) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (state.game_over || state.startedAt === null) return;
+    // Catch up at once: `now` may predate this running segment (#3735, as PlayClockText does).
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [state.game_over, state.startedAt]);
 
-  const elapsedMs = state.accumulatedMs + (state.startedAt !== null ? now - state.startedAt : 0);
+  // `now` is from the last tick, so it can be older than a clock that just started (the first
+  // move, or coming back to the screen): count that gap as no time, not as negative time (#3735).
+  const running = state.startedAt !== null ? Math.max(0, now - state.startedAt) : 0;
+  const elapsedMs = state.accumulatedMs + running;
 
   const maxTile = highestTile(state.board);
 

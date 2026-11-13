@@ -105,5 +105,6 @@
   "locked.back": "Back to Lobby",
   "locked.back_label": "Go back to lobby",
   "offline.windowExhausted": "It's been 3 days since you connected. Connect to the internet to get the latest puzzle.",
-  "offline.windowExhaustedStreak": "Connect to keep your streak going."
+  "offline.windowExhaustedStreak": "Connect to keep your streak going.",
+  "action.autoComplete": "Auto-Complete"
 }

@@ -2,6 +2,13 @@
  * Twenty48 state types.
  */
 
+/** One of the two tiles a merge was made from: its id and the cell it started the move in. */
+export interface MergeSource {
+  id: number;
+  row: number;
+  col: number;
+}
+
 export interface TileData {
   id: number;
   value: number;
@@ -14,6 +21,12 @@ export interface TileData {
   isNew: boolean;
   /** true = result of a merge this turn — triggers pop animation */
   isMerge: boolean;
+  /**
+   * The two tiles this merged tile was made from, with the cells they started in (#3689): the
+   * renderer slides both into this tile's cell, then pops it. Optional: a save or tile from
+   * before it has none, and with none the merged tile just appears and pops, as it always did.
+   */
+  mergedFrom?: readonly MergeSource[];
 }
 
 export type GameEvent = "win2048" | "gameOver";

@@ -7,7 +7,6 @@
   "hud.undos": "取り消し回数: {{undos}}",
   "action.undo": "元に戻す",
   "action.hint": "ヒント",
-  "action.colorblindToggle": "色覚サポートモード",
   "action.backToLevels": "レベル選択に戻る",
   "color.red": "赤",
   "color.blue": "青",
@@ -28,6 +27,7 @@
   "a11y.bottleSelected": "ボトル{{index}}を選択中 — 別のボトルをタップして注ぐ",
   "a11y.bottleEmpty": "ボトル{{index}}、空",
   "a11y.bottleSolved": "ボトル{{index}}、完成",
+  "a11y.hintDestination": "ヒント：ここに注ぐ",
   "settings.colorblindMode": "色覚サポートモード",
   "settings.colorblindModeHint": "色に加えて、各ボールにシンボルを表示します",
   "error.loadFailed": "このレベルを読み込めませんでした。",
@@ -40,5 +40,9 @@
   "hint.unknown": "ヒントが見つかりませんでした",
   "hint.backToLastGoodMove": "最後の良い手に戻る",
   "hint.restartLevel": "レベルをやり直す",
-  "hint.dismiss": "閉じる"
+  "hint.dismiss": "閉じる",
+  "levelSelect.chapter": "チャプター{{chapter}}",
+  "levelSelect.levelStars": "レベル{{level}}、星{{stars}}／3",
+  "stars.summary": "星{{stars}}／3。手数{{moves}}、目標{{par}}。",
+  "stars.movesTarget": "手数 {{moves}} · 目標 {{par}}"
 }

@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
-import { clearGame, loadGame, saveGame, loadStats, saveStats } from "../storage";
-import { dealGame } from "../engine";
+import { clearGame, loadGame, saveGame } from "../storage";
+import { applyMove, dealGame, getHintMoves } from "../engine";
 import type { FreeCellState } from "../types";
 
 const GAME_KEY = "freecell_game";
@@ -26,6 +26,25 @@ describe("freecell storage", () => {
     expect(loaded!.tableau.length).toBe(8);
     expect(loaded!.freeCells.length).toBe(4);
     expect(loaded!.isComplete).toBe(false);
+  });
+
+  it("restores a save whose stored events include the removed foundationComplete (#3567)", async () => {
+    const s = seedState();
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({
+        ...s,
+        events: [{ type: "cardPlace" }, { type: "foundationComplete", suit: "spades" }],
+      })
+    );
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.tableau.length).toBe(8);
+    // The restored game plays on normally: the next move's events replace the stale ones.
+    const move = getHintMoves(loaded!)[0]!;
+    const next = applyMove(loaded!, move);
+    expect(next.moveCount).toBe(loaded!.moveCount + 1);
+    expect(JSON.stringify(next.events)).not.toContain("foundationComplete");
   });
 
   it("returns null when no save exists", async () => {
@@ -118,42 +137,5 @@ describe("freecell storage", () => {
     await saveGame(seedState());
     await clearGame();
     expect(await loadGame()).toBeNull();
-  });
-});
-
-describe("freecell stats storage", () => {
-  beforeEach(async () => {
-    await AsyncStorage.clear();
-    (Sentry.captureException as jest.Mock).mockClear();
-  });
-
-  it("returns zero defaults when no stats saved", async () => {
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestMoves: 0 });
-  });
-
-  it("saves and loads stats round-trip", async () => {
-    await saveStats({ bestMoves: 42 });
-    const loaded = await loadStats();
-    expect(loaded).toEqual({ bestMoves: 42 });
-  });
-
-  it("returns zero defaults on corrupt stats payload", async () => {
-    await AsyncStorage.setItem("freecell_stats_v1", "not-json{");
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestMoves: 0 });
-  });
-
-  it("coerces a missing best to 0 on partial payload", async () => {
-    await AsyncStorage.setItem("freecell_stats_v1", JSON.stringify({}));
-    expect(await loadStats()).toEqual({ bestMoves: 0 });
-  });
-
-  it("drops the retired play and win counters from an older save", async () => {
-    await AsyncStorage.setItem(
-      "freecell_stats_v1",
-      JSON.stringify({ bestMoves: 60, gamesPlayed: 5, gamesWon: 2 })
-    );
-    expect(await loadStats()).toEqual({ bestMoves: 60 });
   });
 });

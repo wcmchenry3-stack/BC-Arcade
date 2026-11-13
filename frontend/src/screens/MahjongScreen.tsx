@@ -59,7 +59,6 @@ import {
   dealEventData,
   drawDealSeed,
   elapsedMs,
-  nextBestTime,
   getAllFreePairs,
   getAnyFreePair,
   pauseGame,
@@ -73,14 +72,12 @@ import type { MahjongState } from "../game/mahjong/types";
 import {
   loadGame,
   loadProgress,
-  loadStats,
   saveProgress,
-  saveStats,
   unlockNextLayout,
   DEFAULT_PROGRESS,
   type MahjongProgress,
-  type MahjongStats,
 } from "../game/mahjong/storage";
+import { getBests, judgeResult, recordResult, type Bests } from "../game/_shared/personalBest";
 import LayoutSelectScreen from "../components/mahjong/LayoutSelectScreen";
 import MahjongActionBar from "../components/mahjong/MahjongActionBar";
 import MahjongStatsLine from "../components/mahjong/MahjongStatsLine";
@@ -143,7 +140,6 @@ export default function MahjongScreen() {
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
   // The HUD clock's screen-reader label; stable, so only the clock's own tick re-renders it.
   const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
-  const [stats, setStats] = useState<MahjongStats>({ bestTimeMsByLayout: {} });
 
   // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
@@ -338,11 +334,9 @@ export default function MahjongScreen() {
     stateRef.current = state;
   }, [state]);
 
-  // Stats as of the win, read by the win lifecycle below.
-  const statsRef = useRef(stats);
-  useEffect(() => {
-    statsRef.current = stats;
-  }, [stats]);
+  // The fastest clear per layout (#2747): the shared personal best (#3757), read at mount and
+  // by the win lifecycle below.
+  const bestsRef = useRef<Bests>({});
 
   // Win lifecycle (useCompletionTransition, #3087): complete the sync session
   // and discard the save on the step to a cleared board, record the win once
@@ -400,17 +394,16 @@ export default function MahjongScreen() {
         // plausible one counts: an old save resumed with no time banked can
         // finish under the ranking floor.
         const layoutId = s.currentLayoutId ?? "turtle";
-        setWinSummary(nextBestTime(statsRef.current.bestTimeMsByLayout[layoutId] ?? 0, finalMs));
-        setStats((prev) => {
-          const best = nextBestTime(prev.bestTimeMsByLayout[layoutId] ?? 0, finalMs).bestTimeMs;
-          const updated: MahjongStats = {
-            ...prev,
-            bestTimeMsByLayout:
-              best > 0 ? { ...prev.bestTimeMsByLayout, [layoutId]: best } : prev.bestTimeMsByLayout,
-          };
-          saveStats(updated).catch(() => {});
-          return updated;
-        });
+        const { best, improved, isNewBest } = judgeResult(
+          "mahjong",
+          bestsRef.current[layoutId] ?? 0,
+          finalMs
+        );
+        setWinSummary({ bestTimeMs: best, isNewBest });
+        if (improved) {
+          bestsRef.current = { ...bestsRef.current, [layoutId]: finalMs };
+          void recordResult("mahjong", layoutId, finalMs);
+        }
         unlockAfterWin(s);
       },
       onAlreadyComplete: (s) => {
@@ -424,8 +417,8 @@ export default function MahjongScreen() {
   // guard it sets for a won game restored from storage.
   useEffect(() => {
     let alive = true;
-    Promise.all([loadGame(), loadStats(), loadProgress()]).then(
-      ([saved, savedStats, savedProgress]) => {
+    Promise.all([loadGame(), getBests("mahjong"), loadProgress()]).then(
+      ([saved, bests, savedProgress]) => {
         if (!alive) return;
         hasLoadedRef.current = true;
         progressRef.current = savedProgress;
@@ -443,7 +436,7 @@ export default function MahjongScreen() {
         } else {
           setView("select");
         }
-        setStats(savedStats);
+        bestsRef.current = bests;
         setLoading(false);
       }
     );
@@ -897,7 +890,7 @@ export default function MahjongScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={tResult("action.undoLastMove")}
               >
-                <Text style={[styles.resultUndoText, { color: colors.accent }]}>
+                <Text style={[styles.resultUndoText, { color: colors.accentText }]}>
                   {tResult("action.undoLastMove")}
                 </Text>
               </Pressable>

@@ -7,7 +7,10 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockSortApi, gotoSort, injectSortProgress } from "./helpers/sort";
+import { mockSortApi, gotoSort, injectSortProgress, LEVEL_1_POUR } from "./helpers/sort";
+
+// The catalog's level 1 (#2761): a full bottle and an empty one.
+const { from, to } = LEVEL_1_POUR;
 
 async function assertNoA11yViolations(
   axeBuilder: InstanceType<typeof AxeBuilder>,
@@ -37,7 +40,7 @@ test.describe("Sort Puzzle — accessibility", () => {
   test("gameplay screen passes axe-core WCAG 2.2 AA scan", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
     await assertNoA11yViolations(
       new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]),
@@ -47,36 +50,36 @@ test.describe("Sort Puzzle — accessibility", () => {
   test("board region has accessible label", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
   });
 
   test("bottles have descriptive accessible labels", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
 
     // Filled bottles describe content
     await expect(
-      page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }),
+      page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }),
     ).toBeVisible({ timeout: 3_000 });
     // Empty bottles are labelled as empty
     await expect(
-      page.getByRole("button", { name: "Bottle 3, empty" }),
+      page.getByRole("button", { name: `Bottle ${to}, empty` }),
     ).toBeVisible({ timeout: 3_000 });
   });
 
   test("selected bottle label announces selected state", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
 
-    await page.getByRole("button", { name: "Bottle 1, 4 of 4 filled" }).click();
+    await page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }).click();
     await expect(
       page.getByRole("button", {
-        name: "Bottle 1 selected — tap another bottle to pour",
+        name: `Bottle ${from} selected — tap another bottle to pour`,
       }),
     ).toBeVisible({ timeout: 3_000 });
   });
@@ -106,10 +109,43 @@ test.describe("Sort Puzzle — accessibility", () => {
   test("undo button has aria-disabled when history is empty", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    await page.getByRole("button", { name: "Level 1" }).click();
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
     await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
 
     const undoBtn = page.getByRole("button", { name: "Undo" });
     await expect(undoBtn).toBeDisabled({ timeout: 3_000 });
+  });
+
+  // #3658 — Hint and Undo sit in a bar under the board; every control is at least 44x44
+  // and the title is not truncated, on a 390x844 phone.
+  test("390x844: Hint, Undo and the menu are at least 44x44; the title fits", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockSortApi(page);
+    await gotoSort(page);
+    await page.getByRole("button", { name: "Level 1", exact: true }).click();
+    const board = page.getByLabel("Sort Puzzle board");
+    await expect(board).toBeVisible({ timeout: 5_000 });
+
+    const boardBox = await board.boundingBox();
+    // Hint and Undo are drawn at least 44x44. The shared header's "More options"
+    // button is drawn 32x32 with hitSlop={8} (AppHeader), a 48x48 tap target that
+    // a bounding box can't show, so its drawn box plus the slop is checked.
+    const minDrawn: Record<string, number> = { Hint: 44, Undo: 44, "More options": 44 - 2 * 8 };
+    for (const [name, min] of Object.entries(minDrawn)) {
+      const box = await page.getByRole("button", { name }).boundingBox();
+      expect(box, name).not.toBeNull();
+      expect(box!.width, `${name} width`).toBeGreaterThanOrEqual(min);
+      expect(box!.height, `${name} height`).toBeGreaterThanOrEqual(min);
+    }
+    // The bar is under the board.
+    const hintBox = await page.getByRole("button", { name: "Hint" }).boundingBox();
+    expect(hintBox!.y).toBeGreaterThanOrEqual(boardBox!.y + boardBox!.height - 1);
+
+    // The title is not clipped or ellipsised.
+    const clipped = await page
+      .getByText("Sort Puzzle", { exact: true })
+      .first()
+      .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    expect(clipped).toBe(false);
   });
 });

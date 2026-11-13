@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { AccessibilityInfo, Pressable, StyleSheet, Text } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { NavigationContext } from "@react-navigation/native";
+import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react-native";
@@ -555,7 +556,35 @@ describe("GameResultModal — behaviour", () => {
       hero: { kind: "score", label: "Score", value: 4820 },
     });
     expect(announce).toHaveBeenCalledTimes(1);
-    expect(announce).toHaveBeenCalledWith("You Win!. Solved in 12:48. Score: 4,820");
+    expect(announce).toHaveBeenCalledWith("You Win! Solved in 12:48. Score: 4,820");
+  });
+
+  it("does not double a mark that already ends a detail part (#3824)", async () => {
+    await renderCard({
+      outcome: "win",
+      subtitle: "Solved in 12:48.",
+      hero: { kind: "score", label: "Score", value: 4820 },
+    });
+    expect(announce).toHaveBeenLastCalledWith("You Win! Solved in 12:48. Score: 4,820");
+  });
+
+  it.each([
+    ["ja", "勝利！", "1:02"],
+    ["zh", "你赢了！", "1:02"],
+    ["fr-CA", "Victoire!", " 1:02"],
+    ["he", "ניצחת!", " 1:02"],
+  ])("joins after the %s title's own closing mark (#3824)", async (lng, title, tail) => {
+    for (const ns of ["result", "common"]) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      i18n.addResourceBundle(lng, ns, require(`../../../i18n/locales/${lng}/${ns}.json`));
+    }
+    await i18n.changeLanguage(lng);
+    try {
+      await renderCard({ outcome: "win", subtitle: "1:02" });
+      expect(announce).toHaveBeenLastCalledWith(`${title}${tail}`);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("renders nothing while not visible", async () => {

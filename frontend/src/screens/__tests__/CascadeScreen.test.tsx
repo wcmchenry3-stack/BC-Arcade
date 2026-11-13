@@ -14,6 +14,7 @@ import CascadeScreen from "../CascadeScreen";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
 import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getBest, storageKey } from "../../game/_shared/personalBest";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import {
@@ -717,7 +718,15 @@ describe("CascadeScreen — result card (#2515)", () => {
     const card = findCard(renderer);
     expect(card?.props.isNewBest).toBe(true);
     expect(card?.props.stats[0]).toEqual({ label: "Best", value: 1234 });
-    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("1234");
+    await expect(getBest("cascade")).resolves.toBe(1234);
+  });
+
+  it("reads the best from the shared personal best (#3757)", async () => {
+    await AsyncStorage.setItem(storageKey("cascade"), JSON.stringify({ v: 1, b: { _: 1000 } }));
+    const renderer = await playToGameOver(1234);
+    const card = findCard(renderer);
+    expect(card?.props.isNewBest).toBe(true);
+    await expect(getBest("cascade")).resolves.toBe(1234);
   });
 
   it("keeps the stored best when the game scores lower", async () => {
@@ -726,7 +735,7 @@ describe("CascadeScreen — result card (#2515)", () => {
     const card = findCard(renderer);
     expect(card?.props.isNewBest).toBe(false);
     expect(card?.props.stats[0]).toEqual({ label: "Best", value: 5000 });
-    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("5000");
+    await expect(getBest("cascade")).resolves.toBe(5000);
   });
 
   // #2632: the card reads the synced game's rank instead of PATCH /cascade/score/{id}.

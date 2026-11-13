@@ -85,6 +85,10 @@ def completion_body(board: BoardDefinition, value: int) -> dict[str, Any]:
         body["duration_ms"] = value
     else:
         body["result"] = {board.metric: value}
+    if board.edition is not None:
+        # The board's current edition (Sort's catalog_version, #2761).
+        key, edition = board.edition
+        body["result"] = {**body.get("result", {}), key: edition}
     return body
 
 
@@ -124,17 +128,24 @@ async def _seed(
     outcome: str | None = "completed",
     meta: dict[str, Any] | None = None,
     duration_ms: int | None = None,
+    in_edition: bool = True,
 ) -> uuid.UUID:
     """Insert one finished row directly.
 
     A non-blank ``name`` becomes the player's display name (the latest call
     wins, as a rename would). The row itself carries no name: boards read the
-    player's (#2624).
+    player's (#2624). On a board with an ``edition`` (Sort's catalog, #2761)
+    the row is in the current one unless ``in_edition`` is False or ``meta``
+    sets the key itself.
     """
     if name is not None and name.strip():
         await _set_name(session_id, name)
     gt_id = await _game_type_id(game_type)
     metadata = dict(meta or {})
+    mod = get_module(game_type)
+    edition = mod.board.edition if mod is not None else None
+    if edition is not None and in_edition:
+        metadata.setdefault(edition[0], edition[1])
     game_id = uuid.uuid4()
     factory = get_session_factory()
     async with factory() as db:
@@ -726,7 +737,7 @@ async def test_complete_rejects_score_above_max_value(client: TestClient) -> Non
     assert r.json()["final_score"] == cap
 
 
-@pytest.mark.parametrize("level", [24, -1, "12", 3.5, True])
+@pytest.mark.parametrize("level", [121, -1, "12", 3.5, True])
 async def test_complete_rejects_bad_metadata_metric(client: TestClient, level: Any) -> None:
     sid = _sid()
     await _grant_all(sid)
@@ -969,9 +980,9 @@ async def test_stored_rows_above_the_cap_never_rank(client: TestClient) -> None:
     await _seed("solitaire", _sid(), score=cap, name="AtCap")
     assert _pairs(_board(client, "solitaire")) == [("AtCap", cap)]
 
-    await _seed("sort", _sid(), name="Level30", meta={"level_reached": 30})
-    await _seed("sort", _sid(), name="Level23", meta={"level_reached": 23})
-    assert _pairs(_board(client, "sort")) == [("Level23", 23)]
+    await _seed("sort", _sid(), name="Level121", meta={"level_reached": 121})
+    await _seed("sort", _sid(), name="Level120", meta={"level_reached": 120})
+    assert _pairs(_board(client, "sort")) == [("Level120", 120)]
 
 
 async def test_sudoku_per_difficulty_caps_apply_to_stored_rows(client: TestClient) -> None:
@@ -1016,8 +1027,8 @@ def _patched_board(monkeypatch: pytest.MonkeyPatch, game_type: str, **changes: A
 def _sort_with_moves_tiebreak(monkeypatch: pytest.MonkeyPatch) -> None:
     """Sort's board with the ``total_moves asc`` tie-break it had before #2746.
 
-    No shipped board declares a tie-break now, so the tie-break tests put one
-    back on Sort, whose rows already carry ``total_moves``.
+    Sort's shipped board declares it again since its fixed level catalog
+    (#2761); the tie-break tests still pin it here, so they don't depend on it.
     """
     _patched_board(monkeypatch, "sort", tiebreak=("total_moves", "asc"))
 

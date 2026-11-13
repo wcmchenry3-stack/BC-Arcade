@@ -7,7 +7,6 @@
   "hud.undos": "Herroepen: {{undos}}",
   "action.undo": "Ongedaan",
   "action.hint": "Hint",
-  "action.colorblindToggle": "Kleurenblindmodus",
   "action.backToLevels": "Terug naar niveaus",
   "color.red": "Rood",
   "color.blue": "Blauw",
@@ -28,6 +27,7 @@
   "a11y.bottleSelected": "Fles {{index}} geselecteerd — tik op een andere fles om te gieten",
   "a11y.bottleEmpty": "Fles {{index}}, leeg",
   "a11y.bottleSolved": "Fles {{index}}, voltooid",
+  "a11y.hintDestination": "Hint: giet hier",
   "settings.colorblindMode": "Kleurenblindmodus",
   "settings.colorblindModeHint": "Toont naast de kleur ook een symbool op elke bal",
   "error.loadFailed": "Dit niveau kon niet worden geladen.",
@@ -40,5 +40,9 @@
   "hint.unknown": "Geen hint gevonden",
   "hint.backToLastGoodMove": "Terug naar de laatste goede zet",
   "hint.restartLevel": "Niveau opnieuw starten",
-  "hint.dismiss": "Sluiten"
+  "hint.dismiss": "Sluiten",
+  "levelSelect.chapter": "Hoofdstuk {{chapter}}",
+  "levelSelect.levelStars": "Niveau {{level}}, {{stars}} van 3 sterren",
+  "stars.summary": "{{stars}} van 3 sterren. Zetten {{moves}}, doel {{par}}.",
+  "stars.movesTarget": "Zetten {{moves}} · Doel {{par}}"
 }

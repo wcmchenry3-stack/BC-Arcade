@@ -239,6 +239,52 @@ describe("withStoreBundleExclusions", () => {
   });
 });
 
+/**
+ * Cascade's test controls (#3719) and demo set-ups ride on the Cascade screen. A store bundle has
+ * no Cascade screen (it resolves to the empty stub), so none of their code reaches the store
+ * build, as long as nothing else imports them. These tests pin both halves.
+ */
+describe("Cascade test controls stay out of store bundles (#3719)", () => {
+  const SRC = path.resolve(__dirname, "../..");
+  const CONTROL_MODULES = ["CascadeTestControls", "cascade/testHooks"];
+
+  function sourceFiles(dir: string): string[] {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return entry.name === "__tests__" ? [] : sourceFiles(full);
+      return /\.tsx?$/.test(entry.name) ? [full] : [];
+    });
+  }
+
+  it("a store bundle resolves the Cascade screen to the stub; a test-hooks bundle keeps it", () => {
+    const cascade = screenPath("CascadeScreen");
+    const resolve = (env: Record<string, string | undefined>) =>
+      storeBundle.withStoreBundleExclusions({ resolver: {} }, env).resolver.resolveRequest!(
+        {
+          dev: false,
+          resolveRequest: (_c: object, name: string) => ({ type: "sourceFile", filePath: name }),
+        } as object,
+        cascade,
+        "ios"
+      );
+    expect(resolve(STORE_ENV).filePath).toBe(storeBundle.STUB_SCREEN);
+    expect(resolve({ ...STORE_ENV, EXPO_PUBLIC_TEST_HOOKS: "1" }).filePath).toBe(cascade);
+  });
+
+  it("only the Cascade screen imports the controls and the set-ups (outside tests)", () => {
+    const importers = sourceFiles(SRC).filter((file) => {
+      if (CONTROL_MODULES.some((m) => file.endsWith(`${m}.ts`) || file.endsWith(`${m}.tsx`))) {
+        return false;
+      }
+      const source = fs.readFileSync(file, "utf8");
+      return CONTROL_MODULES.some((m) => new RegExp(`from "[^"]*${m}"`).test(source));
+    });
+    expect(importers.map((f) => path.relative(SRC, f))).toEqual([
+      path.join("screens", "CascadeScreen.tsx"),
+    ]);
+  });
+});
+
 describe("LAUNCH_LOCALES", () => {
   it("mirrors LAUNCH_LOCALE_CODES", () => {
     expect([...storeBundle.LAUNCH_LOCALES].sort()).toEqual([...LAUNCH_LOCALE_CODES].sort());

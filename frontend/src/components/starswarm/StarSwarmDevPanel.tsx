@@ -208,6 +208,7 @@ const POWER_UPS: readonly PowerUpType[] = [
 ];
 
 const MIXER: readonly (readonly [string, keyof SfxVolumes])[] = [
+  ["Music", "music"], // #3638
   ["PU: Lightning", "poweruplightning"],
   ["PU: Shield", "powerupshield"],
   ["PU: Buddy", "powerupbuddy"],
@@ -239,6 +240,11 @@ const MIXER: readonly (readonly [string, keyof SfxVolumes])[] = [
   ["Hull hit", "hullhit"],
   ["Rout", "rout"],
 ];
+
+// #3638: the music row steps finer than the effects (0.05 ≈ 0.8 dB around the 0.57 default),
+// so the owner can set the music under the effects by ear without a rebuild.
+const MUSIC_VOLUME_STEP = 0.05;
+const volumeStep = (key: keyof SfxVolumes) => (key === "music" ? MUSIC_VOLUME_STEP : 0.1);
 
 export interface StarSwarmDevPanelProps {
   readonly enabled: boolean;
@@ -286,7 +292,8 @@ function StarSwarmDevPanelBody({
       ...o,
       volumes: {
         ...o.volumes,
-        [key]: Math.round(Math.min(1, Math.max(0, o.volumes[key] + delta)) * 10) / 10,
+        // Hundredths: the effect rows stay on tenths; the music row moves in 0.05 steps.
+        [key]: Math.round(Math.min(1, Math.max(0, o.volumes[key] + delta)) * 100) / 100,
       },
     }));
 
@@ -396,9 +403,9 @@ function StarSwarmDevPanelBody({
             key={key}
             label={label}
             labelStyle={styles.mixerLabel}
-            value={options.volumes[key].toFixed(1)}
-            onDecrement={() => adjustVolume(key, -0.1)}
-            onIncrement={() => adjustVolume(key, 0.1)}
+            value={options.volumes[key].toFixed(key === "music" ? 2 : 1)}
+            onDecrement={() => adjustVolume(key, -volumeStep(key))}
+            onIncrement={() => adjustVolume(key, volumeStep(key))}
             decrementLabel={`Decrease ${label} volume`}
             incrementLabel={`Increase ${label} volume`}
           />

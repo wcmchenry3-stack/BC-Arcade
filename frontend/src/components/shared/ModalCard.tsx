@@ -164,7 +164,7 @@ export function ModalSecondaryButton({
 
   return (
     <Pressable
-      style={[styles.secondary, { borderColor: accent ? colors.accent : colors.border }, style]}
+      style={[styles.secondary, { borderColor: accent ? colors.accentText : colors.border }, style]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
@@ -174,7 +174,7 @@ export function ModalSecondaryButton({
         style={[
           styles.secondaryText,
           accent ? styles.secondaryTextAccent : styles.secondaryTextMuted,
-          { color: accent ? colors.accent : colors.textMuted },
+          { color: accent ? colors.accentText : colors.textMuted },
         ]}
       >
         {label}

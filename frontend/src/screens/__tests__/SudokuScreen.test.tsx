@@ -10,14 +10,31 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Animated, AppState } from "react-native";
+import { AppState, StyleSheet } from "react-native";
 import type { AppStateStatus } from "react-native";
 
 import SudokuScreen from "../SudokuScreen";
 import { dark as darkColors, ThemeProvider } from "../../theme/ThemeContext";
 import * as sudokuEngine from "../../game/sudoku/engine";
 import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
-import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/storage";
+import { saveGame } from "../../game/sudoku/storage";
+import {
+  getBest,
+  recordResult,
+  storageKey,
+  type PersonalBestGame,
+} from "../../game/_shared/personalBest";
+
+/**
+ * Every write to the shared personal best's key for `game` (#3757). Moving an older build's
+ * record in is one write of that record's best; anything after it is the game writing a best.
+ */
+function personalBestWrites(game: PersonalBestGame): unknown[] {
+  return jest
+    .mocked(AsyncStorage.setItem)
+    .mock.calls.filter(([key]) => key === storageKey(game))
+    .map(([, value]) => JSON.parse(value));
+}
 import type { CellValue, SudokuState } from "../../game/sudoku/types";
 
 const mockPopToTop = jest.fn();
@@ -213,6 +230,98 @@ describe("SudokuScreen — mount resume", () => {
   });
 });
 
+describe("SudokuScreen — thumb pad layout (#3773)", () => {
+  async function startEasy() {
+    const rendered = await renderAndAwaitLoad();
+    await fireEvent.press(rendered.getByLabelText(/start/i));
+    return rendered;
+  }
+
+  it("puts Undo, Erase, Notes, Hint and New Game in the action bar, in that order", async () => {
+    const r = await startEasy();
+    const bar = r.getByTestId("sudoku-action-bar");
+    const buttons = within(bar).getAllByRole("button");
+    expect(buttons.map((b) => b.props.testID)).toEqual([
+      "sudoku-undo",
+      "sudoku-erase",
+      "sudoku-notes",
+      "sudoku-hint",
+      "sudoku-new-game",
+    ]);
+    expect(within(bar).getByText("Undo")).toBeTruthy();
+    expect(within(bar).getByText("Erase")).toBeTruthy();
+    expect(within(bar).getByText("Notes")).toBeTruthy();
+    expect(within(bar).getByText("Hint")).toBeTruthy();
+    expect(within(bar).getByText("New game")).toBeTruthy();
+  });
+
+  it("has no Undo pill in the header", async () => {
+    const r = await startEasy();
+    expect(r.getAllByLabelText(/^undo$/i)).toHaveLength(1);
+    expect(within(r.getByTestId("sudoku-action-bar")).getByLabelText(/^undo$/i)).toBeTruthy();
+  });
+
+  it("shows Notes on or off in the bar, with selected state", async () => {
+    const r = await startEasy();
+    const notes = r.getByTestId("sudoku-notes");
+    expect(notes.props.accessibilityState).toEqual(expect.objectContaining({ selected: false }));
+    await act(async () => {
+      await fireEvent.press(notes);
+    });
+    expect(r.getByTestId("sudoku-notes").props.accessibilityState).toEqual(
+      expect.objectContaining({ selected: true })
+    );
+    // the digit keys turn into dashed note keys
+    expect(r.getByTestId("sudoku-digit-5")).toHaveStyle({ borderStyle: "dashed" });
+  });
+
+  it("lays the keys out in two rows under the action bar", async () => {
+    const r = await startEasy();
+    expect(r.getByTestId("sudoku-keys-row-1").children).toHaveLength(5);
+    expect(r.getByTestId("sudoku-keys-row-2").children).toHaveLength(4);
+  });
+
+  it("a bar New Game asks first, then opens the New Game picker; Cancel keeps the puzzle", async () => {
+    const r = await startEasy();
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game"));
+    });
+    // the abandon confirm, with the shared copy
+    expect(r.getByText("Start new game?")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start new game"));
+    });
+    expect(r.getByText("New Game")).toBeTruthy(); // the picker's title
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game-cancel"));
+    });
+    expect(r.queryByText("Quick Restart")).toBeNull();
+    expect(r.getByTestId("sudoku-board")).toBeTruthy(); // still playing
+  });
+
+  it("declining the confirm leaves the puzzle as it is", async () => {
+    const r = await startEasy();
+    await act(async () => {
+      await fireEvent.press(r.getByTestId("sudoku-new-game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Cancel"));
+    });
+    expect(r.queryByText("Quick Restart")).toBeNull();
+  });
+
+  it("the board is a labelled grid", async () => {
+    const r = await startEasy();
+    expect(r.getByLabelText("Sudoku board").props.role).toBe("grid");
+  });
+
+  it("counts errors with a plural-aware label, in the error colour once above 0", async () => {
+    const r = await startEasy();
+    expect(r.getByText("0 errors")).toBeTruthy();
+    expect(r.getByText("0 errors")).toHaveStyle({ color: darkColors.textMuted });
+  });
+});
+
 describe("SudokuScreen — in-game input", () => {
   // These tests press a digit the number pad has left enabled (#2584). The
   // screen picks an Easy puzzle with Math.random and the pad disables a digit
@@ -247,6 +356,37 @@ describe("SudokuScreen — in-game input", () => {
     await fireEvent.press(toggles[0]!);
     const after = getAllByLabelText(/pencil/i);
     expect(after[0]!.props.accessibilityState?.selected).toBe(true);
+  });
+
+  it("Undo keeps Notes mode and the selection, except the cell it changed becomes selected (#3785)", async () => {
+    const rendered = await startEasy();
+    const empties = rendered
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    const first = empties[0]!.props.testID as string;
+    const other = empties[empties.length - 1]!.props.testID as string;
+    await act(async () => {
+      await fireEvent.press(empties[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(enabledDigitButton(rendered));
+    });
+    // move the selection elsewhere and switch Notes mode on, then undo
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId(other));
+    });
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId("sudoku-notes"));
+    });
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId("sudoku-undo"));
+    });
+    expect(rendered.getByTestId(first).props.accessibilityState.selected).toBe(true);
+    expect(rendered.getByTestId(other).props.accessibilityState.selected).toBe(false);
+    expect(rendered.getByTestId("sudoku-notes").props.accessibilityState).toEqual(
+      expect.objectContaining({ selected: true })
+    );
+    expect(rendered.getByTestId(first).props.accessibilityLabel).toMatch(/empty/);
   });
 
   it("opens a useGameSync session on first digit placement", async () => {
@@ -525,8 +665,10 @@ describe("SudokuScreen — sessions across puzzles (#2690)", () => {
     await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1)); // game-1 won
     expect(mockStartGame).toHaveBeenCalledTimes(1);
 
+    // The card comes after the solved beat (#3774).
+    const changeDifficulty = await r.findByRole("button", { name: "Change Difficulty" });
     await act(async () => {
-      await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
+      await fireEvent.press(changeDifficulty);
     });
     // The pre-picker close opens nothing (and the won session is already
     // complete, so there is nothing to abandon or discard).
@@ -669,13 +811,7 @@ describe("SudokuScreen — result card (#2511)", () => {
   });
 
   it("marks a New Best when the previous best time is beaten", async () => {
-    await saveStats({
-      ...EMPTY_SUDOKU_STATS,
-      classic: {
-        ...EMPTY_SUDOKU_STATS.classic,
-        easy: { bestTimeS: 120 },
-      },
-    });
+    await recordResult("sudoku", "classic.easy", 120);
     const r = await solvePuzzle({ elapsedMs: 65_000 });
     const card = within(r.getByTestId("sudoku-result"));
     expect(card.getByText("New best")).toBeTruthy();
@@ -688,16 +824,27 @@ describe("SudokuScreen — result card (#2511)", () => {
       JSON.stringify({ classic: { easy: { bestTimeS: 120, gamesSolved: 4 } } })
     );
     await solvePuzzle({ elapsedMs: 65_000 });
-    await waitFor(async () => {
-      const stored = JSON.parse((await AsyncStorage.getItem("sudoku_stats_v1")) ?? "{}");
-      expect(stored.classic.easy).toEqual({ bestTimeS: 65 });
-    });
+    // The old record is moved into the shared personal best (#3757).
+    await waitFor(async () => expect(await getBest("sudoku", "classic.easy")).toBe(65));
+  });
+
+  it("keeps a best per mode and difficulty in the shared personal best (#3757)", async () => {
+    // A faster best on another kind of puzzle is not this one's.
+    await AsyncStorage.setItem(
+      storageKey("sudoku"),
+      JSON.stringify({ v: 1, b: { "classic.easy": 120, "mini.easy": 10, "classic.hard": 20 } })
+    );
+    const r = await solvePuzzle({ elapsedMs: 65_000 });
+    expect(within(r.getByTestId("sudoku-result")).getByText("New best")).toBeTruthy();
+    await waitFor(async () => expect(await getBest("sudoku", "classic.easy")).toBe(65));
+    await expect(getBest("sudoku", "mini.easy")).resolves.toBe(10);
   });
 
   it("writes nothing when the solve is slower than the best", async () => {
     // An older build's record, counters and all: it must be left as it is.
     const stored = JSON.stringify({ classic: { easy: { bestTimeS: 30, gamesSolved: 4 } } });
     await AsyncStorage.setItem("sudoku_stats_v1", stored);
+    jest.mocked(AsyncStorage.setItem).mockClear();
     const r = await solvePuzzle({ elapsedMs: 65_000 });
     const card = within(r.getByTestId("sudoku-result"));
     expect(card.queryByText("New best")).toBeNull();
@@ -705,7 +852,10 @@ describe("SudokuScreen — result card (#2511)", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-    expect(await AsyncStorage.getItem("sudoku_stats_v1")).toBe(stored);
+    // The old record is moved into the shared personal best (#3757) with its best unchanged,
+    // and nothing is written over it.
+    expect(await getBest("sudoku", "classic.easy")).toBe(30);
+    expect(personalBestWrites("sudoku")).toEqual([{ v: 1, b: { "classic.easy": 30 } }]);
   });
 
   it("reports the real play time to game sync instead of 0", async () => {
@@ -720,6 +870,7 @@ describe("SudokuScreen — result card (#2511)", () => {
   it("records no time, no new best and keeps the real best when the device clock steps back (#2964)", async () => {
     const stored = JSON.stringify({ classic: { easy: { bestTimeS: 30, gamesSolved: 4 } } });
     await AsyncStorage.setItem("sudoku_stats_v1", stored);
+    jest.mocked(AsyncStorage.setItem).mockClear();
     const r = await solvePuzzle({ elapsedMs: -5_000 });
     const card = within(r.getByTestId("sudoku-result"));
     // The card shows no time, no "New best", and the real best it already had.
@@ -737,7 +888,10 @@ describe("SudokuScreen — result card (#2511)", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-    expect(await AsyncStorage.getItem("sudoku_stats_v1")).toBe(stored);
+    // The old record is moved into the shared personal best (#3757) with its best unchanged,
+    // and nothing is written over it.
+    expect(await getBest("sudoku", "classic.easy")).toBe(30);
+    expect(personalBestWrites("sudoku")).toEqual([{ v: 1, b: { "classic.easy": 30 } }]);
   });
 
   // #2632: the card reads the synced game's rank (GET /games/{id}/rank)
@@ -1283,35 +1437,66 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
   const isChecked = (item: { props: { accessibilityState?: { checked?: boolean } } }) =>
     item.props.accessibilityState?.checked;
 
-  let timing: jest.SpyInstance;
-  beforeEach(() => {
-    timing = jest.spyOn(Animated, "timing");
-  });
-  afterEach(() => {
-    timing.mockRestore();
-  });
-  const errorFlashes = () => timing.mock.calls.filter(([, cfg]) => cfg.toValue === 0.3).length;
+  // The error shows on its cell (#3774), not as a full-screen flash: the cells pulsing red.
+  const errorPulses = (r: Awaited<ReturnType<typeof resume>>) =>
+    r.queryAllByTestId(/^sudoku-cell-\d+-\d+-error$/).length;
 
-  it("a legal but wrong digit: no flash, no error count, no colour (Show mistakes off)", async () => {
+  it("a legal but wrong digit: no pulse, no error count, no colour (Show mistakes off)", async () => {
     const s = scenario("medium");
     const r = await resume(s.state);
     await play(r, s.legalWrong, s.other);
-    expect(errorFlashes()).toBe(0);
+    expect(errorPulses(r)).toBe(0);
     expect(r.getByText("0 errors")).toBeTruthy();
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
     ).toHaveStyle({ color: darkColors.accent });
   });
 
-  it("an illegal digit: flashes, counts the error and is always coloured", async () => {
+  it("an illegal digit: pulses its cell, counts the error and is always coloured", async () => {
     const s = scenario("medium");
     const r = await resume(s.state);
     await play(r, s.illegal, s.other);
-    expect(errorFlashes()).toBe(1);
+    expect(errorPulses(r)).toBe(1);
     expect(r.getByText("1 error")).toBeTruthy();
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
-    ).toHaveStyle({ color: darkColors.error });
+    ).toHaveStyle({ color: darkColors.errorText });
+  });
+
+  it("two illegal entries read '1 error' then '2 errors', in the errorText colour (#3773)", async () => {
+    const base = loadPuzzle("medium", "classic", () => 0);
+    // Two empty cells, each with a digit that repeats one in its row, column or box.
+    const picks: { row: number; col: number; digit: number }[] = [];
+    for (let r = 0; r < 9 && picks.length < 2; r++) {
+      for (let c = 0; c < 9 && picks.length < 2; c++) {
+        if (base.grid[r]![c]!.given) continue;
+        for (let d = 1; d <= 9; d++) {
+          if (sudokuEngine.getConflicts(base.grid, r, c, d).length > 0) {
+            picks.push({ row: r, col: c, digit: d });
+            break;
+          }
+        }
+      }
+    }
+    expect(picks).toHaveLength(2);
+    const [a, b] = picks as [(typeof picks)[number], (typeof picks)[number]];
+    const r = await resume(selectCell(base, a.row, a.col));
+    const enter = async (cellPick: typeof a) => {
+      await act(async () => {
+        await fireEvent.press(r.getByLabelText(cellLabel(cellPick.row, cellPick.col)));
+      });
+      await act(async () => {
+        await fireEvent.press(
+          r.getByLabelText(new RegExp(`enter digit ${cellPick.digit}\\.`, "i"))
+        );
+      });
+    };
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${a.digit}\\.`, "i")));
+    });
+    expect(r.getByText("1 error")).toHaveStyle({ color: darkColors.errorText });
+    await enter(b);
+    expect(r.getByText("2 errors")).toHaveStyle({ color: darkColors.errorText });
   });
 
   it("Show mistakes defaults to on for easy and off for medium and hard", async () => {
@@ -1326,14 +1511,14 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     }
   });
 
-  it("colours a legal but wrong digit when Show mistakes is on, with no flash and no count", async () => {
+  it("colours a legal but wrong digit when Show mistakes is on, with no pulse and no count", async () => {
     const s = scenario("easy");
     const r = await resume(s.state);
     await play(r, s.legalWrong, s.other);
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
-    ).toHaveStyle({ color: darkColors.error });
-    expect(errorFlashes()).toBe(0);
+    ).toHaveStyle({ color: darkColors.errorText });
+    expect(errorPulses(r)).toBe(0);
     expect(r.getByText("0 errors")).toBeTruthy();
   });
 
@@ -1349,7 +1534,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     await act(async () => {
       await fireEvent.press(item);
     });
-    expect(digitText()).toHaveStyle({ color: darkColors.error });
+    expect(digitText()).toHaveStyle({ color: darkColors.errorText });
     expect(await AsyncStorage.getItem(SHOW_MISTAKES_KEY)).toBe("1");
 
     const item2 = await showMistakesItem(r);
@@ -1403,7 +1588,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     const r2 = await resume(oldDuplicate);
     expect(
       within(r2.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
-    ).toHaveStyle({ color: darkColors.error });
+    ).toHaveStyle({ color: darkColors.errorText });
   });
 
   describe("a full grid that is not the solution", () => {
@@ -1443,6 +1628,28 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
       expect(r.queryByTestId("sudoku-full-wrong")).toBeNull();
       const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
       expect(summary["result"]).toEqual({ won: true, errors: 0 });
+    });
+  });
+});
+
+describe("SudokuScreen — play area too short for the board (#3773)", () => {
+  it("falls back to a ScrollView with child alignment only on its content container", async () => {
+    const base = loadPuzzle("medium", "classic", () => 0);
+    await saveGame(base);
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    const area = r.getByTestId("sudoku-play-area");
+    await act(async () => {
+      await fireEvent(area, "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 60 } },
+      });
+    });
+    const scroll = r.getByTestId("sudoku-play-area");
+    expect(scroll.type).toBe("RCTScrollView");
+    const outer = StyleSheet.flatten(scroll.props.style) ?? {};
+    expect(outer).not.toHaveProperty("justifyContent");
+    expect(StyleSheet.flatten(scroll.props.contentContainerStyle)).toMatchObject({
+      justifyContent: "flex-end",
     });
   });
 });

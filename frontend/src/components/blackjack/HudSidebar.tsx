@@ -5,15 +5,42 @@ import { useTheme } from "../../theme/ThemeContext";
 import { formatNumber } from "../../api/statsDisplay";
 import { BLACKJACK_CHIPS_LOW } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
+import { accentAsText } from "./tableAccentText";
+import HudNotice, { GoalPulse, type HudNoticeData } from "./HudNotice";
 
 interface HudSidebarProps {
   chips: number;
   startingChips: number;
-  runGoal: number;
+  /** Null once the player keeps playing past the goal (#3617): no goal text and no bar. */
+  runGoal: number | null;
   milestones: readonly number[];
   tableName: string;
   tableAccentColor: string;
   winStreak?: number;
+  /** A run notice: replaces the table tag (and the warning / streak) for its hold (#3797). */
+  notice?: HudNoticeData | null;
+}
+
+/** The table tag, or the run notice that takes its place for its hold (#3797). */
+function TagOrNotice({
+  notice,
+  tableName,
+  accent,
+}: {
+  notice: HudNoticeData | null;
+  tableName: string;
+  accent: string;
+}) {
+  const { colors } = useTheme();
+  if (notice) return <HudNotice notice={notice} textColor={colors.surface} />;
+  return (
+    <View style={styles.tableTag} accessibilityElementsHidden testID="blackjack-hud-tag">
+      <View style={[styles.dot, { backgroundColor: accent }]} />
+      <Text style={[styles.tagText, { color: colors.textMuted, fontFamily: typography.label }]}>
+        {tableName.toUpperCase()}
+      </Text>
+    </View>
+  );
 }
 
 export default function HudSidebar({
@@ -24,6 +51,7 @@ export default function HudSidebar({
   tableName,
   tableAccentColor,
   winStreak = 0,
+  notice = null,
 }: HudSidebarProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
@@ -34,7 +62,8 @@ export default function HudSidebar({
 
   const hudColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : colors.text;
   const barColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : tableAccentColor;
-  const goalProgress = Math.min(1, chips / runGoal);
+  const hasGoal = runGoal != null;
+  const goalProgress = hasGoal ? Math.min(1, chips / runGoal) : 0;
 
   return (
     <View
@@ -49,14 +78,9 @@ export default function HudSidebar({
     >
       {/* One slim row (#3580): table tag | warning or streak | chips / goal */}
       <View style={styles.topRow}>
-        <View style={styles.tableTag} accessibilityElementsHidden>
-          <View style={[styles.dot, { backgroundColor: tableAccentColor }]} />
-          <Text style={[styles.tagText, { color: colors.textMuted, fontFamily: typography.label }]}>
-            {tableName.toUpperCase()}
-          </Text>
-        </View>
+        <TagOrNotice notice={notice} tableName={tableName} accent={tableAccentColor} />
 
-        {isCritical && (
+        {isCritical && !notice && (
           <Text
             style={[styles.warning, { color: colors.error, fontFamily: typography.label }]}
             numberOfLines={2}
@@ -65,10 +89,10 @@ export default function HudSidebar({
           </Text>
         )}
 
-        {showStreak && !isCritical && (
+        {showStreak && !isCritical && !notice && (
           <View style={[styles.streakBadge, { borderColor: tableAccentColor }]}>
             <Text
-              style={[styles.streakText, { color: tableAccentColor }]}
+              style={[styles.streakText, { color: accentAsText(colors, tableAccentColor) }]}
               accessibilityLabel={t("hud.winStreakAccessibilityLabel", { count: winStreak })}
             >
               {t("hud.winStreakBadge", { count: winStreak })}
@@ -78,49 +102,62 @@ export default function HudSidebar({
         <View style={styles.chipBlock}>
           <Text
             style={[styles.chipsText, { color: hudColor, fontFamily: typography.heading }]}
-            accessibilityLabel={t("hud.goalProgressAccessibilityLabel", {
-              chips: formatNumber(t, chips),
-              goal: formatNumber(t, runGoal),
-            })}
+            testID="blackjack-hud-chips"
+            accessibilityLabel={
+              hasGoal
+                ? t("hud.goalProgressAccessibilityLabel", {
+                    chips: formatNumber(t, chips),
+                    goal: formatNumber(t, runGoal),
+                  })
+                : t("hud.chipsAccessibilityLabel", { chips: formatNumber(t, chips) })
+            }
           >
             {formatNumber(t, chips)}
           </Text>
-          <Text
-            style={[styles.goalText, { color: colors.textMuted, fontFamily: typography.label }]}
-          >
-            {" / "}
-            {formatNumber(t, runGoal)}
-          </Text>
+          {hasGoal && (
+            <Text
+              style={[styles.goalText, { color: colors.textMuted, fontFamily: typography.label }]}
+            >
+              {" / "}
+              {formatNumber(t, runGoal)}
+            </Text>
+          )}
         </View>
       </View>
 
       {/* Progress bar with milestone tick marks.
           barWrapper is 6 px tall so ticks (6 px) can protrude 1 px above/below
           the 4 px barTrack without being clipped by overflow:hidden. */}
-      <View style={styles.barWrapper}>
-        <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
-          <View
-            style={[
-              styles.barFill,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              { width: `${(goalProgress * 100).toFixed(1)}%` as any, backgroundColor: barColor },
-            ]}
-          />
-        </View>
-        {milestones.map((m, i) => (
-          <View
-            key={i}
-            style={[
-              styles.tick,
-              {
+      {hasGoal ? (
+        <View style={styles.barWrapper} testID="blackjack-goal-bar">
+          <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
+            <View
+              style={[
+                styles.barFill,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                left: `${((m / runGoal) * 100).toFixed(1)}%` as any,
-                backgroundColor: chips >= m ? barColor : colors.border,
-              },
-            ]}
-          />
-        ))}
-      </View>
+                { width: `${(goalProgress * 100).toFixed(1)}%` as any, backgroundColor: barColor },
+              ]}
+            />
+          </View>
+          {milestones.map((m, i) => (
+            <View
+              key={i}
+              style={[
+                styles.tick,
+                {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  left: `${((m / runGoal) * 100).toFixed(1)}%` as any,
+                  backgroundColor: chips >= m ? barColor : colors.border,
+                },
+              ]}
+            />
+          ))}
+          <GoalPulse kind={notice?.kind} color={barColor} />
+        </View>
+      ) : (
+        // Same height as the bar, so the felt does not shift when the goal clears (#3617).
+        <View style={styles.barWrapper} />
+      )}
     </View>
   );
 }
@@ -161,6 +198,9 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     gap: 2,
     marginLeft: "auto",
+    // The baseline-aligned "/ goal" text makes this row 24 tall; without a goal (#3617) the row
+    // keeps that height, so the felt does not move when Keep Playing clears the goal.
+    minHeight: 24,
   },
   chipsText: {
     fontSize: 17,

@@ -3,6 +3,7 @@ import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
 import i18n from "i18next";
 import DeYacht from "../../i18n/locales/de/yacht.json";
 import * as engineModule from "../../game/yacht/engine";
+import * as Reanimated from "react-native-reanimated";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
@@ -50,6 +51,15 @@ jest.mock("../../game/_shared/gameEventClient", () => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * The rolled dice land: input is locked until each die reports the end of its tumble (#3749).
+ * In this file every animation ends at once (`withTiming` below calls its end callback), so this
+ * only lets the landing's state update settle; no real time passes.
+ */
+async function landDice() {
+  await act(async () => {});
+}
 
 /** Lets the recorder's idle save (a macrotask, or requestIdleCallback) run. */
 async function flushIdle() {
@@ -124,6 +134,15 @@ async function renderScreen(stateOverrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Animations end at once and say so: a die's tumble reports its landing (#3749).
+  jest.spyOn(Reanimated, "withTiming").mockImplementation(((
+    value: number,
+    _config?: unknown,
+    done?: (f: boolean) => void
+  ) => {
+    done?.(true);
+    return value;
+  }) as never);
 });
 
 describe("GameScreen", () => {
@@ -137,6 +156,7 @@ describe("GameScreen", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     // After a roll, the button label includes the remaining rolls count (2)
     expect(getByRole("button", { name: /roll dice/i })).toBeTruthy();
   });
@@ -146,6 +166,7 @@ describe("GameScreen", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
@@ -576,6 +597,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
@@ -590,6 +612,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await flushIdle();
     expect(mockEnqueueEvents).not.toHaveBeenCalled();
     await act(async () => {
@@ -625,6 +648,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     for (const die of [1, 3, 3]) {
       await act(async () => {
         await fireEvent.press(getByTestId(`yacht-die-${die}`));
@@ -633,6 +657,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /chance/i }));
     });
@@ -660,6 +685,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       await act(async () => {
         await fireEvent.press(getByRole("button", { name: /roll dice/i }));
       });
+      await landDice();
       await act(async () => {
         await fireEvent.press(getByRole("button", { name: category }));
       });
@@ -778,6 +804,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await unmount();
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const abandonCall = mockCompleteGame.mock.calls[0];
@@ -805,6 +832,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     mockStartGame.mockClear();
     mockStartGame.mockReturnValue("game-uuid-test-2");
     // Mid-game New Game opens the confirm modal; confirm it to trigger startNewGame.
@@ -835,6 +863,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /ones/i }));
     });
@@ -844,6 +873,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
+    await landDice();
     await act(async () => {
       await fireEvent.press(getByRole("button", { name: /twos/i }));
     });
@@ -884,8 +914,8 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
       "Three of a Kind",
       "Four of a Kind",
       "Full House",
-      "Sm. Straight",
-      "Lg. Straight",
+      "Small Straight",
+      "Large Straight",
       "Yacht!",
       "Chance",
     ]) {
@@ -903,8 +933,8 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
       const soloBtn = queryByRole("button", { name: /^solo$/i });
       if (soloBtn) fireEvent.press(soloBtn);
     });
-    // After reset: upper_subtotal=0, upper_bonus=0 → progress display ("0 / 63")
-    expect(getByText("0 / 63")).toBeTruthy();
+    // After reset: upper_subtotal=0, upper_bonus=0 → the subtotal band reads "0 / 63 · +35 bonus"
+    expect(getByText(/^0 \/ 63/)).toBeTruthy();
     // The "achieved" check mark must not be visible after reset
     expect(queryByText(/\u2713/)).toBeNull();
   });

@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { joinSentence } from "../../utils/joinSentence";
 
 interface Props {
   outcome: string;
@@ -14,6 +15,73 @@ interface Props {
    */
   variant?: "card" | "felt";
   detail?: string | null;
+  /** "felt": a split round's summary ("Won: 1 · Lost: 2") in place of the outcome's words. */
+  summary?: string | null;
+  /**
+   * "felt", every split, 2–4 hands (owner decisions, #3781, #3784): the pill shows the round's net
+   * payout alone ("+25 chips"), at every size; each hand's label shows its own tag and payout, and
+   * the summary and the payout do not fit the band together in every locale.
+   * Its accessibility label still reads the whole result: outcome, summary and payout.
+   */
+  netOnly?: boolean;
+}
+
+/** The outcome's words. On the felt a natural says what it pays: "Blackjack! 3:2" (#3621). */
+function outcomeKeyOf(outcome: string, variant: "card" | "felt"): string {
+  return variant === "felt" && outcome === "blackjack"
+    ? "outcome.blackjackNatural"
+    : `outcome.${outcome}`;
+}
+
+/**
+ * The felt outcome's spoken label: a split round's summary after its outcome; a natural, what it
+ * pays in words ("Blackjack, pays 3 to 2", not "3 colon 2"); else its text.
+ */
+function feltLabelOf(
+  t: (key: string) => string,
+  outcome: string,
+  outcomeText: string,
+  summary: string | null
+): string | undefined {
+  if (summary !== null) return joinSentence(outcomeText, summary);
+  return outcome === "blackjack" ? t("outcome.blackjackNaturalLabel") : undefined;
+}
+
+interface FeltText {
+  text: string;
+  label: string | undefined;
+  color: string;
+}
+
+/** The felt pill's usual line: the outcome's words (or a split round's summary), then the payout. */
+function FeltOutcomeAndPayout({
+  compact,
+  outcome,
+  payout,
+}: {
+  compact: boolean;
+  outcome: FeltText;
+  payout: FeltText;
+}) {
+  return (
+    <>
+      <Text
+        testID="result-outcome"
+        style={[styles.feltOutcome, compact && styles.feltOutcomeCompact, { color: outcome.color }]}
+        numberOfLines={1}
+        accessibilityLabel={outcome.label}
+      >
+        {outcome.text}
+      </Text>
+      <Text
+        style={[styles.feltPayout, compact && styles.feltPayoutCompact, { color: payout.color }]}
+        accessibilityLabel={payout.label}
+        numberOfLines={1}
+      >
+        {payout.text}
+      </Text>
+    </>
+  );
 }
 
 export default function ResultBanner({
@@ -22,12 +90,13 @@ export default function ResultBanner({
   compact = false,
   variant = "card",
   detail,
+  summary = null,
+  netOnly = false,
 }: Props) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
-  const outcomeKey = `outcome.${outcome}` as const;
-  const outcomeText = t(outcomeKey as Parameters<typeof t>[0]);
+  const outcomeText = t(outcomeKeyOf(outcome, variant) as Parameters<typeof t>[0]);
 
   // Per-outcome accent color: blackjack=tertiary lime, win=bonus green,
   // lose=error red, push=textMuted
@@ -47,10 +116,12 @@ export default function ResultBanner({
   }
 
   let payoutText: string;
+  // The outcome's text: the win green needs its AA variant (the border keeps `bonus`)
+  const outcomeTextColor = outcome === "win" ? colors.bonusText : accentColor;
   let payoutColor: string;
   if (payout > 0) {
     payoutText = t("payout.positive", { amount: payout });
-    payoutColor = colors.bonus;
+    payoutColor = colors.bonusText;
   } else if (payout < 0) {
     payoutText = t("payout.negative", { amount: payout });
     payoutColor = colors.error;
@@ -60,6 +131,13 @@ export default function ResultBanner({
   }
 
   if (variant === "felt") {
+    const outcomeLabel = feltLabelOf(
+      (key) => t(key as Parameters<typeof t>[0]),
+      outcome,
+      outcomeText,
+      summary
+    );
+    const payoutLabel = t("payout.accessibilityLabel", { amount: payout });
     return (
       <View style={styles.feltWrap} accessibilityLiveRegion="polite">
         <View
@@ -69,24 +147,26 @@ export default function ResultBanner({
             { backgroundColor: colors.surfaceHigh, borderColor: accentColor },
           ]}
         >
-          <Text
-            testID="result-outcome"
-            style={[
-              styles.feltOutcome,
-              compact && styles.feltOutcomeCompact,
-              { color: accentColor },
-            ]}
-            numberOfLines={1}
-          >
-            {outcomeText}
-          </Text>
-          <Text
-            style={[styles.feltPayout, compact && styles.feltPayoutCompact, { color: payoutColor }]}
-            accessibilityLabel={t("payout.accessibilityLabel", { amount: payout })}
-            numberOfLines={1}
-          >
-            {payoutText}
-          </Text>
+          {netOnly ? (
+            <Text
+              testID="result-net"
+              style={[styles.feltOutcome, styles.feltOutcomeCompact, { color: payoutColor }]}
+              numberOfLines={1}
+              accessibilityLabel={joinSentence(outcomeLabel ?? outcomeText, payoutLabel)}
+            >
+              {payoutText}
+            </Text>
+          ) : (
+            <FeltOutcomeAndPayout
+              compact={compact}
+              outcome={{
+                text: summary ?? outcomeText,
+                label: outcomeLabel,
+                color: outcomeTextColor,
+              }}
+              payout={{ text: payoutText, label: payoutLabel, color: payoutColor }}
+            />
+          )}
         </View>
         {/* compact (split rows / grid): one line; each hand and the dealer show their own totals */}
         {detail && !compact ? (
@@ -116,7 +196,7 @@ export default function ResultBanner({
     >
       <Text
         testID="result-outcome"
-        style={[styles.outcome, compact && styles.outcomeCompact, { color: accentColor }]}
+        style={[styles.outcome, compact && styles.outcomeCompact, { color: outcomeTextColor }]}
       >
         {outcomeText}
       </Text>

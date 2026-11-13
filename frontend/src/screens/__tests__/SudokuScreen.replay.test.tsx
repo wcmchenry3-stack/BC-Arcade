@@ -330,15 +330,15 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     mockResumeGame.mockReturnValue(null);
     const rendered = await renderScreen();
     await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
-    expect(rendered.getByLabelText(`${label}1`)).toBeTruthy();
+    expect(rendered.getByLabelText(new RegExp(`^${label}1,`))).toBeTruthy();
     await act(async () => {
       await fireEvent.press(rendered.getByLabelText(/erase/i));
     });
-    expect(rendered.getByLabelText(`${label}empty`)).toBeTruthy(); // the erase changed the grid
+    expect(rendered.getByLabelText(new RegExp(`^${label}empty,`))).toBeTruthy(); // the erase changed the grid
     await act(async () => {
       await fireEvent.press(rendered.getByLabelText(/undo/i));
     });
-    expect(rendered.getByLabelText(`${label}1`)).toBeTruthy(); // and the undo put it back
+    expect(rendered.getByLabelText(new RegExp(`^${label}1,`))).toBeTruthy(); // and the undo put it back
     expect(mockStartGame).not.toHaveBeenCalled();
     await rendered.unmount();
   });
@@ -374,6 +374,24 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     expect(events[0]!.e.map((e) => e[0])).toEqual([0, 0, 3, 0]);
     expect(events[0]!.e[2]).toEqual([3]);
     await waitFor(async () => expect((await loadGame())?.entryCount).toBe(4));
+    await rendered.unmount();
+  });
+
+  it("pressing the digit a cell already holds records nothing and adds no undo step (#3773)", async () => {
+    const app = spyAppState();
+    const rendered = await startEasy();
+    await enter(rendered, 0, 1); // the cell now holds a 1 and is still selected
+    await pressDigit(rendered, 1); // a repeat tap: nothing
+    await pressDigit(rendered, 1);
+    await app.go("background");
+    expect(entriesSaved().flatMap((s) => s.e)).toHaveLength(1);
+    await waitFor(async () => expect((await loadGame())?.entryCount).toBe(1));
+    // one undo takes the digit back: there was a single undo step
+    await act(async () => {
+      await fireEvent.press(rendered.getByLabelText(/undo/i));
+    });
+    expect(emptyCells(rendered).length).toBeGreaterThan(0);
+    expect(rendered.getByLabelText(/undo/i).props.accessibilityState?.disabled).toBe(true);
     await rendered.unmount();
   });
 
@@ -564,7 +582,9 @@ describe("SudokuScreen — replay recording (#3288)", () => {
     expect(
       rendered
         .getAllByRole("button")
-        .filter((n) => /, [1-9]$/.test(String(n.props.accessibilityLabel ?? ""))).length
+        .filter((n) =>
+          /^Cell row \d+, column \d+, [1-9],/.test(String(n.props.accessibilityLabel ?? ""))
+        ).length
     ).toBeGreaterThan(0);
     await waitFor(async () => expect((await loadGame())?.entryCount).toBe(2));
     await rendered.unmount();

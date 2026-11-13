@@ -62,23 +62,23 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 
 ### Module Map
 
-| File                     | Purpose                                                                     |
-| ------------------------ | --------------------------------------------------------------------------- |
-| `engine.ts`              | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)          |
-| `tiers.ts`               | The tier ladder: the one table of radius, score, density, droppable, names  |
-| `pieceDefs.ts`           | Engine piece definitions built from `tiers.ts`: color, score, shape         |
-| `constants.ts`           | All tunable physics & gameplay parameters                                   |
-| `pieceQueue.ts`          | Current + next piece queue (preview UI data)                                |
-| `spawnSelector.ts`       | Weighted random tier selection with drought correction & danger suppression |
-| `storage.ts`             | AsyncStorage save/load — versioned `SavedState` (v4), discards v3           |
-| `layout.ts`              | `calculateCascadeLayout()`: world-to-screen scale for the measured board    |
-| `testHooks.ts`           | `__cascade_*` E2E hooks through the shared `registerTestHooks`              |
-| `render/frame.ts`        | The per-frame board buffer, its packer and the publish gate (#2960)         |
-| `render/drawFrame.ts`    | UI-thread worklet that draws a frame into the board's Skia Picture          |
-| `render/boardStyle.ts`   | Per-tier sizes and placeholder colours handed to the renderer               |
-| `render/loadCanvasKit.ts` | Web only: loads Skia's web runtime (CanvasKit) from our origin (#2960)      |
-| `scoreStore.ts`          | The live score outside React state; `ScoreDisplay` subscribes               |
-| `useTieredMergeSound.ts` | The tier-scaled merge sound                                                 |
+| File                      | Purpose                                                                                                                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engine.ts`               | Core physics simulation (`CascadeEngine` class, Matter.js wrapper)                                                                                                      |
+| `tiers.ts`                | The tier ladder: the one table of radius, score, density, droppable, names                                                                                              |
+| `pieceDefs.ts`            | Engine piece definitions built from `tiers.ts`: color, score, shape                                                                                                     |
+| `constants.ts`            | All tunable physics & gameplay parameters                                                                                                                               |
+| `pieceQueue.ts`           | Current + next piece queue (preview UI data)                                                                                                                            |
+| `spawnSelector.ts`        | Weighted random tier selection with drought correction & danger suppression                                                                                             |
+| `storage.ts`              | AsyncStorage save/load — versioned `SavedState` (v4), discards v3                                                                                                       |
+| `layout.ts`               | `calculateCascadeLayout()`: world-to-screen scale for the measured board                                                                                                |
+| `testHooks.ts`            | `__cascade_*` E2E hooks through the shared `registerTestHooks`; `cascadeSetup(id)` demo set-ups (chain, near-lid, fill-bin) shared with the test-build controls (#3719) |
+| `render/frame.ts`         | The per-frame board buffer, its packer and the publish gate (#2960)                                                                                                     |
+| `render/drawFrame.ts`     | UI-thread worklet that draws a frame into the board's Skia Picture                                                                                                      |
+| `render/boardStyle.ts`    | Per-tier sizes and placeholder colours handed to the renderer                                                                                                           |
+| `render/loadCanvasKit.ts` | Web only: loads Skia's web runtime (CanvasKit) from our origin (#2960)                                                                                                  |
+| `scoreStore.ts`           | The live score outside React state; `ScoreDisplay` subscribes                                                                                                           |
+| `useTieredMergeSound.ts`  | The tier-scaled merge sound                                                                                                                                             |
 
 ### Physics
 
@@ -100,7 +100,7 @@ Nothing per frame goes through React state. The screen's RAF loop steps the engi
 - **Web (CanvasKit, #2960 part b).** On web the same Skia code draws the board, through Skia's web runtime: CanvasKit, Skia compiled to WebAssembly. Owner decision 2026-11-11 on #2960: one drawing path on every platform, so web demos (the only demos a cloud session can record itself) show what the phones show; a separate Canvas 2D board like Mahjong's would draw everything twice and drift. How it loads:
   - `lazyScreens.ts` routes Cascade to `screens/CascadeRoute`. On iOS and Android `CascadeRoute.tsx` is the screen itself. On web Metro picks `CascadeRoute.web.tsx`, which shows a loading state, calls `loadCascadeScreen.web.ts` (CanvasKit first, then `import("./CascadeScreen")` in its own chunk) and renders the screen. The order matters: `react-native-skia`'s web module builds its `Skia` API from `global.CanvasKit` when it is first evaluated, so nothing that imports Skia may be evaluated earlier. This is the pattern of Skia's `WithSkiaWeb`, written out so a failure can be retried.
   - `game/cascade/render/loadCanvasKit.ts` mirrors Skia's `LoadSkiaWeb`, with two changes: the `.wasm` comes from Metro's asset pipeline (`require` of `canvaskit-wasm/bin/full/canvaskit.wasm`; `.wasm` is in `metro.config.js` `assetExts`), so the web export writes it to `dist/assets/node_modules/canvaskit-wasm/bin/full/canvaskit.<hash>.wasm` and it is served from our own origin, never a CDN; and a failed load is forgotten, so Retry tries again (`LoadSkiaWeb` keeps a rejected promise). `canvaskit-wasm` is a direct dependency pinned to the version `@shopify/react-native-skia` depends on (0.41.0 for Skia 2.14.0); `render/__tests__/canvasKitWeb.test.ts` fails if they drift, or if a non-web file imports the loader.
-  - A load that fails or takes longer than 60 s (`CANVASKIT_LOAD_TIMEOUT_MS`) shows a readable error with Try again inside the game shell (`cascade-web-error`), never an endless spinner (#2539). Each failed attempt reports one Sentry event (`subsystem: cascade.canvaskit`). A browser that blocks WebAssembly under its Content-Security-Policy gets the same error: the deployed dev site's CSP allows `'wasm-unsafe-eval'` for this (`render.yaml`; prod gets it when Cascade ships there, #3703).
+  - A load that fails or takes longer than 60 s (`CANVASKIT_LOAD_TIMEOUT_MS`) shows a readable error with Try again inside the game shell (`cascade-web-error`), never an endless spinner (#2539). Only the first failure in a page session reports a Sentry event (`subsystem: cascade.canvaskit`); later ones leave a breadcrumb. Retry after a timeout starts a fresh download. A browser that blocks WebAssembly under its Content-Security-Policy gets the same error: the deployed dev site's CSP allows `'wasm-unsafe-eval'` for this (`render.yaml`; prod gets it when Cascade ships there, #3703).
   - Nothing else loads CanvasKit: the lobby and the other web games never request the `.wasm`, and Mahjong and Star Swarm keep their Canvas 2D `GameCanvas.web.tsx` (the Playwright spec checks both). The iOS and Android bundles hold neither the loader nor the `.wasm` (checked on an Android export, #2960 part b). Download cost: [PERFORMANCE.md](../PERFORMANCE.md#cascade-on-web-canvaskit-2960).
   - Board accessibility: the board's role and label sit on a `View` around the Skia `Canvas`, because Skia's web `Canvas` drops accessibility props.
   - Skia features the renderer uses, checked on web (Chromium, WebGL): `createPicture` / `Picture` inside a scaled `Group`, `drawCircle`, `drawLine`, `drawImageRectOptions` with images from `useImage`, `Path.MakeFromSVGString` + `drawPath`, `PathEffect.MakeDash` (the waiting ghost) and `MaskFilter.MakeBlur` (the clock ring's glow). All draw on web; the Picture is recorded on the JS thread there (Reanimated runs worklets on the JS thread on web). No gradients or runtime shaders are used yet: the code-drawn art (#3698) and motion (#3701) must check any they add on web and on a phone. Not yet compared side by side with a phone screenshot (the Maestro screenshots of #3705).

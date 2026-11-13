@@ -8,6 +8,7 @@ import {
 
 const colors = {
   bonus: "BONUS",
+  bonusText: "BONUS_TEXT",
   error: "ERROR",
   text: "TEXT",
   accent: "ACCENT",
@@ -38,7 +39,7 @@ describe("scoreColor", () => {
   it("returns bonus for leader, error for losing, text otherwise", () => {
     const standing = { leaderIndex: 1, losingIndex: 3 };
     expect(scoreColor(0, standing, colors)).toBe("TEXT");
-    expect(scoreColor(1, standing, colors)).toBe("BONUS");
+    expect(scoreColor(1, standing, colors)).toBe("BONUS_TEXT");
     expect(scoreColor(2, standing, colors)).toBe("TEXT");
     expect(scoreColor(3, standing, colors)).toBe("ERROR");
   });
