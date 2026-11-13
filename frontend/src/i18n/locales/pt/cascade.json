@@ -37,5 +37,8 @@
   "pieces.cosmos.saturn": "Saturn",
   "pieces.cosmos.jupiter": "Jupiter",
   "pieces.cosmos.sun": "Sun",
-  "pieces.cosmos.milkyWay": "Milky Way"
+  "pieces.cosmos.milkyWay": "Milky Way",
+  "web.loading": "Carregando Cascade…",
+  "web.loadError": "O Cascade não conseguiu iniciar. Tente novamente.",
+  "web.retry": "Tentar novamente"
 }

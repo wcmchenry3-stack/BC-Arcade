@@ -46,7 +46,8 @@ const HIDDEN_GAME_SCREENS = {
     "BlackjackVictoryScreen",
     "BlackjackStatsScreen",
   ],
-  cascade: ["CascadeScreen"],
+  // CascadeRoute is the route (CascadeRoute.web.tsx loads CanvasKit on web, #2960).
+  cascade: ["CascadeRoute", "CascadeScreen"],
   hearts: ["HeartsScreen"],
   mahjong: ["MahjongScreen", "MahjongLayoutInspectorScreen", "MahjongLayoutDetailScreen"],
   starswarm: ["StarSwarmScreen"],

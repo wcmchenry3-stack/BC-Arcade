@@ -11,6 +11,7 @@ import { join } from "path";
  *   yacht       — yacht-*.spec.ts
  *   blackjack   — blackjack-*.spec.ts
  *   twenty48    — twenty48-*.spec.ts
+ *   cascade     — cascade-*.spec.ts
  *   mahjong     — mahjong-*.spec.ts
  *   freecell    — freecell-*.spec.ts
  *   hearts      — hearts-*.spec.ts
@@ -66,8 +67,9 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
-      // No spec yet: Cascade does not render on web until CanvasKit is loaded, and the smoke spec
-      // lands with that work (#2960, epic #3033). Kept so `helpers/cascade.ts` has its project.
+      // Cascade draws through Skia's web runtime (CanvasKit), which its route loads when the screen
+      // opens (#2960). cascade-smoke.spec.ts: CanvasKit loading (and only for Cascade), drop, merge,
+      // game over, and the load error with Retry.
       name: "cascade",
       testMatch: "cascade-*.spec.ts",
       use: { ...devices["Desktop Chrome"] },

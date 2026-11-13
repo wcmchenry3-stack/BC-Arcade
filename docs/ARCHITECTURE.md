@@ -300,6 +300,17 @@ Explicit exception to the lint rule, plus contexts that stay under `game/`:
   `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
   because they import no UI.
 
+**Game canvases on web.** The Skia canvases (`@shopify/react-native-skia`) are native. On
+web, Mahjong and Star Swarm draw with their own Canvas 2D `GameCanvas.web.tsx`. Cascade
+instead runs the same Skia code on web through Skia's web runtime, CanvasKit (WebAssembly),
+so web demos show what the phones show (owner decision on #2960). Its route,
+`screens/CascadeRoute.web.tsx`, loads CanvasKit from our own origin when Cascade opens and
+only then imports the screen; nothing else loads it, and native bundles do not contain it.
+Details and cost: [games/cascade.md](games/cascade.md#rendering-2960),
+[PERFORMANCE.md](PERFORMANCE.md#cascade-on-web-canvaskit-2960). Any other web path that
+imports `@shopify/react-native-skia` before CanvasKit has loaded breaks Skia on web, so keep
+Skia imports behind a native file or the Cascade route.
+
 ### 3.2 Determinism, RNG and counters (#2985, #2999)
 
 The rule: **an engine is replayable from `(seed, inputs)`.** Given the same
