@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe("canvasPlan", () => {
-  it("a: today's renderer — canvas and tiles at res, the View scales it back by 1/res", () => {
+  it("a: the OLD renderer (#3611, test builds only) — canvas and tiles at res, the View scales it back by 1/res", () => {
     expect(canvasPlan("a", 2.5)).toEqual({
       tileRes: 2.5,
       canvasScale: 2.5,
@@ -66,7 +66,7 @@ describe("canvasPlan", () => {
     });
   });
 
-  it("c: canvas at board size, no View scale, faces keep res", () => {
+  it("c: the production renderer (#3684) — canvas at board size, no View scale, faces keep res", () => {
     expect(canvasPlan("c", 2.5)).toEqual({
       tileRes: 1,
       canvasScale: 1,
@@ -85,21 +85,22 @@ describe("canvasPlan", () => {
 
 describe("the test-build gate", () => {
   it("in a test build the chosen variant holds", () => {
-    expect(getRenderVariant()).toBe("a");
-    setRenderVariant("c");
+    // The default is the fixed renderer (#3684); a pick switches to the old one.
     expect(getRenderVariant()).toBe("c");
+    setRenderVariant("a");
+    expect(getRenderVariant()).toBe("a");
   });
 
   it("useRenderVariant follows a pick in a test build", async () => {
     const hook = await renderHook(() => useRenderVariant());
-    expect(hook.result.current).toBe("a");
-    await act(async () => {
-      setRenderVariant("c");
-    });
     expect(hook.result.current).toBe("c");
+    await act(async () => {
+      setRenderVariant("a");
+    });
+    expect(hook.result.current).toBe("a");
   });
 
-  it("useRenderVariant stays a and never re-renders when the flag is off", async () => {
+  it("useRenderVariant stays c and never re-renders when the flag is off", async () => {
     hooksOff();
     let renders = 0;
     const hook = await renderHook(() => {
@@ -110,15 +111,21 @@ describe("the test-build gate", () => {
     await act(async () => {
       setRenderVariant("b");
     });
-    expect(hook.result.current).toBe("a");
+    expect(hook.result.current).toBe("c");
     expect(renders).toBe(before);
   });
 
-  it("outside a test build the variant is always a, whatever was picked", () => {
+  it("outside a test build the variant is always the fixed c, whatever was picked (#3684)", () => {
     setRenderVariant("b");
     hooksOff();
-    expect(getRenderVariant()).toBe("a");
-    setRenderVariant("c");
+    expect(getRenderVariant()).toBe("c");
+    setRenderVariant("a");
+    expect(canvasPlan(getRenderVariant(), 2.5)).toEqual({
+      tileRes: 1,
+      canvasScale: 1,
+      viewScale: 1,
+      faceRes: 2.5,
+    });
     hooksOn();
     // The pick made with hooks off was ignored.
     expect(getRenderVariant()).toBe("b");

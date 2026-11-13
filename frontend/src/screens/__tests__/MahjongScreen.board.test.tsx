@@ -710,7 +710,7 @@ describe("#3684 render readout (test builds only)", () => {
     expect(before).toBeGreaterThan(0);
     // Picking the variant already in use deals again but keeps the canvas.
     await act(async () => {
-      await fireEvent.press(screen.getByTestId("mahjong-variant-a"));
+      await fireEvent.press(screen.getByTestId("mahjong-variant-c"));
     });
     expect(mockCanvasMounts).toBe(before);
     await act(async () => {
@@ -719,7 +719,7 @@ describe("#3684 render readout (test builds only)", () => {
     expect(mockCanvasMounts).toBe(before + 1);
   });
 
-  it("turning the flag off releases a picked variant: getRenderVariant is a again", async () => {
+  it("turning the flag off releases a picked variant: getRenderVariant is the fixed c again", async () => {
     process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
     jest
       .spyOn(Reanimated, "useFrameCallback")
@@ -729,10 +729,10 @@ describe("#3684 render readout (test builds only)", () => {
       await fireEvent.press(screen.getByTestId("mahjong-diag-toggle"));
     });
     await act(async () => {
-      await fireEvent.press(screen.getByTestId("mahjong-variant-c"));
+      await fireEvent.press(screen.getByTestId("mahjong-variant-a"));
     });
-    expect(getRenderVariant()).toBe("c");
-    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
     expect(getRenderVariant()).toBe("a");
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    expect(getRenderVariant()).toBe("c");
   });
 });

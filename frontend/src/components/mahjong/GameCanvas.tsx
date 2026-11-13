@@ -88,10 +88,12 @@ export default function GameCanvas({
 }: Props) {
   const { t } = useTranslation("mahjong");
   const { faceWidth, faceHeight, boardWidth, boardHeight } = camera;
-  // Drawn at max-zoom resolution and shown scaled down, so zooming in never stretches it.
+  // The faces are rasterised at max-zoom resolution so zooming in does not stretch them; the
+  // canvas itself is the board's size, never larger (#3684: iOS stops presenting, and aliases,
+  // a canvas drawn bigger and shrunk by a View transform).
   const boardRes = boardResolution(camera.scale, camera.tileWidth);
-  // Always variant "a" (exactly the above) outside a test build; test builds can pick another
-  // to diagnose #3684 (renderDiag.ts).
+  // Always the fixed variant "c" outside a test build; test builds can pick the old renderer
+  // for the before/after demo (renderDiag.ts).
   const variant = useRenderVariant();
   const plan = canvasPlan(variant, boardRes);
   const res = plan.tileRes;
@@ -142,8 +144,8 @@ export default function GameCanvas({
 
   return (
     <View style={{ width: boardWidth, height: boardHeight }}>
-      {/* Drawn at `res` times the board's size, centred on it and scaled (about its centre)
-          down onto it: the gesture layer's zoom then shrinks a sharp bitmap, never stretches. */}
+      {/* The board's own size (#3684). Only a test build's "old" variant draws larger and scales
+          this View down; production never does (plan.canvasScale and viewScale are 1). */}
       <View
         pointerEvents="none"
         style={{

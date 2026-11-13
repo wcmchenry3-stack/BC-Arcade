@@ -273,22 +273,21 @@ describe("Mahjong GameCanvas (native) — canvas", () => {
     expect(screen.getByTestId("sk-fill").props.color).toBe(BG);
     const canvas = screen.getByTestId("sk-canvas");
     expect(canvas.props.accessibilityLabel).toBeTruthy();
-    // Drawn at max-zoom resolution (#3611) — 48 / tileWidth 22 here — and shown scaled down
-    // onto the 200 x 160 board, so the gesture layer's zoom never stretches the bitmap.
-    const res = boardResolution(camera.scale, camera.tileWidth);
-    expect(res).toBeCloseTo(48 / 22, 5);
-    expect(canvas.props.style).toEqual({ width: 200 * res, height: 160 * res });
+    // #3684: the canvas is the 200 x 160 board's own size (the oversized #3611 canvas, shrunk
+    // by a View transform, is gone: iOS stopped presenting and aliased it), with no View
+    // downscale, and every tile is drawn at scale 1.
+    expect(boardResolution(camera.scale, camera.tileWidth)).toBeCloseTo(48 / 22, 5);
+    expect(canvas.props.style).toEqual({ width: 200, height: 160 });
     const frame = StyleSheet.flatten(canvas.parent!.props.style);
     expect(frame).toEqual({
       position: "absolute",
-      width: 200 * res,
-      height: 160 * res,
-      left: (200 - 200 * res) / 2,
-      top: (160 - 160 * res) / 2,
-      transform: [{ scale: 1 / res }],
+      width: 200,
+      height: 160,
+      left: 0,
+      top: 0,
+      transform: [{ scale: 1 }],
     });
-    // Board space to canvas pixels: every tile is drawn scaled up by the same factor.
-    for (const id of PAINT_ORDER) expect(group(id).props.transform).toEqual([{ scale: res }]);
+    for (const id of PAINT_ORDER) expect(group(id).props.transform).toEqual([{ scale: 1 }]);
   });
 
   it("rasterises the faces at the canvas's resolution, so a zoomed-in face is sharp", async () => {
@@ -645,7 +644,8 @@ describe("Mahjong GameCanvas (native) — work per tap and per mount (#2962)", (
 
 describe("Mahjong GameCanvas (native) — motion (#3613)", () => {
   const clock = (value: number) => ({ progress: { value }, t0: 0, duration: 100 });
-  const res = () => boardResolution(camera.scale, camera.tileWidth);
+  // #3684: tiles are drawn at scale 1 (the canvas is the board's size).
+  const res = () => 1;
   const motionWith = (tiles: Map<number, TileMotion>, extra: Partial<BoardMotion> = {}) => ({
     tiles,
     ghosts: [],

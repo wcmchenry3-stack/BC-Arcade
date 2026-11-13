@@ -105,8 +105,10 @@ describe("MahjongRenderDiag (#3684)", () => {
     const onRedeal = await mount();
     await fireEvent.press(screen.getByTestId("mahjong-diag-toggle"));
     await fireEvent.press(screen.getByTestId("mahjong-diag-ui-hb"));
-    await fireEvent.press(screen.getByTestId("mahjong-variant-c"));
-    expect(getRenderVariant()).toBe("c");
+    await fireEvent.press(screen.getByTestId("mahjong-variant-a"));
+    expect(getRenderVariant()).toBe("a");
+    expect(screen.getByText("old (a)")).toBeTruthy();
+    expect(screen.getByText("fixed (c)")).toBeTruthy();
     expect(onRedeal).toHaveBeenCalledTimes(1);
     expect(setActive).toHaveBeenLastCalledWith(false);
     await fireEvent.press(screen.getByTestId("mahjong-variant-b"));

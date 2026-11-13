@@ -1,15 +1,17 @@
 /**
  * Mahjong render diagnostics (#3684, iOS "tiles look faded and blurry"). Test builds only
  * (`EXPO_PUBLIC_TEST_HOOKS=1`, the Maestro builds): in any other build every function here
- * is inert — `getRenderVariant()` is always "a" (today's renderer), the `note*` recorders
- * return at once, and the screen never mounts the readout.
+ * is inert — `getRenderVariant()` is always "c" (the fixed renderer, #3684), the `note*`
+ * recorders return at once, and the screen never mounts the readout.
  *
  * Two parts:
  *
- * - **Render variants**, chosen by a Maestro flow before a deal: (a) today's oversized
- *   canvas scaled down by a View transform, (b) no extra resolution at all, (c) the extra
- *   resolution kept for the face bitmaps only, the canvas drawn at the board's own size.
- *   `canvasPlan` turns a variant into the numbers the native canvas draws with.
+ * - **Render variants**, chosen by a Maestro flow before a deal: (c) the production renderer
+ *   since #3684 — the canvas at the board's own size, the extra resolution kept for the face
+ *   bitmaps only; (a) the OLD renderer, an oversized canvas scaled down by a View transform,
+ *   which iOS stopped presenting and aliased — test builds only, a before/after switch for
+ *   the demo; (b) no extra resolution at all. `canvasPlan` turns a variant into the numbers
+ *   the native canvas draws with.
  * - **Counters**, written by the deal-in (`useBoardMotion`), the face rasteriser
  *   (`tileFaces`) and the canvas, and read by the readout (`MahjongRenderDiag`) twice a
  *   second. Module state only: no storage, no network, no Sentry.
@@ -17,20 +19,32 @@
 import { useSyncExternalStore } from "react";
 import { areTestHooksEnabled } from "../_shared/envFlags";
 
-/** a: today's renderer; b: resolution 1; c: resolution in the face bitmaps only. */
+/**
+ * c: the fixed production renderer (board-size canvas, faces at res); a: the old oversized
+ * canvas (#3611, test builds only); b: resolution 1.
+ */
 export type RenderVariant = "a" | "b" | "c";
-export const RENDER_VARIANTS: readonly RenderVariant[] = ["a", "b", "c"];
+/** The variant production always draws with (#3684). */
+export const PRODUCTION_VARIANT: RenderVariant = "c";
+/** The readout's buttons, the fixed renderer first. */
+export const RENDER_VARIANTS: readonly RenderVariant[] = ["c", "a", "b"];
+/** The readout's button labels. */
+export const VARIANT_LABELS: Readonly<Record<RenderVariant, string>> = {
+  c: "fixed (c)",
+  a: "old (a)",
+  b: "res1 (b)",
+};
 
 /** Whether diagnostics run at all: test builds only. Read at call time, never at import. */
 export function isRenderDiagEnabled(): boolean {
   return areTestHooksEnabled();
 }
 
-let variant: RenderVariant = "a";
+let variant: RenderVariant = PRODUCTION_VARIANT;
 
-/** The variant the native canvas draws with: always "a" outside a test build. */
+/** The variant the native canvas draws with: always the production one outside a test build. */
 export function getRenderVariant(): RenderVariant {
-  return isRenderDiagEnabled() ? variant : "a";
+  return isRenderDiagEnabled() ? variant : PRODUCTION_VARIANT;
 }
 
 const listeners = new Set<() => void>();
@@ -51,11 +65,11 @@ export function setRenderVariant(next: RenderVariant): void {
 
 /**
  * The variant as a subscribed value: a component using it re-renders when a test build picks
- * another. Outside a test build it is always "a" and never notifies (`setRenderVariant` is a
+ * another. Outside a test build it is always "c" and never notifies (`setRenderVariant` is a
  * no-op there), so the subscription costs nothing.
  */
 export function useRenderVariant(): RenderVariant {
-  return useSyncExternalStore(subscribeVariant, getRenderVariant, () => "a");
+  return useSyncExternalStore(subscribeVariant, getRenderVariant, () => PRODUCTION_VARIANT);
 }
 
 /** How the native canvas turns the board's resolution into sizes and transforms. */
@@ -75,10 +89,12 @@ export function canvasPlan(v: RenderVariant, res: number): CanvasPlan {
   switch (v) {
     case "b":
       return { tileRes: 1, canvasScale: 1, viewScale: 1, faceRes: 1 };
-    case "c":
-      return { tileRes: 1, canvasScale: 1, viewScale: 1, faceRes: res };
-    default:
+    case "a":
+      // The old #3611 renderer: iOS stops presenting this layer and aliases it (#3684).
       return { tileRes: res, canvasScale: res, viewScale: 1 / res, faceRes: res };
+    default:
+      // "c", production: a board-size canvas, faces rasterised at res for zoom.
+      return { tileRes: 1, canvasScale: 1, viewScale: 1, faceRes: res };
   }
 }
 
@@ -211,7 +227,7 @@ export function diagSnapshot(): DiagSnapshot {
  */
 export function resetRenderDiag(): void {
   counters = fresh();
-  variant = "a";
+  variant = PRODUCTION_VARIANT;
   listeners.forEach((l) => l());
 }
 
