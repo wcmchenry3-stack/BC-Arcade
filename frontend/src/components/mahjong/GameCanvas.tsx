@@ -28,6 +28,12 @@ import type { BoardMotion } from "../../game/mahjong/useBoardMotion";
 import { useTileFaces } from "./tileFaces";
 import { MatchGhostNode, TileNode, WinCascadeNode } from "./TileNode";
 import { boardResolution } from "../../game/mahjong/zoom";
+import {
+  canvasPlan,
+  getRenderVariant,
+  isRenderDiagEnabled,
+  noteCanvas,
+} from "../../game/mahjong/renderDiag";
 import { MAHJONG_BOARD_BG } from "../../theme/theme.mahjong";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
@@ -83,8 +89,23 @@ export default function GameCanvas({
   const { t } = useTranslation("mahjong");
   const { faceWidth, faceHeight, boardWidth, boardHeight } = camera;
   // Drawn at max-zoom resolution and shown scaled down, so zooming in never stretches it.
-  const res = boardResolution(camera.scale, camera.tileWidth);
-  const faces = useTileFaces(faceWidth, faceHeight, res);
+  const boardRes = boardResolution(camera.scale, camera.tileWidth);
+  // Always variant "a" (exactly the above) outside a test build; test builds can pick another
+  // to diagnose #3684 (renderDiag.ts).
+  const variant = getRenderVariant();
+  const plan = canvasPlan(variant, boardRes);
+  const res = plan.tileRes;
+  const faces = useTileFaces(faceWidth, faceHeight, plan.faceRes);
+  if (isRenderDiagEnabled()) {
+    noteCanvas({
+      variant,
+      res: boardRes,
+      plan,
+      boardWidth,
+      boardHeight,
+      facesReady: faces ? faces.filter(Boolean).length : -1,
+    });
+  }
 
   const freeTiles = useMemo(() => freeIds ?? freeTileIds(state.tiles), [freeIds, state.tiles]);
 
@@ -127,15 +148,15 @@ export default function GameCanvas({
         pointerEvents="none"
         style={{
           position: "absolute",
-          width: boardWidth * res,
-          height: boardHeight * res,
-          left: (boardWidth - boardWidth * res) / 2,
-          top: (boardHeight - boardHeight * res) / 2,
-          transform: [{ scale: 1 / res }],
+          width: boardWidth * plan.canvasScale,
+          height: boardHeight * plan.canvasScale,
+          left: (boardWidth - boardWidth * plan.canvasScale) / 2,
+          top: (boardHeight - boardHeight * plan.canvasScale) / 2,
+          transform: [{ scale: plan.viewScale }],
         }}
       >
         <Canvas
-          style={{ width: boardWidth * res, height: boardHeight * res }}
+          style={{ width: boardWidth * plan.canvasScale, height: boardHeight * plan.canvasScale }}
           accessibilityLabel={t("game.canvasLabel")}
           accessibilityRole="none"
         >

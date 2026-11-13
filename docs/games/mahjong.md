@@ -171,6 +171,29 @@ Native rendering uses Skia; web uses Canvas2D. Both consume the same engine/layo
 - **Board colour.** The native board uses `MAHJONG_BOARD_BG` (`theme/theme.constants.ts`), as the web canvas already did; it was a private `#1a3a1a` before.
 - **Locked tiles' art: the same on both platforms since #3612.** Native always drew a locked tile's face art at full opacity (the old `<ImageSVG>` ignored its 0.35 opacity) while web dimmed it to 35 %. Now both draw it at full strength under a light warm shade (`MAHJONG_LOCK_TINT`) on a slightly darker face; only the suit-colour placeholder (shown until a face loads) is dimmed to 35 %. **#3684** lightened that shade (face `#ebe2d2` → `#f1eadd`, tint 20 % → 8 %): on iOS the old one made most of a board look faded and washed out (Sentry BC_GAMES-6V), and the owner picked the lighter of three looks. Free tiles still stand out a little, and every tile's art reads clearly.
 
+### iOS faded/blurry investigation (#3684): diagnostic overlay and render variants, test builds only
+
+iOS Maestro runs reproduced the "faded and blurry" reports: on Turtle only the bottom layer showed, uniformly faint, every upper layer missing, unchanged 25 s later and after a double-tap zoom (the mini-map, plain views, showed the whole board); another run showed chunky faces after a zoom. Android, same code, is crisp. That look is exactly `tileLook` at deal progress ≈ 0.02 (layer 0 at alpha `clamp01(t × 2.5)` ≈ 0.1, every higher layer still waiting for its delay), about one frame into the 780 ms deal-in. The deal's progress runs on the UI thread (`withTiming`), so a JS timer that never fired could not by itself leave it there: either the UI-thread animation stopped near 0, or the canvas stopped presenting new frames. A test-build readout tells which, and three render variants test the leading suspect, the oversized canvas (variant a below: at about res 1.9 and 3x density, a ~2200 x 3400 px Skia surface with 144 `BlurMask` shadows, redrawn every frame of the deal, then shrunk by a View transform).
+
+Test builds only (`EXPO_PUBLIC_TEST_HOOKS=1`, every Maestro build), native only. In any other build `getRenderVariant()` is always `"a"`, the counters record nothing and the screen renders nothing extra, so store builds draw exactly as before. No storage, network or Sentry.
+
+- **Readout** (`components/mahjong/MahjongRenderDiag.tsx`, data in `game/mahjong/renderDiag.ts`): a "diag" chip (`mahjong-diag-toggle`) at the board's top-left opens `mahjong-diag`, rewritten from JS twice a second: the variant, `res` (`boardResolution`), the pixel ratio and the canvas's size in physical pixels; tiles in `motion.tiles`, whether the deal clock is set (`dealing()`) and its `progress.value` read from JS; deals started, deal-end timers fired (`later(DEAL_IN_MS, …)` in `useBoardMotion`) and deals skipped by a tap; a UI-thread heartbeat (frames counted by a `useFrameCallback`, off until `mahjong-diag-ui-hb` is tapped, so the readout does not itself keep the UI frame loop busy) and a JS heartbeat (time since the readout mounted); faces the canvas drew (`none` while it draws suit-colour placeholders) and the last rasterisation pass (faces ready / null, its time in ms, its size key); Reduce Motion.
+- **Variants** (`mahjong-variant-a|b|c`; each sets the variant and deals the layout again, on a fresh canvas): **a** today's renderer (canvas at `res` x the board, tiles scaled by `res`, View `scale(1/res)`); **b** `res` forced to 1 (board-size canvas, no scale, faces rasterised at the pixel ratio); **c** board-size canvas and no View scale, but the faces still rasterised at `res` x the pixel ratio (`canvasPlan` in `renderDiag.ts`).
+- **Flow:** `e2e/maestro/flows/mahjong/demo-diagnose.yaml` (tag `demo`, run by a `flows: mahjong-demo` dispatch, see [MAESTRO.md](../MAESTRO.md)). Per variant: `mahjong-diag-<v>-open` (~5 s after the deal), `-late` (~20 s), `-hb` (3 s after the UI heartbeat is switched on) and `-zoom` (after a double-tap on the board), with a video `mahjong-diag`.
+
+Reading the shots:
+
+| Readout at `-late`                                                | Means                                                                                        |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `p` stuck near 0.02, `ui=off`, then `-hb` shows `ui` not counting | the UI thread's frame loop stopped: no animation or canvas redraw can run                    |
+| `p` stuck near 0.02 but `-hb` counts frames                       | the deal's `withTiming` itself stalled (frames run, the clock does not)                      |
+| `p=1.000`, `motion=0`, `dealTimer=1`, board still faded           | state and clocks are done; the canvas stopped presenting new frames                          |
+| `p=1.000` but `motion=144`, `dealTimer=0`                         | the JS deal-end timer never ran (JS thread blocked or timers stopped; check `js=` advancing) |
+| a faded, b or c crisp                                             | the oversized native canvas (and its View downscale) is the cause                            |
+| faces `none` or `raster#0` long after the deal                    | the faces never rasterised (JS thread), separate from the fade                               |
+
+The double-tap in `-zoom` also skips a deal still `dealing=Y` (a tap during the deal lands it): if the board stays faded after that, the canvas is not presenting.
+
 ## Client-Side Engine
 
 - Location: `frontend/src/game/mahjong/engine.ts`

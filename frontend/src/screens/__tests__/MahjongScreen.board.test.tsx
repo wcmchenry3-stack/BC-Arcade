@@ -17,6 +17,8 @@ import * as mahjongStorage from "../../game/mahjong/storage";
 import * as mahjongEngine from "../../game/mahjong/engine";
 import type { MahjongState } from "../../game/mahjong/types";
 import { detectedGesture } from "../../test-utils/mockScreenDeps";
+import * as Reanimated from "react-native-reanimated";
+import { getRenderVariant, resetRenderDiag } from "../../game/mahjong/renderDiag";
 import type { DetectorRender } from "../../test-utils/mockScreenDeps";
 
 const mockDetected: DetectorRender[] = [];
@@ -648,5 +650,43 @@ describe("leaving", () => {
       await fireEvent.press(screen.getByRole("button", { name: "Home" }));
     });
     expect(mockPopToTop).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("#3684 render readout (test builds only)", () => {
+  const ORIGINAL_HOOKS = process.env.EXPO_PUBLIC_TEST_HOOKS;
+  afterEach(() => {
+    if (ORIGINAL_HOOKS === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    else process.env.EXPO_PUBLIC_TEST_HOOKS = ORIGINAL_HOOKS;
+    resetRenderDiag();
+  });
+
+  it("is not on the board outside a test build, and the canvas draws variant a", async () => {
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    await mountOn(pairBoard());
+    expect(screen.getByTestId("game-canvas")).toBeTruthy();
+    expect(screen.queryByTestId("mahjong-diag-toggle")).toBeNull();
+    expect(screen.queryByTestId("mahjong-diag")).toBeNull();
+    expect(screen.queryByTestId("mahjong-variant-a")).toBeNull();
+    expect(getRenderVariant()).toBe("a");
+  });
+
+  it("in a test build, a variant button deals the layout again with that variant", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    jest
+      .spyOn(Reanimated, "useFrameCallback")
+      .mockImplementation((() => ({ setActive: jest.fn() })) as never);
+    await mountOn(pairBoard({ currentLayoutId: "turtle" }));
+    expect(screen.getAllByLabelText(/^mock-tile-/)).toHaveLength(2);
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("mahjong-diag-toggle"));
+    });
+    expect(screen.getByTestId("mahjong-diag")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("mahjong-variant-b"));
+    });
+    expect(getRenderVariant()).toBe("b");
+    // A fresh Turtle deal.
+    expect(screen.getAllByLabelText(/^mock-tile-/)).toHaveLength(144);
   });
 });
