@@ -792,6 +792,123 @@ def yacht_tie() -> np.ndarray:
     return fade(x, 0.0, 0.3)
 
 
+# --- Sudoku (#3775): option A, "crisp graphite" -----------------------------------------------
+
+# From game/sudoku/motion.ts (#3774): SOLVED_BEAT_MS 1000, and the unit sweep: its glow starts at
+# UNIT_SWEEP_START_MS 50 and runs over UNIT_SWEEP_MS 450, so a unit's tap run follows 50-500 ms.
+# The win and unit recipes hold only what follows the mark: each file's leveled place sound
+# (variation 1) is mixed in at t = 0 by `with_place_mark`, so the move's digit sounds like every
+# other one, because a unit or the win replaces the place sound for its move.
+SUDOKU_WIN_CARD_AT = 1.0
+SUDOKU_UNIT_SWEEP_START = 0.05
+SUDOKU_UNIT_SWEEP = 0.45
+
+
+def _unit_rms(x: np.ndarray) -> np.ndarray:
+    return x / (np.std(x) + 1e-12)
+
+
+def graphite_tick(  # noqa: PLR0913
+    seed: int,
+    g: float = 1.0,
+    bright: float = 9000,
+    ring: float = 3600,
+    q: float = 10,
+    dec: float = 0.0015,
+    ring_dec: float = 0.004,
+    dur: float = 0.04,
+) -> np.ndarray:
+    """The pencil tip meeting paper: a tiny band-passed noise click plus a short noise-driven
+    'pitched' ring (the pencil's wood, ~3-4 kHz)."""
+    rng = np.random.default_rng(seed)
+    t = t_axis(dur)
+    onset = np.clip(t / 0.0002, 0, 1)
+    c = _unit_rms(lp2(highpass(noise(len(t), seed), 1500), bright)) * onset * np.exp(-t / dec)
+    r = _unit_rms(resonate(noise(len(t), seed + 1), ring * rng.uniform(0.95, 1.05), q))
+    return (c + 0.45 * r * onset * np.exp(-t / ring_dec)) * g
+
+
+def stroke(
+    seed: int,
+    dur: float,
+    lo: float,
+    hi: float,
+    grain: float = 1200,
+    g: float = 1.0,
+    sweep: float = 0.0,
+) -> np.ndarray:
+    """One pencil stroke on paper: grainy band-limited noise (`scratch`), optionally with its band
+    sliding by `sweep` (a ratio, e.g. 1.3 rises) for a 'back' or 'forth' direction."""
+    x = scratch(seed, dur, lo, hi, grain)
+    if sweep:
+        t = t_axis(dur)
+        cut = hi * (1 + (sweep - 1) * t / t[-1])
+        x = lowpass(x, cut)
+    return _unit_rms(x) * g * 0.35
+
+
+def felt_piano(n: float, dur: float = 1.4, decay: float = 0.6, g: float = 1.0) -> np.ndarray:
+    """A soft felt piano note: a few harmonics (upper ones dying fast), two strings slightly
+    detuned for warmth, a 7 ms felt attack and a muted hammer breath."""
+    t = t_axis(dur)
+    f = hz(n)
+    x = np.zeros_like(t)
+    for k, a in [(1, 1.0), (2, 0.42), (3, 0.16), (4, 0.07), (5, 0.03)]:
+        fk = f * k * (1 + 0.0004 * k * k)
+        dk = decay / (1 + 0.9 * (k - 1))
+        s = 0.5 * (np.sin(phase(np.full_like(t, fk))) + np.sin(phase(np.full_like(t, fk * 1.0012))))
+        x += a * s * np.exp(-t / dk)
+    x *= np.clip(t / 0.007, 0, 1)
+    h = _unit_rms(lp2(highpass(noise(len(t), int(f)), 400), 2500)) * np.exp(-t / 0.008) * 0.06
+    return (x + h) * g
+
+
+def sudoku_place(i: int) -> np.ndarray:
+    """Digit place: a hard pencil point tapped on newsprint, 80 ms; three seeds, since a game
+    places about 60 digits."""
+    x = np.zeros(int(0.08 * SR))
+    place(x, graphite_tick(17000 + i, 1.0, 9000, 3600 + 150 * i, 10), 0.0)
+    place(x, stroke(17010 + i, 0.025, 2500, 7000, 2500, 0.18), 0.003)
+    return fade(x, 0.0, 0.015)
+
+
+def sudoku_error() -> np.ndarray:
+    """Error, 0.34 s: a scratch-out of three fast hard strokes back and forth (0, 110, 230 ms, on
+    the pulse and the ring's blink), each a little duller, over the place tick."""
+    x = np.zeros(int(0.34 * SR))
+    place(x, graphite_tick(17300, 0.7), 0.0)
+    for k, (t0, hi) in enumerate([(0.0, 6500), (0.11, 5500), (0.23, 4500)]):
+        s = stroke(17310 + k, 0.085, 1200, hi, 1800, 0.9 - 0.15 * k, sweep=(1.25, 0.8, 1.2)[k])
+        place(x, s, t0 + 0.004)
+    return fade(x, 0.0, 0.03)
+
+
+def sudoku_unit() -> np.ndarray:
+    """Unit complete, 0.6 s: four pencil-point taps rising along the sweep (50, 165, 280, 395 ms;
+    ring 2.6 to 4.4 kHz), the last one a quick check-mark stroke. The place tick is mixed in."""
+    x = np.zeros(int(0.6 * SR))
+    for k, at in enumerate([0.05, 0.165, 0.28, 0.395]):
+        tick = graphite_tick(17600 + k, 0.6 + 0.12 * k, 9000, 2600 + 600 * k, 12, 0.0015, 0.007)
+        place(x, tick, at)
+    place(x, stroke(17610, 0.06, 2500, 8000, 2000, 0.35, sweep=1.4), 0.40)
+    return fade(x, 0.0, 0.04)
+
+
+def sudoku_win() -> np.ndarray:
+    """Win, 2.3 s: a quick double underline under the solving wave (two strokes, 0.3 and 0.55 s),
+    a check-mark tick at 0.8 s, then a soft felt-piano C major chord (C5 E5 G5 C6) with a quiet
+    high bell as the card shows (1.0 s). The place tick is mixed in."""
+    x = np.zeros(int(2.3 * SR))
+    place(x, stroke(17900, 0.16, 1500, 6000, 1600, 0.5, sweep=1.3), 0.30)
+    place(x, stroke(17901, 0.13, 1500, 6500, 1600, 0.45, sweep=1.35), 0.55)
+    place(x, graphite_tick(17902, 0.5, 9000, 4200, 12), 0.80)
+    place(x, stroke(17903, 0.05, 2500, 8000, 2000, 0.25, sweep=1.4), 0.805)
+    for k, n in enumerate([C5, E5, G5, C6]):
+        place(x, felt_piano(n, 1.3, 0.55, 0.8 - 0.06 * k), SUDOKU_WIN_CARD_AT + 0.012 * k)
+    place(x, glass(C7, 1.2, 0.4) * 0.12, SUDOKU_WIN_CARD_AT + 0.03)
+    return fade(x, 0.0, 0.3)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -803,6 +920,21 @@ def peak(db: float) -> Level:
 
 def rms50(db: float, peak_max: float) -> Level:
     return lambda x: level_rms(x, db, peak_max)
+
+
+SUDOKU_PLACE_LEVEL = rms50(-26.0, -3.0)  # ~60 a game: level with 2048's spawn, the quietest here
+
+
+def with_place_mark(db: float, peak_max: float) -> Level:
+    """Level a sound, then mix the leveled place tick (variation 1) in at t = 0 (Sudoku's unit
+    and win replace the place sound for their move, so they open with the same mark)."""
+
+    def level(x: np.ndarray) -> np.ndarray:
+        y = level_rms(x, db, peak_max)
+        place(y, SUDOKU_PLACE_LEVEL(sudoku_place(0)), 0.0)
+        return y
+
+    return level
 
 
 DICE_ROLL_LEVEL = rms50(-20.0, -1.0)  # ~1.5 dB over card place: a roll is a bigger event
@@ -892,6 +1024,12 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "yacht-win": (yacht_win, rms50(-15.0, -1.0)),  # 1 dB over the jackpot: the top of the ladder
     "yacht-loss": (yacht_loss, rms50(-21.0, -1.0)),  # gentle, like 2048's game over
     "yacht-tie": (yacht_tie, rms50(-19.0, -1.0)),  # between the win and the loss
+    "sudoku-digit-place": (lambda: sudoku_place(0), SUDOKU_PLACE_LEVEL),
+    "sudoku-digit-place-2": (lambda: sudoku_place(1), SUDOKU_PLACE_LEVEL),
+    "sudoku-digit-place-3": (lambda: sudoku_place(2), SUDOKU_PLACE_LEVEL),
+    "sudoku-error-entered": (sudoku_error, rms50(-24.0, -3.0)),  # level with Daily Word's refusal
+    "sudoku-unit-complete": (sudoku_unit, with_place_mark(-22.0, -1.0)),  # level with 2048's merge
+    "sudoku-puzzle-complete": (sudoku_win, with_place_mark(-17.0, -1.0)),  # level with Daily Word's
 }
 
 

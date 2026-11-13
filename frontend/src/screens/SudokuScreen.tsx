@@ -38,7 +38,6 @@ import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
 import { captureThrottledMessage } from "../game/_shared/sentryThrottle";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
-import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
@@ -50,6 +49,7 @@ import SudokuGrid from "../components/sudoku/SudokuGrid";
 import { boardFit } from "../components/sudoku/cellStyle";
 import NumberPad from "../components/sudoku/NumberPad";
 import { useSolveBeat } from "../components/sudoku/useSolveBeat";
+import { useSudokuSounds } from "../components/sudoku/useSudokuSounds";
 import { useLiveMotion } from "../components/sudoku/useLiveMotion";
 import PreGame from "../components/sudoku/PreGame";
 import NewGameModal from "../components/sudoku/NewGameModal";
@@ -57,8 +57,6 @@ import { isFullButWrong, loadPuzzle, selectCell, toggleNotesMode } from "../game
 import { deriveMotion } from "../game/sudoku/motion";
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
 import { DIFFICULTIES } from "../game/sudoku/types";
-import { useSound } from "../game/_shared/useSound";
-import { SUDOKU_SOUNDS } from "../game/sudoku/sounds";
 import {
   clearGame,
   loadGame,
@@ -249,7 +247,8 @@ export default function SudokuScreen() {
   // Played once, then gone: no replay when Reduce Motion is turned off later.
   const motion = useLiveMotion(moveMotion, reduceMotion);
 
-  const { play: playPuzzleComplete } = useSound("sudoku.puzzleComplete", SUDOKU_SOUNDS);
+  // One sound per move, from the engine's events (#3775); the win is cut off by a new puzzle.
+  const { stopPuzzleComplete } = useSudokuSounds(state?.events);
 
   // The player's actions are recorded through the shared recorder (#3288):
   // `entryLog` collects them in memory and hands a chunk of ENTRIES_PER_CHUNK
@@ -530,13 +529,8 @@ export default function SudokuScreen() {
     [syncRestart, flushEntries, resetEntries]
   );
 
-  // The engine emits a new array on each digit entry; the events stay in state (a save drops
-  // them), so no clear is needed. The error and the unit sweep are on the board (`motion`).
-  useGameEvents(state?.events, {
-    puzzleComplete: () => playPuzzleComplete(),
-  });
-
   const handleStart = useCallback(() => {
+    stopPuzzleComplete();
     clearSavedGame();
     const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
     openPuzzleSession(fresh);
@@ -554,10 +548,12 @@ export default function SudokuScreen() {
     openPuzzleSession,
     clearSavedGame,
     setState,
+    stopPuzzleComplete,
   ]);
 
   const handleStartWithSettings = useCallback(
     (d: Difficulty, v: Variant) => {
+      stopPuzzleComplete();
       setNewGameModalVisible(false);
       setVariant(v);
       clearSavedGame();
@@ -571,7 +567,14 @@ export default function SudokuScreen() {
       startMsRef.current = null;
       pausedAtRef.current = null;
     },
-    [resetScore, rememberDifficulty, openPuzzleSession, clearSavedGame, setState]
+    [
+      resetScore,
+      rememberDifficulty,
+      openPuzzleSession,
+      clearSavedGame,
+      setState,
+      stopPuzzleComplete,
+    ]
   );
 
   const handleNewGameRequest = useCallback(() => {
@@ -643,6 +646,7 @@ export default function SudokuScreen() {
   }, [recordEntry, setState, stateRef]);
 
   const handleChangeDifficulty = useCallback(() => {
+    stopPuzzleComplete();
     // #2690: close this puzzle's session now, while the snapshot still reads
     // it (abandoned if started, discarded if not). The next puzzle opens its own.
     // Its last chunk goes to the recorder first (#3288): `close` ends the session.
@@ -656,7 +660,15 @@ export default function SudokuScreen() {
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [resetScore, syncClose, flushEntries, resetEntries, clearSavedGame, setState]);
+  }, [
+    resetScore,
+    syncClose,
+    flushEntries,
+    resetEntries,
+    clearSavedGame,
+    setState,
+    stopPuzzleComplete,
+  ]);
 
   const handleHint = useCallback(() => {
     // A solved puzzle is final (#3774): during the solved beat the board takes no actions.

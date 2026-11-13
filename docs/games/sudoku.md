@@ -315,12 +315,15 @@ The heavy hard game above (315 entries) over the real GameEventClient → EventS
 
 ## Sound
 
-Registry: `frontend/src/game/sudoku/sounds.ts` (`SUDOKU_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+Registry: `frontend/src/game/sudoku/sounds.ts` (`SUDOKU_SOUNDS`), played through the shared `useSound` and `useSoundVariants` hooks, which honour the player's sound setting. The five sounds are original, synthesized by `tools/assets/synth_puzzle_sfx.py` in the "crisp graphite" pencil-and-paper material (#3775); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is the hooks' default (1.0).
 
-Triggers are in `frontend/src/screens/SudokuScreen.tsx`.
+Triggers are in `frontend/src/components/sudoku/useSudokuSounds.ts`, called from `frontend/src/screens/SudokuScreen.tsx`. **One sound per move**, picked from the engine's events: the solve over an error over a completed unit over the plain place. A unit's sound and the win open with the place tick, so they replace it for that move.
 
-| Key | File | Plays when | Volume |
-| --- | --- | --- | --- |
-| `sudoku.puzzleComplete` | `hearts-moon-shot.mp3` (shared fanfare) | the puzzle is solved | 1.0 |
+| Key                                                  | File                                 | Plays when                                                               | Timing                                                          |
+| ---------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| `sudoku.digitPlace` (+ `digitPlace2`, `digitPlace3`) | `sudoku-digit-place.ogg`, `-2`, `-3` | a digit or a hint lands (alternating variations)                         | at the entry                                                    |
+| `sudoku.errorEntered`                                | `sudoku-error-entered.ogg`           | an illegal digit (not a hint)                                            | three scratches inside the 380 ms pulse                         |
+| `sudoku.unitComplete`                                | `sudoku-unit-complete.ogg`           | a row, column or box is completed correctly, in place of the place tick  | four taps along the 50-500 ms sweep                             |
+| `sudoku.puzzleComplete`                              | `sudoku-puzzle-complete.ogg`         | the puzzle is solved, at the solving render; the only sound of that move | its chord lands at +1.0 s, as the card shows (`SOLVED_BEAT_MS`) |
 
-`sudoku.digitPlace`, `sudoku.errorEntered` and `sudoku.unitComplete` are in the registry and the engine emits their events, but nothing plays them yet (#3578).
+Notes, Erase, Undo and the Hint button are silent (a hint that fills a cell plays the place sound, as it places a digit). A game restored already solved, or a remount, is silent. The win is stopped by New Game, Play Again, Change Difficulty and unmount. The generator's timings (`SUDOKU_WIN_CARD_AT`, `SUDOKU_UNIT_SWEEP_START`, `SUDOKU_UNIT_SWEEP`) are checked against `motion.ts` in `frontend/src/game/sudoku/__tests__/sounds.test.ts`.
