@@ -17,7 +17,8 @@ import SudokuScreen from "../SudokuScreen";
 import { dark as darkColors, ThemeProvider } from "../../theme/ThemeContext";
 import * as sudokuEngine from "../../game/sudoku/engine";
 import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
-import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/storage";
+import { saveGame } from "../../game/sudoku/storage";
+import { getBest, recordResult, storageKey } from "../../game/_shared/personalBest";
 import type { CellValue, SudokuState } from "../../game/sudoku/types";
 
 const mockPopToTop = jest.fn();
@@ -794,13 +795,7 @@ describe("SudokuScreen — result card (#2511)", () => {
   });
 
   it("marks a New Best when the previous best time is beaten", async () => {
-    await saveStats({
-      ...EMPTY_SUDOKU_STATS,
-      classic: {
-        ...EMPTY_SUDOKU_STATS.classic,
-        easy: { bestTimeS: 120 },
-      },
-    });
+    await recordResult("sudoku", "classic.easy", 120);
     const r = await solvePuzzle({ elapsedMs: 65_000 });
     const card = within(r.getByTestId("sudoku-result"));
     expect(card.getByText("New best")).toBeTruthy();
@@ -813,10 +808,20 @@ describe("SudokuScreen — result card (#2511)", () => {
       JSON.stringify({ classic: { easy: { bestTimeS: 120, gamesSolved: 4 } } })
     );
     await solvePuzzle({ elapsedMs: 65_000 });
-    await waitFor(async () => {
-      const stored = JSON.parse((await AsyncStorage.getItem("sudoku_stats_v1")) ?? "{}");
-      expect(stored.classic.easy).toEqual({ bestTimeS: 65 });
-    });
+    // The old record is moved into the shared personal best (#3757).
+    await waitFor(async () => expect(await getBest("sudoku", "classic.easy")).toBe(65));
+  });
+
+  it("keeps a best per mode and difficulty in the shared personal best (#3757)", async () => {
+    // A faster best on another kind of puzzle is not this one's.
+    await AsyncStorage.setItem(
+      storageKey("sudoku"),
+      JSON.stringify({ v: 1, b: { "classic.easy": 120, "mini.easy": 10, "classic.hard": 20 } })
+    );
+    const r = await solvePuzzle({ elapsedMs: 65_000 });
+    expect(within(r.getByTestId("sudoku-result")).getByText("New best")).toBeTruthy();
+    await waitFor(async () => expect(await getBest("sudoku", "classic.easy")).toBe(65));
+    await expect(getBest("sudoku", "mini.easy")).resolves.toBe(10);
   });
 
   it("writes nothing when the solve is slower than the best", async () => {
@@ -830,7 +835,8 @@ describe("SudokuScreen — result card (#2511)", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-    expect(await AsyncStorage.getItem("sudoku_stats_v1")).toBe(stored);
+    // The old record is moved into the shared personal best (#3757) with its best unchanged.
+    expect(await getBest("sudoku", "classic.easy")).toBe(30);
   });
 
   it("reports the real play time to game sync instead of 0", async () => {
@@ -862,7 +868,8 @@ describe("SudokuScreen — result card (#2511)", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-    expect(await AsyncStorage.getItem("sudoku_stats_v1")).toBe(stored);
+    // The old record is moved into the shared personal best (#3757) with its best unchanged.
+    expect(await getBest("sudoku", "classic.easy")).toBe(30);
   });
 
   // #2632: the card reads the synced game's rank (GET /games/{id}/rank)
