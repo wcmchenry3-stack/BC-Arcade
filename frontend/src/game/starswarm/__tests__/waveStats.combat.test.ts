@@ -455,7 +455,9 @@ function playSeededRun(seed: number, waves: number) {
     }
     const was = new Map(prev.enemies.map((e) => [e.id, e.isAlive] as const));
     const tally = deaths[deaths.length - 1]!.deaths;
-    for (const e of s.enemies) if (was.get(e.id) && !e.isAlive) tally[e.tier]++;
+    // A ship absent from the previous roster was launched this tick (a reinforcement): if it is
+    // already dead it was born and killed in one tick, which is a death too (#3680).
+    for (const e of s.enemies) if (!e.isAlive && was.get(e.id) !== false) tally[e.tier]++;
     tally.Grunt -= s.runStats.routEscaped - prev.runStats.routEscaped;
     if (s.phase === "GameOver") break;
   }
@@ -493,6 +495,25 @@ describe("seeded run determinism (#3680)", () => {
     (m) => {
       _resetIds();
       const { closed, end, deaths } = seededRun(7, 3, m * 7919);
+      [...closed, end.waveStats].forEach((w, i) => {
+        for (const tier of ENEMY_TIERS) {
+          const byMethod = KILL_METHODS.reduce((t, k) => t + w.combat.kills[tier][k], 0);
+          expect(byMethod).toBe(deaths[i]!.deaths[tier]);
+        }
+      });
+    }
+  );
+
+  // Pinned from a 500-pair sweep: a reinforcement Grunt is launched and killed by Buddy in the
+  // same tick, so it was never in the previous roster (its kill counts, its death was missed).
+  it.each([
+    { seed: 5914, mathSeed: 3043382, waves: 1 },
+    { seed: 5875, mathSeed: 3019625, waves: 2 },
+  ])(
+    "counts a ship born and killed in one tick (seed $seed, Math.random $mathSeed)",
+    ({ seed, mathSeed, waves }) => {
+      _resetIds();
+      const { closed, end, deaths } = seededRun(seed, waves, mathSeed);
       [...closed, end.waveStats].forEach((w, i) => {
         for (const tier of ENEMY_TIERS) {
           const byMethod = KILL_METHODS.reduce((t, k) => t + w.combat.kills[tier][k], 0);
