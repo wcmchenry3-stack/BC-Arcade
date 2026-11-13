@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { Text, StyleSheet } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AccessibilityInfo, Text, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -43,7 +43,7 @@ export function pickHudNotice(
   if (comebackVisible) {
     return {
       kind: "comeback",
-      text: t("blackjack:comeback.banner"),
+      text: t("blackjack:hud.comeback"),
       label: t("blackjack:comeback.bannerAccessibilityLabel"),
       opacity: opacities.comeback,
       background: colors.bonus,
@@ -78,11 +78,15 @@ export default function HudNotice({
   textColor: string;
 }) {
   const style = useAnimatedStyle(() => ({ opacity: notice.opacity.value }));
+  // The chip mounts at opacity 0 and iOS ignores live regions, so announce the full sentence
+  // once when a notice appears, on every platform (a live region would say it twice).
+  useEffect(() => {
+    AccessibilityInfo.announceForAccessibility(notice.label);
+  }, [notice.label]);
   return (
     <Animated.View
       testID="blackjack-hud-notice"
       accessible
-      accessibilityLiveRegion="polite"
       accessibilityLabel={notice.label}
       style={[styles.chip, { backgroundColor: notice.background }, style]}
     >
@@ -97,6 +101,40 @@ export default function HudNotice({
       </Text>
     </Animated.View>
   );
+}
+
+interface HoldState {
+  milestone: number | null;
+  comeback: boolean;
+  allIn: boolean;
+}
+const IDLE: HoldState = { milestone: null, comeback: false, allIn: false };
+
+/**
+ * The notices' visible state, each held for its duration. One timer per kind: a notice of a
+ * kind that arrives within its hold restarts that hold instead of being cleared by the old
+ * timer; unmount and `reset` (New Game) clear them all.
+ */
+export function useHudNoticeHolds() {
+  const [state, setState] = useState<HoldState>(IDLE);
+  const timers = useRef<Partial<Record<HudNoticeKind, ReturnType<typeof setTimeout>>>>({});
+  const clearTimers = useCallback(() => {
+    Object.values(timers.current).forEach((id) => clearTimeout(id));
+    timers.current = {};
+  }, []);
+  const show = useCallback((kind: HudNoticeKind, holdMs: number, chips?: number) => {
+    clearTimeout(timers.current[kind]);
+    setState((s) => ({ ...s, [kind]: kind === "milestone" ? (chips ?? null) : true }));
+    timers.current[kind] = setTimeout(() => {
+      setState((s) => ({ ...s, [kind]: kind === "milestone" ? null : false }));
+    }, holdMs);
+  }, []);
+  const reset = useCallback(() => {
+    clearTimers();
+    setState(IDLE);
+  }, [clearTimers]);
+  useEffect(() => clearTimers, [clearTimers]);
+  return useMemo(() => ({ ...state, show, reset }), [state, show, reset]);
 }
 
 /** The goal bar's one-time highlight, mounted when a milestone or comeback chip appears (#3797). */

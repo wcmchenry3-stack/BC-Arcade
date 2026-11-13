@@ -101,6 +101,7 @@
   "victory.unlocked": "Вы открыли: {{name}}",
   "milestone.toast": "Достигнут рубеж: {{chips}}!",
   "hud.milestone": "Рубеж: {{chips}}",
+  "hud.comeback": "Камбэк!",
   "hud.winStreakAccessibilityLabel": "Серия побед: {{count}}",
   "comeback.banner": "Какое возвращение!",
   "comeback.bannerAccessibilityLabel": "Возвращение: фишки восстановлены",

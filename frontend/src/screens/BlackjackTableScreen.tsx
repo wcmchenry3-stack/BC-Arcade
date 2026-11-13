@@ -98,7 +98,7 @@ import { isNaturalHand } from "../components/blackjack/blackjackMotion";
 import GameResultModal from "../components/shared/GameResultModal";
 import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
-import { pickHudNotice } from "../components/blackjack/HudNotice";
+import { pickHudNotice, useHudNoticeHolds } from "../components/blackjack/HudNotice";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 
@@ -192,9 +192,8 @@ export default function BlackjackTableScreen({ navigation }: Props) {
     sessionStats,
     runResult,
   } = useBlackjackGame();
-  const [milestoneChips, setMilestoneChips] = useState<number | null>(null);
-  const [comebackVisible, setComebackVisible] = useState(false);
-  const [allInVisible, setAllInVisible] = useState(false);
+  const holds = useHudNoticeHolds();
+  const { milestone: milestoneChips, comeback: comebackVisible, allIn: allInVisible } = holds;
   const [runs, setRuns] = useState<RunRecord[]>([]);
   // The bet being built in the dock (chips tapped so far). It only means
   // something while betting: once a hand is dealt (Deal, Rebet, 2×) it is
@@ -299,12 +298,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         const cue = wonRunRef.current ? undefined : "milestone";
         motion.whenSettled(
           () => {
-            setMilestoneChips(event.value);
+            holds.show("milestone", 1800, event.value); // 150+1400+250
             milestoneOpacity.value = withSequence(
               withTiming(1, { duration: 150 }),
               withDelay(1400, withTiming(0, { duration: 250 }))
             );
-            setTimeout(() => setMilestoneChips(null), 1800); // 150+1400+250
           },
           { cue }
         );
@@ -313,24 +311,22 @@ export default function BlackjackTableScreen({ navigation }: Props) {
         const cue = wonRunRef.current ? undefined : "comeback";
         motion.whenSettled(
           () => {
-            setComebackVisible(true);
+            holds.show("comeback", 2800); // 200+2200+400
             comebackOpacity.value = withSequence(
               withTiming(1, { duration: 200 }),
               withDelay(2200, withTiming(0, { duration: 400 }))
             );
-            setTimeout(() => setComebackVisible(false), 2800); // 200+2200+400
           },
           { cue }
         );
       },
       // The badge only: its sound is the deal's, planned with the motion (#3582).
       allIn: () => {
-        setAllInVisible(true);
+        holds.show("allIn", 1300); // 150+900+250
         allInOpacity.value = withSequence(
           withTiming(1, { duration: 150 }),
           withDelay(900, withTiming(0, { duration: 250 }))
         );
-        setTimeout(() => setAllInVisible(false), 1300); // 150+900+250
       },
     },
     clearEvents
@@ -351,11 +347,13 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   }, [loading, engine, navigation, motionSettled]);
 
   const resetMotion = motion.reset;
+  const resetHolds = holds.reset;
   const handleNewGame = useCallback(() => {
     setBet(0);
     resetMotion();
+    resetHolds();
     handlePlayAgain();
-  }, [handlePlayAgain, resetMotion]);
+  }, [handlePlayAgain, resetMotion, resetHolds]);
 
   // Table select: explicit context state, set for a fresh run until a table is picked.
   const showTableSelect = engine !== null && tablePickPending;

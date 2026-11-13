@@ -22,7 +22,8 @@
         "table.beginner",
         "table.highRoller",
         "tableSelect.startChips",
-        "hud.chipsAccessibilityLabel"
+        "hud.chipsAccessibilityLabel",
+        "hud.comeback"
       ],
       "es": ["rules.h17", "rules.s17", "score.blackjacks"],
       "pt": [
@@ -52,7 +53,8 @@
         "stats.runOutcome.comeback",
         "table.highRoller",
         "tableSelect.startChips",
-        "hud.chipsAccessibilityLabel"
+        "hud.chipsAccessibilityLabel",
+        "hud.comeback"
       ],
       "fr-CA": [
         "outcome.blackjack",

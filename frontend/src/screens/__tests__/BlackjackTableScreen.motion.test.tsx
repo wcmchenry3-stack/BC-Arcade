@@ -1254,7 +1254,7 @@ describe("the run's cues (#3582)", () => {
   const GAP = REDUCE_MOTION_SOUND_GAP_MS;
   const milestoneToast = (chips: number) =>
     screen.queryByLabelText(`Milestone reached: ${chips} chips!`);
-  const comebackBanner = () => screen.queryByText("What a comeback!");
+  const comebackBanner = () => screen.queryByText("Comeback!");
   /** WIN settles (its payout landed) this long after the Stand. */
   const WIN_SETTLED = 2160 + PAYOUT_MS;
   /**

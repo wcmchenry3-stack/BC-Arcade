@@ -123,17 +123,23 @@ describe("HUD notices", () => {
     expect(tag()).toBeTruthy();
   });
 
-  it("announces the full sentence, politely", async () => {
+  it("labels the chip with the full sentence", async () => {
     await mountOn(withEvents({ type: "milestone", value: 2000 }));
     const chip = screen.getByTestId("blackjack-hud-notice");
     expect(chip.props.accessibilityLabel).toBe("Milestone reached: 2000 chips!");
-    expect(chip.props.accessibilityLiveRegion).toBe("polite");
+  });
+
+  it("announces each notice's full sentence once", async () => {
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    await mountOn(withEvents({ type: "milestone", value: 2000 }));
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith("Milestone reached: 2000 chips!");
   });
 
   it("a comeback shows in the HUD strip, then the tag returns", async () => {
     await mountOn(withEvents({ type: "comeback" }));
     const chip = screen.getByTestId("blackjack-hud-notice");
-    expect(within(chip).getByText("What a comeback!")).toBeTruthy();
+    expect(within(chip).getByText("Comeback!")).toBeTruthy();
     expect(chip.props.accessibilityLabel).toBe("Comeback: chips recovered");
     expect(tag()).toBeNull();
     await advance(2800);
@@ -156,9 +162,9 @@ describe("HUD notices", () => {
       withEvents({ type: "allIn" }, { type: "milestone", value: 2000 }, { type: "comeback" })
     );
     expect(screen.getAllByTestId("blackjack-hud-notice")).toHaveLength(1);
-    expect(screen.getByText("What a comeback!")).toBeTruthy();
+    expect(screen.getByText("Comeback!")).toBeTruthy();
     await advance(1800);
-    expect(screen.getByText("What a comeback!")).toBeTruthy();
+    expect(screen.getByText("Comeback!")).toBeTruthy();
     await advance(1000);
     expect(notice()).toBeNull();
   });
@@ -176,7 +182,7 @@ describe("HUD notices", () => {
     const hud = within(screen.getByTestId("blackjack-hud"));
     expect(hud.getByTestId("blackjack-hud-notice")).toBeTruthy();
     expect(felt().queryByTestId("blackjack-hud-notice")).toBeNull();
-    expect(felt().queryByText("What a comeback!")).toBeNull();
+    expect(felt().queryByText("Comeback!")).toBeNull();
     expect(felt().queryByLabelText("Comeback: chips recovered")).toBeNull();
     expect(felt().queryByLabelText("All in wager")).toBeNull();
     expect(felt().queryByLabelText(/^Milestone reached/)).toBeNull();

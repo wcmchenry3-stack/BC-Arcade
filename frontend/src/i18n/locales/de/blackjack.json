@@ -101,6 +101,7 @@
   "victory.unlocked": "Du hast freigeschaltet: {{name}}",
   "milestone.toast": "Meilenstein erreicht: {{chips}} Chips!",
   "hud.milestone": "Meilenstein: {{chips}}",
+  "hud.comeback": "Comeback!",
   "hud.winStreakAccessibilityLabel": "Siegesserie: {{count}}",
   "comeback.banner": "Was für ein Comeback!",
   "comeback.bannerAccessibilityLabel": "Comeback: Chips zurückgewonnen",

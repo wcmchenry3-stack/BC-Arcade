@@ -101,6 +101,7 @@
   "victory.unlocked": "已解锁：{{name}}",
   "milestone.toast": "达成里程碑：{{chips}} 筹码！",
   "hud.milestone": "达成里程碑：{{chips}}",
+  "hud.comeback": "逆转！",
   "hud.winStreakAccessibilityLabel": "连胜：{{count}}胜",
   "comeback.banner": "大逆转！",
   "comeback.bannerAccessibilityLabel": "逆转：筹码回升",

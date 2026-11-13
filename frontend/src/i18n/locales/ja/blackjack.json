@@ -101,6 +101,7 @@
   "victory.unlocked": "アンロック: {{name}}",
   "milestone.toast": "マイルストーン達成: {{chips}} チップ！",
   "hud.milestone": "マイルストーン: {{chips}}",
+  "hud.comeback": "逆転！",
   "hud.winStreakAccessibilityLabel": "連勝: {{count}}勝",
   "comeback.banner": "大逆転！",
   "comeback.bannerAccessibilityLabel": "逆転: チップを回復",

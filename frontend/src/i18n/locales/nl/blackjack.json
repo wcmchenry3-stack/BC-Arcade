@@ -101,6 +101,7 @@
   "victory.unlocked": "Je hebt ontgrendeld: {{name}}",
   "milestone.toast": "Mijlpaal bereikt: {{chips}} chips!",
   "hud.milestone": "Mijlpaal: {{chips}}",
+  "hud.comeback": "Comeback!",
   "hud.winStreakAccessibilityLabel": "Winreeks: {{count}}",
   "comeback.banner": "Wat een comeback!",
   "comeback.bannerAccessibilityLabel": "Comeback: chips teruggewonnen",

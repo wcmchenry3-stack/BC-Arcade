@@ -998,6 +998,15 @@
     "doNotTranslate": [],
     "notes": "Must fit one line at 320 px beside the chips and goal; keep it short."
   },
+  "hud.comeback": {
+    "component": "HudSidebar",
+    "description": "Short chip in the HUD strip announcing a comeback; the full sentence is comeback.banner, and the accessibility label is comeback.bannerAccessibilityLabel.",
+    "tone": "celebratory",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Must fit one line at 320 px beside the chips and goal; keep it short."
+  },
   "hud.winStreakAccessibilityLabel": {
     "component": "HudSidebar",
     "description": "Accessibility label for the win streak badge.",

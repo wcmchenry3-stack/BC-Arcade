@@ -101,6 +101,7 @@
   "victory.unlocked": "Vous avez déverrouillé : {{name}}",
   "milestone.toast": "Étape franchie : {{chips}} jetons!",
   "hud.milestone": "Étape : {{chips}}",
+  "hud.comeback": "Retour!",
   "hud.winStreakAccessibilityLabel": "Série de victoires : {{count}}",
   "comeback.banner": "Quel retour!",
   "comeback.bannerAccessibilityLabel": "Retour : jetons récupérés",

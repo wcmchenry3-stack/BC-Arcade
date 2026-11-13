@@ -199,11 +199,11 @@ describe("run toasts", () => {
     jest.useFakeTimers();
     await mountOn(withEvents({ type: "comeback" }));
     expect(screen.getByLabelText("Comeback: chips recovered")).toBeTruthy();
-    expect(screen.getByText("What a comeback!")).toBeTruthy();
+    expect(screen.getByText("Comeback!")).toBeTruthy();
     await advance(2799);
-    expect(screen.getByText("What a comeback!")).toBeTruthy();
+    expect(screen.getByText("Comeback!")).toBeTruthy();
     await advance(1);
-    expect(screen.queryByText("What a comeback!")).toBeNull();
+    expect(screen.queryByText("Comeback!")).toBeNull();
   });
 
   it("an all-in shows a badge that goes away by itself", async () => {
