@@ -8,7 +8,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-import { MAHJONG_SHUFFLE_COLOR } from "../../theme/theme.mahjong";
+import { MAHJONG_HINT_COLOR, MAHJONG_SHUFFLE_COLOR } from "../../theme/theme.mahjong";
 import GameActionBar from "../shared/GameActionBar";
 import { MAHJONG_ACTION_BAR_H } from "../../game/mahjong/layout";
 
@@ -32,7 +32,11 @@ export default function MahjongActionBar({
   onShuffle,
 }: MahjongActionBarProps) {
   const { t } = useTranslation("mahjong");
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  // Dark keeps Mahjong's blue hint (the tile glow). In light that blue is ~1.9:1 on cream, so the
+  // Hint matches 2048's: the 3:1 bonus green icon and an AA `bonusText` label (#3754).
+  const hintIcon = theme === "light" ? colors.bonus : MAHJONG_HINT_COLOR;
+  const hintLabel = theme === "light" ? colors.bonusText : MAHJONG_HINT_COLOR;
   return (
     <GameActionBar
       testID="mahjong-action-bar"
@@ -53,8 +57,8 @@ export default function MahjongActionBar({
           icon: "lightbulb",
           label: t("action.hint"),
           accessibilityLabel: t("action.hintLabel"),
-          color: colors.bonus,
-          labelColor: colors.bonusText,
+          color: hintIcon,
+          labelColor: hintLabel,
           disabled: hintDisabled,
           onPress: onHint,
           testID: "mahjong-hint-button",
