@@ -61,7 +61,7 @@ Serve it, and leave that running:
 npx serve dist -p 8081 --single
 ```
 
-(`serve` is in `e2e/`: from `frontend/`, `../e2e/node_modules/.bin/serve dist -p 8081 --single`. If 8081 is taken, `serve` picks another port and prints it: pass it to `run.js` with `--base`.)
+(`serve` is in `e2e/`: from `frontend/`, `../e2e/node_modules/.bin/serve dist -p 8081 --single`. If 8081 is taken, `serve` picks another port and prints it: pass it to `run.js` with `--base`. `--base` must be a local or dev origin: the page's own origin passes through the network filter, and service workers are blocked.)
 
 Then, from the repo root, record a scenario:
 

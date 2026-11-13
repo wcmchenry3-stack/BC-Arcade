@@ -315,3 +315,39 @@ def test_every_generator_option_entry_is_well_formed():
             assert "A" in options, sound
             for recipe, _level in options.values():
                 assert callable(recipe)
+
+
+# --- the checked folder is the folder used (security hardening) ---------------------------------
+
+
+def test_options_refuse_a_relative_spelling_of_the_shipped_folder(monkeypatch):
+    monkeypatch.chdir(SHIPPED_SOUNDS_DIR.parent)
+    with pytest.raises(SystemExit, match="never writes"):
+        options_scratch_dir("sounds")
+    with pytest.raises(SystemExit, match="never writes"):
+        options_scratch_dir("./sounds/../sounds")
+
+
+def test_options_refuse_a_symlink_to_the_shipped_folder(tmp_path):
+    link = tmp_path / "link"
+    link.symlink_to(SHIPPED_SOUNDS_DIR, target_is_directory=True)
+    with pytest.raises(SystemExit, match="never writes"):
+        options_scratch_dir(str(link))
+    with pytest.raises(SystemExit, match="never writes"):
+        options_scratch_dir(str(link / "new"))
+
+
+def test_options_refuse_any_folder_inside_frontend():
+    frontend = SHIPPED_SOUNDS_DIR.parents[1]
+    with pytest.raises(SystemExit, match="never writes"):
+        options_scratch_dir(str(frontend / "scratch-options"))
+    with pytest.raises(SystemExit, match="never writes"):
+        options_scratch_dir(str(frontend / "assets" / "other" / "deeper"))
+
+
+def test_write_options_checks_the_folder_itself_and_writes_to_the_resolved_path(tmp_path):
+    with pytest.raises(SystemExit, match="never writes"):
+        write_options(
+            synth_puzzle_sfx.OPTIONS, "daily-word-win", SHIPPED_SOUNDS_DIR, _finish_puzzle
+        )
+    assert options_scratch_dir(str(tmp_path)) == tmp_path.resolve()

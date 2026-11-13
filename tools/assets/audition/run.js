@@ -601,6 +601,7 @@ async function record(scenarioName, { base, out, headed }) {
   });
   const context = await browser.newContext({
     viewport: VIEWPORT,
+    serviceWorkers: "block",
     recordVideo: { dir: videoDir, size: VIEWPORT },
   });
   await installNetwork(context, base, scenario.mocks);

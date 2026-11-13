@@ -341,3 +341,38 @@ def test_run_js_only_reaches_the_dev_api_and_aborts_the_rest():
     src = RUN_JS.read_text()
     assert 'const API_ORIGIN = "https://dev-games-api.buffingchi.com";' in src
     assert "route.abort()" in src and "/entitlements" in src
+
+
+# --- resolve_play_src stays inside dist ---------------------------------------------------------
+
+
+def test_resolve_play_src_refuses_paths_that_leave_dist(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (tmp_path / "secret.ogg").write_bytes(b"x")
+    for url in (
+        "http://h/%2e%2e/secret.ogg",
+        "http://h/..%2fsecret.ogg",
+        "http://h/%2e%2e%2f%2e%2e/secret.ogg",
+        f"http://h/{tmp_path}/secret.ogg",
+    ):
+        with pytest.raises((ValueError, FileNotFoundError)):
+            common.resolve_play_src(url, dist)
+    with pytest.raises(ValueError, match="outside the build"):
+        common.resolve_play_src("http://h/%2e%2e/secret.ogg", dist)
+
+
+def test_resolve_play_src_refuses_a_symlink_out_of_dist(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    outside = tmp_path / "outside.ogg"
+    outside.write_bytes(b"x")
+    (dist / "link.ogg").symlink_to(outside)
+    with pytest.raises(ValueError, match="outside the build"):
+        common.resolve_play_src("http://h/link.ogg", dist)
+
+
+def test_resolve_play_src_only_serves_audio_files(tmp_path):
+    (tmp_path / "index.html").write_text("x")
+    with pytest.raises(ValueError, match="not an audio file"):
+        common.resolve_play_src("http://h/index.html", tmp_path)

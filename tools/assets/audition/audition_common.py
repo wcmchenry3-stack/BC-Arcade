@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlparse
 import numpy as np
 
 SR = 44100
+AUDIO_SUFFIXES = (".ogg", ".mp3", ".wav", ".m4a")
 PEAK_CEILING = 0.98  # a mix that would clip is scaled down to this
 
 
@@ -100,7 +101,12 @@ def resolve_play_src(src: str, dist: Path) -> Path:
     parsed = urlparse(src)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"not a served file: {src[:60]}")
-    path = dist / unquote(parsed.path).lstrip("/")
+    root = dist.resolve()
+    path = (root / unquote(parsed.path).lstrip("/")).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError(f"outside the build: {src[:60]}")
+    if path.suffix.lower() not in AUDIO_SUFFIXES:
+        raise ValueError(f"not an audio file: {src[:60]}")
     if not path.is_file():
         raise FileNotFoundError(f"{src} is not in {dist} (looked for {path}); is dist the build?")
     return path

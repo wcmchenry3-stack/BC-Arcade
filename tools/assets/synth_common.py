@@ -12,6 +12,7 @@ Needs numpy, plus ffmpeg with libvorbis for `write_ogg` / `decoded_pcm_sha256`.
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -198,13 +199,43 @@ SHIPPED_SOUNDS_DIR = Path(__file__).resolve().parents[2] / "frontend" / "assets"
 OptionTable = dict[str, dict[str, tuple[Callable[[], np.ndarray], object]]]
 
 
-def options_scratch_dir(requested: str | None = None) -> Path:
-    """Where `--options` writes: a scratch folder, never the shipped sounds."""
-    out = Path(requested) if requested else Path(tempfile.gettempdir()) / "bc-arcade-sound-options"
-    resolved = out.resolve()
-    if resolved == SHIPPED_SOUNDS_DIR or SHIPPED_SOUNDS_DIR in resolved.parents:
+FRONTEND_DIR = SHIPPED_SOUNDS_DIR.parents[1]
+
+
+def _inside_or_same(path: Path, root: Path) -> bool:
+    """True when `path` is `root` or under it: by normalized name, and by file identity (symlinks,
+    case-insensitive filesystems) on the nearest existing ancestor."""
+    norm_path, norm_root = Path(os.path.normcase(path)), Path(os.path.normcase(root))
+    if norm_path == norm_root or norm_root in norm_path.parents:
+        return True
+    existing = path
+    while not existing.exists() and existing != existing.parent:
+        existing = existing.parent
+    for candidate in (existing, *existing.parents):
+        try:
+            if candidate.exists() and root.exists() and candidate.samefile(root):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _checked_out_dir(out_dir: Path) -> Path:
+    """The resolved folder to write to, refused if it is the shipped sounds or inside frontend/.
+
+    Callers write to the path returned, so what was checked is what is used."""
+    resolved = out_dir.resolve()
+    if _inside_or_same(resolved, SHIPPED_SOUNDS_DIR):
         raise SystemExit(f"--options never writes to {SHIPPED_SOUNDS_DIR}; pick a scratch folder")
-    return out
+    if _inside_or_same(resolved, FRONTEND_DIR):
+        raise SystemExit(f"--options never writes inside {FRONTEND_DIR}; pick a scratch folder")
+    return resolved
+
+
+def options_scratch_dir(requested: str | None = None) -> Path:
+    """Where `--options` writes: a scratch folder, never the shipped sounds or frontend/."""
+    out = Path(requested) if requested else Path(tempfile.gettempdir()) / "bc-arcade-sound-options"
+    return _checked_out_dir(out)
 
 
 def write_options(
@@ -217,6 +248,7 @@ def write_options(
     if sound not in table:
         known = ", ".join(sorted(table)) or "none saved yet"
         raise SystemExit(f"no runner-up options for {sound!r}; known: {known}")
+    out_dir = _checked_out_dir(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for label, (recipe, level) in table[sound].items():
