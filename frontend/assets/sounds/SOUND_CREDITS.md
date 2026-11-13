@@ -352,6 +352,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Commercial use:** Yes (with attribution)
 - **Download date:** 2026-04-25
 - **Notes:** Short victory fanfare. Triumphant conclusion to a completed FreeCell game.
+- **Status (#3661):** No game uses this file any more: FreeCell moved to synthesized sounds (#3563) and Bottle Sort to its own set (#3661, `sort-win.ogg`). It is not bundled in the app, so the CC BY duty applies again only if it ships; kept in the repo.
 
 ### freecell-invalid-move.mp3
 
@@ -1323,6 +1324,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Commercial use:** Yes
 - **Download date:** 2026-04-26
 - **Notes:** Satisfying merge thud. Volume scales from 0.35 (tier 0) to 1.0 (tier 10) to reward higher-tier merges.
+- **Status (#3661):** Cascade only: Bottle Sort moved to its own synthesized pour sounds.
 
 ### cascade-combo.ogg
 

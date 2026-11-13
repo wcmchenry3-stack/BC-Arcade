@@ -99,9 +99,9 @@ Smart Bomb flash and nebula background have no image files: they are drawn in co
 
 ### Required attribution (shipped in v1.0)
 
-| Asset                                                  | Creator and source                                                                          | License                                                   | Credit to show                                                                                       |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `sounds/freecell-game-win.mp3` (FreeCell, Bottle Sort) | humanoide9000, "victory-fanfare", https://freesound.org/people/humanoide9000/sounds/466133/ | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | "Victory fanfare" by humanoide9000 on Freesound, CC BY 4.0. Re-encoded to MP3 (low-quality preview). |
+| Asset                                                             | Creator and source                                                                          | License                                                   | Credit to show                                                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `sounds/freecell-game-win.mp3` (no game since #3661; not bundled) | humanoide9000, "victory-fanfare", https://freesound.org/people/humanoide9000/sounds/466133/ | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | "Victory fanfare" by humanoide9000 on Freesound, CC BY 4.0. Re-encoded to MP3 (low-quality preview). |
 
 The app has no credits or licenses screen yet, so this credit is not displayed in-app. That is an
 open gap tracked in the audit (Section 6, follow-up 1); until it is closed or the sound is replaced
