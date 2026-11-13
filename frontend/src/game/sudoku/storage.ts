@@ -193,80 +193,10 @@ export const {
   beforeSave: serializeState,
 });
 
-// ---------------------------------------------------------------------------
-// Stats persistence (#762, #748)
-// ---------------------------------------------------------------------------
-
-/**
- * The device's cached best time for one puzzle kind, for the result card's
- * best time and "New best" badge only (#2636); the player's history is the
- * Stats screen, fed by the server. Older builds also kept `gamesSolved` here:
- * a stored record with it still loads, and the next save drops it.
- */
-export interface DifficultyStats {
-  bestTimeS: number;
-}
-
-export interface VariantStats {
-  easy: DifficultyStats;
-  medium: DifficultyStats;
-  hard: DifficultyStats;
-}
-
-export interface SudokuStats {
-  classic: VariantStats;
-  mini: VariantStats;
-}
-
-const EMPTY_VARIANT_STATS: VariantStats = {
-  easy: { bestTimeS: 0 },
-  medium: { bestTimeS: 0 },
-  hard: { bestTimeS: 0 },
-};
-
-export const EMPTY_SUDOKU_STATS: SudokuStats = {
-  classic: { ...EMPTY_VARIANT_STATS },
-  mini: { ...EMPTY_VARIANT_STATS },
-};
-
-function parseDiffStats(d: unknown): DifficultyStats {
-  if (d === null || typeof d !== "object") return { bestTimeS: 0 };
-  const o = d as Partial<DifficultyStats>;
-  return { bestTimeS: typeof o.bestTimeS === "number" ? o.bestTimeS : 0 };
-}
-
-function parseVariantStats(v: unknown): VariantStats {
-  if (v === null || typeof v !== "object") return { ...EMPTY_VARIANT_STATS };
-  const o = v as Record<string, unknown>;
-  return {
-    easy: parseDiffStats(o.easy),
-    medium: parseDiffStats(o.medium),
-    hard: parseDiffStats(o.hard),
-  };
-}
-
-export const { load: loadStats, save: saveStats } = createRecord<SudokuStats>({
-  key: "sudoku_stats_v1",
-  subsystem: SUBSYSTEM,
-  ops: { load: "loadStats", save: "saveStats" },
-  fallback: () => ({ ...EMPTY_SUDOKU_STATS }),
-  read: (raw) => {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    // Migration: pre-#748 saves have flat { easy, medium, hard } — wrap as classic.
-    if ("classic" in parsed || "mini" in parsed) {
-      return {
-        classic: parseVariantStats(parsed.classic),
-        mini: parseVariantStats(parsed.mini),
-      };
-    }
-    // Old flat format → treat as classic stats.
-    return {
-      classic: parseVariantStats(parsed),
-      mini: { ...EMPTY_VARIANT_STATS },
-    };
-  },
-  write: (stats) => JSON.stringify(stats),
-});
+// The device's best time per puzzle kind (#762, #748), for the result card's best time and "New
+// best" badge, is the shared personal best (`game/_shared/personalBest.ts`, #3757, keyed
+// `sudokuVariant(mode, difficulty)`); its old record `sudoku_stats_v1` is moved in there on the
+// first read.
 
 // ---------------------------------------------------------------------------
 // "Show mistakes" preference (#2943)

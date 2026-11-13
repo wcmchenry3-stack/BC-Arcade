@@ -35,7 +35,6 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { bestOf } from "../game/_shared/bestOf";
 import { captureThrottledMessage } from "../game/_shared/sentryThrottle";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
@@ -61,13 +60,11 @@ import {
   clearGame,
   loadGame,
   saveGame,
-  loadStats,
-  saveStats,
   loadShowMistakes,
   saveShowMistakes,
-  EMPTY_SUDOKU_STATS,
-  type SudokuStats,
 } from "../game/sudoku/storage";
+import { getBests, judgeResult, recordResult, type Bests } from "../game/_shared/personalBest";
+import { sudokuVariant } from "../game/_shared/personalBestGames";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { applyRecorded, createEntryLog, unitOfEntry, type EntryTuple } from "../game/sudoku/replay";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
@@ -151,11 +148,11 @@ export default function SudokuScreen() {
     "easy"
   );
   const [variant, setVariant] = useState<Variant>("classic");
-  // The device's cached best time per puzzle kind (`sudoku_stats_v1`), for the
-  // result card's best time and "New best" badge only (#2636): the player's
-  // history is the Stats screen, fed by the server.
-  const statsRef = useRef<SudokuStats>(EMPTY_SUDOKU_STATS);
-  // The saved puzzle (usePersistedGameState, #3087): loaded with the stats on
+  // The device's best time per puzzle kind (the shared personal best, #3757, by
+  // `sudokuVariant`), for the result card's best time and "New best" badge only
+  // (#2636): the player's history is the Stats screen, fed by the server.
+  const bestsRef = useRef<Bests>({});
+  // The saved puzzle (usePersistedGameState, #3087): loaded with the bests on
   // mount, then saved on every state change once that load has landed, so a
   // fresh puzzle can't clobber a resumable save still being read off disk.
   // `state === null` is pre-game: nothing is saved, and the callers clear
@@ -163,8 +160,8 @@ export default function SudokuScreen() {
   // before the completion clears it. The restore is below.
   const game = usePersistedGameState<SudokuState>({
     load: async () => {
-      const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
-      statsRef.current = savedStats;
+      const [saved, bests] = await Promise.all([loadGame(), getBests("sudoku")]);
+      bestsRef.current = bests;
       return saved;
     },
     save: saveGame,
@@ -476,22 +473,17 @@ export default function SudokuScreen() {
     }
     clearSavedGame();
 
-    const diff = s.difficulty;
-    const variantKey = s.variant;
-    const prev = statsRef.current[variantKey][diff];
-    const outcome = finalElapsed !== null ? bestOf(prev.bestTimeS, finalElapsed, true) : null;
-    const improved = outcome?.improved ?? false;
-    // The cache is written only when this puzzle kind's best improves.
-    if (improved) {
-      statsRef.current = {
-        ...statsRef.current,
-        [variantKey]: { ...statsRef.current[variantKey], [diff]: { bestTimeS: finalElapsed } },
-      };
-      saveStats(statsRef.current).catch(() => {});
+    const kind = sudokuVariant(s.variant, s.difficulty);
+    const prevBestS = bestsRef.current[kind] ?? 0;
+    const outcome = finalElapsed !== null ? judgeResult("sudoku", prevBestS, finalElapsed) : null;
+    // The best is written only when this puzzle kind's best improves.
+    if (outcome?.improved && finalElapsed !== null) {
+      bestsRef.current = { ...bestsRef.current, [kind]: finalElapsed };
+      void recordResult("sudoku", kind, finalElapsed);
     }
     setResult({
       elapsedS: finalElapsed,
-      bestTimeS: outcome?.best ?? prev.bestTimeS,
+      bestTimeS: outcome?.best ?? prevBestS,
       isNewBest: outcome?.isNewBest ?? false,
     });
   });

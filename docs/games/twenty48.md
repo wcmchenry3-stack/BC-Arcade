@@ -266,7 +266,7 @@ A game resumed after a kill continues its session (#2654), and its log continues
 
 ## Local "Best" vs server history
 
-The screen retains a local best score only to support immediate result-card/UI presentation such as a "New best" badge.
+The screen retains a local best score only to support immediate result-card/UI presentation such as a "New best" badge. It is the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:twenty48`; the old `twenty48_best_score_v1` is moved in on the first read): read with the saved game, recorded as the live score passes it (a write only when it improves), and "New best" compares the final score with the best from before the game. No server I/O.
 
 Historical Stats and public ranking come from the shared server reporting model, not legacy local counters.
 

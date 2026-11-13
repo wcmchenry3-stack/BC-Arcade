@@ -1,14 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import {
-  saveGame,
-  loadGame,
-  clearGame,
-  looksValid,
-  loadBestScore,
-  saveBestScore,
-  SAVE_VERSION,
-} from "../storage";
+import { saveGame, loadGame, clearGame, looksValid, SAVE_VERSION } from "../storage";
 import type { SavedState } from "../storage";
 
 const STORAGE_KEY = "cascade_game_v4";
@@ -180,30 +172,6 @@ describe("cascade storage — save / load roundtrip", () => {
   });
 });
 
-describe("cascade storage — best score (#2515)", () => {
-  beforeEach(async () => {
-    await AsyncStorage.clear();
-  });
-
-  it("returns 0 when no best score is stored", async () => {
-    await expect(loadBestScore()).resolves.toBe(0);
-  });
-
-  it("round-trips a saved best score", async () => {
-    await saveBestScore(1234);
-    await expect(loadBestScore()).resolves.toBe(1234);
-  });
-
-  it("treats a corrupt stored value as no best score", async () => {
-    await AsyncStorage.setItem("cascade_best_score", "not-a-number");
-    await expect(loadBestScore()).resolves.toBe(0);
-  });
-
-  it("returns 0 when storage fails", async () => {
-    (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
-    await expect(loadBestScore()).resolves.toBe(0);
-  });
-});
 describe("cascade storage — old v3 saves are discarded (#3695: the 12-tier ladder)", () => {
   const LEGACY_KEY = "cascade_game_v3";
   /** A v3 save from the old 10-tier ladder: one piece per old tier. */

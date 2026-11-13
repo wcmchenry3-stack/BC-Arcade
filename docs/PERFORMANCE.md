@@ -247,13 +247,13 @@ What the Android build copies into the APK/AAB besides native code. Source: `siz
 
 **Store config** (JS 6,544,825 B + assets 3,403,575 B):
 
-| Bucket                  | Files |      KB | Notes                                                               |
-| ----------------------- | ----: | ------: | ------------------------------------------------------------------- |
-| Fonts                   |    14 | 2,710.8 | Manrope ×7, Space Grotesk ×5, MaterialIcons, MaterialCommunityIcons |
-| Sounds                  |    19 |   567.0 | SFX only (see residuals below)                                      |
-| App logo                |     1 |    37.6 | `assets/logo.png` via `AppHeader`                                   |
-| React Navigation images |    17 |     6.2 | Library images                                                      |
-| Other                   |     1 |     2.2 | `raw/keep.xml`                                                      |
+| Bucket                  | Files |      KB | Notes                                                                                                                                                                                                       |
+| ----------------------- | ----: | ------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fonts                   |    14 | 2,710.8 | Manrope ×7, Space Grotesk ×5, MaterialIcons, MaterialCommunityIcons (measured before #3839; per-weight subpath imports now package 7 fonts, 2,128,172 B, and take total assets to 3,051,428 B in 120 files) |
+| Sounds                  |    19 |   567.0 | SFX only (see residuals below)                                                                                                                                                                              |
+| App logo                |     1 |    37.6 | `assets/logo.png` via `AppHeader`                                                                                                                                                                           |
+| React Navigation images |    17 |     6.2 | Library images                                                                                                                                                                                              |
+| Other                   |     1 |     2.2 | `raw/keep.xml`                                                                                                                                                                                              |
 
 **All-games config** (JS 7,460,309 B + assets 28,744,159 B):
 
@@ -559,7 +559,7 @@ The one heavy one-shot is the **Yacht oracle**: `getOracleTable()` 197 ms cold (
 | P1       | Lobby prefetch contention (545 KB evaluated right after Home paints). Only if the P0 trace shows JS-thread contention in the first 2 s: stagger the prefetch (for example start about 1.5 s after Home, one task per tick), and/or `require()` the Sudoku bank lazily inside `poolFor` as the Yacht oracle does (same decode work, identical behaviour). |
 | P1       | Yacht VS-start freeze. If the device measurement is above about 250 ms: compute `targetIndex` with index arithmetic instead of sort/join, chunk `buildHoldOptions` across ticks during the VS intro, or ship the hold options as packed data. Output must stay bit-identical (oracle and AI golden tests, `yacht-sim-gate.yml`).                         |
 | P2       | Sentry and reanimated are about 40% of eager source. Check whether Sentry init and module evaluation is a measurable share of T0 to T1 before touching them; any removal must pass the A/B protocol.                                                                                                                                                     |
-| P2       | Five TTFs (466 KB) gate the first React frame. Measure `useFonts` resolve time on the low-end device; if material, render the shell with system fonts or cut unused weights.                                                                                                                                                                             |
+| P2       | Five TTFs (466 KB) gate the first React frame. Measure `useFonts` resolve time on the low-end device; if material, render the shell with system fonts. Unused weights are already cut (#3839: only the 5 used weights are imported, by subpath).                                                                                                         |
 | P3       | `fflate` (34 KB), the plural-rules polyfill and locale data (39 KB) and the glyph maps (231 KB) are small eager costs. Leave them unless the P0 trace shows them.                                                                                                                                                                                        |
 | P3       | `LeaderboardScreen`'s lazy chunk (118 KB) pulls in the hidden Star Swarm engine (about 38 KB). Not a startup issue; worth a look in dead-code work.                                                                                                                                                                                                      |
 | P3       | Add a one-line `console.info` of `cold_start_ms` in non-store builds so the number is readable with `adb logcat -s ReactNativeJS` where Sentry is disabled.                                                                                                                                                                                              |

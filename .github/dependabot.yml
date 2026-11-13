@@ -95,6 +95,16 @@ updates:
         update-types:
           - "version-update:semver-major"
 
+  # Generator tools (pip), SECURITY updates only (#3672). open-pull-requests-limit 0 turns off
+  # version-bump PRs but not security PRs. A version bump of Pillow, numpy or scipy changes the
+  # generated art and sounds, so it goes through the refresh procedure in docs/ASSETS.md
+  # ("Pinned generator libraries"), never an automatic PR.
+  - package-ecosystem: "pip"
+    directory: "/tools/assets"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+
   # Backend (pip)
   - package-ecosystem: "pip"
     directory: "/backend"
