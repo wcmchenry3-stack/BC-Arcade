@@ -449,7 +449,7 @@ describe("a split's chime", () => {
     ["all push", ["push", "push"], [0, 0], "push"],
     ["all win", ["win", "win", "win"], [10, 10, 10], "win"],
     ["all lose", ["lose", "lose"], [-10, -10], "lose"],
-  ] as const)("%s: %s", (_name, outcomes, payouts, chime) => {
+  ] as const)("%s", (_name, outcomes, payouts, chime) => {
     expect(resultCue(settled([...outcomes], [...payouts]))).toBe(chime);
   });
 
