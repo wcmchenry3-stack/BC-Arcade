@@ -40,6 +40,7 @@ import {
   isWaveStats,
   loadoutOf,
   withSavedDeathPhase,
+  withSavedHitsByTier,
   withSavedGunsPeak,
   type WaveRout,
   type WaveStats,
@@ -111,7 +112,10 @@ const ENEMY: KeySpec<Enemy> = {
   attentionMs: "required",
 };
 
-const BULLET: KeySpec<Bullet> = {
+// #3710: `tier` is left out of the spec (and so of SAVE_FINGERPRINT) on purpose, like PowerUp's
+// `source`: adding it would drop every paused run. It only labels the per-wave hit stats; a save
+// may carry it or not (fitsBullet), and a bullet without one is counted in no tier.
+const BULLET: KeySpec<Omit<Bullet, "tier">> = {
   id: "required",
   x: "required",
   y: "required",
@@ -369,6 +373,7 @@ const fitsExplosion = (e: unknown) =>
   fits(e, { ...EXPLOSION, kind: "optional", srcId: "optional" });
 
 // An unknown `source` (another build's) doesn't reject the save: restore reads it as "kill".
+const fitsBullet = (b: unknown) => fits(b, { ...BULLET, tier: "optional" });
 const fitsPowerUp = (p: unknown) => fits(p, { ...POWER_UP, source: "optional" });
 
 const hasSource = (p: { readonly source?: unknown }) =>
@@ -447,8 +452,8 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
   return (
     fits(v.player, PLAYER) &&
     allFit(v.enemies, fitsEnemy) &&
-    allFit(v.playerBullets, (b) => fits(b, BULLET)) &&
-    allFit(v.enemyBullets, (b) => fits(b, BULLET)) &&
+    allFit(v.playerBullets, fitsBullet) &&
+    allFit(v.enemyBullets, fitsBullet) &&
     allFit(v.carrierBeams, (b) => fits(b, CARRIER_BEAM)) &&
     allFit(v.explosions, fitsExplosion) &&
     allFit(v.powerUps, fitsPowerUp) &&
@@ -590,7 +595,10 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   // (withRosterSpawns)
   // #3510: a save from before `pacing.gunsPeak` keeps its wave's stats, the field filled in;
   // #3535: likewise one from before `damage.deathPhase` (null: a saved run hasn't died)
-  const savedWaveStats = withSavedDeathPhase(withSavedGunsPeak(saved.waveStats, saved.player.guns));
+  // #3710: and one from before `damage.hitsByTier` (zeros: nothing was tiered before)
+  const savedWaveStats = withSavedHitsByTier(
+    withSavedDeathPhase(withSavedGunsPeak(saved.waveStats, saved.player.guns))
+  );
   const waveStatsAsSaved = isWaveStats(savedWaveStats);
   const waveStats = withRosterSpawns(
     waveStatsAsSaved

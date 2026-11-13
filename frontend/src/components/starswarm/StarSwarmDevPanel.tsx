@@ -15,10 +15,16 @@ import {
   DevToggle,
 } from "../dev/DevPanelShell";
 import type { DevOptions, GameCanvasHandle } from "./GameCanvas";
-import { DIFFICULTY_TIERS, difficultyLabel, dodgeRateByTier } from "../../game/starswarm/engine";
+import {
+  DIFFICULTY_TIERS,
+  ENEMY_TIERS,
+  difficultyLabel,
+  dodgeRateByTier,
+} from "../../game/starswarm/engine";
 import type { TierDodgeRow } from "../../game/starswarm/engine";
 import type {
   DifficultyTier,
+  EnemyTier,
   PowerUpType,
   RunStats,
   StarSwarmState,
@@ -104,6 +110,8 @@ interface DevStatsSnapshot {
   readonly run: RunStats;
   /** #3246: this wave's power-up lifecycle counters. */
   readonly powerUps: StarSwarmState["waveStats"]["powerUps"];
+  /** #3710: this wave's hits on the player by the enemy tier that landed them. */
+  readonly hitsByTier: StarSwarmState["waveStats"]["damage"]["hitsByTier"];
 }
 
 function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
@@ -114,6 +122,7 @@ function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
     rows: dodgeRateByTier(s),
     run: s.runStats,
     powerUps: s.waveStats.powerUps,
+    hitsByTier: s.waveStats.damage.hitsByTier,
   };
 }
 
@@ -139,6 +148,14 @@ function powerUpTableLine(p: DevStatsSnapshot["powerUps"], type: PowerUpType): s
     `${type.padEnd(9)} ${col(spawned, 5)} ${col(p.collected[type], 4)} ${col(p.missed[type], 4)} ` +
     `${col(p.leftover[type], 4)} ${col(p.expired[type], 3)} ${col(Math.round(p.activeMs[type]), 5)}`
   );
+}
+
+const HITS_TABLE_HEADER = `${"tier".padEnd(8)} life plat shld`;
+
+/** #3710: one row of the current wave's hits-by-tier table (rocks are tierless, so not here). */
+function hitsTableLine(h: DevStatsSnapshot["hitsByTier"], tier: EnemyTier): string {
+  const t = h[tier];
+  return `${tier.padEnd(8)} ${col(t.life, 4)} ${col(t.plating, 4)} ${col(t.shield, 4)}`;
 }
 
 const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
@@ -468,6 +485,13 @@ function RunStatsSection({ open, canvasRef }: Pick<StarSwarmDevPanelProps, "open
           {POWER_UPS.map((type) => (
             <Text key={type} style={styles.mono}>
               {powerUpTableLine(stats.powerUps, type)}
+            </Text>
+          ))}
+          <Text style={styles.mono}>hits on you this wave, by tier</Text>
+          <Text style={styles.mono}>{HITS_TABLE_HEADER}</Text>
+          {ENEMY_TIERS.map((tier) => (
+            <Text key={tier} style={styles.mono}>
+              {hitsTableLine(stats.hitsByTier, tier)}
             </Text>
           ))}
           {RUN_STAT_LINES.map(([label, key]) => (
