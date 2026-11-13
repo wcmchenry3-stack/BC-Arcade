@@ -17,12 +17,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame } from "../../game/blackjack/storage";
 import { newGame } from "../../game/blackjack/engine";
 import type { Card, EngineState } from "../../game/blackjack/engine";
-import {
-  estimateFeltSize,
-  FELT_BORDER,
-  MIN_CARD_WIDTH,
-  WORDED_PAYOUT_MIN_LABEL_WIDTH,
-} from "../../game/blackjack/layout";
+import { estimateFeltSize, FELT_BORDER, MIN_CARD_WIDTH } from "../../game/blackjack/layout";
 import { APP_HEADER_HEIGHT } from "../../components/shared/AppHeader";
 
 jest.mock("@react-navigation/native", () =>
@@ -293,13 +288,20 @@ describe.each(PHONES)("the table at $name", (phone) => {
           expect(node.props.accessibilityLabel).toMatch(
             /, (Win|Push|Lose), ([+-]\d+ chips|No change)$/
           );
-          // The payout in words only where every locale's line fits.
+          // The payout is a signed number at every size, never in words (owner decision, #3779).
           const payout = within(node).getByTestId("hand-payout").props.children as string;
-          if (/chips|change/.test(payout)) {
-            expect(l.width).toBeGreaterThanOrEqual(WORDED_PAYOUT_MIN_LABEL_WIDTH);
-          }
+          expect(payout).toMatch(/^([+-]\d+|0)$/);
+          expect(payout).not.toMatch(/chips|No change/);
         }
       });
+      // The widest phone's 2-hand fans too (195 px: the worded Russian "-400" line is 196).
+      if (phone.width === 430 && atResult && labels.length === 2) {
+        expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
+          "+25",
+          "0",
+        ]);
+        expect(screen.getByLabelText(/^Hand 2, .*, Push, No change$/)).toBeTruthy();
+      }
     }
     // Cards of different hands never overlap; the result and labels cover no card.
     for (let i = 0; i < cards.length; i++) {

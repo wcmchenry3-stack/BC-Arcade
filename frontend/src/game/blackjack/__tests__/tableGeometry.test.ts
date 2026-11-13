@@ -18,7 +18,6 @@ import {
   MIN_ROW_H,
   ROW_LABEL_CONTENT_HEIGHT,
   ROW_LABEL_WIDTH,
-  WORDED_PAYOUT_MIN_LABEL_WIDTH,
   splitResultLabel,
   cardCapFor,
   computeTableGeometry,
@@ -529,11 +528,9 @@ describe("the wide arrangement (landscape window, short felt)", () => {
 
 // #3771: a 2-hand split's label at the result read "HA…" at 390×844. The label is one line (the
 // name, the total, the tag and the payout), and in English that is 197 px against labels of 140
-// to 195. These widths are measured in the app's fonts (web build, Space Grotesk / Manrope): the
-// widest line with no name, its payout in words ("+25 chips", "No change") or as a number.
-const EN_RESULT_LINE = { worded: 146, compact: 105 };
-// Russian is the widest of the 13 locales.
-const WIDEST_RESULT_LINE = { worded: 188 };
+// to 195. Measured in the app's fonts (web build, Space Grotesk / Manrope): the widest English
+// line with no name and the payout as a signed number ("21*", "PUSH", "-25").
+const EN_COMPACT_RESULT_LINE = 105;
 
 describe.each([SMALLEST, ...PHONES])("a split hand's label at the result at $name", (phone) => {
   it.each([2, 3, 4])("%i hands: nothing in it is cut off; the cards keep their size", (n) => {
@@ -546,22 +543,17 @@ describe.each([SMALLEST, ...PHONES])("a split hand's label at the result at $nam
       });
     const g = at(true);
     for (const h of g.hands) {
-      const label = splitResultLabel(g.mode, h.label.width);
+      const label = splitResultLabel(g.mode);
       if (g.mode === "rows") {
         // A row's label is a column: the name on its own line, over the total, tag and payout.
-        expect(label).toEqual({ named: true, compactPayout: true });
+        expect(label).toEqual({ column: true, named: true, compactPayout: true });
         expect(h.label.width).toBe(ROW_LABEL_WIDTH);
         expect(h.label.height).toBeGreaterThanOrEqual(ROW_LABEL_CONTENT_HEIGHT);
         continue;
       }
-      // One line: the name gives way to the result, and the line fits.
-      expect(label.named).toBe(false);
-      const line = label.compactPayout ? EN_RESULT_LINE.compact : EN_RESULT_LINE.worded;
-      expect(h.label.width).toBeGreaterThanOrEqual(line);
-      // In words only where every locale's line fits.
-      if (!label.compactPayout) {
-        expect(h.label.width).toBeGreaterThanOrEqual(WIDEST_RESULT_LINE.worded);
-      }
+      // One line: the name gives way to the result, the payout is a signed number, and it fits.
+      expect(label).toEqual({ column: false, named: false, compactPayout: true });
+      expect(h.label.width).toBeGreaterThanOrEqual(EN_COMPACT_RESULT_LINE);
     }
     // The label keeps its height, so no card is smaller than in play.
     if (g.mode === "fans") {
@@ -575,18 +567,43 @@ describe.each([SMALLEST, ...PHONES])("a split hand's label at the result at $nam
 });
 
 describe("splitResultLabel", () => {
-  it("keeps the name only in a row's label; words the payout only on a wide one-line label", () => {
-    expect(splitResultLabel("rows", ROW_LABEL_WIDTH)).toEqual({ named: true, compactPayout: true });
-    expect(splitResultLabel("grid", 400)).toEqual({ named: false, compactPayout: true });
-    for (const mode of ["fans", "wide"] as const) {
-      expect(splitResultLabel(mode, WORDED_PAYOUT_MIN_LABEL_WIDTH - 1)).toEqual({
+  it("keeps the name only in a row's label; every split payout is a signed number", () => {
+    expect(splitResultLabel("rows")).toEqual({ column: true, named: true, compactPayout: true });
+    // Owner decision (#3779): never in words, at any width. The worded Russian line on a doubled
+    // high-roller hand ("-400 фишек") is 196 px, wider than the 430 fan label (195).
+    for (const mode of ["single", "fans", "grid", "wide"] as const) {
+      expect(splitResultLabel(mode)).toEqual({ column: false, named: false, compactPayout: true });
+    }
+  });
+});
+
+// #3771 known gap: the wide arrangement (a landscape fallback; phones are locked to portrait,
+// #3603) gives 3–4 hands labels narrower than the compact line. Pinned so a change shows here.
+describe("a split hand's label in the wide arrangement (landscape fallback)", () => {
+  it.each([
+    [568, 320, [129.6, 96, 76]],
+    [667, 375, [143.39, 120, 94.4]],
+  ])("%i×%i: nameless and compact at the result; label widths pinned", (w, h, widths) => {
+    [2, 3, 4].forEach((n, k) => {
+      const g = computeTableGeometry({
+        feltWidth: w - 18,
+        feltHeight: 160,
+        screenWidth: w,
+        screenHeight: h,
+        dealerCards: 3,
+        handCards: same(n, 3),
+        activeHandIndex: null,
+        showResult: true,
+      });
+      expect(g.mode).toBe("wide");
+      expect(splitResultLabel(g.mode)).toEqual({
+        column: false,
         named: false,
         compactPayout: true,
       });
-      expect(splitResultLabel(mode, WORDED_PAYOUT_MIN_LABEL_WIDTH)).toEqual({
-        named: false,
-        compactPayout: false,
-      });
-    }
+      for (const hand of g.hands) expect(hand.label.width).toBeCloseTo(widths[k]!, 1);
+    });
+    // The gap: 4 hands are narrower than the compact line on both.
+    expect(widths[2]!).toBeLessThan(EN_COMPACT_RESULT_LINE);
   });
 });

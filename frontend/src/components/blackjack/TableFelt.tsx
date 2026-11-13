@@ -6,8 +6,9 @@
  *   - Two split hands: fans side by side; the active one outlined.
  *   - Three or four: one full-width row per hand (number, total and bet on the
  *     left), the active row larger and outlined; hands already played dimmed.
- *   - A split hand's result (total, tag, payout) on a one-line label (fans, the
- *     grid) takes the name's place (`splitResultLabel`, #3771); a row keeps it.
+ *   - A split hand's result (total, tag, payout as a signed number) on a one-line
+ *     label (fans, the grid) takes the name's place (`splitResultLabel`, #3771);
+ *     a row keeps it.
  *
  * All positions come from `computeTableGeometry` (game/blackjack/layout.ts),
  * which keeps every corner index readable and the result band clear of the
@@ -31,6 +32,7 @@ import {
   splitResultLabel,
   type TableGeometry,
   type Rect,
+  type SplitResultLabel,
 } from "../../game/blackjack/layout";
 import FeltCards, { type FeltHand } from "./FeltCards";
 import { FeltChips, PopIn } from "./FeltChips";
@@ -176,14 +178,11 @@ interface HandLabelProps {
   hand: HandResponse;
   index: number;
   rect: Rect;
-  rows: boolean;
-  /** The payout as a signed number, so it fits the label (`splitResultLabel`). */
-  compact: boolean;
   /**
-   * Draw the hand's name once its result shows (`splitResultLabel`, #3771): a one-line label has
-   * no room for it beside the total, tag and payout. Its accessibility label always names it.
+   * How the label is drawn (`splitResultLabel`, #3771): a column or one line, whether a split
+   * hand's name stays at the result, and its payout as a signed number.
    */
-  namedAtResult: boolean;
+  layout: SplitResultLabel;
   split: boolean;
   active: boolean;
   played: boolean;
@@ -224,13 +223,18 @@ function handA11yLabel(
     .join(", ");
 }
 
+/** A player hand's total pill: bust, the hand being played, then its outcome. */
+function handTone(value: number, active: boolean, outcome: string | null): Tone {
+  if (value > 21) return "bust";
+  if (active) return "active";
+  return outcome !== null ? toneForOutcome(outcome) : "plain";
+}
+
 function HandLabel({
   hand,
   index,
   rect,
-  rows,
-  compact,
-  namedAtResult,
+  layout,
   split,
   active,
   played,
@@ -245,12 +249,9 @@ function HandLabel({
   const { colors } = useTheme();
   const name = split ? t("hand.playerHand", { number: index + 1 }) : t("hand.player");
   const valueText = hand.soft ? `${hand.value}*` : String(hand.value);
-  let tone: Tone = "plain";
-  if (hand.value > 21) tone = "bust";
-  else if (active) tone = "active";
-  else if (outcome !== null) tone = toneForOutcome(outcome);
+  const tone = handTone(hand.value, active, outcome);
   const payoutText = payout === null ? null : payoutTextFor(payout, t);
-  const named = payoutText === null || namedAtResult;
+  const named = payoutText === null || layout.named;
   const a11y = handA11yLabel(
     t,
     name,
@@ -263,7 +264,7 @@ function HandLabel({
   return (
     <View
       testID={`hand-label-${index}`}
-      style={[styles.abs, abs(rect), rows ? styles.rowLabel : styles.fanLabel]}
+      style={[styles.abs, abs(rect), layout.column ? styles.rowLabel : styles.fanLabel]}
       accessible
       accessibilityLabel={a11y}
     >
@@ -318,7 +319,7 @@ function HandLabel({
           >
             <View style={[styles.labelLine, styles.shrink]}>
               {outcome !== null && <HandTag outcome={outcome} />}
-              <PayoutText payout={payout} text={payoutText} compact={compact} />
+              <PayoutText payout={payout} text={payoutText} compact={layout.compactPayout} />
             </View>
           </PopIn>
         )}
@@ -486,6 +487,7 @@ export default function TableFelt({
   const split = hands.length > 1;
   const rows = geometry.mode === "rows";
   const compact = rows || geometry.mode === "grid";
+  const labelLayout = splitResultLabel(geometry.mode);
   const concealed = dealerConcealed ?? (playing && dealerHand.cards.some((c) => c.face_down));
   const revealed = revealedHands ?? hands.length;
   // While the dealer plays every hand is played: none is outlined, all are dimmed.
@@ -556,16 +558,13 @@ export default function TableFelt({
         if (!g) return null;
         const played = isPlayed(i);
         const shows = showResult && i < revealed;
-        const resultLabel = splitResultLabel(geometry.mode, g.label.width);
         return (
           <HandLabel
             key={`hand-${i}`}
             hand={hand}
             index={i}
             rect={g.label}
-            rows={rows}
-            compact={resultLabel.compactPayout}
-            namedAtResult={resultLabel.named}
+            layout={labelLayout}
             split={split}
             active={playing && i === activeHandIndex}
             played={played}
