@@ -80,7 +80,7 @@ jobs:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Test tools (pytest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # #3672: pinned so the ffmpeg/libvorbis build the sound tests decode with is stable
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
