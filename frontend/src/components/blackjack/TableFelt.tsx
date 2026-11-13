@@ -499,8 +499,9 @@ export default function TableFelt({
             payout={result.payout}
             detail={result.detail}
             summary={result.summary ?? null}
-            // Beside a collapsed dealer the band is too narrow for the summary (#3781).
-            netOnly={geometry.dealer.collapsed}
+            // 3–4 hands: each hand shows its own tag and payout, so the banner shows the net
+            // alone; the summary does not fit beside it in every locale (#3781, owner decision).
+            netOnly={hands.length >= 3}
           />
         </PopIn>
       )}
