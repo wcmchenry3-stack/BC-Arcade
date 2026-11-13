@@ -307,6 +307,18 @@ def test_an_abandon_without_undos_and_a_lost_undo_is_incomplete_not_invalid() ->
     assert r.reason == "log reaches 2 moves, game_ended says 1 (cut off, or past the cap)"
 
 
+def test_a_lost_last_unit_the_recorder_counted_is_incomplete() -> None:
+    # Codex on #3874: a lost last unit of hints changes no count, so only game_ended's
+    # recorder summary (replay.u) can tell the log stops short
+    ended = {"level": 1, "moves": 1, "won": False, "replay": {"m": "full", "u": 2, "n": 4}}
+    r = run(log([[[0, 1, 4]]], ended=ended))
+    assert r.verdict == INCOMPLETE and flags(r) == ["truncated"]
+    assert r.reason == "unit 2 never arrived (game_ended counts 2)"
+    # every unit the recorder counted arrived: complete
+    ended = {**ended, "replay": {"m": "full", "u": 1, "n": 3}}
+    assert run(log([[[0, 1, 4]]], ended=ended)).verdict == COMPLETE
+
+
 def test_a_dropped_middle_part_is_a_gap_not_invalid() -> None:
     # Codex on #3874: part 0 then part 2 of a three-part unit is a clean prefix with a hole
     r = run(

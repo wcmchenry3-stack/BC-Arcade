@@ -375,25 +375,41 @@ def _envelope_problem(data: dict[str, Any]) -> str | None:
     return None
 
 
-def _units(r: _Reader, events: list[dict[str, Any]]) -> None:
-    """Feed the ``moves`` events to the reader, checking unit and part numbering."""
+def _units(r: _Reader, events: list[dict[str, Any]]) -> int:
+    """Feed the ``moves`` events to the reader, checking unit and part numbering.
+
+    Returns the last whole unit read (0 when none)."""
     units = _Units()
     for data in events:
         bad = _envelope_problem(data)
         if bad:
             r.flag("malformed_action", INVALID, bad)
-            return
+            return units.expected - 1
         problem = units.check(data["unit"], data.get("part"), data.get("parts"))
         if problem:
             r.flag(problem.kind, problem.effect, problem.message)
-            return
+            return units.expected - 1
         for action in data["m"]:
             r.apply(action, data["unit"])
             if r.stopped:
-                return
+                return units.expected - 1
     gone = units.missing_part()
     if gone:
         r.flag("gap", INCOMPLETE, gone)
+    return units.expected - 1
+
+
+def _check_tail(out: Rebuilt, ended: dict[str, Any], last_unit: int) -> None:
+    """A lost last unit of hints only changes no count, so the counts alone cannot see it:
+    ``game_ended``'s recorder summary (``replay.u``, the last unit the recorder handed
+    over, from ``GameRecorder.stats()``) can, when the app sent it."""
+    summary = ended.get("replay")
+    u = summary.get("u") if isinstance(summary, dict) else None
+    if _is_int(u) and u > last_unit:
+        span = f"{last_unit + 1}" if u == last_unit + 1 else f"{last_unit + 1}-{u}"
+        out.flags.append(
+            Flag("truncated", INCOMPLETE, f"unit {span} never arrived (game_ended counts {u})")
+        )
 
 
 def _check_result(out: Rebuilt, ended: dict[str, Any]) -> None:
@@ -491,13 +507,14 @@ def rebuild(events: Iterable[tuple[str, Any]], catalog: dict[str, Any] | None = 
             out.opening = out.bottles = opening
             out.solved = is_solved(opening)
             reader = _Reader(out, opening)
-            _units(reader, moves)
+            last_unit = _units(reader, moves)
             if not reader.stopped:
                 if out.ended is None:
                     out.flags.append(
                         Flag("truncated", INCOMPLETE, "no game_ended: the log may be cut short")
                     )
                 else:
+                    _check_tail(out, out.ended, last_unit)
                     _check_result(out, out.ended)
     _verdict(out)
     return out
