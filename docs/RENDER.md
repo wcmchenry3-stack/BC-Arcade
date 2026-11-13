@@ -526,6 +526,13 @@ hung request. It is rate limited to 30/minute per IP.
   `render.yaml` with its quotes still gets sent, but browsers ignore it. When you
   change a header in `render.yaml`, make the same change in the dashboard,
   without the quotes. The API sets its own headers in `backend/middleware/headers_and_log.py`; its CSP `connect-src` hosts follow `ENVIRONMENT` (prod hosts when `production`, dev hosts otherwise).
+- **WebAssembly on the web sites (#2960).** Cascade draws through Skia's CanvasKit on web, a
+  `.wasm` file served from the site itself. Browsers refuse to compile WebAssembly under a CSP
+  whose `script-src` lacks `'wasm-unsafe-eval'` (Cascade then shows its load error). The dev
+  frontend's CSP in `render.yaml` has it; if that service's headers are also kept in the
+  dashboard, add it there too. Prod does not yet: the store web build leaves Cascade out until it
+  ships (#3703), and that story adds `'wasm-unsafe-eval'` to the prod CSP (yaml and dashboard).
+  It permits WebAssembly compilation only, not JavaScript `eval`.
 - The scan reads the service IDs from two **secrets**, `RENDER_PROD_API_SERVICE_ID`
   and `RENDER_PROD_FRONTEND_SERVICE_ID`, plus `RENDER_API_KEY`.
 - It is `workflow_run`-triggered on purpose: a `push`-triggered job would be one of

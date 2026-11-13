@@ -89,6 +89,7 @@ describe("gameEventRegistry", () => {
     daily_word: ["guess_submitted"],
     solitaire: ["moves"],
     freecell: ["moves"],
+    sort: ["moves"],
   };
 
   it.each(GAME_TYPES)("%s: its gameplay types are replay, the rest lifecycle", (game) => {
@@ -172,8 +173,10 @@ describe("recording caps derived from the registry", () => {
       "mahjong",
       "starswarm",
       "freecell",
+      "sort",
       "daily_word",
     ]);
-    expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
+    expect(recordingConfigFor("sort")).toBe(gameRecordingConfigs.sort);
+    expect(recordingConfigFor("cascade")).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

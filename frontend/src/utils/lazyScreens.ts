@@ -4,7 +4,8 @@ import React from "react";
 // import() as React.lazy — the module loader dedupes, so once prefetched the
 // React.lazy promise resolves synchronously on navigation.
 const factories = {
-  Cascade: () => import("../screens/CascadeScreen"),
+  // Web: CascadeRoute.web.tsx loads CanvasKit before the screen (#2960).
+  Cascade: () => import("../screens/CascadeRoute"),
   StarSwarm: () => import("../screens/StarSwarmScreen"),
   BlackjackBetting: () => import("../screens/BlackjackBettingScreen"),
   BlackjackTable: () => import("../screens/BlackjackTableScreen"),

@@ -37,5 +37,8 @@
   "pieces.cosmos.saturn": "Saturn",
   "pieces.cosmos.jupiter": "Jupiter",
   "pieces.cosmos.sun": "Sun",
-  "pieces.cosmos.milkyWay": "Milky Way"
+  "pieces.cosmos.milkyWay": "Milky Way",
+  "web.loading": "Cascade लोड हो रहा है…",
+  "web.loadError": "Cascade शुरू नहीं हो सका। फिर से कोशिश करें।",
+  "web.retry": "फिर से कोशिश करें"
 }

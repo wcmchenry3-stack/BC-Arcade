@@ -349,5 +349,32 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "web.loading": {
+    "component": "CascadeRoute (web)",
+    "description": "Caption under the spinner while the web version of Cascade downloads its graphics engine (a few seconds on first open).",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": ["Cascade"],
+    "notes": "Do not translate the game name. Web only."
+  },
+  "web.loadError": {
+    "component": "CascadeRoute (web)",
+    "description": "Error shown when the web version of Cascade could not download or start its graphics engine; a Try again button follows.",
+    "tone": "functional",
+    "characterLimit": 120,
+    "placeholders": [],
+    "doNotTranslate": ["Cascade"],
+    "notes": "Do not translate the game name. Web only. Plain, non-technical wording."
+  },
+  "web.retry": {
+    "component": "CascadeRoute (web)",
+    "description": "Button under the load error that tries to load Cascade's graphics again.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Web only."
   }
 }
