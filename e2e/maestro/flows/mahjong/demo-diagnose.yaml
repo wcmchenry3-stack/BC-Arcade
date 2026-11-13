@@ -18,7 +18,9 @@ appId: com.buffingchi.games
 # Per variant: `-open` (~5 s after the deal) and `-late` (~20 s), with the UI
 # heartbeat off; `-hb` (~3 s after switching the heartbeat on: do UI-thread
 # frames run?); `-zoom` (after a double-tap on the board). The first deal is
-# variant a (the default). Pauses wait for an id that never exists, as in
+# variant a (the default). Each variant's deal resets the camera to the fitted
+# board (useBoardZoomPan resets on a new deal id), so no zoom-out step is needed
+# between variants. Pauses wait for an id that never exists, as in
 # demo-open.yaml. About 90 s in all, inside Android's 3-minute recorder limit.
 tags:
   - demo
@@ -56,15 +58,6 @@ tags:
     timeout: 2000
     optional: true
 - takeScreenshot: mahjong-diag-a-zoom
-# A new deal keeps the camera's zoom (same layout, same fit), so a second
-# double-tap zooms back out to the fitted board first (zoomAt toggles).
-- doubleTapOn:
-    id: "mahjong-board-viewport"
-- extendedWaitUntil:
-    visible:
-      id: "mahjong-demo-pause"
-    timeout: 2000
-    optional: true
 # Variant b: picked before its deal (the button sets it, then deals Turtle).
 - tapOn:
     id: "mahjong-variant-b"
@@ -96,15 +89,6 @@ tags:
     timeout: 2000
     optional: true
 - takeScreenshot: mahjong-diag-b-zoom
-# A new deal keeps the camera's zoom (same layout, same fit), so a second
-# double-tap zooms back out to the fitted board first (zoomAt toggles).
-- doubleTapOn:
-    id: "mahjong-board-viewport"
-- extendedWaitUntil:
-    visible:
-      id: "mahjong-demo-pause"
-    timeout: 2000
-    optional: true
 # Variant c: picked before its deal (the button sets it, then deals Turtle).
 - tapOn:
     id: "mahjong-variant-c"

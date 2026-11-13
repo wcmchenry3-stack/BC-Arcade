@@ -183,14 +183,20 @@ Test builds only (`EXPO_PUBLIC_TEST_HOOKS=1`, every Maestro build), native only.
 
 Reading the shots:
 
-| Readout at `-late`                                                | Means                                                                                        |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `p` stuck near 0.02, `ui=off`, then `-hb` shows `ui` not counting | the UI thread's frame loop stopped: no animation or canvas redraw can run                    |
-| `p` stuck near 0.02 but `-hb` counts frames                       | the deal's `withTiming` itself stalled (frames run, the clock does not)                      |
-| `p=1.000`, `motion=0`, `dealTimer=1`, board still faded           | state and clocks are done; the canvas stopped presenting new frames                          |
-| `p=1.000` but `motion=144`, `dealTimer=0`                         | the JS deal-end timer never ran (JS thread blocked or timers stopped; check `js=` advancing) |
-| a faded, b or c crisp                                             | the oversized native canvas (and its View downscale) is the cause                            |
-| faces `none` or `raster#0` long after the deal                    | the faces never rasterised (JS thread), separate from the fade                               |
+Counters are cumulative across deals (each variant button deals again), so compare `dealTimer` with `deals` (and `skip`), and read the change in `raster#` between shots, not absolute values.
+
+| Readout at `-late`                                                                   | Means                                                                                                                       |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `p` stuck near 0.02, `ui=off`, then `-hb` shows `ui` not counting                    | the UI thread's frame loop stopped: no animation or canvas redraw can run                                                   |
+| `p` stuck near 0.02 but `-hb` counts frames                                          | the deal's `withTiming` itself stalled (frames run, the clock does not)                                                     |
+| `p` stuck at `-late`, then `p=1.000` and the full board at `-hb`                     | Reanimated's UI frame loop had stopped requesting frames; any `requestAnimationFrame` (the heartbeat) revives it            |
+| `p=1.000`, `motion=0`, `dealTimer` equal to `deals` (less `skip`), board still faded | state and clocks are done; the canvas stopped presenting new frames                                                         |
+| `p=1.000` but `motion=144`, `dealTimer` behind `deals`                               | the JS deal-end timer never ran (JS thread blocked or timers stopped; check `js=` advancing)                                |
+| a faded, b or c crisp (compare `-open` and `-late`)                                  | the oversized native canvas (and its View downscale) is the cause                                                           |
+| faces `none`, or `raster#` not rising since the shot before, long after the deal     | the faces never rasterised (JS thread), separate from the fade (`raster#` counts real passes; a cached size does not count) |
+| the readout itself frozen, `js=` included                                            | the iOS main thread is hung (reading a shared value from JS, as `p` does, is a blocking sync read)                          |
+
+`-zoom` shots of b and c are blurry by construction: their board-size canvas is stretched by the gesture view's zoom. Compare a vs b/c on `-open` and `-late` for the fade; for the blur question compare a's `-zoom` with the crispness of c's `-open` and `-late`.
 
 The double-tap in `-zoom` also skips a deal still `dealing=Y` (a tap during the deal lands it): if the board stays faded after that, the canvas is not presenting.
 
