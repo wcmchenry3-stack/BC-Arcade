@@ -133,11 +133,11 @@ gh run list --workflow mobile-smoke-android.yml --event workflow_dispatch --bran
 gh run download <run-id> -n maestro-android-media
 ```
 
-As for Cascade, the upload fails the job if it finds no media, a dispatched run is not attached to the PR's checks, and it uses the workflow file on that branch (so the branch needs this change, from `dev` on). Each flow takes well under a minute of Maestro time, far inside Android's 3-minute recorder limit.
+As for Cascade, the upload fails the job if it finds no media, a dispatched run is not attached to the PR's checks, and it uses the workflow file on that branch (so the branch needs this change, from `dev` on). Each flow is a handful of steps, so it is expected to stay far inside Android's 3-minute recorder limit (not yet measured: the flows have never run on a device).
 
 Notes:
 
-- **The zoom tap.** The board zooms on `Gesture.Tap().numberOfTaps(2)` (`game/mahjong/useBoardZoomPan.ts`, "Board camera" in [`games/mahjong.md`](games/mahjong.md)); from the fitted view it zooms to readable tiles centred on the tap. Turtle fits at about 25.6 px a tile on a phone, above the 24 px opening-zoom threshold, so it opens fitted and the double-tap zooms in. `doubleTapOn` with the viewport's testID taps its centre, a point Maestro resolves the same way on both platforms. A tile under the tap is selected too (the second tap of a double-tap keeps it selected), so the zoomed frame may show one selected tile.
+- **The zoom tap.** The board zooms on `Gesture.Tap().numberOfTaps(2)` (`game/mahjong/useBoardZoomPan.ts`, "Board camera" in [`games/mahjong.md`](games/mahjong.md)); from the fitted view it zooms to readable tiles centred on the tap. On a 390 x 844 phone Turtle fits at about 25.6 px a tile (`games/mahjong.md`, `zoom.test.ts`), above the 24 px opening-zoom threshold, so it should open fitted and the double-tap zooms in. If a device opened Turtle already zoomed in, the double-tap would zoom out instead (`zoomAt` toggles); the compare-with-`mahjong-demo-open` fallback below covers that too. `doubleTapOn` with the viewport's testID taps its centre, a point Maestro resolves the same way on both platforms. A tile under the tap is selected too (the second tap of a double-tap keeps it selected), so the zoomed frame may show one selected tile.
 - **Random deal.** The deal is random (no seed hook is reachable from Maestro, see the Cascade notes), so the tiles differ per run. The look of the tiles (faded, blurry) does not depend on the deal.
 - **Not run locally.** These flows were written without a device; the first dispatch is their first run. If the double-tap misses (the camera did not move), the screenshot shows the fitted board, so compare it with `mahjong-demo-open`.
 

@@ -5,12 +5,14 @@ appId: com.buffingchi.games
 #
 # The board's camera zooms on a double-tap (Gesture.Tap().numberOfTaps(2) in
 # game/mahjong/useBoardZoomPan.ts): from the fitted view it zooms to readable
-# tiles centred on the tap. Turtle fits at about 25.6 px a tile on a phone, so
-# it does not open zoomed and the double-tap zooms in. `doubleTapOn` with the
-# viewport's testID taps the centre of the board, which Maestro resolves the
-# same way on both platforms. A tile under the tap also gets selected (the
-# second tap of a double-tap keeps it selected), so the zoomed frame may show
-# one selected tile.
+# tiles centred on the tap. On a 390x844 phone Turtle fits at about 25.6 px a
+# tile, so it does not open zoomed and the double-tap zooms in. (If a device
+# opened it already zoomed in, the double-tap would zoom out: zoomAt toggles.
+# Compare the shot with mahjong-demo-open, see docs/MAESTRO.md.) `doubleTapOn`
+# with the viewport's testID taps the centre of the board, which Maestro
+# resolves the same way on both platforms. A tile under the tap also gets
+# selected (the second tap of a double-tap keeps it selected), so the zoomed
+# frame may show one selected tile.
 tags:
   - demo
 ---

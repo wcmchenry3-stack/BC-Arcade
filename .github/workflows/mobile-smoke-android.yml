@@ -15,7 +15,8 @@ name: Mobile Smoke — Android
 #    iOS leg runs on PRs into dev only for native/iOS changes (#3547).
 #  - workflow_dispatch: manual, the full suite, or with `flows: cascade-demo`
 #    or `flows: mahjong-demo` only that game's demo flows (#3705, #3801;
-#    docs/MAESTRO.md, "Cascade demo flows", "Mahjong demo flows"). Every other run leaves the `demo`-tagged flows out.
+#    docs/MAESTRO.md, "Cascade demo flows", "Mahjong demo flows"). Every
+#    other run leaves the `demo`-tagged flows out.
 #  - schedule: weekly full suite on the default branch (`dev`). It gives
 #    ongoing signal and is the run that writes the Gradle/Metro caches PR runs
 #    restore (runs off `dev` are read-only, see setup-gradle below). A scheduled run
