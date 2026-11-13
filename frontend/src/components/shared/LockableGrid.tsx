@@ -20,7 +20,7 @@ function chunk<T>(arr: readonly T[], size: number): T[][] {
   return result;
 }
 
-export interface LockableGridProps<T> {
+interface LockableGridBaseProps<T> {
   readonly title: string;
   /** Set to "header" to announce the title as a heading. */
   readonly titleAccessibilityRole?: "header";
@@ -49,6 +49,26 @@ export interface LockableGridProps<T> {
   readonly initialScrollIndex?: number;
 }
 
+/** Sections: `sectionSize` and `sectionTitleOf` come together, or neither. */
+type LockableGridSections =
+  | {
+      /**
+       * Group the items into sections of this many (the last may be shorter),
+       * each under a header row. Omitted: one run of rows without a header.
+       */
+      readonly sectionSize: number;
+      /** The header text of section `index` (0-based). */
+      readonly sectionTitleOf: (index: number) => string;
+      readonly sectionTestIDOf?: (index: number) => string;
+    }
+  | {
+      readonly sectionSize?: undefined;
+      readonly sectionTitleOf?: undefined;
+      readonly sectionTestIDOf?: undefined;
+    };
+
+export type LockableGridProps<T> = LockableGridBaseProps<T> & LockableGridSections;
+
 /** Space kept above the row scrolled to, so the row before it peeks in. */
 const SCROLL_MARGIN = 24;
 
@@ -74,14 +94,30 @@ export function LockableGrid<T>({
   cardStyle,
   lockStyle,
   initialScrollIndex,
+  sectionSize,
+  sectionTitleOf,
+  sectionTestIDOf,
 }: LockableGridProps<T>) {
   const { colors } = useTheme();
-  const rows = chunk(items, columns);
+  const perSection = Math.max(
+    sectionSize !== undefined && sectionSize > 0 ? sectionSize : items.length,
+    1
+  );
+  const titled = sectionSize !== undefined && sectionTitleOf !== undefined;
+  // Rows of each section; a section's header (when titled) sits before its rows
+  // in the same column, so a row's offset is still relative to the grid.
+  const sections = chunk(items, perSection).map((sectionItems) => chunk(sectionItems, columns));
   // Scroll once, when both the grid's and the target row's offsets are known.
+  const targetSection =
+    initialScrollIndex !== undefined ? Math.floor(initialScrollIndex / perSection) : 0;
+  const targetRowInSection =
+    initialScrollIndex !== undefined ? Math.floor((initialScrollIndex % perSection) / columns) : 0;
   const targetRow =
     initialScrollIndex !== undefined && initialScrollIndex >= columns
-      ? Math.floor(initialScrollIndex / columns)
+      ? `${targetSection}:${targetRowInSection}`
       : null;
+  const headerIsTarget =
+    titled && targetRow !== null && targetSection > 0 && targetRowInSection === 0;
   const scrollRef = useRef<ScrollView>(null);
   const gridY = useRef<number | null>(null);
   const rowY = useRef<number | null>(null);
@@ -129,50 +165,73 @@ export function LockableGrid<T>({
               }
         }
       >
-        {rows.map((row, rowIdx) => (
-          <View
-            key={rowIdx}
-            style={[styles.row, { gap }]}
-            onLayout={
-              rowIdx === targetRow
-                ? (e) => {
-                    rowY.current = e.nativeEvent.layout.y;
-                    maybeScroll();
-                  }
-                : undefined
-            }
-          >
-            {row.map((item) => {
-              const unlocked = isUnlocked(item);
-              return (
-                <Pressable
-                  key={keyOf(item)}
-                  testID={testIDOf(item)}
-                  style={[
-                    styles.card,
-                    cardStyle,
-                    {
-                      backgroundColor: unlocked ? colors.surfaceHigh : colors.surface,
-                      borderColor: unlocked ? colors.accent : colors.border,
-                      opacity: unlocked ? 1 : 0.5,
-                    },
-                  ]}
-                  onPress={unlocked ? () => onSelect(item) : undefined}
-                  disabled={!unlocked}
-                  accessibilityRole="button"
-                  accessibilityLabel={accessibilityLabelOf(item, unlocked)}
-                  accessibilityState={{ disabled: !unlocked }}
-                >
-                  {renderContent(item, unlocked)}
-                  {!unlocked && <Text style={lockStyle}>🔒</Text>}
-                </Pressable>
-              );
-            })}
-            {row.length < columns &&
-              Array.from({ length: columns - row.length }).map((_, i) => (
-                <View key={`pad-${i}`} style={styles.cardPad} />
-              ))}
-          </View>
+        {sections.map((rows, sectionIdx) => (
+          <React.Fragment key={sectionIdx}>
+            {titled && (
+              <Text
+                testID={sectionTestIDOf?.(sectionIdx)}
+                // A target on a later section's first row scrolls to its header,
+                // so the "CHAPTER N" heading stays in view.
+                onLayout={
+                  headerIsTarget && sectionIdx === targetSection
+                    ? (e) => {
+                        rowY.current = e.nativeEvent.layout.y;
+                        maybeScroll();
+                      }
+                    : undefined
+                }
+                accessibilityRole="header"
+                style={[styles.sectionTitle, { color: colors.text }]}
+              >
+                {sectionTitleOf(sectionIdx)}
+              </Text>
+            )}
+            {rows.map((row, rowIdx) => (
+              <View
+                key={rowIdx}
+                style={[styles.row, { gap }]}
+                onLayout={
+                  !headerIsTarget && `${sectionIdx}:${rowIdx}` === targetRow
+                    ? (e) => {
+                        rowY.current = e.nativeEvent.layout.y;
+                        maybeScroll();
+                      }
+                    : undefined
+                }
+              >
+                {row.map((item) => {
+                  const unlocked = isUnlocked(item);
+                  return (
+                    <Pressable
+                      key={keyOf(item)}
+                      testID={testIDOf(item)}
+                      style={[
+                        styles.card,
+                        cardStyle,
+                        {
+                          backgroundColor: unlocked ? colors.surfaceHigh : colors.surface,
+                          borderColor: unlocked ? colors.accent : colors.border,
+                          opacity: unlocked ? 1 : 0.5,
+                        },
+                      ]}
+                      onPress={unlocked ? () => onSelect(item) : undefined}
+                      disabled={!unlocked}
+                      accessibilityRole="button"
+                      accessibilityLabel={accessibilityLabelOf(item, unlocked)}
+                      accessibilityState={{ disabled: !unlocked }}
+                    >
+                      {renderContent(item, unlocked)}
+                      {!unlocked && <Text style={lockStyle}>🔒</Text>}
+                    </Pressable>
+                  );
+                })}
+                {row.length < columns &&
+                  Array.from({ length: columns - row.length }).map((_, i) => (
+                    <View key={`pad-${i}`} style={styles.cardPad} />
+                  ))}
+              </View>
+            ))}
+          </React.Fragment>
         ))}
       </View>
     </ScrollView>
@@ -200,6 +259,14 @@ const styles = StyleSheet.create({
     fontFamily: typography.label,
     fontSize: 14,
     fontWeight: "600",
+  },
+  sectionTitle: {
+    fontFamily: typography.label,
+    fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    paddingTop: 8,
   },
   row: {
     flexDirection: "row",

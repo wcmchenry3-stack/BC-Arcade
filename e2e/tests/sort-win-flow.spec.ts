@@ -187,6 +187,31 @@ test.describe("Sort Puzzle — win flow", () => {
     });
   });
 
+  test("the card and the level grid show the solve's stars (#3687)", async ({
+    page,
+  }) => {
+    const captured = await loadNearSolvedLevel(page, "Tester");
+    await makeWinningPour(page);
+
+    // Level 1's par is 10 and the solve took 6 moves: 3 stars.
+    const card = page.getByTestId("sort-result");
+    await expect(card.getByLabel("3 of 3 stars. Moves 6, target 10.")).toBeVisible();
+    await expect(card.getByText("Moves 6 · Target 10")).toBeVisible();
+    // The completion is sent once the rank line shows, as in the test above.
+    await expect(
+      page.getByText("Saved as Tester · #3 on the leaderboard"),
+    ).toBeVisible({ timeout: 10_000 });
+    expect(captured.completions[0]).toMatchObject({ result: { stars: 3 } });
+
+    await card.getByRole("button", { name: "Change Level" }).click();
+    await expect(
+      page.getByRole("button", { name: "Level 1, 3 of 3 stars", exact: true }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByRole("heading", { name: "Chapter 1" }),
+    ).toBeVisible();
+  });
+
   test("Change Level returns to level select with the next level unlocked", async ({
     page,
   }) => {

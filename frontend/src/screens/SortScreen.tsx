@@ -74,6 +74,8 @@ import { useCompletionTransition } from "../game/_shared/useCompletionTransition
 import { HudStatRow } from "../components/shared/HudStatRow";
 import GameActionBar from "../components/shared/GameActionBar";
 import { useSortAudio } from "../game/sort/useSortAudio";
+import { SolveStars } from "../components/sort/SolveStars";
+import { starsFor, type Stars } from "../game/sort/stars";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
@@ -110,11 +112,14 @@ export default function SortScreen() {
   const bestMovesRef = useRef<BestMoves>({});
   /** Storage was read, so writing `bestMovesRef` can't lose a stored best. */
   const bestsStoredRef = useRef(false);
+  /** The same bests as state, for the level grid's stars (#3687); the ref decides solves. */
+  const [bestMoves, setBestMoves] = useState<BestMoves>({});
   const adoptStoredBests = useCallback((stored: BestMoves) => {
     // Merge, never replace: a Retry must keep a best still only in memory
     // (its write failed, or storage couldn't be read before).
     const merged = mergeBestMoves(bestMovesRef.current, stored);
     bestMovesRef.current = merged;
+    setBestMoves(merged);
     bestsStoredRef.current = true;
     if (Object.entries(merged).some(([level, moves]) => stored[level] !== moves)) {
       void saveBestMoves(merged);
@@ -196,7 +201,13 @@ export default function SortScreen() {
   const [refused, setRefused] = useState<{ index: number; seq: number } | null>(null);
   const refusedSeqRef = useRef(0);
   /** The solved level's best (fewest) moves, including this solve. */
-  const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
+  const [winSummary, setWinSummary] = useState<{
+    best: number;
+    isNewBest: boolean;
+    /** This solve's stars (#3687) and the level's target moves they were judged against. */
+    stars?: Stars;
+    par?: number;
+  } | null>(null);
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("sort", navigation);
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
@@ -351,7 +362,11 @@ export default function SortScreen() {
     // the player can leave the card (#2625).
     const { solve, bests } = applyLevelSolve(bestMovesRef.current, solvedLevel, moves);
     bestMovesRef.current = bests;
-    setWinSummary(solve);
+    setBestMoves(bests);
+    // The level's target (#3687). Every level in the shipped catalog has one.
+    const par = levels.find((l) => l.id === solvedLevel)?.par;
+    const stars = par === undefined ? undefined : starsFor(moves, par);
+    setWinSummary(stars !== undefined && par !== undefined ? { ...solve, stars, par } : solve);
     // Storage mirrors memory; skipped while it couldn't be read, so a failed
     // read never overwrites the stored bests.
     if (solve.improved && bestsStoredRef.current) void saveBestMoves(bests);
@@ -377,6 +392,8 @@ export default function SortScreen() {
       level_reached: frontier,
       catalog_version: SORT_CATALOG_VERSION,
     };
+    // This solve's stars (1 to 3, #3687) ride on the row already sent.
+    if (stars !== undefined) result.stars = stars;
     const totalMoves = totalBestMoves(bests, frontier);
     if (totalMoves !== null) result.total_moves = totalMoves;
     const gameId = syncComplete(
@@ -681,6 +698,7 @@ export default function SortScreen() {
         <LevelSelectScreen
           levels={levels}
           progress={progress}
+          bestMoves={bestMoves}
           onSelectLevel={handleSelectLevel}
           onContinue={handleContinue}
         />
@@ -813,6 +831,15 @@ export default function SortScreen() {
             { label: tResult("stat.undos"), value: gameState.undosUsed },
             ...(winSummary ? [{ label: tResult("stat.best"), value: winSummary.best }] : []),
           ]}
+          detail={
+            winSummary?.stars !== undefined && winSummary.par !== undefined ? (
+              <SolveStars
+                stars={winSummary.stars}
+                moves={gameState.moveCount}
+                par={winSummary.par}
+              />
+            ) : undefined
+          }
           submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           // The next level when there is one; the last level replays.
