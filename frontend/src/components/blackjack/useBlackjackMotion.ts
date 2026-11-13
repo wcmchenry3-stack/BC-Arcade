@@ -550,13 +550,8 @@ export function useBlackjackMotion(input: BlackjackMotionInput): BlackjackMotion
 
   const { whenSettled, runSettled, dropSettled } = useSettledQueue(stageRef);
 
-  const { land, run, spread, runCue, sounding } = useTimelineRunner({
-    clock,
-    cue,
-    runSettled,
-    setShown,
-    stageRef,
-  });
+  const runner = useTimelineRunner({ clock, cue, runSettled, setShown, stageRef });
+  const { land, run, spread, runCue, sounding } = runner;
 
   useLayoutEffect(() => {
     if (engine === null) {
