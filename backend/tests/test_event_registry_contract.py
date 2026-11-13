@@ -93,7 +93,12 @@ REGISTERED_NOT_SEEDED = "registered_not_seeded"
 
 # Known one-sided types, each with the direction of the mismatch it excuses (only
 # that exact discrepancy is filtered) and the reason. Remove the entry when fixed.
-KNOWN_GAPS: dict[tuple[str, str, str], str] = {}
+KNOWN_GAPS: dict[tuple[str, str, str], str] = {
+    # Bottle Sort's moves (#3387) is seeded and validated ahead of the app (#3384, epic
+    # #3383). When the app registers it: delete this entry and add ("sort", "moves") to
+    # VALIDATED.
+    ("sort", "moves", SEEDED_NOT_REGISTERED): "backend ships first; the app registers it in #3384",
+}
 
 
 # --- reading the app's registry ------------------------------------------------
