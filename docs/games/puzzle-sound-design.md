@@ -499,6 +499,7 @@ Adds 57,389 B now; nothing is deleted.
   - **Complete.** On the pour that completes a bottle (the success haptic's event), at the badge pop; not on the winning pour (the win covers it), an undo or a restore.
   - **Hint.** Only when a pour is suggested, not for the "no way to win" notice.
 - **Levels** are the designed loudness (select -24, lift -28, stream -21, refused -23, complete -20, undo -27, hint -26, win -17), baked into the files; every sound plays at `useSound`'s default volume. Under 3% of any file's energy is below 300 Hz (tested): the lift has the most (1.3-2.1%), the streams under 0.3%.
+- **Prototypes.** Every round's scripts, including the options not picked, are archived in [`sort-sfx-3661/`](sort-sfx-3661/README.md) (reference only; the shipped recipes are in `synth_puzzle_sfx.py`).
 - **Reproducibility.** Every file's decoded audio (`synth_common.decoded_pcm_sha256`) is identical to the approved prototype's (all 12 streams included), and `tools/assets/tests/synth_puzzle_sfx_test.py` pins each sound's timing against the motion.
 - **Gameplay audition.** Recorded with every `play()` logged and laid over the video; see the story's thread for the owner's approval.
 - **Why it works.**
