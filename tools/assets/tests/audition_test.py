@@ -401,3 +401,81 @@ def test_mix_audio_does_not_outlast_the_video_when_a_sound_lands_at_the_end(tmp_
     v, a = (_stream_duration(out, kind) for kind in ("v:0", "a:0"))
     assert v == pytest.approx(3.0, abs=0.3)  # the picture is not cut short
     assert a <= v + 0.05
+
+
+# --- volume, pauses and the recording's end -----------------------------------------------------
+
+SOUND_URL = "http://localhost:8081/assets/assets/sounds/{}"
+
+
+def _dist_with(tmp_path: Path, name: str, x: np.ndarray) -> Path:
+    dist = _make_dist(tmp_path)
+    common.write_wav(x, dist / "assets" / "assets" / "sounds" / name)
+    return dist
+
+
+@needs_ffmpeg
+def test_build_track_applies_each_elements_volume_and_skips_a_muted_one(tmp_path):
+    dist = _dist_with(tmp_path, "music.ddd.wav", _tone(400, 0.5, 0.5))
+    url = SOUND_URL.format("music.ddd.wav")
+    full, _ = mix.build_track([{"t": 0.0, "src": url}], dist, limit=1.0)
+    quiet, lines = mix.build_track([{"t": 0.0, "src": url, "volume": 0.2}], dist, limit=1.0)
+    assert np.abs(quiet).max() == pytest.approx(0.2 * np.abs(full).max(), rel=0.02)
+    assert "volume 0.2" in lines[0]
+    muted, lines = mix.build_track([{"t": 0.0, "src": url, "muted": True}], dist, limit=1.0)
+    assert np.abs(muted).max() == 0.0 and "muted" in lines[0]
+
+
+@needs_ffmpeg
+def test_an_old_format_log_still_mixes_at_full_level(tmp_path):
+    dist = _dist_with(tmp_path, "music.ddd.wav", _tone(400, 0.5, 0.5))
+    old = tmp_path / "old.plays.json"
+    old.write_text(json.dumps({"plays": [{"t": 0.5, "src": SOUND_URL.format("music.ddd.wav")}]}))
+    plays, pauses, end = mix.load_log(old)
+    assert pauses == [] and end is None
+    track, _ = mix.build_track(plays, dist, total=2.0, pauses=pauses)
+    assert len(track) == 2 * common.SR
+    assert np.abs(track[int(0.5 * common.SR) :]).max() == pytest.approx(0.5, abs=0.02)
+    bare = tmp_path / "bare.json"
+    bare.write_text(json.dumps(plays))
+    assert mix.load_log(bare)[0] == plays
+
+
+@needs_ffmpeg
+def test_a_long_sound_is_cut_at_the_recordings_end(tmp_path):
+    dist = _dist_with(tmp_path, "long.eee.wav", _tone(300, 60.0, 0.3))
+    plays = [{"t": 1.0, "src": SOUND_URL.format("long.eee.wav")}]
+    track, _ = mix.build_track(plays, dist, total=3.0, limit=3.0)
+    assert len(track) == 3 * common.SR
+
+
+@needs_ffmpeg
+def test_a_paused_element_stops_contributing_at_its_pause(tmp_path):
+    dist = _dist_with(tmp_path, "music.ddd.wav", _tone(400, 2.0, 0.5))
+    plays = [{"t": 0.5, "src": SOUND_URL.format("music.ddd.wav"), "el": 7}]
+    sr = common.SR
+    track, _ = mix.build_track(plays, dist, pauses=[{"t": 1.5, "el": 7}], limit=4.0)
+    assert np.abs(track[int(1.0 * sr) : int(1.4 * sr)]).max() > 0.3  # still playing
+    assert np.abs(track[int(1.55 * sr) :]).max() < 1e-6  # stopped at the pause
+    # Another element's pause, or one before this play, does not cut it.
+    other = [{"t": 1.5, "el": 8}, {"t": 0.2, "el": 7}]
+    track, _ = mix.build_track(plays, dist, pauses=other, limit=4.0)
+    assert np.abs(track[int(2.0 * sr) : int(2.4 * sr)]).max() > 0.3
+
+
+@needs_ffmpeg
+def test_end_comes_from_the_log_when_the_video_has_no_duration(tmp_path):
+    dist = _dist_with(tmp_path, "long.eee.wav", _tone(300, 60.0, 0.3))
+    log = tmp_path / "g.plays.json"
+    plays = [{"t": 1.0, "src": SOUND_URL.format("long.eee.wav"), "el": 1, "volume": 1}]
+    log.write_text(json.dumps({"recordingEnd": 3.0, "plays": plays, "pauses": []}))
+    plays, pauses, end = mix.load_log(log)
+    assert end == 3.0
+    track, _ = mix.build_track(plays, dist, total=end, pauses=pauses, limit=end)
+    assert len(track) == 3 * common.SR
+
+
+def test_mix_events_limit_cuts_and_pads_to_the_recording():
+    out = common.mix_events([(np.full(10 * common.SR, 0.1), 1.0)], limit=3.0)
+    assert len(out) == 3 * common.SR
+    assert common.mix_events([(np.full(10, 0.1), 5.0)], limit=3.0).max() == 0.0

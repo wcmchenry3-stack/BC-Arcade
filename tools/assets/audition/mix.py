@@ -33,6 +33,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audition_common import (
+    SR,
     decode,
     media_duration,
     mix_events,
@@ -42,11 +43,37 @@ from audition_common import (
 )
 
 
-def load_plays(log: Path) -> list[dict]:
-    """The `plays` of a `run.js` log: [{"t": seconds, "src": url}, ...], in time order."""
+def load_log(log: Path) -> tuple[list[dict], list[dict], float | None]:
+    """A `run.js` log: its plays and pauses in time order, and the recording's length if logged.
+
+    Older logs are a bare list or have only `plays` with `t` and `src`: they still load, and
+    every sound then plays at full level until its file ends."""
     data = json.loads(log.read_text())
     plays = data["plays"] if isinstance(data, dict) else data
-    return sorted(plays, key=lambda p: p["t"])
+    pauses = data.get("pauses", []) if isinstance(data, dict) else []
+    end = data.get("recordingEnd") if isinstance(data, dict) else None
+    return sorted(plays, key=_time), sorted(pauses, key=_time), end
+
+
+def _time(entry: dict) -> float:
+    return entry["t"]
+
+
+def load_plays(log: Path) -> list[dict]:
+    """The `plays` of a `run.js` log: [{"t": seconds, "src": url, ...}, ...], in time order."""
+    return load_log(log)[0]
+
+
+def _stop_at(play: dict, pauses: list[dict], limit: float | None, offset: float) -> float | None:
+    """When a sound stops contributing: its element's next pause or end, or the recording's end."""
+    stops = [
+        q["t"] + offset
+        for q in pauses
+        if play.get("el") is not None and q.get("el") == play["el"] and q["t"] > play["t"]
+    ]
+    if limit is not None:
+        stops.append(limit)
+    return min(stops) if stops else None
 
 
 def build_track(
@@ -55,25 +82,40 @@ def build_track(
     offset: float = 0.0,
     total: float | None = None,
     skip: tuple[str, ...] = (),
+    pauses: list[dict] | None = None,
+    limit: float | None = None,
 ) -> tuple[np.ndarray, list[str]]:
-    """The mixed audio for a log, and a line per sound saying what landed when."""
+    """The mixed audio for a log, and a line per sound saying what landed when.
+
+    Each sound plays at the `volume` its element had (a muted one is left out), stops where its
+    element paused or ended, and is cut at `limit`, the end of the recording."""
     cache: dict[Path, np.ndarray] = {}
     events: list[tuple[np.ndarray, float]] = []
     lines: list[str] = []
     for p in plays:
+        at = p["t"] + offset
         try:
             path = resolve_play_src(p["src"], dist)
         except ValueError as err:
-            lines.append(f"{p['t'] + offset:8.3f} s  skipped ({err})")
+            lines.append(f"{at:8.3f} s  skipped ({err})")
             continue
         if any(part in path.name for part in skip):
-            lines.append(f"{p['t'] + offset:8.3f} s  left out  {path.name}")
+            lines.append(f"{at:8.3f} s  left out  {path.name}")
+            continue
+        if p.get("muted"):
+            lines.append(f"{at:8.3f} s  muted     {path.name}")
             continue
         if path not in cache:
             cache[path] = decode(path)
-        events.append((cache[path], max(0.0, p["t"] + offset)))
-        lines.append(f"{p['t'] + offset:8.3f} s  {path.name}")
-    return mix_events(events, total), lines
+        gain = float(p.get("volume", 1.0))
+        x = cache[path] * gain
+        stop = _stop_at(p, pauses or [], limit, offset)
+        if stop is not None:
+            x = x[: max(0, round((stop - max(0.0, at)) * SR))]
+        events.append((x, max(0.0, at)))
+        note = f"  (volume {gain:g})" if gain != 1.0 else ""
+        lines.append(f"{at:8.3f} s  {path.name}{note}")
+    return mix_events(events, total, limit), lines
 
 
 def grab_frame(video: Path, t: float, out: Path) -> None:
@@ -121,9 +163,12 @@ def main(argv: list[str] | None = None) -> None:
     if args.out:
         if not (args.log and args.dist):
             raise SystemExit("--out needs --log and --dist")
-        plays = load_plays(args.log)
+        plays, pauses, logged_end = load_log(args.log)
         duration = media_duration(args.video)
-        track, lines = build_track(plays, args.dist, args.offset, duration, tuple(args.skip))
+        # Playwright's webm often has no container duration: the log's recording length stands in.
+        limit = duration if duration is not None else logged_end
+        skip = tuple(args.skip)
+        track, lines = build_track(plays, args.dist, args.offset, limit, skip, pauses, limit)
         print("\n".join(lines))
         write_audition(args.video, track, args.out, trim=duration is not None)
         print(f"{args.out}: {len(plays)} sounds mixed onto {args.video.name}")

@@ -609,14 +609,45 @@ async function record(scenarioName, { base, out, headed }) {
   const plays = [];
   const marks = [];
   let t0 = Date.now();
-  await context.exposeFunction("__auditPlay", (src, at) => {
-    plays.push({ t: Math.max(0, (at - t0) / 1000), src });
+  const pauses = [];
+  await context.exposeFunction("__auditPlay", (src, at, info) => {
+    plays.push({ t: Math.max(0, (at - t0) / 1000), src, ...info });
+  });
+  await context.exposeFunction("__auditPause", (at, el) => {
+    pauses.push({ t: Math.max(0, (at - t0) / 1000), el });
   });
   await context.addInitScript(() => {
     const original = HTMLMediaElement.prototype.play;
+    const ids = new WeakMap();
+    let nextId = 0;
+    const idOf = (el) => {
+      if (!ids.has(el)) ids.set(el, (nextId += 1));
+      return ids.get(el);
+    };
+    // A paused or finished element stops contributing to the mix. Media events do not bubble
+    // and a detached Audio never reaches the document, so each element is listened to itself.
+    const watched = new WeakSet();
+    const watch = (el) => {
+      if (watched.has(el)) return;
+      watched.add(el);
+      for (const type of ["pause", "ended"]) {
+        el.addEventListener(type, () => {
+          try {
+            window.__auditPause(Date.now(), idOf(el));
+          } catch {
+            // logging must never break the page
+          }
+        });
+      }
+    };
     HTMLMediaElement.prototype.play = function play(...args) {
       try {
-        window.__auditPlay(this.currentSrc || this.src, Date.now());
+        watch(this);
+        window.__auditPlay(this.currentSrc || this.src, Date.now(), {
+          el: idOf(this),
+          volume: this.volume,
+          muted: this.muted,
+        });
       } catch {
         // logging must never break the page
       }
@@ -637,6 +668,7 @@ async function record(scenarioName, { base, out, headed }) {
       .screenshot({ path: path.join(outDir, `${slug}.failure.png`) })
       .catch(() => {});
   }
+  const recordingEnd = (Date.now() - t0) / 1000; // the scenario is over: the recording ends here
   const video = page.video();
   await context.close(); // finishes the video file
   await browser.close();
@@ -649,7 +681,15 @@ async function record(scenarioName, { base, out, headed }) {
   fs.writeFileSync(
     logPath,
     JSON.stringify(
-      { scenario: slug, base, viewport: VIEWPORT, marks, plays },
+      {
+        scenario: slug,
+        base,
+        viewport: VIEWPORT,
+        recordingEnd,
+        marks,
+        plays,
+        pauses,
+      },
       null,
       2,
     ),

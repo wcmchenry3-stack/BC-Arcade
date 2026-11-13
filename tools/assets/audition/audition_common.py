@@ -53,15 +53,24 @@ def low_energy_pct(x: np.ndarray, cutoff: float = 300.0) -> float:
     return float(100 * power[freqs < cutoff].sum() / total) if total > 0 else 0.0
 
 
-def mix_events(events: list[tuple[np.ndarray, float]], total: float | None = None) -> np.ndarray:
-    """Lay each (samples, start second) into one track; scale down only if it would clip."""
-    end = max((at + len(x) / SR for x, at in events), default=0.0)
-    out = np.zeros(round(max(total or 0.0, end) * SR))
+def mix_events(
+    events: list[tuple[np.ndarray, float]], total: float | None = None, limit: float | None = None
+) -> np.ndarray:
+    """Lay each (samples, start second) into one track; scale down only if it would clip.
+
+    `total` is a minimum length. `limit` is the end of the recording: the track is exactly that
+    long and every sound is cut there (a long file cannot play on past the video)."""
+    if limit is not None:
+        out = np.zeros(round(limit * SR))
+    else:
+        end = max((at + len(x) / SR for x, at in events), default=0.0)
+        out = np.zeros(round(max(total or 0.0, end) * SR))
     for x, at in events:
         k = round(at * SR)
         if k < 0:
             raise ValueError(f"a sound starts before the video: {at:.3f} s")
-        out[k : k + len(x)] += x
+        piece = x[: max(0, len(out) - k)]
+        out[k : k + len(piece)] += piece
     peak = float(np.abs(out).max()) if len(out) else 0.0
     return out * (PEAK_CEILING / peak) if peak > PEAK_CEILING else out
 
