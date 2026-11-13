@@ -53,8 +53,11 @@ const NEAR_WIN_STATE = {
 const DISPLAY_NAME_KEY = "player_display_name";
 
 /** Mocks the rank lookup and records any legacy Solitaire call. */
-const routeSolitaireApi = (page: Page) =>
-  routeSessionBoard(page, { legacyPattern: "**/solitaire/**" });
+const routeSolitaireApi = (page: Page, playerName: string | null = null) =>
+  routeSessionBoard(page, {
+    legacyPattern: "**/solitaire/**",
+    playerName,
+  });
 
 /** Opens a saved game, optionally under a display name. */
 async function openGame(
@@ -87,7 +90,7 @@ test.describe("Solitaire — result card + leaderboard", () => {
   test("shows the rank under the saved display name with no name entry", async ({
     page,
   }) => {
-    const calls = await routeSolitaireApi(page);
+    const calls = await routeSolitaireApi(page, "Tester");
     await winGame(page, "Tester");
 
     await expect(
@@ -127,7 +130,7 @@ test.describe("Solitaire — result card + leaderboard", () => {
   test("a resumed, already-won game shows the card without a rank lookup", async ({
     page,
   }) => {
-    const calls = await routeSolitaireApi(page);
+    const calls = await routeSolitaireApi(page, "Tester");
     await openGame(page, WON_STATE, "Tester");
 
     await expect(page.getByText("You Win!")).toBeVisible({ timeout: 5_000 });
