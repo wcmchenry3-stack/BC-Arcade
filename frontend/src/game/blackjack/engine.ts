@@ -244,11 +244,19 @@ function freshShuffledDeck(deckCount: number = 1): Card[] {
  * Draw one card from a deck. Returns the new deck (with one fewer card)
  * and the drawn card. Auto-reshuffles if the deck runs dry mid-draw.
  */
-function deal(deck: Card[], deckCount: number = 1): { deck: Card[]; card: Card } {
+function deal(deck: Card[], deckCount: number): { deck: Card[]; card: Card } {
   const working = deck.length === 0 ? freshShuffledDeck(deckCount) : deck;
   const next = [...working];
   const card = next.pop()!;
   return { deck: next, card };
+}
+
+/**
+ * Draw from the state's shoe. Every in-round draw goes through this, so a reshuffle on an
+ * empty shoe always rebuilds the table's `rules.deck_count` decks (#3769), never one.
+ */
+function dealFrom(s: EngineState): { deck: Card[]; card: Card } {
+  return deal(s.deck, s.rules.deck_count);
 }
 
 // ---------------------------------------------------------------------------
@@ -592,7 +600,7 @@ function dealerShouldDraw(hand: readonly Card[], hitSoft17: boolean): boolean {
 function dealerPlay(s: EngineState): EngineState {
   let working = s;
   while (dealerShouldDraw(working.dealer_hand, working.rules.hit_soft_17)) {
-    const { deck, card } = deal(working.deck, working.rules.deck_count);
+    const { deck, card } = dealFrom(working);
     working = { ...working, deck, dealer_hand: [...working.dealer_hand, card] };
   }
   return working;
@@ -661,8 +669,55 @@ function finishIfAllHandsDone(s: EngineState): EngineState {
   };
 }
 
+/**
+ * A hand on 21 stands on its own (#3764): from the hand to play, every split hand already on 21
+ * (one dealt 21 by the split, like a split 10 that drew an Ace) is passed over. Split aces are
+ * never the hand to play (they get one card each and are passed at the split), so this never
+ * touches them.
+ */
+function passTwentyOnes(s: EngineState): EngineState {
+  let i = s.active_hand_index;
+  while (
+    i < s.player_hands.length &&
+    (s.hand_outcomes[i] ?? null) === null &&
+    handValue(s.player_hands[i] ?? []) === 21
+  ) {
+    i++;
+  }
+  return i === s.active_hand_index ? s : { ...s, active_hand_index: i };
+}
+
 function advanceHand(s: EngineState): EngineState {
-  return finishIfAllHandsDone({ ...s, active_hand_index: s.active_hand_index + 1 });
+  return finishIfAllHandsDone(passTwentyOnes({ ...s, active_hand_index: s.active_hand_index + 1 }));
+}
+
+/**
+ * The events of a split action that may have settled the round: `lead` (the action's own), then,
+ * when the round settled (to `result` or `victory`), its outcome, and any milestone or comeback it
+ * reached. Every split settlement goes through here (#3764 review), so each emits the same set.
+ */
+function splitRoundEvents(
+  prev: EngineState,
+  next: EngineState,
+  lead: readonly BlackjackGameEvent[]
+): BlackjackGameEvent[] {
+  if (next.phase === "player" || next.outcome === null) return [...lead];
+  return [
+    ...lead,
+    outcomeEvent(next.outcome as "win" | "lose" | "push"),
+    ...pendingMilestoneEvents(prev, next),
+    ...pendingComebackEvents(prev, next),
+  ];
+}
+
+/** `next` with the split action's events (`splitRoundEvents`), or none when there are none. */
+function withSplitEvents(
+  prev: EngineState,
+  next: EngineState,
+  lead: readonly BlackjackGameEvent[]
+): EngineState {
+  const events = splitRoundEvents(prev, next, lead);
+  return { ...next, events: events.length > 0 ? events : undefined };
 }
 
 // ---------------------------------------------------------------------------
@@ -676,30 +731,28 @@ export function hit(s: EngineState): EngineState {
     if (s.split_from_aces[s.active_hand_index]) {
       throw new Error("Cannot hit on split aces.");
     }
-    const { deck, card } = deal(s.deck);
+    const { deck, card } = dealFrom(s);
     const newHands = s.player_hands.map((h, i) => (i === s.active_hand_index ? [...h, card] : h));
-    const busted = handValue(newHands[s.active_hand_index] ?? []) > 21;
+    const value = handValue(newHands[s.active_hand_index] ?? []);
+    const busted = value > 21;
     const events: BlackjackGameEvent[] = [{ type: "cardDeal" }];
     if (busted) events.push({ type: "bust" });
     let next: EngineState = { ...s, deck, player_hands: newHands, events };
-    if (busted) {
-      next = settleHand(next, s.active_hand_index, "lose");
-      const advanced = advanceHand(next);
-      const msEvents = pendingMilestoneEvents(s, advanced);
-      const cbEvents = pendingComebackEvents(s, advanced);
-      const extras = [...msEvents, ...cbEvents];
-      return { ...advanced, events: extras.length > 0 ? [...events, ...extras] : events };
-    }
+    if (busted) next = settleHand(next, s.active_hand_index, "lose");
+    // A bust ends the hand; so does 21, which stands on its own (#3764): the next hand is
+    // played, or the dealer after the last.
+    if (busted || value === 21) return withSplitEvents(s, advanceHand(next), events);
     return next;
   }
 
-  const { deck, card } = deal(s.deck);
+  const { deck, card } = dealFrom(s);
   const next: EngineState = {
     ...s,
     deck,
     player_hand: [...s.player_hand, card],
   };
-  if (handValue(next.player_hand) > 21) {
+  const value = handValue(next.player_hand);
+  if (value > 21) {
     const settled = settleWith(next, "lose");
     const msEvents = pendingMilestoneEvents(next, settled);
     const cbEvents = pendingComebackEvents(next, settled);
@@ -708,23 +761,17 @@ export function hit(s: EngineState): EngineState {
       events: [{ type: "cardDeal" }, { type: "bust" }, ...msEvents, ...cbEvents],
     };
   }
+  if (value === 21) {
+    // 21 stands on its own (#3764): the dealer's turn and the settlement, as a Stand plays them.
+    const stood = stand(next);
+    return { ...stood, events: [{ type: "cardDeal" }, ...(stood.events ?? [])] };
+  }
   return { ...next, events: [{ type: "cardDeal" }] };
 }
 
 export function stand(s: EngineState): EngineState {
   if (s.phase !== "player") throw new Error("Not in player phase.");
-  if (s.split_count > 0) {
-    const next = advanceHand({ ...s, events: undefined });
-    if (next.phase === "result" && next.outcome !== null) {
-      const msEvents = pendingMilestoneEvents(s, next);
-      const cbEvents = pendingComebackEvents(s, next);
-      return {
-        ...next,
-        events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents, ...cbEvents],
-      };
-    }
-    return next;
-  }
+  if (s.split_count > 0) return withSplitEvents(s, advanceHand({ ...s, events: undefined }), []);
   const next = determineAndSettle(dealerPlay({ ...s, events: undefined }));
   const msEvents = pendingMilestoneEvents(s, next);
   const cbEvents = pendingComebackEvents(s, next);
@@ -732,6 +779,23 @@ export function stand(s: EngineState): EngineState {
     ...next,
     events: [outcomeEvent(next.outcome as "win" | "lose" | "push"), ...msEvents, ...cbEvents],
   };
+}
+
+/**
+ * A game saved by a build from before #3764 with the hand to play already on 21 (it then waited
+ * for a Stand): stood now, as the load path's choice (`BlackjackGameContext.tsx`, which records
+ * the stand as the round's action). A single hand settles with the dealer's turn; a split hand
+ * moves play on to the next hand (or the dealer). Any other save is returned as it is. No events:
+ * a restored round replays nothing.
+ */
+export function standOnTwentyOne(s: EngineState): EngineState {
+  if (s.phase !== "player") return s;
+  const hand = s.split_count > 0 ? s.player_hands[s.active_hand_index] : s.player_hand;
+  if (hand === undefined || handValue(hand) !== 21) return s;
+  // A single hand's two-card 21 is a natural, which every build settled at the deal, so no save
+  // holds one in the player's phase. Guarded for clarity: it is never stood as a plain 21.
+  if (s.split_count === 0 && isNaturalBlackjack(hand)) return s;
+  return { ...stand(s), events: undefined };
 }
 
 export function doubleDown(s: EngineState): EngineState {
@@ -757,7 +821,7 @@ export function doubleDown(s: EngineState): EngineState {
       throw new Error("Insufficient chips to double down.");
     }
 
-    const { deck, card } = deal(s.deck);
+    const { deck, card } = dealFrom(s);
     const newHands = s.player_hands.map((h, i) => (i === idx ? [...h, card] : h));
     const newBets = [...s.hand_bets];
     newBets[idx] = handBet * 2;
@@ -770,26 +834,9 @@ export function doubleDown(s: EngineState): EngineState {
       deck,
       player_hands: newHands,
       hand_bets: newBets,
-      events: splitDoubleEvents,
     };
-    if (busted) {
-      next = settleHand(next, idx, "lose");
-    }
-    const advanced = advanceHand(next);
-    const msEvents = pendingMilestoneEvents(s, advanced);
-    const cbEvents = pendingComebackEvents(s, advanced);
-    if (advanced.phase === "result" && advanced.outcome !== null && !busted) {
-      return {
-        ...advanced,
-        events: [
-          ...splitDoubleEvents,
-          outcomeEvent(advanced.outcome as "win" | "lose" | "push"),
-          ...msEvents,
-          ...cbEvents,
-        ],
-      };
-    }
-    return { ...advanced, events: [...splitDoubleEvents, ...msEvents, ...cbEvents] };
+    if (busted) next = settleHand(next, idx, "lose");
+    return withSplitEvents(s, advanceHand(next), splitDoubleEvents);
   }
 
   if (s.player_hand.length !== 2) {
@@ -797,7 +844,7 @@ export function doubleDown(s: EngineState): EngineState {
   }
   if (s.chips < s.bet * 2) throw new Error("Insufficient chips to double down.");
 
-  const { deck, card } = deal(s.deck, s.rules.deck_count);
+  const { deck, card } = dealFrom(s);
   const afterDouble: EngineState = {
     ...s,
     bet: s.bet * 2,
@@ -921,10 +968,12 @@ export function split(s: EngineState): EngineState {
       }
     }
     next = { ...next, active_hand_index: idx + 2 };
-    return finishIfAllHandsDone(next);
   }
 
-  return next;
+  // Split aces are played out at once; a hand the split dealt 21 stands on its own (#3764). Either
+  // way play may move on, maybe to the dealer, and a round that settles emits its events.
+  const played = finishIfAllHandsDone(passTwentyOnes(next));
+  return played === next ? next : withSplitEvents(s, played, []);
 }
 
 function reshuffleThreshold(rules: GameRules): number {

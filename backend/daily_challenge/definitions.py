@@ -71,6 +71,7 @@ from functools import cache
 from typing import Any, Literal
 
 from entitlements.service import DISABLED_GAMES
+from games.boards.editions import edition_switch_on
 from settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -262,8 +263,11 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _won("solitaire", "medium"),
         _won_within("solitaire", "moves", 120, "hard"),
     ),
-    # final_score = the player's highest level solved (23 levels), sent on every
-    # solved level, replays included (#2625). Abandons carry no score.
+    # final_score = the player's highest level solved, sent on every solved
+    # level, replays included (#2625). Abandons carry no score. These 3/8/15 were
+    # set for the old 23 levels and stay in force while SORT_CATALOG_EDITION_ENFORCED
+    # is off (store builds from before the 120-level catalog top out at 23). Once
+    # the switch is on, picks use SORT_CATALOG_GOALS (10/30/60) instead (#3728).
     "sort": (
         _at_least("sort", "final_score", 3, "easy"),
         _at_least("sort", "final_score", 8, "medium"),
@@ -292,6 +296,21 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _at_least("sudoku", "final_score", 280, "hard"),
     ),
 }
+
+# Sort's goals for the fixed 120-level catalog (#2761): the middle of chapters
+# 1-3. Only drawn once ``SORT_CATALOG_EDITION_ENFORCED`` is on (#3728), since
+# older store builds cannot reach 30 or 60. Frozen days keep their own spec.
+SORT_CATALOG_GOALS: tuple[Goal, Goal, Goal] = (
+    _at_least("sort", "final_score", 10, "easy"),
+    _at_least("sort", "final_score", 30, "medium"),
+    _at_least("sort", "final_score", 60, "hard"),
+)
+
+
+def sort_catalog_goals_on() -> bool:
+    """Read lazily at pick time, like the Sort board's edition switch."""
+    return edition_switch_on("sort_catalog_edition_enforced")
+
 
 # Blackjack moved to premium on 2026-09-23 (simulated gambling would raise the
 # app's age rating); Mahjong moved to premium on 2026-09-24 (owner decision,
@@ -363,12 +382,17 @@ def pick_games(day: date, slate: Slate, salt: int) -> tuple[str, str]:
 
 
 @cache
-def pick_template(day: date, slate: Slate, salt: int) -> Template:
+def pick_template(day: date, slate: Slate, salt: int, sort_catalog: bool = False) -> Template:
     """The day's computed template. Memoised (#2966): a pure function of hashable
     arguments over the static pools (as ``rotation`` is), returning a frozen
     ``Template`` of frozen ``Goal``s, so a cached result can be shared. The streak
-    asks for ~120 of them per ``/stats/me``. One entry per (day, slate, salt)."""
+    asks for ~120 of them per ``/stats/me``. One entry per (day, slate, salt,
+    sort_catalog). ``sort_catalog`` swaps in ``SORT_CATALOG_GOALS`` for Sort; it is
+    an argument (not read here) so the memo stays pure — ``template_for`` passes the
+    live switch."""
     pool = GOAL_POOLS[slate]
+    if sort_catalog:
+        pool = {**pool, "sort": SORT_CATALOG_GOALS}
     ordinal = day.toordinal()
     games = (ALWAYS_PRESENT, *pick_games(day, slate, salt))
     # Consecutive goals get consecutive tiers, so a day mixes difficulty.
@@ -389,7 +413,7 @@ def pick_template(day: date, slate: Slate, salt: int) -> Template:
 
 
 def template_for(day: date, slate: Slate = "free") -> Template:
-    return pick_template(day, slate, SALT)
+    return pick_template(day, slate, SALT, sort_catalog_goals_on())
 
 
 @dataclass(frozen=True)

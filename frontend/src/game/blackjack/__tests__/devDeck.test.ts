@@ -112,11 +112,14 @@ describe("Blackjack dev presets (#3576)", () => {
 
   it("6-card 21: player ends with 6 cards totalling 21", () => {
     let s = placeBet(stacked("6-card 21"), 10);
-    for (let i = 0; i < 4; i++) s = hit(s);
+    for (let i = 0; i < 3; i++) s = hit(s);
     expect(s.phase).toBe("player");
+    // The fourth hit makes 21, which stands on its own (#3764).
+    s = hit(s);
     expect(s.player_hand).toHaveLength(6);
     expect(handValue(s.player_hand)).toBe(21);
-    expect(stand(s).outcome).toBe("win");
+    expect(s.phase).toBe("result");
+    expect(s.outcome).toBe("win");
   });
 
   it("Player natural: settles as blackjack at the deal", () => {
