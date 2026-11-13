@@ -151,6 +151,22 @@ export function feltResultFor(state: BlackjackState, t: Translate): FeltResult |
   return { outcome: state.outcome, payout: state.payout, detail };
 }
 
+/**
+ * The dock's actions (Hit, Stand, Double, Split) are greyed and off: outside the player's phase,
+ * and while the felt outlines a hand other than the one the engine plays (#3764 review). A hand
+ * that stands on its own on 21 moves the engine on at once, while the felt still outlines it (or a
+ * hand passed over on the way) until its cards land; a tap then would act on a hand the player has
+ * not seen outlined, or whose held card has not been dealt yet. A normal move to the next hand
+ * outlines the engine's hand at once, so it is never greyed by this.
+ */
+function actionsOff(
+  playing: boolean,
+  outlined: number | null,
+  state: BlackjackState | null
+): boolean {
+  return !playing || (outlined !== null && outlined !== state?.active_hand_index);
+}
+
 export default function BlackjackTableScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { t: tResult } = useTranslation("result");
@@ -356,10 +372,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const handCardsKey = handCards.join(",");
   const dealerCards = shown && !feltBetting ? shown.dealer_hand.cards.length : 0;
   const activeHandIndex = feltPhase === "player" ? (shown?.active_hand_index ?? 0) : null;
-  // 21 stands on its own (#3764): Hit and Stand are never offered while the felt outlines a hand
-  // showing 21. The engine has already moved on, so a tap would act on a hand not yet outlined.
-  const outlinedOn21 =
-    activeHandIndex !== null && (shown ?? state)?.player_hands[activeHandIndex]?.value === 21;
   const feltEstimate = useMemo(
     () =>
       estimateFeltSize({
@@ -697,7 +709,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   only when the result shows on the felt (owner decision, #3720). */}
               {dockPlaying && (
                 <ActionButtons
-                  disabled={!playing || outlinedOn21}
+                  disabled={actionsOff(playing, activeHandIndex, state)}
                   onHit={handleHit}
                   onStand={handleStand}
                   onDoubleDown={handleDoubleDown}

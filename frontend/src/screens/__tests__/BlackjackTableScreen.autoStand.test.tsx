@@ -325,6 +325,8 @@ describe("split hands dealt 21", () => {
     await settle();
     const at = Date.now();
     await press(/^Split —/);
+    // The engine is on hand 2 at once; the felt still outlines hand 1: the dock is greyed.
+    expect(canHit() || canStand()).toBe(false);
     const log = await sample(at, 2500);
     const aceLands = firstAt(log, (x) => x.scores[0] === 21);
     const outlineMoves = firstAt(log, (x) => x.active === 1);
@@ -335,9 +337,10 @@ describe("split hands dealt 21", () => {
     log.forEach((x) => {
       if (x.active === 0) expect(x.scores[0]).not.toBe(21);
     });
-    // Hit and Stand stay live (a tap lands the motion and acts on the hand to play, #3575), and
-    // the hand to play is the one outlined from the Ace's landing on.
-    expect(log.every((x) => x.canAct)).toBe(true);
+    // The dock (#3764 review round 2) is greyed from the Split tap until the outline reaches the
+    // engine's hand, hand 2, as the Ace lands; then live (a tap lands the motion and acts, #3575).
+    expect(firstAt(log, (x) => x.canAct)).toBe(960);
+    log.forEach((x) => expect([x.t, x.canAct]).toEqual([x.t, x.t >= 960]));
     expect(soundsSince(at)).toEqual([
       ["blackjack.chipBet", 300],
       ["blackjack.cardDeal", 720],
@@ -379,5 +382,66 @@ describe("split hands dealt 21", () => {
     // The round is over: Hit and Stand are greyed throughout, and the result shows.
     expect(log.some((x) => x.canAct)).toBe(false);
     expect(resultShown()).toBe(true);
+  });
+});
+
+// #3764 review round 2 (S1): a re-split where a Stand passes a held hand dealt 21 to a later hand.
+// The engine is on hand 3 at once; the felt outlines hand 2 (dealt its Ace) first. A tap in that
+// window must not act: it would draw to hand 3, whose held 7 the player has not seen.
+describe("a Stand that passes a held hand dealt 21 to a later hand", () => {
+  // 10 10 against 6♣ (hole) 9♦. Split: hand 1 gets 10, hand 2 gets 7 (held). Split hand 1 again:
+  // it gets 5, the new hand 2 gets A (held, 21). Hands: 10+5 (to play), 10+A, 10+7.
+  const RESPLIT = [
+    card("10"),
+    card("6", "♣"),
+    card("10", "♥"),
+    card("9", "♦"),
+    card("10", "♦"),
+    card("7", "♣"),
+    card("5", "♦"),
+    card("A", "♣"),
+    card("3", "♥"),
+    card("2", "♥"),
+  ];
+  async function standOn15() {
+    await mountOn(betting(RESPLIT));
+    await dealTen();
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    expect([0, 1, 2].map(scoreOf)).toEqual([15, 10, 10]);
+    expect(handToPlay()).toBe(0);
+    await press(/^Stand/);
+  }
+
+  it("the dock is greyed until the outline reaches the engine's hand, hand 3", async () => {
+    await standOn15();
+    const canAct: [number, boolean, number][] = [];
+    const at = Date.now();
+    for (let t = 0; t < 1500; t += 10) {
+      await advance(10);
+      canAct.push([Date.now() - at, canHit() || canStand(), handToPlay()]);
+    }
+    // Hand 2 outlined from the Stand, its Ace landing at 590; then hand 3, its 7 at 940 / 1180.
+    const live = canAct.find(([, on]) => on)![0];
+    expect(live).toBe(590);
+    canAct.forEach(([t, on, outlined]) => expect([t, on]).toEqual([t, outlined === 2]));
+    expect([0, 1, 2].map(scoreOf)).toEqual([15, 21, 17]);
+  });
+
+  it("a Hit tapped 100 ms after the Stand does not act", async () => {
+    await standOn15();
+    await advance(100);
+    expect(handToPlay()).toBe(1);
+    expect(canHit()).toBe(false);
+    await press(/^Hit/);
+    await settle();
+    // No card was drawn: hand 3 is still 10+7, and it is the hand to play.
+    expect([0, 1, 2].map(scoreOf)).toEqual([15, 21, 17]);
+    expect(screen.queryAllByTestId(/^hand-2-card-\d+$/)).toHaveLength(2);
+    expect(handToPlay()).toBe(2);
+    expect(canHit()).toBe(true);
   });
 });

@@ -826,11 +826,8 @@ export function doubleDown(s: EngineState): EngineState {
       deck,
       player_hands: newHands,
       hand_bets: newBets,
-      events: splitDoubleEvents,
     };
-    if (busted) {
-      next = settleHand(next, idx, "lose");
-    }
+    if (busted) next = settleHand(next, idx, "lose");
     return withSplitEvents(s, advanceHand(next), splitDoubleEvents);
   }
 

@@ -327,6 +327,55 @@ describe("planMotion", () => {
     expect(t.frames[0]!.stage.active).toBe(1);
   });
 
+  // #3764 review round 2 (S2): play ends at a hand that takes a card while a later hand, dealt 21,
+  // still holds its card: the card lands (a bust sounds), the outline moves to the held hand as it
+  // lands, that hand is dealt its card 350 ms later, and the flip follows its landing.
+  it.each([
+    ["a Hit that busts", hit, "K", true],
+    ["a Double that busts", doubleDown, "K", true],
+    ["a Double to 21", doubleDown, "6", false],
+  ] as const)(
+    "%s with a later held hand dealt 21: the card, the outline, the held card, then the flip",
+    (_name, action, draw, busts) => {
+      // 10s split: hand 1 10+5 (to play), hand 2 10+A (held). Dealer 6 (hole) 9 draws a 2.
+      const s0 = placeBet(
+        betting(
+          c("10"),
+          c("6", "♣"),
+          c("10", "♥"),
+          c("9", "♦"),
+          c("5", "♦"),
+          c("A", "♣"),
+          c(draw, "♥"),
+          c("2")
+        ),
+        10
+      );
+      const s1 = split(s0);
+      const t1 = planMotion(view(s0), view(s1))!;
+      expect(t1.held).toEqual([0, 1]);
+      const s2 = action(s1);
+      expect(s2.phase).toBe("result");
+      const t = planMotion(view(s1), view(s2), t1.held)!;
+      const outlined = DEAL_FLIGHT_MS;
+      const aceAt = outlined + ACTIVATE_DEAL_MS;
+      const flipAt = aceAt + DEAL_FLIGHT_MS;
+      expect(cuesOf(t).slice(0, busts ? 4 : 3)).toEqual([
+        ["deal", 0],
+        ...(busts ? [["bust", outlined] as const] : []),
+        ["deal", aceAt],
+        ["flip", flipAt],
+      ]);
+      const at = (ms: number) => t.frames.filter((f) => f.at <= ms).pop()!.stage;
+      expect(at(outlined - 1).active).toBe(0);
+      expect(at(outlined).active).toBe(1);
+      expect(at(aceAt).hands[1]).toBe(2);
+      expect(at(aceAt).active).toBe(1);
+      expect(at(flipAt).holeDown).toBe(false);
+      expect(t.slideMs).toBe(300);
+    }
+  );
+
   it("a new hand's betting has no motion", () => {
     const s0 = stand(placeBet(betting(c("10"), c("7", "♣"), c("5", "♥"), c("9", "♥")), 10));
     expect(planMotion(view(s0), view(newHand(s0)))).toBeNull();

@@ -427,18 +427,10 @@ function planSplit(
     if (nextActive === k) return { start, landed, slideMs: SPLIT_SLIDE_MS, held };
     // The hand to play was dealt 21 and stands on its own (#3764): as its card lands the outline
     // moves on, and the next hand is dealt its card on its own turn, as after a Stand.
-    const played =
-      nextActive === null
-        ? activateRest(b, landed, k + 1, held)
-        : activateThrough(b, landed, k + 1, nextActive, held);
-    return { start, ...played, slideMs: SPLIT_SLIDE_MS };
+    return { start, ...moveOn(b, landed, k + 1, nextActive, held), slideMs: SPLIT_SLIDE_MS };
   }
   landed = dealTo(b, SPLIT_DEAL_MS + DEAL_STAGGER_MS, k + 1, nextCounts[k + 1]! - 1, 1);
-  const played =
-    nextActive === null
-      ? activateRest(b, landed, k + 2, held)
-      : activateThrough(b, landed, k + 2, nextActive, held);
-  return { start, ...played, slideMs: SPLIT_SLIDE_MS };
+  return { start, ...moveOn(b, landed, k + 2, nextActive, held), slideMs: SPLIT_SLIDE_MS };
 }
 
 /**
@@ -474,40 +466,23 @@ function activate(
 }
 
 /**
- * Play moves on from hand `from` to hand `j` at `at`. A hand passed over on the way was dealt 21
- * and stood on its own (#3764): one still holding its card back is outlined and dealt it first,
- * so the felt never skips a card. Then `j` is outlined and dealt what it holds back.
+ * Play moves on at `at` from hand `from` to hand `j`, or, with `j` null, to the dealer's turn. A
+ * hand passed over on the way was dealt 21 and stood on its own (#3764): one still holding its card
+ * back is outlined and dealt it in turn, so the felt never skips a card and never deals one with
+ * an earlier hand outlined. Then `j` is outlined and dealt what it holds back.
  */
-function activateThrough(
+function moveOn(
   b: TimelineBuilder,
   at: number,
   from: number,
-  j: number,
+  j: number | null,
   held: number[]
 ): { landed: number; held: number[] } {
   let step = { landed: at, held };
-  for (let i = from; i < j; i++) {
+  for (let i = from; i < (j ?? held.length); i++) {
     if ((step.held[i] ?? 0) > 0) step = activate(b, step.landed, i, step.held);
   }
-  return activate(b, step.landed, j, step.held);
-}
-
-/**
- * The round's play is over from hand `from` on (every later hand stood on its own on 21, #3764):
- * each that still holds its card back is outlined and dealt it in turn, before the dealer's turn,
- * so no card is dealt with an earlier hand still outlined.
- */
-function activateRest(
-  b: TimelineBuilder,
-  at: number,
-  from: number,
-  held: number[]
-): { landed: number; held: number[] } {
-  let step = { landed: at, held };
-  for (let i = from; i < held.length; i++) {
-    if ((step.held[i] ?? 0) > 0) step = activate(b, step.landed, i, step.held);
-  }
-  return step;
+  return j === null ? step : activate(b, step.landed, j, step.held);
 }
 
 /** Deals the `n` cards hand `j` held back: they are its last. */
@@ -540,11 +515,9 @@ function planPlay(
     // A Stand: the next hand to play is outlined (the rows re-lay) and dealt what it held back,
     // or the dealer plays.
     const start = { ...base, active: k };
-    if (nextActive === null) {
-      const rest = activateRest(b, 0, k + 1, held);
-      return { start, ...rest, slideMs: rest.landed > 0 ? SPLIT_SLIDE_MS : REFAN_MS };
-    }
-    return { start, ...activateThrough(b, 0, k + 1, nextActive, held), slideMs: SPLIT_SLIDE_MS };
+    const played = moveOn(b, 0, k + 1, nextActive, held);
+    const moves = nextActive !== null || played.landed > 0;
+    return { start, ...played, slideMs: moves ? SPLIT_SLIDE_MS : REFAN_MS };
   }
   if (nextCounts.some((n, i) => n !== (i === grew ? p.counts[i]! + 1 : p.counts[i]))) return null;
   b.cue(0, "deal");
@@ -552,20 +525,14 @@ function planPlay(
   const hands = base.hands.map((n, i) => (i === grew ? n + 1 : n));
   const start = { ...base, hands, active: k };
   if (nextActive === k) return { start, landed: DEAL_FLIGHT_MS, slideMs: REFAN_MS, held };
-  if (nextActive === null) {
-    // The round's play ends here. A later hand that stood on its own on 21 still holding its card
-    // is outlined and dealt it before the dealer's turn (#3764).
-    const rest = activateRest(b, DEAL_FLIGHT_MS, grew + 1, held);
-    if (rest.landed > DEAL_FLIGHT_MS && (next.player_hands[grew]?.value ?? 0) > 21) {
-      b.cue(DEAL_FLIGHT_MS, "bust");
-    }
-    const slideMs = rest.landed > DEAL_FLIGHT_MS ? SPLIT_SLIDE_MS : REFAN_MS;
-    return { start, ...rest, slideMs };
-  }
-  // A split hand is done (bust, doubled, or 21, #3764): the next one is outlined as its card lands.
-  if ((next.player_hands[grew]?.value ?? 0) > 21) b.cue(DEAL_FLIGHT_MS, "bust");
-  const played = activateThrough(b, DEAL_FLIGHT_MS, grew + 1, nextActive, held);
-  return { start, ...played, slideMs: SPLIT_SLIDE_MS };
+  // A split hand is done (bust, doubled, or 21, #3764): the next one is outlined as its card lands,
+  // or, when play ends here, any later hand passed over on 21 still holding its card is outlined
+  // and dealt it before the dealer's turn. Either way play moves on to a hand, and a bust sounds
+  // as its card lands; one that ends the round at once has the result's chime only.
+  const played = moveOn(b, DEAL_FLIGHT_MS, grew + 1, nextActive, held);
+  const moves = nextActive !== null || played.landed > DEAL_FLIGHT_MS;
+  if (moves && (next.player_hands[grew]?.value ?? 0) > 21) b.cue(DEAL_FLIGHT_MS, "bust");
+  return { start, ...played, slideMs: moves ? SPLIT_SLIDE_MS : REFAN_MS };
 }
 
 /**
