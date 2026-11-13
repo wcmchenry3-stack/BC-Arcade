@@ -56,7 +56,9 @@ export function withClock<T extends PlayClock>(target: T, clock: PlayClock): T {
 /** Play time so far: what is banked plus the running segment, if any. */
 export function clockElapsedMs(clock: PlayClock, now: number = Date.now()): number {
   // A device clock set back mid-segment makes `now - startedAt` negative: a
-  // segment banks 0 at the least, never a negative play time (#3738).
+  // segment banks 0 at the least, never a negative play time (#3738). A
+  // startedAt in the future banks 0 until now catches up, so time played during
+  // a backwards jump is intentionally not credited.
   return clock.accumulatedMs + (clock.startedAt !== null ? Math.max(0, now - clock.startedAt) : 0);
 }
 
