@@ -156,10 +156,14 @@ export default function SortScreen() {
         !(before.length > 0 && isBottleSolved(before))
       ) {
         fireSortHaptic("complete");
+        audio.playComplete(); // as the badge pops (#3661); not the winning pour: the win covers it
       } else {
         fireSortHaptic("land");
       }
       if (nextState.isComplete) {
+        // The win chimes start with the cascade (the landing), so their chord lands as the card
+        // opens (#3661). Under Reduce Motion or a screen reader the card opens at once and the
+        // sound plays as it is.
         audio.playWin();
       }
     },
@@ -414,6 +418,7 @@ export default function SortScreen() {
       if ((gameState.bottles[index]?.length ?? 0) > 0) {
         setGameState({ ...gameState, selectedBottleIndex: index });
         fireSortHaptic("select");
+        audio.playSelect();
       }
       return;
     }
@@ -435,17 +440,20 @@ export default function SortScreen() {
       boardChanged();
       setHistory((h) => [...h, snapshot]);
       setGameState({ ...gameState, selectedBottleIndex: null });
-      audio.playPour();
+      // The lift now, a glug per unit on the pour's timeline (#3661).
+      audio.playPour(units, reduceMotion);
     } else {
       // Refused (#3660): the destination shakes "no" and the selection clears, as before.
       setRefused({ index, seq: ++refusedSeqRef.current });
       fireSortHaptic("refused");
+      audio.playRefused();
       setGameState({ ...gameState, selectedBottleIndex: null });
     }
   }
 
   function handleUndo() {
     if (!gameState || isPouring || winCascade) return;
+    audio.playUndo();
     const { state: newState, history: newHistory } = undoState(gameState, history);
     setUndoSeq((n) => n + 1);
     boardChanged();
@@ -467,6 +475,7 @@ export default function SortScreen() {
         const first = result.moves[0];
         if (first) {
           setHintTo({ from: first.from, to: first.to });
+          audio.playHint();
           setGameState((cur) =>
             cur && !cur.isComplete ? { ...cur, selectedBottleIndex: first.from } : cur
           );
@@ -533,6 +542,7 @@ export default function SortScreen() {
       }
       setHintNotice(null);
       setHintTo(null);
+      audio.playUndo();
       setUndoSeq((n) => n + 1);
       setGameState(state);
       setHistory(rest);
@@ -551,6 +561,7 @@ export default function SortScreen() {
     setHintTo(null);
     setIsHinting(false);
     cancelPour();
+    audio.cancelPour(); // no glug for a pour that was dropped (#3661)
     // A cascade cut short by leaving the board must not come back as the card.
     if (cascadeRef.current === "playing") cascadeRef.current = "done";
     setWinCascade(false);
