@@ -491,8 +491,12 @@ never arrived) cannot show as a GAP, since the indexes that did arrive are
 contiguous: it shows only as `game_ended` absent. A Star Swarm game also gets
 its per-wave summaries, decoded `wave_timeline` rows and the reconciliation
 between them (#3395, `backend/starswarm/replay.py`; a sampled diagnostic, not a
-frame-by-frame replay). Tests: `backend/tests/test_replay_game.py`,
-`backend/tests/test_replay_game_starswarm_timeline.py`.
+frame-by-frame replay). A Sort level is rebuilt step by step from its
+`moves` events with a verdict (`complete`, `incomplete` or `invalid`; #3388,
+`backend/sort/rebuild.py`, [docs/games/sort.md](games/sort.md#replay-recording)).
+Tests: `backend/tests/test_replay_game.py`,
+`backend/tests/test_replay_game_starswarm_timeline.py`,
+`backend/tests/test_replay_game_sort.py`, `backend/tests/test_sort_rebuild.py`.
 
 ### Privacy notes
 
