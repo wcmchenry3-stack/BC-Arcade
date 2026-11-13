@@ -1,0 +1,246 @@
+/**
+ * The player's personal best per game, on this device (#3757; owner decision #3798).
+ *
+ * One storage format and one API for every game that keeps a best: the result card's "Best" and
+ * "New best", and end beats such as Yacht's solo win. The device is the source of truth: nothing
+ * here reads or writes the server (a one-off seed from the server is #3802).
+ *
+ * - **Format.** One AsyncStorage key per game, `personal_best_v1:<game>`, holding
+ *   `{"v":1,"b":{"<variant>":<best>}}`. A game without variants uses the variant `"_"`; a game
+ *   whose best is per difficulty, mode or layout keys it by that (`"classic.easy"`, `"turtle"`).
+ *   A payload is a few dozen bytes per variant.
+ * - **What "best" means** is the game's own metric as before #3757 (higher or lower is better, and
+ *   which values can be a best at all): `PERSONAL_BEST_GAMES` in `personalBestGames.ts`. The
+ *   "new best" rule stays `bestOf`: the first result sets the best but is never a new best.
+ * - **Writes** happen only when a best improves (and once to move an older save in, below). Every
+ *   read and write for a game runs in order, so two results finishing together can't lower a best.
+ *   None of this is on the frame or gesture path: screens read the best when a game starts and
+ *   record once when it ends.
+ * - **Older saves** (each game's key before #3757) are moved in on the first read: the older
+ *   value is merged in (the better one wins, so a best is never lowered or lost), written in the
+ *   new format, and only once that write has landed is the old key removed. A failed write leaves
+ *   the old key for the next read to try again, so the move is idempotent.
+ * - **Fail-safe.** Nothing here throws. A payload that can't be parsed reads as no best (reported
+ *   as a warning and removed); a stored value that can't be a best for its game is dropped. When
+ *   storage can't be read at all, nothing is written, so a best it couldn't see is never
+ *   overwritten.
+ *
+ * Cost: no server I/O at all. Storage: one small key per game played; a write only when a best
+ * improves.
+ */
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Sentry from "@sentry/react-native";
+
+import { bestOf, type BestResult } from "./bestOf";
+import {
+  PERSONAL_BEST_GAMES,
+  type PersonalBestGame,
+  type PersonalBestSpec,
+} from "./personalBestGames";
+
+export type { PersonalBestGame } from "./personalBestGames";
+export type { BestResult } from "./bestOf";
+
+/** The variant of a game whose best is not split by difficulty, mode, layout or level. */
+export const DEFAULT_VARIANT = "_";
+
+const SUBSYSTEM = "personalBest";
+const FORMAT_VERSION = 1;
+
+/** Best per variant. */
+export type Bests = Readonly<Record<string, number>>;
+
+export function storageKey(game: PersonalBestGame): string {
+  return `personal_best_v1:${game}`;
+}
+
+function report(e: unknown, op: string): void {
+  Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op } });
+}
+
+/** `value` can be a best for `spec`'s game (a real number, and plausible for that game). */
+function plausible(spec: PersonalBestSpec, value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && spec.isPlausible(value);
+}
+
+/** The plausible entries of `raw` (an object of variant → best), or none. */
+function keepPlausible(spec: PersonalBestSpec, raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [variant, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (variant.length > 0 && plausible(spec, value)) out[variant] = value;
+  }
+  return out;
+}
+
+/** Both sets of bests in one: per variant, the better value wins. Pure. */
+export function mergeBests(game: PersonalBestGame, a: Bests, b: Bests): Bests {
+  const { lowerIsBetter } = PERSONAL_BEST_GAMES[game];
+  const merged: Record<string, number> = { ...a };
+  for (const [variant, value] of Object.entries(b)) {
+    const current = merged[variant];
+    if (current === undefined || (lowerIsBetter ? value < current : value > current)) {
+      merged[variant] = value;
+    }
+  }
+  return merged;
+}
+
+function sameBests(a: Bests, b: Bests): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
+
+/**
+ * A result of `value` against the best `prior` for `game` (0: no best on record), without
+ * touching storage: for screens that snapshot the best when a game starts and decide the end
+ * synchronously. A value that can't be a best for the game (e.g. a 0 score, a Mahjong clear under
+ * the floor) changes nothing; a prior that can't be one counts as no best.
+ */
+export function judgeResult(game: PersonalBestGame, prior: number, value: number): BestResult {
+  const spec = PERSONAL_BEST_GAMES[game];
+  const priorBest = plausible(spec, prior) ? prior : 0;
+  if (!plausible(spec, value)) return { best: priorBest, improved: false, isNewBest: false };
+  return bestOf(priorBest, value, spec.lowerIsBetter);
+}
+
+// ---------------------------------------------------------------------------
+// Storage
+// ---------------------------------------------------------------------------
+
+/** Each game's reads and writes, in order (see the header). */
+const queues = new Map<PersonalBestGame, Promise<unknown>>();
+
+function inOrder<T>(game: PersonalBestGame, op: () => Promise<T>): Promise<T> {
+  const previous = queues.get(game) ?? Promise.resolve();
+  const next = previous.then(op, op);
+  queues.set(
+    game,
+    next.catch(() => {})
+  );
+  return next;
+}
+
+interface Loaded {
+  bests: Bests;
+  /** Storage was read, so writing `bests` back can't lose a best it didn't see. */
+  readable: boolean;
+}
+
+/** Parses the stored record; null when it is corrupt. */
+function parseRecord(spec: PersonalBestSpec, raw: string): Record<string, number> | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const { v, b } = parsed as { v?: unknown; b?: unknown };
+    if (v !== FORMAT_VERSION || b === null || typeof b !== "object" || Array.isArray(b)) {
+      return null;
+    }
+    return keepPlausible(spec, b);
+  } catch {
+    return null;
+  }
+}
+
+async function write(game: PersonalBestGame, bests: Bests): Promise<boolean> {
+  try {
+    await AsyncStorage.setItem(storageKey(game), JSON.stringify({ v: FORMAT_VERSION, b: bests }));
+    return true;
+  } catch (e) {
+    report(e, "save");
+    return false;
+  }
+}
+
+/** The stored bests, with any older save moved in (see the header). Never rejects. */
+async function load(game: PersonalBestGame): Promise<Loaded> {
+  const spec = PERSONAL_BEST_GAMES[game];
+  const key = storageKey(game);
+  const legacyKeys = spec.legacy?.keys ?? [];
+  let stored: Record<string, string | null>;
+  try {
+    stored = await AsyncStorage.getMany([key, ...legacyKeys]);
+  } catch (e) {
+    report(e, "load");
+    return { bests: {}, readable: false };
+  }
+
+  let current: Bests = {};
+  const raw = stored[key];
+  if (raw != null) {
+    const parsed = parseRecord(spec, raw);
+    if (parsed) {
+      current = parsed;
+    } else {
+      Sentry.captureMessage(`${SUBSYSTEM}: corrupt record, reading as no best`, {
+        level: "warning",
+        tags: { subsystem: SUBSYSTEM, op: "load" },
+        extra: { key },
+      });
+      await AsyncStorage.removeItem(key).catch(() => {});
+    }
+  }
+
+  const presentLegacy = legacyKeys.filter((k) => stored[k] != null);
+  if (presentLegacy.length === 0 || !spec.legacy) return { bests: current, readable: true };
+
+  let imported: Bests = {};
+  try {
+    imported = keepPlausible(spec, spec.legacy.read(stored));
+  } catch {
+    // An older save that can't be read holds no best to keep.
+  }
+  const merged = mergeBests(game, current, imported);
+  const saved = sameBests(merged, current) ? true : await write(game, merged);
+  if (saved) {
+    try {
+      await AsyncStorage.removeMany(presentLegacy);
+    } catch (e) {
+      // The new record is written; the old key is merged in again (idempotently) next read.
+      report(e, "migrate");
+    }
+  }
+  return { bests: merged, readable: true };
+}
+
+/** Every stored best for `game`, by variant. Never rejects: none on failure. */
+export function getBests(game: PersonalBestGame): Promise<Bests> {
+  return inOrder(game, async () => (await load(game)).bests);
+}
+
+/** The best for `game` (and `variant`); 0 when none is on record. Never rejects. */
+export async function getBest(
+  game: PersonalBestGame,
+  variant: string = DEFAULT_VARIANT
+): Promise<number> {
+  return (await getBests(game))[variant] ?? 0;
+}
+
+/**
+ * Records a finished game's `value` for `game` (and `variant`) and returns how it compares with
+ * the stored best (`judgeResult`). Writes only when the best improves, and never when storage
+ * could not be read. Never rejects.
+ */
+export function recordResult(game: PersonalBestGame, value: number): Promise<BestResult>;
+export function recordResult(
+  game: PersonalBestGame,
+  variant: string | undefined,
+  value: number
+): Promise<BestResult>;
+export function recordResult(
+  game: PersonalBestGame,
+  variantOrValue: string | number | undefined,
+  maybeValue?: number
+): Promise<BestResult> {
+  const variant =
+    typeof variantOrValue === "string" && variantOrValue.length > 0
+      ? variantOrValue
+      : DEFAULT_VARIANT;
+  const value = typeof variantOrValue === "number" ? variantOrValue : (maybeValue ?? 0);
+  return inOrder(game, async () => {
+    const { bests, readable } = await load(game);
+    const result = judgeResult(game, bests[variant] ?? 0, value);
+    if (result.improved && readable) await write(game, { ...bests, [variant]: result.best });
+    return result;
+  });
+}
