@@ -64,13 +64,13 @@ export interface CascadeSetup {
   settleMs: number;
 }
 
-/** The floor's top edge: the bin's pieces rest on it (`engine.lid` fixture: r101 at y 479). */
+/** The floor's top edge: the bin's pieces rest on it. */
 const FLOOR_Y = 580;
 const ticksMs = (ticks: number): number => ticks * FIXED_STEP_MS;
 
 /**
  * A column of pieces of distinct tiers (so none merge), bottom first, centred at `x`, each
- * resting on the one below (1 px apart so Matter doesn't start overlapped).
+ * resting on the one below (1 px apart so the solver does not start them overlapped).
  */
 function column(tiers: number[], x: number): CascadeSetup["pieces"] {
   const out: CascadeSetup["pieces"] = [];
@@ -83,29 +83,19 @@ function column(tiers: number[], x: number): CascadeSetup["pieces"] {
   return out;
 }
 
-/** Pieces side by side on the floor, left to right, the first centred at `x`, 1 px apart. */
-function row(tiers: number[], x: number): CascadeSetup["pieces"] {
-  const out: CascadeSetup["pieces"] = [];
-  let left = x - tierRadius(tiers[0]!);
-  for (const tier of tiers) {
-    const r = tierRadius(tier);
-    out.push({ tier, x: left + r, y: FLOOR_Y - r - 1 });
-    left += 2 * r + 1;
-  }
-  return out;
-}
-
 /**
  * The pile for each demo set-up. All are plain restores, so every rule is the live one.
  *
- *  - `chain`: tiers 1, 2, 3 side by side on the floor, the 1 just under the middle of the board, and
- *    the queue scripted as cherries (tier 0). Two drops at the middle (taps on the board):
- *    the first rolls off the 1 to its left, the second lands on it and makes a 1, which
- *    touches the 1 and makes a 2, which touches the 2 and makes a 3. Three merges, 14 points. It
- *    holds for a drop within 3 px of the middle (a tap lands on 200 give or take 1 px),
- *    not for a wide miss: the pile is a set-up, not a rule.
- *  - `nearLid`: the left tower of the lid test's fixture (a capstone, a tier 10 and a tier 9; its
- *    top edge is over the lid), fast-forwarded past the restore grace and a sixth of the
+ *  - `chain`: a column of tiers 2, 1 and 0 (a cherry on top) under the middle of the board, and
+ *    the queue scripted as cherries. One drop at the middle (a tap on the board) lands on the
+ *    cherry and makes a 1, which drops onto the 1 and makes a 2, which drops onto the 2 and makes
+ *    a 3: three merges, 14 points. It holds for a drop within 3 px of the middle (a tap lands on
+ *    200 give or take 1 px), not for a wide miss: the pile is a set-up, not a rule. (#3697: on
+ *    the lively physics a free cherry rolls away on the floor, so the old set-up, tiers 1, 2 and 3
+ *    side by side where the first of two drops had to come to rest beside the 1, no longer held;
+ *    the cherry it waited for is now part of the pile.)
+ *  - `nearLid`: a tower like the lid test's fixture (a capstone and tiers 10, 9, 8 and 7; its
+ *    top edge is over the lid; #3697: three pieces no longer reach it), fast-forwarded past the restore grace and a sixth of the
  *    count, so the ring is draining when the screen shows it and the lid ends the game
  *    about 2.5 s later.
  *  - `fillBin`: that tower plus a right-hand tower; the lid ends the game (the live rule, no
@@ -113,11 +103,11 @@ function row(tiers: number[], x: number): CascadeSetup["pieces"] {
  */
 export function cascadeSetup(id: CascadeSetupId): CascadeSetup {
   const mid = WORLD_WIDTH / 2;
-  const leftTower = column([11, 10, 9], 121);
+  const leftTower = column([11, 10, 9, 8, 7], 121);
   switch (id) {
     case "chain":
       return {
-        pieces: row([1, 2, 3], mid - 2),
+        pieces: column([2, 1, 0], mid),
         queue: Array<number>(6).fill(0),
         settleMs: ticksMs(60),
       };
@@ -127,9 +117,9 @@ export function cascadeSetup(id: CascadeSetupId): CascadeSetup {
         settleMs: ticksMs(OVERFLOW_IGNORE_MERGE_TICKS + 30),
       };
     case "fillBin":
-      // Right lane (x 222 to 380), tiers 8..4 stacked up past the lid. The tiers differ, so
-      // nothing merges.
-      return { pieces: [...leftTower, ...column([8, 7, 6, 5, 4], 313)], settleMs: 0 };
+      // Right lane (x 246 to 380), tiers 10, 9, 8, 7, 6 and 4 stacked up past the lid. The tiers
+      // differ within a tower, and the towers are too far apart to touch, so nothing merges.
+      return { pieces: [...leftTower, ...column([10, 9, 8, 7, 6, 4], 313)], settleMs: 0 };
   }
 }
 

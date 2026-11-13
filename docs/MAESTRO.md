@@ -86,7 +86,7 @@ Visual and audio stories must show the owner the change running on iOS and Andro
 | `demo-open.yaml` | Home → Cascade board | `cascade-demo-open` | `cascade-demo-open` |
 | `demo-drop.yaml` | one drop down the middle | `cascade-demo-drop-before`, `cascade-demo-drop-after` | `cascade-demo-drop` |
 | `demo-merge.yaml` | drops until the score container (`cascade-score`, label "Score: N") leaves 0, i.e. a merge | `cascade-demo-merge-before`, `cascade-demo-merge-after` | `cascade-demo-merge` |
-| `demo-chain.yaml` | `cascade-test-chain`, then two drops: a chain of 3 merges (14 points; score check "Score: ≥10") | `cascade-demo-chain-before`, `cascade-demo-chain-after` | `cascade-demo-chain` |
+| `demo-chain.yaml` | `cascade-test-chain`, then one drop: a chain of 3 merges (14 points; score check "Score: ≥10") | `cascade-demo-chain-before`, `cascade-demo-chain-after` | `cascade-demo-chain` |
 | `demo-danger.yaml` | `cascade-test-near-lid`: the spawner's clock ring draining, then the lid ends the game | `cascade-demo-danger-ring`, `cascade-demo-danger-result` | `cascade-demo-danger` |
 | `demo-loss.yaml` | `cascade-test-fill-bin`: the lid rule ends the game, then the result card (`cascade-result-title`) | `cascade-demo-loss-before`, `cascade-demo-loss-filled`, `cascade-demo-loss-result` | `cascade-demo-loss` |
 

@@ -1,51 +1,68 @@
 /**
- * Cascade engine (#3693): the physics and rules of the merge game, on Matter.js.
+ * Cascade engine (#3693, physics #3697): the rules of the merge game, on planck.js.
  *
  * Headless: no React, no AsyncStorage, no rendering. The screen steps it from a RAF loop
- * (`step(deltaMs)`), calls `drop(tier, x)` for a tap, and reads `getState()` back; scoring, merges
- * and game over are decided here, from `pieceDefs.ts` and `constants.ts`.
+ * (`step(deltaMs)`), calls `drop(tier, x)` for a tap, and reads `getState()` back; scoring, merges,
+ * game over and the win are decided here, from `pieceDefs.ts`, `tiers.ts` and `constants.ts`. The
+ * planck world, the bin and the unit conversions are `physicsWorld.ts`.
  *
- * Determinism and RNG (docs/ARCHITECTURE.md section 3.2, #2985 / #2999):
- *   - This module holds no RNG slot and calls no `Math.random`. Time enters only as the `deltaMs`
- *     passed to `step`, consumed in fixed `FIXED_STEP_MS` substeps (at most `MAX_SUBSTEPS`), so
- *     the same drops stepped by the same deltas replay the same board. A long frame is clamped by
- *     the caller (100 ms) and by `MAX_SUBSTEPS`, so replays must feed the same deltas.
- *   - The only randomness in a game is which tier comes next. It lives in `spawnSelector.ts`
- *     (`selectNextTier(..., rng = Math.random)`) and `pieceQueue.ts`, which take the source as a
- *     parameter; the screen passes a seeded one when a test seeds the queue (`__cascade_setSeed`).
- *     Live play uses `Math.random`, so a live game is not replayable from a seed alone.
- *   - Body ids come from Matter.js's module-level counter and are not reset between games. They
- *     are not saved (`storage.ts` keeps tier and position only) and not part of any result.
+ * Determinism and RNG (docs/ARCHITECTURE.md section 3.2, #2985 / #2999; replays #3858):
+ *   - This module holds no RNG slot and calls no `Math.random`, and neither does planck's solver.
+ *     Time enters only as the `deltaMs` passed to `step`, consumed in fixed `FIXED_STEP_MS`
+ *     substeps (at most `MAX_SUBSTEPS`), so the same drops stepped by the same deltas replay the
+ *     same board, at 60 Hz or 120 Hz. A long frame is clamped by the caller (100 ms) and by
+ *     `MAX_SUBSTEPS`, so replays must feed the same deltas.
+ *   - The only randomness in a game is which tier comes next. It lives in `spawnSelector.ts` and
+ *     `pieceQueue.ts`, which take the source as a parameter; the screen passes a seeded one when a
+ *     test seeds the queue (`__cascade_setSeed`). Live play uses `Math.random`.
+ *   - Piece ids count up from 1 per engine (a new game starts again at 1). They are not saved
+ *     (`storage.ts` keeps tier and position only).
  *   - A restored game (`restore(pieces, score)`) re-creates bodies from saved tier and position,
  *     at rest: velocities are not saved.
  *
+ * Merges (#3697, the owner's "3 lively" tuning; docs/games/cascade.md#physics):
+ *   - Two same-tier pieces merge when they touch (a planck contact begins) or when their circles
+ *     are within `MERGE_GAP_PX` of touching at the end of a fixed step (Box2D can rest two pieces a
+ *     fraction of a pixel apart). The capstone never merges.
+ *   - Grow-in: the merged piece is made at its parents' midpoint, clamped so its FULL circle is
+ *     inside the walls and above the floor, at its parents' radius, and grows to its own over
+ *     `GROW_IN_STEPS` fixed steps; each step keeps the grown circle inside (a shift of at most one
+ *     grow step, never a velocity change). Its neighbours are eased aside instead of being shot
+ *     out by a full-size piece appearing on top of them.
+ *   - Chain reach: a piece still growing in also merges with a same-tier piece its full radius
+ *     would touch (`CHAIN_REACH_PX`), without waiting to grow into it, so a chain runs a step at a
+ *     time.
+ *   - Making the capstone emits `{ type: "win" }` after its merge and score events (#3699 builds
+ *     the celebration and result on it). The game goes on: the engine does not end it.
+ *   - The lid rule, the merge grace and the drop gate always use a tier's FULL radius.
+ *
  * Combo window: `COMBO_WINDOW_TICKS` (120) is counted in fixed steps like the lid, so it is 2 s
- * of simulated time at any frame rate. (Before #3694 it was counted per `step()` call, i.e. per
- * frame: 2 s at 60 Hz but only 1 s at 120 Hz.)
+ * of simulated time at any frame rate.
  *
  * Game over, "the lid" (#3694; docs/games/cascade.md#game-over-the-lid). Everything below is
- * counted in fixed physics steps, inside the substep loop, so 60 and 120 Hz play equivalently (the same rules over the same simulated time, up to
- * frame-boundary rounding):
- *   - Overflow: a SETTLED piece (`body.speed` <= `OVERFLOW_SETTLED_SPEED`, and not the piece
+ * counted in fixed physics steps, inside the substep loop, so 60 and 120 Hz play equivalently:
+ *   - Overflow: a SETTLED piece (speed <= `OVERFLOW_SETTLED_SPEED` px per step, and not a piece
  *     still falling from the spawner) whose TOP edge is above `OVERFLOW_LINE_Y` counts. When one
  *     does on `OVERFLOW_TICKS_THRESHOLD` steps in a row, the game ends.
  *   - Merge grace: only a merge involving a piece in the danger band resets and pauses the count
  *     (`OVERFLOW_IGNORE_MERGE_TICKS`). Merges lower in the bin do nothing.
  *   - Hard stop: a settled piece whose top edge reaches `HARD_STOP_Y` (the canvas top) ends the
- *     game at once, so the pile is never drawn off-screen. The one exception is the last dropped
- *     piece: a large piece spawns with its top edge above the canvas, so it must stay settled
- *     up there for `HARD_STOP_SETTLE_TICKS` steps (0.5 s) first. Otherwise brushing a pile that
- *     reaches just under the lid would end the game with no countdown. If it stays, it ends.
+ *     game at once. The one exception is the last dropped piece: it must stay settled up there
+ *     for `HARD_STOP_SETTLE_TICKS` steps (0.5 s) first.
  *   - Drop gating: `canDrop()` is false until the last dropped piece is below the lid (its top
  *     edge at or under the line). It cannot deadlock: once that piece lands on something it is an
  *     ordinary piece, so if it rests over the lid the overflow rule ends the game.
  *   - `dangerRatio` (state) = overflow count / threshold, 0..1, for the screen's countdown.
  *
- * Constants are in `constants.ts` and the tier ladder in `tiers.ts` (#3695). Persistence is
- * `storage.ts`; layout is `layout.ts`. Notes for the rework: docs/games/cascade.md.
+ * Guard rail: none in normal play. The thick walls keep every piece in the bin, so nothing is
+ * ever teleported. The one safety left is for a piece that has escaped the bin outright (its
+ * centre past a wall's or the floor's inner face by more than its radius, or a non-finite
+ * position): it is put back inside, stopped, and `guardRailFired` ("escaped") is emitted, which
+ * the screen logs in dev builds and the sim gate requires to be 0.
  */
-import * as Matter from "matter-js";
-import { PIECE_DEFS, MAX_TIER, type PieceDef } from "./pieceDefs";
+import type { Body, Fixture } from "planck";
+import { PIECE_DEFS, MAX_TIER } from "./pieceDefs";
+import { TIERS, tierRadius } from "./tiers";
 import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
@@ -58,33 +75,39 @@ import {
   HARD_STOP_Y,
   HARD_STOP_SETTLE_TICKS,
   DANGER_STACK_MARGIN,
-  GRAVITY_Y,
-  GRAVITY_SCALE,
-  PIECE_RESTITUTION,
-  PIECE_FRICTION,
-  PIECE_FRICTION_AIR,
   PIECE_ANGULAR_DAMPING,
   MAX_ANGULAR_VELOCITY,
   FIXED_STEP_MS,
   MAX_SUBSTEPS,
   MERGE_POP_IMPULSE,
-  GUARD_RAIL_HORIZONTAL_TOLERANCE,
-  PIECE_SLEEP_THRESHOLD,
-  PIECE_SLEEP_MIN_FRAMES,
   MAX_SPAWN_VELOCITY,
   COMBO_WINDOW_TICKS,
+  GROW_IN_STEPS,
+  MERGE_GAP_PX,
+  CHAIN_REACH_PX,
+  PX_PER_M,
 } from "./constants";
+import {
+  M_S_TO_PX_STEP,
+  STEP_S,
+  createPhysicsWorld,
+  setPositionPx,
+  setRadiusPx,
+  setVelocityPx,
+  type FixtureTag,
+  type PhysicsWorld,
+} from "./physicsWorld";
 
 // Pixels above the overflow line where a newly dropped piece's centroid starts.
 const DROP_SPAWN_INSET = 5;
-/** Matter.js's default body density; a ladder density of 1 (`tiers.ts`) keeps it. */
-const MATTER_DEFAULT_DENSITY = 0.001;
+const FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;
 
 export interface EngineConfig {
-  // Reserved for future multi-board or variable-size support.
-  // Currently unused — world dimensions are taken from constants.ts.
-  worldWidth?: number;
-  worldHeight?: number;
+  /**
+   * Step-cost bench only (`stepBench.ts`, the dev panel): `noMerges` / `noLid` keep a full board
+   * of small pieces so a step can be timed with ~90 of them. Never set in a game.
+   */
+  bench?: { noMerges?: boolean; noLid?: boolean };
 }
 
 export interface PieceSnapshot {
@@ -92,19 +115,34 @@ export interface PieceSnapshot {
   tier: number;
   x: number;
   y: number;
+  /** Velocity, px per fixed step. */
   vx: number;
   vy: number;
   angle: number;
   shapeKind: "circle" | "convex";
   isSleeping: boolean;
+  /** Collider radius / the tier's radius: below 1 while a merged piece grows in, else 1. */
+  scale: number;
 }
 
 export type EngineEvent =
-  | { type: "merge"; tierA: number; tierB: number; result: number; x: number; y: number }
+  | {
+      type: "merge";
+      tierA: number;
+      tierB: number;
+      result: number;
+      x: number;
+      y: number;
+      /** The merged piece's id, and its two parents' (for the sim's chain timing and replays). */
+      id: number;
+      parentIds: readonly [number, number];
+    }
   | { type: "score"; delta: number; total: number }
   | { type: "gameOver"; reason: GameOverReason }
   | { type: "guardRailFired"; reason: string; bodyId: number }
-  | { type: "cascadeCombo"; count: number };
+  | { type: "cascadeCombo"; count: number }
+  /** The capstone was made (#3699): where, and its piece id. Emitted once per capstone. */
+  | { type: "win"; x: number; y: number; id: number };
 
 /** Why the game ended: the pile stayed over the lid, or a piece reached the canvas top. */
 export type GameOverReason = "overflow" | "hardStop";
@@ -123,17 +161,37 @@ export interface GameState {
   canDrop: boolean;
 }
 
-/** A piece's radius for the lid rule (bounding radius for convex shapes). */
-function pieceRadius(def: PieceDef): number {
-  return def.shape.kind === "circle" ? def.shape.radius : def.shape.boundingRadius;
+/**
+ * One live piece; it is also the planck fixture's user data, so a contact names it directly.
+ * `x`, `y` and `speed` are read from the body once per fixed step (`_readBodies`).
+ */
+interface PieceEntry {
+  readonly id: number;
+  readonly tier: number;
+  body: Body;
+  fixture: Fixture;
+  /** The tier's radius (px): what the lid, the gate and the spawn use. */
+  readonly full: number;
+  /** The collider's radius right now (px): smaller than `full` while growing in. */
+  r: number;
+  /** Grow-in: the radius it started at, and the steps done (`GROW_IN_STEPS` = done). */
+  growFrom: number;
+  growStep: number;
+  /** Still falling from the spawner: not yet touched another piece or the floor. */
+  falling: boolean;
+  /**
+   * #2960: true once the post-physics pass has run on the body while it was asleep: a sleeping
+   * body does not move, so later steps skip it until it wakes.
+   */
+  railsAtRest: boolean;
+  x: number;
+  y: number;
+  /** |velocity|, px per fixed step. */
+  speed: number;
 }
 
-/** Writes one body into `out` (a new snapshot when `out` is undefined) and returns it. */
-function writeSnapshot(
-  out: PieceSnapshot | undefined,
-  body: Matter.Body,
-  tier: number
-): PieceSnapshot {
+/** Writes one piece into `out` (a new snapshot when `out` is undefined) and returns it. */
+function writeSnapshot(out: PieceSnapshot | undefined, e: PieceEntry): PieceSnapshot {
   const snap: PieceSnapshot = out ?? {
     id: 0,
     tier: 0,
@@ -144,65 +202,39 @@ function writeSnapshot(
     angle: 0,
     shapeKind: "circle",
     isSleeping: false,
+    scale: 1,
   };
-  snap.id = body.id;
-  snap.tier = tier;
-  snap.x = body.position.x;
-  snap.y = body.position.y;
-  snap.vx = body.velocity.x;
-  snap.vy = body.velocity.y;
-  snap.angle = body.angle;
-  snap.shapeKind = PIECE_DEFS[tier]!.shape.kind;
-  snap.isSleeping = body.isSleeping;
+  const p = e.body.getPosition();
+  const v = e.body.getLinearVelocity();
+  snap.id = e.id;
+  snap.tier = e.tier;
+  snap.x = p.x * PX_PER_M;
+  snap.y = p.y * PX_PER_M;
+  snap.vx = v.x * M_S_TO_PX_STEP;
+  snap.vy = v.y * M_S_TO_PX_STEP;
+  snap.angle = e.body.getAngle();
+  snap.shapeKind = "circle";
+  snap.isSleeping = !e.body.isAwake();
+  snap.scale = e.r / e.full;
   return snap;
 }
 
-function makeBody(def: PieceDef, x: number, y: number): Matter.Body {
-  const opts = {
-    restitution: PIECE_RESTITUTION,
-    density: MATTER_DEFAULT_DENSITY * def.density,
-    friction: PIECE_FRICTION,
-    frictionAir: PIECE_FRICTION_AIR,
-    label: "piece",
-    slop: 0.05,
-  };
-  let body: Matter.Body;
-  if (def.shape.kind === "circle") {
-    body = Matter.Bodies.circle(x, y, def.shape.radius, opts);
-  } else {
-    const fromVerts = Matter.Bodies.fromVertices(
-      x,
-      y,
-      [def.shape.vertices as Matter.Vector[]],
-      opts
-    );
-    body =
-      fromVerts && fromVerts.vertices?.length
-        ? fromVerts
-        : Matter.Bodies.circle(x, y, def.shape.boundingRadius, opts);
-  }
-  body.sleepThreshold = PIECE_SLEEP_MIN_FRAMES;
-  return body;
-}
-
-/**
- * One live piece. `railsAtRest` (#2960) is true once the post-physics pass has run on the body
- * while it was asleep: a sleeping body does not move, so later steps skip it until it wakes.
- */
-interface PieceEntry {
-  body: Matter.Body;
-  tier: number;
-  railsAtRest: boolean;
-}
-
-function newEntry(body: Matter.Body, tier: number): PieceEntry {
-  return { body, tier, railsAtRest: false };
-}
+const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export class CascadeEngine {
-  private readonly _engine: Matter.Engine;
-  private readonly _world: Matter.World;
-  private readonly _pieces: Map<number, PieceEntry> = new Map();
+  private readonly _physics: PhysicsWorld<PieceEntry>;
+  private readonly _bench: NonNullable<EngineConfig["bench"]>;
+  /** Live pieces in creation order (the order `getState` lists them). */
+  private readonly _pieces = new Map<number, PieceEntry>();
+  /** Live pieces by tier, for the same-tier scans (merge gap, chain reach). */
+  private readonly _byTier: PieceEntry[][] = TIERS.map(() => []);
+  /** Pieces still growing in. */
+  private readonly _growing: PieceEntry[] = [];
+  /** Merges waiting for the end of the step: pairs (a, b), in the order they were found. */
+  private readonly _pendA: PieceEntry[] = [];
+  private readonly _pendB: PieceEntry[] = [];
+  private _fallingCount = 0;
+  private _nextId = 1;
   private _score = 0;
   private _gameOver = false;
   private _overflowTicksCount = 0;
@@ -210,11 +242,7 @@ export class CascadeEngine {
   // counts overflow from its first step.
   private _ticksSinceNearLidMerge = OVERFLOW_IGNORE_MERGE_TICKS + 1;
   // The last dropped piece, until its top edge is below the lid (drop gating).
-  private _dropId: number | null = null;
-  // Dropped pieces still falling from the spawner: they have not yet touched another piece or the
-  // floor. The lid rule ignores them; once they land they count like any other piece.
-  private readonly _falling = new Set<number>();
-  private readonly _pendingMerges = new Set<string>();
+  private _drop: PieceEntry | null = null;
   private _accumulator = 0;
   // Consecutive fixed steps the last dropped piece has been settled with its top edge at or
   // above HARD_STOP_Y (the hard stop waits for HARD_STOP_SETTLE_TICKS of them for that piece).
@@ -223,64 +251,38 @@ export class CascadeEngine {
   private _comboTicksLeft = 0;
   private _comboEmitted = false;
 
-  constructor(_config: EngineConfig = {}) {
-    this._engine = Matter.Engine.create({
-      gravity: { x: 0, y: GRAVITY_Y, scale: GRAVITY_SCALE },
-      enableSleeping: true,
-    });
-    this._engine.positionIterations = 6;
-    this._engine.velocityIterations = 4;
-    // _motionSleepThreshold is not in the public type declarations but is a stable
-    // runtime property on the Sleeping module since Matter.js v0.14.
-    (Matter.Sleeping as unknown as { _motionSleepThreshold: number })._motionSleepThreshold =
-      PIECE_SLEEP_THRESHOLD;
-    this._world = this._engine.world;
-
-    Matter.Composite.add(this._world, [
-      Matter.Bodies.rectangle(WALL_THICKNESS / 2, WORLD_HEIGHT / 2, WALL_THICKNESS, WORLD_HEIGHT, {
-        isStatic: true,
-        friction: PIECE_FRICTION,
-        label: "wall-left",
-      }),
-      Matter.Bodies.rectangle(
-        WORLD_WIDTH - WALL_THICKNESS / 2,
-        WORLD_HEIGHT / 2,
-        WALL_THICKNESS,
-        WORLD_HEIGHT,
-        { isStatic: true, friction: PIECE_FRICTION, label: "wall-right" }
-      ),
-      Matter.Bodies.rectangle(
-        WORLD_WIDTH / 2,
-        WORLD_HEIGHT - FLOOR_THICKNESS / 2,
-        WORLD_WIDTH,
-        FLOOR_THICKNESS,
-        { isStatic: true, friction: PIECE_FRICTION, label: "floor" }
-      ),
-    ]);
-
-    // Only collisionStart is subscribed. collisionActive is intentionally omitted:
-    // Matter.js fires collisionStart even for bodies created already overlapping
-    // (no prior-frame contact), which covers the case of two same-position drops.
-    Matter.Events.on(this._engine, "collisionStart", this._handleCollision);
+  constructor(config: EngineConfig = {}) {
+    this._bench = config.bench ?? {};
+    this._physics = createPhysicsWorld<PieceEntry>(this._onBegin);
   }
 
-  // _handleCollision guards pA.tier >= MAX_TIER, so every pair entering
-  // _pendingMerges is guaranteed to have tier < MAX_TIER and newTier <= MAX_TIER.
-  private readonly _handleCollision = (event: Matter.IEventCollision<Matter.Engine>): void => {
-    for (const pair of event.pairs) {
-      if (this._falling.size > 0) {
-        const landsOn = (other: Matter.Body) => other.label === "piece" || other.label === "floor";
-        if (landsOn(pair.bodyB)) this._falling.delete(pair.bodyA.id);
-        if (landsOn(pair.bodyA)) this._falling.delete(pair.bodyB.id);
-      }
-      const pA = this._pieces.get(pair.bodyA.id);
-      const pB = this._pieces.get(pair.bodyB.id);
-      if (!pA || !pB || pA.tier !== pB.tier || pA.tier >= MAX_TIER) continue;
-      const lo = pair.bodyA.id < pair.bodyB.id ? pair.bodyA.id : pair.bodyB.id;
-      const hi = pair.bodyA.id < pair.bodyB.id ? pair.bodyB.id : pair.bodyA.id;
-      this._pendingMerges.add(`${lo}:${hi}`);
+  /** A planck contact began (inside a world step): landing, and same-tier touches. */
+  private readonly _onBegin = (a: FixtureTag<PieceEntry>, b: FixtureTag<PieceEntry>): void => {
+    if (this._fallingCount > 0) {
+      // A piece has landed once it touches another piece or the floor (not a wall).
+      if (typeof a === "object" && b !== "wall") this._land(a);
+      if (typeof b === "object" && a !== "wall") this._land(b);
     }
+    if (typeof a !== "object" || typeof b !== "object") return;
+    if (a.tier === b.tier && a.tier < MAX_TIER) this._queueMerge(a, b);
   };
+
+  private _land(e: PieceEntry): void {
+    if (!e.falling) return;
+    e.falling = false;
+    this._fallingCount--;
+  }
+
+  private _queueMerge(a: PieceEntry, b: PieceEntry): void {
+    if (this._bench.noMerges) return;
+    const lo = a.id < b.id ? a : b;
+    const hi = a.id < b.id ? b : a;
+    for (let i = 0; i < this._pendA.length; i++) {
+      if (this._pendA[i] === lo && this._pendB[i] === hi) return;
+    }
+    this._pendA.push(lo);
+    this._pendB.push(hi);
+  }
 
   // Lifecycle hook — engine is ready immediately after construction; start() is a
   // no-op placeholder for callers that follow a create/start/destroy lifecycle.
@@ -297,7 +299,7 @@ export class CascadeEngine {
     this._accumulator += deltaMs;
     let substeps = 0;
     while (this._accumulator >= FIXED_STEP_MS && substeps < MAX_SUBSTEPS && !this._gameOver) {
-      Matter.Engine.update(this._engine, FIXED_STEP_MS);
+      this._physics.step();
       this._accumulator -= FIXED_STEP_MS;
       substeps++;
       this._fixedStep(events);
@@ -309,53 +311,16 @@ export class CascadeEngine {
     return { events };
   }
 
-  /** The post-physics work of one fixed step: damping, guard rails, merges, the lid, combos. */
+  /** The post-physics work of one fixed step: grow-in, the safety, merges, the lid, combos. */
   private _fixedStep(events: EngineEvent[]): void {
-    // Angular damping + guard rails (applied post-physics).
-    //
-    // #2960: a body that was already checked while asleep is skipped. Matter does not integrate a
-    // sleeping body and sets its angular velocity to 0 when it falls asleep, so damping it is a
-    // no-op, and its position cannot change until it wakes, so a rail that did not fire on its
-    // first sleeping step (or fired and clamped it in bounds) cannot fire on a later one. The
-    // first sleeping step still runs the full pass: the step it fell asleep in also moved it.
-    for (const entry of this._pieces.values()) {
-      const { body, tier } = entry;
-      if (body.isSleeping) {
-        if (entry.railsAtRest) continue;
-        entry.railsAtRest = true;
-      } else {
-        entry.railsAtRest = false;
-      }
-      const damped = body.angularVelocity * (1 - PIECE_ANGULAR_DAMPING);
-      const clamped =
-        Math.abs(damped) > MAX_ANGULAR_VELOCITY ? Math.sign(damped) * MAX_ANGULAR_VELOCITY : damped;
-      Matter.Body.setAngularVelocity(body, clamped);
-
-      const r = pieceRadius(PIECE_DEFS[tier]!);
-      const minX = WALL_THICKNESS + r;
-      const maxX = WORLD_WIDTH - WALL_THICKNESS - r;
-      const maxY = WORLD_HEIGHT - FLOOR_THICKNESS - r;
-      const bx = body.position.x;
-      const by = body.position.y;
-
-      if (
-        !isFinite(bx) ||
-        !isFinite(by) ||
-        bx < minX - GUARD_RAIL_HORIZONTAL_TOLERANCE ||
-        bx > maxX + GUARD_RAIL_HORIZONTAL_TOLERANCE ||
-        by > maxY
-      ) {
-        Matter.Body.setPosition(body, {
-          x: Math.max(minX, Math.min(maxX, isFinite(bx) ? bx : WORLD_WIDTH / 2)),
-          y: Math.min(maxY, isFinite(by) ? by : WORLD_HEIGHT / 2),
-        });
-        Matter.Body.setVelocity(body, { x: 0, y: 0 });
-        events.push({ type: "guardRailFired", reason: "outOfBounds", bodyId: body.id });
-      }
+    if (this._growing.length > 0) this._growIn();
+    this._readBodies(events);
+    if (!this._bench.noMerges) {
+      this._scanMergeGaps();
+      if (this._growing.length > 0) this._chainReach();
     }
-
     this._processMerges(events);
-    this._applyLid(events);
+    if (!this._bench.noLid) this._applyLid(events);
 
     // Emit as soon as the threshold is reached (after all merges in this step are counted)
     // so the screen can react immediately. Suppressed if gameOver fired in the same step.
@@ -371,92 +336,263 @@ export class CascadeEngine {
     if (this._comboTicksLeft > 0) this._comboTicksLeft--;
   }
 
+  /** One grow-in step for every growing piece, keeping the grown circle inside the bin. */
+  private _growIn(): void {
+    const growing = this._growing;
+    let keep = 0;
+    for (let i = 0; i < growing.length; i++) {
+      const e = growing[i]!;
+      e.growStep++;
+      const r =
+        e.growStep >= GROW_IN_STEPS
+          ? e.full
+          : e.growFrom + ((e.full - e.growFrom) * e.growStep) / GROW_IN_STEPS;
+      e.r = r;
+      setRadiusPx(e.body, e.fixture, r);
+      // It fell a little while it was small: keep the grown circle off the walls and the floor
+      // (a shift of at most one grow step, never a velocity change).
+      const p = e.body.getPosition();
+      const x = p.x * PX_PER_M;
+      const y = p.y * PX_PER_M;
+      const cx = clamp(x, WALL_THICKNESS + r, WORLD_WIDTH - WALL_THICKNESS - r);
+      const cy = Math.min(FLOOR_TOP - r, y);
+      if (cx !== x || cy !== y) setPositionPx(e.body, cx, cy);
+      if (e.growStep < GROW_IN_STEPS) growing[keep++] = e;
+    }
+    growing.length = keep;
+  }
+
   /**
-   * Process pending merges. _handleCollision guarantees tier < MAX_TIER for all
-   * pairs in _pendingMerges, so newTier is always a valid PIECE_DEFS index.
+   * Reads every body once (position, speed), clamps its spin, and catches an escaped piece.
+   *
+   * #2960: a body that was already checked while asleep is skipped. planck does not integrate a
+   * sleeping body, so its position cannot change until it wakes and it cannot newly escape. The
+   * first sleeping step still runs the full pass: the step it fell asleep in also moved it.
    */
-  private _processMerges(events: EngineEvent[]): void {
-    const merged = new Set<number>();
-    for (const key of this._pendingMerges) {
-      const colon = key.indexOf(":");
-      const idA = Number(key.slice(0, colon));
-      const idB = Number(key.slice(colon + 1));
-      if (merged.has(idA) || merged.has(idB)) continue;
+  private _readBodies(events: EngineEvent[]): void {
+    for (const e of this._pieces.values()) {
+      const body = e.body;
+      const awake = body.isAwake();
+      if (!awake) {
+        if (e.railsAtRest) continue;
+        e.railsAtRest = true;
+      } else {
+        e.railsAtRest = false;
+      }
+      const p = body.getPosition();
+      const v = body.getLinearVelocity();
+      e.x = p.x * PX_PER_M;
+      e.y = p.y * PX_PER_M;
+      e.speed = Math.hypot(v.x, v.y) * M_S_TO_PX_STEP;
 
-      const pA = this._pieces.get(idA);
-      const pB = this._pieces.get(idB);
-      if (!pA || !pB || pA.tier !== pB.tier) continue;
-
-      const tier = pA.tier;
-      const newTier = tier + 1;
-      const mx = (pA.body.position.x + pB.body.position.x) / 2;
-      const my = (pA.body.position.y + pB.body.position.y) / 2;
-      // Merge grace (#3694): only a merge with a piece in the danger band counts.
-      const highestTop =
-        Math.min(pA.body.position.y, pB.body.position.y) - pieceRadius(PIECE_DEFS[tier]!);
-      const nearLid = highestTop <= OVERFLOW_LINE_Y + DANGER_STACK_MARGIN;
-
-      Matter.Composite.remove(this._world, pA.body);
-      Matter.Composite.remove(this._world, pB.body);
-      this._pieces.delete(idA);
-      this._pieces.delete(idB);
-      merged.add(idA);
-      merged.add(idB);
-      this._falling.delete(idA);
-      this._falling.delete(idB);
-
-      const mergedVx = (pA.body.velocity.x + pB.body.velocity.x) / 2;
-      const mergedVy = (pA.body.velocity.y + pB.body.velocity.y) / 2 - MERGE_POP_IMPULSE;
-      const newDef = PIECE_DEFS[newTier]!;
-      const newBody = makeBody(newDef, mx, my);
-      Matter.Body.setVelocity(newBody, {
-        x: Math.max(-MAX_SPAWN_VELOCITY, Math.min(MAX_SPAWN_VELOCITY, mergedVx)),
-        y: Math.max(-MAX_SPAWN_VELOCITY, Math.min(MAX_SPAWN_VELOCITY, mergedVy)),
-      });
-      Matter.Composite.add(this._world, newBody);
-      this._pieces.set(newBody.id, newEntry(newBody, newTier));
-      // The dropped piece merged: the gate follows the piece it became, which has landed.
-      if (this._dropId === idA || this._dropId === idB) {
-        this._dropId = newBody.id;
-        this._dropHardStopRun = 0;
+      if (awake) {
+        const w = body.getAngularVelocity() * STEP_S; // rad per fixed step
+        const damped = w * (1 - PIECE_ANGULAR_DAMPING);
+        const clamped =
+          Math.abs(damped) > MAX_ANGULAR_VELOCITY
+            ? Math.sign(damped) * MAX_ANGULAR_VELOCITY
+            : damped;
+        if (clamped !== w) body.setAngularVelocity(clamped / STEP_S);
       }
 
-      const scoreValue = PIECE_DEFS[newTier]!.scoreValue;
-      this._score += scoreValue;
-      events.push({ type: "merge", tierA: tier, tierB: tier, result: newTier, x: mx, y: my });
-      events.push({ type: "score", delta: scoreValue, total: this._score });
-      if (nearLid) this._ticksSinceNearLidMerge = 0;
-      if (this._comboTicksLeft > 0) this._comboCount++;
+      if (this._escaped(e)) this._putBack(e, events);
     }
-    this._pendingMerges.clear();
+  }
+
+  private _escaped(e: PieceEntry): boolean {
+    return (
+      !Number.isFinite(e.x) ||
+      !Number.isFinite(e.y) ||
+      e.x < WALL_THICKNESS - e.r ||
+      e.x > WORLD_WIDTH - WALL_THICKNESS + e.r ||
+      e.y > FLOOR_TOP + e.r
+    );
+  }
+
+  /** The last-resort safety: a piece that left the bin is put back inside and stopped. */
+  private _putBack(e: PieceEntry, events: EngineEvent[]): void {
+    const x = clamp(
+      Number.isFinite(e.x) ? e.x : WORLD_WIDTH / 2,
+      WALL_THICKNESS + e.r,
+      WORLD_WIDTH - WALL_THICKNESS - e.r
+    );
+    const y = Math.min(FLOOR_TOP - e.r, Number.isFinite(e.y) ? e.y : WORLD_HEIGHT / 2);
+    setPositionPx(e.body, x, y);
+    setVelocityPx(e.body, 0, 0);
+    e.x = x;
+    e.y = y;
+    e.speed = 0;
+    events.push({ type: "guardRailFired", reason: "escaped", bodyId: e.id });
+  }
+
+  /** Same-tier pairs whose circles are within `MERGE_GAP_PX` join the pending merges. */
+  private _scanMergeGaps(): void {
+    for (let tier = 0; tier < MAX_TIER; tier++) {
+      const list = this._byTier[tier]!;
+      const n = list.length;
+      if (n < 2) continue;
+      for (let i = 0; i < n; i++) {
+        const a = list[i]!;
+        for (let j = i + 1; j < n; j++) {
+          const b = list[j]!;
+          const reach = a.r + b.r + MERGE_GAP_PX;
+          const dx = a.x - b.x;
+          const dy = a.y - b.y;
+          if (dx * dx + dy * dy <= reach * reach) this._queueMerge(a, b);
+        }
+      }
+    }
+  }
+
+  /** Same-tier pieces a growing piece would touch at full size join the pending merges. */
+  private _chainReach(): void {
+    for (const g of this._growing) {
+      if (g.tier >= MAX_TIER) continue;
+      for (const o of this._byTier[g.tier]!) {
+        if (o === g) continue;
+        const reach = g.full + o.r + CHAIN_REACH_PX;
+        const dx = g.x - o.x;
+        const dy = g.y - o.y;
+        if (dx * dx + dy * dy <= reach * reach) this._queueMerge(g, o);
+      }
+    }
+  }
+
+  private _addPiece(tier: number, x: number, y: number, radius: number): PieceEntry {
+    const e: PieceEntry = {
+      id: this._nextId++,
+      tier,
+      // Set right below: the entry is the fixture's user data, so it exists first.
+      body: null as unknown as Body,
+      fixture: null as unknown as Fixture,
+      full: tierRadius(tier),
+      r: radius,
+      growFrom: radius,
+      growStep: GROW_IN_STEPS,
+      falling: false,
+      railsAtRest: false,
+      x,
+      y,
+      speed: 0,
+    };
+    e.body = this._physics.addPiece(e, x, y, radius, PIECE_DEFS[tier]!.density);
+    e.fixture = e.body.getFixtureList()!;
+    this._pieces.set(e.id, e);
+    this._byTier[tier]!.push(e);
+    return e;
+  }
+
+  private _removePiece(e: PieceEntry): void {
+    this._physics.removePiece(e.body);
+    this._pieces.delete(e.id);
+    const list = this._byTier[e.tier]!;
+    const i = list.indexOf(e);
+    if (i >= 0) list.splice(i, 1);
+    const g = this._growing.indexOf(e);
+    if (g >= 0) this._growing.splice(g, 1);
+    this._land(e);
+  }
+
+  /**
+   * Process pending merges in the order they were found. A piece takes part in one merge per
+   * step; the capstone never merges (pairs are only queued below it).
+   */
+  private _processMerges(events: EngineEvent[]): void {
+    const pendA = this._pendA;
+    const pendB = this._pendB;
+    for (let i = 0; i < pendA.length; i++) {
+      const a = pendA[i]!;
+      const b = pendB[i]!;
+      if (!this._pieces.has(a.id) || !this._pieces.has(b.id)) continue;
+      this._merge(a, b, events);
+    }
+    pendA.length = 0;
+    pendB.length = 0;
+  }
+
+  private _merge(a: PieceEntry, b: PieceEntry, events: EngineEvent[]): void {
+    const tier = a.tier;
+    const newTier = tier + 1;
+    const full = tierRadius(newTier);
+    const pa = a.body.getPosition();
+    const pb = b.body.getPosition();
+    const ax = pa.x * PX_PER_M;
+    const ay = pa.y * PX_PER_M;
+    const bx = pb.x * PX_PER_M;
+    const by = pb.y * PX_PER_M;
+    // Made where its full-size circle is inside the walls and above the floor.
+    const mx = clamp((ax + bx) / 2, WALL_THICKNESS + full, WORLD_WIDTH - WALL_THICKNESS - full);
+    const my = Math.min(FLOOR_TOP - full, (ay + by) / 2);
+    // Merge grace (#3694): only a merge with a piece in the danger band counts.
+    const highestTop = Math.min(ay, by) - a.full;
+    const nearLid = highestTop <= OVERFLOW_LINE_Y + DANGER_STACK_MARGIN;
+
+    const va = a.body.getLinearVelocity();
+    const vb = b.body.getLinearVelocity();
+    const mergedVx = ((va.x + vb.x) / 2) * M_S_TO_PX_STEP;
+    const mergedVy = ((va.y + vb.y) / 2) * M_S_TO_PX_STEP - MERGE_POP_IMPULSE;
+    const wasDrop = this._drop === a || this._drop === b;
+
+    this._removePiece(a);
+    this._removePiece(b);
+
+    // Grow-in from the parents' radius.
+    const e = this._addPiece(newTier, mx, my, a.full);
+    e.growStep = 0;
+    this._growing.push(e);
+    setVelocityPx(
+      e.body,
+      clamp(mergedVx, -MAX_SPAWN_VELOCITY, MAX_SPAWN_VELOCITY),
+      clamp(mergedVy, -MAX_SPAWN_VELOCITY, MAX_SPAWN_VELOCITY)
+    );
+    // The dropped piece merged: the gate follows the piece it became, which has landed.
+    if (wasDrop) {
+      this._drop = e;
+      this._dropHardStopRun = 0;
+    }
+
+    const scoreValue = PIECE_DEFS[newTier]!.scoreValue;
+    this._score += scoreValue;
+    events.push({
+      type: "merge",
+      tierA: tier,
+      tierB: tier,
+      result: newTier,
+      x: mx,
+      y: my,
+      id: e.id,
+      parentIds: [a.id, b.id],
+    });
+    events.push({ type: "score", delta: scoreValue, total: this._score });
+    if (newTier === MAX_TIER) events.push({ type: "win", x: mx, y: my, id: e.id });
+    if (nearLid) this._ticksSinceNearLidMerge = 0;
+    if (this._comboTicksLeft > 0) this._comboCount++;
   }
 
   /** The lid (#3694): drop gate, hard stop and overflow count, once per fixed step. */
   private _applyLid(events: EngineEvent[]): void {
     // Drop gate: the last dropped piece has cleared once its top edge is at or below the lid
     // (or it is gone).
-    if (this._dropId !== null) {
-      const drop = this._pieces.get(this._dropId);
-      if (!drop || drop.body.position.y - pieceRadius(PIECE_DEFS[drop.tier]!) >= OVERFLOW_LINE_Y) {
-        this._dropId = null;
-      }
+    const drop = this._drop;
+    if (drop !== null && (!this._pieces.has(drop.id) || drop.y - drop.full >= OVERFLOW_LINE_Y)) {
+      this._drop = null;
     }
 
     this._ticksSinceNearLidMerge++;
     let overLid = false;
     let hardStop = false;
     let dropAtTop = false;
-    for (const { body, tier } of this._pieces.values()) {
+    for (const e of this._pieces.values()) {
       // Still falling from the spawner: not part of the pile yet.
-      if (this._falling.has(body.id)) continue;
+      if (e.falling) continue;
       // In flight (bounced, popped, falling): not settled.
-      if (body.speed > OVERFLOW_SETTLED_SPEED) continue;
-      const top = body.position.y - pieceRadius(PIECE_DEFS[tier]!);
+      if (e.speed > OVERFLOW_SETTLED_SPEED) continue;
+      const top = e.y - e.full;
       if (top <= HARD_STOP_Y) {
-        // A large piece spawns with its top edge above the canvas, so touching a pile that
+        // A large piece spawns with its top edge near the canvas top, so touching a pile that
         // reaches just under the lid can hand it to the pile while still near spawn height. The
         // last dropped piece must stay settled up there for HARD_STOP_SETTLE_TICKS to count.
-        if (body.id === this._dropId) {
+        if (e === this._drop) {
           dropAtTop = true;
           overLid = true;
           continue;
@@ -488,7 +624,7 @@ export class CascadeEngine {
 
   private _endGame(events: EngineEvent[], reason: GameOverReason): void {
     this._gameOver = true;
-    this._dropId = null;
+    this._drop = null;
     events.push({ type: "gameOver", reason });
   }
 
@@ -498,75 +634,71 @@ export class CascadeEngine {
    * dev panel and the test seams can still place pieces.
    */
   canDrop(): boolean {
-    return !this._gameOver && this._dropId === null;
+    return !this._gameOver && this._drop === null;
   }
 
   destroy(): void {
-    Matter.Events.off(this._engine, "collisionStart", this._handleCollision);
-    Matter.Engine.clear(this._engine);
+    this._physics.destroy();
     this._pieces.clear();
-    this._falling.clear();
+    for (const list of this._byTier) list.length = 0;
+    this._growing.length = 0;
+    this._pendA.length = 0;
+    this._pendB.length = 0;
+    this._fallingCount = 0;
+    this._drop = null;
   }
 
   restore(pieces: ReadonlyArray<{ tier: number; x: number; y: number }>, score: number): void {
-    for (const { body } of this._pieces.values()) {
-      Matter.Composite.remove(this._world, body);
-    }
-    this._pieces.clear();
-    this._pendingMerges.clear();
+    for (const e of Array.from(this._pieces.values())) this._removePiece(e);
+    this._pendA.length = 0;
+    this._pendB.length = 0;
     this._score = score;
     this._gameOver = false;
     this._overflowTicksCount = 0;
     // Treat restore like a near-lid merge just fired, once, so OVERFLOW_IGNORE_MERGE_TICKS of
-    // grace applies while pieces settle into their saved positions. It is one grace per restore, the hard stop still applies, and the count starts when it ends.
+    // grace applies while pieces settle into their saved positions. It is one grace per restore,
+    // the hard stop still applies, and the count starts when it ends.
     this._ticksSinceNearLidMerge = 0;
-    this._dropId = null;
+    this._drop = null;
     this._dropHardStopRun = 0;
-    this._falling.clear();
     this._accumulator = 0;
     this._comboCount = 0;
     this._comboTicksLeft = 0;
     this._comboEmitted = false;
     for (const { tier, x, y } of pieces) {
-      const def = PIECE_DEFS[tier];
-      if (!def) continue;
-      const body = makeBody(def, x, y);
-      Matter.Composite.add(this._world, body);
-      this._pieces.set(body.id, newEntry(body, tier));
+      if (!PIECE_DEFS[tier]) continue;
+      this._addPiece(tier, x, y, tierRadius(tier));
     }
     // A saved piece whose top edge is over the lid and that touches no other piece was most
     // likely still in the air (saved right after a drop; velocities are not saved). Treat it as
     // falling again: it joins the pile on first contact, like any dropped piece, and is not
     // hard-stopped before that. One that touches the pile is part of it and counts at once.
     const placed = Array.from(this._pieces.values());
-    const airborne = placed.filter(({ body, tier }) => {
-      const r = pieceRadius(PIECE_DEFS[tier]!);
-      if (body.position.y - r >= OVERFLOW_LINE_Y) return false;
+    const airborne = placed.filter((p) => {
+      if (p.y - p.full >= OVERFLOW_LINE_Y) return false;
       return !placed.some(
-        (o) =>
-          o.body !== body &&
-          Math.hypot(o.body.position.x - body.position.x, o.body.position.y - body.position.y) <=
-            r + pieceRadius(PIECE_DEFS[o.tier]!) + 2
+        (o) => o !== p && Math.hypot(o.x - p.x, o.y - p.y) <= p.full + o.full + 2
       );
     });
-    for (const { body } of airborne) this._falling.add(body.id);
+    for (const p of airborne) {
+      p.falling = true;
+      this._fallingCount++;
+    }
     // Exactly one such piece is the last drop: the gate and the hard-stop settle run apply to it.
-    if (airborne.length === 1) this._dropId = airborne[0]!.body.id;
+    if (airborne.length === 1) this._drop = airborne[0]!;
   }
 
   drop(tier: number, x: number): void {
     if (this._gameOver) return;
-    const def = PIECE_DEFS[tier];
-    if (!def) return;
-    const y = OVERFLOW_LINE_Y - pieceRadius(def) - DROP_SPAWN_INSET;
-    const body = makeBody(def, x, y);
-    Matter.Composite.add(this._world, body);
-    this._pieces.set(body.id, newEntry(body, tier));
+    if (!PIECE_DEFS[tier]) return;
+    const r = tierRadius(tier);
+    const e = this._addPiece(tier, x, OVERFLOW_LINE_Y - r - DROP_SPAWN_INSET, r);
     // It spawns over the lid: the gate holds until it falls below, and the lid rule ignores it
     // until it lands (#3694).
-    this._dropId = body.id;
+    e.falling = true;
+    this._fallingCount++;
+    this._drop = e;
     this._dropHardStopRun = 0;
-    this._falling.add(body.id);
     this._comboCount = 0;
     this._comboTicksLeft = COMBO_WINDOW_TICKS;
     this._comboEmitted = false;
@@ -585,9 +717,7 @@ export class CascadeEngine {
     const dangerRatio = Math.min(1, this._overflowTicksCount / OVERFLOW_TICKS_THRESHOLD);
     if (!into) {
       const pieces: PieceSnapshot[] = [];
-      for (const { body, tier } of this._pieces.values()) {
-        pieces.push(writeSnapshot(undefined, body, tier));
-      }
+      for (const e of this._pieces.values()) pieces.push(writeSnapshot(undefined, e));
       return {
         pieces,
         score: this._score,
@@ -598,9 +728,9 @@ export class CascadeEngine {
     }
     const pieces = into.pieces;
     let n = 0;
-    for (const { body, tier } of this._pieces.values()) {
+    for (const e of this._pieces.values()) {
       const existing = pieces[n];
-      const snap = writeSnapshot(existing, body, tier);
+      const snap = writeSnapshot(existing, e);
       if (!existing) pieces.push(snap);
       n++;
     }

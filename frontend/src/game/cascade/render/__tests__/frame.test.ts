@@ -42,6 +42,13 @@ describe("packFrame", () => {
     expect(field(buf, 1, PIECE_FIELD.sleeping)).toBe(1);
   });
 
+  it("packs each piece's grow-in scale (#3697), 1 when the piece has none", () => {
+    const packer = createFramePacker();
+    packFrame(packer, { pieces: [{ ...piece(1, 10, 20), scale: 0.875 }, piece(2, 30, 40)] }, 0);
+    expect(field(packer.buf, 0, PIECE_FIELD.scale)).toBe(0.875);
+    expect(field(packer.buf, 1, PIECE_FIELD.scale)).toBe(1);
+  });
+
   it("defaults a state without the lid fields to calm and open", () => {
     const packer = createFramePacker();
     packFrame(packer, { pieces: [] }, 0);

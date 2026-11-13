@@ -9,7 +9,10 @@
  *
  * Layout:
  *   [0] piece count   [1] dangerRatio (0..1)   [2] canDrop (1/0)   [3] spawner tier (-1 = none)
- *   then per piece, `FRAME_STRIDE` floats: id, tier, x, y, angle, sleeping (1/0)
+ *   then per piece, `FRAME_STRIDE` floats: id, tier, x, y, angle, sleeping (1/0), scale
+ *
+ * `scale` (#3697) is the piece's drawn radius over its tier's radius: below 1 for the 133 ms a
+ * merged piece grows in (`GROW_IN_STEPS`), so the drawn piece is always the collider's size.
  *
  * 64-bit, not the `Float32Array` #2960 first sketched: float32 rounding of positions and
  * `dangerRatio` moved a few sprite and wash pixels by one colour step against the old renderer.
@@ -29,10 +32,18 @@ import type { GameState } from "../engine";
 /** Header floats before the first piece. */
 export const FRAME_HEADER = 4;
 /** Floats per piece. */
-export const FRAME_STRIDE = 6;
+export const FRAME_STRIDE = 7;
 
 export const HEADER_FIELD = { count: 0, dangerRatio: 1, canDrop: 2, spawnerTier: 3 } as const;
-export const PIECE_FIELD = { id: 0, tier: 1, x: 2, y: 3, angle: 4, sleeping: 5 } as const;
+export const PIECE_FIELD = {
+  id: 0,
+  tier: 1,
+  x: 2,
+  y: 3,
+  angle: 4,
+  sleeping: 5,
+  scale: 6,
+} as const;
 
 /** What the packer reads of a piece (the engine's `PieceSnapshot` fits). */
 export interface FramePiece {
@@ -42,6 +53,8 @@ export interface FramePiece {
   readonly y: number;
   readonly angle: number;
   readonly isSleeping?: boolean;
+  /** Collider radius / tier radius (the engine's grow-in); absent = 1. */
+  readonly scale?: number;
 }
 
 /** What the packer reads of a board (the engine's `GameState` fits; test doubles may omit the lid). */
@@ -126,6 +139,7 @@ export function packFrame(packer: FramePacker, state: FrameState, spawnerTier: n
     buf[o + PIECE_FIELD.y] = y;
     buf[o + PIECE_FIELD.angle] = p.angle;
     buf[o + PIECE_FIELD.sleeping] = p.isSleeping ? 1 : 0;
+    buf[o + PIECE_FIELD.scale] = p.scale ?? 1;
   }
   // Pieces that merged away or were cleared: forget where they slept.
   if (frozen.size > 0) {

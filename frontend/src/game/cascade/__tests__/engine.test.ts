@@ -10,7 +10,6 @@ import {
   MAX_SPAWN_VELOCITY,
   COMBO_WINDOW_TICKS,
   OVERFLOW_IGNORE_MERGE_TICKS,
-  GUARD_RAIL_HORIZONTAL_TOLERANCE,
 } from "../constants";
 
 function runSteps(engine: CascadeEngine, count: number): StepResult[] {
@@ -270,7 +269,7 @@ describe("CascadeEngine — guard rails (no silent removal)", () => {
     const engine = new CascadeEngine({});
     const tier0 = PIECE_DEFS[0]!;
     const r = tier0.shape.kind === "circle" ? tier0.shape.radius : tier0.shape.boundingRadius;
-    // Drop at the left wall boundary — center at WALL_THICKNESS + r, within GUARD_RAIL_HORIZONTAL_TOLERANCE
+    // Drop at the left wall boundary — center at WALL_THICKNESS + r
     engine.drop(0, WALL_THICKNESS + r);
     // Let the piece fully settle
     runSteps(engine, 300);
@@ -280,9 +279,20 @@ describe("CascadeEngine — guard rails (no silent removal)", () => {
     expect(guardRails).toHaveLength(0);
   });
 
-  it("guard rail tolerance constant is exported and matches engine behaviour", () => {
-    // Tolerance must be positive so wall-contact bodies are not treated as escaped
-    expect(GUARD_RAIL_HORIZONTAL_TOLERANCE).toBeGreaterThan(0);
+  // #3697: the rail no longer has a tolerance (it was Matter's wall-contact allowance). The thick
+  // walls keep pieces in; the only safety left catches a piece that escaped the bin outright.
+  it("catches a piece that escaped the bin, puts it back inside and reports it", () => {
+    const engine = new CascadeEngine({});
+    engine.restore([{ tier: 0, x: 200, y: WORLD_HEIGHT + 100 }], 0);
+    const events = allEvents(runSteps(engine, 1));
+    expect(events.filter((e) => e.type === "guardRailFired")).toEqual([
+      expect.objectContaining({ type: "guardRailFired", reason: "escaped" }),
+    ]);
+    const piece = engine.getState().pieces[0]!;
+    const r = (PIECE_DEFS[0]!.shape as { radius: number }).radius;
+    expect(piece.y).toBeLessThanOrEqual(WORLD_HEIGHT - FLOOR_THICKNESS - r + 1);
+    // Nothing else moved it: a normal game never fires it.
+    expect(allEvents(runSteps(engine, 120)).some((e) => e.type === "guardRailFired")).toBe(false);
   });
 });
 

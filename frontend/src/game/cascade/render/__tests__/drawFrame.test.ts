@@ -164,6 +164,17 @@ describe("pieces", () => {
     });
   });
 
+  it("draws a piece growing in (#3697) at its scale of the ladder radius, sprite and circle", () => {
+    const growing = { ...piece(1, 3, 120, 400), scale: 0.9 };
+    const ops = draw(frameOf([growing]));
+    expect(ops[0]).toMatchObject({ k: "circle", cx: 120, cy: 400, r: tierRadius(3) * 0.9 });
+    const img = { width: () => 512, height: () => 512 };
+    const style = buildBoardStyle([undefined, undefined, undefined, { bakedClipR: 1.5 }], palette);
+    const sprite = draw(frameOf([growing]), [null, null, null, img], style)[0];
+    const half = tierRadius(3) * 1.5 * 0.9;
+    expect(sprite).toMatchObject({ k: "image", dst: { width: half * 2, height: half * 2 } });
+  });
+
   it("skips a tier the ladder does not have", () => {
     const ops = draw(frameOf([piece(1, 42, 120, 400)]));
     expect(ops.filter((o) => o.k === "circle" && o.cx === 120)).toHaveLength(0);
@@ -274,7 +285,8 @@ describe("spawner", () => {
     const style = buildBoardStyle([{ bakedClipR: 1.5 }], palette);
     const ops = draw(frameOf([]), [img], style);
     const sprite = ops.find((o) => o.k === "image") as Extract<Op, { k: "image" }>;
-    expect(sprite.dst.width).toBe(22 * 1.5 * 2);
+    // Tier 0 at its ladder radius (under the spawner's cap), times bakedClipR (was a literal 22).
+    expect(sprite.dst.width).toBe(tierRadius(0) * 1.5 * 2);
     expect(atSpawner(ops).find((c) => c.p.color === color)).toBeUndefined();
   });
 

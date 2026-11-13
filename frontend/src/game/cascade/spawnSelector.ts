@@ -1,12 +1,23 @@
+/**
+ * The spawner (#3697: the owner's "3 lively" difficulty). Which tier the queue offers next, by
+ * weight: base weights, a drought boost for a tier not seen lately, a danger mode when the pile is
+ * near the lid, and an anti-streak ban. The numbers make the capstone reachable in a session:
+ * tiers 0-5 drop, weighted up the ladder (2 3 3 3 3 2), so a drop carries about 9.75 tier-0
+ * pieces' worth of material on average (3.8 on the old 5 4 3 2 1 over tiers 0-4) and the
+ * capstone (2048 of them) is about 210 perfect drops away. See docs/games/cascade.md.
+ */
 import { DROPPABLE_PIECE_TIERS } from "./pieceDefs";
 
-const BASE_WEIGHTS: Record<number, number> = { 0: 5, 1: 4, 2: 3, 3: 2, 4: 1 };
+const BASE_WEIGHTS: Record<number, number> = { 0: 2, 1: 3, 2: 3, 3: 3, 4: 3, 5: 2 };
 
 export const DROUGHT_WINDOW = 10;
 const DROUGHT_BOOST = 3;
 const STREAK_WINDOW = 4;
+/** In danger, tiers at or above this are scaled by DANGER_PENALTY (min weight 1)... */
 const DANGER_TIER_THRESHOLD = 3;
 const DANGER_PENALTY = 0.2;
+/** ...and the tiers below it by this, so the small pieces that clear a pile come more often. */
+const DANGER_SMALL_BOOST = 1.5;
 
 export function selectNextTier(
   history: number[],
@@ -23,11 +34,13 @@ export function selectNextTier(
     }
   }
 
-  // Danger state: suppress large (high-tier) pieces when stack is high
+  // Danger state: suppress large (high-tier) pieces when stack is high, favour the small ones
   if (isInDanger) {
     for (const tier of DROPPABLE_PIECE_TIERS) {
       if (tier >= DANGER_TIER_THRESHOLD) {
         weights[tier] = Math.max(1, Math.round((weights[tier] ?? 1) * DANGER_PENALTY));
+      } else {
+        weights[tier] = (weights[tier] ?? 0) * DANGER_SMALL_BOOST;
       }
     }
   }

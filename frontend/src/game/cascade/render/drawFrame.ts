@@ -193,13 +193,16 @@ function drawPieces(
   for (let i = 0; i < n; i++) {
     const o = FRAME_HEADER + i * FRAME_STRIDE;
     const tier = frame[o + PIECE_FIELD.tier] ?? -1;
-    const r = style.radius[tier] ?? 0;
+    // A merged piece grows in (#3697): drawn at the collider's size, its scale of the tier's.
+    const scale = frame[o + PIECE_FIELD.scale] ?? 1;
+    const r = (style.radius[tier] ?? 0) * scale;
     if (r <= 0) continue;
     const x = frame[o + PIECE_FIELD.x] ?? 0;
     const y = frame[o + PIECE_FIELD.y] ?? 0;
     const sprite = images[tier];
     if (sprite) {
-      drawSprite(canvas, cache, sprite, x, y, style.spriteHalf[tier] ?? r, 1);
+      const half = style.spriteHalf[tier];
+      drawSprite(canvas, cache, sprite, x, y, half === undefined ? r : half * scale, 1);
     } else {
       canvas.drawCircle(x, y, r, elementPaint(cache, style.color[tier] ?? null, 1));
     }

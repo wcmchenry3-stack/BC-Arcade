@@ -2,7 +2,7 @@
  * CascadeScreen: Cascade (a Suika-style merge game) wired to `CascadeEngine` (#1751, #1754).
  *
  * Concerns:
- *   1. Game logic: the engine (`game/cascade/engine.ts`, Matter.js) is stepped from a RAF loop
+ *   1. Game logic: the engine (`game/cascade/engine.ts`, planck.js) is stepped from a RAF loop
  *      recreated on `gameKey`; the screen drops pieces from the queue and reads state back
  *      each frame. The engine owns the physics, scoring and game over; the screen owns none.
  *   2. Rendering (#2960): no per-frame React state. The loop reads the engine into a reused
