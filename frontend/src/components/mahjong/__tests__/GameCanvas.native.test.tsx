@@ -290,10 +290,12 @@ describe("Mahjong GameCanvas (native) — canvas", () => {
     for (const id of PAINT_ORDER) expect(group(id).props.transform).toEqual([{ scale: 1 }]);
   });
 
-  it("rasterises the faces at the canvas's resolution, so a zoomed-in face is sharp", async () => {
+  it("rasterises the faces at the device pixel ratio, not times the board's resolution (#3684 review)", async () => {
     mockMakeSvg.mockImplementation((src: number) => ({ svg: src }));
     await mount();
-    const px = PixelRatio.get() * boardResolution(camera.scale, camera.tileWidth);
+    // #3684 review: hi-res faces gave no visible gain for about 3x the face memory.
+    expect(boardResolution(camera.scale, camera.tileWidth)).toBeGreaterThan(1);
+    const px = PixelRatio.get();
     expect(mockRaster).toHaveBeenCalledWith(
       Math.ceil((FACE_W - 4) * px),
       Math.ceil((FACE_H - 4) * px)

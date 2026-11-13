@@ -88,11 +88,12 @@ export default function GameCanvas({
 }: Props) {
   const { t } = useTranslation("mahjong");
   const { faceWidth, faceHeight, boardWidth, boardHeight } = camera;
-  // The faces are rasterised at max-zoom resolution so zooming in does not stretch them; the
-  // canvas itself is the board's size, never larger (#3684: iOS stops presenting, and aliases,
-  // a canvas drawn bigger and shrunk by a View transform).
+  // The canvas is the board's size, never larger (#3684: iOS stops presenting, and aliases, a
+  // canvas drawn bigger and shrunk by a View transform), and the faces are rasterised at
+  // PixelRatio x plan.faceRes, which is PixelRatio in production (the demo showed hi-res faces
+  // gave no visible gain for about 3x the face memory).
   const boardRes = boardResolution(camera.scale, camera.tileWidth);
-  // Always the fixed variant "c" outside a test build; test builds can pick the old renderer
+  // Always the fixed variant "b" outside a test build; test builds can pick the old renderer
   // for the before/after demo (renderDiag.ts).
   const variant = useRenderVariant();
   const plan = canvasPlan(variant, boardRes);

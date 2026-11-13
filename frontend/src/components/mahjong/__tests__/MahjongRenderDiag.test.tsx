@@ -108,11 +108,12 @@ describe("MahjongRenderDiag (#3684)", () => {
     await fireEvent.press(screen.getByTestId("mahjong-variant-a"));
     expect(getRenderVariant()).toBe("a");
     expect(screen.getByText("old (a)")).toBeTruthy();
-    expect(screen.getByText("fixed (c)")).toBeTruthy();
+    expect(screen.getByText("fixed (b)")).toBeTruthy();
     expect(onRedeal).toHaveBeenCalledTimes(1);
     expect(setActive).toHaveBeenLastCalledWith(false);
-    await fireEvent.press(screen.getByTestId("mahjong-variant-b"));
-    expect(getRenderVariant()).toBe("b");
+    await fireEvent.press(screen.getByTestId("mahjong-variant-c"));
+    expect(getRenderVariant()).toBe("c");
+    expect(screen.getByText("hi-res faces (c)")).toBeTruthy();
     expect(onRedeal).toHaveBeenCalledTimes(2);
   });
 });
