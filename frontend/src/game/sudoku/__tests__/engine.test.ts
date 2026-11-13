@@ -7,9 +7,10 @@
  *   - enterDigit (normal): correct → no error; illegal (row/col/box duplicate)
  *     → isError + errorCount; legal-but-wrong → neither (#2943);
  *     undo stack grows; given cells immutable
- *   - enterDigit (notes): toggle; peer-note cleanup invariant
+ *   - enterDigit (notes): toggle; never touches other cells' notes (#3785)
  *   - eraseCell: clears value + notes; no-op on givens
- *   - undo: restores previous snapshot incl. errorCount and notesMode
+ *   - undo: restores the board (digits, notes, errorCount); keeps notesMode and
+ *     the selection, except the changed cell is selected (#3785)
  *   - isComplete: true only when all 81 cells match solution
  *   - getConflicts: row, col, box detection; empty when none
  */
@@ -541,16 +542,17 @@ describe("undo", () => {
     expect(s2.errorCount).toBe(0);
   });
 
-  it("restores notesMode on undo", () => {
+  it("keeps the current notesMode on undo (#3785)", () => {
     const s0 = loadPuzzle("easy", "classic", rng0);
     const { row, col } = findEmpty(s0);
-    // Toggle notes → place value (in normal) → undo should restore
-    // notesMode=false because the *pre-enterDigit* state had notesMode=false.
+    // Place a value (notes mode off), switch notes mode on, undo: the board
+    // is restored but notes mode stays on.
     const s1 = enterDigit(selectCell(s0, row, col), 5);
     const s2 = toggleNotesMode(s1);
     expect(s2.notesMode).toBe(true);
-    const s3 = undo(s2); // undo of the last enterDigit; notesMode was false at snapshot time
-    expect(s3.notesMode).toBe(false);
+    const s3 = undo(s2);
+    expect(s3.notesMode).toBe(true);
+    expect(s3.grid[row]![col]!.value).toBe(0);
   });
 
   it("chains multiple undos back to the initial state", () => {
@@ -885,5 +887,264 @@ describe("recomputeConflicts", () => {
       rc.map((cell, c) => (r === row && c === col ? oldFlagged : cell))
     );
     expect(recomputeConflicts(grid, CLASSIC_CONFIG)[row]![col]!.isError).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3785 rules: unit complete only when correct, peer-note auto-clear, undo
+// ---------------------------------------------------------------------------
+
+/** The state with every cell empty and not a given (no peer can conflict), same solution. */
+function blankBoard(state: SudokuState): SudokuState {
+  const grid = state.grid.map((rowCells) =>
+    rowCells.map((cell) => ({
+      ...cell,
+      value: 0 as CellValue,
+      given: false,
+      notes: new Set<NoteDigit>(),
+      isError: false,
+    }))
+  );
+  return { ...state, grid, undoStack: [], errorCount: 0, isComplete: false };
+}
+
+function solutionDigit(s: SudokuState, r: number, c: number): CellValue {
+  return (s.solution.charCodeAt(r * s.grid.length + c) - 48) as CellValue;
+}
+
+function putNote(s: SudokuState, r: number, c: number, d: number): SudokuState {
+  // selectCell on the selected cell deselects it: start from no selection
+  const on = toggleNotesMode(selectCell({ ...s, selectedRow: null, selectedCol: null }, r, c));
+  const noted = enterDigit(on, d as CellValue);
+  return toggleNotesMode({ ...noted, selectedRow: null, selectedCol: null });
+}
+
+function notesAt(s: SudokuState, r: number, c: number): number[] {
+  return [...s.grid[r]![c]!.notes].sort((a, b) => a - b);
+}
+
+/** Place `cells` ([row, col, digit]) in order, selecting each. */
+function placeAll(s0: SudokuState, cells: ReadonlyArray<readonly [number, number, number]>) {
+  let s = s0;
+  for (const [r, c, d] of cells)
+    s = enterDigit(
+      selectCell({ ...s, selectedRow: null, selectedCol: null }, r, c),
+      d as CellValue
+    );
+  return s;
+}
+
+const hasUnit = (s: SudokuState, unit: "row" | "col" | "box") =>
+  s.events?.some((e) => e.type === "unitComplete" && e.unit === unit) === true;
+
+describe("unitComplete only when the unit matches the solution (#3785)", () => {
+  it.each(["classic", "mini"] as const)(
+    "a full, duplicate-free but wrong row does not fire (%s); the correct row does",
+    (variant) => {
+      const base = blankBoard(loadPuzzle("easy", variant, rng0));
+      const size = base.grid.length;
+      const row0 = (swap: boolean): Array<readonly [number, number, number]> =>
+        Array.from({ length: size }, (_, c) => {
+          const src = swap && c < 2 ? 1 - c : c;
+          return [0, c, solutionDigit(base, 0, src)] as const;
+        });
+      // cols 0 and 1 swapped: row 0 is full with no duplicate, but wrong
+      const wrongCells = row0(true);
+      const beforeLast = placeAll(base, wrongCells.slice(0, size - 1));
+      const last = wrongCells[size - 1]!;
+      const wrong = placeAll(beforeLast, [last]);
+      expect(wrong.events).toContainEqual({ type: "digitPlace" });
+      expect(wrong.events?.some((e) => e.type === "errorEntered")).toBe(false);
+      expect(hasUnit(wrong, "row")).toBe(false);
+
+      const rightCells = row0(false);
+      const right = placeAll(placeAll(base, rightCells.slice(0, size - 1)), [
+        rightCells[size - 1]!,
+      ]);
+      expect(hasUnit(right, "row")).toBe(true);
+    }
+  );
+
+  it("a full but wrong column does not fire; the correct column does", () => {
+    const base = blankBoard(loadPuzzle("easy", "classic", rng0));
+    const col0 = (swap: boolean) =>
+      Array.from({ length: 9 }, (_, r) => {
+        const src = swap && r < 2 ? 1 - r : r;
+        return [r, 0, solutionDigit(base, src, 0)] as const;
+      });
+    const wrongCells = col0(true);
+    const wrong = placeAll(placeAll(base, wrongCells.slice(0, 8)), [wrongCells[8]!]);
+    expect(hasUnit(wrong, "col")).toBe(false);
+    const rightCells = col0(false);
+    const right = placeAll(placeAll(base, rightCells.slice(0, 8)), [rightCells[8]!]);
+    expect(hasUnit(right, "col")).toBe(true);
+  });
+
+  it("a full but wrong box does not fire; the correct box does (classic 3x3, mini 2x3)", () => {
+    for (const [variant, boxRows, boxCols] of [
+      ["classic", 3, 3],
+      ["mini", 2, 3],
+    ] as const) {
+      const base = blankBoard(loadPuzzle("easy", variant, rng0));
+      const cells = (swap: boolean) => {
+        const out: Array<readonly [number, number, number]> = [];
+        for (let r = 0; r < boxRows; r++) {
+          for (let c = 0; c < boxCols; c++) {
+            const src = swap && r === 0 && c < 2 ? 1 - c : c;
+            out.push([r, c, solutionDigit(base, r, src)] as const);
+          }
+        }
+        return out;
+      };
+      const w = cells(true);
+      const wrong = placeAll(placeAll(base, w.slice(0, -1)), [w[w.length - 1]!]);
+      expect(hasUnit(wrong, "box")).toBe(false);
+      const ok = cells(false);
+      const right = placeAll(placeAll(base, ok.slice(0, -1)), [ok[ok.length - 1]!]);
+      expect(hasUnit(right, "box")).toBe(true);
+    }
+  });
+});
+
+describe("placing a digit clears it from its peers' notes (#3785)", () => {
+  // [placed], row peer, column peer, box peer, a cell that is no peer
+  const layouts = {
+    classic: { at: [4, 4], row: [4, 0], col: [0, 4], box: [3, 3], far: [0, 0] },
+    mini: { at: [0, 0], row: [0, 5], col: [5, 0], box: [1, 2], far: [3, 4] },
+  } as const;
+
+  it.each(["classic", "mini"] as const)("removes it from row, column and box peers (%s)", (v) => {
+    const L = layouts[v];
+    let s = blankBoard(loadPuzzle("easy", v, rng0));
+    for (const [r, c] of [L.row, L.col, L.box, L.far]) {
+      s = putNote(s, r, c, 3);
+      s = putNote(s, r, c, 2);
+    }
+    const placed = enterDigit(selectCell(s, L.at[0], L.at[1]), 3);
+    for (const [r, c] of [L.row, L.col, L.box]) expect(notesAt(placed, r, c)).toEqual([2]);
+    expect(notesAt(placed, L.far[0], L.far[1])).toEqual([2, 3]);
+  });
+
+  it("applies to an illegal digit and to a hint", () => {
+    const L = layouts.classic;
+    let s = blankBoard(loadPuzzle("easy", "classic", rng0));
+    const d = solutionDigit(s, L.at[0], L.at[1]);
+    s = putNote(s, L.row[0], L.row[1], d);
+    s = putNote(s, L.col[0], L.col[1], d);
+    const hinted = applyHint(selectCell(s, L.at[0], L.at[1]));
+    expect(hinted.grid[L.at[0]][L.at[1]]!.value).toBe(d);
+    expect(notesAt(hinted, L.row[0], L.row[1])).toEqual([]);
+    expect(notesAt(hinted, L.col[0], L.col[1])).toEqual([]);
+  });
+
+  it("undo restores the cleared notes along with the cell", () => {
+    const L = layouts.classic;
+    let s = blankBoard(loadPuzzle("easy", "classic", rng0));
+    s = putNote(s, L.row[0], L.row[1], 3);
+    s = putNote(s, L.box[0], L.box[1], 3);
+    s = putNote(s, L.box[0], L.box[1], 7);
+    const placed = enterDigit(selectCell(s, L.at[0], L.at[1]), 3);
+    expect(notesAt(placed, L.row[0], L.row[1])).toEqual([]);
+    const undone = undo(placed);
+    expect(notesAt(undone, L.row[0], L.row[1])).toEqual([3]);
+    expect(notesAt(undone, L.box[0], L.box[1])).toEqual([3, 7]);
+    expect(undone.grid[L.at[0]][L.at[1]]!.value).toBe(0);
+  });
+
+  it("undo after a hint restores the cleared notes", () => {
+    const L = layouts.mini;
+    let s = blankBoard(loadPuzzle("easy", "mini", rng0));
+    const d = solutionDigit(s, L.at[0], L.at[1]);
+    s = putNote(s, L.col[0], L.col[1], d);
+    const hinted = applyHint(selectCell(s, L.at[0], L.at[1]));
+    expect(notesAt(hinted, L.col[0], L.col[1])).toEqual([]);
+    expect(notesAt(undo(hinted), L.col[0], L.col[1])).toEqual([d]);
+  });
+
+  it("notes mode never auto-clears: a note next to a placed digit stays, and a peer keeps its notes", () => {
+    const L = layouts.classic;
+    let s = blankBoard(loadPuzzle("easy", "classic", rng0));
+    s = placeAll(s, [[L.row[0], L.row[1], 3]]);
+    s = putNote(s, L.row[0], L.row[1], 3); // a note on the filled cell
+    s = putNote(s, L.at[0], L.at[1], 3); // a note on its peer
+    expect(notesAt(s, L.row[0], L.row[1])).toEqual([3]);
+    expect(notesAt(s, L.at[0], L.at[1])).toEqual([3]);
+    // toggling the same note off removes only that one
+    const off = putNote(s, L.at[0], L.at[1], 3);
+    expect(notesAt(off, L.at[0], L.at[1])).toEqual([]);
+    expect(notesAt(off, L.row[0], L.row[1])).toEqual([3]);
+  });
+});
+
+describe("undo restores the board only (#3785)", () => {
+  it("keeps Notes mode and selects the cell it changed", () => {
+    const s0 = blankBoard(loadPuzzle("easy", "classic", rng0));
+    const placed = enterDigit(selectCell(s0, 2, 5), 4);
+    // the player moves on: selects another cell and turns Notes mode on
+    const moved = toggleNotesMode(selectCell(placed, 7, 7));
+    const undone = undo(moved);
+    expect(undone.notesMode).toBe(true);
+    expect(undone.selectedRow).toBe(2);
+    expect(undone.selectedCol).toBe(5);
+    expect(undone.grid[2]![5]!.value).toBe(0);
+  });
+
+  it("keeps Notes mode off when it was on at the snapshot", () => {
+    const s0 = blankBoard(loadPuzzle("easy", "mini", rng0));
+    const noted = toggleNotesMode(selectCell(s0, 0, 0));
+    // a digit in normal mode, then Notes mode off -> on happens before undo
+    const placed = enterDigit(toggleNotesMode(noted), 2);
+    const undone = undo(placed);
+    expect(undone.notesMode).toBe(false);
+  });
+
+  it("restores the error count and conflicts", () => {
+    const s0 = blankBoard(loadPuzzle("easy", "classic", rng0));
+    const a = enterDigit(selectCell(s0, 0, 0), 5);
+    const b = enterDigit(selectCell(a, 0, 4), 5); // duplicate in the row
+    expect(b.errorCount).toBe(1);
+    expect(b.grid[0]![4]!.isError).toBe(true);
+    const undone = undo(toggleNotesMode(selectCell(b, 8, 8)));
+    expect(undone.errorCount).toBe(0);
+    expect(undone.grid[0]![4]!.isError).toBe(false);
+    expect(undone.grid[0]![0]!.isError).toBe(false);
+    expect([undone.selectedRow, undone.selectedCol]).toEqual([0, 4]);
+    expect(undone.notesMode).toBe(true);
+  });
+
+  it("selects the cell an undone erase restored, and the one a note-only erase cleared", () => {
+    const s0 = blankBoard(loadPuzzle("easy", "classic", rng0));
+    const placed = enterDigit(selectCell(s0, 1, 1), 6);
+    const erased = eraseCell(placed);
+    const back = undo(selectCell({ ...erased, selectedRow: null, selectedCol: null }, 5, 5));
+    expect([back.selectedRow, back.selectedCol]).toEqual([1, 1]);
+    expect(back.grid[1]![1]!.value).toBe(6);
+
+    const noted = putNote(s0, 3, 3, 2);
+    const cleared = eraseCell(selectCell(noted, 3, 3));
+    expect(notesAt(cleared, 3, 3)).toEqual([]);
+    const restored = undo(selectCell(cleared, 6, 6));
+    expect(notesAt(restored, 3, 3)).toEqual([2]);
+    expect([restored.selectedRow, restored.selectedCol]).toEqual([3, 3]);
+  });
+
+  it("a note-only erase undone after a later note edit selects the erased cell, not the edited one (review)", () => {
+    const s0 = blankBoard(loadPuzzle("easy", "classic", rng0));
+    // X (5,5) gets a note, then is erased (one undo step). Then a note is toggled in an
+    // earlier cell Y (1,1): note toggles push no snapshot, so undo restores both cells.
+    const noted = putNote(s0, 5, 5, 3);
+    const cleared = eraseCell(selectCell(noted, 5, 5));
+    const yEdited = putNote(cleared, 1, 1, 7);
+    const back = undo(yEdited);
+    expect(notesAt(back, 5, 5)).toEqual([3]);
+    expect([back.selectedRow, back.selectedCol]).toEqual([5, 5]);
+  });
+
+  it("undoing a hint selects the hinted cell", () => {
+    const s0 = blankBoard(loadPuzzle("easy", "classic", rng0));
+    const hinted = applyHint(selectCell(s0, 4, 2));
+    const undone = undo(selectCell(hinted, 8, 8));
+    expect([undone.selectedRow, undone.selectedCol]).toEqual([4, 2]);
+    expect(undone.grid[4]![2]!.value).toBe(0);
   });
 });

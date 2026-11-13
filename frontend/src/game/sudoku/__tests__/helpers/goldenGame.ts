@@ -191,6 +191,10 @@ export function playGolden(difficulty: Difficulty, variant: Variant, rng: () => 
   // gets a note and the game stops one cell short
   s = rec.play(select(s, e7), digit(solutionAt(s, e7)));
   s = rec.play(s, { kind: "erase" });
+  // e7 once more, undone: nothing later fills it, so a replay that loses the undo
+  // ends with e7 filled (a peer's notes cleared by the digit are restored too, #3785)
+  s = rec.play(select(s, e7), digit(solutionAt(s, e7)));
+  s = rec.play(s, { kind: "undo" });
   note(e7, 9);
 
   // a filled cell can carry a note (notes mode works on any non-given cell);
