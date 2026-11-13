@@ -74,6 +74,12 @@
     // babel-preset-expo: named by babel.config.js; installed as an expo
     // dependency. knip 6.45 reports it as unlisted.
     "babel-preset-expo",
+    // expo-dev-client / react-native-audio-api: native dependencies. The
+    // former is the dev-build runtime; the latter is an app.json config
+    // plugin imported only by a __dev__ screen. knip 6.45 stopped crediting
+    // them under --production.
+    "expo-dev-client",
+    "react-native-audio-api",
     // @eslint/js: required by eslint.config.js, installed as an eslint dependency
     "@eslint/js",
     // expo-system-ui: inferred by knip's Expo plugin from app.json
