@@ -28,7 +28,7 @@ import {
 } from "../_shared/cards/foundations";
 import { withUndo as pushUndoSnapshot } from "../_shared/undoStack";
 import type { Card, DrawMode, GameEvent, Move, SolitaireState } from "./types";
-import { cardColor, SUITS } from "./types";
+import { cardColor } from "./types";
 import {
   pauseClock,
   resumeClock,
@@ -358,14 +358,7 @@ function finalizeAfterMove(
   const finalScore = clampScore(next.score + bonus);
 
   const events: GameEvent[] = [...(next.events ?? [])];
-  if (!wasComplete) {
-    for (const suit of SUITS) {
-      if (prev.foundations[suit].length < 13 && next.foundations[suit].length === 13) {
-        events.push("foundationComplete");
-      }
-    }
-    if (nowComplete) events.push("gameWin");
-  }
+  if (!wasComplete && nowComplete) events.push("gameWin");
 
   return applyTimer(
     prev,

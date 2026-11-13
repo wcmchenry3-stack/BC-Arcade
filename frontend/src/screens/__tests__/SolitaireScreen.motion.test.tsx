@@ -6,7 +6,7 @@
  * (testID `card-flight-<suit>-<rank>`, hidden from screen readers).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AccessibilityInfo, Animated, Dimensions, StyleSheet } from "react-native";
+import { AccessibilityInfo, Dimensions, StyleSheet } from "react-native";
 import { act, fireEvent } from "@testing-library/react-native";
 
 import { createSeededRng, setRng } from "../../game/solitaire/engine";
@@ -405,54 +405,6 @@ describe("with the flights' end callbacks (timeReanimatedEnds)", () => {
     expect(playedAt("solitaire.multiCardMove", t)).toEqual([0]);
     // The Undo flies the run back: 220 + 15 ms, card place 40 ms before.
     expect(playedAt(PLACE, t)).toEqual([100 + 235 - 40]);
-  });
-
-  it("Auto-Complete: one sparkle, on the last landing, for every suit it completed", async () => {
-    const sparkle = jest.spyOn(Animated, "timing");
-    const flashes = () =>
-      sparkle.mock.calls.filter(([, c]) => c.toValue === 1 && c.duration === 100).length;
-    // The K♦ (completing diamonds, step 1) and the K♣ (completing clubs, step 2, landing at 340).
-    const api = await mountOn(
-      boardState({
-        foundations: {
-          spades: sequence("spades", 13),
-          hearts: sequence("hearts", 13),
-          diamonds: sequence("diamonds", 12),
-          clubs: sequence("clubs", 12),
-        },
-        waste: [faceUp("clubs", 13), faceUp("diamonds", 13)],
-      })
-    );
-    await pressLabel(api, "Auto-Complete");
-    await landMotion(339);
-    expect(flashes()).toBe(0);
-    await landMotion(1);
-    expect(flashes()).toBe(1);
-    await landMotion(1000);
-    expect(flashes()).toBe(1);
-  });
-
-  it("a king moved by hand sparkles on its own landing", async () => {
-    const sparkle = jest.spyOn(Animated, "timing");
-    const flashes = () =>
-      sparkle.mock.calls.filter(([, c]) => c.toValue === 1 && c.duration === 100).length;
-    const api = await mountOn(
-      boardState({
-        foundations: {
-          spades: sequence("spades", 13),
-          hearts: sequence("hearts", 13),
-          diamonds: sequence("diamonds", 12),
-          clubs: sequence("clubs", 11),
-        },
-        waste: [faceUp("clubs", 13), faceUp("clubs", 12)],
-        tableau: tableauOf([faceUp("diamonds", 13)]),
-      })
-    );
-    await move(api, "K of Diamonds", "Q of Diamonds");
-    await landMotion(199);
-    expect(flashes()).toBe(0);
-    await landMotion(1);
-    expect(flashes()).toBe(1);
   });
 
   it("the board stays still while the result card waits for the winning landing", async () => {

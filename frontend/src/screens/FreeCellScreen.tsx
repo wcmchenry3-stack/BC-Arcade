@@ -53,7 +53,6 @@ import {
   useFreeCellMotion,
   useFreeCellMotionGeometry,
 } from "../components/freecell/useFreeCellMotion";
-import { FreeCellFoundationAnimation } from "../components/freecell/FreeCellFoundationAnimation";
 import { FreeCellGameWinAnimation } from "../components/freecell/FreeCellGameWinAnimation";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
@@ -287,7 +286,6 @@ export default function FreeCellScreen() {
     syncSetProgressSnapshot(() => ({ result: progressResult() }));
   }, [syncSetProgressSnapshot, progressResult]);
 
-  const [showFoundation, setShowFoundation] = useState(false);
   const [showNoMovesBanner, setShowNoMovesBanner] = useState(false);
 
   const { play: playSupermove } = useSound("freecell.supermove", FREECELL_SOUNDS);
@@ -388,14 +386,6 @@ export default function FreeCellScreen() {
         if (c.moved) {
           if (c.kind === "drop") cueAt(playCardPlace, c.place, "place");
           else cueAt(playSupermove, c.multi, "multi");
-        }
-        setShowNoMovesBanner(false);
-      },
-      // A completed suit has no sound (#3563); its effect (#3567) waits for the card's landing.
-      // In an Auto-Complete run it plays once, on the last landing (the last card completes a suit).
-      foundationComplete: () => {
-        if (!riffleRunRef.current || state?.isComplete) {
-          cueAt(() => setShowFoundation(true), cueRef.current.landed);
         }
         setShowNoMovesBanner(false);
       },
@@ -900,11 +890,6 @@ export default function FreeCellScreen() {
           testID="freecell-result"
         />
       ) : null}
-
-      <FreeCellFoundationAnimation
-        visible={showFoundation}
-        onAnimationEnd={() => setShowFoundation(false)}
-      />
     </GameShell>
   );
 }
