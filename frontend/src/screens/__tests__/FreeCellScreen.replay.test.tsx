@@ -37,8 +37,12 @@ jest.mock("../../game/freecell/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveGame: jest.fn().mockResolvedValue(undefined),
   clearGame: jest.fn().mockResolvedValue(undefined),
-  loadStats: jest.fn().mockResolvedValue({ bestMoves: 0 }),
-  saveStats: jest.fn().mockResolvedValue(undefined),
+}));
+// The best is the shared personal best (#3757): mocked, with its real comparator.
+jest.mock("../../game/_shared/personalBest", () => ({
+  ...jest.requireActual("../../game/_shared/personalBest"),
+  getBest: jest.fn().mockResolvedValue(0),
+  recordResult: jest.fn(() => Promise.resolve({ best: 0, improved: false, isNewBest: false })),
 }));
 import { loadGame, saveGame } from "../../game/freecell/storage";
 

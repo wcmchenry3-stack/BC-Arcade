@@ -43,11 +43,16 @@ jest.mock("../../game/freecell/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveGame: jest.fn().mockResolvedValue(undefined),
   clearGame: jest.fn().mockResolvedValue(undefined),
-  loadStats: jest.fn().mockResolvedValue({ bestMoves: 0 }),
-  saveStats: jest.fn().mockResolvedValue(undefined),
+}));
+// The best is the shared personal best (#3757): mocked, with its real comparator.
+jest.mock("../../game/_shared/personalBest", () => ({
+  ...jest.requireActual("../../game/_shared/personalBest"),
+  getBest: jest.fn().mockResolvedValue(0),
+  recordResult: jest.fn(() => Promise.resolve({ best: 0, improved: false, isNewBest: false })),
 }));
 
-import { clearGame, loadGame, loadStats, saveGame, saveStats } from "../../game/freecell/storage";
+import { clearGame, loadGame, saveGame } from "../../game/freecell/storage";
+import { getBest, recordResult } from "../../game/_shared/personalBest";
 import { playedCount } from "../../test-utils/mockScreenDeps";
 
 // Each sound played, by name, so a test can tell which events fired.
@@ -589,7 +594,7 @@ describe("FreeCellScreen — result card (#2508)", () => {
     });
     reduceMotion.mockRestore();
     (loadGame as jest.Mock).mockResolvedValue(null);
-    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 0 });
+    (getBest as jest.Mock).mockResolvedValue(0);
   });
 
   /** Loads a game one auto-complete step from winning and plays that step. */
@@ -648,7 +653,7 @@ describe("FreeCellScreen — result card (#2508)", () => {
   });
 
   it("marks a new best and shows it", async () => {
-    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 90 });
+    (getBest as jest.Mock).mockResolvedValue(90);
     const r = await winInOneMove();
     const card = within(await r.findByTestId("freecell-result"));
     expect(card.getByText("New best")).toBeTruthy();
@@ -656,20 +661,29 @@ describe("FreeCellScreen — result card (#2508)", () => {
   });
 
   it("does not mark a first win as a new best, but still records it as the best (#2977)", async () => {
-    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 0 });
-    (saveStats as jest.Mock).mockClear();
+    (getBest as jest.Mock).mockResolvedValue(0);
+    (recordResult as jest.Mock).mockClear();
     const r = await winInOneMove();
     const card = within(await r.findByTestId("freecell-result"));
     expect(card.queryByText("New best")).toBeNull();
     expect(card.getByText("Best")).toBeTruthy();
-    expect(saveStats).toHaveBeenCalledWith(expect.objectContaining({ bestMoves: 1 }));
+    expect(recordResult).toHaveBeenCalledWith("freecell", 1);
   });
 
   it("does not mark a win that fails to beat the best as a new best", async () => {
-    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 1 });
+    (getBest as jest.Mock).mockResolvedValue(1);
     const r = await winInOneMove();
     const card = within(await r.findByTestId("freecell-result"));
     expect(card.queryByText("New best")).toBeNull();
+  });
+
+  it("records only a win that beats the best (#3757)", async () => {
+    (getBest as jest.Mock).mockResolvedValue(1);
+    (recordResult as jest.Mock).mockClear();
+    const r = await winInOneMove();
+    await r.findByTestId("freecell-result");
+    expect(getBest).toHaveBeenCalledWith("freecell");
+    expect(recordResult).not.toHaveBeenCalled();
   });
 
   it("plays the win celebration before the card", async () => {
