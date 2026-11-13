@@ -541,12 +541,13 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
    */
   const standOnLoad = useCallback(
     (loaded: EngineState, next: EngineState) => {
-      // Ahead of the render's effect, as apply() does (#2745).
+      // A hidden game (#3328) starts no session, so it records and ends nothing.
+      if (!isGameVisible("blackjack")) return;
+      // Ahead of the render's effect, as apply() does (#2745): the progress snapshots the resume
+      // and the stand persist carry the settled chips.
       engineRef.current = next;
       roundLogRef.current = resumedRoundLog(loaded);
       void startSession(loaded.chips, true, hasReachedGoal(loaded), loaded.round);
-      // A hidden game (#3328) starts no session, so it records and ends nothing.
-      if (!isGameVisible("blackjack")) return;
       try {
         emitTransitionEvents(loaded, next, "stand");
       } catch (e: unknown) {

@@ -25,6 +25,7 @@ import { savedAgainstNatural } from "../../../game/blackjack/__tests__/helpers/e
 import type { BlackjackState } from "../../../game/blackjack/types";
 import { cubicBezier } from "../../cards/cardMotion";
 import {
+  ACTIVATE_DEAL_MS,
   assignCardIds,
   CHIP_DELAY_MS,
   DEAL_FLIGHT_MS,
@@ -37,6 +38,7 @@ import {
   planMotion,
   RESULT_CUES,
   RESULT_DELAY_MS,
+  SPLIT_DEAL_MS,
   stageView,
   withHeld,
   type CardIds,
@@ -266,6 +268,63 @@ describe("planMotion", () => {
     expect(t3.held).toEqual([0, 0, 0]);
     expect(t3.frames[t3.frames.length - 1]!.stage.hands).toEqual([2, 2, 2]);
     expect(t3.frames.map((f) => f.stage.active)).toEqual(expect.arrayContaining([1, 2]));
+  });
+
+  // #3764 review (the owner's recording, case 5): a split that leaves the hand to play on 21 moves
+  // the outline off it as its card lands; the next hand gets its activation beat, then its card.
+  it("a split hand dealt 21: the outline moves on as the 21 lands, then the next hand's card", () => {
+    // 10♠ 10♦ against 9♣ (hole) 7♥: hand 1 gets A♣ (21), hand 2 gets 7♠ (held).
+    const s0 = placeBet(
+      betting(c("10"), c("9", "♣"), c("10", "♦"), c("7", "♥"), c("A", "♣"), c("7")),
+      10
+    );
+    const s1 = split(s0);
+    expect(s1.active_hand_index).toBe(1);
+    const t = planMotion(view(s0), view(s1))!;
+    const aceLands = SPLIT_DEAL_MS + DEAL_FLIGHT_MS;
+    expect(cuesOf(t)).toEqual([
+      ["chipBet", 300],
+      ["deal", SPLIT_DEAL_MS],
+      ["deal", aceLands + ACTIVATE_DEAL_MS],
+    ]);
+    const row = (at: number) => t.frames.filter((f) => f.at <= at).pop()!.stage;
+    // Hand 1 is outlined until its Ace lands; then hand 2, as the 21 counts.
+    expect(row(aceLands - 1).active).toBe(0);
+    expect(row(aceLands - 1).counted[0]).toBe(1);
+    expect(row(aceLands).active).toBe(1);
+    expect(row(aceLands).counted[0]).toBe(2);
+    expect(row(aceLands).hands[1]).toBe(1);
+    // No stage outlines hand 1 with its 21 counted.
+    t.frames.forEach((f) => {
+      if (f.stage.active === 0) expect(f.stage.counted[0]).toBeLessThan(2);
+    });
+    expect(t.held).toEqual([0, 0]);
+    expect(t.frames[t.frames.length - 1]!.stage.hands).toEqual([2, 2]);
+  });
+
+  it("a Stand that passes a held hand dealt 21 to end the round: that hand is outlined and dealt first, then the flip", () => {
+    // 10s split: hand 1 10+5, hand 2 10+A (held). Stand on 15: hand 2 stands on its own, the dealer plays.
+    const s0 = placeBet(
+      betting(c("10"), c("6", "♣"), c("10", "♥"), c("9", "♦"), c("5", "♦"), c("A", "♣"), c("2")),
+      10
+    );
+    const s1 = split(s0);
+    const t1 = planMotion(view(s0), view(s1))!;
+    expect(t1.held).toEqual([0, 1]);
+    const s2 = stand(s1);
+    expect(s2.phase).toBe("result");
+    const t = planMotion(view(s1), view(s2), t1.held)!;
+    const aceLands = ACTIVATE_DEAL_MS + DEAL_FLIGHT_MS;
+    expect(cuesOf(t).slice(0, 3)).toEqual([
+      ["deal", ACTIVATE_DEAL_MS],
+      ["flip", aceLands],
+      ["deal", aceLands + DEALER_PACE_MS],
+    ]);
+    // The Ace is dealt with hand 2 outlined, never with hand 1.
+    const dealt = t.frames.find((f) => f.stage.hands[1] === 2)!;
+    expect(dealt.at).toBe(ACTIVATE_DEAL_MS);
+    expect(dealt.stage.active).toBe(1);
+    expect(t.frames[0]!.stage.active).toBe(1);
   });
 
   it("a new hand's betting has no motion", () => {

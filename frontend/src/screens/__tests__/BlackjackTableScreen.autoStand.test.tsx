@@ -279,3 +279,105 @@ describe("split hands hit to 21", () => {
     expect(sounds).toContain("blackjack.win");
   });
 });
+
+// #3764 review (the owner's recording, case 5, and its round-ending twin): a split hand dealt 21
+// that play passes over. The dock is sampled every 10 ms: Hit and Stand are never offered while
+// the outlined hand shows 21, and the outline leaves the 21 as its card lands.
+describe("split hands dealt 21", () => {
+  /** One sample of the felt and the dock. */
+  interface Sample {
+    t: number;
+    active: number;
+    scores: number[];
+    hand2Cards: number;
+    canAct: boolean;
+  }
+  /** Samples every 10 ms for `ms` from `since`, checking the dock rule at each. */
+  async function sample(since: number, ms: number): Promise<Sample[]> {
+    const out: Sample[] = [];
+    for (let t = 0; t < ms; t += 10) {
+      await advance(10);
+      const boxes = screen.queryAllByTestId(/^hand-box-\d+$/).length;
+      const active = handToPlay();
+      const scores = Array.from({ length: boxes }, (_, i) => scoreOf(i));
+      const canAct = canHit() || canStand();
+      if (canAct) expect(scores[active]).not.toBe(21);
+      const hand2Cards = screen.queryAllByTestId(/^hand-1-card-\d+$/).length;
+      out.push({ t: Date.now() - since, active, scores, hand2Cards, canAct });
+    }
+    return out;
+  }
+  const firstAt = (log: Sample[], ok: (s: Sample) => boolean) => log.find(ok)?.t ?? null;
+
+  it("split 10s, hand 1 dealt A (21): the outline moves to hand 2 as the Ace lands, then its 7 is dealt", async () => {
+    // 10♠ 10♦ against 9♣ (hole) 7♥; the split deals A♣ to hand 1 and 7♠ to hand 2.
+    await mountOn(
+      betting([
+        card("10"),
+        card("9", "♣"),
+        card("10", "♦"),
+        card("7", "♥"),
+        card("A", "♣"),
+        card("7"),
+      ])
+    );
+    await dealTen();
+    await settle();
+    const at = Date.now();
+    await press(/^Split —/);
+    const log = await sample(at, 2500);
+    const aceLands = firstAt(log, (x) => x.scores[0] === 21);
+    const outlineMoves = firstAt(log, (x) => x.active === 1);
+    const sevenShows = firstAt(log, (x) => x.hand2Cards === 2);
+    const sevenLands = firstAt(log, (x) => x.scores[1] === 17);
+    expect([aceLands, outlineMoves, sevenShows, sevenLands]).toEqual([960, 960, 1310, 1550]);
+    // Hand 1 is never outlined showing 21.
+    log.forEach((x) => {
+      if (x.active === 0) expect(x.scores[0]).not.toBe(21);
+    });
+    // Hit and Stand stay live (a tap lands the motion and acts on the hand to play, #3575), and
+    // the hand to play is the one outlined from the Ace's landing on.
+    expect(log.every((x) => x.canAct)).toBe(true);
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.chipBet", 300],
+      ["blackjack.cardDeal", 720],
+      ["blackjack.cardDeal", 1310],
+    ]);
+  });
+
+  it("split 10s, hand 2 dealt A and held: a Stand on hand 1 outlines hand 2 and deals its Ace before the flip", async () => {
+    // 10 10 against 6♣ (hole) 9♦; the split deals 5♦ to hand 1 and A♣ to hand 2; the dealer draws a 2.
+    await mountOn(
+      betting([
+        card("10"),
+        card("6", "♣"),
+        card("10", "♥"),
+        card("9", "♦"),
+        card("5", "♦"),
+        card("A", "♣"),
+        card("2"),
+      ])
+    );
+    await dealTen();
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    expect(handToPlay()).toBe(0);
+    const at = Date.now();
+    await press(/^Stand/);
+    const log = await sample(at, 3000);
+    // Hand 2 is outlined at once; its Ace is dealt 350 ms later, lands at 590; then the flip.
+    expect(firstAt(log, (x) => x.active === 1)).toBe(10);
+    expect(firstAt(log, (x) => x.hand2Cards === 2)).toBe(350);
+    expect(firstAt(log, (x) => x.scores[1] === 21)).toBe(590);
+    const sounds = soundsSince(at);
+    expect(sounds.slice(0, 3)).toEqual([
+      ["blackjack.cardDeal", 350],
+      ["blackjack.cardFlip", 590],
+      ["blackjack.cardDeal", 1190],
+    ]);
+    // The round is over: Hit and Stand are greyed throughout, and the result shows.
+    expect(log.some((x) => x.canAct)).toBe(false);
+    expect(resultShown()).toBe(true);
+  });
+});

@@ -356,6 +356,10 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const handCardsKey = handCards.join(",");
   const dealerCards = shown && !feltBetting ? shown.dealer_hand.cards.length : 0;
   const activeHandIndex = feltPhase === "player" ? (shown?.active_hand_index ?? 0) : null;
+  // 21 stands on its own (#3764): Hit and Stand are never offered while the felt outlines a hand
+  // showing 21. The engine has already moved on, so a tap would act on a hand not yet outlined.
+  const outlinedOn21 =
+    activeHandIndex !== null && (shown ?? state)?.player_hands[activeHandIndex]?.value === 21;
   const feltEstimate = useMemo(
     () =>
       estimateFeltSize({
@@ -693,7 +697,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                   only when the result shows on the felt (owner decision, #3720). */}
               {dockPlaying && (
                 <ActionButtons
-                  disabled={!playing}
+                  disabled={!playing || outlinedOn21}
                   onHit={handleHit}
                   onStand={handleStand}
                   onDoubleDown={handleDoubleDown}

@@ -13,6 +13,7 @@ import { BlackjackGameProvider, useBlackjackGame } from "../BlackjackGameContext
 import { TABLE_CONFIGS } from "../tables";
 import { hit, newGame, placeBet, stand, type Card, type EngineState } from "../engine";
 import { clearGame, loadGame, saveGame, saveRun } from "../storage";
+import type { ProgressSnapshot } from "../../_shared/useGameSync";
 
 jest.mock("../storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
@@ -23,6 +24,11 @@ jest.mock("../storage", () => ({
 }));
 jest.mock("../../../entitlements/premiumLevels", () => ({ isPremiumLevel: () => false }));
 jest.mock("../../_shared/lastDifficulty", () => ({ saveLastDifficulty: jest.fn() }));
+// Blackjack's visibility in this build (#3328): a hidden game starts no session.
+const mockVisible = jest.fn(() => true);
+jest.mock("../../../entitlements/gameVisibility", () => ({
+  isGameVisible: () => mockVisible(),
+}));
 
 interface Saved {
   type: string;
@@ -32,11 +38,17 @@ const mockSaves: Saved[][] = [];
 const mockComplete = jest.fn();
 const mockStart = jest.fn();
 const mockResume = jest.fn(() => true);
+// The progress snapshot each markStarted persists (useGameSync's ping), as a killed process
+// would leave it for the sweep (#2745).
+let mockSnapshotGetter: (() => ProgressSnapshot) | undefined;
+const mockSnapshots: ProgressSnapshot[] = [];
 jest.mock("../../_shared/useGameSync", () => ({
   useGameSync: () => ({
     start: (...a: unknown[]) => mockStart(...a),
     resume: () => mockResume(),
-    markStarted: jest.fn(),
+    markStarted: () => {
+      if (mockSnapshotGetter) mockSnapshots.push(mockSnapshotGetter());
+    },
     enqueue: jest.fn(),
     enqueueMany: (events: Saved[]) => {
       mockSaves.push([...events]);
@@ -44,7 +56,9 @@ jest.mock("../../_shared/useGameSync", () => ({
     },
     complete: (...a: unknown[]) => mockComplete(...a),
     close: jest.fn(),
-    setProgressSnapshot: jest.fn(),
+    setProgressSnapshot: (g: () => ProgressSnapshot) => {
+      mockSnapshotGetter = g;
+    },
     getGameId: () => "game-1",
     resetPlayWindow: jest.fn(),
   }),
@@ -110,8 +124,10 @@ const recorded = () => mockSaves.flat();
 beforeEach(() => {
   jest.clearAllMocks();
   mockSaves.length = 0;
+  mockSnapshots.length = 0;
   idleTasks.length = 0;
   mockResume.mockReturnValue(true);
+  mockVisible.mockReturnValue(true);
   (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = (cb: () => void) => {
     idleTasks.push(cb);
     return idleTasks.length;
@@ -152,6 +168,28 @@ describe("a single hand saved on 21 before #3764", () => {
     });
     expect(rows[0]!.data).not.toHaveProperty("p");
     expect(rows[1]!.data).toMatchObject({ unit: 5, i: 0, o: "win", p: 10, ch: 110 });
+  });
+
+  it("the progress snapshot persisted while it plays out carries the settled chips", async () => {
+    await mountWith(savedOn21(100, c("2", "♥")));
+    expect(mockSnapshots.length).toBeGreaterThan(0);
+    for (const snap of mockSnapshots) {
+      expect(snap.result).toMatchObject({ final_chips: 110 });
+    }
+  });
+
+  it("in a build where Blackjack is hidden (#3328): stood and saved, but no session, nothing recorded or counted", async () => {
+    mockVisible.mockReturnValue(false);
+    const { result } = await mountWith(savedOn21(100, c("2", "♥")));
+    expect(result.current.engine?.phase).toBe("result");
+    expect(result.current.engine?.chips).toBe(110);
+    expect(saveGame).toHaveBeenCalledWith(expect.objectContaining({ phase: "result", chips: 110 }));
+    expect(mockResume).not.toHaveBeenCalled();
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(result.current.sessionStats).toMatchObject({ handsPlayed: 0 });
+    expect(mockSnapshots).toEqual([]);
+    await idle();
+    expect(recorded()).toEqual([]);
   });
 
   it("all in: a 21 never loses here, so the run goes on (a push against the dealer's 3-card 21)", async () => {

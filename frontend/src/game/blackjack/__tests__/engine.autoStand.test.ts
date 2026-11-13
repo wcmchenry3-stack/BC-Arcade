@@ -265,3 +265,109 @@ describe("standOnTwentyOne (a save from before #3764, on 21 in the player's phas
     expect(standOnTwentyOne(settled)).toBe(settled);
   });
 });
+
+describe("every split settlement emits its outcome, milestones and comeback (#3764 review)", () => {
+  /** Split 8s (1000 chips, 100 a hand) against dealer 6+9, dealing `draws` in order. */
+  const split8s = (opts: Partial<EngineState>, ...draws: ReturnType<typeof c>[]) =>
+    split({ ...splitSetup({ deck: deckDealing(...draws) }), ...opts });
+
+  it("a Stand on the last hand: the outcome, and a milestone it reached", () => {
+    // 8+3 and 8+K; stand, stand: dealer 15 draws K (bust). Both win: +200.
+    const s = stand(split8s({ milestones: [1150] }, c("♠", "3"), c("♥", "K"), c("♦", "K")));
+    const next = stand(s);
+    expect(next.phase).toBe("result");
+    expect(next.events).toEqual([{ type: "win" }, { type: "milestone", value: 1150 }]);
+  });
+
+  it("a Stand that reaches the run's goal: victory, with the outcome", () => {
+    const s = stand(split8s({ runGoal: 1200 }, c("♠", "3"), c("♥", "K"), c("♦", "K")));
+    const next = stand(s);
+    expect(next.phase).toBe("victory");
+    expect(next.events).toEqual([{ type: "win" }]);
+  });
+
+  it("a Stand that moves play on emits nothing", () => {
+    const s = split8s({}, c("♠", "3"), c("♥", "K"));
+    expect(stand(s).events).toBeUndefined();
+  });
+
+  it("a split hit that busts the last hand: the bust, then the outcome", () => {
+    // 8+3 stands; 8+K hits a K (28). Dealer 15 draws 5 (20): hand 1 loses too.
+    const s = stand(split8s({}, c("♠", "3"), c("♥", "K"), c("♦", "K"), c("♣", "5")));
+    const next = hit(s);
+    expect(next.phase).toBe("result");
+    expect(next.events).toEqual([{ type: "cardDeal" }, { type: "bust" }, { type: "loss" }]);
+  });
+
+  it("a split hit that busts with a hand still to play emits no outcome", () => {
+    const s = split8s({}, c("♠", "K"), c("♥", "2"), c("♦", "K"));
+    const next = hit(s);
+    expect(next.phase).toBe("player");
+    expect(next.events).toEqual([{ type: "cardDeal" }, { type: "bust" }]);
+  });
+
+  it("a split double that busts the last hand: the bust, then the outcome", () => {
+    // 8+3 stands; 8+5 doubles a K (23). Dealer 15 draws 5 (20).
+    const s = stand(split8s({}, c("♠", "3"), c("♥", "5"), c("♦", "K"), c("♣", "5")));
+    const next = doubleDown(s);
+    expect(next.phase).toBe("result");
+    expect(next.events).toEqual([{ type: "cardDeal" }, { type: "bust" }, { type: "loss" }]);
+  });
+
+  it("a split double that settles the round, reaching victory: the outcome", () => {
+    // 8+3 stands on 11; 8+3 doubles a K (21). Dealer 15 draws K (bust): +100 and +200.
+    const s = stand(split8s({ runGoal: 1300 }, c("♠", "3"), c("♥", "3"), c("♦", "K"), c("♣", "K")));
+    const next = doubleDown(s);
+    expect(next.phase).toBe("victory");
+    expect(next.events).toEqual([{ type: "cardDeal" }, { type: "win" }]);
+  });
+
+  it("split aces settle at the split with their outcome", () => {
+    // A+K 21 wins, A+5 16 loses to the dealer's 17: a push overall.
+    const s = split(
+      splitSetup({
+        player: [c("♠", "A"), c("♥", "A")],
+        deck: deckDealing(c("♦", "K"), c("♣", "5"), c("♣", "2")),
+      })
+    );
+    expect(s.phase).toBe("result");
+    expect(s.events).toEqual([{ type: "push" }]);
+  });
+
+  it("split aces reaching the run's goal: victory, with the outcome and the milestone", () => {
+    // A+K and A+9 against a dealer bust (15 + K): +200.
+    const s = split({
+      ...splitSetup({
+        player: [c("♠", "A"), c("♥", "A")],
+        deck: deckDealing(c("♦", "K"), c("♣", "9"), c("♣", "K")),
+      }),
+      runGoal: 1200,
+      milestones: [1100],
+    });
+    expect(s.phase).toBe("victory");
+    expect(s.events).toEqual([{ type: "win" }, { type: "milestone", value: 1100 }]);
+  });
+
+  it("a comeback reached on a split settlement is emitted", () => {
+    // From 600 after a low under 25%: +200 makes 800, past 75% of the 1000 start.
+    const s = stand(
+      split8s(
+        { chips: 600, startingChips: 1000, hitLowChips: true },
+        c("♠", "3"),
+        c("♥", "K"),
+        c("♦", "K")
+      )
+    );
+    expect(stand(s).events).toEqual([{ type: "win" }, { type: "comeback" }]);
+  });
+});
+
+describe("standOnTwentyOne leaves a single hand's two-card 21 alone", () => {
+  it("a natural in the player's phase (no build saves one) is not stood as a plain 21", () => {
+    const natural: EngineState = {
+      ...stateInPlayer(1000, 100),
+      player_hand: [c("♠", "A"), c("♥", "K")],
+    };
+    expect(standOnTwentyOne(natural)).toBe(natural);
+  });
+});

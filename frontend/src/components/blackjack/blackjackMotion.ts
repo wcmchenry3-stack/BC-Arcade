@@ -420,14 +420,24 @@ function planSplit(
   const nextActive = next.phase === "player" ? next.active_hand_index : null;
   const start = { ...base, hands: before, counted: before, active: k };
   let landed = dealTo(b, SPLIT_DEAL_MS, k, nextCounts[k]! - 1, 1);
-  if (nextActive === k) {
+  const aces = next.player_hands[k]?.cards[0]?.rank === "A";
+  if (!aces) {
     // The new hand's second card waits for its turn.
     held[k + 1] = nextCounts[k + 1]! - 1;
-    return { start, landed, slideMs: SPLIT_SLIDE_MS, held };
+    if (nextActive === k) return { start, landed, slideMs: SPLIT_SLIDE_MS, held };
+    // The hand to play was dealt 21 and stands on its own (#3764): as its card lands the outline
+    // moves on, and the next hand is dealt its card on its own turn, as after a Stand.
+    const played =
+      nextActive === null
+        ? activateRest(b, landed, k + 1, held)
+        : activateThrough(b, landed, k + 1, nextActive, held);
+    return { start, ...played, slideMs: SPLIT_SLIDE_MS };
   }
   landed = dealTo(b, SPLIT_DEAL_MS + DEAL_STAGGER_MS, k + 1, nextCounts[k + 1]! - 1, 1);
-  if (nextActive === null) return { start, landed, slideMs: SPLIT_SLIDE_MS, held };
-  const played = activateThrough(b, landed, k + 2, nextActive, held);
+  const played =
+    nextActive === null
+      ? activateRest(b, landed, k + 2, held)
+      : activateThrough(b, landed, k + 2, nextActive, held);
   return { start, ...played, slideMs: SPLIT_SLIDE_MS };
 }
 
@@ -482,6 +492,24 @@ function activateThrough(
   return activate(b, step.landed, j, step.held);
 }
 
+/**
+ * The round's play is over from hand `from` on (every later hand stood on its own on 21, #3764):
+ * each that still holds its card back is outlined and dealt it in turn, before the dealer's turn,
+ * so no card is dealt with an earlier hand still outlined.
+ */
+function activateRest(
+  b: TimelineBuilder,
+  at: number,
+  from: number,
+  held: number[]
+): { landed: number; held: number[] } {
+  let step = { landed: at, held };
+  for (let i = from; i < held.length; i++) {
+    if ((step.held[i] ?? 0) > 0) step = activate(b, step.landed, i, step.held);
+  }
+  return step;
+}
+
 /** Deals the `n` cards hand `j` held back: they are its last. */
 function dealToHeld(b: TimelineBuilder, at: number, j: number, n: number): number {
   for (let m = 0; m < n; m++) {
@@ -512,7 +540,10 @@ function planPlay(
     // A Stand: the next hand to play is outlined (the rows re-lay) and dealt what it held back,
     // or the dealer plays.
     const start = { ...base, active: k };
-    if (nextActive === null) return { start, landed: 0, slideMs: REFAN_MS, held };
+    if (nextActive === null) {
+      const rest = activateRest(b, 0, k + 1, held);
+      return { start, ...rest, slideMs: rest.landed > 0 ? SPLIT_SLIDE_MS : REFAN_MS };
+    }
     return { start, ...activateThrough(b, 0, k + 1, nextActive, held), slideMs: SPLIT_SLIDE_MS };
   }
   if (nextCounts.some((n, i) => n !== (i === grew ? p.counts[i]! + 1 : p.counts[i]))) return null;
@@ -520,8 +551,16 @@ function planPlay(
   b.at(DEAL_FLIGHT_MS, countHand(grew, base.hands[grew]! + 1));
   const hands = base.hands.map((n, i) => (i === grew ? n + 1 : n));
   const start = { ...base, hands, active: k };
-  if (nextActive === null || nextActive === k) {
-    return { start, landed: DEAL_FLIGHT_MS, slideMs: REFAN_MS, held };
+  if (nextActive === k) return { start, landed: DEAL_FLIGHT_MS, slideMs: REFAN_MS, held };
+  if (nextActive === null) {
+    // The round's play ends here. A later hand that stood on its own on 21 still holding its card
+    // is outlined and dealt it before the dealer's turn (#3764).
+    const rest = activateRest(b, DEAL_FLIGHT_MS, grew + 1, held);
+    if (rest.landed > DEAL_FLIGHT_MS && (next.player_hands[grew]?.value ?? 0) > 21) {
+      b.cue(DEAL_FLIGHT_MS, "bust");
+    }
+    const slideMs = rest.landed > DEAL_FLIGHT_MS ? SPLIT_SLIDE_MS : REFAN_MS;
+    return { start, ...rest, slideMs };
   }
   // A split hand is done (bust, doubled, or 21, #3764): the next one is outlined as its card lands.
   if ((next.player_hands[grew]?.value ?? 0) > 21) b.cue(DEAL_FLIGHT_MS, "bust");

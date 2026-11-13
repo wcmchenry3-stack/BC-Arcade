@@ -312,6 +312,36 @@ describe("21 stands on its own (#3764): logged as the Stand a tap makes", () => 
     expect(log.dl).toEqual({ d: ["2H"], t: 17 });
   });
 
+  it("a split double to 21 logs the double only: the double ends its hand, no stand after it", () => {
+    // 8s split: 8+3 and 8+2. Hand 1 doubles a K (21); play moves to hand 2.
+    const dealt = placeBet(gameWith(["8S", "6C", "8H", "9D", "3D", "2C", "KC"]), 10);
+    const { log, s } = played(dealt, [
+      [split, "split"],
+      [doubleDown, "double"],
+    ]);
+    expect(s.active_hand_index).toBe(1);
+    expect(log.a.slice(1)).toEqual([["d", 0, "KC"]]);
+  });
+
+  it("several stands from one action are logged in table order", () => {
+    // 10s split, both hands dealt an Ace: the split stands hand 1, then hand 2; the dealer plays.
+    const dealt = placeBet(gameWith(["TS", "6C", "TH", "9D", "AD", "AC", "2H"]), 10);
+    const { log, s } = played(dealt, [[split, "split"]]);
+    expect(s.phase).toBe("result");
+    expect(log.a).toEqual([
+      [
+        "p",
+        0,
+        [
+          ["TS", "AD"],
+          ["TH", "AC"],
+        ],
+      ],
+      ["s", 0],
+      ["s", 1],
+    ]);
+  });
+
   it("split aces log no stand, even on 21", () => {
     const dealt = placeBet(gameWith(["AS", "6C", "AH", "9D", "KD", "5C", "2H"]), 10);
     const { log, s } = played(dealt, [[split, "split"]]);
