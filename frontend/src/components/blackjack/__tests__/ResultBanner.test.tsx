@@ -97,7 +97,7 @@ describe("ResultBanner", () => {
 
     it("still reads the whole result: outcome, summary and payout", async () => {
       const { getByLabelText } = await renderFelt(true);
-      expect(getByLabelText(`You Win!. ${SUMMARY}. Payout: 25 chips`)).toBeTruthy();
+      expect(getByLabelText(`You Win! ${SUMMARY}. Payout: 25 chips`)).toBeTruthy();
     });
 
     it("colours the net by its sign: a gain, a loss and no change each their own colour", async () => {
