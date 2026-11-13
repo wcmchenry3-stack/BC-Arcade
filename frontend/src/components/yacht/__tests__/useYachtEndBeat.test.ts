@@ -121,6 +121,40 @@ describe("useYachtEndBeat", () => {
     expect(hook.result.current.holding).toBe(false);
   });
 
+  it("a celebration done while the outcome is not known yet: its beat starts as soon as it is (Codex, PR #3772)", async () => {
+    let settle: (o: "loss") => void = () => undefined;
+    const onStart = jest.fn();
+    const hook = await renderHook(() => useYachtEndBeat({ onStart }));
+    await act(() =>
+      hook.result.current.start(new Promise<"loss">((r) => (settle = r)), {
+        afterCelebration: true,
+      })
+    );
+    await act(() => hook.result.current.celebrationDone());
+    expect(onStart).not.toHaveBeenCalled();
+    await act(async () => settle("loss"));
+    // Not held for the safety net: the celebration is already gone.
+    expect(onStart).toHaveBeenCalledWith("loss", LOSS_BEAT_MS);
+    await act(() => jest.advanceTimersByTime(LOSS_BEAT_MS));
+    expect(hook.result.current.holding).toBe(false);
+  });
+
+  it("a celebration still showing when the outcome is known is still waited for", async () => {
+    let settle: (o: "win") => void = () => undefined;
+    const onStart = jest.fn();
+    const hook = await renderHook(() => useYachtEndBeat({ onStart }));
+    await act(() =>
+      hook.result.current.start(new Promise<"win">((r) => (settle = r)), {
+        afterCelebration: true,
+      })
+    );
+    await act(async () => settle("win"));
+    expect(onStart).not.toHaveBeenCalled();
+    expect(hook.result.current.holding).toBe(true);
+    await act(() => hook.result.current.celebrationDone());
+    expect(onStart).toHaveBeenCalledWith("win", WIN_BEAT_MS);
+  });
+
   it("an outcome that comes after a New Game starts nothing", async () => {
     let settle: (o: "tie") => void = () => undefined;
     const onStart = jest.fn();
