@@ -304,7 +304,7 @@ export default function SortScreen() {
   usePauseWhileAway(navigation, noop, noop, {
     onLeave: (event) => {
       if (event.reason !== "appState") return;
-      // Pending glugs would fire late, in a clump, on resume (#3661): drop them. The pour
+      // The pending stream would fire late, in a clump, on resume (#3661): drop them. The pour
       // animation itself is unchanged.
       audio.cancelPour();
       if (
@@ -443,7 +443,7 @@ export default function SortScreen() {
       boardChanged();
       setHistory((h) => [...h, snapshot]);
       setGameState({ ...gameState, selectedBottleIndex: null });
-      // The lift now, a glug per unit on the pour's timeline (#3661).
+      // The lift now, the stream for the unit count at the pour's flowStartMs (#3661).
       audio.playPour(units, reduceMotion);
     } else {
       // Refused (#3660): the destination shakes "no" and the selection clears, as before.
@@ -564,7 +564,7 @@ export default function SortScreen() {
     setHintTo(null);
     setIsHinting(false);
     cancelPour();
-    audio.cancelPour(); // no glug for a pour that was dropped (#3661)
+    audio.cancelPour(); // no stream for a pour that was dropped (#3661)
     // A cascade cut short by leaving the board must not come back as the card.
     if (cascadeRef.current === "playing") cascadeRef.current = "done";
     setWinCascade(false);

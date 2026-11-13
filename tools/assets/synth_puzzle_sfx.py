@@ -794,9 +794,9 @@ def yacht_tie() -> np.ndarray:
 
 # --- Sort "glass and water" (#3661): option A for every sound -----------------------------------
 
-# From game/sort/motion.ts (#3660, #3783): a pour's stream starts at flowStartMs (300 ms) and each
-# unit takes a UNIT_MS (300 ms) slot, so the glug plays once per unit at flowStartMs + i * 300 ms
-# (a 0.38 s file, overlapping the next by ~80 ms). The win cascade is WIN_CASCADE_MS (1380 ms).
+# From game/sort/motion.ts (#3660, #3783): a pour's stream starts at flowStartMs (300 ms) and
+# runs 300 ms (POUR_UNIT_MS) per unit, so one stream file per unit count plays at flowStartMs.
+# The win cascade is WIN_CASCADE_MS (1380 ms).
 SORT_UNIT_AT = 0.300
 SORT_WIN_CARD_AT = 1.38
 SORT_WIN_LEN = 2.0
@@ -856,37 +856,57 @@ def sort_lift(i: int = 0) -> np.ndarray:
     return fade(x, 0.01, 0.03)
 
 
-def sort_gulp(f0, dur, decay, h2, h3, dip=0.22, att=0.005):
-    """One bottle gulp: the pitch starts high, drops fast, then rises again; harmonics carry it
-    on phone speakers."""
-    t = t_axis(dur)
-    f = f0 * (1.12 - dip * (1 - np.exp(-t / 0.012)) + 0.2 * (1 - np.exp(-t / 0.05)) * 0.5)
-    ph = phase(f)
-    x = np.sin(ph) + h2 * np.sin(2 * ph) + h3 * np.sin(3 * ph)
-    return x * np.exp(-t / decay) * np.clip(t / att, 0, 1)
+SORT_STREAM_TAIL = 0.18  # s of tail after the stream's last unit
+SORT_BUBBLE_SIGMA = 0.1
 
 
-def sort_glug(i: int = 0) -> np.ndarray:
-    """Glug, 0.38 s, one per unit poured ("classic bottle glug"): three clear gulps at a 520 Hz
-    fundamental (0, ~105, ~208 ms) over a light liquid bed pulsing with them. Variations are
-    -5%, 0% and +5% in pitch. Played at each unit's slot start, flowStartMs + i * 300 ms."""
-    rng = np.random.default_rng(700 + i)
-    scale = [0.95, 1.0, 1.05][i % 3]
-    times, gains = [0.0, 0.105, 0.208], [1, 0.85, 0.95]
-    x = np.zeros(int(0.38 * SR))
-    for k, (at, g) in enumerate(zip(times, gains, strict=True)):
-        at += rng.uniform(-0.01, 0.01) * (k > 0)
-        f = 520 * scale * (1 + 0.04 * k) * rng.uniform(0.97, 1.03)
-        place(x, sort_gulp(f, 0.16, 0.04, 0.3, 0.1) * g, max(at, 0))
-    n = len(x)
-    t = t_axis(0.38)
-    bed = lp2(highpass(noise(n, 800 + i), 700), 3000)
-    bed /= np.std(bed) + 1e-12
-    pulse = np.full(n, 0.35)
-    for at in times:
-        pulse += 0.65 * np.exp(-np.clip(t - at, 0, None) / 0.05) * (t >= at)
-    pulse *= np.clip(t / 0.01, 0, 1) * np.exp(-np.clip(t - 0.28, 0, None) / 0.04)
-    x = x / (np.abs(x).max() + 1e-9) + 0.18 * 0.5 * bed * pulse
+def sort_bubble(f0, a, rng):
+    """One bubble (van den Doel): a damped sinusoid at the Minnaert frequency `f0` with a rising
+    chirp, f(t) = f0 (1 + sigma d t), and the damping d = 0.043 f0 + 0.0014 f0^1.5 (1/s)."""
+    d = 0.043 * f0 + 0.0014 * f0**1.5
+    n = int(min(7 / d, 0.15) * SR)
+    t = np.arange(n) / SR
+    ph = 2 * np.pi * f0 * (t + SORT_BUBBLE_SIGMA * d * t * t / 2) + rng.uniform(0, 2 * np.pi)
+    return a * np.sin(ph) * np.exp(-d * t) * np.clip(t / 0.0004, 0, 1)
+
+
+def sort_stream(units: int, i: int = 0) -> np.ndarray:
+    """Pour stream for a pour of `units` units (1 to 4), 0.3 s per unit plus a 0.18 s tail,
+    variation `i` (0 to 2): "stream4 A", van den Doel's bubble model. A Poisson stream of
+    ~1,400 bubbles a second, radii 0.5-4 mm (power law r^-2.5, so 0.8-6.5 kHz, amplitude ~ r),
+    shrinking by 0.20 octave per unit as the destination fills (the pitch rises), plus a light
+    impact tap as the stream hits. No slow amplitude or formant modulation. Played once, at
+    flowStartMs, for the pour's unit count. Seed = 1000 + 100 * units + i."""
+    rate, rmin, rmax, beta, alpha, fill, imp = 1400, 0.5, 4.0, 2.5, 1.0, 0.20, -26
+    seed = 1000 + 100 * units + i
+    rng = np.random.default_rng(seed)
+    d_flow = 0.3 * units
+    dur = d_flow + SORT_STREAM_TAIL
+    n = int(dur * SR)
+    x = np.zeros(n + int(0.2 * SR))
+    # Exponential gaps, thinned: the rate ramps in over 15 ms, flows to d_flow, then dies away.
+    t = 0.0
+    while t < dur:
+        r_in = min(1.0, t / 0.015) if t < d_flow else np.exp(-(t - d_flow) / 0.05)
+        t += rng.exponential(1.0 / rate)
+        if rng.random() > max(r_in, 0.03):
+            continue
+        p = min(t / d_flow, 1.0)
+        b = 1 - beta  # inverse-CDF draw from a pdf ~ r^-beta on [rmin, rmax]
+        u = rng.random()
+        r = (rmin**b + u * (rmax**b - rmin**b)) ** (1 / b)
+        r *= 2 ** (-fill * units * p)  # the destination fills: radii shrink, the pitch rises
+        f0 = 3260.0 / r
+        if f0 > 9000 or f0 < 250:
+            continue
+        a = (r**alpha) * rng.lognormal(0, 0.25)
+        place(x, sort_bubble(f0, a, rng), t)
+    x = x[:n]
+    rb = np.sqrt(np.mean(x**2)) + 1e-12
+    tap = lp2(highpass(noise(n, seed + 9), 2000), 8000)
+    tap /= np.std(tap) + 1e-12
+    onset = np.exp(-t_axis(dur) / 0.03) * np.clip(t_axis(dur) / 0.001, 0, 1)
+    x = x + rb * 10 ** (imp / 20) * tap * (0.3 + 1.5 * onset)
     x = highpass(x, 250)  # keep phone speakers clean
     return fade(x, 0.002, 0.05)
 
@@ -975,7 +995,7 @@ MAHJONG_MATCH_LEVEL = rms50(-20.0, -1.0)  # the reward, ~72 times a game
 DAILY_WORD_REVEAL_LEVEL = {"miss": -28.0, "present": -26.0, "correct": -24.0}
 SORT_SELECT_LEVEL = rms50(-24.0, -3.0)  # the most frequent Sort sound, with the lift
 SORT_LIFT_LEVEL = rms50(-28.0, -3.0)  # a soft touch under every pour: the quietest
-SORT_GLUG_LEVEL = rms50(-21.0, -3.0)  # up to four per pour: the body of the pour
+SORT_STREAM_LEVEL = rms50(-21.0, -3.0)  # one per pour: the body of the pour
 JACKPOT_LEVEL = rms50(-16.0, -1.0)  # the top of the ladder, 2 dB over the upper bonus
 CPU_JACKPOT_LEVEL = rms50(-19.0, -1.0)  # the computer's, 3 dB under yours
 
@@ -1049,9 +1069,18 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "sort-pour-lift-1": (lambda: sort_lift(0), SORT_LIFT_LEVEL),
     "sort-pour-lift-2": (lambda: sort_lift(1), SORT_LIFT_LEVEL),
     "sort-pour-lift-3": (lambda: sort_lift(2), SORT_LIFT_LEVEL),
-    "sort-pour-glug-1": (lambda: sort_glug(0), SORT_GLUG_LEVEL),
-    "sort-pour-glug-2": (lambda: sort_glug(1), SORT_GLUG_LEVEL),
-    "sort-pour-glug-3": (lambda: sort_glug(2), SORT_GLUG_LEVEL),
+    "sort-pour-stream-1u-1": (lambda: sort_stream(1, 0), SORT_STREAM_LEVEL),
+    "sort-pour-stream-1u-2": (lambda: sort_stream(1, 1), SORT_STREAM_LEVEL),
+    "sort-pour-stream-1u-3": (lambda: sort_stream(1, 2), SORT_STREAM_LEVEL),
+    "sort-pour-stream-2u-1": (lambda: sort_stream(2, 0), SORT_STREAM_LEVEL),
+    "sort-pour-stream-2u-2": (lambda: sort_stream(2, 1), SORT_STREAM_LEVEL),
+    "sort-pour-stream-2u-3": (lambda: sort_stream(2, 2), SORT_STREAM_LEVEL),
+    "sort-pour-stream-3u-1": (lambda: sort_stream(3, 0), SORT_STREAM_LEVEL),
+    "sort-pour-stream-3u-2": (lambda: sort_stream(3, 1), SORT_STREAM_LEVEL),
+    "sort-pour-stream-3u-3": (lambda: sort_stream(3, 2), SORT_STREAM_LEVEL),
+    "sort-pour-stream-4u-1": (lambda: sort_stream(4, 0), SORT_STREAM_LEVEL),
+    "sort-pour-stream-4u-2": (lambda: sort_stream(4, 1), SORT_STREAM_LEVEL),
+    "sort-pour-stream-4u-3": (lambda: sort_stream(4, 2), SORT_STREAM_LEVEL),
     "sort-refused": (sort_refused, rms50(-23.0, -3.0)),
     "sort-complete": (sort_complete, rms50(-20.0, -3.0)),
     "sort-undo": (sort_undo, rms50(-27.0, -3.0)),

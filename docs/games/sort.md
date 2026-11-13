@@ -226,7 +226,7 @@ Triggers are in `frontend/src/screens/SortScreen.tsx` (via `frontend/src/game/so
 | -------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | `sort.select`, `select2`, `select3`          | `sort-select-1/2/3.ogg`         | a tap selects a filled bottle (with the light haptic); not a deselect, and not the source a hint lifts                                                                                                      | 1.0    |
 | `sort.pourLift`, `pourLift2`, `pourLift3`    | `sort-pour-lift-1/2/3.ogg`      | a pour starts (the tap)                                                                                                                                                                                     | 1.0    |
-| `sort.pourGlug`, `pourGlug2`, `pourGlug3`    | `sort-pour-glug-1/2/3.ogg`      | once per unit poured (1 to 4), at each unit's slot start, `flowStartMs + i * 300 ms` after the pour starts (`pourTimeline`); the timers are cleared with a cancelled pour (reset, level change, leaving)     | 1.0    |
+| `sort.pourStream1u` to `sort.pourStream4u` (each with `2`, `3` variations) | `sort-pour-stream-{1,2,3,4}u-{1,2,3}.ogg` | once per pour, at the stream's start (`flowStartMs` 300 ms after the pour starts, plus the 50 ms latency budget), the file for the pour's unit count (1 to 4; 0.48 to 1.38 s); cleared with a cancelled pour (reset, level change, leaving, backgrounding) | 1.0 |
 | `sort.refused`                               | `sort-refused.ogg`              | a pour is refused (the destination's shake; with the warning haptic)                                                                                                                                        | 1.0    |
 | `sort.complete`                              | `sort-complete.ogg`             | a pour that completes a bottle lands, as the badge pops (with the success haptic); not the winning pour, an undo or a restore                                                                               | 1.0    |
 | `sort.undo`                                  | `sort-undo.ogg`                 | Undo, or "Back to last good move" (once per action, however many moves it undoes)                                                                                                                           | 1.0    |
@@ -235,7 +235,7 @@ Triggers are in `frontend/src/screens/SortScreen.tsx` (via `frontend/src/game/so
 
 Notes:
 
-- A glug (0.38 s) is longer than its 300 ms slot, so consecutive glugs overlap by about 80 ms; they are different variations (different players), so neither is cut.
-- Reduce Motion: the pour lands at once, so a pour plays the lift and a single glug together at the tap. Under Reduce Motion or a screen reader the result card opens at once and the win sound plays as it is.
-- A restored (Continue) game, a cancelled pour and a level change play nothing. Going to the background mid-pour also drops the pour's pending glugs (they would fire late, in a clump, on resume); the pour animation is unchanged.
+- The stream is one file per pour, as long as the stream (0.3 s per unit) plus an 0.18 s tail: van den Doel bubble synthesis, the pitch rising as the bottle fills.
+- Reduce Motion: the pour lands at once, so a pour plays the lift and the 1-unit stream together at the tap. Under Reduce Motion or a screen reader the result card opens at once and the win sound plays as it is.
+- A restored (Continue) game, a cancelled pour and a level change play nothing. Going to the background mid-pour also drops the pour's pending stream (they would fire late, in a clump, on resume); the pour animation is unchanged.
 - Sort no longer plays `cascade-fruit-merge.ogg` (Cascade's) or `freecell-game-win.mp3`.

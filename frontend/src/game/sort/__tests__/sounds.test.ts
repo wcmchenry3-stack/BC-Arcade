@@ -1,7 +1,7 @@
 /** Sort's sound registry (#3661): every registered file exists and the keys match what ships. */
 import * as fs from "fs";
 import * as path from "path";
-import { SORT_POUR_GLUG, SORT_POUR_LIFT, SORT_SELECT, SORT_SOUNDS } from "../sounds";
+import { SORT_POUR_LIFT, SORT_POUR_STREAM, SORT_SELECT, SORT_SOUNDS } from "../sounds";
 
 const SOURCE = fs.readFileSync(path.join(__dirname, "../sounds.ts"), "utf8");
 const AUDIO = fs.readFileSync(path.join(__dirname, "../useSortAudio.ts"), "utf8");
@@ -19,7 +19,7 @@ describe("Sort sound registry", () => {
       [
         ...SORT_SELECT,
         ...SORT_POUR_LIFT,
-        ...SORT_POUR_GLUG,
+        ...SORT_POUR_STREAM.flat(),
         "sort.refused",
         "sort.complete",
         "sort.undo",
@@ -32,7 +32,9 @@ describe("Sort sound registry", () => {
   it.each([
     ["select", SORT_SELECT, "sort-select"],
     ["pour lift", SORT_POUR_LIFT, "sort-pour-lift"],
-    ["pour glug", SORT_POUR_GLUG, "sort-pour-glug"],
+    ...SORT_POUR_STREAM.map(
+      (keys, u) => [`pour stream, ${u + 1} unit(s)`, keys, `sort-pour-stream-${u + 1}u`] as const
+    ),
   ] as const)("%s is %s-1/2/3.ogg, in order", (_name, keys, file) => {
     expect(keys).toHaveLength(3);
     keys.forEach((key, i) => {
@@ -63,9 +65,18 @@ describe("Sort sound registry", () => {
     expect(fs.existsSync(path.join(SOUNDS_DIR, "freecell-game-win.mp3"))).toBe(true);
   });
 
-  it("the three frequent sounds play through useSoundVariants", () => {
+  it("has one stream per unit count 1 to 4, three variations each", () => {
+    expect(SORT_POUR_STREAM).toHaveLength(4);
+    SORT_POUR_STREAM.forEach((keys) => expect(keys).toHaveLength(3));
+    expect(SOURCE).not.toMatch(/glug/i);
+    expect(fs.readdirSync(SOUNDS_DIR).filter((f) => f.startsWith("sort-pour-glug"))).toEqual([]);
+  });
+
+  it("the frequent sounds play through useSoundVariants", () => {
     expect(AUDIO).toContain("useSoundVariants(SORT_SELECT, SORT_SOUNDS)");
     expect(AUDIO).toContain("useSoundVariants(SORT_POUR_LIFT, SORT_SOUNDS)");
-    expect(AUDIO).toContain("useSoundVariants(SORT_POUR_GLUG, SORT_SOUNDS)");
+    for (let u = 0; u < 4; u++) {
+      expect(AUDIO).toContain(`useSoundVariants(SORT_POUR_STREAM[${u}], SORT_SOUNDS)`);
+    }
   });
 });

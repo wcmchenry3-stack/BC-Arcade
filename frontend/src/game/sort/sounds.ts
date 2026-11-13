@@ -9,10 +9,20 @@ export const SORT_SOUNDS: Record<string, number> = {
   "sort.pourLift": require("../../../assets/sounds/sort-pour-lift-1.ogg"),
   "sort.pourLift2": require("../../../assets/sounds/sort-pour-lift-2.ogg"),
   "sort.pourLift3": require("../../../assets/sounds/sort-pour-lift-3.ogg"),
-  // pour glug: one 0.38 s bottle glug per unit, at each unit's slot start (pourTimeline)
-  "sort.pourGlug": require("../../../assets/sounds/sort-pour-glug-1.ogg"),
-  "sort.pourGlug2": require("../../../assets/sounds/sort-pour-glug-2.ogg"),
-  "sort.pourGlug3": require("../../../assets/sounds/sort-pour-glug-3.ogg"),
+  // pour stream: one file per unit count (1 to 4), three variations each, played once at the
+  // stream's start (flowStartMs) for the pour's unit count
+  "sort.pourStream1u": require("../../../assets/sounds/sort-pour-stream-1u-1.ogg"),
+  "sort.pourStream1u2": require("../../../assets/sounds/sort-pour-stream-1u-2.ogg"),
+  "sort.pourStream1u3": require("../../../assets/sounds/sort-pour-stream-1u-3.ogg"),
+  "sort.pourStream2u": require("../../../assets/sounds/sort-pour-stream-2u-1.ogg"),
+  "sort.pourStream2u2": require("../../../assets/sounds/sort-pour-stream-2u-2.ogg"),
+  "sort.pourStream2u3": require("../../../assets/sounds/sort-pour-stream-2u-3.ogg"),
+  "sort.pourStream3u": require("../../../assets/sounds/sort-pour-stream-3u-1.ogg"),
+  "sort.pourStream3u2": require("../../../assets/sounds/sort-pour-stream-3u-2.ogg"),
+  "sort.pourStream3u3": require("../../../assets/sounds/sort-pour-stream-3u-3.ogg"),
+  "sort.pourStream4u": require("../../../assets/sounds/sort-pour-stream-4u-1.ogg"),
+  "sort.pourStream4u2": require("../../../assets/sounds/sort-pour-stream-4u-2.ogg"),
+  "sort.pourStream4u3": require("../../../assets/sounds/sort-pour-stream-4u-3.ogg"),
   // refused pour: two dull glass taps, on the shake
   "sort.refused": require("../../../assets/sounds/sort-refused.ogg"),
   // bottle complete: a two-note glass chime, as the badge pops
@@ -31,5 +41,13 @@ export const SORT_SELECT = ["sort.select", "sort.select2", "sort.select3"] as co
 /** The pour lift variations, in registry order, for `useSoundVariants`. */
 export const SORT_POUR_LIFT = ["sort.pourLift", "sort.pourLift2", "sort.pourLift3"] as const;
 
-/** The glug variations, in registry order, for `useSoundVariants`. */
-export const SORT_POUR_GLUG = ["sort.pourGlug", "sort.pourGlug2", "sort.pourGlug3"] as const;
+/**
+ * The pour stream variations for a pour of 1 to 4 units (index = units - 1), in registry order,
+ * for `useSoundVariants`.
+ */
+export const SORT_POUR_STREAM = [
+  ["sort.pourStream1u", "sort.pourStream1u2", "sort.pourStream1u3"],
+  ["sort.pourStream2u", "sort.pourStream2u2", "sort.pourStream2u3"],
+  ["sort.pourStream3u", "sort.pourStream3u2", "sort.pourStream3u3"],
+  ["sort.pourStream4u", "sort.pourStream4u2", "sort.pourStream4u3"],
+] as const;

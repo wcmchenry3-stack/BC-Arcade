@@ -300,7 +300,7 @@ def test_yacht_win_is_louder_than_the_tie_and_the_tie_louder_than_the_loss():
 SORT_SOUND_NAMES = [
     *[f"sort-select-{i}" for i in (1, 2, 3)],
     *[f"sort-pour-lift-{i}" for i in (1, 2, 3)],
-    *[f"sort-pour-glug-{i}" for i in (1, 2, 3)],
+    *[f"sort-pour-stream-{u}u-{v}" for u in (1, 2, 3, 4) for v in (1, 2, 3)],
     "sort-refused",
     "sort-complete",
     "sort-undo",
@@ -331,27 +331,47 @@ def test_sort_timings_follow_motion_ts():
     assert pytest.approx(1.38) == synth_puzzle_sfx.SORT_WIN_CARD_AT
 
 
-def test_sort_glug_is_one_unit_slot_and_a_tail_and_has_three_gulps():
-    for i in range(3):
-        x = _sort(f"sort-pour-glug-{i + 1}")
-        assert len(x) / SR == pytest.approx(0.38, abs=0.001)
-        # It overlaps the next unit's glug by ~80 ms, not more.
-        assert len(x) / SR - synth_puzzle_sfx.SORT_UNIT_AT == pytest.approx(0.08, abs=0.002)
-        # Three gulps: the loud 5 ms frames fall into three clusters.
-        w = int(0.005 * SR)
-        e = np.convolve(x**2, np.ones(w), "same")
-        loud = np.nonzero(e > e.max() * 0.15)[0] / SR
-        clusters = 1 + int(np.sum(np.diff(loud) > 0.03))
-        assert clusters == 3, (i, clusters)
-        # The tail is over by the end of the file.
-        assert np.abs(x[-int(0.01 * SR) :]).max() < np.abs(x).max() * 0.05
+@pytest.mark.parametrize("units", [1, 2, 3, 4])
+def test_sort_stream_runs_the_length_of_the_pour(units):
+    # game/sort/motion.ts: the stream runs POUR_UNIT_MS (300 ms) per unit from flowStartMs, then
+    # the pour returns (POUR_RETURN_MS 180 ms): the file is the flow plus an 180 ms tail.
+    for v in (1, 2, 3):
+        x = _sort(f"sort-pour-stream-{units}u-{v}")
+        assert len(x) / SR == pytest.approx(0.3 * units + 0.18, abs=0.001), (units, v)
+        # It starts at once (the stream starts at the file's start) and is over by its end.
+        assert _peak(x, 0.0, 0.03) > 0.2 * np.abs(x).max(), (units, v)
+        assert np.abs(x[-int(0.01 * SR) :]).max() < np.abs(x).max() * 0.1, (units, v)
+        # Continuous: no 100 ms gap in the flow.
+        for t0 in np.arange(0.02, 0.3 * units - 0.1, 0.05):
+            assert _peak(x, t0, t0 + 0.1) > 0.05 * np.abs(x).max(), (units, v, t0)
 
 
-def test_sort_glug_variations_differ_and_are_loudness_matched():
-    xs = [_sort(f"sort-pour-glug-{i}") for i in (1, 2, 3)]
-    assert not np.array_equal(xs[0], xs[1]) and not np.array_equal(xs[1], xs[2])
-    levels = [_rms50_db(x) for x in xs]
-    assert max(levels) - min(levels) < 0.5
+def test_sort_stream_variations_differ_and_are_loudness_matched():
+    for units in (1, 2, 3, 4):
+        xs = [_sort(f"sort-pour-stream-{units}u-{v}") for v in (1, 2, 3)]
+        assert not np.array_equal(xs[0], xs[1]) and not np.array_equal(xs[1], xs[2])
+        levels = [_rms50_db(x) for x in xs]
+        assert max(levels) - min(levels) < 0.5, units
+
+
+def test_sort_stream_pitch_rises_as_the_destination_fills():
+    # Radii shrink by 0.20 octave per unit as the bottle fills: the spectral centroid of the last
+    # third of a 4-unit stream is above the first third's.
+    x = _sort("sort-pour-stream-4u-1")
+
+    def centroid(a: np.ndarray) -> float:
+        sp = np.abs(np.fft.rfft(a)) ** 2
+        f = np.fft.rfftfreq(len(a), 1 / SR)
+        return float((sp * f).sum() / sp.sum())
+
+    n = int(1.2 * SR)
+    assert centroid(x[int(0.8 * n) : n]) > centroid(x[int(0.05 * SR) : int(0.4 * n)])
+
+
+def test_sort_stream_is_deterministic_per_seed():
+    a, b = synth_puzzle_sfx.sort_stream(2, 1), synth_puzzle_sfx.sort_stream(2, 1)
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, synth_puzzle_sfx.sort_stream(2, 2))
 
 
 def test_sort_select_and_lift_are_on_the_tap():
@@ -410,7 +430,8 @@ def test_sort_levels_are_the_designed_loudness_and_carry_on_phones():
     expect = {
         "sort-select-1": -24,
         "sort-pour-lift-1": -28,
-        "sort-pour-glug-1": -21,
+        "sort-pour-stream-1u-1": -21,
+        "sort-pour-stream-4u-3": -21,
         "sort-refused": -23,
         "sort-complete": -20,
         "sort-undo": -27,

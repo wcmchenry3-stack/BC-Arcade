@@ -456,7 +456,7 @@ describe("SortScreen — save on leaving the app", () => {
     expect(storage.saveProgress).toHaveBeenCalledTimes(2);
   });
 
-  it("drops a pour's pending glugs when the app goes to the background, not on a blur (#3661)", async () => {
+  it("drops a pour's pending stream when the app goes to the background, not on a blur (#3661)", async () => {
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Level 1"));
@@ -2218,7 +2218,7 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       expect(heard()).toEqual({ playSelect: 1 });
     });
 
-    it("pour: the lift and glugs are started once, with the units, at the tap; the landing adds none", async () => {
+    it("pour: the lift and stream are started once, with the unit count, at the tap; the landing adds none", async () => {
       const r = await openLevel(BOTTLE_LEVEL);
       await press(r, /^Bottle 3,/); // ["blue"]
       mockAudio.playSelect.mockClear();
@@ -2238,7 +2238,7 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       expect(mockAudio.playPour).toHaveBeenCalledWith(2, false);
     });
 
-    it("pour under Reduce Motion tells the audio, which plays the lift and one glug at once", async () => {
+    it("pour under Reduce Motion tells the audio, which plays the lift and the 1-unit stream at once", async () => {
       const query = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
       try {
         const r = await openLevel(BOTTLE_LEVEL);
@@ -2348,7 +2348,7 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       }
     });
 
-    it("leaving to the level select mid-pour cancels the pending glugs", async () => {
+    it("leaving to the level select mid-pour cancels the pending stream", async () => {
       const r = await openLevel(BOTTLE_LEVEL);
       await press(r, /^Bottle 3,/);
       await press(r, /^Bottle 4,/);
@@ -2361,7 +2361,7 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       expect(heard()).toEqual({ playSelect: 1, playPour: 1 });
     });
 
-    it("a dropped pour (New Game) cancels its pending glugs; a restored game plays nothing", async () => {
+    it("a dropped pour (New Game) cancels its pending stream; a restored game plays nothing", async () => {
       const r = await openLevel(BOTTLE_LEVEL);
       await press(r, /^Bottle 3,/);
       await press(r, /^Bottle 4,/);

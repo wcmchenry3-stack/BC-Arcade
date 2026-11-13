@@ -4,12 +4,7 @@
  * when (fake timers).
  */
 import { act, renderHook } from "@testing-library/react-native";
-import {
-  POUR_START_LATENCY_BUDGET_MS,
-  POUR_UNIT_MS,
-  pourTimeline,
-  REDUCE_MOTION_POUR_MS,
-} from "../motion";
+import { POUR_START_LATENCY_BUDGET_MS, pourTimeline, REDUCE_MOTION_POUR_MS } from "../motion";
 import { useSortAudio } from "../useSortAudio";
 
 /** Every play, in order, by the name of the sound (a variants group, or a single key). */
@@ -22,7 +17,9 @@ jest.mock("../../_shared/useSoundVariants", () => ({
   useSoundVariants: (keys: readonly string[]) => ({ play: () => mockPlayed.push(keys[0]!) > 0 }),
 }));
 
-const GLUG = "sort.pourGlug";
+const stream = (units: number) => `sort.pourStream${units}u`;
+const STREAMS = [1, 2, 3, 4].map(stream);
+const streams = () => mockPlayed.filter((s) => STREAMS.includes(s));
 const LIFT = "sort.pourLift";
 
 /** Renders the hook with real timers (the renderer needs them), then fakes the clock. */
@@ -59,64 +56,49 @@ describe("Sort sound triggers", () => {
     ]);
   });
 
-  it("a pour plays the lift at the tap and no glug yet", async () => {
+  it("a pour plays the lift at the tap and no stream yet", async () => {
     const { result } = await mount();
     result.current.playPour(2, false);
     expect(mockPlayed).toEqual([LIFT]);
   });
 
-  it.each([1, 2, 3, 4])("a %i-unit pour plays that many glugs, and one lift", async (units) => {
-    const { result } = await mount();
-    result.current.playPour(units, false);
-    await act(async () => {
-      jest.advanceTimersByTime(5000);
-    });
-    expect(mockPlayed.filter((s) => s === GLUG)).toHaveLength(units);
-    expect(mockPlayed.filter((s) => s === LIFT)).toHaveLength(1);
-  });
-
-  it("schedules the glugs on the slots, not on the units' leave times", async () => {
-    const { result } = await mount();
-    result.current.playPour(4, false);
-    const { flowStartMs } = pourTimeline(4);
-    const slots = [0, 1, 2, 3].map(
-      (i) => POUR_START_LATENCY_BUDGET_MS + flowStartMs + i * POUR_UNIT_MS
-    );
-    expect(slots).toEqual([350, 650, 950, 1250]);
-    let now = 0;
-    for (const [i, at] of slots.entries()) {
+  it.each([1, 2, 3, 4])(
+    "a %i-unit pour plays ONE stream, for that unit count, at flowStartMs (+ the latency budget)",
+    async (units) => {
+      const { result } = await mount();
+      result.current.playPour(units, false);
+      const at = POUR_START_LATENCY_BUDGET_MS + pourTimeline(units).flowStartMs;
+      expect(at).toBe(350);
       await act(async () => {
-        jest.advanceTimersByTime(at - 1 - now);
+        jest.advanceTimersByTime(at - 1);
       });
-      expect(mockPlayed.filter((s) => s === GLUG)).toHaveLength(i);
+      expect(streams()).toEqual([]);
       await act(async () => {
         jest.advanceTimersByTime(1);
       });
-      expect(mockPlayed.filter((s) => s === GLUG)).toHaveLength(i + 1);
-      now = at;
+      expect(streams()).toEqual([stream(units)]);
+      // Nothing per unit, nothing more: one stream and one lift for the whole pour.
+      await act(async () => {
+        jest.advanceTimersByTime(5000);
+      });
+      expect(mockPlayed).toEqual([LIFT, stream(units)]);
     }
-    await act(async () => {
-      jest.advanceTimersByTime(5000);
-    });
-    expect(mockPlayed.filter((s) => s === GLUG)).toHaveLength(4);
-    expect(mockPlayed.filter((s) => s === LIFT)).toHaveLength(1);
-  });
+  );
 
-  it("a cancelled pour plays no glug after the lift", async () => {
+  it("a cancelled pour plays no stream after the lift", async () => {
     const { result } = await mount();
     result.current.playPour(3, false);
     await act(async () => {
-      jest.advanceTimersByTime(400); // the first glug has played
+      jest.advanceTimersByTime(300); // before the stream starts
     });
-    expect(mockPlayed.filter((s) => s === GLUG)).toHaveLength(1);
     result.current.cancelPour();
     await act(async () => {
       jest.advanceTimersByTime(5000);
     });
-    expect(mockPlayed.filter((s) => s === GLUG)).toHaveLength(1);
+    expect(mockPlayed).toEqual([LIFT]);
   });
 
-  it("unmounting drops the pour's pending glugs", async () => {
+  it("unmounting drops the pour's pending stream", async () => {
     const { result, unmount } = await mount();
     result.current.playPour(4, false);
     await unmount();
@@ -126,7 +108,7 @@ describe("Sort sound triggers", () => {
     expect(mockPlayed).toEqual([LIFT]);
   });
 
-  it("a new pour drops the old one's pending glugs", async () => {
+  it("a new pour drops the old one's pending stream", async () => {
     const { result } = await mount();
     result.current.playPour(4, false);
     result.current.playPour(1, false);
@@ -134,17 +116,17 @@ describe("Sort sound triggers", () => {
       jest.advanceTimersByTime(5000);
     });
     expect(mockPlayed.filter((s) => s === LIFT)).toHaveLength(2);
-    expect(mockPlayed.filter((s) => s === GLUG)).toHaveLength(1);
+    expect(streams()).toEqual([stream(1)]);
   });
 
-  it("under Reduce Motion the pour lands at once: the lift and a single glug, now", async () => {
+  it("under Reduce Motion the pour lands at once: the lift and the 1-unit stream, now", async () => {
     expect(REDUCE_MOTION_POUR_MS).toBe(0);
     const { result } = await mount();
     result.current.playPour(4, true);
-    expect(mockPlayed).toEqual([LIFT, GLUG]);
+    expect(mockPlayed).toEqual([LIFT, stream(1)]);
     await act(async () => {
       jest.advanceTimersByTime(5000);
     });
-    expect(mockPlayed).toEqual([LIFT, GLUG]);
+    expect(mockPlayed).toEqual([LIFT, stream(1)]);
   });
 });
