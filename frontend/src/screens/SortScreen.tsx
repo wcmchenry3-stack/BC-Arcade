@@ -304,6 +304,9 @@ export default function SortScreen() {
   usePauseWhileAway(navigation, noop, noop, {
     onLeave: (event) => {
       if (event.reason !== "appState") return;
+      // Pending glugs would fire late, in a clump, on resume (#3661): drop them. The pour
+      // animation itself is unchanged.
+      audio.cancelPour();
       if (
         view === "play" &&
         currentLevelId !== null &&

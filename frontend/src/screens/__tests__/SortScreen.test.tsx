@@ -456,6 +456,25 @@ describe("SortScreen — save on leaving the app", () => {
     expect(storage.saveProgress).toHaveBeenCalledTimes(2);
   });
 
+  it("drops a pour's pending glugs when the app goes to the background, not on a blur (#3661)", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1, 2 of/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Bottle 3, empty"));
+    });
+    mockAudio.cancelPour.mockClear();
+    await blur();
+    await setAppState("active");
+    expect(mockAudio.cancelPour).not.toHaveBeenCalled();
+    await setAppState("background");
+    expect(mockAudio.cancelPour).toHaveBeenCalledTimes(1);
+  });
+
   it("saves the latest board: the one after the last pour", async () => {
     const r = await renderScreen();
     await act(async () => {
@@ -2327,6 +2346,19 @@ describe("SortScreen — motion events, haptics and the win cascade (#3660)", ()
       } finally {
         mockSolveBoard.mockReset();
       }
+    });
+
+    it("leaving to the level select mid-pour cancels the pending glugs", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      expect(mockAudio.playPour).toHaveBeenCalledTimes(1);
+      mockAudio.cancelPour.mockClear();
+      await press(r, "Back to levels");
+      expect(await r.findByText("Choose a Level")).toBeTruthy();
+      expect(mockAudio.cancelPour).toHaveBeenCalledTimes(1);
+      await land(); // a late landing plays nothing more
+      expect(heard()).toEqual({ playSelect: 1, playPour: 1 });
     });
 
     it("a dropped pour (New Game) cancels its pending glugs; a restored game plays nothing", async () => {

@@ -8,7 +8,8 @@ import { SORT_POUR_GLUG, SORT_POUR_LIFT, SORT_SELECT, SORT_SOUNDS } from "./soun
  * Sort's sounds (#3661). Each is played from the event itself (a tap, a landing), never from a
  * frame. A pour is the one sound with a timeline: a lift at the tap, then one glug per unit at
  * that unit's slot start (`pourTimeline`, motion.ts), on JS timers that `cancelPour` clears
- * (a reset, a level change or leaving the screen) and unmount clears too.
+ * (a reset, a level change, leaving the screen, or the app going to the background, where
+ * a late timer would fire in a clump on resume) and unmount clears too.
  *
  * The glug variations are separate players and `useSoundVariants` never repeats one twice in a
  * row, so a glug's 80 ms tail over the next slot is never cut by a restart of the same player.

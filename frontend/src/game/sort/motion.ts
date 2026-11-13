@@ -139,7 +139,7 @@ export function pourTimeline(units: number): PourTimeline {
 /**
  * A pour's animation length: 780 ms for one unit, 300 ms more for each extra one. From the
  * tap add `POUR_START_LATENCY_BUDGET_MS`: 830 ms, under the 900 ms ceiling.
- * @internal Exported for tests, and for the sounds (#3661) to come; no production caller yet.
+ * @internal Exported for tests only (`motion.test.ts`, `usePourAnimation.test.ts`); no production caller (knip --production, #3126).
  */
 export function pourTotalMs(units: number): number {
   return pourTimeline(units).endMs;

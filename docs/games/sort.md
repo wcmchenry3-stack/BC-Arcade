@@ -237,5 +237,5 @@ Notes:
 
 - A glug (0.38 s) is longer than its 300 ms slot, so consecutive glugs overlap by about 80 ms; they are different variations (different players), so neither is cut.
 - Reduce Motion: the pour lands at once, so a pour plays the lift and a single glug together at the tap. Under Reduce Motion or a screen reader the result card opens at once and the win sound plays as it is.
-- A restored (Continue) game, a cancelled pour and a level change play nothing.
+- A restored (Continue) game, a cancelled pour and a level change play nothing. Going to the background mid-pour also drops the pour's pending glugs (they would fire late, in a clump, on resume); the pour animation is unchanged.
 - Sort no longer plays `cascade-fruit-merge.ogg` (Cascade's) or `freecell-game-win.mp3`.
