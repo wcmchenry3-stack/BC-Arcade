@@ -21,7 +21,7 @@
 import { Twenty48State } from "./types";
 import { seedNextTileId } from "./engine";
 import { clockForSave, clockOnLoad } from "../_shared/playClock";
-import { createJsonSlot, createRecord } from "../_shared/storageSlot";
+import { createJsonSlot } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "twenty48.storage";
 
@@ -112,14 +112,5 @@ export const {
   beforeSave: forStorage,
 });
 
-export const { save: saveBestScore, load: loadBestScore } = createRecord<number>({
-  key: "twenty48_best_score_v1",
-  subsystem: SUBSYSTEM,
-  ops: { load: "loadBest", save: "saveBest" },
-  fallback: () => 0,
-  read: (raw) => {
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-  },
-  write: String,
-});
+// The best score is the shared personal best (`game/_shared/personalBest.ts`, #3757); its old key
+// `twenty48_best_score_v1` is moved in there on the first read.

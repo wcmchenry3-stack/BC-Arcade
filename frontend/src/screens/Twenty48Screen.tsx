@@ -12,8 +12,8 @@
  *      recorder; moves go in chunks, #3286), one session per game; the
  *      2048 win completes it and Keep Playing is untracked (#2631); a restored game resumes
  *      its session (#2654).
- *   5. Result + leaderboard (#2513, #2633) — the shared GameResultModal; "new best" from
- *      `bestOf`; ranked via `useGameLeaderboard`.
+ *   5. Result + leaderboard (#2513, #2633) — the shared GameResultModal; "new best" from the
+ *      shared personal best (#3757); ranked via `useGameLeaderboard`.
  *   6. Audio — engine events play the 2048 and game-over sounds.
  */
 import React, { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
@@ -32,7 +32,6 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
-import { bestOf } from "../game/_shared/bestOf";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
@@ -47,13 +46,8 @@ import {
   suggestMove,
   Direction,
 } from "../game/twenty48/engine";
-import {
-  saveGame,
-  loadGame,
-  clearGame,
-  saveBestScore,
-  loadBestScore,
-} from "../game/twenty48/storage";
+import { saveGame, loadGame, clearGame } from "../game/twenty48/storage";
+import { getBest, judgeResult, recordResult } from "../game/_shared/personalBest";
 import Grid from "../components/twenty48/Grid";
 import { useTwenty48Beat } from "../components/twenty48/useTwenty48Beat";
 import { MOVE_LOCK_MS } from "../game/twenty48/motion";
@@ -116,7 +110,7 @@ export default function Twenty48Screen({ navigation }: Props) {
   // back (a fresh deal is saved at once instead).
   const restoredRef = useRef<Twenty48State | null>(null);
   // The saved game (usePersistedGameState, #3109), loaded with the best score
-  // on mount. The best score is the only local figure kept: the result card's
+  // on mount (the shared personal best, #3757). The best score is the only local figure kept: the result card's
   // "New best" badge compares with it. The old `twenty48_stats_v1` counters are
   // no longer read or written (#2636); the Stats screen reads the server.
   // Every change is saved once the load has landed, with the one-shot events
@@ -126,7 +120,7 @@ export default function Twenty48Screen({ navigation }: Props) {
   // the progress snapshot and New Game. The restore is below.
   const game = usePersistedGameState<Twenty48State>({
     load: async () => {
-      const [saved, best] = await Promise.all([loadGame(), loadBestScore()]);
+      const [saved, best] = await Promise.all([loadGame(), getBest("twenty48")]);
       loadedBestRef.current = best;
       return saved;
     },
@@ -375,7 +369,7 @@ export default function Twenty48Screen({ navigation }: Props) {
     if (!state) return;
     if (state.score > bestScore) {
       setBestScore(state.score);
-      saveBestScore(state.score);
+      void recordResult("twenty48", state.score);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.score]); // intentional: only re-run when score changes, not on every state update
@@ -756,7 +750,8 @@ export default function Twenty48Screen({ navigation }: Props) {
         subtitle={canKeepPlaying ? t("twenty48:win.body") : tResult("subtitle.noMoves")}
         hero={{ kind: "score", label: tResult("stat.score"), value: state?.score ?? 0 }}
         isNewBest={
-          !!state?.game_over && bestOf(bestAtGameStart, state?.score ?? 0, false).isNewBest
+          !!state?.game_over &&
+          judgeResult("twenty48", bestAtGameStart, state?.score ?? 0).isNewBest
         }
         stats={
           state
