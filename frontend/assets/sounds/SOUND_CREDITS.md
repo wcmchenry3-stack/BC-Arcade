@@ -206,6 +206,38 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-blackjack`), fixed seeds, so the decoded audio is reproducible.
 - **Recipe:** 1.08 s: a quick sparkle arpeggio (C5 E5 G5 C6) with a soft bell shimmer an octave up.
 
+### result-mixed.ogg
+
+- **Event:** Blackjack mixed split (`blackjack.mixed`): a split round with at least one winning hand and at least one losing hand, whatever the net, with the result banner; it is the round's result chime (#3770, owner pick B1 from the audition of 2026-11-13).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3770). No samples or third-party audio: built from oscillators and envelopes.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds result-mixed`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.77 s "up and back": three soft mallet notes, E5 → A5 → E5, 90 ms apart (a fourth up and home again), at rms50 −21 dB.
+
+### run-milestone.ogg
+
+- **Event:** Blackjack milestone (`blackjack.milestone`): the chips first cross one of the table's milestones in the run, with the milestone toast once the round's chips have landed; one cue a round, a comeback taking its place (#3582, owner pick MS1 from the audition of 2026-11-13).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3582). No samples or third-party audio: built from oscillators, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds run-milestone`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.32 s "tick up": two tiny sine-bell ticks, E6 then B6, 60 ms apart, at rms50 −25 dB (6 dB under the win).
+
+### run-comeback.ogg
+
+- **Event:** Blackjack comeback (`blackjack.comeback`): the chips recover to 75% of the start after falling below 25% in the run (at most once a run), with the comeback banner once the round's chips have landed (#3582, owner pick CB3 from the audition of 2026-11-13).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3582). No samples or third-party audio: built from oscillators and envelopes.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds run-comeback`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 1.05 s "turnaround": two soft mallet notes of E minor (E5 G5), then E major rising (G♯5 B5 E6) with a bell an octave over E6, at rms50 −19.5 dB.
+
+### bet-all-in.ogg
+
+- **Event:** Blackjack all-in (`blackjack.allIn`): the whole stack bet on the deal, with the all-in badge, under the deal's first card (#3582, owner pick AI2 from the audition of 2026-11-13).
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3582). No samples or third-party audio: built from oscillators, envelopes and filters.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds bet-all-in`), fixed seeds, so the decoded audio is reproducible.
+- **Recipe:** 0.70 s "held breath": a quiet pad of detuned saws (E4 + B4) through an opening lowpass, swelling, gliding up a semitone and cut short at 0.55 s, at rms50 −24 dB.
+
 ### riffle-start.ogg
 
 - **Event:** Auto-Complete in Solitaire and FreeCell (`solitaire.autoComplete*`, `freecell.autoComplete*`), played by `useRunSound` for as long as the run lasts; the cards it moves make no card-place sound of their own (start: as the run begins, with the loop)
