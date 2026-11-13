@@ -99,6 +99,27 @@ export default function SudokuGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grid, size, boxRows, boxCols]);
 
+  // The rings that blink for an illegal move: only the cells that clash with the digit just placed
+  // (same digit, its row, column or box), not older conflicts elsewhere on the board.
+  const blinkCells = useMemo(() => {
+    const out = new Set<number>();
+    if (!motion || !motion.error || motion.placed === null) return out;
+    const pr = Math.floor(motion.placed / size);
+    const pc = motion.placed % size;
+    const v = grid[pr]?.[pc]?.value ?? 0;
+    if (v === 0) return out;
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (r === pr && c === pc) continue;
+        if (grid[r]?.[c]?.value !== v) continue;
+        if (r === pr || c === pc || sameBox(r, c, pr, pc)) out.add(r * size + c);
+      }
+    }
+    return out;
+    // sameBox only reads the variant's box shape
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motion, grid, size, boxRows, boxCols]);
+
   // When each cell of a completed unit starts to glow (a cell in two units takes the earlier).
   const sweepDelays = useMemo(() => {
     const out = new Map<number, number>();
@@ -181,7 +202,7 @@ export default function SudokuGrid({
                   clash={clashes.has(idx)}
                   placeId={motion && motion.placed === idx ? motion.id : undefined}
                   errorId={motion && motion.error && motion.placed === idx ? motion.id : undefined}
-                  blinkId={motion && motion.error && clashes.has(idx) ? motion.id : undefined}
+                  blinkId={motion && blinkCells.has(idx) ? motion.id : undefined}
                   sweepId={sweepDelay === undefined ? undefined : motion?.id}
                   sweepDelay={sweepDelay}
                   waveDelay={wave ? waveDelayMs(r, c, size) : undefined}

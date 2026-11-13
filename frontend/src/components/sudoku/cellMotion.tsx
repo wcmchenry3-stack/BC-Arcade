@@ -118,5 +118,13 @@ export function BlinkRing({
     return () => cancelAnimation(opacity);
   }, [opacity]);
   const animated = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  return <Animated.View pointerEvents="none" testID={testID} style={[style, animated]} />;
+  // `nativeID` marks a blinking ring (vs a static one) for tests; it has no visual effect.
+  return (
+    <Animated.View
+      pointerEvents="none"
+      testID={testID}
+      nativeID="sudoku-clash-blink"
+      style={[style, animated]}
+    />
+  );
 }

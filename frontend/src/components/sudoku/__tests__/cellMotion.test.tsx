@@ -79,6 +79,24 @@ describe("SudokuGrid motion (#3774)", () => {
     expect(ids(r, "clash")).toEqual(["sudoku-cell-2-7-clash"]);
   });
 
+  it("an illegal digit blinks only the rings that clash with it, not an older conflict (Codex)", async () => {
+    // An older conflict: a 7 at (6,0) (entered, illegal) and a given 7 at (6,8).
+    const old7 = cell({ value: 7, isError: true });
+    const given7 = cell({ value: 7, given: true });
+    const grid = board(true).map((row, r) =>
+      row.map((c, i) => (r === 6 && i === 0 ? old7 : r === 6 && i === 8 ? given7 : c))
+    );
+    const r = await render(ui({ grid, motion: errorMove }));
+    // Both conflicts keep their static rings (on the cell each clashes with)...
+    expect(ids(r, "clash").sort()).toEqual(["sudoku-cell-2-7-clash", "sudoku-cell-6-8-clash"]);
+    // ...but only the new move's clash blinks.
+    const blinking = r
+      .queryAllByTestId(/^sudoku-cell-\d+-\d+-clash$/)
+      .filter((n) => n.props.nativeID === "sudoku-clash-blink")
+      .map((n) => n.props.testID);
+    expect(blinking).toEqual(["sudoku-cell-2-7-clash"]);
+  });
+
   it("a later render with the same move re-renders none of the cells (nothing replays)", async () => {
     const g = board(true);
     const r = await render(ui({ grid: g, motion: errorMove }));
