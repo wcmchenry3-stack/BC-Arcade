@@ -25,7 +25,6 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  Animated,
   Platform,
   Pressable,
   StyleSheet,
@@ -42,7 +41,6 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
-import { CELEBRATION_SPARKLE } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
@@ -274,7 +272,6 @@ export default function SolitaireScreen() {
     state?.paused === true
   );
 
-  const sparkleOpacity = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -525,8 +522,7 @@ export default function SolitaireScreen() {
   });
 
   // The engine emits a new array per move, in the order cardPlace, cardFlip,
-  // foundationComplete, gameWin, each at most once (one card reaches a
-  // foundation per move). The events stay in the live state: the result card
+  // gameWin, each at most once. The events stay in the live state: the result card
   // reads `gameWin` to decide on the win cascade. A restored game has none
   // (storage drops them, #3093), so a restore plays no sound.
   //
@@ -546,12 +542,6 @@ export default function SolitaireScreen() {
     },
     [cues, awayRef]
   );
-  const sparkle = useCallback(() => {
-    Animated.sequence([
-      Animated.timing(sparkleOpacity, { toValue: 1, duration: 100, useNativeDriver: true }),
-      Animated.timing(sparkleOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
-    ]).start();
-  }, [sparkleOpacity]);
   useGameEvents(state?.events, {
     // card place 40 ms before the contact
     cardPlace: () => {
@@ -571,13 +561,6 @@ export default function SolitaireScreen() {
       if (riffleRunRef.current) return;
       if (cueRef.current.kind === "drop") cueAt(playCardPlace, cueRef.current.place, "place");
       else cueAt(playMultiCardMove, cueRef.current.multi, "multi");
-    },
-    // A completed suit has no sound (#3563); its sparkle waits for the card's landing (#3572).
-    // In an Auto-Complete run the suits' sparkles are held for one flash on the last landing,
-    // with the settle; the last card always completes a suit (#3572).
-    foundationComplete: () => {
-      if (riffleRunRef.current && !state?.isComplete) return;
-      cueAt(sparkle, cueRef.current.landed);
     },
     // with the riffle's settle: its peak on the last contact
     gameWin: () => cueAt(playGameWin, cueRef.current.settle),
@@ -1428,19 +1411,6 @@ export default function SolitaireScreen() {
                             />
                           ))}
                         </View>
-                        <Animated.View
-                          pointerEvents="none"
-                          accessibilityElementsHidden
-                          importantForAccessibility="no-hide-descendants"
-                          style={[
-                            StyleSheet.absoluteFill,
-                            {
-                              backgroundColor: CELEBRATION_SPARKLE,
-                              opacity: sparkleOpacity,
-                              borderRadius: 8,
-                            },
-                          ]}
-                        />
                       </View>
                     </View>
 
@@ -1484,7 +1454,7 @@ export default function SolitaireScreen() {
                   >
                     <View accessibilityLiveRegion="polite" pointerEvents="none">
                       {selectionLabel !== null && (
-                        <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
+                        <Text style={[styles.selectionIndicatorText, { color: colors.accentText }]}>
                           {selectionLabel}
                         </Text>
                       )}

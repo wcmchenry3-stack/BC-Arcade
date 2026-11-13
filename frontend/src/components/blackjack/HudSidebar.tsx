@@ -5,6 +5,7 @@ import { useTheme } from "../../theme/ThemeContext";
 import { formatNumber } from "../../api/statsDisplay";
 import { BLACKJACK_CHIPS_LOW } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
+import { accentAsText } from "./tableAccentText";
 
 interface HudSidebarProps {
   chips: number;
@@ -70,7 +71,7 @@ export default function HudSidebar({
         {showStreak && !isCritical && (
           <View style={[styles.streakBadge, { borderColor: tableAccentColor }]}>
             <Text
-              style={[styles.streakText, { color: tableAccentColor }]}
+              style={[styles.streakText, { color: accentAsText(colors, tableAccentColor) }]}
               accessibilityLabel={t("hud.winStreakAccessibilityLabel", { count: winStreak })}
             >
               {t("hud.winStreakBadge", { count: winStreak })}

@@ -74,7 +74,6 @@ export type GameEvent =
   | "cardPlace"
   // a run of two or more cards moved together, tableau to tableau (#3563)
   | "multiCardMove"
-  | "foundationComplete"
   | "gameWin"
   | "invalidMove";
 
