@@ -87,8 +87,8 @@ The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table b
 
 The Cascade harness lives in `frontend/src/game/cascade/sim/` (not `tooling/`: it plays the app's engine; `knip.json` leaves it out of the production run), with the CLI `tools/sim/simulate-cascade.ts` (`npm run sim:cascade` in `frontend/`). Details, metrics and how to compare a candidate engine: [`docs/games/cascade.md`](games/cascade.md#sim-harness-sim-2893).
 
-- **PR smoke:** `sim/__tests__/sim.test.ts` runs 3 seeds x 3 bots x 60/120 Hz (about 8 s, budget 30 s) inside the ordinary Jest run and checks them against `baseline.json` "smoke" (a coarse guard: game length, score and guard-rail rate only), plus determinism, the engine seam, the 1 px-contact merge helper, the lid (spam bot loses within 120 s) and the step budget (mean step under 16 ms with 20+ pieces).
-- **Long run:** `cascade-sim-gate.yml` (nightly, manual with a `seeds` input, and on PRs that touch the engine, constants, queue or sim) runs 100 seeds per bot and frame rate against the "full" baseline. A failure lists each metric outside its band; the table is in the job summary and the `cascade-sim` artifact. The bands assume 100 seeds: a run with another seed count (or `--bots`) prints the table and skips the bands. `--update-baseline` refuses `--seeds`, `--bots` and `--seed-offset`.
+- **PR smoke:** `sim/__tests__/sim.test.ts` runs 3 seeds x 3 bots x 60/120 Hz (about 8 s, budget 30 s) inside the ordinary Jest run and checks them against `baseline.json` "smoke" (a coarse guard: game length, score and guard-rail rate only), plus determinism, the engine seam, the 1 px-contact merge helper, the lid (spam bot loses within 120 s), the step budget (mean step under 16 ms with 20+ pieces) and (#3697) the hard gates: no guard rail fires, nothing goes 1 px into a wall, chain merges in under 150 ms (p90).
+- **Long run:** `cascade-sim-gate.yml` (nightly, manual with a `seeds` input, and on PRs that touch the engine, constants, queue or sim) runs 100 seeds per bot and frame rate against the "full" baseline, plus (#3697) the capstone runs: the skilled bot at 60 Hz for up to 10 simulated minutes each, stopping at the win, which band the win rate and the time to the capstone (`--no-capstone` skips them for a quick look). A failure lists each metric outside its band; the table is in the job summary and the `cascade-sim` artifact. The bands assume 100 seeds: a run with another seed count (or `--bots`) prints the table and skips the bands. `--update-baseline` refuses `--seeds`, `--bots`, `--seed-offset` and `--no-capstone`.
 - **Re-baseline** when a story changes the physics on purpose (#3695, #3697): `cd frontend && npm run sim:cascade -- --update-baseline && npm run sim:cascade -- --full --update-baseline`, then `npx prettier --write src/game/cascade/sim/baseline.json`, and say in the PR which numbers moved and why. Step cost is wall clock and is never stored.
 
 **Measured** (2026-10-05 on `dev` after the Phase 0 coverage stories #3010, #3014 and #3017, 324 suites / 6,063 tests, `jest --coverage`, all collected files):
@@ -404,7 +404,7 @@ frontend/src/
 
 ### Notes
 
-- Physics engine (Matter.js) is not unit-tested — third-party, no jest DOM available.
+- The physics library (planck.js since #3697) is third-party and not unit-tested itself; Cascade's engine on it is (`game/cascade/__tests__/engine*.test.ts`, run on the real planck world).
 - Native renderers and components have component tests; see "Testing a native renderer" above.
 
 ### Yacht AI simulation — two-layer model (#2245)

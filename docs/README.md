@@ -130,6 +130,8 @@ Preserve these because they contain evidence and rationale, but use the canonica
 | [YACHT_ORACLE.md](research/YACHT_ORACLE.md)                           | Yacht optimal-play oracle design/reference                                                                        |
 | [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md)             | Cascade asset investigation                                                                                       |
 | [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md)                     | Cascade physics design/reference                                                                                  |
+| [CASCADE_PHYSICS_SPIKE.md](research/CASCADE_PHYSICS_SPIKE.md)         | Cascade spike (#3696): tuned Matter.js vs planck.js, measured with the sim harness                                |
+| [CASCADE_FEEL_PROPOSALS.md](research/CASCADE_FEEL_PROPOSALS.md)       | Cascade feel (#3697, phase 1): three planck.js tunings; the owner chose "3 lively", shipped in phase 2            |
 | [CASCADE-THEMING.md](research/CASCADE-THEMING.md)                     | Cascade theming design/reference                                                                                  |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
 | [mahjong-renderer-split.md](research/mahjong-renderer-split.md)       | Why Mahjong has Skia and Canvas2D renderers, unify options, native screenshot testing (#3707)                     |
