@@ -239,6 +239,8 @@ export function loadPuzzle(
 
 /** Select a cell. Selecting the already-selected cell deselects it. */
 export function selectCell(state: SudokuState, row: number, col: number): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   if (state.selectedRow === row && state.selectedCol === col) {
     return { ...state, selectedRow: null, selectedCol: null };
   }
@@ -246,6 +248,8 @@ export function selectCell(state: SudokuState, row: number, col: number): Sudoku
 }
 
 export function toggleNotesMode(state: SudokuState): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   return { ...state, notesMode: !state.notesMode };
 }
 
@@ -339,6 +343,8 @@ function isBoxComplete(
  *
  * No-op when nothing is selected or the selected cell is a given. */
 export function enterDigit(state: SudokuState, digit: CellValue): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   if (state.selectedRow === null || state.selectedCol === null) return state;
   const row = state.selectedRow;
   const col = state.selectedCol;
@@ -438,6 +444,8 @@ export function isFullButWrong(state: SudokuState): boolean {
  * Returns the same state when there is nothing to do. Never costs an error.
  */
 export function applyHint(state: SudokuState): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   const { size } = variantConfig(state.variant);
   const solutionAt = (r: number, c: number) =>
     (state.solution.charCodeAt(r * size + c) - 48) as CellValue;
@@ -478,6 +486,8 @@ export function applyHint(state: SudokuState): SudokuState {
 /** Clear the value AND notes of the selected cell. No-op on given cells
  * or when nothing is selected. Pushes to the undo stack. */
 export function eraseCell(state: SudokuState): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   if (state.selectedRow === null || state.selectedCol === null) return state;
   const row = state.selectedRow;
   const col = state.selectedCol;
@@ -514,6 +524,8 @@ export function eraseCell(state: SudokuState): SudokuState {
  * continue walking backwards.
  */
 export function undo(state: SudokuState): SudokuState {
+  // A solved puzzle is final (#3774): the board takes no more actions.
+  if (state.isComplete) return state;
   if (state.undoStack.length === 0) return state;
   const prev = state.undoStack[state.undoStack.length - 1];
   if (!prev) return state;

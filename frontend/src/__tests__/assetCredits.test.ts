@@ -240,6 +240,12 @@ describe("puzzle, tile and dice game sound credits (#3578)", () => {
         "sort-undo.ogg",
         "sort-hint.ogg",
         "sort-win.ogg",
+        "sudoku-digit-place.ogg",
+        "sudoku-digit-place-2.ogg",
+        "sudoku-digit-place-3.ogg",
+        "sudoku-error-entered.ogg",
+        "sudoku-unit-complete.ogg",
+        "sudoku-puzzle-complete.ogg",
       ])
     );
     expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);

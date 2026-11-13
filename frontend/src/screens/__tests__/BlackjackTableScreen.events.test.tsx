@@ -303,10 +303,12 @@ describe("split hand result", () => {
         hand_payouts: [50, -50],
       })
     );
-    // Net 0: the felt's strip sums the round up (#3581 spec), its label naming the net push.
-    const strip = screen.getByTestId("result-outcome");
-    expect(strip.props.children).toBe("Won: 1 · Lost: 1");
-    expect(strip.props.accessibilityLabel).toBe("Push. Won: 1 · Lost: 1");
+    // Net 0: the felt's strip shows the net alone (owner decision, #3784), its label naming the
+    // net push and summing the round up (#3581 spec).
+    const strip = screen.getByTestId("result-net");
+    expect(strip.props.children).toBe("No change");
+    expect(strip.props.accessibilityLabel).toBe("Push. Won: 1 · Lost: 1. Payout: 0 chips");
+    expect(screen.queryByTestId("result-outcome")).toBeNull();
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual([
       "+50",
       "-50",
@@ -330,8 +332,8 @@ describe("split hand result", () => {
         hand_payouts: [],
       })
     );
-    expect(screen.getAllByTestId("result-outcome").map((n) => n.props.children)).toEqual([
-      "Push: 2",
+    expect(screen.getAllByTestId("result-net").map((n) => n.props.accessibilityLabel)).toEqual([
+      "Push. Push: 2. Payout: 0 chips",
     ]);
     expect(screen.getAllByTestId("hand-payout").map((n) => n.props.children)).toEqual(["0", "0"]);
     expect(screen.getAllByTestId("hand-tag").map((n) => n.props.children)).toEqual([

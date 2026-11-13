@@ -324,7 +324,7 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ### hearts-moon-shot.mp3
 
-- **Event:** Win fanfare for Sudoku (until #3578 replaces it; Yacht, 2048 and Mahjong moved off it with #3578, Daily Word with #3665, Blackjack with #3581, now `result-blackjack.ogg`). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
+- **Event:** No game plays it any more (kept in the repo, not bundled). Sudoku, its last user, moved to `sudoku-puzzle-complete.ogg` with #3775; Yacht, 2048 and Mahjong moved off it with #3578, Daily Word with #3665, Blackjack with #3581 (now `result-blackjack.ogg`). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
 - **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
 - **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
 - **Creator:** u_it78ck90s3 on Pixabay
@@ -639,58 +639,55 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ---
 
-## Sudoku (#833)
+## Sudoku (#833, #3775)
 
 ### sudoku-digit-place.ogg
 
-- **Event:** Digit placed in a cell (normal mode, any digit)
-- **Original filename:** `pepSound1.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Short upbeat pep sound — subtle confirmation of each digit placement.
+- **Event:** A digit or a hint placed in a cell: `sudoku.digitPlace` (variation 1 of 3; `useSoundVariants` plays them in random order, never the same twice in a row)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-digit-place`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.08 s "crisp graphite": a hard pencil point tapped on newsprint (a tiny band-passed noise click plus a short ring at 3.6 kHz and a faint stroke), level with 2048's spawn (-26 dBFS). Replaced the Kenney `pepSound1.ogg` of the same name, which was never played.
+
+### sudoku-digit-place-2.ogg
+
+- **Event:** A digit or a hint placed in a cell: `sudoku.digitPlace2` (variation 2 of 3)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-digit-place-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** As variation 1, a different noise seed and the ring at 3.75 kHz.
+
+### sudoku-digit-place-3.ogg
+
+- **Event:** A digit or a hint placed in a cell: `sudoku.digitPlace3` (variation 3 of 3)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-digit-place-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** As variation 1, a different noise seed and the ring at 3.9 kHz.
 
 ### sudoku-error-entered.ogg
 
-- **Event:** Wrong digit entered (value doesn't match solution)
-- **Original filename:** `lowDown.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Descending digital tone. Accompanies the red flash on an incorrect digit.
+- **Event:** An illegal digit entered (it repeats in its row, column or box; a hint never counts): `sudoku.errorEntered`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-error-entered`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.34 s: a pencil scratch-out, three fast hard strokes back and forth (0, 110 and 230 ms, on the 380 ms pulse and the clash ring's blink), each a little duller, over the place tick; level with Daily Word's refusal (-24 dBFS). New: Sudoku played the card games' `solitaire-invalid-move.ogg` for this event (the old entry here described a Kenney `lowDown.ogg` file that never shipped under this name).
 
 ### sudoku-unit-complete.ogg
 
-- **Event:** A full row, column, or 3×3/2×3 box is completed correctly
-- **Original filename:** `phaserUp1.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Rising phaser sting. Fires once per completed unit; multiple units completing on the same digit play the sound once each.
+- **Event:** A full row, column or box completed correctly: `sudoku.unitComplete`; it plays instead of the place sound for that move, and on the solving move only the win plays
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-unit-complete`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.6 s: the place tick, then four rising pencil-point taps along the unit sweep (50, 165, 280 and 395 ms; `UNIT_SWEEP_START_MS` 50 and `UNIT_SWEEP_MS` 450), the last with a quick check-mark stroke; level with 2048's merge (-22 dBFS). Replaced the Kenney `phaserUp1.ogg` of the same name, which was never played.
 
-### sudoku-puzzle-complete (reuses hearts-moon-shot.mp3)
+### sudoku-puzzle-complete.ogg
 
-- **Event:** Puzzle fully solved (all cells filled correctly)
-- **Original filename:** (reuses `hearts-moon-shot.mp3` — see Hearts section above)
-- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
-- **Creator:** u_it78ck90s3 on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Notes:** Same orchestral win fanfare. Sudoku is its last user: Solitaire moved off it with #3563, Yacht and 2048 with #3578, Blackjack with #3581.
+- **Event:** Puzzle solved: `sudoku.puzzleComplete`, from the solving render (the last digit's place tick, then the wave); never on a restored solved game, and it is stopped by New Game, Play Again, Change Difficulty and unmount
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3775, under #3578). No samples or third-party audio: built from noise, resonant filters, envelopes and filters, and a felt-piano chord.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sudoku-puzzle-complete`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.3 s "crisp graphite and felt piano": the place tick, a quick double underline under the wave (0.3 and 0.55 s), a check-mark tick at 0.8 s, then a soft felt-piano C major chord (C5 E5 G5 C6) with a quiet high bell as the result card shows (+1.0 s, `SOLVED_BEAT_MS`); level with Daily Word's win (-17 dBFS), under 0.1 % of the energy below 300 Hz. Replaced `hearts-moon-shot.mp3` for Sudoku.
 
 ---
 
@@ -711,7 +708,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ### solitaire-invalid-move.ogg
 
-- **Event:** Sudoku's error entered (`sudoku.errorEntered`). Solitaire and FreeCell used it for a rejected move until #3563 (now `card-invalid-move.ogg`).
+- **Event:** No game plays it any more (kept in the repo, not bundled). Sudoku's error entered (`sudoku.errorEntered`) used it until #3775 (now `sudoku-error-entered.ogg`); Solitaire and FreeCell used it for a rejected move until #3563 (now `card-invalid-move.ogg`).
 - **Original filename:** `lowDown.ogg` from Kenney Digital Audio
 - **Source URL:** https://kenney.nl/assets/digital-audio
 - **Creator:** Kenney Vleugels (Kenney.nl)
@@ -732,7 +729,7 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **License URL:** https://pixabay.com/service/license-summary/
 - **Attribution required:** No
 - **Commercial use:** Yes
-- **Notes:** No longer used: Solitaire's game win plays `card-game-won.ogg` since #3563. The fanfare's other former users moved off it too (Yacht and 2048 with #3578, Blackjack with #3581); only Sudoku still plays it.
+- **Notes:** No longer used: Solitaire's game win plays `card-game-won.ogg` since #3563. The fanfare's other former users moved off it too (Yacht and 2048 with #3578, Blackjack with #3581, Sudoku with #3775): no game plays it now.
 
 ---
 
@@ -1162,7 +1159,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3665, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds daily-word-win`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 2.4 s "mallet run": a marimba note on each tile's hop, rising C5 E5 G5 C6 E6 70 ms apart, a glass shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the result card shows at 1.1 s. Replaced Daily Word's use of the shared `hearts-moon-shot.mp3` (10 s), which Sudoku keeps (Blackjack moved off it with #3581).
+- **Recipe:** 2.4 s "mallet run": a marimba note on each tile's hop, rising C5 E5 G5 C6 E6 70 ms apart, a glass shimmer over the sparks, then a rolled C major "ta-da" with a high bell as the result card shows at 1.1 s. Replaced Daily Word's use of the shared `hearts-moon-shot.mp3` (10 s), whose last user, Sudoku, moved off it with #3775 (Blackjack with #3581).
 
 ### daily-word-loss.ogg
 

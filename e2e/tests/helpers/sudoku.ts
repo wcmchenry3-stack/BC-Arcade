@@ -71,3 +71,38 @@ export function midGameSudokuState(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+/**
+ * A classic Easy puzzle with one empty cell left (#3774): row 9, column 9, whose digit is 5.
+ * Entering 5 there solves it. `extraEmpty` leaves more cells empty (by index), for a digit with
+ * a key left to press: with (row 1, column 1) empty, 1 is illegal at row 9, column 9 (it is in
+ * the row) and its key still has one to place.
+ */
+export function nearSolvedSudokuState(extraEmpty: number[] = []) {
+  const empty = new Set([80, ...extraEmpty]);
+  const puzzle = Array.from({ length: 81 }, (_, i) =>
+    empty.has(i) ? "0" : SOL[i],
+  ).join("");
+  const grid = Array.from({ length: 9 }, (_, r) =>
+    Array.from({ length: 9 }, (_, c) => {
+      const i = r * 9 + c;
+      return empty.has(i)
+        ? { value: 0, given: false, notes: [], isError: false }
+        : { value: Number(SOL[i]), given: true, notes: [], isError: false };
+    }),
+  );
+  return {
+    _v: 1 as const,
+    variant: "classic" as const,
+    difficulty: "easy" as const,
+    puzzle,
+    solution: SOL,
+    grid,
+    selectedRow: null,
+    selectedCol: null,
+    notesMode: false,
+    errorCount: 0,
+    isComplete: false,
+    undoStack: [],
+  };
+}

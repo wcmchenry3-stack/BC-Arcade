@@ -1318,7 +1318,7 @@ Verifies the fanfare sound and full-screen moon overlay fire exactly once when s
 
 1. Start a Hearts game and engineer a moon shot (one player takes all 13 hearts and Q♠). The easiest way in a local dev build is to seed the engine state via the console so that one AI player holds all 26 point cards after trick 13.
 2. Once all 13 tricks resolve, confirm:
-   - A triumphant fanfare (hearts-moon-shot.mp3) plays once.
+   - The moon-shot howl (hearts-moon-howl.ogg) plays once.
    - A dark semi-transparent full-screen overlay appears with a 🌙 moon icon spring-scaling from 0 → 1.
    - Six ★ stars stagger in around the moon (each 120 ms apart).
    - The shooter label appears below the moon (e.g. "You shot the moon!" or "{Name} shot the moon!").

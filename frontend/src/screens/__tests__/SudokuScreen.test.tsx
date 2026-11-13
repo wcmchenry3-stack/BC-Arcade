@@ -10,7 +10,7 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Animated, AppState, StyleSheet } from "react-native";
+import { AppState, StyleSheet } from "react-native";
 import type { AppStateStatus } from "react-native";
 
 import SudokuScreen from "../SudokuScreen";
@@ -648,8 +648,10 @@ describe("SudokuScreen — sessions across puzzles (#2690)", () => {
     await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1)); // game-1 won
     expect(mockStartGame).toHaveBeenCalledTimes(1);
 
+    // The card comes after the solved beat (#3774).
+    const changeDifficulty = await r.findByRole("button", { name: "Change Difficulty" });
     await act(async () => {
-      await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
+      await fireEvent.press(changeDifficulty);
     });
     // The pre-picker close opens nothing (and the won session is already
     // complete, so there is nothing to abandon or discard).
@@ -1406,31 +1408,26 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
   const isChecked = (item: { props: { accessibilityState?: { checked?: boolean } } }) =>
     item.props.accessibilityState?.checked;
 
-  let timing: jest.SpyInstance;
-  beforeEach(() => {
-    timing = jest.spyOn(Animated, "timing");
-  });
-  afterEach(() => {
-    timing.mockRestore();
-  });
-  const errorFlashes = () => timing.mock.calls.filter(([, cfg]) => cfg.toValue === 0.3).length;
+  // The error shows on its cell (#3774), not as a full-screen flash: the cells pulsing red.
+  const errorPulses = (r: Awaited<ReturnType<typeof resume>>) =>
+    r.queryAllByTestId(/^sudoku-cell-\d+-\d+-error$/).length;
 
-  it("a legal but wrong digit: no flash, no error count, no colour (Show mistakes off)", async () => {
+  it("a legal but wrong digit: no pulse, no error count, no colour (Show mistakes off)", async () => {
     const s = scenario("medium");
     const r = await resume(s.state);
     await play(r, s.legalWrong, s.other);
-    expect(errorFlashes()).toBe(0);
+    expect(errorPulses(r)).toBe(0);
     expect(r.getByText("0 errors")).toBeTruthy();
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
     ).toHaveStyle({ color: darkColors.accent });
   });
 
-  it("an illegal digit: flashes, counts the error and is always coloured", async () => {
+  it("an illegal digit: pulses its cell, counts the error and is always coloured", async () => {
     const s = scenario("medium");
     const r = await resume(s.state);
     await play(r, s.illegal, s.other);
-    expect(errorFlashes()).toBe(1);
+    expect(errorPulses(r)).toBe(1);
     expect(r.getByText("1 error")).toBeTruthy();
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
@@ -1485,14 +1482,14 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     }
   });
 
-  it("colours a legal but wrong digit when Show mistakes is on, with no flash and no count", async () => {
+  it("colours a legal but wrong digit when Show mistakes is on, with no pulse and no count", async () => {
     const s = scenario("easy");
     const r = await resume(s.state);
     await play(r, s.legalWrong, s.other);
     expect(
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
     ).toHaveStyle({ color: darkColors.errorText });
-    expect(errorFlashes()).toBe(0);
+    expect(errorPulses(r)).toBe(0);
     expect(r.getByText("0 errors")).toBeTruthy();
   });
 
