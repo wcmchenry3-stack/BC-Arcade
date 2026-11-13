@@ -1675,6 +1675,9 @@ Reviewed for paid access:
 - New: purchase and restore responses carry a fresh token, so an unlock does
   not wait for the next refresh.
 - The client already re-fetches on every foreground. No change.
+- A launch whose fetch failed offline with no usable cache also re-fetches on
+  reconnect, at most one request per offline → online edge, until a fetch
+  reaches the server (#3868). Entitled launches make no extra request.
 
 ---
 
