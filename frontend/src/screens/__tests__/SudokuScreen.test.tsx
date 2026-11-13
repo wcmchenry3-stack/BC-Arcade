@@ -341,6 +341,37 @@ describe("SudokuScreen — in-game input", () => {
     expect(after[0]!.props.accessibilityState?.selected).toBe(true);
   });
 
+  it("Undo keeps Notes mode and the selection, except the cell it changed becomes selected (#3785)", async () => {
+    const rendered = await startEasy();
+    const empties = rendered
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    const first = empties[0]!.props.testID as string;
+    const other = empties[empties.length - 1]!.props.testID as string;
+    await act(async () => {
+      await fireEvent.press(empties[0]!);
+    });
+    await act(async () => {
+      await fireEvent.press(enabledDigitButton(rendered));
+    });
+    // move the selection elsewhere and switch Notes mode on, then undo
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId(other));
+    });
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId("sudoku-notes"));
+    });
+    await act(async () => {
+      await fireEvent.press(rendered.getByTestId("sudoku-undo"));
+    });
+    expect(rendered.getByTestId(first).props.accessibilityState.selected).toBe(true);
+    expect(rendered.getByTestId(other).props.accessibilityState.selected).toBe(false);
+    expect(rendered.getByTestId("sudoku-notes").props.accessibilityState).toEqual(
+      expect.objectContaining({ selected: true })
+    );
+    expect(rendered.getByTestId(first).props.accessibilityLabel).toMatch(/empty/);
+  });
+
   it("opens a useGameSync session on first digit placement", async () => {
     const rendered = await startEasy();
     const { getAllByRole } = rendered;
