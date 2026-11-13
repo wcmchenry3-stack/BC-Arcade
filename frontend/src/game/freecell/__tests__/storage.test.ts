@@ -47,6 +47,27 @@ describe("freecell storage", () => {
     expect(JSON.stringify(next.events)).not.toContain("foundationComplete");
   });
 
+  it("never saves the one-shot events (#3826)", async () => {
+    const s: FreeCellState = { ...seedState(), events: [{ type: "cardPlace" }] };
+    await saveGame(s);
+    const parsed = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
+    expect("events" in parsed).toBe(false);
+    expect(parsed.moveCount).toBe(s.moveCount);
+  });
+
+  it("restores an older save that has events without them (#3826)", async () => {
+    const s = seedState();
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...s, _v: 1, events: [{ type: "cardPlace" }] })
+    );
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect("events" in loaded!).toBe(false);
+    expect(loaded!.moveCount).toBe(s.moveCount);
+    expect(loaded!.tableau.length).toBe(8);
+  });
+
   it("returns null when no save exists", async () => {
     expect(await loadGame()).toBeNull();
   });

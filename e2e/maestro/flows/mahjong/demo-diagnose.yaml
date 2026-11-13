@@ -1,0 +1,123 @@
+appId: com.buffingchi.games
+# Mahjong render diagnosis (#3684, iOS "tiles look faded and blurry"). Tagged
+# `demo`, so only a `flows: mahjong-demo` dispatch runs it (docs/MAESTRO.md,
+# "Mahjong demo flows"; needs _shared/open-mahjong.yaml from #3801).
+#
+# Test builds (EXPO_PUBLIC_TEST_HOOKS=1, every Maestro build) put a small
+# "diag" chip at the board's top-left (MahjongRenderDiag.tsx). Tapping it opens
+# a text readout (`mahjong-diag`: canvas resolution and pixel size, deal-in
+# progress and timers, face rasterisation, a JS and an opt-in UI-thread
+# heartbeat, Reduce Motion) and the render-variant buttons
+# (`mahjong-variant-a|b|c`), each of which deals Turtle again drawn that way:
+#   a  today's renderer: canvas at res x the board, View scale(1/res)
+#   b  res forced to 1: board-size canvas, faces at the pixel ratio
+#   c  board-size canvas, faces still rasterised at res x the pixel ratio
+# docs/games/mahjong.md, "iOS faded/blurry investigation (#3684)", says how to
+# read the shots.
+#
+# Per variant: `-open` (~5 s after the deal) and `-late` (~20 s), with the UI
+# heartbeat off; `-hb` (~3 s after switching the heartbeat on: do UI-thread
+# frames run?); `-zoom` (after a double-tap on the board). The first deal is
+# variant a (the default). Each variant's deal resets the camera to the fitted
+# board (useBoardZoomPan resets on a new deal id), so no zoom-out step is needed
+# between variants. Pauses wait for an id that never exists, as in
+# demo-open.yaml. About 90 s in all, inside Android's 3-minute recorder limit.
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: mahjong-diag
+- runFlow: ../_shared/open-mahjong.yaml
+- tapOn:
+    id: "mahjong-diag-toggle"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 5000
+    optional: true
+- takeScreenshot: mahjong-diag-a-open
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 15000
+    optional: true
+- takeScreenshot: mahjong-diag-a-late
+- tapOn:
+    id: "mahjong-diag-ui-hb"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 3000
+    optional: true
+- takeScreenshot: mahjong-diag-a-hb
+- doubleTapOn:
+    id: "mahjong-board-viewport"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 2000
+    optional: true
+- takeScreenshot: mahjong-diag-a-zoom
+# Variant b: picked before its deal (the button sets it, then deals Turtle).
+- tapOn:
+    id: "mahjong-variant-b"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 5000
+    optional: true
+- takeScreenshot: mahjong-diag-b-open
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 15000
+    optional: true
+- takeScreenshot: mahjong-diag-b-late
+- tapOn:
+    id: "mahjong-diag-ui-hb"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 3000
+    optional: true
+- takeScreenshot: mahjong-diag-b-hb
+- doubleTapOn:
+    id: "mahjong-board-viewport"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 2000
+    optional: true
+- takeScreenshot: mahjong-diag-b-zoom
+# Variant c: picked before its deal (the button sets it, then deals Turtle).
+- tapOn:
+    id: "mahjong-variant-c"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 5000
+    optional: true
+- takeScreenshot: mahjong-diag-c-open
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 15000
+    optional: true
+- takeScreenshot: mahjong-diag-c-late
+- tapOn:
+    id: "mahjong-diag-ui-hb"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 3000
+    optional: true
+- takeScreenshot: mahjong-diag-c-hb
+- doubleTapOn:
+    id: "mahjong-board-viewport"
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-demo-pause"
+    timeout: 2000
+    optional: true
+- takeScreenshot: mahjong-diag-c-zoom
+- stopRecording
