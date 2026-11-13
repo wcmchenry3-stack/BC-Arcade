@@ -111,7 +111,6 @@ export interface SplitResultLabel {
 }
 
 /**
-/**
  * A hand's label (#3771). A row's label is a column, so it keeps its name at the result: in play
  * the name over the total; at the result the name and total over the tag and payout (#3782).
  * Every other label (2-hand fans, the grid, the wide arrangement) is one line, too narrow on a

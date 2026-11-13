@@ -619,8 +619,10 @@ describe("a split hand's label in the wide arrangement (landscape fallback)", ()
 
 // #3782: a split hand's result line in every locale, with a 3-digit payout (a doubled 200 bet at
 // the top table shows -400). Measured in the app's fonts (web build: Space Grotesk tag and total,
-// Manrope name, the system font payout), as #3771 measured, for these exact strings; a changed
-// tag or hand name fails here until it is measured again.
+// Manrope name, the system font payout), as #3771 measured, for these exact strings, with the
+// total pill sized for a soft total ("21*") and a 3-digit payout. The widths are pinned by hand:
+// a changed tag or hand name fails the coverage test below until it is measured again and the
+// numbers here updated; the tests do not measure text themselves.
 // - oneLine: total + tag + payout, one line (fans, the grid): the 320 px phone's labels are 140.
 // - nameAndTotal / tagAndPayout: a row's two lines at the result, in its 100 px column.
 // Before #3782 Russian's "Проигрыш" made the one-line label 158 px (cut off at 320 px) and a
