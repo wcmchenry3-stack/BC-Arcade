@@ -774,6 +774,34 @@ describe("isolation", () => {
       replay.pour(1, 0);
       expect(sink.closeUnit).toHaveBeenCalledTimes(1);
     });
+
+    it("a flush whose chunk throws still saves what the recorder holds, and blocks", () => {
+      const { replay, calls, onBlocked } = failingAt("record");
+      replay.pour(0, 1); // waiting: the chunk is 2
+      expect(() => replay.flush()).not.toThrow();
+      expect(calls).toContain("flush");
+      expect(onBlocked).toHaveBeenCalledTimes(1);
+      expect(replay.unit).toBe(SORT_MAX_UNITS);
+    });
+
+    it("a cap check that throws in the emit blocks too", () => {
+      const { sink, calls } = spySink();
+      const replay = new SortReplay(
+        {
+          ...sink,
+          isFull: () => {
+            throw new Error("isFull broke");
+          },
+        },
+        1
+      );
+      const onBlocked = jest.fn();
+      replay.setOnBlocked(onBlocked);
+      expect(() => replay.pour(0, 1)).not.toThrow();
+      expect(onBlocked).toHaveBeenCalledTimes(1);
+      expect(replay.unit).toBe(SORT_MAX_UNITS);
+      expect(calls.filter((c) => c.startsWith("record"))).toEqual([]);
+    });
   });
 
   it("a sink that cannot say whether a game is open does not break play either", () => {

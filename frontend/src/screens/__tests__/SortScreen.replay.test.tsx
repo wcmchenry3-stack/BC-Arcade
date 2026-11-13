@@ -569,14 +569,28 @@ describe("SortScreen — replay flush points (#3385)", () => {
     await r.unmount();
   });
 
-  it("hands the chunk over when another screen covers the game, and saves the new count", async () => {
+  it("does not hand the chunk over when another screen covers the game: a blur spends no row", async () => {
     const r = await renderScreen();
     await openLevel(r);
     await pour(r, 0, 2);
-    storage.saveProgress.mockClear();
     await blur();
-    expect(entries()).toEqual([[0, 0, 2]]);
-    expect(lastSave()).toEqual(expect.objectContaining({ replayUnit: 1, replayPending: 0 }));
+    expect(savedMoves()).toEqual([]);
+    // The board's save already holds the action still waiting.
+    expect(lastSave()).toEqual(expect.objectContaining({ replayUnit: 0, replayPending: 1 }));
+    await pour(r, 2, 3);
+    await setAppState("background");
+    // One row for both pours, the one before the blur included.
+    expect(savedMoves()).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          unit: 1,
+          m: [
+            [0, 0, 2],
+            [0, 2, 3],
+          ],
+        }),
+      }),
+    ]);
     await r.unmount();
   });
 
@@ -633,7 +647,7 @@ describe("SortScreen — replay across restarts (#3386)", () => {
     });
 
   it("a resumed session carries the saved unit count on", async () => {
-    restore({ replayUnit: 3, replayPending: 0 });
+    restore({ replayUnit: 3, replayPending: 0, replayGameId: "killed-session" });
     mockResumeGame.mockReturnValue("killed-session");
     const r = await renderScreen();
     await continueLevel(r);
@@ -664,7 +678,9 @@ describe("SortScreen — replay across restarts (#3386)", () => {
     await setAppState("background"); // unit 1 handed over, and saved with the board
     expect(savedMoves().map((e) => e.data.unit)).toEqual([1]);
     const saved = await killAfter(first);
-    expect(saved).toEqual(expect.objectContaining({ replayUnit: 1, replayPending: 0 }));
+    expect(saved).toEqual(
+      expect.objectContaining({ replayUnit: 1, replayPending: 0, replayGameId: "game-1" })
+    );
 
     mockResumeGame.mockReturnValue("game-1");
     const second = await renderScreen();
@@ -715,7 +731,7 @@ describe("SortScreen — replay across restarts (#3386)", () => {
   });
 
   it("stays blocked when that board is resumed after another kill", async () => {
-    restore({ replayUnit: SORT_MAX_UNITS, replayPending: 0 });
+    restore({ replayUnit: SORT_MAX_UNITS, replayPending: 0, replayGameId: "blocked-session" });
     mockResumeGame.mockReturnValue("blocked-session");
     const r = await renderScreen();
     await continueLevel(r);
@@ -725,7 +741,7 @@ describe("SortScreen — replay across restarts (#3386)", () => {
   });
 
   it("does not carry on a resumed log with a hole: actions a kill lost before they were handed over", async () => {
-    restore({ replayUnit: 1, replayPending: 4 });
+    restore({ replayUnit: 1, replayPending: 4, replayGameId: "killed-session" });
     mockResumeGame.mockReturnValue("killed-session");
     const r = await renderScreen();
     await continueLevel(r);
@@ -736,8 +752,43 @@ describe("SortScreen — replay across restarts (#3386)", () => {
     await r.unmount();
   });
 
+  it("does not carry a board's replay on in another level's session that the resume adopted", async () => {
+    // Level 5's killed session is still an orphan; the save is a later board whose
+    // replay went to another session (or none).
+    restore({ replayUnit: 0, replayPending: 0, replayGameId: "level-7-session" });
+    mockResumeGame.mockReturnValue("level-5-session");
+    const r = await renderScreen();
+    await continueLevel(r);
+    await pour(r, 2, 3);
+    await setAppState("background");
+    await r.unmount();
+    expect(savedMoves()).toEqual([]);
+    expect(lastSave()).toEqual(expect.objectContaining({ replayUnit: SORT_MAX_UNITS }));
+  });
+
+  it("does not carry a replay on from a save that names no session (an older build)", async () => {
+    restore({ replayUnit: 3, replayPending: 0 });
+    mockResumeGame.mockReturnValue("killed-session");
+    const r = await renderScreen();
+    await continueLevel(r);
+    await pour(r, 2, 3);
+    await setAppState("background");
+    await r.unmount();
+    expect(savedMoves()).toEqual([]);
+  });
+
+  it("saves no session with a board before the level's first pour, and the id once it opens", async () => {
+    mockStartGame.mockReturnValue("game-9");
+    const r = await renderScreen();
+    await openLevel(r);
+    expect(lastSave()).not.toHaveProperty("replayGameId");
+    await pour(r, 0, 2);
+    expect(lastSave()).toEqual(expect.objectContaining({ replayGameId: "game-9" }));
+    await r.unmount();
+  });
+
   it("does not record a resumed board saved before replay recording (no count in the save)", async () => {
-    restore({});
+    restore({ replayGameId: "old-session" });
     mockResumeGame.mockReturnValue("old-session");
     const r = await renderScreen();
     await continueLevel(r);
@@ -762,7 +813,7 @@ describe("SortScreen — replay across restarts (#3386)", () => {
   });
 
   it("stops at the row cap: no unit past SORT_MAX_UNITS, and play goes on", async () => {
-    restore({ replayUnit: SORT_MAX_UNITS - 1, replayPending: 0 });
+    restore({ replayUnit: SORT_MAX_UNITS - 1, replayPending: 0, replayGameId: "long-session" });
     mockResumeGame.mockReturnValue("long-session");
     const r = await renderScreen();
     await continueLevel(r);

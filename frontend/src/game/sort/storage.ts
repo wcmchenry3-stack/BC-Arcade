@@ -33,6 +33,12 @@ export interface SortProgress {
    * stops rather than carry on past the hole.
    */
   readonly replayPending?: number;
+  /**
+   * The recorder session the board's replay went to (#3386). A Continue carries
+   * the replay on only when the session it resumes is this one: a resume can
+   * adopt another level's killed session. Missing on older saves: not recorded.
+   */
+  readonly replayGameId?: string;
 }
 
 const SUBSYSTEM = "sort.storage";
@@ -75,15 +81,18 @@ export async function saveProgress(progress: SortProgress): Promise<void> {
 
 const isCount = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0;
 
+const isGameId = (x: unknown): x is string => typeof x === "string" && x.length > 0;
+
 export async function loadProgress(): Promise<SortProgress> {
   const loaded = await progressSlot.load();
   if (!loaded) return DEFAULT;
-  // A replay count that isn't a count reads as missing: the board is not recorded.
-  const { replayUnit, replayPending, ...rest } = loaded;
+  // A replay count or game id of the wrong shape reads as missing: the board is not recorded.
+  const { replayUnit, replayPending, replayGameId, ...rest } = loaded;
   return {
     ...rest,
     ...(isCount(replayUnit) ? { replayUnit } : {}),
     ...(isCount(replayPending) ? { replayPending } : {}),
+    ...(isGameId(replayGameId) ? { replayGameId } : {}),
   };
 }
 

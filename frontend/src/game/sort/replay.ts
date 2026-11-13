@@ -254,16 +254,16 @@ export class SortReplay {
   ) {
     this.log = createActionLog((m) => {
       if (this.unitCount >= this.maxUnits) return; // the level's row budget is spent
-      if (this.stopIfFull()) return;
-      this.unitCount += 1;
       try {
+        if (this.stopIfFull()) return;
+        this.unitCount += 1;
         this.sink.beginUnit(this.unitCount);
         this.sink.record("moves", { m });
         this.sink.closeUnit();
       } catch (error) {
-        // The unit number is spent but its chunk may not be stored: a log that
-        // carried on would have a hole a reader could not see. Stop for good
-        // (the throw is reported by `guarded`).
+        // Any throw here (the cap check included): the unit number may be spent
+        // with its chunk not stored, and a log that carried on would have a hole
+        // a reader could not see. Stop for good (the throw is reported by `guarded`).
         try {
           this.sink.closeUnit();
         } catch {
@@ -323,8 +323,13 @@ export class SortReplay {
    */
   flush(): void {
     this.guarded(() => {
-      this.log.flush();
-      this.sink.flush();
+      // The recorder saves what it already holds even when the chunk in
+      // progress throws (and blocks the replay).
+      try {
+        this.log.flush();
+      } finally {
+        this.sink.flush();
+      }
       this.stopIfFull();
     });
   }

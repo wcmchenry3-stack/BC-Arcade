@@ -21,7 +21,7 @@
  *      player's standing (#2625, #2746) and abandoned otherwise (#2619). The
  *      level's replay (#3385, `useSortReplay`): each landed pour, undo, hint
  *      shown and "back to last good move", flushed before the session ends,
- *      on leaving the board, on background, blur and unmount; its unit count
+ *      on leaving the board, on background and unmount; its unit count
  *      is saved with the board (#3386).
  *   6. Result (#2512) — the shared GameResultModal with the level's best
  *      moves (a new best only once a prior best exists) and the synced
@@ -354,9 +354,11 @@ export default function SortScreen() {
    */
   const saveBoard = useCallback(
     (levelId: number, state: SortState) => {
-      void saveProgress(withBoardInProgress(progressRef.current, levelId, state, replay));
+      void saveProgress(
+        withBoardInProgress(progressRef.current, levelId, state, replay, syncGetGameId())
+      );
     },
-    [replay]
+    [replay, syncGetGameId]
   );
 
   // Save whenever the in-play game state changes
@@ -382,25 +384,19 @@ export default function SortScreen() {
   }, [replay, saveBoard]);
 
   // Save on app background: each move of the app to "background" or
-  // "inactive" (a blur saves only a new replay count — the board is saved on
-  // every change anyway, and nothing here pauses). The handler reads this
-  // render's board.
+  // "inactive" (not a blur — the board is saved on every change anyway, with the
+  // replay's counts, and nothing here pauses). The handler reads this render's
+  // board.
   //
   // The replay's chunk in progress is handed to the recorder and the queue on
-  // "background" (not "inactive": iOS reports it for the notification shade and
-  // the app switcher, and each flush spends a row) and on a blur (another screen
-  // over the game), before the save, so the save carries the new unit count
-  // (#3385, #3386).
+  // "background" only (not "inactive": iOS reports it for the notification shade
+  // and the app switcher; not a blur: the ⋯ menu's screens would each spend a
+  // row), before the save, so the save carries the new unit count (#3385, #3386).
   usePauseWhileAway(navigation, noop, noop, {
     onLeave: (event) => {
       const levelId = view === "play" && gameState?.isComplete === false ? currentLevelId : null;
-      if (event.reason === "blur") {
-        const before = replay.unit;
-        replay.flush();
-        // The board is saved on every change: only a new unit count needs a write.
-        if (levelId !== null && gameState && replay.unit !== before) saveBoard(levelId, gameState);
-        return;
-      }
+      // Not on a blur: the board, with the actions still waiting, is saved on
+      // every change, and the chunk carries on when the player comes back.
       if (event.reason !== "appState") return;
       // The pending stream would fire late, in a clump, on resume (#3661): drop them. The pour
       // animation itself is unchanged.
@@ -727,10 +723,11 @@ export default function SortScreen() {
     // level's play time still starts now, not on the level grid (#2710).
     const resumed = syncResume();
     if (!resumed) syncResetPlayWindow();
-    // The replay carries on in a resumed session from the saved unit count, or
-    // stops; with no session resumed, the first pour's new session blocks it (#3386).
+    // The replay carries on from the saved unit count only in the session it went
+    // to (the resume may adopt another level's), or stops; with no session
+    // resumed, the first pour's new session blocks it (#3386).
     restoredBoardRef.current = true;
-    restoreReplay(replay, prog, resumed);
+    restoreReplay(replay, prog, resumed ? syncGetGameId() : null);
     enterPlay();
   }
 
