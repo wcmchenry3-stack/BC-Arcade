@@ -435,7 +435,7 @@ describe("a split", () => {
     expect(soundsSince(at)).toEqual([["blackjack.cardDeal", 350]]);
   });
 
-  it("one net chime, then each hand's result and chips 300 ms apart", async () => {
+  it("one chime, then each hand's result and chips 300 ms apart", async () => {
     await mountOn(betting(SPLIT));
     await dealTen();
     await settle();
@@ -448,10 +448,11 @@ describe("a split", () => {
     // The dealer has 17: no draw. The result 300 ms after the flip ends.
     await advance(620);
     expect(resultShown()).toBe(true);
-    // Net even: a push on the felt, with the push chime; no hand's own result shows yet.
+    // Net even: a push on the felt; a win and a loss play the mixed chime (#3770), not the push.
+    // No hand's own result shows yet.
     // #3720 review: the banner is the net from the start and never changes as the hands reveal.
     // The strip under the dealer shows the net alone (owner decision, #3784), its label naming the
-    // net push the chime plays and summing the round up (#3581 spec: "1 win · 2 lost").
+    // net push and summing the round up (#3581 spec: "1 win · 2 lost").
     const banner = () => screen.getByTestId("result-net").props.children;
     const tags = () => screen.queryAllByTestId("hand-tag").map((n) => n.props.children);
     expect(banner()).toBe("No change");
@@ -481,7 +482,7 @@ describe("a split", () => {
     await settle();
     expect(soundsSince(at)).toEqual([
       ["blackjack.cardFlip", 0],
-      ["blackjack.push", 620],
+      ["blackjack.mixed", 620],
       ["blackjack.chipPayout", 1040],
       ["blackjack.chipCollect", 1340],
     ]);
@@ -873,7 +874,7 @@ describe("Reduce Motion spaces an action's sounds 100 ms apart (#3751)", () => {
     await settle();
     expect(soundsSince(last)).toEqual([
       ["blackjack.cardFlip", 0],
-      ["blackjack.push", GAP],
+      ["blackjack.mixed", GAP],
       ["blackjack.chipPayout", 2 * GAP],
       ["blackjack.chipCollect", 3 * GAP],
     ]);
@@ -1241,5 +1242,499 @@ describe("cancelled cues", () => {
     expect(n.replace).not.toHaveBeenCalled();
     await advance(1);
     expect(n.replace).toHaveBeenCalledWith("BlackjackVictory");
+  });
+});
+
+// #3582 (owner decisions, audition 2026-11-13): the run's cues play with their toasts (the round
+// settled: every hand's chips landed), not at a fixed offset from the chime; under Reduce Motion
+// they join the spaced sounds after the chips. One per round, comeback over milestone. A round cut
+// short (a tap, Rebet) drops its cue: the toast still shows, but the cue would stack on the chime
+// played at once, or on the next deal.
+describe("the run's cues (#3582)", () => {
+  const GAP = REDUCE_MOTION_SOUND_GAP_MS;
+  const milestoneToast = (chips: number) =>
+    screen.queryByText(`Milestone reached: ${chips} chips!`);
+  const comebackBanner = () => screen.queryByText("What a comeback!");
+  /** WIN settles (its payout landed) this long after the Stand. */
+  const WIN_SETTLED = 2160 + PAYOUT_MS;
+  /**
+   * 8s split twice against 17 (no draw): three hands of 18, each a win, 10 a hand. The chime at
+   * 620, the chips at 1040, 1340 and 1640; the third payout lands at 2000.
+   */
+  const SPLIT3 = [
+    card("8"),
+    card("10", "♣"),
+    card("8", "♥"),
+    card("7", "♦"),
+    card("8", "♦"),
+    card("10", "♦"),
+    card("10", "♥"),
+    card("10"),
+  ];
+  const SPLIT3_SETTLED = 1640 + PAYOUT_MS;
+
+  /** Splits, splits again and stands the first two hands: the third is left to play. */
+  async function splitThree() {
+    await dealTen();
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    await press(/^Stand/);
+    await settle();
+    await press(/^Stand/);
+    await settle();
+  }
+  /** Stands and returns the time of the tap. */
+  async function standNow() {
+    const at = Date.now();
+    await press(/^Stand/);
+    return at;
+  }
+  /** At the run's low point: below 25% of the start once, now 70 of 100 (75 is the comeback). */
+  const low = (order: Card[], milestones: number[] = []): EngineState => ({
+    ...newGame(deck(...order), { ...BEGINNER, milestones }),
+    chips: 70,
+    hitLowChips: true,
+  });
+  const feltTapOn = () =>
+    screen.getByTestId("blackjack-table-area").props.accessibilityState?.disabled !== true;
+
+  it("a win that crosses a milestone: one tick, with the toast, after the chips", async () => {
+    await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105] }));
+    await dealTen();
+    await settle();
+    const at = await standNow();
+    await advance(WIN_SETTLED - 1);
+    expect(milestoneToast(105)).toBeNull();
+    expect(named(at, "blackjack.milestone")).toEqual([]);
+    await advance(1);
+    expect(milestoneToast(105)).toBeTruthy();
+    expect(named(at, "blackjack.milestone")).toEqual([WIN_SETTLED]);
+    await settle();
+    // ~0.8 s after the chime, after the payout; once.
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.cardFlip", 0],
+      ["blackjack.cardDeal", 600],
+      ["blackjack.cardDeal", 1200],
+      ["blackjack.win", 1740],
+      ["blackjack.chipPayout", 2160],
+      ["blackjack.milestone", WIN_SETTLED],
+    ]);
+  });
+
+  it("a 3-hand split: the tick waits for the third hand's chips, with the toast", async () => {
+    await mountOn(newGame(deck(...SPLIT3), { ...BEGINNER, milestones: [125] }));
+    await splitThree();
+    const at = await standNow();
+    await advance(SPLIT3_SETTLED - 1);
+    expect(milestoneToast(125)).toBeNull();
+    expect(named(at, "blackjack.milestone")).toEqual([]);
+    await advance(1);
+    expect(milestoneToast(125)).toBeTruthy();
+    await settle();
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.cardFlip", 0],
+      ["blackjack.win", 620],
+      ["blackjack.chipPayout", 1040],
+      ["blackjack.chipPayout", 1340],
+      ["blackjack.chipPayout", 1640],
+      ["blackjack.milestone", SPLIT3_SETTLED],
+    ]);
+    // ~1.4 s after the chime: no fixed offset fits both this and a single hand's ~0.8 s.
+    expect(SPLIT3_SETTLED - 620).toBeGreaterThan(1300);
+  });
+
+  it("a comeback: its cue with the banner, after the chips", async () => {
+    await mountOn(low(WIN));
+    await dealTen();
+    await settle();
+    const at = await standNow();
+    await advance(WIN_SETTLED - 1);
+    expect(comebackBanner()).toBeNull();
+    await advance(1);
+    expect(comebackBanner()).toBeTruthy();
+    await settle();
+    expect(named(at, "blackjack.comeback")).toEqual([WIN_SETTLED]);
+    expect(named(at, "blackjack.milestone")).toEqual([]);
+  });
+
+  it("one cue a round: a comeback and a milestone together play the comeback only", async () => {
+    await mountOn(low(WIN, [75]));
+    await dealTen();
+    await settle();
+    const at = await standNow();
+    await advance(WIN_SETTLED);
+    // Both toasts show; one cue sounds.
+    expect(comebackBanner()).toBeTruthy();
+    expect(milestoneToast(75)).toBeTruthy();
+    await settle();
+    expect(named(at, "blackjack.comeback")).toEqual([WIN_SETTLED]);
+    expect(named(at, "blackjack.milestone")).toEqual([]);
+  });
+
+  it("one cue a round: two milestones crossed together play one tick", async () => {
+    await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [102, 105] }));
+    await dealTen();
+    await settle();
+    const at = await standNow();
+    await settle();
+    expect(named(at, "blackjack.milestone")).toEqual([WIN_SETTLED]);
+  });
+
+  it("the round that wins the run plays no run cue (the victory screen replaces the table)", async () => {
+    const { nav: n } = await mountOn(
+      newGame(deck(...WIN), { ...BEGINNER, milestones: [105], runGoal: 105 })
+    );
+    await dealTen();
+    await settle();
+    const at = await standNow();
+    await settle();
+    expect(named(at, "blackjack.milestone")).toEqual([]);
+    expect(named(at, "blackjack.comeback")).toEqual([]);
+    expect(n.replace).toHaveBeenCalledWith("BlackjackVictory");
+  });
+
+  it("the next round's milestone ticks again (one a round, not one a run)", async () => {
+    // The first dealer draws the two 2s; the next round is dealt the same cards.
+    const order = [...WIN, card("2", "♣"), card("2", "♣"), ...WIN];
+    await mountOn(newGame(deck(...order), { ...BEGINNER, milestones: [105, 115] }));
+    await dealTen();
+    await settle();
+    const first = await standNow();
+    await settle();
+    expect(named(first, "blackjack.milestone")).toEqual([WIN_SETTLED]);
+    await press(/^Rebet — deal again with 10 chips/);
+    await settle();
+    const second = await standNow();
+    await settle();
+    expect(named(second, "blackjack.milestone")).toEqual([WIN_SETTLED]);
+  });
+
+  it("restoring a settled round with a milestone and a comeback plays nothing", async () => {
+    const engine = newGame(deck(...WIN), { ...BEGINNER, milestones: [105] });
+    await mountOn({
+      ...engine,
+      phase: "result",
+      bet: 10,
+      chips: 110,
+      outcome: "win",
+      payout: 10,
+      player_hand: [card("10"), card("9", "♥")],
+      dealer_hand: [card("10", "♣"), card("4", "♦"), card("2", "♣"), card("2", "♣")],
+      events: [{ type: "milestone", value: 105 }, { type: "comeback" }],
+    });
+    expect(milestoneToast(105)).toBeTruthy();
+    await settle();
+    expect(mockLog).toEqual([]);
+  });
+
+  describe("under Reduce Motion: after the chips, in the spaced queue", () => {
+    beforeEach(() => {
+      jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    });
+
+    it("a win that crosses a milestone: flip, draw, chime, payout, then the tick", async () => {
+      await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105] }));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      // The round settles at once: the toast shows, its cue waits its turn.
+      expect(milestoneToast(105)).toBeTruthy();
+      expect(named(at, "blackjack.milestone")).toEqual([]);
+      await settle();
+      expect(soundsSince(at)).toEqual([
+        ["blackjack.cardFlip", 0],
+        ["blackjack.cardDeal", GAP],
+        ["blackjack.win", 2 * GAP],
+        ["blackjack.chipPayout", 3 * GAP],
+        ["blackjack.milestone", 4 * GAP],
+      ]);
+    });
+
+    it("the round that wins the run plays no run cue", async () => {
+      await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105], runGoal: 105 }));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await settle();
+      expect(named(at, "blackjack.milestone")).toEqual([]);
+      expect(named(at, "blackjack.comeback")).toEqual([]);
+      expect(named(at, "blackjack.win")).not.toEqual([]);
+    });
+
+    it("a 3-hand split: the chime, the payout, then the tick", async () => {
+      await mountOn(newGame(deck(...SPLIT3), { ...BEGINNER, milestones: [125] }));
+      await splitThree();
+      const at = await standNow();
+      await settle();
+      expect(soundsSince(at)).toEqual([
+        ["blackjack.cardFlip", 0],
+        ["blackjack.win", GAP],
+        ["blackjack.chipPayout", 2 * GAP],
+        ["blackjack.milestone", 3 * GAP],
+      ]);
+    });
+
+    it("a comeback with a milestone: the comeback only, after the chips", async () => {
+      await mountOn(low(WIN, [75]));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await settle();
+      expect(soundsSince(at)).toEqual([
+        ["blackjack.cardFlip", 0],
+        ["blackjack.cardDeal", GAP],
+        ["blackjack.win", 2 * GAP],
+        ["blackjack.chipPayout", 3 * GAP],
+        ["blackjack.comeback", 4 * GAP],
+      ]);
+    });
+
+    it("the felt's tap stays on until the cue has played", async () => {
+      await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105] }));
+      await dealTen();
+      await settle();
+      await standNow();
+      await advance(3 * GAP + 50);
+      expect(feltTapOn()).toBe(true);
+      await advance(GAP);
+      expect(feltTapOn()).toBe(false);
+    });
+
+    it("a tap before the cue's turn drops it; the toast stays", async () => {
+      await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105] }));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await advance(3 * GAP + 50);
+      await tapFelt();
+      await settle();
+      expect(named(at, "blackjack.milestone")).toEqual([]);
+      expect(milestoneToast(105)).toBeTruthy();
+    });
+
+    it("a Rebet before the cue's turn drops it: it never lands on the next deal", async () => {
+      await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105] }));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await advance(3 * GAP + 50);
+      await press(/^Rebet — deal again with 10 chips/);
+      await settle();
+      expect(named(at, "blackjack.milestone")).toEqual([]);
+    });
+  });
+
+  // The hold-or-drop rule (owner rule 3): drop. A tap before the result shows plays the chime at
+  // once, and the next action runs SKIP_HOLD_MS later; a Rebet once the banner shows deals at once.
+  // Either way the cue's slot (after the chips) is gone: played then, it would sit on the chime or
+  // on the next deal's tosses.
+  describe("a round cut short drops its cue", () => {
+    it("a tap during the dealer's turn: the chime and the toast at once, no cue, now or later", async () => {
+      await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105] }));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await advance(300);
+      await tapFelt();
+      expect(named(at, "blackjack.win")).toEqual([300]);
+      expect(milestoneToast(105)).toBeTruthy();
+      expect(named(at, "blackjack.milestone")).toEqual([]);
+      // The beat, then the next deal: the cue is never played.
+      await advance(100);
+      await press(/^Rebet — deal again with 10 chips/);
+      await advance(SKIP_HOLD_MS - 100);
+      expect(named(at, "blackjack.cardDeal")).toEqual([300 + SKIP_HOLD_MS]);
+      await settle();
+      expect(named(at, "blackjack.milestone")).toEqual([]);
+    });
+
+    it("a Rebet once the banner shows: the chips land, the deal starts, no cue", async () => {
+      await mountOn(newGame(deck(...WIN), { ...BEGINNER, milestones: [105] }));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await advance(1800);
+      expect(resultShown()).toBe(true);
+      await press(/^Rebet — deal again with 10 chips/);
+      expect(milestoneToast(105)).toBeTruthy();
+      await settle();
+      expect(named(at, "blackjack.milestone")).toEqual([]);
+      expect(named(at, "blackjack.win")).toEqual([1740]);
+    });
+
+    it("leaving mid-motion drops it; coming back plays nothing", async () => {
+      await mountOn(low(WIN));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await advance(1800);
+      await fire("blur");
+      await settle();
+      await fire("focus");
+      await settle();
+      expect(named(at, "blackjack.comeback")).toEqual([]);
+    });
+
+    it("New Game mid-motion drops it", async () => {
+      await mountOn(low(WIN));
+      await dealTen();
+      await settle();
+      const at = await standNow();
+      await advance(1800);
+      await press("More options");
+      await act(async () => {
+        await fireEvent.press(screen.getByText("New Game"));
+      });
+      await press("Start New");
+      await settle();
+      expect(named(at, "blackjack.comeback")).toEqual([]);
+    });
+  });
+});
+
+// #3770 (owner decision, B1): a split that won a hand and lost one plays the mixed chime, whatever
+// the net; the banner keeps the net, and only a plain win flashes the felt.
+describe("a mixed split (#3770)", () => {
+  /** 8s split twice against 17: hands of 18, 13 and 18 (win, loss, win): net +10. */
+  const MIXED3 = [
+    card("8"),
+    card("10", "♣"),
+    card("8", "♥"),
+    card("7", "♦"),
+    card("8", "♦"),
+    card("10", "♦"),
+    card("10", "♥"),
+    card("5"),
+  ];
+
+  it("a net win (win, loss, win): the mixed chime, the banner a net win", async () => {
+    await mountOn(betting(MIXED3));
+    await dealTen();
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    await press(/^Stand/);
+    await settle();
+    await press(/^Stand/);
+    await settle();
+    const at = Date.now();
+    await press(/^Stand/);
+    await settle();
+    // 3 hands: the banner shows the net alone (#3781), named a win with the hands' summary.
+    expect(screen.getByTestId("result-net").props.children).toBe("+10 chips");
+    expect(screen.getByTestId("result-net").props.accessibilityLabel).toMatch(
+      /^You Win!\. Won: 2 · Lost: 1\./
+    );
+    expect(soundsSince(at)).toEqual([
+      ["blackjack.cardFlip", 0],
+      ["blackjack.mixed", 620],
+      ["blackjack.chipPayout", 1040],
+      ["blackjack.chipCollect", 1340],
+      ["blackjack.chipPayout", 1640],
+    ]);
+  });
+
+  it("a tap before the result: the mixed chime plays once, at once", async () => {
+    await mountOn(betting(SPLIT));
+    await dealTen();
+    await settle();
+    await press(/^Split —/);
+    await settle();
+    await press(/^Stand/);
+    await settle();
+    const at = Date.now();
+    await press(/^Stand/);
+    await advance(200);
+    await tapFelt();
+    await settle();
+    expect(named(at, "blackjack.mixed")).toEqual([200]);
+    expect(named(at, "blackjack.push")).toEqual([]);
+  });
+});
+
+// #3582 (owner decision, AI2): the all-in cue is a timeline cue at 0 on the deal's motion, under the
+// card tosses, on the cue clock: leaving, New Game and a tap drop it like every other sound.
+describe("the all-in (#3582)", () => {
+  const GAP = REDUCE_MOTION_SOUND_GAP_MS;
+  /** Ten chips left, all of them bet. */
+  const allIn = () => newGame(deck(...LOSE), { ...BEGINNER, startingChips: 10 });
+
+  it("plays at the deal, with the first card, once", async () => {
+    await mountOn(allIn());
+    const at = await dealTen();
+    expect(screen.getByLabelText("All in wager")).toBeTruthy();
+    await settle();
+    expect(named(at, "blackjack.allIn")).toEqual([0]);
+    expect(named(at, "blackjack.cardDeal")).toEqual([0, 180, 360, 540]);
+  });
+
+  it("is not played for a bet short of the whole stack", async () => {
+    await mountOn(betting(LOSE));
+    const at = await dealTen();
+    await settle();
+    expect(named(at, "blackjack.allIn")).toEqual([]);
+  });
+
+  it("a deal while away plays nothing", async () => {
+    await mountOn(allIn());
+    await press("Add 10 to bet");
+    await fire("blur");
+    const at = Date.now();
+    await press(/deal cards with 10-chip bet/i);
+    await settle();
+    expect(named(at, "blackjack.allIn")).toEqual([]);
+  });
+
+  describe("under Reduce Motion: spaced after the deal's sound", () => {
+    beforeEach(() => {
+      jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    });
+
+    it("the deal, then the all-in 100 ms later", async () => {
+      await mountOn(allIn());
+      const at = await dealTen();
+      await settle();
+      expect(soundsSince(at)).toEqual([
+        ["blackjack.chipBet", 0],
+        ["blackjack.cardDeal", 0],
+        ["blackjack.allIn", GAP],
+      ]);
+    });
+
+    it("leaving before it plays cancels it", async () => {
+      await mountOn(allIn());
+      const at = await dealTen();
+      await advance(GAP / 2);
+      await fire("blur");
+      await settle();
+      expect(named(at, "blackjack.allIn")).toEqual([]);
+    });
+
+    it("New Game before it plays cancels it", async () => {
+      await mountOn(allIn());
+      const at = await dealTen();
+      await advance(GAP / 2);
+      await press("More options");
+      await act(async () => {
+        await fireEvent.press(screen.getByText("New Game"));
+      });
+      await press("Start New");
+      await settle();
+      expect(named(at, "blackjack.allIn")).toEqual([]);
+    });
+
+    it("a tap before it plays drops it", async () => {
+      await mountOn(allIn());
+      const at = await dealTen();
+      await advance(GAP / 2);
+      await tapFelt();
+      await settle();
+      expect(named(at, "blackjack.allIn")).toEqual([]);
+    });
   });
 });

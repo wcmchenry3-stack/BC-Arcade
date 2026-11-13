@@ -31,6 +31,14 @@ Sounds:
 - result-win/push/lose/bust/blackjack.ogg  Blackjack results, "soft chimes": mallet notes; win a
   rising fifth, push one neutral note, lose a soft falling minor third, bust shorter and duller,
   blackjack a quick sparkle arpeggio (1.08 s). Wins sit ~3-4 dB above everyday sounds.
+- result-mixed.ogg  Blackjack, a split with a winning and a losing hand (#3770), "up and back",
+  0.77 s: E5 -> A5 -> E5, a fourth up and home again (won one, lost one).
+- run-milestone.ogg  Blackjack milestone toast (#3582), "tick up", 0.32 s: two tiny bell ticks,
+  E6 -> B6 (the win's fifth, an octave up and in miniature), 6 dB under the win.
+- run-comeback.ogg  Blackjack comeback banner (#3582), "turnaround", 1.05 s: a soft E minor third
+  turning into a rising E major one, with a bell on top.
+- bet-all-in.ogg  Blackjack all-in deal (#3582), "held breath", 0.70 s: a quiet E4 + B4 pad that
+  swells, glides up a semitone and is cut short, under the deal's card tosses.
 - riffle-start/loop/settle.ogg  Auto-Complete "riffle shuffle" (Solitaire, FreeCell), played by
   useRunSound for as long as the run lasts: a 0.14 s pick-up (an accelerating flutter), a 2.0 s
   seamless loop (a dense flutter of bright card edges, ~42/s, over a papery whirr) and a 0.30 s
@@ -562,6 +570,45 @@ def card_no_moves() -> (
     return fade(x, 0.0, 0.1)
 
 
+# --- Blackjack: a mixed split, the run's cues and the all-in (#3770, #3582) -------------------
+# Owner picks from the audition of 2026-11-13 (B1, MS1, CB3, AI2), all in E, the win's key.
+
+E4, B4, A5, GS5, E6, B6 = 329.63, 493.88, 880.0, 830.61, 1318.51, 1975.53
+
+
+def result_mixed() -> np.ndarray:  # "up and back": E5 -> A5 -> E5, a fourth up and home again
+    return chime([E5, A5, E5], dur=0.5, decay=0.13, gap=0.09)
+
+
+def run_milestone() -> np.ndarray:  # "tick up": two tiny bell ticks rising a fifth, E6 -> B6
+    x = np.zeros(int(0.32 * SR))
+    place(x, bell(E6, 0.2, 0.05) * 0.8, 0.0)
+    place(x, bell(B6, 0.25, 0.07), 0.06)
+    return fade(lp2(x, 9000), 0.0, 0.04)
+
+
+def run_comeback() -> np.ndarray:  # "turnaround": minor (E5 G5), then major (G#5 B5 E6)
+    x = np.zeros(int(1.05 * SR))
+    for j, f in enumerate((E5, G5)):
+        place(x, mallet(f, 0.4, 0.09) * 0.5, 0.075 * j)
+    for j, f in enumerate((GS5, B5, E6)):
+        place(x, mallet(f, 0.7, 0.2) * (0.8 + 0.1 * j), 0.24 + 0.07 * j)
+    place(x, bell(E6 * 2, 0.5, 0.15) * 0.18, 0.38)
+    return fade(x, 0.0, 0.08)
+
+
+def bet_all_in() -> np.ndarray:  # "held breath": a quiet E4 B4 pad gliding up a semitone
+    t = t_axis(0.7)
+    glide = 1 + (2 ** (1 / 12) - 1) * np.clip((t - 0.15) / 0.5, 0, 1)
+    x = np.zeros_like(t)
+    for f in (E4, B4):
+        for d in (1.0, 1.005, 0.995):
+            x += saw(phase(f * d * glide))
+    x = lp2(x, 1400 + 1400 * t / 0.7)
+    x *= np.clip(t / 0.45, 0, 1) ** 1.5 * np.where(t < 0.55, 1.0, np.exp(-(t - 0.55) / 0.04))
+    return fade(x / 2, 0.0, 0.03)
+
+
 # --- registry ---------------------------------------------------------------------------------
 
 Level = Callable[[np.ndarray], np.ndarray]
@@ -605,6 +652,10 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     "result-lose": (result_lose, rms50(-22.0, -1.0)),
     "result-bust": (result_bust, rms50(-22.0, -1.0)),
     "result-blackjack": (result_blackjack, rms50(-17.5, -1.0)),
+    "result-mixed": (result_mixed, rms50(-21.0, -1.0)),  # 1 dB over push/lose, 2 dB under win
+    "run-milestone": (run_milestone, rms50(-25.0, -1.0)),  # 6 dB under the win: never competes
+    "run-comeback": (run_comeback, rms50(-19.5, -1.0)),  # rare (once a run): the win's level
+    "bet-all-in": (bet_all_in, rms50(-24.0, -1.0)),  # under the deal's tosses
     "riffle-start": (riffle_start, lambda x: x),  # peaks with the loop (set in the recipe)
     "riffle-loop": (riffle_loop, lambda x: x),  # RIFFLE_LOOP_LUFS (set in the recipe)
     "riffle-settle": (riffle_settle, rms50(-21.5, -1.5)),  # lands like a card place
