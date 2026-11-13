@@ -18,7 +18,23 @@ import * as solitaireEngine from "../../game/solitaire/engine";
 import seedsJson from "../../game/solitaire/seeds.json";
 import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
 import type { SolitaireState } from "../../game/solitaire/types";
-import { getBest, recordResult, storageKey } from "../../game/_shared/personalBest";
+import {
+  getBest,
+  recordResult,
+  storageKey,
+  type PersonalBestGame,
+} from "../../game/_shared/personalBest";
+
+/**
+ * Every write to the shared personal best's key for `game` (#3757). Moving an older build's
+ * record in is one write of that record's best; anything after it is the game writing a best.
+ */
+function personalBestWrites(game: PersonalBestGame): unknown[] {
+  return jest
+    .mocked(AsyncStorage.setItem)
+    .mock.calls.filter(([key]) => key === storageKey(game))
+    .map(([, value]) => JSON.parse(value));
+}
 import { WIN_CASCADE_MS } from "../../components/solitaire/SolitaireWinCascade";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
@@ -1045,6 +1061,7 @@ describe("SolitaireScreen — result card (#2509)", () => {
       gamesWon: 1,
     });
     await AsyncStorage.setItem("solitaire_stats_v1", stored);
+    jest.mocked(AsyncStorage.setItem).mockClear();
     const api = await winNow();
     const card = within(api.getByTestId("solitaire-result"));
     expect(card.queryByText("New best")).toBeNull();
@@ -1052,8 +1069,10 @@ describe("SolitaireScreen — result card (#2509)", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    // The old record is moved into the shared personal best (#3757) with its best unchanged.
+    // The old record is moved into the shared personal best (#3757) with its best unchanged,
+    // and the slower win writes nothing over it.
     expect(await getBest("solitaire")).toBe(50000);
+    expect(personalBestWrites("solitaire")).toEqual([{ v: 1, b: { _: 50000 } }]);
   });
 
   it("reads the best from the shared personal best and records a new one there (#3757)", async () => {
@@ -1409,12 +1428,15 @@ describe("SolitaireScreen — local best cache", () => {
       accumulatedMs: 80000,
     };
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(winState));
+    jest.mocked(AsyncStorage.setItem).mockClear();
     await mount();
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    // The old record is moved into the shared personal best (#3757) with its best unchanged.
+    // The old record is moved into the shared personal best (#3757) with its best unchanged,
+    // and resuming the won game writes nothing over it.
     expect(await getBest("solitaire")).toBe(95000);
+    expect(personalBestWrites("solitaire")).toEqual([{ v: 1, b: { _: 95000 } }]);
   });
 });
 
