@@ -149,7 +149,7 @@ The result card waits for a beat (`components/yacht/useYachtEndBeat.ts`, as 2048
 | Reduce Motion | with the last score (after a still celebration, 1.5 s) | at once |
 | A game reopened on the computer's last turn | never: no beat, no end sound | at once (that turn is scored on open) |
 
-For #3750: `useYachtMotion({ onStart })` (passed to `useYachtEndBeat`) calls `onStart(outcome, beatMs)` at the moment the beat starts, once per game and never on a restore; the card shows `beatMs` later (0 under Reduce Motion). `endOutcome` holds the outcome until a New Game. No sound is played by this story.
+For #3750: `useYachtMotion({ onStart })` (passed to `useYachtEndBeat`) calls `onStart(outcome, beatMs)` at the moment the beat starts, once per game and never on a restore; the card shows `beatMs` later (0 under Reduce Motion). `endOutcome` holds the outcome until a New Game. The end sounds (#3750) play from `onStart` in `GameScreen` (see the Sound table), at the beat's start so the chord lands as the card shows; only one sound plays, since a last-score jackpot's beat waits for its celebration. Under Reduce Motion `onStart` still fires, with `beatMs` 0: the sound plays (it is audio, not motion), the card shows at once and the chord lands about 1.0 s (win) or 0.6 s after it.
 
 - **The card never covers a celebration** (audit bug 1): a last score that is a Yacht or a Joker, or a celebration still showing when the computer scores, holds the card with no timer until the celebration's `onDone`; then the beat runs. A safety net (`JACKPOT_WAIT_MAX_MS`, 3.5 s) starts the beat if the celebration never reports that it is done.
 - **New Game and leaving** clear the beat, any wait and the tumble.
@@ -410,5 +410,8 @@ Triggers are in `frontend/src/screens/GameScreen.tsx`.
 | `yacht.yacht` | `jackpot-yacht.ogg` (synthesized, #3578) | you score a yacht, with the celebration | 1.0 |
 | `yacht.joker` | `jackpot-joker.ogg` (synthesized, #3578) | you score a joker yacht, with the celebration | 1.0 |
 | `yacht.cpuYacht`, `yacht.cpuJoker` | `cpu-jackpot-yacht.ogg`, `cpu-jackpot-joker.ogg` | the computer scores a yacht or a joker (quick, the opposite tone) | 1.0 |
+| `yacht.win` | `yacht-win.ogg` (synthesized, #3750) | the end beat starts and you won (vs: your total beats the computer's; solo: a new personal best); its chord lands as the card shows, 1.0 s later | 1.0 |
+| `yacht.loss` | `yacht-loss.ogg` (synthesized, #3750) | the end beat starts and you lost (vs); its chord lands as the card shows, 0.6 s later | 1.0 |
+| `yacht.tie` | `yacht-tie.ogg` (synthesized, #3750) | the end beat starts and it is a tie (vs), or a solo game that is not a new best; its chord lands 0.6 s later | 1.0 |
 
 Each score plays exactly one scoring sound (`game/yacht/useScoreSound.ts`): its top milestone (yacht or joker, then upper bonus, large straight, full house, small straight), which replaces the commit; else the commit, or the duller zero for a 0. Your yacht or joker plays its fanfare from the event handlers, with the celebration; the computer's from the same picker. Sounds are synthesized (#3578).

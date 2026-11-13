@@ -1171,6 +1171,30 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 1.9 s: a soft falling marimba line, one note as each answer tile shows (G5 E5 D5 C5 A4, 120 ms apart), then a low A minor chord as the result card shows at 0.78 s; gentle, not a punishment. New: a loss had no sound.
 
+### yacht-win.ogg
+
+- **Event:** Yacht game won (vs: you beat the computer; solo: a new personal best), as the end beat starts: `yacht.win`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3750, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds yacht-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.6 s "mallet fanfare": a two-octave marimba run (C5 E5 G5 C6 E6 G6), a rolled C major from 0.45 s, then a final "ta-da" chord with a high glass bell as the result card shows at 1.0 s; a step above the jackpot. New: a win had no sound (BC_GAMES-6S).
+
+### yacht-loss.ogg
+
+- **Event:** Yacht vs game lost, as the end beat starts: `yacht.loss`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3750, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds yacht-loss`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s: a gentle falling marimba line (G5 E5 D5 C5, 110 ms apart) into a soft low A minor chord as the result card shows at 0.6 s; gentle, like 2048's game over. New: a loss had no sound.
+
+### yacht-tie.ogg
+
+- **Event:** Yacht vs game tied, or a solo game that is not a new best, as the end beat starts: `yacht.tie`
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3750, under #3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds yacht-tie`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s: two level marimba notes (E5, G5) into an open, unresolved C-G-D chord with a faint bell as the result card shows at 0.6 s: "even". New: a tie had no sound.
+
 ---
 
 ## Cascade (#834)

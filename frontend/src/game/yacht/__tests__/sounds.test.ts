@@ -85,4 +85,19 @@ describe("Yacht sound registry", () => {
       expect(SOURCE).toMatch(new RegExp(`"yacht\\.${key}": require\\("[^"]*/${file}\\.ogg"\\)`));
     }
   });
+
+  it("the end of the game (#3750) is yacht-win/loss/tie.ogg, each registered and on disk", () => {
+    for (const k of ["win", "loss", "tie"]) {
+      expect(SOURCE).toMatch(new RegExp(`"yacht\\.${k}": require\\("[^"]*/yacht-${k}\\.ogg"\\)`));
+      expect(YACHT_SOUNDS[`yacht.${k}`]).toBeDefined();
+      expect(fs.existsSync(path.join(SOUNDS_DIR, `yacht-${k}.ogg`))).toBe(true);
+    }
+  });
+
+  it("the game screen plays the end sounds from the beat's onStart, not from the score events", () => {
+    for (const k of ["win", "loss", "tie"]) {
+      expect(SCREEN).toContain(`useSound("yacht.${k}", YACHT_SOUNDS)`);
+    }
+    expect(SCREEN).toContain("onStart:");
+  });
 });
