@@ -48,7 +48,7 @@
  */
 
 import type { Direction } from "./engine";
-import { SIZE } from "./engine";
+import { ENGINE_VERSION, SIZE } from "./engine";
 import type { Twenty48State } from "./types";
 import { captureThrottledMessage } from "../_shared/sentryThrottle";
 
@@ -227,4 +227,9 @@ export function guardRecording(call: () => void): void {
       extra: { error: e instanceof Error ? e.name : typeof e },
     });
   }
+}
+
+/** The `game_started` data (#3909): the opening board and the engine version. */
+export function startedData(initialBoard: readonly number[]): Record<string, unknown> {
+  return { initial_board: initialBoard, engine_version: ENGINE_VERSION };
 }

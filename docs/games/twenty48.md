@@ -215,7 +215,7 @@ For generic syncing, ranking, display-name, Stats, and result-card behavior, see
 
 _(#3286, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).)_
 
-The opening board is in `game_started` (`initial_board`, 16 numbers). Everything after it is recorded as **`moves` events**: opening board + the `moves` rows in `event_index` order rebuild the final board and score.
+The opening board is in `game_started` (`initial_board`, 16 numbers, and `engine_version`, #3909). Everything after it is recorded as **`moves` events**: opening board + the `moves` rows in `event_index` order rebuild the final board and score.
 
 **One move** is the 5-tuple `[direction, cell, value, gained, total]`:
 

@@ -154,6 +154,7 @@ describe("SudokuScreen — replay recording (#3288)", () => {
       difficulty: "easy",
       variant: "classic",
       puzzle: expect.stringMatching(/^[0-9]{81}$/),
+      engine_version: 1,
     });
   });
 

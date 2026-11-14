@@ -40,7 +40,7 @@
  */
 
 import { captureThrottledMessage } from "../_shared/sentryThrottle";
-import { applyServerResult, initialState, markComplete } from "./engine";
+import { ENGINE_VERSION, applyServerResult, initialState, markComplete } from "./engine";
 import type { DailyWordState, TileState, TileStatus } from "./types";
 
 /** The event type (seeded since migration 0017, so no migration). */
@@ -215,4 +215,9 @@ export function rebuild(
     if (won || state.current_row >= 6) state = markComplete(state, won);
   });
   return { state, refusals: typeof rj === "number" ? rj : 0, problems };
+}
+
+/** The `game_started` data (#3909): the puzzle and the engine version. */
+export function startedData(puzzleId: string): Record<string, unknown> {
+  return { puzzle_id: puzzleId, engine_version: ENGINE_VERSION };
 }

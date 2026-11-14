@@ -37,7 +37,7 @@
  * unmount.
  */
 
-import { applyHint, enterDigit, eraseCell, undo } from "./engine";
+import { ENGINE_VERSION, applyHint, enterDigit, eraseCell, undo } from "./engine";
 import type { CellValue, SudokuState } from "./types";
 import { variantConfig } from "./types";
 
@@ -202,5 +202,18 @@ export function createEntryLog(
       first = count;
       rows = rowsSoFar;
     },
+  };
+}
+
+/**
+ * The `game_started` data (#3288, #3909): the settings, the puzzle's givens and
+ * the engine version, about 15 B more than the givens alone.
+ */
+export function startedData(state: Pick<SudokuState, "difficulty" | "variant" | "puzzle">) {
+  return {
+    difficulty: state.difficulty,
+    variant: state.variant,
+    puzzle: state.puzzle,
+    engine_version: ENGINE_VERSION,
   };
 }

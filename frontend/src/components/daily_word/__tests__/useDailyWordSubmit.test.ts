@@ -135,7 +135,7 @@ describe("useDailyWordSubmit — success", () => {
 
     expect(dailyWordApi.submitGuess).toHaveBeenCalledWith(PUZZLE, "crane", 0);
     expect(sync.start).toHaveBeenCalledWith(
-      { puzzle_id: PUZZLE },
+      { puzzle_id: PUZZLE, engine_version: 1 },
       { puzzle_id: PUZZLE, language: "en" }
     );
     expect(sync.markStarted).toHaveBeenCalled();

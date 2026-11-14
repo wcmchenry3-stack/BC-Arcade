@@ -47,7 +47,7 @@
 import * as Sentry from "@sentry/react-native";
 
 import { sentryThrottle } from "../_shared/sentryThrottle";
-import { CATEGORIES, jokerActive, type Category } from "./engine";
+import { CATEGORIES, ENGINE_VERSION, jokerActive, type Category } from "./engine";
 import type { GameState } from "./types";
 
 /** The event type. */
@@ -217,5 +217,7 @@ export function reportRecordingError(e: unknown, op: string): void {
 
 /** The `game_started` event data: the mode, and in a vs game the computer's type and difficulty. */
 export function startedData(difficulty: string | null): Record<string, unknown> {
-  return difficulty ? { v: 1, mode: "vs", cpu_type: "oracle", difficulty } : { v: 1, mode: "solo" };
+  return difficulty
+    ? { v: 1, mode: "vs", cpu_type: "oracle", difficulty, engine_version: ENGINE_VERSION }
+    : { v: 1, mode: "solo", engine_version: ENGINE_VERSION };
 }
