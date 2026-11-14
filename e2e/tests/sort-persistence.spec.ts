@@ -11,7 +11,10 @@ import {
   gotoSort,
   injectSortProgress,
   injectLegacySortSave,
+  injectCatalogSaveWithOldBests,
+  readSortBests,
   catalogLevel,
+  catalogPar,
   LEVEL_1_POUR,
 } from "./helpers/sort";
 
@@ -107,11 +110,52 @@ test("Sort Puzzle — a save from the random levels moves onto the catalog", asy
     page.getByRole("button", { name: `Level ${firstSeven + 1}, locked`, exact: true }),
   ).toBeDisabled();
   await expect(page.getByRole("button", { name: /^Continue Level/ })).toHaveCount(0);
-  const stored = await page.evaluate(() => ({
-    bests: localStorage.getItem("@sort/best_moves"),
-    version: localStorage.getItem("@sort/catalog_version"),
-  }));
+  const stored = {
+    ...(await readSortBests(page)),
+    version: await page.evaluate(() => localStorage.getItem("@sort/catalog_version")),
+  };
   // Bests are written empty in the same write as the version (#2761 review: never removed
-  // before the migrated progress is saved).
-  expect(stored).toEqual({ bests: "{}", version: "1" });
+  // before the migrated progress is saved; that one write is unit-tested in
+  // catalogMigration.test.ts). The grid shows only after the bests are read, by which time the
+  // personal best (#3821) has moved the emptied `{}` in (nothing) and removed the old key: the
+  // random levels' bests reached neither store.
+  expect(stored).toEqual({ bests: null, legacy: null, version: "1" });
+  await expect(
+    page.getByRole("button", { name: "Level 1, 3 of 3 stars", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("Sort Puzzle — a catalog save's old best moves move into the personal best (#3821)", async ({
+  page,
+}) => {
+  await mockSortApi(page);
+  const par = catalogPar(1);
+  await injectCatalogSaveWithOldBests(
+    page,
+    { unlockedLevel: 3, currentLevelId: null, currentState: null },
+    { "1": par, "2": 999 },
+  );
+
+  await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
+  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
+  // Level 1's best (moves = par) still earns its 3 stars; level 2's still counts as solved.
+  await expect(
+    page.getByRole("button", { name: "Level 1, 3 of 3 stars", exact: true }),
+  ).toBeVisible({ timeout: 5_000 });
+  await expect(
+    page.getByRole("button", { name: "Level 2, 1 of 3 stars", exact: true }),
+  ).toBeVisible();
+  // Written once in the new format; the old key removed only after that.
+  const stored = await readSortBests(page);
+  expect(stored.legacy).toBeNull();
+  expect(JSON.parse(stored.bests ?? "null")).toEqual({ v: 1, b: { "1": par, "2": 999 } });
+
+  // And it survives a reload, read from the new store alone.
+  await page.reload();
+  await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
+  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
+  await expect(
+    page.getByRole("button", { name: "Level 1, 3 of 3 stars", exact: true }),
+  ).toBeVisible({ timeout: 5_000 });
+  expect(await readSortBests(page)).toEqual(stored);
 });

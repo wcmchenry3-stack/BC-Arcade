@@ -1,19 +1,18 @@
 /**
- * Sort's saved progress and best moves, through the shared `storageSlot`
- * (#2987). Until #2987 every failure here was swallowed unreported (or, for
- * the writes, rejected to callers that ignored it); now each is reported to
- * Sentry under `sort.storage`, and no call rejects. What is stored, and what
- * each load returns, is unchanged.
+ * Sort's saved progress, through the shared `storageSlot` (#2987), and its
+ * best moves, through the shared personal best (#3821). Until #2987 every
+ * failure here was swallowed unreported (or, for the writes, rejected to
+ * callers that ignored it); now each is reported to Sentry (progress under
+ * `sort.storage`, bests under `personalBest`), and no call rejects.
  *
  * Both are numbered by the level catalog (#2761). The catalog version stored
  * next to them, and the move from the random levels before it, belong to
  * `catalogMigration.ts`. The levels ship in the app, so there is no longer a
  * cache of them (`@sort/levels_cache`, which the migration removes).
  */
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
 import type { SortState } from "./types";
 import { bestOf } from "../_shared/bestOf";
+import { readBests, recordBests } from "../_shared/personalBest";
 import { createJsonSlot } from "../_shared/storageSlot";
 
 export interface SortProgress {
@@ -104,9 +103,14 @@ export async function loadProgress(): Promise<SortProgress> {
 // The screen keeps the bests in memory (loaded with it, merged on Retry) and
 // decides every solve from there; storage only mirrors them. Nothing reads
 // storage to decide a solve, so a failed read can never overwrite the bests.
+//
+// Stored in the shared personal best (#3821, `_shared/personalBest.ts`, game
+// `"sort"`, variant = level id): `personal_best_v1:sort`. The older
+// `@sort/best_moves` is moved in on the first read once the save is on the
+// level catalog (`catalogMigration.ts` runs first), the better value per level
+// winning, and removed only after that write lands. Failures are reported by
+// the shared module (subsystem `personalBest`).
 // ---------------------------------------------------------------------------
-
-const BEST_MOVES_KEY = "@sort/best_moves";
 
 /** Fewest moves per solved level, keyed by level id. */
 export type BestMoves = Readonly<Record<string, number>>;
@@ -116,45 +120,24 @@ function isMoveCount(value: unknown): value is number {
 }
 
 /**
- * The stored best moves (`@sort/best_moves`). `null` when storage could not
- * be read: the caller must then not write over what it can't see. A missing
- * or corrupt value reads as no bests, since nothing in it can be recovered.
+ * The stored best moves. `null` when storage could not be read (or holds a
+ * newer build's record): the caller must then not write over what it can't
+ * see. A missing or corrupt value reads as no bests, since nothing in it can
+ * be recovered. Call only after `migrateToCatalog` has returned `"current"`.
  */
-export async function loadBestMoves(): Promise<BestMoves | null> {
-  let raw: string | null;
-  try {
-    raw = await AsyncStorage.getItem(BEST_MOVES_KEY);
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op: "loadBestMoves" } });
-    return null;
-  }
-  try {
-    const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const bests: Record<string, number> = {};
-    for (const [level, moves] of Object.entries(parsed)) {
-      if (isMoveCount(moves)) bests[level] = moves;
-    }
-    return bests;
-  } catch (e) {
-    Sentry.captureMessage("sort.storage: corrupt best moves, reading as none", {
-      level: "warning",
-      tags: { subsystem: SUBSYSTEM, op: "loadBestMoves" },
-      extra: { error: String(e), key: BEST_MOVES_KEY },
-    });
-    return {};
-  }
+export function loadBestMoves(): Promise<BestMoves | null> {
+  return readBests("sort");
 }
 
-/** Replaces the stored bests with `bests`. Best-effort: resolves false on failure (reported). */
-export async function saveBestMoves(bests: BestMoves): Promise<boolean> {
-  try {
-    await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify(bests));
-    return true;
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op: "saveBestMoves" } });
-    return false;
-  }
+/**
+ * Mirrors `bests` to storage: merged into the stored bests, the fewer moves
+ * per level winning, in one write (none when nothing improves). The screen's
+ * bests already hold the stored ones, so this stores exactly them.
+ * Best-effort: resolves false when storage couldn't be read or the write
+ * failed (reported).
+ */
+export function saveBestMoves(bests: BestMoves): Promise<boolean> {
+  return recordBests("sort", bests);
 }
 
 /** Both sets of bests in one: the lower value per level wins. Pure. */

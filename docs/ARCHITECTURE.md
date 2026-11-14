@@ -616,7 +616,8 @@ server (a one-off seed from the server's stats is #3802).
 
 - **API.** `getBest(game, variant?)` (0: none), `getBests(game)` (by
   variant), `recordResult(game, variant?, value)` → `{ best, improved,
-  isNewBest }`, and `judgeResult(game, prior, value)` for screens that read
+  isNewBest }`, `readBests`/`recordBests` (below, for Sort), and
+  `judgeResult(game, prior, value)` for screens that read
   the best when a game starts and decide its end synchronously. The "new
   best" rule stays `bestOf`: the first result sets the best but is never a new
   best (Yacht's solo end beat counts the first game as a win itself).
@@ -625,10 +626,18 @@ server (a one-off seed from the server's stats is #3802).
   solo, at most 1575), fewest moves in a win (FreeCell), fastest win
   (Solitaire), fastest solve per mode and difficulty (Sudoku,
   `"classic.easy"`), fastest clear per layout, never under the 36 s floor
-  (Mahjong). A value that can't be a best (a 0 score, a broken clock) is never
-  stored. Sort's best moves per level are not in it yet (still
-  `@sort/best_moves`, `game/sort/storage.ts`); Blackjack, Hearts and Daily
-  Word keep no best.
+  (Mahjong), fewest moves per catalog level (Sort, #3821, variant = level id:
+  `"1"`…`"120"`). A value that can't be a best (a 0 score, a broken clock, a
+  0-move solve) is never stored. Blackjack, Hearts and Daily Word keep no
+  best.
+- **Bests kept in memory (Sort, #3821).** Sort's bests are also its progress
+  (its solved levels, and the leaderboard's `total_moves` sum), and its screen
+  decides every solve from bests it holds in memory. It reads them with
+  `readBests(game)` (`null` when storage couldn't be read or holds a newer
+  build's record: it must then not write them back) and mirrors them with
+  `recordBests(game, bests)`: merged in, the better value per variant winning,
+  in one write and only when something improves. What the screen computes and
+  submits is unchanged.
 - **Format.** One AsyncStorage key per game, `personal_best_v1:<game>`:
   `{"v":1,"b":{"<variant>":<best>}}`, variant `"_"` for a game with none; a
   few dozen bytes per variant.
@@ -638,7 +647,12 @@ server (a one-off seed from the server's stats is #3802).
   the game's first read: merged with any new-format best (the better one wins,
   so nothing is lowered or lost), written once, and the old key removed only
   after that write lands. A failed write leaves the old key for the next read;
-  the move is idempotent.
+  the move is idempotent. Sort's `@sort/best_moves` (#3821) is moved in the
+  same way, but only once `@sort/catalog_version` names this build's catalog
+  (a key read alongside, never removed: `legacy.context`): until the catalog
+  migration has run, the old key may hold the random levels' bests, so it is
+  left exactly as stored and counts for nothing (`legacy.read` returns
+  `null`).
 - **Fail-safe.** Nothing rejects. A record that can't be parsed reads as no
   best (a Sentry warning, and the record is removed); a value that can't be a
   best is dropped. A record in a format version this build doesn't know (a

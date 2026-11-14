@@ -8,7 +8,9 @@
  * has been moved onto the catalog (`migrateToCatalog`). The stored best moves
  * are handed to `onStoredBests`, which the screen merges into its in-memory
  * bests; they are withheld when the migration failed, since they may still
- * be bests on the old random levels.
+ * be bests on the old random levels. The bests are read only after the
+ * migration (the shared personal best, #3821, also holds back the old
+ * `@sort/best_moves` until the catalog version is stored).
  * A save of a catalog this build doesn't know is not read at all: the
  * session starts from level 1 in memory and writes no progress.
  */

@@ -9,17 +9,35 @@
  * reads as no best. `personalBest.ts` merges it in on the first read and then removes the key.
  */
 import { plausibleBestMs } from "../mahjong/clearTime";
+import { SORT_CATALOG_VERSION } from "../sort/catalog";
 
 export type PersonalBestGame =
-  "cascade" | "freecell" | "mahjong" | "solitaire" | "starswarm" | "sudoku" | "twenty48" | "yacht";
+  | "cascade"
+  | "freecell"
+  | "mahjong"
+  | "solitaire"
+  | "sort"
+  | "starswarm"
+  | "sudoku"
+  | "twenty48"
+  | "yacht";
 
 type RawStore = Readonly<Record<string, string | null>>;
 
 export interface LegacySave {
   /** The game's keys before #3757. */
   readonly keys: readonly string[];
-  /** Bests by variant from those keys' raw values (a key absent from storage is null). */
-  read(stored: RawStore): Record<string, number>;
+  /**
+   * Keys the read also needs that are not part of the old save, so they are never removed (Sort's
+   * catalog version). Read in the same `getMany` as `keys`.
+   */
+  readonly context?: readonly string[];
+  /**
+   * Bests by variant from those keys' raw values (a key absent from storage is null), or `null`
+   * when the old save can't be moved in yet: it is then left exactly as stored, counts for
+   * nothing, and is read again next time.
+   */
+  read(stored: RawStore): Record<string, number> | null;
 }
 
 export interface PersonalBestSpec {
@@ -45,6 +63,10 @@ export function sudokuVariant(mode: string, difficulty: string): string {
 
 const SUDOKU_MODES = ["classic", "mini"] as const;
 const SUDOKU_DIFFICULTIES = ["easy", "medium", "hard"] as const;
+
+/** Sort's best moves per level before #3821, and the catalog version they are numbered by. */
+export const SORT_LEGACY_BEST_MOVES_KEY = "@sort/best_moves";
+export const SORT_CATALOG_VERSION_KEY = "@sort/catalog_version";
 
 /** A number stored as a string (the older single-score keys). */
 function storedNumber(raw: string | null): number {
@@ -116,6 +138,30 @@ export const PERSONAL_BEST_GAMES: Readonly<Record<PersonalBestGame, PersonalBest
     lowerIsBetter: true,
     isPlausible: positive,
     legacy: statsField("solitaire_stats_v1", "bestTimeMs"),
+  },
+  // Fewest moves per level (#2512; #3821), variant = the catalog level id (`"1"`…`"120"`). These
+  // are also Sort's progress: the solved levels (`highestSolvedLevel`) and the leaderboard's
+  // `total_moves` come from them. Before #3821: `@sort/best_moves`, `{"<level>":moves}`, read as
+  // Sort's own loader did (an entry that isn't a move count is skipped; a solve takes at least one
+  // pour). Moved in only once that save is on this catalog (`@sort/catalog_version`, written by
+  // `catalogMigration.ts`): bests from before the catalog are for the old random levels and must
+  // never become catalog bests, so until the catalog migration has run the old key is left to it.
+  sort: {
+    lowerIsBetter: true,
+    isPlausible: (moves) => Number.isInteger(moves) && moves >= 1,
+    legacy: {
+      keys: [SORT_LEGACY_BEST_MOVES_KEY],
+      context: [SORT_CATALOG_VERSION_KEY],
+      read: (stored) => {
+        if (stored[SORT_CATALOG_VERSION_KEY] !== String(SORT_CATALOG_VERSION)) return null;
+        const out: Record<string, number> = {};
+        const byLevel = parsedObject(stored[SORT_LEGACY_BEST_MOVES_KEY] ?? null);
+        for (const [level, moves] of Object.entries(byLevel)) {
+          if (typeof moves === "number") out[level] = moves;
+        }
+        return out;
+      },
+    },
   },
   // Highest score (#2516): `starswarm.bestScore`, a whole number as a string.
   starswarm: {

@@ -34,6 +34,9 @@
  * The best scores moved to the shared personal best (#3757, `personalBest.ts`): the scenarios of
  * each game's old best-score record were removed with it (Cascade, FreeCell, Mahjong, Solitaire,
  * Sudoku, 2048). Reading those old bytes is tested in `personalBest.test.ts`, which moves them in.
+ * Sort's best moves followed (#3821): its five best-moves scenarios were removed the same way, and
+ * their recorded bytes are the old-format fixtures of `sort/__tests__/bestMovesMigration.test.ts`.
+ * "sort: clear" seeds its old bests (the same bytes) instead of writing them through the module.
  *
  * Do not re-record the fixture from the current modules: it is the record of
  * the old behaviour.
@@ -482,20 +485,11 @@ Object.assign(scenarios, {
     },
   },
   "sort: progress none": { run: sort.loadProgress },
-  "sort: best moves": {
-    run: async () => {
-      await sort.saveBestMoves({ "1": 8, "2": 11 });
-      return sort.loadBestMoves();
-    },
-  },
-  "sort: best moves filtered": {
-    seed: { "@sort/best_moves": '{"1":5,"2":"x","3":-1}' },
-    run: sort.loadBestMoves,
-  },
   "sort: clear": {
+    // The old bests are seeded in the bytes the old `saveBestMoves` wrote (#3821: the app now
+    // writes them to the shared personal best); clearing the game must still leave them alone.
+    seed: { "@sort/best_moves": '{"1":8}' },
     run: async () => {
-      await sort.saveBestMoves({ "1": 8 });
-      await sort.saveProgress({ unlockedLevel: 2, currentLevelId: null, currentState: null });
       return sort.clearGame();
     },
   },
@@ -506,17 +500,6 @@ Object.assign(scenarios, {
     compare: "result",
   },
   "sort: progress read fails": { fail: ["getItem"], run: sort.loadProgress, compare: "result" },
-  "sort: best moves corrupt": {
-    seed: { "@sort/best_moves": "{x" },
-    run: sort.loadBestMoves,
-    compare: "result",
-  },
-  "sort: best moves read fails": { fail: ["getItem"], run: sort.loadBestMoves, compare: "result" },
-  "sort: best moves write fails": {
-    fail: ["setItem"],
-    run: () => sort.saveBestMoves({ "1": 2 }),
-    compare: "result",
-  },
 } satisfies Record<string, Scenario>);
 
 // --- harness ----------------------------------------------------------------
