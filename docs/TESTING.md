@@ -262,6 +262,12 @@ issue.
 `game/_shared/foregroundClock`. A test that needs a different shape still calls `jest.mock` for
 that module; its own mock wins.
 
+The AsyncStorage mock's methods are `jest.fn()`s with in-memory implementations. Because they are
+already mocks, `jest.spyOn(AsyncStorage, "x")` returns the same fn and `spy.mockRestore()` strips
+that implementation (#3895). `jest.setup-after-env.ts` re-installs any stripped default before every
+test, so a restore no longer breaks later tests in the file (a read after the restore, in the same
+test, still sees the bare mock). `src/test-utils/__tests__/asyncStorageMock.test.ts` guards this.
+
 The modules most screens need mocked per test (`@react-navigation/native`, `api/stats`,
 `game/_shared/gameEventClient`, `flushQueuedGames`, `displayNameSync`, `NetworkContext`) have
 factories in `frontend/src/test-utils/mockScreenDeps.ts`. `jest.mock` is hoisted above the
