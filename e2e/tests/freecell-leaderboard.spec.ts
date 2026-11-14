@@ -52,8 +52,11 @@ const NEAR_WIN_STATE = {
 const DISPLAY_NAME_KEY = "player_display_name";
 
 /** Mocks the rank lookup and records any legacy FreeCell call. */
-const routeFreecellApi = (page: Page) =>
-  routeSessionBoard(page, { legacyPattern: "**/freecell/**" });
+const routeFreecellApi = (page: Page, playerName: string | null = null) =>
+  routeSessionBoard(page, {
+    legacyPattern: "**/freecell/**",
+    playerName,
+  });
 
 /** Opens a saved game, optionally under a display name. */
 async function openGame(
@@ -86,7 +89,7 @@ async function winGame(page: Page, displayName?: string): Promise<void> {
 
 test.describe("FreeCell — result card + leaderboard", () => {
   test("shows the rank under the saved display name", async ({ page }) => {
-    const calls = await routeFreecellApi(page);
+    const calls = await routeFreecellApi(page, "Tester");
     await winGame(page, "Tester");
 
     const card = page.getByTestId("freecell-result");
@@ -125,7 +128,7 @@ test.describe("FreeCell — result card + leaderboard", () => {
   test("Play Again dismisses the card and starts a fresh game", async ({
     page,
   }) => {
-    await routeFreecellApi(page);
+    await routeFreecellApi(page, "Tester");
     await winGame(page, "Tester");
 
     await page
@@ -144,7 +147,7 @@ test.describe("FreeCell — result card + leaderboard", () => {
   test("a resumed, already-won game shows the card without a rank lookup", async ({
     page,
   }) => {
-    const calls = await routeFreecellApi(page);
+    const calls = await routeFreecellApi(page, "Tester");
     await openGame(page, WON_STATE, "Tester");
 
     await expect(page.getByTestId("freecell-result")).toBeVisible({

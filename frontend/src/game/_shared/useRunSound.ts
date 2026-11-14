@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect, useRef } from "react";
 import { useLoopSound } from "./useLoopSound";
-import { useSound } from "./useSound";
+import { LAZY_SOUND, useSound } from "./useSound";
 
 /** The three parts of a sound that lasts as long as a run, e.g. Auto-Complete's riffle (#3563). */
 export interface RunSoundKeys {
@@ -25,9 +25,11 @@ export function useRunSound(
   keys: RunSoundKeys,
   registry: Record<string, number>
 ): void {
-  const { play: playStart } = useSound(keys.start, registry);
-  const { play: playSettle } = useSound(keys.settle, registry);
-  const { start: startLoop, stop: stopLoop } = useLoopSound(keys.loop, registry);
+  // A run sound plays at most a few times per game, so all three parts are created on first use
+  // (#3604) rather than as three extra players at mount.
+  const { play: playStart } = useSound(keys.start, registry, 1.0, LAZY_SOUND);
+  const { play: playSettle } = useSound(keys.settle, registry, 1.0, LAZY_SOUND);
+  const { start: startLoop, stop: stopLoop } = useLoopSound(keys.loop, registry, 1.0, LAZY_SOUND);
   const wasActiveRef = useRef(false);
 
   useEffect(() => {

@@ -4,9 +4,19 @@ import { createJsonSlot } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "freecell.storage";
 
+/**
+ * `state` without its one-shot `events`: a save holds the game only, so a restore
+ * never replays the last move's sound or motion (#3826, as Solitaire's #3093).
+ */
+function withoutEvents(state: FreeCellState): FreeCellState {
+  if (!("events" in state)) return state;
+  const { events: _events, ...game } = state;
+  return game;
+}
+
 function stripNestedUndo(state: FreeCellState): FreeCellState {
   return {
-    ...state,
+    ...withoutEvents(state),
     // A snapshot's clock is never restored (an undo keeps the running clock, #3607).
     undoStack: state.undoStack.map(({ clock: _clock, ...snapshot }) => ({
       ...snapshot,
@@ -32,9 +42,12 @@ function isPlayClock(c: unknown): c is PlayClock {
  * than as a corrupt save: the clock is only the stat line's TIME (#3607). A negative
  * banked time (a device clock set back) is clamped to 0 and the clock kept.
  */
-function dropBadClock(parsed: unknown): unknown {
-  if (parsed === null || typeof parsed !== "object" || !("clock" in parsed)) return parsed;
-  const { clock, ...rest } = parsed as Record<string, unknown>;
+function dropBadClock(stored: unknown): unknown {
+  if (stored === null || typeof stored !== "object") return stored;
+  // Saves written before #3826 still carry the last move's events.
+  const { events: _events, ...parsed } = stored as Record<string, unknown>;
+  if (!("clock" in parsed)) return parsed;
+  const { clock, ...rest } = parsed;
   if (!isPlayClock(clock)) return rest;
   return clock.accumulatedMs < 0 ? { ...rest, clock: { ...clock, accumulatedMs: 0 } } : parsed;
 }

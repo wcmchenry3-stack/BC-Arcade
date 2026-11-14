@@ -14,8 +14,9 @@ name: Mobile Smoke — Android
 #    Maestro's own don't run it (#3546). This is the per-PR Maestro leg; the
 #    iOS leg runs on PRs into dev only for native/iOS changes (#3547).
 #  - workflow_dispatch: manual, the full suite, or with `flows: cascade-demo`
-#    only the Cascade demo flows (#3705; docs/MAESTRO.md, "Cascade demo
-#    flows"). Every other run leaves the `demo`-tagged flows out.
+#    or `flows: mahjong-demo` only that game's demo flows (#3705, #3801;
+#    docs/MAESTRO.md, "Cascade demo flows", "Mahjong demo flows"). Every
+#    other run leaves the `demo`-tagged flows out.
 #  - schedule: weekly full suite on the default branch (`dev`). It gives
 #    ongoing signal and is the run that writes the Gradle/Metro caches PR runs
 #    restore (runs off `dev` are read-only, see setup-gradle below). A scheduled run
@@ -31,9 +32,9 @@ on:
   workflow_dispatch:
     inputs:
       flows:
-        description: "full = every flow directory; cascade-demo = only the Cascade demo flows (records video, #3705)"
+        description: "full = every flow directory; cascade-demo / mahjong-demo = only that game's demo flows (records video, #3705, #3801)"
         type: choice
-        options: [full, cascade-demo]
+        options: [full, cascade-demo, mahjong-demo]
         default: full
   schedule:
     # Mondays 09:23 UTC (off-peak; off the hour to dodge scheduler load).
@@ -68,6 +69,10 @@ jobs:
     if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      # The opted-in media names and the media artifact's URL, for comment-media (#3805).
+      media-names: ${{ steps.media-names.outputs.names }}
+      media-url: ${{ steps.upload-media.outputs.artifact-url }}
     env:
       # One place for the emulator image: the pre-download step and the
       # emulator step both read these.
@@ -75,7 +80,7 @@ jobs:
       EMULATOR_TARGET: google_apis
       EMULATOR_ARCH: x86_64
       # Demo flows (tag `demo`, #3705) run only in a `flows: cascade-demo`
-      # dispatch; every other run leaves them out.
+      # or `flows: mahjong-demo` dispatch; every other run leaves them out.
       MAESTRO_TAG_ARG: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && '--include-tags=demo' || '--exclude-tags=demo' }}
       # Scope outputs go to the scripts through env, never `${{ }}` inside a
       # run:/script: body, so no output text is ever parsed as shell.
@@ -274,7 +279,8 @@ jobs:
           # shown again. Readable without root; each capped at 400 lines. Kept on one line: the emulator
           # action runs each script line in its own sh -c.
           # $MAESTRO_TAG_ARG (job env) is --exclude-tags=demo, or
-          # --include-tags=demo in a `flows: cascade-demo` dispatch (#3705).
+          # --include-tags=demo in a `flows: cascade-demo` or `flows: mahjong-demo`
+          # dispatch (#3705, #3801).
           script: |
             adb shell settings put global hide_error_dialogs 1
             adb shell settings put secure anr_show_background 0
@@ -321,6 +327,7 @@ jobs:
       # its test output directory instead. Cost: artifact storage only,
       # bounded by the 14-day retention.
       - name: Upload screenshots and recordings
+        id: upload-media
         uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -334,6 +341,12 @@ jobs:
           # normal runs are unaffected.
           if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
           retention-days: 14
+
+      # Names of the media the PR comment lists (opt-in prefixes live in media_comment.py).
+      - name: List opted-in media names
+        id: media-names
+        if: always()
+        run: python3 e2e/maestro/media_comment.py names *.png *.mp4 "$HOME/.maestro/tests"
 
       - name: Upload failure screenshots
         uses: actions/upload-artifact@v7
@@ -349,3 +362,41 @@ jobs:
             maestro-debug/*/*.png
           if-no-files-found: ignore
           retention-days: 7
+
+  # Lists the run's opted-in media (e2e/maestro/media_comment.py: OPT_IN_PREFIXES) on the
+  # PR, or on the one open PR for a dispatched branch (#3805). A separate job so the
+  # emulator job keeps `contents: read` only; the job's own `permissions` replace the
+  # workflow's, so it names both. Skipped for fork PRs (read-only token) and when the run
+  # has no opted-in media; the script itself never fails the job.
+  comment-media:
+    name: Comment Maestro Android media
+    needs: maestro-android
+    if: |
+      !cancelled() && needs.maestro-android.outputs.media-names != '' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: e2e/maestro
+          persist-credentials: false
+
+      - name: Comment or update the media list
+        # Everything reaches the script through env, never `${{ }}` in the run body.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: android
+          MEDIA_NAMES: ${{ needs.maestro-android.outputs.media-names }}
+          ARTIFACT_URL: ${{ needs.maestro-android.outputs.media-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BRANCH: ${{ github.ref_name }}
+        run: python3 e2e/maestro/media_comment.py comment

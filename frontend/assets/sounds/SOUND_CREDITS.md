@@ -372,32 +372,9 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 
 ## FreeCell (#844)
 
-### freecell-game-win.mp3
+### freecell-game-win.mp3 (deleted, #3871)
 
-- **Event:** All 52 cards placed in foundations — game complete
-- **Original filename:** `466133__humanoide9000__victory-fanfare.mp3` (preview lq)
-- **Source URL:** https://freesound.org/people/humanoide9000/sounds/466133/
-- **Creator:** humanoide9000 on Freesound
-- **License:** Creative Commons Attribution 4.0 (CC-BY 4.0)
-- **License URL:** https://creativecommons.org/licenses/by/4.0/
-- **Attribution required:** Yes — credit "humanoide9000 on Freesound"
-- **Commercial use:** Yes (with attribution)
-- **Download date:** 2026-04-25
-- **Notes:** Short victory fanfare. Triumphant conclusion to a completed FreeCell game.
-- **Status (#3661):** No game uses this file any more: FreeCell moved to synthesized sounds (#3563) and Bottle Sort to its own set (#3661, `sort-win.ogg`). It is not bundled in the app, so the CC BY duty applies again only if it ships; kept in the repo.
-
-### freecell-invalid-move.mp3
-
-- **Event:** Move rejected — wrong card, full free cell, or supermove limit exceeded
-- **Original filename:** `493163__Breviceps__buzzer-wrong-answer-error.mp3` (preview lq)
-- **Source URL:** https://freesound.org/people/Breviceps/sounds/493163/
-- **Creator:** Breviceps on Freesound
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Short buzzer for wrong answer / error. Signals an invalid move without being jarring.
+This was the only CC BY 4.0 sound ("Victory fanfare" by humanoide9000 on Freesound, https://freesound.org/people/humanoide9000/sounds/466133/). No game used it after #3661 and it was not bundled, so the file was deleted in #3871 and no attribution duty remains.
 
 ---
 

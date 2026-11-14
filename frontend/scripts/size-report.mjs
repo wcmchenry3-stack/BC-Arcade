@@ -27,6 +27,8 @@
  *   --max-js <bytes>         fail if the JS bundle is larger
  *   --warn-js <bytes>        warn (exit 0) if the JS bundle is larger
  *   --max-assets <bytes>     fail if packaged assets are larger
+ *   --warn-assets <bytes>    warn (exit 0) if packaged assets are larger (#3631); not
+ *                            reported when --max-assets also fails, so the failure is the one message
  *   --forbid-hidden-assets   fail if any hidden-premium-only asset is packaged
  *                            (store bundles must not ship them, #2830)
  *   --forbid-hidden-locales  fail if the JS bundle holds a non-launch locale's translations
@@ -208,6 +210,8 @@ export function evaluate({ jsBytes, assetBytes, hidden = [], hiddenLocales = [] 
     warnings.push(`JS bundle ${jsBytes} B exceeds warn threshold ${limits.warnJs} B`);
   if (limits.maxAssets != null && assetBytes != null && assetBytes > limits.maxAssets)
     failures.push(`Packaged assets ${assetBytes} B exceed hard limit ${limits.maxAssets} B`);
+  else if (limits.warnAssets != null && assetBytes != null && assetBytes > limits.warnAssets)
+    warnings.push(`Packaged assets ${assetBytes} B exceed warn threshold ${limits.warnAssets} B`);
   if (limits.forbidHidden && hidden.length)
     failures.push(
       `${hidden.length} hidden-premium asset(s) packaged in a store bundle: ` +
@@ -277,7 +281,15 @@ const mb = (b) => (b / 1048576).toFixed(2);
 
 function parseArgs(argv) {
   const o = { flags: new Set() };
-  const valued = new Set(["bundle", "assets", "max-js", "warn-js", "max-assets", "github-output"]);
+  const valued = new Set([
+    "bundle",
+    "assets",
+    "max-js",
+    "warn-js",
+    "max-assets",
+    "warn-assets",
+    "github-output",
+  ]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith("--")) throw new Error(`Unexpected argument: ${a}`);
@@ -299,6 +311,7 @@ function parseArgs(argv) {
     maxJs: num("max-js"),
     warnJs: num("warn-js"),
     maxAssets: num("max-assets"),
+    warnAssets: num("warn-assets"),
     forbidHidden: o.flags.has("forbid-hidden-assets"),
     forbidHiddenLocales: o.flags.has("forbid-hidden-locales"),
   };

@@ -164,6 +164,8 @@ Board state is persisted locally after changes and restores after relaunch.
 
 A killed app can therefore continue the same deal/session.
 
+The save holds the game only: the one-shot `events` of the last move are never written, and are dropped from an older save on load (#3826, as Solitaire's #3093), so a restore never replays a sound. The screen's own clear of restored events stays as a second guard.
+
 FreeCell does not maintain its own persisted play clock. Duration comes from the shared `useGameSync` active-play window; starting a new deal resets that window.
 
 The local device keeps only the fewest moves in a win, for the result card's Best and "New best": the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:freecell`; the old `freecell_stats_v1` is moved in on the first read), read with the saved game and written only when a win beats it. No server I/O. Server Stats/history are authoritative for shared reporting.
@@ -327,4 +329,4 @@ Triggers are in `frontend/src/screens/FreeCellScreen.tsx`, each timed to its car
 | `freecell.invalidMove`                                                                     | `card-invalid-move.ogg` (shared with Solitaire; synthesized)                   | a refused drop (`components/freecell/FreeCellBoard.tsx`)                                                                                                                                                      | 1.0    |
 | `freecell.gameWin`                                                                         | `card-game-won.ogg` (shared with Solitaire and Hearts)                         | the game is won; with the riffle's settle, on the last card's contact                                                                                                                                         | 1.0    |
 
-"No moves available" has no sound. `freecell-invalid-move.mp3` is shipped but unused.
+"No moves available" has no sound. The old `freecell-invalid-move.mp3` was deleted in #3845.

@@ -130,5 +130,22 @@ export const contract: SectionContract<"damage"> = {
       },
     },
     ...(["combat", "pickupWait", "extraction"] as const).map(deathPhaseRow), // #3535
+    {
+      // #3710: the grid by tier; the attribution rules are `waveStats.hitsByTier.test.ts`
+      id: "hitsByTier: a Guardian bullet's life is charged to the Guardian",
+      covers: [field("damage", "hitsByTier")],
+      scenario: () =>
+        snap(
+          collide({
+            ...setUp("bullet", "life"),
+            enemyBullets: [enemyShot(arena().player.x, arena().player.y, { tier: "Guardian" })],
+          })
+        ),
+      expect: (s) => {
+        expect(s.damage.hitsByTier.Guardian.life).toBe(1);
+        expect(s.damage.hitsByTier.Grunt.life).toBe(0);
+        expect(s.damage.hits.bullet.life).toBe(1);
+      },
+    },
   ],
 };

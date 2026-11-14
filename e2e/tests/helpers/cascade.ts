@@ -5,8 +5,9 @@
  * locally via `EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`).
  *
  * All window.__cascade_* hooks are registered by frontend/src/game/cascade/testHooks.ts
- * and are undefined in builds without test hooks. Cascade doesn't render on web until
- * #2960 loads Skia's web runtime; #2960 adds the smoke spec that uses these helpers.
+ * and are undefined in builds without test hooks. On web Cascade draws through Skia's web
+ * runtime (CanvasKit), which the Cascade route loads when it opens (#2960); the smoke spec is
+ * `cascade-smoke.spec.ts`.
  */
 
 import { Page } from "@playwright/test";
@@ -28,15 +29,29 @@ export interface CascadeState {
   }>;
 }
 
-/** Navigate from Home to Cascade and wait for the canvas to be ready. */
-export async function gotoCascade(page: Page): Promise<void> {
+/**
+ * Navigate from Home to Cascade and wait for its header, without waiting for the board: on web
+ * the route is still loading CanvasKit (`cascade-web-loading`) or showing its load error
+ * (`cascade-web-error`).
+ */
+export async function openCascade(page: Page): Promise<void> {
   await installEntitlementsMock(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Play Cascade" }).click();
   await page
     .getByRole("heading", { name: "Cascade", exact: true })
     .waitFor({ timeout: 10_000 });
-  // The physics engine may take a moment to initialise — wait for the canvas label
+}
+
+/** Navigate from Home to Cascade and wait for the canvas to be ready. */
+export async function gotoCascade(page: Page): Promise<void> {
+  await openCascade(page);
+  await waitForCascadeBoard(page);
+}
+
+/** Wait for the board to render and the engine to accept drops. */
+export async function waitForCascadeBoard(page: Page): Promise<void> {
+  // physics engine may take a moment to initialise — wait for the canvas label
   await page
     .getByRole("img", { name: /Cascade game/i })
     .waitFor({ timeout: 15_000 });

@@ -28,6 +28,12 @@ import type { BoardMotion } from "../../game/mahjong/useBoardMotion";
 import { useTileFaces } from "./tileFaces";
 import { MatchGhostNode, TileNode, WinCascadeNode } from "./TileNode";
 import { boardResolution } from "../../game/mahjong/zoom";
+import {
+  canvasPlan,
+  useRenderVariant,
+  isRenderDiagEnabled,
+  noteCanvas,
+} from "../../game/mahjong/renderDiag";
 import { MAHJONG_BOARD_BG } from "../../theme/theme.mahjong";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
@@ -82,9 +88,27 @@ export default function GameCanvas({
 }: Props) {
   const { t } = useTranslation("mahjong");
   const { faceWidth, faceHeight, boardWidth, boardHeight } = camera;
-  // Drawn at max-zoom resolution and shown scaled down, so zooming in never stretches it.
-  const res = boardResolution(camera.scale, camera.tileWidth);
-  const faces = useTileFaces(faceWidth, faceHeight, res);
+  // The canvas is the board's size, never larger (#3684: iOS stops presenting, and aliases, a
+  // canvas drawn bigger and shrunk by a View transform), and the faces are rasterised at
+  // PixelRatio x plan.faceRes, which is PixelRatio in production (the demo showed hi-res faces
+  // gave no visible gain for about 3x the face memory).
+  const boardRes = boardResolution(camera.scale, camera.tileWidth);
+  // Always the fixed variant "b" outside a test build; test builds can pick the old renderer
+  // for the before/after demo (renderDiag.ts).
+  const variant = useRenderVariant();
+  const plan = canvasPlan(variant, boardRes);
+  const res = plan.tileRes;
+  const faces = useTileFaces(faceWidth, faceHeight, plan.faceRes);
+  if (isRenderDiagEnabled()) {
+    noteCanvas({
+      variant,
+      res: boardRes,
+      plan,
+      boardWidth,
+      boardHeight,
+      facesReady: faces ? faces.filter(Boolean).length : -1,
+    });
+  }
 
   const freeTiles = useMemo(() => freeIds ?? freeTileIds(state.tiles), [freeIds, state.tiles]);
 
@@ -121,21 +145,21 @@ export default function GameCanvas({
 
   return (
     <View style={{ width: boardWidth, height: boardHeight }}>
-      {/* Drawn at `res` times the board's size, centred on it and scaled (about its centre)
-          down onto it: the gesture layer's zoom then shrinks a sharp bitmap, never stretches. */}
+      {/* The board's own size (#3684). Only a test build's "old" variant draws larger and scales
+          this View down; production never does (plan.canvasScale and viewScale are 1). */}
       <View
         pointerEvents="none"
         style={{
           position: "absolute",
-          width: boardWidth * res,
-          height: boardHeight * res,
-          left: (boardWidth - boardWidth * res) / 2,
-          top: (boardHeight - boardHeight * res) / 2,
-          transform: [{ scale: 1 / res }],
+          width: boardWidth * plan.canvasScale,
+          height: boardHeight * plan.canvasScale,
+          left: (boardWidth - boardWidth * plan.canvasScale) / 2,
+          top: (boardHeight - boardHeight * plan.canvasScale) / 2,
+          transform: [{ scale: plan.viewScale }],
         }}
       >
         <Canvas
-          style={{ width: boardWidth * res, height: boardHeight * res }}
+          style={{ width: boardWidth * plan.canvasScale, height: boardHeight * plan.canvasScale }}
           accessibilityLabel={t("game.canvasLabel")}
           accessibilityRole="none"
         >

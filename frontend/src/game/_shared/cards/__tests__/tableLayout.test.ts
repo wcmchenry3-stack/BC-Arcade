@@ -265,9 +265,10 @@ describe("computeTableGeometry: FreeCell's inputs (#3607)", () => {
     expect(91 + 18 * step).toBeLessThanOrEqual(g.tableauHeight);
   });
 
-  // pixel_6 in landscape: the felt is about 901 x 222 dp. Before the fix the widest
+  // The old pixel_6 phone-landscape felt (about 901 x 222 dp), kept as a short-window guard
+  // (#3648): a short web window or split-screen gives a felt like it. Before the fix the widest
   // cards (106 x 151 dp) were kept at a 1 dp stripe and the columns ran off the felt.
-  it("a landscape felt (901 x 222) takes 36 dp cards and the tallest column fits", () => {
+  it("a short-window felt (901 x 222) takes 36 dp cards and the tallest column fits", () => {
     const g = computeTableGeometry({
       ...freeCell,
       width: 901 - 2,

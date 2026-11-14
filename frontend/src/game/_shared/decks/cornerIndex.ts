@@ -27,7 +27,7 @@ export const COMPACT_INDEX_THRESHOLD = 24;
  * The shortest stripe the compact index is drawn in, in dp: the smallest compact font with its
  * descent, plus its 2 dp top margin (6 x 1.2 + 2 = 9.2, rounded up to 10, where the Minimal
  * row's 8 dp line and its 2 dp of border and margin fit too). Below it (a few-dp stripe on the
- * landscape fit floor) nothing fits either way, and the card keeps its stacked index rather
+ * short-window fit floor) nothing fits either way, and the card keeps its stacked index rather
  * than a row that overflows the stripe.
  */
 export const MIN_COMPACT_STRIPE = Math.ceil(COMPACT_MIN_FONT * (1 + GLYPH_DESCENT) + 2);

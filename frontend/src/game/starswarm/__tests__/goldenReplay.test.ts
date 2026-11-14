@@ -36,6 +36,9 @@
  *   the last pulse, for the swept hit test. The pilot's sweep (about 145 px/s) is slow enough that
  *   the instant test already hit everything the swept one does: every summary, counter and the
  *   waves and timelines fixtures stayed identical, and so does the state without that key.
+ * - #3710 changed no hash: an enemy bullet now carries `tier` (the shooter's, render-only, a label
+ *   for `damage.hitsByTier`), and `sha()` leaves it out like a pickup's `source`. The main fixture
+ *   and the timelines are untouched; the waves fixture gained `damage.hitsByTier` (additions only).
  *
  * Per-wave stats (#3252): each scenario's closed waves (`state.closedWaves`, the `wave_completed`
  * wire form) and its end-of-replay leaderboard result (`final_score`, `wave_reached`,

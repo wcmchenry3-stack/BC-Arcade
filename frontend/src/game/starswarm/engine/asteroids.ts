@@ -964,6 +964,7 @@ export function tickAsteroidThreats(
           height: BULLET_E_H,
           damage: 1,
           flak: true,
+          tier: e.tier, // #3710
         });
         // #2844: the attention cost — this ship's next player-directed shot slips back
         e = payAttention({ ...e, flakCooldown: FLAK_COOLDOWN }, "flak");

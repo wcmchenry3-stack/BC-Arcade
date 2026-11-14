@@ -63,7 +63,7 @@ export default function BettingCircle({ bet, accentColor, size = 148 }: BettingC
             color: bet === 0 ? colors.textMuted : accentAsText(colors, resolvedAccent),
             fontFamily: typography.heading,
           },
-          // A small spot (a landscape felt) scales its amount down to fit.
+          // A small spot (a short landscape felt) scales its amount down to fit.
           size < 148 && { fontSize: amountSize, lineHeight: Math.round(amountSize * 1.2) },
         ]}
         accessibilityLabel={t("bet.accessibilityLabel", { amount: formatNumber(t, bet) })}

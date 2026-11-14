@@ -33,6 +33,7 @@ twenty48:
   - 'backend/twenty48/**'
 cascade:
   - 'frontend/src/screens/CascadeScreen*'
+  - 'frontend/src/screens/CascadeRoute*'   # the route; .web.tsx loads CanvasKit (#2960)
   - 'frontend/src/components/cascade/**'
   - 'frontend/src/game/cascade/**'
   - 'backend/cascade/**'

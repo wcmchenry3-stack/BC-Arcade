@@ -22,6 +22,7 @@ import {
   tileLook,
 } from "../../game/mahjong/motion";
 import type { MotionClock, Spark, TileLook } from "../../game/mahjong/motion";
+import { areTestHooksEnabled } from "../../game/_shared/envFlags";
 import { loadTileAssets } from "./tileAssetLoader";
 import { boardResolution } from "../../game/mahjong/zoom";
 import {
@@ -571,6 +572,8 @@ export default function GameCanvas({
         style={{ display: "block", cursor: gameActive ? "pointer" : "default" }}
         aria-label={t("game.canvasLabel")}
         role="img"
+        // Test builds only (#3804): e2e waits on this for the tile faces to be painted.
+        data-faces-loaded={areTestHooksEnabled() && imagesVersion > 0 ? "true" : undefined}
       />
     </View>
   );

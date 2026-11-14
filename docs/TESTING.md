@@ -1492,7 +1492,11 @@ await expect(page.getByText("Hit")).toBeVisible();
 
 ### 6. Mocked server state must agree with planted client state
 
-When a spec plants data the server also owns, its route mocks must answer as a server holding that data. The app reconciles with the server at launch, and the server wins. Example (#3790): a spec planted `player_display_name` but mocked `GET /players/me` as `{display_name: null}`. The launch refresh then erased the name, and the result card showed the join prompt in about 70% of runs. Pass the planted name to the mock (`routeSessionBoard(page, { …, playerName: "Tester" })`). A spec with its own inline `/players/me` mock must likewise start that mock with the planted name (the Hearts, Star Swarm and Sort specs don't yet; #3813). Don't rely on the one-time legacy-name migration: earlier page loads in the same test usually set its flag first.
+When a spec plants data the server also owns, its route mocks must answer as a server holding that data. The app reconciles with the server at launch, and the server wins. Example (#3790): a spec planted `player_display_name` but mocked `GET /players/me` as `{display_name: null}`. The launch refresh then erased the name, and the result card showed the join prompt in about 70% of runs. Pass the planted name to the mock (`routeSessionBoard(page, { …, playerName: "Tester" })`). A spec with its own inline `/players/me` mock must likewise start that mock with the planted name (Hearts and Star Swarm now do, #3813; the Sort spec still starts null). Don't rely on the one-time legacy-name migration: earlier page loads in the same test usually set its flag first.
+
+### Mahjong web demo screenshots (#3804)
+
+`e2e/tests/mahjong-demo-shots.spec.ts` (project `mahjong`) is the web counterpart of the Maestro demo flows `mahjong/demo-open.yaml` and `demo-zoom.yaml` (#3801). Web draws Mahjong on Canvas2D and iOS/Android on Skia, so the same board is photographed on both to compare them. A Playwright test build (`EXPO_PUBLIC_TEST_HOOKS=1`) deals the fixed `E2E_DEAL_SEED` board (#3803), so a Maestro run of a test build, which deals the same board, can be compared tile for tile. At 390 x 844 it opens Mahjong (`gotoMahjong`, which taps the Turtle layout if the picker shows), waits for `mahjong-board-viewport`, then for the board to settle, and saves `mahjong-demo-open.png`; a second test double-clicks the viewport, settles again and saves `mahjong-demo-zoom.png`. "Settled" means reduced motion (`reducedMotion: "reduce"`, so no deal-in or camera ease runs), the board canvas carrying `data-faces-loaded="true"` (set by `GameCanvas.web.tsx` only when `EXPO_PUBLIC_TEST_HOOKS=1`, once the 42 tile faces are loaded; they load after the first paint), and then 5 consecutive identical `toDataURL` reads (6 reads, about 1.25 s, 250 ms apart) because the repaint follows the load. The zoom test measures the board box before the double-click and waits for it to grow by more than 1.5x and for `mahjong-minimap` to show, so a missed gesture fails. No pixel assertion: each test checks only that the file is a plausible size (> 10 KB). The PNGs are written to `e2e/test-results/mahjong-demo/`, which the `Playwright E2E` job uploads, pass or fail, in the `playwright-report` artifact (7 days). It runs whenever the `mahjong` Playwright project does: a change under a Mahjong path, any `e2e/**` change (`playwright_shared` in `game-paths.yml`), or a full run. The web shot has no `-late`/`-late2` counterparts: the first one is taken once the board has settled.
 
 ## i18n overflow check
 
@@ -1507,3 +1511,21 @@ npx playwright test --project=cross i18n-overflow
 Adding a game or screen: extend `STORE_GAMES` (or the tabs test) in the spec. Wait for the screen to finish loading before measuring (the game screens wait for the `nav-menu` testID); measuring early gives false passes because header controls mount late.
 
 The spec's `ALLOWLIST` entries are keyed by screen, locale, overflow kind, a selector-path substring and exact text, each with a reason. They hold the six game-header-title overflows tracked in #3211 (solitaire, freecell, sort in es and fr-CA) and one web-only false positive: the es Profile `profile-tile-favorite` value, which `adjustsFontSizeToFit` shrinks on iOS/Android but react-native-web ignores. Remove the #3211 entries when #3211 lands. A stale entry that no longer overflows fails the test, so the list can only shrink.
+
+## Cascade smoke spec (web, CanvasKit, #2960)
+
+`e2e/tests/cascade-smoke.spec.ts` (project `cascade`) is the base the Cascade design-review demos record from. Cascade draws through Skia's web runtime (CanvasKit) on web, so this spec also checks how it loads:
+
+- the lobby requests no `.wasm` and has no `CanvasKit`; opening Cascade requests `canvaskit.<hash>.wasm` once, from the app's own origin;
+- Mahjong and Star Swarm keep a Canvas 2D canvas and never load CanvasKit;
+- drop (`__cascade_dropAt`), merge (`__cascade_spawnTierAt` twice, score > 0) and game over (`__cascade_triggerGameOver`, the `cascade-result` card);
+- an aborted `.wasm` download shows `cascade-web-error` (an alert, not an endless spinner); Retry then loads the board.
+
+It needs the e2e web build (`EXPO_PUBLIC_TEST_HOOKS=1`) and no backend. `helpers/cascade.ts` has `openCascade` (to the header, while the route may still be loading CanvasKit), `waitForCascadeBoard` and `gotoCascade` (both).
+
+```bash
+cd frontend && EXPO_PUBLIC_API_URL=http://localhost:8000 EXPO_PUBLIC_TEST_HOOKS=1 EXPO_PUBLIC_SENTRY_DSN= npx expo export --platform web
+cd ../e2e && npx playwright test --project=cascade
+```
+
+Jest covers the parts Jest can run: the route's loading, error and Retry states (`screens/__tests__/CascadeRoute.web.test.tsx`), the loader's retry and timeout (`game/cascade/render/__tests__/loadCanvasKit.test.ts`), and that `canvaskit-wasm` matches Skia's version and is imported only by web files (`canvasKitWeb.test.ts`). Jest cannot run `import()`, so the screen chunk loading after CanvasKit is covered only here.

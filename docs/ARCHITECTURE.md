@@ -300,6 +300,17 @@ Explicit exception to the lint rule, plus contexts that stay under `game/`:
   `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
   because they import no UI.
 
+**Game canvases on web.** The Skia canvases (`@shopify/react-native-skia`) are native. On
+web, Mahjong and Star Swarm draw with their own Canvas 2D `GameCanvas.web.tsx`. Cascade
+instead runs the same Skia code on web through Skia's web runtime, CanvasKit (WebAssembly),
+so web demos show what the phones show (owner decision on #2960). Its route,
+`screens/CascadeRoute.web.tsx`, loads CanvasKit from our own origin when Cascade opens and
+only then imports the screen; nothing else loads it, and native bundles do not contain it.
+Details and cost: [games/cascade.md](games/cascade.md#rendering-2960),
+[PERFORMANCE.md](PERFORMANCE.md#cascade-on-web-canvaskit-2960). Any other web path that
+imports `@shopify/react-native-skia` before CanvasKit has loaded breaks Skia on web, so keep
+Skia imports behind a native file or the Cascade route.
+
 ### 3.2 Determinism, RNG and counters (#2985, #2999)
 
 The rule: **an engine is replayable from `(seed, inputs)`.** Given the same
@@ -1035,6 +1046,11 @@ refunds, the product catalog) is specified in [IAP.md](IAP.md). Purchases write
 
 1. The client calls `GET /entitlements` on startup and on every foreground-resume.
    Purchase and restore responses also carry a fresh token ([IAP.md §8.2](IAP.md#82-endpoints)).
+   If a fetch fails with a network error and no premium games are cached, the
+   client also re-fetches once on each offline → online edge (`useNetwork()`),
+   or at once if the launch fetch failed while already online, until a fetch
+   reaches the server or a token is applied (#3868). A cached unlock or a
+   non-network failure (401/5xx) arms no retry.
 2. The server returns an **RS256-signed JWT** containing:
    - `sub`: session_id
    - `entitled_games`: array of game slugs the session may access
@@ -1412,6 +1428,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
 | `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
 | `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
+| `STARSWARM_HITS_BY_TIER` | `true`: `false` strips `damage.hitsByTier` from every stored Star Swarm `wave_completed` (the unpruned per-tier hit grid, #3710); the rest of the event is unchanged. A no-release dial finer than the replay switches, which stop the whole wave | `starswarm/models.py` (lazy) |
 | `CLIENT_SENTRY_ENABLED` | `true`: `false` stops the apps' Sentry events but the keep-list, served on `GET /games/catalog` as `client_sentry.enabled` (#3437) | `observability/client_sentry_dial.py` (lazy) |
 | `CLIENT_SENTRY_SAMPLE_RATE` | `1.0` (0–1): share of the apps' Sentry events sent, served as `client_sentry.sample_rate` (#3437) | `observability/client_sentry_dial.py` (lazy) |
 | `SORT_CATALOG_EDITION_ENFORCED` | `false`: `true` makes the Sort board and Stats "Best" rank only solves of the current level catalog (#2761; set once the catalog builds are live); also moves Sort's daily-challenge goals from 3/8/15 to 10/30/60 for unfrozen days (#3728) | `games/boards/editions.py` (lazy) |

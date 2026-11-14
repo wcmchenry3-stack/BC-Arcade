@@ -22,9 +22,10 @@ name: Mobile Smoke — iOS
 #   refreshes the CocoaPods cache that PR runs only read (a cache saved from a
 #   PR ref is invisible to other PRs) and gives a weekly signal. It never gates
 #   a PR or a Render deploy. Android's weekly run is Mon 09:23 UTC.
-# - workflow_dispatch: the full suite, or with `flows: cascade-demo` only the
-#   Cascade demo flows (#3705; docs/MAESTRO.md, "Cascade demo flows"). Every
-#   other run leaves the `demo`-tagged flows out.
+# - workflow_dispatch: the full suite, or with `flows: cascade-demo` or
+#   `flows: mahjong-demo` only that game's demo flows (#3705, #3801;
+#   docs/MAESTRO.md, "Cascade demo flows", "Mahjong demo flows"). Every other
+#   run leaves the `demo`-tagged flows out.
 # - NOT push to main (2026-09-23): prod auto-deploys `main` with Render's "After
 #   CI Checks Pass" trigger, which waits for EVERY check on the commit, so a red
 #   smoke check here would block prod deploys (it blocked #2522). PR runs gate
@@ -53,9 +54,9 @@ on:
   workflow_dispatch:
     inputs:
       flows:
-        description: "full = every flow directory; cascade-demo = only the Cascade demo flows (records video, #3705)"
+        description: "full = every flow directory; cascade-demo / mahjong-demo = only that game's demo flows (records video, #3705, #3801)"
         type: choice
-        options: [full, cascade-demo]
+        options: [full, cascade-demo, mahjong-demo]
         default: full
 
 permissions:
@@ -92,6 +93,10 @@ jobs:
     # 41642667861 (#3553) passed 18 of 20 flows and hit the old 90 min limit.
     # 120 min leaves room for that; a run only uses it when it needs it.
     timeout-minutes: 120
+    outputs:
+      # The opted-in media names and the media artifact's URL, for comment-media (#3805).
+      media-names: ${{ steps.media-names.outputs.names }}
+      media-url: ${{ steps.upload-media.outputs.artifact-url }}
     env:
       # Major version of Xcode to select. 26 ships Swift 6.2 (needed by an SPM
       # dependency); 27 hard-errors on pod targets below iOS 15, so don't float
@@ -106,7 +111,7 @@ jobs:
       MAESTRO_DRIVER_STARTUP_TIMEOUT: "180000"
       MAESTRO_CLI_NO_ANALYTICS: "1"
       # Demo flows (tag `demo`, #3705) run only in a `flows: cascade-demo`
-      # dispatch; every other run leaves them out.
+      # or `flows: mahjong-demo` dispatch; every other run leaves them out.
       MAESTRO_TAG_ARG: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && '--include-tags=demo' || '--exclude-tags=demo' }}
       # Scope outputs go to the scripts through env, never `${{ }}` inside a
       # run: body, so no output text is ever parsed as shell.
@@ -286,7 +291,8 @@ jobs:
           # with no results.
           #
           # $MAESTRO_TAG_ARG (job env) is --exclude-tags=demo, or
-          # --include-tags=demo in a `flows: cascade-demo` dispatch (#3705).
+          # --include-tags=demo in a `flows: cascade-demo` or `flows: mahjong-demo`
+          # dispatch (#3705, #3801).
           #
           # NOTE: this per-directory split does NOT fix — and was never the
           # cause of — the "Unrecognized field \"timeout\"" parse error on
@@ -367,6 +373,7 @@ jobs:
       # to the working directory). The working-directory globs stay as a
       # fallback. Cost: artifact storage only, bounded by the 14-day retention.
       - name: Upload screenshots and recordings
+        id: upload-media
         uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -381,6 +388,12 @@ jobs:
           if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
           retention-days: 14
 
+      # Names of the media the PR comment lists (opt-in prefixes live in media_comment.py).
+      - name: List opted-in media names
+        id: media-names
+        if: always()
+        run: python3 e2e/maestro/media_comment.py names *.png *.mp4 maestro-debug
+
       - name: Upload failure screenshots and build log
         uses: actions/upload-artifact@v7
         if: failure()
@@ -392,3 +405,41 @@ jobs:
             xcodebuild.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # Lists the run's opted-in media (e2e/maestro/media_comment.py: OPT_IN_PREFIXES) on the
+  # PR, or on the one open PR for a dispatched branch (#3805). A separate job so the
+  # emulator job keeps `contents: read` only; the job's own `permissions` replace the
+  # workflow's, so it names both. Skipped for fork PRs (read-only token) and when the run
+  # has no opted-in media; the script itself never fails the job.
+  comment-media:
+    name: Comment Maestro iOS media
+    needs: maestro-ios
+    if: |
+      !cancelled() && needs.maestro-ios.outputs.media-names != '' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: e2e/maestro
+          persist-credentials: false
+
+      - name: Comment or update the media list
+        # Everything reaches the script through env, never `${{ }}` in the run body.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: ios
+          MEDIA_NAMES: ${{ needs.maestro-ios.outputs.media-names }}
+          ARTIFACT_URL: ${{ needs.maestro-ios.outputs.media-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BRANCH: ${{ github.ref_name }}
+        run: python3 e2e/maestro/media_comment.py comment

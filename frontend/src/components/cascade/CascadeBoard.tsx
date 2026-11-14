@@ -8,6 +8,7 @@
  * the Picture without touching React. Drawing is `game/cascade/render/drawFrame.ts`.
  */
 import React, { useMemo } from "react";
+import { View } from "react-native";
 import { runOnJS, useDerivedValue, useSharedValue } from "react-native-reanimated";
 import { Canvas, Group, Picture, createPicture } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
@@ -64,12 +65,21 @@ function CascadeBoard({ frame, scale, fruitDefs, images, lidPalette }: CascadeBo
     }, WORLD_BOUNDS);
   }, [style, images]);
 
+  // The board's role and label sit on a wrapping View: on web Skia's Canvas drops accessibility
+  // props, and the board must still read as an image there (#2960, CanvasKit on web).
   return (
-    <Canvas style={canvasStyle} accessibilityRole="image" accessibilityLabel={t("a11y.board")}>
-      <Group transform={transform}>
-        <Picture picture={picture} />
-      </Group>
-    </Canvas>
+    <View
+      style={canvasStyle}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={t("a11y.board")}
+    >
+      <Canvas style={canvasStyle}>
+        <Group transform={transform}>
+          <Picture picture={picture} />
+        </Group>
+      </Canvas>
+    </View>
   );
 }
 
