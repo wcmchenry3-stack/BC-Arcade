@@ -8,9 +8,8 @@
 //
 // Only pieces that a FruitSet uses are imported: every import here ships in the
 // app bundle. pumpkin (fruit) and milkyway (cosmos) are future tiers; their
-// files stay in assets/ (and the bake pipeline) but are not imported until a
-// set uses them (#2833). The icon WebPs are 256 px thumbnails made by
-// tools/assets/make_icon_thumbnails.py — see docs/ASSETS.md "Rendered sizes".
+// asset files were deleted (#3845) and are re-added with the set that uses them.
+// The icon WebPs are 256 px thumbnails made by tools/assets/make_icon_thumbnails.py — see docs/ASSETS.md "Rendered sizes".
 
 // --- Fruit icons (UI display) ---
 import _cherryIcon from "../../../assets/fruit-icons/cherry.webp";

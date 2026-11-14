@@ -39,8 +39,8 @@ export function computeZoomBounds(
  * The board's max zoom, never below 1. #3611 drew the native canvas at this many times the
  * board's size and shrank it with a View transform; #3684 removed that (iOS stopped presenting
  * the oversized layer and aliased it). Production now draws the canvas at the board's size, and
- * this value only sets the zoom bounds and, in test builds, the old renderer and the hi-res
- * faces variant (`renderDiag.ts`); production faces are rasterised at the pixel ratio alone.
+ * this value only sets the zoom bounds (the web canvas also uses it); native faces are
+ * rasterised at the pixel ratio alone.
  */
 export function boardResolution(cameraScale: number, tileWidth: number): number {
   return Math.max(1, computeZoomBounds(cameraScale, tileWidth).maxZoom);

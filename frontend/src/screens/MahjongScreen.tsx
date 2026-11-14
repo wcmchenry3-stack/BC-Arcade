@@ -52,8 +52,6 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import GameCanvas from "../components/mahjong/GameCanvas";
 import MahjongDevPanel from "../components/mahjong/MahjongDevPanel";
-import MahjongRenderDiag from "../components/mahjong/MahjongRenderDiag";
-import { useRenderVariant } from "../game/mahjong/renderDiag";
 import { MAHJONG_STATS_ROW_H, useMahjongCamera } from "../game/mahjong/layout";
 import {
   createGame,
@@ -116,7 +114,6 @@ export default function MahjongScreen() {
   const { t } = useTranslation("mahjong");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const renderVariant = useRenderVariant();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
@@ -793,8 +790,6 @@ export default function MahjongScreen() {
                 >
                   <Animated.View style={boardAnimStyle}>
                     <GameCanvas
-                      // Always "a" outside a test build; a #3684 variant gets a fresh canvas.
-                      key={renderVariant}
                       state={state}
                       camera={camera}
                       freeIds={free.ids}
@@ -838,13 +833,6 @@ export default function MahjongScreen() {
                 onPanTo={panTo}
               />
             )}
-            {/* #3684 render readout: test builds on native only, nothing otherwise. */}
-            <MahjongRenderDiag
-              motionTiles={boardMotion.motion.tiles.size}
-              dealing={dealing}
-              reduceMotion={reduceMotion}
-              onRedeal={handlePlayAgain}
-            />
           </View>
 
           {/* Undo, Hint, Shuffle in thumb reach, after the board in reading order (#3614). */}

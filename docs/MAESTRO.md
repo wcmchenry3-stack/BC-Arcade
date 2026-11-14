@@ -41,24 +41,24 @@ See [`e2e/maestro/README.md`](../e2e/maestro/README.md) for flow authoring detai
 
 ## CI behaviour
 
-| | Android | iOS |
-|---|---|---|
-| Runner | `ubuntu-latest` | `macos-26`, newest installed Xcode 26.x (the image default). `macos-15`'s Xcode 26.3 fails to compile expo-modules-core in Swift 6 mode (#2347) |
-| App build | `assembleDebug` with the JS bundle forced in (see "Debug builds skip JS bundling" in [ANDROID-CI.md](ANDROID-CI.md)) | **Release** simulator build (`-configuration Release -sdk iphonesimulator`, unsigned): embeds a production bundle and leaves out expo-dev-client. A Debug build's embedded dev bundle RedBoxes ("Cannot create devtools websocket connections in embedded environments", #2347) |
-| Device | API 34 emulator (Pixel 6, x86_64) | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 26.x runtime (`PREFERRED_IOS_MAJOR`), else the newest runtime with a warning; base-model iPhone preferred, created if the runtime has none |
-| Maestro CLI | 1.39.13 (action default) | 2.12.1 (iOS-only `version:` input; 2.0.4+ supports Xcode 26) |
-| Trigger | PRs into `dev`/`main` (scoped, see below; draft PRs skipped until marked ready), manual `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 09:23 UTC; both full suite, or a dispatch with `flows: cascade-demo` / `flows: mahjong-demo` for the [Cascade demos](#cascade-demo-flows-3705) / [Mahjong demos](#mahjong-demo-flows-3801)) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `main` (full suite); PRs into `dev` **only when they change a native/iOS path** (see below, #3547); `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 10:41 UTC; both full suite, or a dispatch with `flows: cascade-demo` / `flows: mahjong-demo`) — **not** push to `main` |
-| Timeout | 60 min | 120 min |
-| Before the flows | Pre-downloads the emulator system image, retrying a corrupt download (#3705) | Warm-up: launches the app once and waits for Home (#3677, see below) |
-| Offline flow | ✅ included | ❌ excluded (requires `toggleAirplaneMode`, Android-only) |
+|                  | Android                                                                                                                                                                                                                                                                                                                                                                                                                           | iOS                                                                                                                                                                                                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runner           | `ubuntu-latest`                                                                                                                                                                                                                                                                                                                                                                                                                   | `macos-26`, newest installed Xcode 26.x (the image default). `macos-15`'s Xcode 26.3 fails to compile expo-modules-core in Swift 6 mode (#2347)                                                                                                                                                   |
+| App build        | `assembleDebug` with the JS bundle forced in (see "Debug builds skip JS bundling" in [ANDROID-CI.md](ANDROID-CI.md))                                                                                                                                                                                                                                                                                                              | **Release** simulator build (`-configuration Release -sdk iphonesimulator`, unsigned): embeds a production bundle and leaves out expo-dev-client. A Debug build's embedded dev bundle RedBoxes ("Cannot create devtools websocket connections in embedded environments", #2347)                   |
+| Device           | API 34 emulator (Pixel 6, x86_64)                                                                                                                                                                                                                                                                                                                                                                                                 | iPhone simulator picked at run time by `tools/ios_sim/pick_ios_simulator.py`: newest iOS 26.x runtime (`PREFERRED_IOS_MAJOR`), else the newest runtime with a warning; base-model iPhone preferred, created if the runtime has none                                                               |
+| Maestro CLI      | 1.39.13 (action default)                                                                                                                                                                                                                                                                                                                                                                                                          | 2.12.1 (iOS-only `version:` input; 2.0.4+ supports Xcode 26)                                                                                                                                                                                                                                      |
+| Trigger          | PRs into `dev`/`main` (scoped, see below; draft PRs skipped until marked ready), manual `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 09:23 UTC; both full suite, or a dispatch with `flows: cascade-demo` / `flows: mahjong-demo` for the [Cascade demos](#cascade-demo-flows-3705) / [Mahjong demos](#mahjong-demo-flows-3801)) — **not** push to `main` (removed 2026-09-23: a red check blocked prod deploys) | PRs into `main` (full suite); PRs into `dev` **only when they change a native/iOS path** (see below, #3547); `workflow_dispatch` and a weekly `schedule` on `dev` (Mondays 10:41 UTC; both full suite, or a dispatch with `flows: cascade-demo` / `flows: mahjong-demo`) — **not** push to `main` |
+| Timeout          | 60 min                                                                                                                                                                                                                                                                                                                                                                                                                            | 120 min                                                                                                                                                                                                                                                                                           |
+| Before the flows | Pre-downloads the emulator system image, retrying a corrupt download (#3705)                                                                                                                                                                                                                                                                                                                                                      | Warm-up: launches the app once and waits for Home (#3677, see below)                                                                                                                                                                                                                              |
+| Offline flow     | ✅ included                                                                                                                                                                                                                                                                                                                                                                                                                       | ❌ excluded (requires `toggleAirplaneMode`, Android-only)                                                                                                                                                                                                                                         |
 
 Both jobs write a Markdown pass/fail table to the GitHub Actions job summary and upload these artifacts:
 
-| Artifact | When | Kept | Contents |
-|---|---|---|---|
-| `maestro-{android,ios}-results` | always | 7 days | JUnit reports, `maestro-debug/` (logs, `commands-*.json`, hierarchies), `~/.maestro/tests/` |
-| `maestro-{android,ios}-media` | always, **pass or fail** (#3705) | 14 days | every named `takeScreenshot` (`<name>.png`) and `startRecording` video (`<name>.mp4`) |
-| `maestro-{android,ios}-screenshots` | only when a flow fails | 7 days | failure screenshots (iOS also `xcodebuild.log`) |
+| Artifact                            | When                             | Kept    | Contents                                                                                    |
+| ----------------------------------- | -------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `maestro-{android,ios}-results`     | always                           | 7 days  | JUnit reports, `maestro-debug/` (logs, `commands-*.json`, hierarchies), `~/.maestro/tests/` |
+| `maestro-{android,ios}-media`       | always, **pass or fail** (#3705) | 14 days | every named `takeScreenshot` (`<name>.png`) and `startRecording` video (`<name>.mp4`)       |
+| `maestro-{android,ios}-screenshots` | only when a flow fails           | 7 days  | failure screenshots (iOS also `xcodebuild.log`)                                             |
 
 Where the files are, by platform:
 
@@ -81,25 +81,25 @@ So the job runs `e2e/maestro/flows/_shared/warm-up.yaml` once, after installing 
 
 Visual and audio stories must show the owner the change running on iOS and Android before they merge ([`design-review.md`](../.claude/skills/ship-story/references/design-review.md), Step 2). Cloud sessions have no emulator or simulator, so the demos come from CI. `e2e/maestro/flows/cascade/` has demo flows next to `smoke.yaml`:
 
-| Flow | Shows | Screenshots (`.png`) | Video (`.mp4`) |
-|---|---|---|---|
-| `demo-open.yaml` | Home → Cascade board | `cascade-demo-open` | `cascade-demo-open` |
-| `demo-drop.yaml` | one drop down the middle | `cascade-demo-drop-before`, `cascade-demo-drop-after` | `cascade-demo-drop` |
-| `demo-merge.yaml` | drops until the score container (`cascade-score`, label "Score: N") leaves 0, i.e. a merge | `cascade-demo-merge-before`, `cascade-demo-merge-after` | `cascade-demo-merge` |
-| `demo-chain.yaml` | `cascade-test-chain`, then one drop: a chain of 3 merges (14 points; score check "Score: ≥10") | `cascade-demo-chain-before`, `cascade-demo-chain-after` | `cascade-demo-chain` |
-| `demo-danger.yaml` | `cascade-test-near-lid`: the spawner's clock ring draining, then the lid ends the game | `cascade-demo-danger-ring`, `cascade-demo-danger-result` | `cascade-demo-danger` |
-| `demo-loss.yaml` | `cascade-test-fill-bin`: the lid rule ends the game, then the result card (`cascade-result-title`) | `cascade-demo-loss-before`, `cascade-demo-loss-filled`, `cascade-demo-loss-result` | `cascade-demo-loss` |
+| Flow               | Shows                                                                                              | Screenshots (`.png`)                                                               | Video (`.mp4`)        |
+| ------------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------- |
+| `demo-open.yaml`   | Home → Cascade board                                                                               | `cascade-demo-open`                                                                | `cascade-demo-open`   |
+| `demo-drop.yaml`   | one drop down the middle                                                                           | `cascade-demo-drop-before`, `cascade-demo-drop-after`                              | `cascade-demo-drop`   |
+| `demo-merge.yaml`  | drops until the score container (`cascade-score`, label "Score: N") leaves 0, i.e. a merge         | `cascade-demo-merge-before`, `cascade-demo-merge-after`                            | `cascade-demo-merge`  |
+| `demo-chain.yaml`  | `cascade-test-chain`, then one drop: a chain of 3 merges (14 points; score check "Score: ≥10")     | `cascade-demo-chain-before`, `cascade-demo-chain-after`                            | `cascade-demo-chain`  |
+| `demo-danger.yaml` | `cascade-test-near-lid`: the spawner's clock ring draining, then the lid ends the game             | `cascade-demo-danger-ring`, `cascade-demo-danger-result`                           | `cascade-demo-danger` |
+| `demo-loss.yaml`   | `cascade-test-fill-bin`: the lid rule ends the game, then the result card (`cascade-result-title`) | `cascade-demo-loss-before`, `cascade-demo-loss-filled`, `cascade-demo-loss-result` | `cascade-demo-loss`   |
 
 #### Test controls (#3719)
 
 Maestro cannot call the app's `__cascade_*` hooks (`game/cascade/testHooks.ts`): they live on the app's JavaScript `globalThis`, and Maestro's `runScript`/`evalScript` run in Maestro's own engine on the host. So the Cascade screen shows a small, faint row of buttons under the board (`components/cascade/CascadeTestControls.tsx`) **only when `EXPO_PUBLIC_TEST_HOOKS=1`**. One row of four buttons, not a menu: each is one `tapOn`, and an open menu would need a second tap and a wait. Each runs a set-up that restores a pile into the real engine (`cascadeSetup` in `testHooks.ts`), so the engine's rules play out; the same set-ups are hooks too (`__cascade_setupChain`, `__cascade_setupNearLid`, `__cascade_fillBin`, `__cascade_seedQueue(tiers)`) for Playwright.
 
-| testID | Set-up | What follows |
-|---|---|---|
-| `cascade-test-chain` | tiers 1, 2, 3 side by side on the floor; queue scripted as cherries | two taps on the board make 3 merges (holds for a drop within 3 px of the middle) |
-| `cascade-test-near-lid` | a capstone, a tier 10 and a tier 9 stacked over the lid, then 1.5 s simulated (past the restore grace) | the ring drains and the lid ends the game about 2.5 s later |
-| `cascade-test-fill-bin` | that tower plus a second tower, both over the lid | the lid ends the game about 4 s after (overflow rule; nothing is forced) |
-| `cascade-test-game-over` | none: forces the result card | an extra, not used by the demos |
+| testID                   | Set-up                                                                                                  | What follows                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `cascade-test-chain`     | a column of tiers 2, 1 and 0 (a cherry on top) under the middle; queue scripted as cherries             | one tap on the board makes 3 merges, 14 points (holds for a drop within 3 px of the middle) |
+| `cascade-test-near-lid`  | a capstone and tiers 10, 9, 8 and 7 stacked over the lid, then 1.5 s simulated (past the restore grace) | the ring drains and the lid ends the game about 2.5 s later                                 |
+| `cascade-test-fill-bin`  | that tower plus a second tower, both over the lid                                                       | the lid ends the game about 4 s after (overflow rule; nothing is forced)                    |
+| `cascade-test-game-over` | none: forces the result card                                                                            | an extra, not used by the demos                                                             |
 
 Win set-up is blocked on #3699: `testHooks.ts` has a marked TODO for `setupWin` and the component for a `cascade-test-win` button; there is no UI yet.
 
@@ -138,13 +138,12 @@ To add demo flows for another game: tag them `demo`, add a `flows` option to bot
 
 Mahjong's real look on iOS and Android can't be seen from a cloud session, so the faded and blurry tile reports (#3684) can't be reproduced or checked there. `e2e/maestro/flows/mahjong/` has demo flows next to `smoke.yaml`, which they leave untouched (its `mahjong-smoke` screenshot is taken after a hint tap, so a glow is in the frame):
 
-| Flow | Shows | Screenshots (`.png`) | Video (`.mp4`) |
-|---|---|---|---|
+| Flow             | Shows                                                                                                                                 | Screenshots (`.png`)                                                     | Video (`.mp4`)      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------- |
 | `demo-open.yaml` | Home → Mahjong, Turtle layout, the untouched board (no hint, no tile tap), three shots about 5 s, 15 s and 25 s after the board shows | `mahjong-demo-open`, `mahjong-demo-open-late`, `mahjong-demo-open-late2` | `mahjong-demo-open` |
-| `demo-zoom.yaml` | the same board, then a double-tap on the board viewport (`mahjong-board-viewport`), to show the tiles' crispness zoomed in | `mahjong-demo-zoom` | `mahjong-demo-zoom` |
-| `demo-diagnose.yaml` | the #3684 test-build readout and render variants b (fixed, the default), a (old oversized canvas, for before/after) and c (hi-res faces) (each a fresh deal): per variant about 5 s and 20 s after the deal, 3 s after the UI heartbeat is on, and after a double-tap; how to read them is in [games/mahjong.md](games/mahjong.md) | `mahjong-diag-<a\|b\|c>-open`, `-late`, `-hb`, `-zoom` | `mahjong-diag` |
+| `demo-zoom.yaml` | the same board, then a double-tap on the board viewport (`mahjong-board-viewport`), to show the tiles' crispness zoomed in            | `mahjong-demo-zoom`                                                      | `mahjong-demo-zoom` |
 
-All three use the shared subflow `_shared/open-mahjong.yaml` (the same steps as `smoke.yaml`: `navigate-to.yaml` for the hidden game, tap `mahjong-layout-turtle` if the picker shows, wait for `mahjong-board-viewport`). They are tagged `demo`, so every other run leaves them out (`--exclude-tags=demo`). Dispatch either workflow with `flows: mahjong-demo` to run only `mahjong/demo-*.yaml` (`--include-tags=demo`, whatever changed):
+Both use the shared subflow `_shared/open-mahjong.yaml` (the same steps as `smoke.yaml`: `navigate-to.yaml` for the hidden game, tap `mahjong-layout-turtle` if the picker shows, wait for `mahjong-board-viewport`). They are tagged `demo`, so every other run leaves them out (`--exclude-tags=demo`). Dispatch either workflow with `flows: mahjong-demo` to run only `mahjong/demo-*.yaml` (`--include-tags=demo`, whatever changed):
 
 ```bash
 # On the branch to look at; records video, uploads maestro-<platform>-media
@@ -170,7 +169,7 @@ Notes:
 The media artifact is a zip inside the run, easy to miss. When a run produces opted-in media, the `comment-media` job in each smoke workflow posts one PR comment per platform (`<!-- maestro-media:android -->` or `:ios`, edited in place on each run, no new comment per run). It lists each file name, screenshot or recording, with the commit, a link to the run and a link to the `maestro-<platform>-media` artifact (`artifact-url` of the upload step). The same list goes to the job summary.
 
 - **Not inline.** GitHub cannot render an image from inside an artifact in a comment, and committing images or hosting them elsewhere would grow storage, so the comment is a list plus a link (downloading the artifact needs repo access). Artifact retention (14 days) and size are unchanged.
-- **Opt-in.** `OPT_IN_PREFIXES` in `e2e/maestro/media_comment.py` (today `("mahjong-",)`: `mahjong-demo-*`, `mahjong-smoke`, and a future `mahjong-diag-*`). Another game opts in by adding its screenshot-name prefix there; nothing else changes. Only plain file names (`[A-Za-z0-9._-]`) ending `.png` or `.mp4` are listed.
+- **Opt-in.** `OPT_IN_PREFIXES` in `e2e/maestro/media_comment.py` (today `("mahjong-",)`: `mahjong-demo-*`, `mahjong-smoke`). Another game opts in by adding its screenshot-name prefix there; nothing else changes. Only plain file names (`[A-Za-z0-9._-]`) ending `.png` or `.mp4` are listed.
 - **Which PR.** A `pull_request` run comments on its own PR. A `workflow_dispatch` run (the `flows: mahjong-demo` way to get the demos) is attached to no PR, so the job asks `GET /repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open` and comments only if exactly one PR is open for that branch; with none or several it writes the job summary only. The weekly `schedule` run never comments.
 - **Permissions.** The Maestro job keeps `contents: read`. Only `comment-media` has `pull-requests: write` (plus `contents: read`, since a job's `permissions` replace the workflow's); it needs the Maestro job and reads only its two outputs (`media-names`, `media-url`).
 - **Fork PRs.** Their `GITHUB_TOKEN` is read-only, so the job's `if` skips it when the PR's head repo is not this repo. The script also treats a fork, a missing PR and any API error as "do not comment": it prints a notice or a `::warning::` and exits 0, so it can never fail the run.
@@ -206,21 +205,21 @@ For draw-3, `solitaire/drag-draw3.yaml` taps the test-build-only button `solitai
 
 ### Estimated cost
 
-| Platform | Runner cost |
-|---|---|
-| Android | ~$0.52 / month |
-| iOS | ~$6.40 / month |
+| Platform | Runner cost    |
+| -------- | -------------- |
+| Android  | ~$0.52 / month |
+| iOS      | ~$6.40 / month |
 
 iOS is ~12× more expensive due to the macOS runner rate (minutes are not billed while the repo is public). Keep iOS flows as lean smoke tests.
 
 ## Playwright / Maestro boundary
 
-| Concern | Tool | Why |
-|---|---|---|
-| Game logic (scoring, state machines, edge cases) | Playwright | Runs in Expo Web; fast, deterministic, no device needed |
-| UI component rendering, accessible labels | Playwright | DOM-queryable; fast CI on `ubuntu-latest` |
-| Native touch, swipe, hold gestures | Maestro | Playwright cannot drive native gesture recognisers |
-| Native navigation (tab bar, back gesture) | Maestro | React Navigation native driver not exercisable by Playwright |
-| Offline mode (`toggleAirplaneMode`) | Maestro (Android) | Requires OS-level network control |
-| App launch on real/simulated device | Maestro | Verifies the native bundle boots and renders the home screen |
-| Backend API, scoring submission | Backend tests | FastAPI `TestClient`; no browser or device needed |
+| Concern                                          | Tool              | Why                                                          |
+| ------------------------------------------------ | ----------------- | ------------------------------------------------------------ |
+| Game logic (scoring, state machines, edge cases) | Playwright        | Runs in Expo Web; fast, deterministic, no device needed      |
+| UI component rendering, accessible labels        | Playwright        | DOM-queryable; fast CI on `ubuntu-latest`                    |
+| Native touch, swipe, hold gestures               | Maestro           | Playwright cannot drive native gesture recognisers           |
+| Native navigation (tab bar, back gesture)        | Maestro           | React Navigation native driver not exercisable by Playwright |
+| Offline mode (`toggleAirplaneMode`)              | Maestro (Android) | Requires OS-level network control                            |
+| App launch on real/simulated device              | Maestro           | Verifies the native bundle boots and renders the home screen |
+| Backend API, scoring submission                  | Backend tests     | FastAPI `TestClient`; no browser or device needed            |
