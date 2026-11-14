@@ -3,10 +3,10 @@
  *
  * `engine.ts` owns the rules (merges, the lid, the drop gate, combos, the win); this module owns
  * the planck `World`, the bin, and the conversions. Box2D works in metres, seconds and kilograms
- * and is tuned for bodies of 0.1-10 m, so the world is scaled at `PX_PER_M` (50): radii 18-63 px
- * are 0.36-1.26 m and the bin is 7.2 x 11.2 m. The engine keeps the units it always had: world
- * pixels, velocities in px per fixed step (`FIXED_STEP_MS`), angles in radians, angular velocity
- * in rad per fixed step.
+ * and is tuned for bodies of 0.1-10 m, so the world is scaled at `PX_PER_M` (50): radii 5-98 px
+ * (#3904) are 0.1-1.96 m and the bin is 7.2 x 11.2 m. The engine keeps the units it always had:
+ * world pixels, velocities in px per fixed step (`FIXED_STEP_MS`), angles in radians, angular
+ * velocity in rad per fixed step. One fixed step is `PHYSICS_SUBSTEPS` planck steps (#3904).
  *
  * Circles are true circles (no polygon facets). planck 1.4.2's `PolygonShape.computeMass` has a
  * typo (the centre of mass of a dynamic polygon is wrong; fixed in 1.5): Cascade only has dynamic
@@ -15,7 +15,7 @@
  * Determinism: planck's solver uses no randomness and no clock (its only `Math.random` is the
  * public `math.random` helper, never called here), so the same calls give the same world.
  */
-import { Box, Circle, Vec2, World, type Body, type Contact, type Fixture } from "planck";
+import { Box, Circle, Settings, Vec2, World, type Body, type Contact, type Fixture } from "planck";
 import {
   BOUNDARY_THICKNESS,
   FIXED_STEP_MS,
@@ -24,6 +24,8 @@ import {
   PIECE_FRICTION,
   PIECE_FRICTION_AIR,
   PIECE_RESTITUTION,
+  PHYSICS_SUBSTEPS,
+  POSITION_BAUMGARTE,
   POSITION_ITERATIONS,
   PX_PER_M,
   VELOCITY_ITERATIONS,
@@ -57,7 +59,7 @@ export interface PhysicsWorld<P> {
   /** Adds a dynamic circle for `piece`, tagged with it; position and radius in px. */
   addPiece(piece: P, x: number, y: number, radiusPx: number, density: number): Body;
   removePiece(body: Body): void;
-  /** One fixed step; `onBegin` sees every contact that starts during it. */
+  /** One fixed step (PHYSICS_SUBSTEPS planck steps); `onBegin` sees each contact begun in it. */
   step(): void;
   destroy(): void;
 }
@@ -71,6 +73,8 @@ export interface PhysicsWorld<P> {
 export function createPhysicsWorld<P>(
   onBegin: (a: FixtureTag<P>, b: FixtureTag<P>) => void
 ): PhysicsWorld<P> {
+  // planck's settings are module-wide; Cascade is the only planck user in the app (#3904).
+  Settings.baumgarte = POSITION_BAUMGARTE;
   const world = new World({ gravity: Vec2(0, m(GRAVITY_PX_S2)), allowSleep: true });
   const T = BOUNDARY_THICKNESS;
   const top = -WALLS_ABOVE_PX;
@@ -126,7 +130,9 @@ export function createPhysicsWorld<P>(
       world.destroyBody(body);
     },
     step() {
-      world.step(STEP_S, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
+      for (let i = 0; i < PHYSICS_SUBSTEPS; i++) {
+        world.step(STEP_S / PHYSICS_SUBSTEPS, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
+      }
     },
     destroy() {
       world.off("begin-contact", beginContact);

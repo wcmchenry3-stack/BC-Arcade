@@ -3,9 +3,9 @@
  *
  * Fixtures are columns of pieces of distinct tiers (so nothing merges; two equal neighbours
  * would), stacked exactly on top of each other on the floor at x = 121 (`stack`). planck keeps
- * such a stack (no sideways force acts on it). `COLUMN` is a capstone and tiers 10, 9, 8 and 7:
+ * such a stack (no sideways force acts on it). `COLUMN` is a capstone and tiers 10, 9 and 7:
  * its top piece rests with its centre under the lid (`OVERFLOW_LINE_Y` = 80) and its top edge at
- * y = 72, over it. The right half of the bin is an empty lane with one Cherry on the floor.
+ * y = 54, over it. The right half of the bin is an empty lane with one Cherry on the floor.
  * Restore grants the merge grace once (`OVERFLOW_IGNORE_MERGE_TICKS`), so the count starts after
  * it.
  *
@@ -15,6 +15,10 @@
  * or six pieces. Droppable pieces (tiers 0-5) now spawn with their top edge on the canvas, so the
  * tests about a piece whose top edge is above the canvas at spawn drop a big tier (8, r 45, top
  * edge at y = -15) the way the dev panel and the test seams can.
+ *
+ * #3904: the fixtures follow the constant-ratio ladder (r0 / r10 / r11 = 5 / 74.8 / 98; tiers 0-7
+ * drop). A capstone and tiers 10, 9 and 8 already stand 547 px tall, so the columns are four or
+ * five pieces with different tops. BIG stays tier 8 (r 43.5): its spawn top edge is at y = -12.
  */
 import { World } from "planck";
 import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
@@ -27,6 +31,7 @@ import {
   OVERFLOW_IGNORE_MERGE_TICKS,
   OVERFLOW_LINE_Y,
   OVERFLOW_TICKS_THRESHOLD,
+  PHYSICS_SUBSTEPS,
   WORLD_HEIGHT,
 } from "../constants";
 
@@ -59,11 +64,11 @@ function stackTop(pieces: Placed[]): number {
   return top.y - tierRadius(top.tier);
 }
 
-/** Top edge at y = 72: over the lid, top piece's centre under it. */
-const COLUMN_TIERS = [11, 10, 9, 8, 7];
+/** Top edge at y = 54: over the lid, top piece's centre (y = 87) under it. */
+const COLUMN_TIERS = [11, 10, 9, 7];
 const COLUMN = [...stack(COLUMN_TIERS), { tier: 0, x: LANE_X, y: FLOOR_TOP - tierRadius(0) }];
-/** Top edge at y = 38: a tier 2 (r 23) on it has its top edge at y = -8, above the canvas. */
-const TALL = stack([11, 10, 9, 8, 5, 3]);
+/** Top edge at y = 11: a tier 2 (r 8.6) on it has its top edge at y = -6, above the canvas. */
+const TALL = stack([11, 10, 9, 8, 3]);
 /** Fixed steps from a COLUMN restore to game over: the grace, then the full count. */
 const COLUMN_GAME_OVER_STEP = OVERFLOW_IGNORE_MERGE_TICKS + OVERFLOW_TICKS_THRESHOLD;
 
@@ -181,7 +186,7 @@ describe("the lid: merge grace only near the lid", () => {
 describe("the lid: hard stop", () => {
   it("a settled piece whose top edge reaches the canvas top ends the game at once", () => {
     const engine = new CascadeEngine({});
-    // The tall stack with a tier-2 piece (radius 23) on top: its top edge is at y = -8. Restore's
+    // The tall stack with a tier-2 piece (radius 8.6) on top: its top edge is at y = -6. Restore's
     // grace does not delay the hard stop.
     const top = stackTop(TALL);
     expect(top - 2 * radius(2)).toBeLessThan(-5);
@@ -201,8 +206,8 @@ describe("the lid: hard stop", () => {
 });
 
 describe("the lid: hard stop grace for the dropped piece", () => {
-  /** A capstone and tiers 10, 9, 7 and 6: its top edge rests at about y = 90. */
-  const LEDGE = stack([11, 10, 9, 7, 6]);
+  /** A capstone and tiers 10, 9 and 5: its top edge rests at about y = 82. */
+  const LEDGE = stack([11, 10, 9, 5]);
 
   it("a large piece touching a pile just under the lid is not a hard stop at once", () => {
     const engine = new CascadeEngine({});
@@ -220,10 +225,11 @@ describe("the lid: hard stop grace for the dropped piece", () => {
   it("a dropped piece that really rests with its top edge above the canvas still hard-stops, after the run", () => {
     // The drop must land dead centre on the column (the nudge would roll it off the top).
     const engine = new CascadeEngine({ bench: { noDropNudge: true } });
-    // The tall stack's top edge is at y = 38: a tier-2 piece (radius 23) dropped on it comes to
-    // rest on top, its top edge at about y = -8, above the canvas.
-    engine.restore(TALL, 0);
-    engine.drop(2, STACK_X);
+    // #3904: a drop spawns with its bottom edge at y = 75, so only a big one can come to rest
+    // above the canvas: BIG (r 43.5) dropped on the ledge (top edge at y = 82) rests on top, its
+    // top edge at about y = -5.
+    engine.restore(LEDGE, 0);
+    engine.drop(BIG, STACK_X);
     const results = run(engine, 120);
     expect(gameOverEvent(results)).toEqual({ type: "gameOver", reason: "hardStop" });
     expect(results.length).toBeGreaterThanOrEqual(HARD_STOP_SETTLE_TICKS);
@@ -272,16 +278,16 @@ describe("the lid: drop gating", () => {
   });
 
   it("a piece that lands and rests over the lid cannot deadlock: the game ends", () => {
-    // A capstone and tiers 10, 9, 8 and 5: the stack's top edge is at y = 88, under the lid.
+    // A capstone and tiers 10, 9 and 5: the stack's top edge is at y = 82, under the lid.
     // The drop must land dead centre on the column (the nudge would roll it off the top).
     const engine = new CascadeEngine({ bench: { noDropNudge: true } });
-    const under = stack([11, 10, 9, 8, 5]);
+    const under = stack([11, 10, 9, 5]);
     expect(stackTop(under)).toBeGreaterThan(OVERFLOW_LINE_Y);
     engine.restore(under, 0);
     run(engine, OVERFLOW_IGNORE_MERGE_TICKS + 10);
     expect(engine.getState().dangerRatio).toBe(0);
     expect(engine.canDrop()).toBe(true);
-    // A Blueberry (tier 1, radius 20) dropped on top lands with its top edge at about y = 48:
+    // A Blueberry (tier 1, radius 6.6) dropped on top lands with its top edge at about y = 69:
     // over the lid, for good.
     engine.drop(1, STACK_X);
     const results = run(engine, 600);
@@ -353,8 +359,9 @@ describe("step(): the accumulator is capped", () => {
     for (let i = 0; i < 50; i++) engine.step(100);
     update.mockClear();
     // Drain whatever backlog is left with empty frames: at most the cap, not 50 frames' worth.
+    // (#3904: each fixed step is PHYSICS_SUBSTEPS planck steps.)
     for (let i = 0; i < 20; i++) engine.step(0);
-    expect(update.mock.calls.length).toBeLessThanOrEqual(MAX_SUBSTEPS);
+    expect(update.mock.calls.length).toBeLessThanOrEqual(MAX_SUBSTEPS * PHYSICS_SUBSTEPS);
     update.mockRestore();
   });
 });

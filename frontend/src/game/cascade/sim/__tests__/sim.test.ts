@@ -15,6 +15,9 @@ import { CHAIN_WATCH_MS, runGame, type GameMetrics } from "../runGame";
 import {
   CHAIN_LATENCY_BOUND_MS,
   COST_BUDGET_MS,
+  GAP_MEAN_MIN_PX,
+  OVERLAP_MEDIAN_MAX_PX,
+  OVERLAP_P90_MAX_PX,
   aggregateGames,
   FULL_PARAMS,
   ROBUST_KEYS,
@@ -178,9 +181,11 @@ describe("determinism and the engine seam", () => {
       config: { constants },
     });
     expect(base.feel.gapMeanPx).not.toBeNull();
-    // Same physics, same game; only the drawn radius moved.
+    // Same physics, same game; only the drawn radius moved. A piece growing in is measured at its
+    // scale, so its 2 px shrink with it (#3904: the 16-step grow-in is sampled more often).
     expect(cand.score).toBe(base.score);
-    expect(cand.feel.gapMeanPx!).toBeCloseTo(base.feel.gapMeanPx! - 4, 6);
+    expect(cand.feel.gapMeanPx!).toBeCloseTo(base.feel.gapMeanPx! - 4, 1);
+    expect(cand.feel.gapMeanPx!).toBeGreaterThanOrEqual(base.feel.gapMeanPx! - 4);
   });
 
   it("the win event plugs in (#3699): an engine event of type win sets won and the time", () => {
@@ -275,7 +280,9 @@ describe("determinism and the engine seam", () => {
   });
 
   it("measures wall penetration from the snapshots, at each piece's current size", () => {
-    const pieces = [{ ...snap(1, 0, DEFAULT_CONSTANTS.wallThickness + 2, 300), scale: 0.5 }];
+    // #3904: a tier-0 radius is 5, so the centre is 1 px from the wall (1.5 px in, over the 1 px
+    // that counts as a penetration).
+    const pieces = [{ ...snap(1, 0, DEFAULT_CONSTANTS.wallThickness + 1, 300), scale: 0.5 }];
     const engine = { ...fakeEngine(() => []), getState: () => ({ ...emptyState(), pieces }) };
     const m = runGame({
       seed: 1,
@@ -284,8 +291,8 @@ describe("determinism and the engine seam", () => {
       maxSimMs: 100,
       config: { createEngine: () => engine },
     });
-    // Half of a tier-0 radius is 9 px; its centre 2 px from the wall: 7 px in.
-    expect(m.feel.wallDepthMaxPx).toBeCloseTo(DEFAULT_CONSTANTS.physicsRadius(0) / 2 - 2, 9);
+    // Half of a tier-0 radius is 2.5 px; its centre 1 px from the wall: 1.5 px in.
+    expect(m.feel.wallDepthMaxPx).toBeCloseTo(DEFAULT_CONSTANTS.physicsRadius(0) / 2 - 1, 9);
     expect(m.feel.wallPenetrationPerMin).toBeGreaterThan(0);
   });
 
@@ -334,7 +341,8 @@ describe("1 px-contact spawn helper (#1302)", () => {
       const engine = new CascadeEngine({});
       const [a, b] = contactPair(tier, 200);
       const r = DEFAULT_CONSTANTS.physicsRadius(tier);
-      expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThanOrEqual(2 * r - 1);
+      // (#3904: the unrounded radii leave a 1e-14 rounding error.)
+      expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThanOrEqual(2 * r - 1 + 1e-9);
       engine.restore([a, b], 0);
       let merged: EngineEvent | undefined;
       for (let i = 0; i < 20 && !merged; i++) {
@@ -353,12 +361,13 @@ describe("the 12-tier ladder (#3695)", () => {
     expect(DEFAULT_CONSTANTS.droppableTiers).toBe(DROPPABLE_TIERS);
     for (const t of TIERS) {
       expect(DEFAULT_CONSTANTS.physicsRadius(t.tier)).toBe(t.radius);
-      expect(DEFAULT_CONSTANTS.drawnRadius(t.tier)).toBe(t.radius);
+      // #3904: drawn 1.5 % inside the collider.
+      expect(DEFAULT_CONSTANTS.drawnRadius(t.tier)).toBe(t.drawnRadius);
       expect(DEFAULT_CONSTANTS.scoreValue(t.tier)).toBe(t.score);
     }
   });
 
-  it("a 10 + 10 contact pair makes the capstone, and two capstones never merge", () => {
+  it("a 10 + 10 contact pair makes the capstone, and two capstones are the win (#3904)", () => {
     const engine = new CascadeEngine({});
     engine.restore(contactPair(CAPSTONE_TIER - 1, 200), 0);
     let merged: EngineEvent | undefined;
@@ -373,6 +382,8 @@ describe("the 12-tier ladder (#3695)", () => {
     const events: EngineEvent[] = [];
     for (let i = 0; i < 30; i++) events.push(...caps.step(1000 / 60).events);
     expect(events.some((e) => e.type === "merge")).toBe(false);
+    expect(events.filter((e) => e.type === "win")).toHaveLength(1);
+    expect(caps.getState().pieces).toEqual([]);
     caps.destroy();
   });
 });
@@ -404,7 +415,10 @@ describe("pure physics-feel measures", () => {
   it("visible gap uses the drawn radius; only physically touching pairs count", () => {
     const r = c.physicsRadius(1);
     const touching = [piece(1, 1, 100, 300), piece(2, 1, 100 + 2 * r + 1, 300)];
-    expect(touchingGaps(touching, c)).toEqual([expect.closeTo(1, 9)]);
+    // #3904: drawn 1.5 % inside the collider, so the visible gap is wider than the physical one.
+    const inset = 2 * (r - c.drawnRadius(1));
+    expect(inset).toBeGreaterThan(0);
+    expect(touchingGaps(touching, c)).toEqual([expect.closeTo(1 + inset, 9)]);
     const bigDrawn = { ...c, drawnRadius: (t: number) => c.physicsRadius(t) + 1 };
     expect(touchingGaps(touching, bigDrawn)).toEqual([expect.closeTo(-1, 9)]);
     const apart = [piece(1, 1, 100, 300), piece(2, 1, 100 + 2 * r + 20, 300)];
@@ -417,9 +431,14 @@ describe("bots", () => {
     const seeds = [1, 2, 3];
     // A full-length game (180 s, the full suite's): over 60 s the two bots are within noise of each
     // other (40-seed means 1233 vs 1336 before the drop nudge), so a 3-seed check was a coin flip.
-    const score = (bot: typeof heuristicBot) =>
-      seeds.reduce((s, seed) => s + runGame({ seed, hz: 60, bot, maxSimMs: 180_000 }).score, 0);
-    expect(score(heuristicBot)).toBeGreaterThan(score(randomBot));
+    // #3904: merges per drop, not total score. On the 5-98 ladder the random bot survives the
+    // 180 s in almost every game and drops a quarter more pieces than the heuristic, which waits
+    // for a calm board, so its total score is higher (100 seeds: 0.74 vs 0.58 merges per drop).
+    const rate = (bot: typeof heuristicBot) => {
+      const ms = seeds.map((seed) => runGame({ seed, hz: 60, bot, maxSimMs: 180_000 }));
+      return ms.reduce((s, m) => s + m.merges, 0) / ms.reduce((s, m) => s + m.drops, 0);
+    };
+    expect(rate(heuristicBot)).toBeGreaterThan(rate(randomBot));
   });
 
   it("registers heuristic, random, spam and (#3697) skilled", () => {
@@ -439,15 +458,15 @@ describe("queue sampler", () => {
     const a = sampleQueue(5, 300, false);
     expect(sampleQueue(5, 300, false)).toEqual(a);
     expect(a.share.reduce((x, y) => x + y, 0)).toBeCloseTo(1, 9);
-    // #3697: tiers 0-5 drop; nothing above.
-    expect(a.share.slice(6).every((s) => s === 0)).toBe(true);
-    expect(a.share[5]!).toBeGreaterThan(0);
+    // #3904: tiers 0-7 drop; nothing above.
+    expect(a.share.slice(8).every((s) => s === 0)).toBe(true);
+    expect(a.share[7]!).toBeGreaterThan(0);
   });
 
   it("danger mode suppresses the large tiers and (#3697) favours the small ones", () => {
     const calm = sampleQueue(10, 500, false);
     const danger = sampleQueue(10, 500, true);
-    for (const t of [3, 4, 5]) expect(danger.share[t]!).toBeLessThan(calm.share[t]!);
+    for (const t of [3, 4, 5, 6, 7]) expect(danger.share[t]!).toBeLessThan(calm.share[t]!);
     for (const t of [0, 1, 2]) expect(danger.share[t]!).toBeGreaterThan(calm.share[t]!);
   });
 });
@@ -555,6 +574,30 @@ describe("smoke suite against baseline.json (PR gate)", () => {
     const keys = checkSuite(bad, baseline.suites["smoke"]).map((v) => `${v.where}:${v.key}`);
     expect(keys).toEqual(expect.arrayContaining(["heuristic@60:score.mean", "spam@60:lid"]));
     expect(keys).toContain("random@60:stepCost");
+  });
+
+  it("flags the overlap gates (#3904): deepest overlap median and p90, and the mean gap", () => {
+    const bad: SuiteResult = JSON.parse(JSON.stringify(result));
+    bad.runs["heuristic@60"]!["feel.overlapMaxPx.median"] = OVERLAP_MEDIAN_MAX_PX + 0.1;
+    bad.runs["random@120"]!["feel.overlapMaxPx.p90"] = OVERLAP_P90_MAX_PX + 0.1;
+    bad.runs["spam@60"]!["feel.gapMeanPx"] = GAP_MEAN_MIN_PX - 0.1;
+    const keys = checkSuite(bad, undefined).map((v) => `${v.where}:${v.key}`);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        "heuristic@60:overlapMedian",
+        "random@120:overlapP90",
+        "spam@60:gapMean",
+      ])
+    );
+    // The smoke itself passes them.
+    expect(checkSuite(result, undefined)).toEqual([]);
+  });
+
+  it("flags a spam win (#3904: mindless play never wins)", () => {
+    const bad: SuiteResult = JSON.parse(JSON.stringify(result));
+    bad.runs["spam@120"]!["win.rate"] = 0.01;
+    const keys = checkSuite(bad, undefined).map((v) => `${v.where}:${v.key}`);
+    expect(keys).toContain("spam@120:spamWin");
   });
 
   it("flags a guard rail and a slow chain merge as hard gates (#3697)", () => {

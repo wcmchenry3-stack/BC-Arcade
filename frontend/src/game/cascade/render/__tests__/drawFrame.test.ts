@@ -9,7 +9,7 @@ import { buildBoardStyle } from "../boardStyle";
 import { createFramePacker, packFrame, type FramePiece } from "../frame";
 import { CASCADE_LID_PALETTE } from "../../../../theme/theme.cascade";
 import { LID_LINE, SPAWNER } from "../../lidVisuals";
-import { tierRadius } from "../../tiers";
+import { tierDrawnRadius } from "../../tiers";
 
 interface PaintState {
   color: string;
@@ -137,7 +137,7 @@ function draw(frame: Float64Array, sprites: readonly unknown[] = NONE, style?: B
 
 /** A tier's cached art (#3698): three images and where they land at the tier's radius. */
 function spriteOf(tier: number) {
-  const r = tierRadius(tier);
+  const r = tierDrawnRadius(tier);
   const img = (name: string) => ({ name, width: () => 64, height: () => 64 });
   return {
     body: img("body"),
@@ -175,16 +175,16 @@ const lines = (ops: Op[]) => ops.filter((o): o is Extract<Op, { k: "line" }> => 
 const paths = (ops: Op[]) => ops.filter((o): o is Extract<Op, { k: "path" }> => o.k === "path");
 
 describe("pieces", () => {
-  it("draws a placeholder circle at exactly the ladder radius, anti-aliased", () => {
+  it("draws a placeholder circle at exactly the drawn radius (#3904), anti-aliased", () => {
     const ops = draw(frameOf([piece(1, 3, 120, 400)]));
-    expect(ops[0]).toMatchObject({ k: "circle", cx: 120, cy: 400, r: tierRadius(3) });
+    expect(ops[0]).toMatchObject({ k: "circle", cx: 120, cy: 400, r: tierDrawnRadius(3) });
     expect(ops[0]!.p).toMatchObject({ style: "fill", alpha: 1, antiAlias: true });
   });
 
   it("draws a piece's art (#3698): body and top turned with the piece, the light upright", () => {
     const sprite = spriteOf(2);
     const ops = draw(frameOf([piece(1, 2, 150, 300, Math.PI / 2)]), spritesAt(2, sprite));
-    const r = tierRadius(2);
+    const r = tierDrawnRadius(2);
     const at = ops.findIndex((o) => o.k === "translate");
     expect(ops.slice(at - 1, at + 8)).toMatchObject([
       { k: "save" },
@@ -202,10 +202,10 @@ describe("pieces", () => {
     expect(ops.some((o) => o.k === "circle" && o.cx === 150)).toBe(false);
   });
 
-  it("draws a piece growing in (#3697) at its scale of the ladder radius, art and circle", () => {
+  it("draws a piece growing in (#3697) at its scale of the drawn radius, art and circle", () => {
     const growing = { ...piece(1, 3, 120, 400), scale: 0.9 };
     const ops = draw(frameOf([growing]));
-    expect(ops[0]).toMatchObject({ k: "circle", cx: 120, cy: 400, r: tierRadius(3) * 0.9 });
+    expect(ops[0]).toMatchObject({ k: "circle", cx: 120, cy: 400, r: tierDrawnRadius(3) * 0.9 });
     const art = draw(frameOf([growing]), spritesAt(3));
     expect(art.find((o) => o.k === "scale")).toEqual({ k: "scale", x: 0.9, y: 0.9 });
   });
@@ -234,7 +234,7 @@ describe("over-lid wash", () => {
       (o): o is Extract<Op, { k: "circle" }> => o.k === "circle" && o.cx === 100 && o.cy === y
     );
     expect(circles).toHaveLength(1);
-    expect(circles[0]).toMatchObject({ r: tierRadius(0), p: { style: "fill", alpha: 1 } });
+    expect(circles[0]).toMatchObject({ r: tierDrawnRadius(0), p: { style: "fill", alpha: 1 } });
     expect(circles[0]!.p.color).not.toBe(palette.danger);
   };
 
@@ -323,9 +323,10 @@ describe("spawner", () => {
   });
 
   it("draws a big piece's art at the spawner's cap", () => {
-    const tier = 5;
+    // #3904: tier 7 (r 33.2) is the biggest drop, over the cap (tier 5 is r 19.3 now).
+    const tier = 7;
     const ops = draw(frameOf([], { spawnerTier: tier }), spritesAt(tier));
-    const k = SPAWNER.maxPieceRadius / tierRadius(tier);
+    const k = SPAWNER.maxPieceRadius / tierDrawnRadius(tier);
     expect(ops.find((o) => o.k === "scale")).toEqual({ k: "scale", x: k, y: k });
   });
 

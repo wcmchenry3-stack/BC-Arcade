@@ -13,11 +13,16 @@
  * also shows `CascadeTestControls`, a row of buttons that run the demo set-ups below (#3719).
  * The set-ups are data (`cascadeSetup`): the screen restores `pieces` into the real engine and
  * seeds `queue`, so the engine's rules (the lid ends the game) are what play out. Added hooks:
- * `seedQueue`, `setupChain`, `setupNearLid`, `fillBin`.
+ * `seedQueue`, `setupChain`, `setupNearLid`, `fillBin`, `setupWin` (#3904).
  */
 import { registerTestHooks } from "../_shared/testHooksRegistry";
-import { tierRadius } from "./tiers";
-import { FIXED_STEP_MS, OVERFLOW_IGNORE_MERGE_TICKS, WORLD_WIDTH } from "./constants";
+import { CAPSTONE_TIER, tierRadius } from "./tiers";
+import {
+  FIXED_STEP_MS,
+  OVERFLOW_IGNORE_MERGE_TICKS,
+  WALL_THICKNESS,
+  WORLD_WIDTH,
+} from "./constants";
 
 export interface CascadeHookState {
   score: number;
@@ -49,11 +54,11 @@ export interface CascadeHookDeps {
   setupNearLid: () => void;
   /** Fills the bin above the lid, so the lid ends the game on its own within seconds. */
   fillBin: () => void;
-  // TODO(#3699): `setupWin` goes here once Cascade has a win state (the capstone merge). There
-  // is no control for it yet; `demo-win.yaml` is blocked on the same story.
+  /** Restores two capstones about to touch: the win follows within a fraction of a second. */
+  setupWin: () => void;
 }
 
-export type CascadeSetupId = "chain" | "nearLid" | "fillBin";
+export type CascadeSetupId = "chain" | "nearLid" | "fillBin" | "win";
 
 export interface CascadeSetup {
   /** Restored into the engine (`CascadeEngine.restore`), replacing the board. */
@@ -84,6 +89,30 @@ function column(tiers: number[], x: number): CascadeSetup["pieces"] {
 }
 
 /**
+ * A tower against one wall (#3904): pieces of distinct tiers, biggest first, each touching the
+ * wall and resting on the one below, 1 px apart. Each piece sits off the centre of the one below,
+ * towards the wall, so the wall holds it: a centred column of the #3904 sizes topples.
+ */
+function wallTower(tiers: number[], side: "left" | "right"): CascadeSetup["pieces"] {
+  const out: CascadeSetup["pieces"] = [];
+  const wallX = (r: number) =>
+    side === "left" ? WALL_THICKNESS + r : WORLD_WIDTH - WALL_THICKNESS - r;
+  let prev: { x: number; y: number; r: number } | null = null;
+  for (const tier of tiers) {
+    const r = tierRadius(tier);
+    const x = wallX(r);
+    let y = FLOOR_Y - r - 1;
+    if (prev) {
+      const d = prev.r + r + 1;
+      y = prev.y - Math.sqrt(d * d - (x - prev.x) ** 2);
+    }
+    out.push({ tier, x, y });
+    prev = { x, y, r };
+  }
+  return out;
+}
+
+/**
  * The pile for each demo set-up. All are plain restores, so every rule is the live one.
  *
  *  - `chain`: a column of tiers 2, 1 and 0 (a cherry on top) under the middle of the board, and
@@ -94,16 +123,21 @@ function column(tiers: number[], x: number): CascadeSetup["pieces"] {
  *    the lively physics a free cherry rolls away on the floor, so the old set-up, tiers 1, 2 and 3
  *    side by side where the first of two drops had to come to rest beside the 1, no longer held;
  *    the cherry it waited for is now part of the pile.)
- *  - `nearLid`: a tower like the lid test's fixture (a capstone and tiers 10, 9, 8 and 7; its
- *    top edge is over the lid; #3697: three pieces no longer reach it), fast-forwarded past the restore grace and a sixth of the
- *    count, so the ring is draining when the screen shows it and the lid ends the game
- *    about 2.5 s later.
- *  - `fillBin`: that tower plus a right-hand tower; the lid ends the game (the live rule, no
- *    force) about 4 s after the restore.
+ *  - `nearLid`: a tower of a capstone and tiers 10, 9 and 8 against the left wall (#3904 ladder:
+ *    its top edge at about y = 36, over the lid), wedged by a tier 10 and 9 against the right
+ *    wall, fast-forwarded past the restore grace and a
+ *    sixth of the count, so the ring is draining when the screen shows it and the lid ends the
+ *    game about 2.5 s later.
+ *  - `fillBin`: that tower plus a tower of tiers 10 to 4 against the right wall (top edge at
+ *    about y = 48); the lid ends the game (the live rule, no force) about 4 s after the restore.
+ *  - `win` (#3904): a capstone on the floor against the left wall and a second one against the
+ *    right wall, 43 px higher than where it would touch the first. It falls into it, and the two
+ *    capstones touching are the win (about 0.2 s after the restore). Nothing is forced. The
+ *    result card is #3699.
  */
 export function cascadeSetup(id: CascadeSetupId): CascadeSetup {
   const mid = WORLD_WIDTH / 2;
-  const leftTower = column([11, 10, 9, 8, 7], 121);
+  const leftTower = wallTower([11, 10, 9, 8], "left");
   switch (id) {
     case "chain":
       return {
@@ -113,13 +147,33 @@ export function cascadeSetup(id: CascadeSetupId): CascadeSetup {
       };
     case "nearLid":
       return {
-        pieces: leftTower,
+        // The two right-hand pieces wedge the capstone against the left wall (on its own it
+        // slides out from under the tower on the lively floor).
+        pieces: [...leftTower, ...wallTower([10, 9], "right")],
         settleMs: ticksMs(OVERFLOW_IGNORE_MERGE_TICKS + 30),
       };
     case "fillBin":
-      // Right lane (x 246 to 380), tiers 10, 9, 8, 7, 6 and 4 stacked up past the lid. The tiers
-      // differ within a tower, and the towers are too far apart to touch, so nothing merges.
-      return { pieces: [...leftTower, ...column([10, 9, 8, 7, 6, 4], 313)], settleMs: 0 };
+      // The towers repeat tiers 10, 9 and 8, but never at the same height: they are at least 15 px
+      // apart where they come closest (the two bottom pieces), so nothing merges.
+      return {
+        pieces: [...leftTower, ...wallTower([10, 9, 8, 7, 6, 5, 4], "right")],
+        settleMs: 0,
+      };
+    case "win": {
+      const r = tierRadius(CAPSTONE_TIER);
+      const left = WALL_THICKNESS + r;
+      const right = WORLD_WIDTH - WALL_THICKNESS - r;
+      const floorY = FLOOR_Y - r;
+      // Where the right one, falling down its wall, first touches the left one, then 43 px up.
+      const touchY = floorY - Math.sqrt((2 * r) ** 2 - (right - left) ** 2);
+      return {
+        pieces: [
+          { tier: CAPSTONE_TIER, x: left, y: floorY },
+          { tier: CAPSTONE_TIER, x: right, y: touchY - 43 },
+        ],
+        settleMs: 0,
+      };
+    }
   }
 }
 
@@ -137,5 +191,6 @@ export function registerCascadeTestHooks(deps: CascadeHookDeps): () => void {
     setupChain: deps.setupChain,
     setupNearLid: deps.setupNearLid,
     fillBin: deps.fillBin,
+    setupWin: deps.setupWin,
   });
 }

@@ -4,7 +4,7 @@
  */
 import { CascadeEngine, type EngineEvent } from "../engine";
 import { OVERFLOW_LINE_Y, OVERFLOW_TICKS_THRESHOLD } from "../constants";
-import { tierRadius } from "../tiers";
+import { CAPSTONE_TIER, tierRadius } from "../tiers";
 import { cascadeSetup, type CascadeSetupId } from "../testHooks";
 
 const STEP = 1000 / 60;
@@ -86,5 +86,18 @@ describe("cascadeSetup('fillBin')", () => {
     expect(engine.getState().gameOver).toBe(true);
     // Sanity: the count is a real count (3 s of it at least, from the grace).
     expect(OVERFLOW_TICKS_THRESHOLD * STEP).toBeGreaterThan(2000);
+  });
+});
+
+describe("cascadeSetup('win') (#3904)", () => {
+  it("restores two capstones, not yet touching, that touch and win within 0.5 s", () => {
+    const { engine } = load("win");
+    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER, CAPSTONE_TIER]);
+    expect(engine.hasWon()).toBe(false);
+    const events = run(engine, 0.5);
+    expect(events.filter((e) => e.type === "win")).toHaveLength(1);
+    expect(events.some((e) => e.type === "gameOver")).toBe(false);
+    expect(engine.hasWon()).toBe(true);
+    expect(engine.canDrop()).toBe(false);
   });
 });

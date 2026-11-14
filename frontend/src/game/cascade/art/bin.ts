@@ -31,8 +31,8 @@ import { rgba } from "./pen";
 export const BIN_INNER_LEFT = WALL_THICKNESS;
 export const BIN_INNER_RIGHT = WORLD_WIDTH - WALL_THICKNESS;
 export const BIN_FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;
-/** Inner bottom corner radius (<= the smallest piece radius, `tierRadius(0)`). */
-export const BIN_INNER_RADIUS = 14;
+/** Inner bottom corner radius (<= the smallest piece radius, `tierRadius(0)`: 5 since #3904). */
+export const BIN_INNER_RADIUS = 5;
 /** The card's outer corners: small at the top, large at the bottom. */
 const OUTER_TOP_RADIUS = 10;
 const OUTER_BOTTOM_RADIUS = 36;

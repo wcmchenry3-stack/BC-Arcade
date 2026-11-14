@@ -31,7 +31,9 @@
  * to the new key, `cascade_game_v4`, and `"version":4` (the bytes and results are otherwise
  * unchanged). Discarding an old `cascade_game_v3` save is tested in `cascade/__tests__/storage.test.ts`.
  * #3697 (the lively ladder on planck.js) moved it again, to `cascade_game_v5` and `"version":5`,
- * edited by hand the same way; discarding a v4 save is tested in the same file.
+ * edited by hand the same way; discarding a v4 save is tested in the same file. #3904 (the
+ * constant-ratio ladder, radii 5-98) moved it to `cascade_game_v6` and `"version":6` the same
+ * way; discarding a v5 save is tested in `cascade/__tests__/storage.test.ts`.
  *
  * The best scores moved to the shared personal best (#3757, `personalBest.ts`): the scenarios of
  * each game's old best-score record were removed with it (Cascade, FreeCell, Mahjong, Solitaire,
@@ -179,7 +181,7 @@ function yachtState() {
 }
 
 const cascadeSave = {
-  version: 5 as const,
+  version: 6 as const,
   pieces: [
     { tier: 0, x: 10.5, y: 20.25 },
     { tier: 3, x: 140, y: 300 },
@@ -214,7 +216,7 @@ const GAME_MODULES: Record<string, GameModule> = {
     clear: () => blackjack.clearGame(),
   },
   cascade: {
-    key: "cascade_game_v5",
+    key: "cascade_game_v6",
     save: () => cascade.saveGame(cascadeSave),
     load: () => cascade.loadGame(),
     clear: () => cascade.clearGame(),
@@ -325,7 +327,7 @@ Object.assign(scenarios, {
     run: blackjack.loadGame,
   },
   "cascade: save without playedMs": {
-    seed: { cascade_game_v5: JSON.stringify({ ...cascadeSave, playedMs: undefined }) },
+    seed: { cascade_game_v6: JSON.stringify({ ...cascadeSave, playedMs: undefined }) },
     run: cascade.loadGame,
   },
   "daily_word: bad puzzle id": {

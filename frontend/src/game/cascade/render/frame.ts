@@ -11,8 +11,9 @@
  *   [0] piece count   [1] dangerRatio (0..1)   [2] canDrop (1/0)   [3] spawner tier (-1 = none)
  *   then per piece, `FRAME_STRIDE` floats: id, tier, x, y, angle, sleeping (1/0), scale
  *
- * `scale` (#3697) is the piece's drawn radius over its tier's radius: below 1 for the 133 ms a
- * merged piece grows in (`GROW_IN_STEPS`), so the drawn piece is always the collider's size.
+ * `scale` (#3697) is the piece's drawn radius over its tier's radius: below 1 for the 267 ms a
+ * merged piece grows in (`GROW_IN_STEPS`), so the drawn piece follows the collider (1.5 %
+ * inside it, #3904).
  *
  * 64-bit, not the `Float32Array` #2960 first sketched: float32 rounding of positions and
  * `dangerRatio` moved a few sprite and wash pixels by one colour step against the old renderer.

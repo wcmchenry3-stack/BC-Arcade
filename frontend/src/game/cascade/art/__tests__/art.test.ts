@@ -16,7 +16,7 @@ import * as path from "path";
 import type { CanvasKit } from "canvaskit-wasm";
 import type { SkImage, SkSurface } from "@shopify/react-native-skia";
 
-import { TIER_COUNT, tierRadius } from "../../tiers";
+import { TIER_COUNT, tierDrawnRadius, tierRadius } from "../../tiers";
 import { FLOOR_THICKNESS, WALL_THICKNESS, WORLD_HEIGHT, WORLD_WIDTH } from "../../constants";
 import { CASCADE_BIN_PALETTE } from "../../../../theme/theme.cascade";
 import {
@@ -134,7 +134,7 @@ describe("drawn radius = ladder radius", () => {
     for (const [id, set] of SETS) {
       const sprites = pieceSprites(id, PX);
       for (let tier = 0; tier < TIER_COUNT; tier++) {
-        const r = tierRadius(tier);
+        const r = tierDrawnRadius(tier);
         const s = sprites[tier]!;
         // The light covers exactly the collider's square.
         const side = Math.ceil(2 * r * PX) / PX;
@@ -152,7 +152,7 @@ describe("drawn radius = ladder radius", () => {
     for (const [id, set] of SETS) {
       const sprites = pieceSprites(id, PX);
       for (let tier = 0; tier < TIER_COUNT; tier++) {
-        const r = tierRadius(tier);
+        const r = tierDrawnRadius(tier);
         const s = sprites[tier]!;
         const px = rgba(s.body);
         const w = s.body.width();
@@ -295,7 +295,7 @@ describe("caches", () => {
       const q = quantizePx(px); // rounded up to 0.05, never down
       expect(q).toBeGreaterThanOrEqual(px);
       pieceSprites("cosmos", px).forEach((s, tier) => {
-        const r = tierRadius(tier);
+        const r = tierDrawnRadius(tier);
         expect(s!.light.width()).toBe(Math.ceil(2 * r * q));
         expect(s!.body.width()).toBeGreaterThanOrEqual(s!.rect[2] * px - 1e-9);
         expect(s!.body.width() / s!.rect[2]).toBeCloseTo(q, 9);

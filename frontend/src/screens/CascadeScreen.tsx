@@ -819,6 +819,7 @@ function CascadeGame() {
       setupChain: () => applySetup("chain"),
       setupNearLid: () => applySetup("nearLid"),
       fillBin: () => applySetup("fillBin"),
+      setupWin: () => applySetup("win"),
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -936,6 +937,7 @@ function CascadeGame() {
             onChain={() => applySetup("chain")}
             onNearLid={() => applySetup("nearLid")}
             onFillBin={() => applySetup("fillBin")}
+            onWin={() => applySetup("win")}
             onForceGameOver={forceGameOver}
           />
         )}

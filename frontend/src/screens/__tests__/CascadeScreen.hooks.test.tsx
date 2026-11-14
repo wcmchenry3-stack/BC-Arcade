@@ -95,6 +95,7 @@ type Hooks = {
   __cascade_setupChain?: () => void;
   __cascade_setupNearLid?: () => void;
   __cascade_fillBin?: () => void;
+  __cascade_setupWin?: () => void;
 };
 const hooks = globalThis as typeof globalThis & Hooks;
 const HOOK_NAMES = [
@@ -109,6 +110,7 @@ const HOOK_NAMES = [
   "__cascade_setupChain",
   "__cascade_setupNearLid",
   "__cascade_fillBin",
+  "__cascade_setupWin",
 ] as const;
 
 async function mount() {
@@ -270,6 +272,7 @@ describe("test controls (#3719)", () => {
     "cascade-test-chain",
     "cascade-test-near-lid",
     "cascade-test-fill-bin",
+    "cascade-test-win",
     "cascade-test-game-over",
   ];
 
@@ -333,6 +336,23 @@ describe("test controls (#3719)", () => {
       // The loss is the engine's to decide: the button did not end the game itself.
       expect(hooks.__cascade_getState!().gameOver).toBe(false);
       expect(screen.queryByTestId("cascade-result")).toBeNull();
+    });
+
+    it("the win button and hook restore two capstones about to touch (#3904)", async () => {
+      await mount();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-win"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("win").pieces,
+        expect.any(Number)
+      );
+      mockEngine.restore.mockClear();
+      await run(() => hooks.__cascade_setupWin!());
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("win").pieces,
+        expect.any(Number)
+      );
     });
 
     it("the game-over button is a separate, forced end", async () => {

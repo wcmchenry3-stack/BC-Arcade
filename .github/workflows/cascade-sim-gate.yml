@@ -3,15 +3,17 @@ name: Cascade Sim Gate
 # Long run of the Cascade sim harness (#2893): 100 seeded games per bot (heuristic, random,
 # spam) at 60 and 120 Hz against the real engine (planck.js since #3697), spawn selector and
 # queue, plus the capstone runs (#3697: the skilled bot, 60 Hz, up to 10 simulated
-# minutes, stopping at the win; 100 seeds nightly and on manual runs, 50 on PRs to keep them
-# near 7 min), compared with frontend/src/game/cascade/sim/baseline.json (the capstone bands
+# minutes, stopping at the win, which since #3904 is two capstones touching; 100 seeds nightly
+# and on manual runs, 50 on PRs to keep them near 7 min), compared with frontend/src/game/cascade/sim/baseline.json (the capstone bands
 # widened by sqrt(100 / 50) for the 50-seed runs, baselineForCapstoneSeeds). It
 # fails when a banded metric leaves its band (piece frequency and drought, game length, score,
-# top-tier rate, win rate and time to the capstone, packing density, visible gap, overlap,
+# top-tier rate, win rate and time to the win, packing density, visible gap, overlap,
 # settle time, jitter, wall penetration, chain latency), when the spam bot does not reach game
-# over inside 120 simulated seconds (the lid, #3694), when a guard rail fires, when chain merges
-# are slow (p90 150 ms or more), or when the mean step cost with 20+ pieces passes 16 ms.
-# About 12 min at 100 capstone seeds (the capstone runs are about 4 of it), about 7 min on PRs. A manual run with a seed count other than 100 is informational (bands skipped). The same checks in miniature (3 seeds) run in every PR's Jest run
+# over inside 120 simulated seconds (the lid, #3694) or wins (#3904), when a guard rail fires,
+# when chain merges are slow (p90 150 ms or more), when a run's deepest overlap passes 3 px
+# median or 5 px p90 or its mean visible gap is under -0.5 px (#3904), or when the mean step
+# cost with 20+ pieces passes 16 ms.
+# About 12 min at 100 capstone seeds before #3904 (the capstone runs are about 4 of it), about 7 min on PRs; #3904's sub-steps make it about 2.4x that. A manual run with a seed count other than 100 is informational (bands skipped). The same checks in miniature (3 seeds) run in every PR's Jest run
 # (frontend/src/game/cascade/sim/__tests__/sim.test.ts). How to read a failure and how to
 # re-baseline: docs/TESTING.md ("Cascade sim") and docs/games/cascade.md.
 
@@ -53,7 +55,8 @@ jobs:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Cascade sim (full suite, 60 and 120 Hz)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # #3904: two planck sub-steps per fixed step made the suite about 2.4x slower.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend

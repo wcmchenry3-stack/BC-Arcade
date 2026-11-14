@@ -8,7 +8,8 @@
  * in the baseline: step cost (wall clock) is reported but never banded here (see `COST_BUDGET`).
  *
  * #3697: the full suite also plays the capstone runs (`capstone`): the skilled bot for up to 10
- * simulated minutes per game, stopping at the win, for the win rate and the time to the capstone.
+ * simulated minutes per game, stopping at the win, for the win rate and the time to the win
+ * (#3904: two capstones touching).
  * They are slow (a game can run 36,000 fixed steps), so the PR smoke never plays them.
  */
 import { BOTS } from "./bots";
@@ -80,6 +81,15 @@ export const SPAM_GAME_OVER_BOUND_MS = 120_000;
 export const CHAIN_LATENCY_BOUND_MS = 150;
 /** Step budget (#1605): mean `engine.step` cost with 20+ pieces on the board, in ms. */
 export const COST_BUDGET_MS = 16;
+/**
+ * Overlap gates (#3904, owner: the overlap between pieces looks bad). Over a run's games, each
+ * game's deepest overlap between touching neighbours (drawn radius, calm samples): the median
+ * must be at most OVERLAP_MEDIAN_MAX_PX and the p90 at most OVERLAP_P90_MAX_PX; and the mean
+ * visible gap at least GAP_MEAN_MIN_PX (negative = the drawn pieces sink into each other).
+ */
+export const OVERLAP_MEDIAN_MAX_PX = 3;
+export const OVERLAP_P90_MAX_PX = 5;
+export const GAP_MEAN_MIN_PX = -0.5;
 
 export type FlatMetrics = Record<string, number | null>;
 
@@ -139,7 +149,7 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   out["topTier.mean"] = avg(games.map((g) => g.topTier));
   // Top-tier reached rate: the share of games in which the top tier existed at some point.
   out["topTier.reachedRate"] = avg(games.map((g) => (g.topTier >= maxTier ? 1 : 0)));
-  // The win (#3697: the engine emits it when the capstone is made).
+  // The win (#3904: the engine emits it when two capstones touch).
   out["win.rate"] = avg(games.map((g) => (g.won ? 1 : 0)));
   const winS = games.map((g) => (g.timeToWinMs === null ? null : g.timeToWinMs / 1000));
   out["win.timeToWinS.mean"] = avg(winS);
@@ -168,6 +178,14 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   out["feel.gapMeanPx"] = f((g) => g.feel.gapMeanPx);
   out["feel.gapMaxPx"] = maxOf(games.map((g) => g.feel.gapMaxPx));
   out["feel.overlapMaxPx.mean"] = f((g) => g.feel.overlapMaxPx);
+  out["feel.overlapMaxPx.median"] = pct(
+    games.map((g) => g.feel.overlapMaxPx),
+    0.5
+  );
+  out["feel.overlapMaxPx.p90"] = pct(
+    games.map((g) => g.feel.overlapMaxPx),
+    0.9
+  );
   out["feel.settleAfterDropMs"] = f((g) => g.feel.settleAfterDropMs);
   out["feel.settleAfterChainMs"] = f((g) => g.feel.settleAfterChainMs);
   const sumOf = (pick: (g: GameMetrics) => number): number =>
@@ -304,8 +322,12 @@ export const MIN_SETTLE_EPISODES = 20;
  * and the step budget are hard gates in `checkSuite`, not bands.
  */
 export const ROBUST_KEYS = new Set(["simS.mean", "score.mean", "feel.guardRailPerMin"]);
-/** Coarse tolerance: wide enough that a different set of a few seeds still passes. */
-const COARSE_REL = 0.6;
+/**
+ * Coarse tolerance: wide enough that a different set of a few seeds still passes. #3904: 0.6 to
+ * 0.7. On the 5-98 ladder a spam game's score swings with whether it makes a 2048-point capstone:
+ * over 3 seeds its mean moved by up to +66 % between the seed sets 1-3, 4-6, 11-13, 51-53, 201-203.
+ */
+const COARSE_REL = 0.7;
 
 /**
  * Tolerance around a baseline value: the larger of a relative fraction and an absolute floor
@@ -362,7 +384,7 @@ function toBands(flat: FlatMetrics, runKey: string, coarse: boolean): BandSet {
       : coarse
         ? Math.max(Math.abs(v) * COARSE_REL, 1)
         : tolerance(k, v, games);
-    // Fractions stay inside [0, 1]; the win rate (0 until #3699) stays a vacuous [0, 1].
+    // Fractions stay inside [0, 1]; the win rate stays inside [0, 1] too.
     const unit = /Rate$|^dropShare|^share\.|^reachedRate/.test(k);
     const lo = (x: number): number => (unit ? Math.max(0, x) : x);
     const hi = (x: number): number => (unit ? Math.min(1, x) : x);
@@ -468,8 +490,9 @@ function checkSet(where: string, flat: FlatMetrics | undefined, bands: BandSet):
 
 /**
  * Violations of the banded metrics and of the hard gates: the spam bot loses inside the lid's
- * bound, no guard rail fires (#3697: nothing is ever teleported), chain merges are prompt (p90
- * under `CHAIN_LATENCY_BOUND_MS`), and the step budget.
+ * bound and never wins, no guard rail fires (#3697: nothing is ever teleported), chain merges are
+ * prompt (p90 under `CHAIN_LATENCY_BOUND_MS`), the overlap gates (#3904: deepest overlap median
+ * and p90, mean visible gap), and the step budget.
  */
 export function checkSuite(result: SuiteResult, baseline: BaselineSuite | undefined): Violation[] {
   const out: Violation[] = [];
@@ -482,20 +505,7 @@ export function checkSuite(result: SuiteResult, baseline: BaselineSuite | undefi
     }
   }
   for (const [k, run] of Object.entries(result.runs)) {
-    if (k.startsWith("spam@")) {
-      const cap = run["endedBy.capRate"];
-      const longest = run["simS.max"] ?? null;
-      if (cap !== 0 || longest === null || longest * 1000 > SPAM_GAME_OVER_BOUND_MS) {
-        out.push({
-          where: k,
-          key: "lid",
-          value: longest,
-          min: null,
-          max: SPAM_GAME_OVER_BOUND_MS / 1000,
-          message: `spam bot did not always reach game over within ${SPAM_GAME_OVER_BOUND_MS / 1000} s`,
-        });
-      }
-    }
+    if (k.startsWith("spam@")) out.push(...spamViolations(k, run));
   }
   for (const [k, run] of Object.entries(result.runs)) {
     const rails = run["feel.guardRailEvents.mean"];
@@ -520,6 +530,7 @@ export function checkSuite(result: SuiteResult, baseline: BaselineSuite | undefi
         message: `chain merge latency p90 ${p90.toFixed(0)} ms is not under ${CHAIN_LATENCY_BOUND_MS} ms`,
       });
     }
+    out.push(...overlapViolations(k, run));
   }
   for (const [k, c] of Object.entries(result.cost)) {
     if (c.meanStepMsGe20 !== null && c.meanStepMsGe20 > COST_BUDGET_MS) {
@@ -532,6 +543,71 @@ export function checkSuite(result: SuiteResult, baseline: BaselineSuite | undefi
         message: `mean step cost ${c.meanStepMsGe20.toFixed(2)} ms with 20+ pieces exceeds ${COST_BUDGET_MS} ms`,
       });
     }
+  }
+  return out;
+}
+
+/** The lid gate (#3694) and, since #3904, the no-win gate for one spam run. */
+function spamViolations(k: string, run: FlatMetrics): Violation[] {
+  const out: Violation[] = [];
+  const cap = run["endedBy.capRate"];
+  const longest = run["simS.max"] ?? null;
+  if (cap !== 0 || longest === null || longest * 1000 > SPAM_GAME_OVER_BOUND_MS) {
+    out.push({
+      where: k,
+      key: "lid",
+      value: longest,
+      min: null,
+      max: SPAM_GAME_OVER_BOUND_MS / 1000,
+      message: `spam bot did not always reach game over within ${SPAM_GAME_OVER_BOUND_MS / 1000} s`,
+    });
+  }
+  const wins = run["win.rate"];
+  if (wins !== null && wins !== undefined && wins > 0) {
+    out.push({
+      where: k,
+      key: "spamWin",
+      value: wins,
+      min: null,
+      max: 0,
+      message: `spam bot won ${(wins * 100).toFixed(0)} % of games: mindless play must never win`,
+    });
+  }
+  return out;
+}
+
+/** The overlap gates (#3904) for one run: see OVERLAP_MEDIAN_MAX_PX. */
+function overlapViolations(where: string, run: FlatMetrics): Violation[] {
+  const out: Violation[] = [];
+  const gate = (key: string, value: number | null | undefined, max: number, what: string) => {
+    if (value !== null && value !== undefined && value > max) {
+      out.push({
+        where,
+        key,
+        value,
+        min: null,
+        max,
+        message: `${what} ${value.toFixed(2)} px is over ${max} px`,
+      });
+    }
+  };
+  gate(
+    "overlapMedian",
+    run["feel.overlapMaxPx.median"],
+    OVERLAP_MEDIAN_MAX_PX,
+    "deepest overlap median"
+  );
+  gate("overlapP90", run["feel.overlapMaxPx.p90"], OVERLAP_P90_MAX_PX, "deepest overlap p90");
+  const gap = run["feel.gapMeanPx"];
+  if (gap !== null && gap !== undefined && gap < GAP_MEAN_MIN_PX) {
+    out.push({
+      where,
+      key: "gapMean",
+      value: gap,
+      min: GAP_MEAN_MIN_PX,
+      max: null,
+      message: `mean visible gap ${gap.toFixed(2)} px is under ${GAP_MEAN_MIN_PX} px`,
+    });
   }
   return out;
 }
@@ -571,6 +647,11 @@ export function formatTable(result: SuiteResult): string {
     ["visible gap mean px", (k) => fmt(result.runs[k]!["feel.gapMeanPx"])],
     ["visible gap max px", (k) => fmt(result.runs[k]!["feel.gapMaxPx"])],
     ["deepest overlap px (mean of games)", (k) => fmt(result.runs[k]!["feel.overlapMaxPx.mean"])],
+    [
+      "deepest overlap px, median / p90 of games (gate 3 / 5)",
+      (k) =>
+        `${fmt(result.runs[k]!["feel.overlapMaxPx.median"])} / ${fmt(result.runs[k]!["feel.overlapMaxPx.p90"])}`,
+    ],
     ["settle after drop ms", (k) => fmt(result.runs[k]!["feel.settleAfterDropMs"], 0)],
     ["settle after 3+ chain ms", (k) => fmt(result.runs[k]!["feel.settleAfterChainMs"], 0)],
     [
@@ -589,7 +670,7 @@ export function formatTable(result: SuiteResult): string {
     ],
     ["chain merges under 150 ms", (k) => fmt(result.runs[k]!["feel.chainUnder150Rate"])],
     [
-      "time to capstone s, p25 / median / p75 (winners)",
+      "time to win s, p25 / median / p75 (winners)",
       (k) =>
         `${fmt(result.runs[k]!["win.timeToWinS.p25"], 0)} / ${fmt(result.runs[k]!["win.timeToWinS.median"], 0)} / ${fmt(result.runs[k]!["win.timeToWinS.p75"], 0)}`,
     ],

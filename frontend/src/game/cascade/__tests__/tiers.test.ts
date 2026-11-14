@@ -30,12 +30,17 @@ describe("the ladder", () => {
     }
   });
 
-  // #3697 (owner's "3 lively"): the ladder went from round(22 * 4^(n/10)) to 18 / 56 / 63.
-  it("follows the documented geometric series, radius(n) = round(18 * (56 / 18)^(n/10))", () => {
-    TIERS.forEach((t) => expect(t.radius).toBe(Math.round(18 * Math.pow(56 / 18, t.tier / 10))));
-    expect([TIERS[0]!.radius, TIERS[10]!.radius, TIERS[CAPSTONE_TIER]!.radius]).toEqual([
-      18, 56, 63,
-    ]);
+  // #3904 (owner pick V1): one constant ratio for the whole ladder, unrounded, 5 to 98.
+  it("follows the documented constant-ratio series, radius(n) = 5 * (98 / 5)^(n / 11)", () => {
+    const k = (98 / 5) ** (1 / 11);
+    expect(k).toBeCloseTo(1.31062, 5);
+    TIERS.forEach((t) => expect(t.radius).toBeCloseTo(5 * k ** t.tier, 9));
+    expect(TIERS[0]!.radius).toBe(5);
+    expect(TIERS[CAPSTONE_TIER]!.radius).toBeCloseTo(98, 9);
+    // Every tier-to-tier ratio is the same.
+    for (let i = 1; i < TIERS.length; i++) {
+      expect(TIERS[i]!.radius / TIERS[i - 1]!.radius).toBeCloseTo(k, 12);
+    }
   });
 
   it("scores double per tier (provisional until the time-bonus story, #3700)", () => {
@@ -48,16 +53,31 @@ describe("the ladder", () => {
     expect(TIERS[0]!.density).toBe(1);
   });
 
-  // #3697: tier 5 joined the drops (owner decision).
-  it("drops tiers 0-5 only; the capstone is never dropped", () => {
-    expect(DROPPABLE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
+  // #3904 (owner pick V1): tiers 0-7 drop.
+  it("drops tiers 0-7 only; the capstone is never dropped", () => {
+    expect(DROPPABLE_TIERS).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     expect(TIERS[CAPSTONE_TIER]!.droppable).toBe(false);
   });
 
   it("lets two tier-10 pieces sit side by side in the bin and touch, and fits the capstone", () => {
     expect(4 * TIERS[10]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
     expect(2 * TIERS[CAPSTONE_TIER]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
+  });
+
+  // #3904 owner rule: at most 3 capstones fit under the lid. Four circles of radius r fit in the
+  // 360 x 500 room under the lid only as a zigzag column (touching the left and right walls in
+  // turn, each touching the one below), which needs 2r + 3 * sqrt((2r)^2 - (360 - 2r)^2) <= 500,
+  // so r <= 97.21. r11 = 98 leaves room for three, and two are never side by side on the floor
+  // (4r > 360): the win is a diagonal or stacked touch.
+  it("fits at most three capstones under the lid, and never two side by side on the floor", () => {
+    const r = TIERS[CAPSTONE_TIER]!.radius;
+    expect(4 * r).toBeGreaterThan(INNER_WIDTH);
+    const roomH = 600 - 20 - OVERFLOW_LINE_Y;
+    const zigzag4 = (rr: number) =>
+      2 * rr + 3 * Math.sqrt((2 * rr) ** 2 - (INNER_WIDTH - 2 * rr) ** 2);
+    expect(zigzag4(97.2)).toBeLessThanOrEqual(roomH);
+    expect(zigzag4(r)).toBeGreaterThan(roomH);
   });
 
   it("spawns every droppable tier on the canvas, over the lid", () => {
@@ -144,15 +164,15 @@ describe("the engine reads the ladder", () => {
     expect(state.score).toBe(TIERS[11]!.score);
   });
 
-  it("never merges two capstones", () => {
+  // #3904: two capstones no longer stay apart: touching, they are the win (engine.physics.test).
+  it("never merges two capstones into a further tier: they burst into the win", () => {
     const engine = new CascadeEngine({});
     engine.drop(CAPSTONE_TIER, 200);
     engine.drop(CAPSTONE_TIER, 200);
-    for (let i = 0; i < 120; i++) {
-      const events = engine.step(16.67).events;
-      expect(events.some((e) => e.type === "merge")).toBe(false);
-    }
-    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([11, 11]);
+    const events = engine.step(16.67).events;
+    expect(events.some((e) => e.type === "merge")).toBe(false);
+    expect(events.some((e) => e.type === "win")).toBe(true);
+    expect(engine.getState().pieces).toEqual([]);
   });
 });
 

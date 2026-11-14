@@ -9,16 +9,30 @@ export const OVERFLOW_LINE_Y = 80; // y from top: the lid (game-over line, #3694
 // pixels and fixed steps; `physicsWorld.ts` converts to planck's metres and seconds.
 /** Gravity, px/s^2 (Matter's old 2.5 x 0.001 per ms^2 = 2500 px/s^2: lively keeps today's). */
 export const GRAVITY_PX_S2 = 2500;
-/** World pixels per planck metre: radii 18-63 px are 0.36-1.26 m, inside Box2D's sweet spot. */
+/** World pixels per planck metre: radii 5-98 px are 0.1-1.96 m, inside Box2D's 0.1-10 m range. */
 export const PX_PER_M = 50;
-/** Box2D solver iterations per fixed step. */
+/**
+ * Overlap tuning (#3904; owner: the overlap between pieces looks bad; the sim gates the deepest
+ * overlap at 3 px median / 5 px p90). Each fixed step runs PHYSICS_SUBSTEPS planck steps of
+ * FIXED_STEP_MS / PHYSICS_SUBSTEPS, each with these solver iterations, and planck's position
+ * correction (Baumgarte) removes POSITION_BAUMGARTE of an overlap per pass instead of 0.2. The
+ * deepest overlap of a skilled game fell from 9.4 px (median) to 2.5. The levers, what each did
+ * and what it cost: docs/games/cascade.md#physics.
+ */
+export const PHYSICS_SUBSTEPS = 2;
+/** Box2D solver iterations per planck step (#3697: 10 / 8 per fixed step). */
 export const VELOCITY_ITERATIONS = 10;
-export const POSITION_ITERATIONS = 8;
+export const POSITION_ITERATIONS = 20;
+/** planck's `Settings.baumgarte`: the share of an overlap the position solver removes per pass. */
+export const POSITION_BAUMGARTE = 0.35;
 
 // Piece physics (lively)
 export const PIECE_RESTITUTION = 0.2;
-/** Friction of pieces, walls and floor: low, so pieces shuffle into gaps. */
-export const PIECE_FRICTION = 0.2;
+/**
+ * Friction of pieces, walls and floor: low, so pieces shuffle into gaps (#3904: 0.2 to 0.12, which
+ * gives back the packing the overlap fix took; lower still and the spam bot outlives the lid).
+ */
+export const PIECE_FRICTION = 0.12;
 /** Air friction: velocity kept per fixed step is 1 - this (Matter's frictionAir; planck linear damping). */
 export const PIECE_FRICTION_AIR = 0.01;
 /** Rolling damping applied per fixed step after the solver (lively: 0, pieces roll freely). */
@@ -70,9 +84,11 @@ export const HARD_STOP_SETTLE_TICKS = 30;
 export const MERGE_POP_IMPULSE = 0.4;
 /**
  * Grow-in: a merged piece is made at its parents' radius and grows to its own over this many
- * fixed steps (133 ms), so it never appears overlapping its neighbours at full size.
+ * fixed steps (267 ms; #3904: 8 to 16, so the solver keeps up with a big piece's growth and its
+ * neighbours are eased aside instead of overlapped), so it never appears overlapping its
+ * neighbours at full size.
  */
-export const GROW_IN_STEPS = 8;
+export const GROW_IN_STEPS = 16;
 /**
  * Two same-tier pieces closer than this (px, gap between the circles) merge, checked every fixed
  * step: Box2D can rest two pieces a fraction of a pixel apart, which a player sees as touching.

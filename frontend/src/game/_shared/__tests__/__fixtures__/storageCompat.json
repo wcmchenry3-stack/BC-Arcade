@@ -74,14 +74,14 @@
   "cascade: save writes": {
     "result": "\"__undefined\"",
     "storage": {
-      "cascade_game_v5": "{\"version\":5,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2},\"playedMs\":45000}"
+      "cascade_game_v6": "{\"version\":6,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2},\"playedMs\":45000}"
     },
     "sentry": "[]"
   },
   "cascade: save then load": {
-    "result": "{\"version\":5,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2},\"playedMs\":45000}",
+    "result": "{\"version\":6,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2},\"playedMs\":45000}",
     "storage": {
-      "cascade_game_v5": "{\"version\":5,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2},\"playedMs\":45000}"
+      "cascade_game_v6": "{\"version\":6,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2},\"playedMs\":45000}"
     },
     "sentry": "[]"
   },
@@ -93,14 +93,14 @@
   "cascade: empty string stored": {
     "result": "null",
     "storage": {
-      "cascade_game_v5": ""
+      "cascade_game_v6": ""
     },
     "sentry": "[]"
   },
   "cascade: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"cascade.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"cascade.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"cascade_game_v5\",\"rawPayload\":\"{not json\"}}]]"
+    "sentry": "[[\"captureMessage\",\"cascade.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"cascade.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"cascade_game_v6\",\"rawPayload\":\"{not json\"}}]]"
   },
   "cascade: json null": {
     "result": "null",
@@ -120,7 +120,7 @@
   "cascade: read fails": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"cascade.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"cascade.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"Error: getItem failed\",\"key\":\"cascade_game_v5\"}}]]"
+    "sentry": "[[\"captureMessage\",\"cascade.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"cascade.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"Error: getItem failed\",\"key\":\"cascade_game_v6\"}}]]"
   },
   "cascade: write fails": {
     "result": "\"__undefined\"",
@@ -135,7 +135,7 @@
   "cascade: clear fails": {
     "result": "\"__undefined\"",
     "storage": {
-      "cascade_game_v5": "{}"
+      "cascade_game_v6": "{}"
     },
     "sentry": "[[\"captureException\",{\"__error\":\"Error: removeItem failed\"},{\"tags\":{\"subsystem\":\"cascade.storage\",\"op\":\"clear\"}}]]"
   },
@@ -705,9 +705,9 @@
     "sentry": "[]"
   },
   "cascade: save without playedMs": {
-    "result": "{\"version\":5,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2}}",
+    "result": "{\"version\":6,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2}}",
     "storage": {
-      "cascade_game_v5": "{\"version\":5,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2}}"
+      "cascade_game_v6": "{\"version\":6,\"pieces\":[{\"tier\":0,\"x\":10.5,\"y\":20.25},{\"tier\":3,\"x\":140,\"y\":300}],\"score\":120,\"savedAt\":1700000000000,\"queue\":{\"current\":1,\"next\":2}}"
     },
     "sentry": "[]"
   },

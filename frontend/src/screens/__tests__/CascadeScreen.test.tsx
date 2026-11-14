@@ -998,7 +998,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       jest.advanceTimersByTime(20_000);
     });
     await setAppState("background"); // the pause saves the board
-    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v5"))!);
+    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v6"))!);
     expect(saved.playedMs).toBe(20_000);
     await act(() => {
       first.unmount(); // the OS kills the app from here
@@ -1026,9 +1026,9 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
   // the clock counts from the load. It must still restore the board.
   it("restores an older build's save without playedMs, counting from the load", async () => {
     await AsyncStorage.setItem(
-      "cascade_game_v5",
+      "cascade_game_v6",
       JSON.stringify({
-        version: 5,
+        version: 6,
         pieces: [{ tier: 0, x: 200, y: 500 }],
         score: 10,
         savedAt: Date.now() - 2 * 24 * 60 * 60_000,

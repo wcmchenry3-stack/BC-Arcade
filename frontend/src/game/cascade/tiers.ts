@@ -10,41 +10,55 @@
  * ## The ladder (12 tiers, 0..11)
  *
  * Merging two pieces of tier n (n < 11) makes one of tier n + 1. Two tier-10 pieces make the
- * capstone (tier 11), which is never dropped and never merges further (the win itself is #3699).
+ * capstone (tier 11). Two capstones that touch are the win (#3904): both burst, and the engine
+ * emits `win`. The capstone is never dropped.
  *
  * ## Radii
  *
- * Geometric (#3697, the owner's "3 lively" tuning): `radius(n) = round(R0 * (R10 / R0) ^ (n / 10))`
- * with R0 = 18 and R10 = 56, so the ratio between tiers is about 1.12 and the series continues to
- * the capstone: r11 = 63. Smaller and flatter than #3695's ladder (22 / 88 / 101) so the capstone
- * can be built in one session: holding a tier 10 while the second one is built (one piece of each
- * tier 0-10) covers about 25 % of the bin under the lid, against 53 % on the old ladder, where no
- * bot ever reached tier 10. Two tier-10 pieces side by side need 224 px of the 360 px inner width,
- * and the capstone (126 px across) fits. Droppable tiers are 0-5 (radius 18-32): the largest spawns
- * at `OVERFLOW_LINE_Y - r - inset`, its top edge at y = 11, on the canvas. Why 18 / 56 and not the
- * 16 / 52 the other two proposals used: on lively physics (low friction, bounce) the spam bot
- * outlived the lid's 120 s bound in 6-10 % of games on 16 / 52; 18 / 56 puts its longest game at
- * about 107-109 s (docs/research/CASCADE_FEEL_PROPOSALS.md).
+ * One constant ratio for the whole ladder (#3904, owner pick "V1"): `radius(n) = R0 * K ^ n`,
+ * unrounded, with R0 = 5 and K = (R11 / R0) ^ (1 / 11) = 1.31062..., so the capstone is exactly
+ * R11 = 98 and every tier-to-tier ratio is exactly K. Big fruit feel big: the Pumpkin is about
+ * half the bin's 360 px inner width across. At most three capstones fit under the lid (four need
+ * r <= 97.2), so two can never sit side by side on the floor: the win is a diagonal or stacked
+ * touch. Droppable tiers are 0-7 (radius 5-33.2); the largest spawns at
+ * `OVERFLOW_LINE_Y - r - inset`, its top edge at y = 8.6, on the canvas. The cherry (5) is the
+ * main lever on the win rate (more, smaller material) and draws about 9 pt across on a phone.
+ * Measured in the sim (100 seeds, 10 min cap): skilled bot wins about 55 %, heuristic 24 %,
+ * median time to win about 4 min; docs/games/cascade.md.
  *
  * ## Scores
  *
  * Doubling: `score(n) = 2 ^ n`, awarded for the piece a merge makes (a merge into tier n scores
- * `2^n`). PROVISIONAL: the final values are set with the time-bonus story (#3700) so a win
- * dominates a long losing run.
+ * `2^n`). The capstone pair that wins scores 2 x the capstone. PROVISIONAL: the final values are
+ * set with the time-bonus story (#3700) so a win dominates a long losing run.
  *
  * ## Density
  *
- * planck.js density per tier: `(r0 / r) ^ 0.5`, so mass grows as r^1.5 instead of r^2. The largest
- * mass ratio on the board (capstone : tier 0) is then 3.5^1.5 = 6.5 : 1 instead of 12 : 1, so a big
- * piece no longer drives small ones through each other (#3696). Only ratios matter to Box2D.
+ * planck.js density per tier: `(r0 / r) ^ 0.5` (#3697), so mass grows as r^1.5 instead of r^2.
+ * On this ladder the capstone is 87 times a cherry (6.5 times on the old 18-63 one). #3904 tried
+ * flattening it (exponent 0.75 to 1.37, 41 : 1 to 6.5 : 1), the owner's first lever on the
+ * overlap: it cut the overlap less than the solver did and cost the skilled win rate most (heavy
+ * pieces sinking through light ones is also what packs the pile), so it stays. Only ratios matter
+ * to Box2D. The overlap fix is in the solver (`constants.ts`) and the draw inset below.
+ *
+ * ## Drawn radius (#3904)
+ *
+ * A piece is drawn DRAW_INSET (1.5 %) smaller than its collider: `drawnRadius = radius * (1 -
+ * DRAW_INSET)`. It is the last of the owner's overlap levers, used because the solver alone left
+ * the skilled games' p90 deepest overlap at 5.2 px against the 5 px gate; it takes 0.15 px off a
+ * pair of cherries and 2.9 px off a pair of capstones. Everything that draws a piece (the board,
+ * the art bitmaps, the spawner) reads `drawnRadius`; the physics, the lid, the spawn and the merges
+ * read `radius`.
  */
 
 export type TierSetId = "fruits" | "cosmos";
 
 export interface TierDef {
   readonly tier: number;
-  /** Collision radius, and the radius the piece is drawn at (world units). */
+  /** Collision radius (world units): physics, lid, spawn, merges. */
   readonly radius: number;
+  /** The radius the piece is drawn at: `radius * (1 - DRAW_INSET)` (#3904). */
+  readonly drawnRadius: number;
   /** Points for a merge that makes this tier. */
   readonly score: number;
   /** planck.js density (only the ratios between tiers matter). */
@@ -56,16 +70,20 @@ export interface TierDef {
 }
 
 export const TIER_COUNT = 12;
-/** The capstone: never dropped, never merges. */
+/** The capstone: never dropped; two that touch are the win (#3904). */
 export const CAPSTONE_TIER = TIER_COUNT - 1;
 
-/** The ladder's ends (see "Radii" above): tier 0's and tier 10's radius, world px. */
-const R0 = 18;
-const R10 = 56;
-/** Exponent of the density rule `(r0 / r) ^ DENSITY_EXPONENT`. */
+/** The ladder's ends (see "Radii" above): tier 0's and the capstone's radius, world px. */
+const R0 = 5;
+const R11 = 98;
+/** The one tier-to-tier ratio: R0 * K ^ 11 = R11. */
+const K = (R11 / R0) ** (1 / CAPSTONE_TIER);
+/** Exponent of the density rule `(r0 / r) ^ DENSITY_EXPONENT` (see "Density" above). */
 const DENSITY_EXPONENT = 0.5;
-/** Highest droppable tier (0-5 drop, #3697). */
-const MAX_DROPPABLE_TIER = 5;
+/** How much smaller a piece is drawn than its collider (#3904: see "Drawn radius" above). */
+export const DRAW_INSET = 0.015;
+/** Highest droppable tier (0-7 drop, #3904). */
+const MAX_DROPPABLE_TIER = 7;
 
 type Names = readonly [nameKeyFruits: string, nameKeyCosmos: string];
 
@@ -84,11 +102,12 @@ const NAMES: readonly Names[] = [
   ["pumpkin", "milkyWay"],
 ];
 
-const ladderRadius = (tier: number): number => Math.round(R0 * (R10 / R0) ** (tier / 10));
+const ladderRadius = (tier: number): number => R0 * K ** tier;
 
 export const TIERS: readonly TierDef[] = NAMES.map(([fruits, cosmos], tier) => ({
   tier,
   radius: ladderRadius(tier),
+  drawnRadius: ladderRadius(tier) * (1 - DRAW_INSET),
   score: 2 ** tier,
   density: (ladderRadius(0) / ladderRadius(tier)) ** DENSITY_EXPONENT,
   droppable: tier <= MAX_DROPPABLE_TIER,
@@ -103,4 +122,9 @@ export const DROPPABLE_TIERS: readonly number[] = TIERS.filter((t) => t.droppabl
 /** A tier's radius (0 for an unknown tier). */
 export function tierRadius(tier: number): number {
   return TIERS[tier]?.radius ?? 0;
+}
+
+/** A tier's drawn radius (0 for an unknown tier, #3904). */
+export function tierDrawnRadius(tier: number): number {
+  return TIERS[tier]?.drawnRadius ?? 0;
 }

@@ -1,14 +1,23 @@
 /**
- * The spawner (#3697: the owner's "3 lively" difficulty). Which tier the queue offers next, by
+ * The spawner (#3697; weights #3904, owner pick "V1"). Which tier the queue offers next, by
  * weight: base weights, a drought boost for a tier not seen lately, a danger mode when the pile is
- * near the lid, and an anti-streak ban. The numbers make the capstone reachable in a session:
- * tiers 0-5 drop, weighted up the ladder (2 3 3 3 3 2), so a drop carries about 9.75 tier-0
- * pieces' worth of material on average (3.8 on the old 5 4 3 2 1 over tiers 0-4) and the
- * capstone (2048 of them) is about 210 perfect drops away. See docs/games/cascade.md.
+ * near the lid, and an anti-streak ban. The numbers make the win reachable in a session: tiers
+ * 0-7 drop, weighted 2 3 3 3 3 3 2 1, so a drop carries about 22.2 tier-0 pieces' worth of
+ * material on average and the win (two capstones, 2 x 2048 of them) is about 185 perfect drops
+ * away. See docs/games/cascade.md.
  */
 import { DROPPABLE_PIECE_TIERS } from "./pieceDefs";
 
-const BASE_WEIGHTS: Record<number, number> = { 0: 2, 1: 3, 2: 3, 3: 3, 4: 3, 5: 2 };
+const BASE_WEIGHTS: Record<number, number> = {
+  0: 2,
+  1: 3,
+  2: 3,
+  3: 3,
+  4: 3,
+  5: 3,
+  6: 2,
+  7: 1,
+};
 
 export const DROUGHT_WINDOW = 10;
 const DROUGHT_BOOST = 3;

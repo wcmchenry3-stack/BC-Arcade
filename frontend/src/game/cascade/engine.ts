@@ -30,7 +30,7 @@
  * Merges (#3697, the owner's "3 lively" tuning; docs/games/cascade.md#physics):
  *   - Two same-tier pieces merge when they touch (a planck contact begins) or when their circles
  *     are within `MERGE_GAP_PX` of touching at the end of a fixed step (Box2D can rest two pieces a
- *     fraction of a pixel apart). The capstone never merges.
+ *     fraction of a pixel apart). Two capstones join the same paths, and are the win (below).
  *   - Grow-in: the merged piece is made at its parents' midpoint, clamped so its FULL circle is
  *     inside the walls and above the floor, at its parents' radius, and grows to its own over
  *     `GROW_IN_STEPS` fixed steps; each step keeps the grown circle inside (a shift of at most one
@@ -39,8 +39,13 @@
  *   - Chain reach: a piece still growing in also merges with a same-tier piece its full radius
  *     would touch (`CHAIN_REACH_PX`), without waiting to grow into it, so a chain runs a step at a
  *     time.
- *   - Making the capstone emits `{ type: "win" }` after its merge and score events (#3699 builds
- *     the celebration and result on it). The game goes on: the engine does not end it.
+ *   - The win (#3904): two capstones that touch (contact, gap scan or chain reach, as any merge)
+ *     both burst (are removed, no `merge` event), the pair scores 2 x the capstone, and
+ *     `{ type: "win", x, y, id }` follows the `score` event, at their midpoint with the lower id.
+ *     Making a single capstone is an ordinary merge. The win ends the play: from that step on
+ *     `canDrop()` is false, `drop()` does nothing, no merge or lid rule runs (no `gameOver`
+ *     follows a win) and the score is final; the physics still steps, so the pile settles into
+ *     the hole while #3699's celebration and result card show. `restore()` starts a new game.
  *   - The lid rule, the merge grace and the drop gate always use a tier's FULL radius.
  *
  * Combo window: `COMBO_WINDOW_TICKS` (120) is counted in fixed steps like the lid, so it is 2 s
@@ -160,7 +165,10 @@ export type EngineEvent =
   | { type: "gameOver"; reason: GameOverReason }
   | { type: "guardRailFired"; reason: string; bodyId: number }
   | { type: "cascadeCombo"; count: number }
-  /** The capstone was made (#3699): where, and its piece id. Emitted once per capstone. */
+  /**
+   * Two capstones touched (#3904): both burst. Where (their midpoint) and the lower of their ids.
+   * Emitted once per game; play ends with it (#3699 builds the celebration and result on it).
+   */
   | { type: "win"; x: number; y: number; id: number };
 
 /** Why the game ended: the pile stayed over the lid, or a piece reached the canvas top. */
@@ -256,6 +264,8 @@ export class CascadeEngine {
   private _nextId = 1;
   private _score = 0;
   private _gameOver = false;
+  /** Two capstones touched (#3904): no more drops, merges or lid. */
+  private _won = false;
   private _overflowTicksCount = 0;
   // Fixed steps since the last merge in the danger band. Starts past the grace so a new game
   // counts overflow from its first step.
@@ -286,7 +296,7 @@ export class CascadeEngine {
       if (typeof b === "object" && a !== "wall") this._land(b);
     }
     if (typeof a !== "object" || typeof b !== "object") return;
-    if (a.tier === b.tier && a.tier < MAX_TIER) this._queueMerge(a, b);
+    if (a.tier === b.tier) this._queueMerge(a, b);
   };
 
   private _land(e: PieceEntry): void {
@@ -296,7 +306,7 @@ export class CascadeEngine {
   }
 
   private _queueMerge(a: PieceEntry, b: PieceEntry): void {
-    if (this._bench.noMerges) return;
+    if (this._bench.noMerges || this._won) return;
     const lo = a.id < b.id ? a : b;
     const hi = a.id < b.id ? b : a;
     for (let i = 0; i < this._pendA.length; i++) {
@@ -337,12 +347,12 @@ export class CascadeEngine {
   private _fixedStep(events: EngineEvent[]): void {
     if (this._growing.length > 0) this._growIn();
     this._readBodies(events);
-    if (!this._bench.noMerges) {
+    if (!this._bench.noMerges && !this._won) {
       this._scanMergeGaps();
       if (this._growing.length > 0) this._chainReach();
     }
     this._processMerges(events);
-    if (!this._bench.noLid) this._applyLid(events);
+    if (!this._bench.noLid && !this._won) this._applyLid(events);
 
     // Emit as soon as the threshold is reached (after all merges in this step are counted)
     // so the screen can react immediately. Suppressed if gameOver fired in the same step.
@@ -449,7 +459,7 @@ export class CascadeEngine {
 
   /** Same-tier pairs whose circles are within `MERGE_GAP_PX` join the pending merges. */
   private _scanMergeGaps(): void {
-    for (let tier = 0; tier < MAX_TIER; tier++) {
+    for (let tier = 0; tier <= MAX_TIER; tier++) {
       const list = this._byTier[tier]!;
       const n = list.length;
       if (n < 2) continue;
@@ -469,7 +479,6 @@ export class CascadeEngine {
   /** Same-tier pieces a growing piece would touch at full size join the pending merges. */
   private _chainReach(): void {
     for (const g of this._growing) {
-      if (g.tier >= MAX_TIER) continue;
       for (const o of this._byTier[g.tier]!) {
         if (o === g) continue;
         const reach = g.full + o.r + CHAIN_REACH_PX;
@@ -517,7 +526,7 @@ export class CascadeEngine {
 
   /**
    * Process pending merges in the order they were found. A piece takes part in one merge per
-   * step; the capstone never merges (pairs are only queued below it).
+   * step; a capstone pair is the win, after which no other pending merge runs.
    */
   private _processMerges(events: EngineEvent[]): void {
     const pendA = this._pendA;
@@ -525,11 +534,35 @@ export class CascadeEngine {
     for (let i = 0; i < pendA.length; i++) {
       const a = pendA[i]!;
       const b = pendB[i]!;
+      if (this._won) break;
       if (!this._pieces.has(a.id) || !this._pieces.has(b.id)) continue;
-      this._merge(a, b, events);
+      if (a.tier === MAX_TIER) this._winPair(a, b, events);
+      else this._merge(a, b, events);
     }
     pendA.length = 0;
     pendB.length = 0;
+  }
+
+  /**
+   * The win (#3904): two touching capstones both burst (are removed, so the pile drops into the
+   * hole they leave), the pair scores twice the capstone, and `win` is emitted at their midpoint
+   * with the lower id. Play ends here (`_won`).
+   */
+  private _winPair(a: PieceEntry, b: PieceEntry, events: EngineEvent[]): void {
+    const pa = a.body.getPosition();
+    const pb = b.body.getPosition();
+    const x = ((pa.x + pb.x) / 2) * PX_PER_M;
+    const y = ((pa.y + pb.y) / 2) * PX_PER_M;
+    const id = Math.min(a.id, b.id);
+    this._removePiece(a);
+    this._removePiece(b);
+    this._won = true;
+    this._drop = null;
+    this._overflowTicksCount = 0;
+    const delta = 2 * PIECE_DEFS[MAX_TIER]!.scoreValue;
+    this._score += delta;
+    events.push({ type: "score", delta, total: this._score });
+    events.push({ type: "win", x, y, id });
   }
 
   private _merge(a: PieceEntry, b: PieceEntry, events: EngineEvent[]): void {
@@ -586,7 +619,6 @@ export class CascadeEngine {
       parentIds: [a.id, b.id],
     });
     events.push({ type: "score", delta: scoreValue, total: this._score });
-    if (newTier === MAX_TIER) events.push({ type: "win", x: mx, y: my, id: e.id });
     if (nearLid) this._ticksSinceNearLidMerge = 0;
     if (this._comboTicksLeft > 0) this._comboCount++;
   }
@@ -651,12 +683,17 @@ export class CascadeEngine {
   }
 
   /**
-   * Whether a new drop is allowed (#3694): not after game over, and not while the last dropped
-   * piece is still over the lid. The screen gates taps on it; `drop()` itself does not, so the
+   * Whether a new drop is allowed (#3694): not after game over or the win (#3904), and not while
+   * the last dropped piece is still over the lid. The screen gates taps on it; `drop()` itself does not, so the
    * dev panel and the test seams can still place pieces.
    */
   canDrop(): boolean {
-    return !this._gameOver && this._drop === null;
+    return !this._gameOver && !this._won && this._drop === null;
+  }
+
+  /** True once two capstones have touched (#3904): play has ended in a win. */
+  hasWon(): boolean {
+    return this._won;
   }
 
   destroy(): void {
@@ -676,6 +713,7 @@ export class CascadeEngine {
     this._pendB.length = 0;
     this._score = score;
     this._gameOver = false;
+    this._won = false;
     this._overflowTicksCount = 0;
     // Treat restore like a near-lid merge just fired, once, so OVERFLOW_IGNORE_MERGE_TICKS of
     // grace applies while pieces settle into their saved positions. It is one grace per restore,
@@ -723,7 +761,7 @@ export class CascadeEngine {
   }
 
   drop(tier: number, x: number): void {
-    if (this._gameOver) return;
+    if (this._gameOver || this._won) return;
     if (!PIECE_DEFS[tier]) return;
     const r = tierRadius(tier);
     // A tap at the edge of the bin (the screen clamps it to the walls' inner faces) places the
