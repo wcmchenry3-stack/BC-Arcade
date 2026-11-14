@@ -25,6 +25,8 @@ Import from `theme/typography.ts` — never hardcode font family strings in comp
 
 Load fonts **per weight, by subpath** (`import { Manrope_400Regular } from "@expo-google-fonts/manrope/400Regular"` in `App.tsx`), never from the package barrel (`@expo-google-fonts/manrope`). The barrel `require`s every weight's `.ttf`, so Metro would package all 12 (about 648 KB more, #3839). Adding a weight means adding its subpath import, its `useFonts` key and its `typography.ts` entry; `src/__tests__/fontImports.test.ts` fails on a barrel import or a family name that is styled but not loaded.
 
+Icons are Material Icons and Material Design Icons glyphs, imported from `src/components/icons/MaterialIcons` and `src/components/icons/MaterialCommunityIcons`, never from `@expo/vector-icons/<Family>` (#3843). Those modules ship subset fonts with only the glyphs listed in `src/components/icons/iconNames.ts`, so `name` is a union type and `tsc` rejects any other icon. To add an icon, add its name to the list and run `python tools/assets/subset_icon_fonts.py` (see `frontend/assets/fonts/CREDITS.md`); `src/__tests__/iconSubset.test.ts` fails if the subset is stale.
+
 Game canvases use the same faces. Star Swarm's HUD (#3598) takes its fonts from
 `theme/typography.ts` through `game/starswarm/render/hudStyle.ts`: React Native Text on iOS and
 Android, and canvas text on web, where the canvas asks the browser to load the expo-font faces

@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialCommunityIcons from "../icons/MaterialCommunityIcons";
 import { useTranslation } from "react-i18next";
 import type { Colors } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";

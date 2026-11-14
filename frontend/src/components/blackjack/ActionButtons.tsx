@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialIcons from "../icons/MaterialIcons";
+import MaterialCommunityIcons from "../icons/MaterialCommunityIcons";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { DOCK_BUTTON_HEIGHT } from "../../game/blackjack/layout";

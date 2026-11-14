@@ -10,7 +10,7 @@
  * from a tab; the Star Swarm-only "Ranks" tab was retired in #2634.
  */
 import type React from "react";
-import type MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import type MaterialIcons from "../components/icons/MaterialIcons";
 
 export interface MainTab {
   name: string;

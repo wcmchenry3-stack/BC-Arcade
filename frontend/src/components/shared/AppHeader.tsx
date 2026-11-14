@@ -4,7 +4,7 @@ import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import MaterialIcons from "../icons/MaterialIcons";
 import { useTheme, type Colors } from "../../theme/ThemeContext";
 import { LOGO_TILE_BG, MENU_SHADOW_COLOR, MENU_SHADOW_CSS } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
@@ -248,9 +248,9 @@ export function AppHeader({
       label: t("common:overflow.menu.editNames"),
       onPress: closeThen(onEditPlayerNames),
     },
-    ...toggles.map((toggle, i) => ({
+    ...toggles.map((toggle, i): MenuItemSpec => ({
       id: `toggle-${i}`,
-      icon: (toggle.value ? "check-box" : "check-box-outline-blank") as MenuItemSpec["icon"],
+      icon: toggle.value ? "check-box" : "check-box-outline-blank",
       label: toggle.label,
       testID: toggle.testID,
       checked: toggle.value,

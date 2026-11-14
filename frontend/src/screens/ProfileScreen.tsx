@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialCommunityIcons from "../components/icons/MaterialCommunityIcons";
 import { EmptyState } from "../components/shared/EmptyState";
 import { StatTileGrid, type StatTile } from "../components/shared/StatTileGrid";
 import { useTheme } from "../theme/ThemeContext";

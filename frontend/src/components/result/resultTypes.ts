@@ -1,6 +1,6 @@
 import type React from "react";
 import type { StyleProp, TextStyle } from "react-native";
-import type MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import type MaterialCommunityIcons from "../icons/MaterialCommunityIcons";
 import type { TFunction } from "i18next";
 import { formatNumber } from "../../api/statsDisplay";
 import type { RankLookupStatus } from "../../game/_shared/useGameRank";

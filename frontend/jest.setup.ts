@@ -225,11 +225,12 @@ jest.mock("expo-linear-gradient", () => {
 (globalThis as unknown as { expo: { uuidv4: () => string } }).expo.uuidv4 = () =>
   globalThis.crypto.randomUUID();
 
-// @expo/vector-icons — one shared string mock per icon family (#2954/#3107) instead of
-// per-test copies. Renders as a plain native element so other assertions still work. A
-// test that needs another shape mocks the module itself; its jest.mock wins.
-jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
-jest.mock("@expo/vector-icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
+// Icon families — one shared string mock per family (#2954/#3107) instead of per-test
+// copies. Renders as a plain native element so other assertions still work. A test that
+// needs another shape mocks the module itself; its jest.mock wins. The app's icon families
+// are the subset fonts in src/components/icons (#3843), not the full @expo/vector-icons ones.
+jest.mock("./src/components/icons/MaterialIcons", () => "MockMaterialIcons");
+jest.mock("./src/components/icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
 
 // Shared screen-test mock factories (#2954), as a global so hoisted jest.mock
 // factories can call it: babel-plugin-jest-hoist lets a factory reference a

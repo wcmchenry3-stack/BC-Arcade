@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialCommunityIcons from "../icons/MaterialCommunityIcons";
 import { useTheme } from "../../theme/ThemeContext";
 import { MAX_STARS, type BestStars } from "../../game/sort/stars";
 

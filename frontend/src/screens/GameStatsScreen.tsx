@@ -3,7 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text } from "react-n
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import MaterialIcons from "../components/icons/MaterialIcons";
 import { formatMetric } from "../api/outcomeDisplay";
 import {
   completedOf,

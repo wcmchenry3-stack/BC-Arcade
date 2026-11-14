@@ -28,7 +28,7 @@ import {
   Text,
   View,
 } from "react-native";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import MaterialIcons from "../components/icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { useNavigation } from "@react-navigation/native";
