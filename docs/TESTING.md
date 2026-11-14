@@ -144,7 +144,7 @@ A stored game is replayed from its inputs (seed and moves), not from its stored 
 
 **Steps for a replay-breaking change:**
 
-1. **Bump the constant** to the next integer: `ENGINE_VERSION` in the game's `engine.ts` (Sort: `SORT_REPLAY_ENGINE_VERSION` in `replay.ts`).
+1. **Bump the constant** to the next integer: `ENGINE_VERSION` in the game's `engine.ts` (Sort: `SORT_REPLAY_ENGINE_VERSION` in `replay.ts`), and the game's entry in `CURRENT_ENGINE_VERSIONS` in `backend/games/engine_version.py`. The backend resolver takes its current version from that map, not from the app's constant (`backend/tests/test_engine_version.py` fails if the two differ), and registering the old version with `with_legacy` raises while the map still holds it.
 2. **Keep the old rules registered.** Frontend: in `replay.ts`, `REPLAY_ENGINES = replayEngines(...).withLegacy(<old>, <old rules>)`. Backend reader (where the game has one): `ENGINES = replay_engines(...).with_legacy(<old>, <old rules>)`. Do not delete or edit the old rules.
 3. **Keep the old fixture and add the new one.** Leave `<name>_v<old>.json` as it is (still listed at its old `engine_version`, still replayed by its test) and record the new rules as `<name>_v<new>.json`, listed at the new version, with a test that replays it.
 4. **Update `.github/replay-fixtures.json`**: add the new fixture entry and keep the old one. The guard fails a bump that changes the old fixture in place. Every listed fixture must be named by a test file, and every game keeps a fixture at its current version.
