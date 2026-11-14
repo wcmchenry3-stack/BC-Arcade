@@ -112,7 +112,7 @@ export default function FeedbackWidget({ visible, onClose, onSubmitted }: Props)
                 accessibilityLiveRegion="assertive"
                 accessibilityRole="alert"
               >
-                <Text style={[s.errorBannerText, { color: colors.error }]}>
+                <Text style={[s.errorBannerText, { color: colors.errorText }]}>
                   {error.kind === "rate_limit"
                     ? t("submit_error_rate_limit", {
                         seconds: error.retryAfterSeconds ?? 60,
@@ -182,7 +182,7 @@ export default function FeedbackWidget({ visible, onClose, onSubmitted }: Props)
               accessibilityRequired
             />
             {descError ? (
-              <Text style={[s.fieldError, { color: colors.error }]} accessibilityRole="alert">
+              <Text style={[s.fieldError, { color: colors.errorText }]} accessibilityRole="alert">
                 {descError}
               </Text>
             ) : (

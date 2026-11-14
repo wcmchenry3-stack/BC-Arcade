@@ -2,12 +2,12 @@ import { formatPL, plColor, winRatePct } from "../blackjackStatsModel";
 import { initialSessionStats } from "../../../game/blackjack/sessionStats";
 
 const en = (n: number) => n.toLocaleString("en-US");
-const colors = { bonusText: "BONUS", error: "ERROR", text: "TEXT" };
+const colors = { bonusText: "BONUS", errorText: "ERROR_TEXT", text: "TEXT" };
 
 describe("plColor", () => {
   it("returns bonus for positive, error for negative, text for zero", () => {
     expect(plColor(100, colors)).toBe("BONUS");
-    expect(plColor(-50, colors)).toBe("ERROR");
+    expect(plColor(-50, colors)).toBe("ERROR_TEXT");
     expect(plColor(0, colors)).toBe("TEXT");
   });
 });

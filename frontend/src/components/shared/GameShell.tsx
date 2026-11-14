@@ -162,7 +162,7 @@ export function GameShell({
       )}
       {!!error && (
         <Text
-          style={[styles.errorBanner, { color: colors.error }]}
+          style={[styles.errorBanner, { color: colors.errorText }]}
           accessibilityRole="alert"
           accessibilityLiveRegion="assertive"
         >
