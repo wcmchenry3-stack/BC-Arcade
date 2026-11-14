@@ -32,7 +32,7 @@ Saved options so far: Daily Word's win and loss B and C (recovered from the #366
 
 A snapshot of what the six games played before this story; each game's current table is in its doc.
 
-The six games' effects on `dev` total about 525 KB, but 321 KB of that is one file, `hearts-moon-shot.mp3` (10 s), shared by four games' wins and Yacht's jackpots, and 88 KB is `freecell-game-win.mp3` (Sort's win). Both are shared with the card games, so they are only deleted once no registry uses them (`freecell-game-win.mp3` was, in #3871, and `hearts-moon-shot.mp3` with `solitaire-invalid-move.ogg` in #3845).
+The six games' effects on `dev` total about 525 KB, but 321 KB of that is one file, `hearts-moon-shot.mp3` (10 s), shared by four games' wins and Yacht's jackpots, and 88 KB is `freecell-game-win.mp3` (Sort's win). Both are shared with the card games, so they are only deleted once no registry uses them (`freecell-game-win.mp3` was, in #3871, and `hearts-moon-shot.mp3` with `solitaire-invalid-move.ogg` in #3885).
 
 | File                         | Size      | Length  | Used by                                                     |
 | ---------------------------- | --------- | ------- | ----------------------------------------------------------- |
@@ -573,4 +573,4 @@ Twenty-three files added, none removed: Sort's sound files grow by 161,638 B (th
 | `sudoku-puzzle-complete.ogg`                 | — (borrowed 321,024 B) | 19,749 B                | 2.30 s |
 | **Total**                                    | 13,409 B               | 48,905 B                |        |
 
-The files on disk grow by 35,496 B (+48,905 B new, -13,409 B replaced). The bundle shrinks: no code requires `hearts-moon-shot.mp3` (321,024 B) or `solitaire-invalid-move.ogg` (5,956 B) any more, so Metro leaves them out, by 291,484 B net. Both files were deleted later, in #3845, once nothing referenced them (`ASSET-RIGHTS-AUDIT.md`, Section 2).
+The files on disk grow by 35,496 B (+48,905 B new, -13,409 B replaced). The bundle shrinks: no code requires `hearts-moon-shot.mp3` (321,024 B) or `solitaire-invalid-move.ogg` (5,956 B) any more, so Metro leaves them out, by 291,484 B net. Both files were deleted later, in #3885, once nothing referenced them (`ASSET-RIGHTS-AUDIT.md`, Section 2).

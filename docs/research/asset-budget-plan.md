@@ -101,19 +101,21 @@ The largest non-font file is `drawable-mdpi/assets_logo.png` (38,541 B), then `a
 
 ### Unreferenced and "not bundled" files
 
-The issue says the audit counts 39 "present but not bundled" files. The audit has been edited since (44, then 32, then edits by #3638 and #3711), and **none of them was in `dist/assets`**. Checked two ways: `node frontend/scripts/list-bundled-assets.mjs` listed 6 files under `frontend/assets/` that no code referenced (three more were deleted earlier: `sounds/freecell-invalid-move.mp3`, 25,584 B, in #3845's first part, and `sounds/freecell-game-win.mp3`, 87,960 B, in #3871), and none of those names appears in the store `dist/assets` (which contains no `.mp3` at all). The 24 icon masters in `cascade_icon_masters/` (10,352 KB on disk) are at the repo root, outside `frontend/`, so Metro cannot reach them. Answer: no, none of them was bundled after all.
+The issue says the audit counts 39 "present but not bundled" files. The audit has been edited since (44, then 32, then edits by #3638 and #3711), and **none of them was in `dist/assets`**. Checked two ways: `node frontend/scripts/list-bundled-assets.mjs` listed 6 files under `frontend/assets/` that no code referenced (two more were deleted earlier: `sounds/freecell-invalid-move.mp3`, 25,584 B, in #3870 (part of #3845), and `sounds/freecell-game-win.mp3`, 87,960 B, in #3871), and none of those names appears in the store `dist/assets` (which contains no `.mp3` at all). The 24 icon masters in `cascade_icon_masters/` (10,352 KB on disk) are at the repo root, outside `frontend/`, so Metro cannot reach them. Answer: no, none of them was bundled after all.
 
-The six were then deleted in #3845 (owner decision, #3881): `list-bundled-assets.mjs` now reports 0 unreferenced files under `frontend/assets/`, and the "present but not bundled" figure is the 24 icon masters only (it was 30 with the six). Packaged assets are unchanged: the bundled count stays 299 and shipped stays 334.
+The six were then deleted in two steps. #3885 (#3578 cleanup) deleted `sounds/hearts-moon-shot.mp3` and `sounds/solitaire-invalid-move.ogg`; #3845 (owner decision, #3881) deleted the other four. `list-bundled-assets.mjs` now reports 0 unreferenced files under `frontend/assets/`, and the "present but not bundled" figure is the 24 icon masters only (it was 30 with the six). Packaged assets are unchanged: the bundled count stays 299 and shipped stays 334.
 
-| File (under `frontend/assets/`, deleted in #3845) |   Bytes | Note                                                            |
-| ------------------------------------------------- | ------: | --------------------------------------------------------------- |
-| `sounds/hearts-moon-shot.mp3`                     | 321,024 | Third-party. Blackjack dropped it in #3581; Sudoku until #3775. |
-| `celestial-icons/milkyway.webp`                   |  47,058 | Cascade, not in any theme list                                  |
-| `cosmos-baked/milkyway.png`                       |  37,760 | Cascade, not in any theme list                                  |
-| `fruits-baked/pumpkin.png`                        |  16,162 | Cascade, not in any theme list                                  |
-| `sounds/solitaire-invalid-move.ogg`               |   5,956 | Replaced by shared `card-invalid-move.ogg`                      |
-| `fruit-icons/pumpkin.webp`                        |   4,856 | Cascade, not in any theme list                                  |
-| **Total**                                         | 432,816 |                                                                 |
+| File (under `frontend/assets/`)                       |   Bytes | Deleted in | Note                                                            |
+| ----------------------------------------------------- | ------: | ---------- | --------------------------------------------------------------- |
+| `sounds/hearts-moon-shot.mp3`                         | 321,024 | #3885      | Third-party. Blackjack dropped it in #3581; Sudoku until #3775. |
+| `celestial-icons/milkyway.webp`                       |  47,058 | #3845      | Cascade, not in any theme list                                  |
+| `cosmos-baked/milkyway.png`                           |  37,760 | #3845      | Cascade, not in any theme list                                  |
+| `fruits-baked/pumpkin.png`                            |  16,162 | #3845      | Cascade, not in any theme list                                  |
+| `sounds/solitaire-invalid-move.ogg`                   |   5,956 | #3885      | Replaced by shared `card-invalid-move.ogg`                      |
+| `fruit-icons/pumpkin.webp`                            |   4,856 | #3845      | Cascade, not in any theme list                                  |
+| **Total**                                             | 432,816 |            |                                                                 |
+
+#3845's four files total 47,058 + 37,760 + 16,162 + 4,856 = 105,836 B; #3885's two total 321,024 + 5,956 = 326,980 B.
 
 Deleting them saved **0 B of packaged assets** (they shipped nowhere) and 433 KB of repo weight.
 

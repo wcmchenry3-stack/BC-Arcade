@@ -688,19 +688,6 @@ entry below says "Original sound, synthesized" and gives the generator command a
 
 ## Solitaire (#831)
 
-### solitaire-foundation-complete.ogg
-
-- **Event:** All 13 cards of one suit placed on its foundation (fires up to 4×)
-- **Original filename:** `powerUp1.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Rising power-up tone. Signals the satisfying completion of a full suit.
-
 ---
 
 ## Puzzle, tile and dice games: shared synthesized sounds (#3578)

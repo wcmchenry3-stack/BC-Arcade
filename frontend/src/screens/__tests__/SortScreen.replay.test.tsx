@@ -10,6 +10,8 @@
  * game/sort/__tests__/replay.test.ts.
  */
 
+import fs from "fs";
+import path from "path";
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -21,6 +23,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { GameRecorder } from "../../game/_shared/gameRecorder";
 import { SORT_MAX_UNITS } from "../../game/_shared/eventQueueConfig";
+import { ORPHAN_GAME_ID_KEY } from "../../game/_shared/pendingGamesStore";
 import { applyPour, initState } from "../../game/sort/engine";
 import { rebuild, SORT_REPLAY_ENGINE_VERSION, type Action } from "../../game/sort/replay";
 import type { CatalogLevel } from "../../game/sort/catalog";
@@ -646,6 +649,26 @@ describe("SortScreen — replay across restarts (#3386)", () => {
       ...extra,
     });
 
+  it("Continue asks to resume only the session the board was saved with, never another level's (#3876)", async () => {
+    // Level 5's session A is still an orphan; the save holds level 7's board and its session.
+    restore({ replayUnit: 0, replayPending: 0, replayGameId: "level-7-session" });
+    const r = await renderScreen();
+    await continueLevel(r);
+    expect(mockResumeGame).toHaveBeenCalledTimes(1);
+    expect(mockResumeGame).toHaveBeenCalledWith("sort", {
+      [ORPHAN_GAME_ID_KEY]: "level-7-session",
+    });
+    await r.unmount();
+  });
+
+  it("Continue on a board with no saved session matches no orphan (#3876)", async () => {
+    restore({});
+    const r = await renderScreen();
+    await continueLevel(r);
+    expect(mockResumeGame).toHaveBeenCalledWith("sort", { [ORPHAN_GAME_ID_KEY]: "" });
+    await r.unmount();
+  });
+
   it("a resumed session carries the saved unit count on", async () => {
     restore({ replayUnit: 3, replayPending: 0, replayGameId: "killed-session" });
     mockResumeGame.mockReturnValue("killed-session");
@@ -848,5 +871,359 @@ describe("SortScreen — replay across restarts (#3386)", () => {
     await setAppState("background");
     await r.unmount();
     expect(savedMoves()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The golden level (#3389): one level played through the real screen, engine,
+// solver and recorder, pinned for the backend reader
+// ---------------------------------------------------------------------------
+
+/**
+ * `backend/tests/fixtures/sort_replay_golden.json` holds the events the app
+ * saves for catalog level 8 played to a win (`tests/test_sort_golden.py` rebuilds
+ * them). To regenerate after an intended change to what is recorded (bump the
+ * events' `v` if it is breaking), from `frontend/`:
+ *
+ *   UPDATE_SORT_REPLAY_FIXTURE=1 npx jest src/screens/__tests__/SortScreen.replay.test.tsx -t "golden level"
+ *
+ * then re-run the backend: `cd backend && python -m pytest tests/test_sort_golden.py`.
+ */
+const GOLDEN_FIXTURE = path.resolve(
+  __dirname,
+  "../../../../backend/tests/fixtures/sort_replay_golden.json"
+);
+const GOLDEN_LEVEL = 8;
+
+/** What the screen handed the recorder's sink for the level: lifecycle events and chunks, in order. */
+function capturedEvents(): SavedEvent[] {
+  const events: SavedEvent[] = [
+    { type: "game_started", data: mockStartGame.mock.calls[0]![2] },
+    ...mockEnqueueEvents.mock.calls.flatMap(([, saved]) => saved),
+  ];
+  const payload = mockCompleteGame.mock.calls[0]![2] as Record<string, unknown>;
+  events.push({ type: "game_ended", data: payload });
+  return events;
+}
+
+/**
+ * `t_ms` is wall-clock time: pinned to a plausible pace (a minute a chunk) so the
+ * file is stable. The recorder's own byte count `replay.b` follows `t_ms`'s width,
+ * so it is recomputed from the normalised chunks.
+ */
+function normalised(events: SavedEvent[]): SavedEvent[] {
+  const out = events.map((e) =>
+    e.type === "moves"
+      ? { type: e.type, data: { ...e.data, t_ms: (e.data.unit as number) * 60_000 } }
+      : { type: e.type, data: structuredClone(e.data) }
+  );
+  const ended = out.at(-1)!.data as { replay: { b: number } };
+  ended.replay.b = out
+    .filter((e) => e.type === "moves")
+    .reduce((n, e) => n + JSON.stringify(e.data).length, 0);
+  return out;
+}
+
+async function tapBottle(r: Rendered, index: number) {
+  await act(async () => {
+    await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${index + 1},`)));
+  });
+}
+
+/** Lets the real (async, time-sliced) solver run a little. */
+const settle = () => act(async () => new Promise<void>((resolve) => setTimeout(resolve, 30)));
+
+/** Waits until the real solver has answered: the Hint button is no longer busy (a slow CI machine may need several slices). */
+async function hintAnswered(r: Rendered) {
+  for (let slice = 0; slice < 200; slice += 1) {
+    await settle();
+    if (r.getByTestId("sort-hint-button").props.accessibilityState?.busy !== true) return;
+  }
+  throw new Error("the hint never answered");
+}
+
+/**
+ * A player taking the hint: asks three times (each answer replaces the last, and each shown is recorded), then taps
+ * the destination of the pour it shows. The hint selected the source, so one tap pours.
+ */
+async function takeHint(r: Rendered, from: number, to: number) {
+  for (let ask = 0; ask < 3; ask += 1) {
+    await press(r, "Hint");
+    await hintAnswered(r);
+  }
+  await tapBottle(r, to);
+  await land();
+  return [
+    [2, from, to],
+    [2, from, to],
+    [2, from, to],
+    [0, from, to],
+  ];
+}
+
+describe("SortScreen — the golden level (#3389)", () => {
+  /**
+   * Level 8 (`brrb | bbrg | grgg | _`), played the way a player might:
+   * a 2-unit pour taken back and made again, a hint taken, a 3-unit pour that is a mistake,
+   * a pour into the empty bottle that leaves the board unwinnable, a partial pour (1 of the
+   * 2 units on top: room for one), "back to last good move" (2 pours), a pour taken back
+   * with Undo, then the win by hints.
+   */
+  async function playGolden() {
+    const level = realCatalog.SORT_LEVELS.find((l) => l.id === GOLDEN_LEVEL)!;
+    playOnLevels([level]);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: GOLDEN_LEVEL,
+      currentLevelId: null,
+      currentState: null,
+    });
+    const r = await renderScreen();
+    await openLevel(r, GOLDEN_LEVEL);
+    const played: number[][] = [];
+    const pourAndKeep = async (from: number, to: number) => {
+      await pour(r, from, to);
+      played.push([0, from, to]);
+    };
+    await pourAndKeep(2, 3); // a false start: gg into the empty bottle...
+    await press(r, "Undo");
+    played.push([1]);
+    await pourAndKeep(2, 3); // ...and again: a multi-unit pour
+    await pourAndKeep(1, 3);
+    played.push(...(await takeHint(r, 2, 1)));
+    await pourAndKeep(3, 2); // a mistake, three units at once
+    await pourAndKeep(0, 3); // now unwinnable
+    await pourAndKeep(1, 0); // a partial pour: two r's on top, room for one
+    await press(r, "Hint");
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 4")).toBeTruthy());
+    played.push([3, 2]);
+    await pourAndKeep(1, 3); // two units into the empty bottle
+    await press(r, "Undo");
+    played.push([1]);
+    await pourAndKeep(1, 3);
+    played.push(...(await takeHint(r, 0, 1)));
+    played.push(...(await takeHint(r, 0, 3)));
+    played.push(...(await takeHint(r, 0, 1))); // the win
+    return { r, played };
+  }
+
+  it("records what was played, and the events equal the committed fixture", async () => {
+    const { r, played } = await playGolden();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].outcome).toBe("completed");
+
+    // The actions the test played are what the recorder saved (hints included), in order.
+    expect(entries()).toEqual(played);
+    expect(entries().length).toBeGreaterThan(25); // two chunks
+    const kinds = new Set(entries().map((a) => a[0]));
+    expect([...kinds].sort()).toEqual([0, 1, 2, 3]);
+
+    // The recorder's own byte count, before normalising rewrites it: it must equal the
+    // JSON length of the chunks it actually handed over.
+    const raw = capturedEvents();
+    const rawReplay = (raw.at(-1)!.data as { replay: { b: number } }).replay;
+    expect(rawReplay.b).toBe(
+      raw.filter((e) => e.type === "moves").reduce((n, e) => n + JSON.stringify(e.data).length, 0)
+    );
+
+    const events = normalised(raw);
+    expect(events.map((e) => e.type)).toEqual(["game_started", "moves", "moves", "game_ended"]);
+    if (process.env.UPDATE_SORT_REPLAY_FIXTURE === "1") {
+      // one event per line: a readable diff, a small file
+      const lines = events.map((e) => `  ${JSON.stringify(e)}`);
+      fs.writeFileSync(
+        GOLDEN_FIXTURE,
+        `{\n "level": ${GOLDEN_LEVEL},\n "events": [\n${lines.join(",\n")}\n ]\n}\n`
+      );
+    }
+    expect(JSON.parse(fs.readFileSync(GOLDEN_FIXTURE, "utf8"))).toEqual({
+      level: GOLDEN_LEVEL,
+      events,
+    });
+    await r.unmount();
+  });
+
+  it("rebuilds with the app's own rebuild to the level's result", async () => {
+    const { r } = await playGolden();
+    const level = realCatalog.SORT_LEVELS.find((l) => l.id === GOLDEN_LEVEL)!;
+    const rebuilt = rebuild(board(level.bottles), entries());
+    expect(rebuilt.error).toBeUndefined();
+    expect(rebuilt.state.isComplete).toBe(true);
+    const payload = mockCompleteGame.mock.calls[0]![2] as { moves: number; undos: number };
+    expect(rebuilt.state.moveCount).toBe(payload.moves);
+    expect(rebuilt.state.undosUsed).toBe(payload.undos);
+    await r.unmount();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Every way a level can end or pause: the log rebuilds to what the abandon (or win) reported
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — logs rebuild to the result they end with (#3389)", () => {
+  const level8 = () => realCatalog.SORT_LEVELS.find((l) => l.id === GOLDEN_LEVEL)!;
+  const opening8 = () => board(level8().bottles);
+  const solver = jest.requireActual(
+    "../../game/sort/solver"
+  ) as typeof import("../../game/sort/solver");
+
+  beforeEach(() => {
+    playOnLevels([level8()]);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: GOLDEN_LEVEL,
+      currentLevelId: null,
+      currentState: null,
+    });
+  });
+
+  /** The abandon the screen sent (`n`th call): its result block. */
+  const abandonResult = (n = 0) => mockCompleteGame.mock.calls[n]![2] as { moves: number };
+
+  /** The log of one session, rebuilt from the opening board. */
+  function rebuiltLog(gameId?: string) {
+    const log = savedMoves()
+      .filter((e) => gameId === undefined || e.gameId === gameId)
+      .flatMap((e) => e.data.m as Action[]);
+    return rebuild(opening8(), log);
+  }
+
+  it("reset mid-level: the abandoned level's log rebuilds to its moves; the fresh start begins at unit 1", async () => {
+    mockStartGame.mockReturnValueOnce("game-before").mockReturnValueOnce("game-after");
+    const r = await renderScreen();
+    await openLevel(r, GOLDEN_LEVEL);
+    await pour(r, 2, 3);
+    await pour(r, 1, 3);
+    await press(r, "Undo");
+    await pour(r, 1, 3); // 2 moves on the board, 1 undo used
+    await newGameFromMenu(r);
+
+    expect(mockCompleteGame.mock.calls[0]![1].outcome).toBe("abandoned");
+    const before = rebuiltLog("game-before");
+    expect(before.error).toBeUndefined();
+    expect(before.state.moveCount).toBe(abandonResult().moves);
+    expect(before.state.moveCount).toBe(2);
+    expect(before.state.undosUsed).toBe(1);
+
+    await pour(r, 2, 3); // the level again, from its opening board
+    await setAppState("background");
+    expect(savedMoves().at(-1)).toEqual({
+      gameId: "game-after",
+      data: expect.objectContaining({ unit: 1, m: [[0, 2, 3]] }),
+    });
+    const after = rebuiltLog("game-after");
+    expect(after.state.moveCount).toBe(1);
+    await r.unmount();
+  });
+
+  it("abandon with a pour still in the air: the pour is not in the log, and the log rebuilds to the abandon's moves", async () => {
+    const r = await renderScreen();
+    await openLevel(r, GOLDEN_LEVEL);
+    await pour(r, 2, 3);
+    mockHoldPours.on = true;
+    await tapPour(r, 1, 3); // in flight, never lands
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Back to levels"));
+    });
+    await land();
+    expect(mockCompleteGame.mock.calls[0]![1].outcome).toBe("abandoned");
+    const rebuilt = rebuiltLog();
+    expect(rebuilt.error).toBeUndefined();
+    expect(entries()).toEqual([[0, 2, 3]]);
+    expect(rebuilt.state.moveCount).toBe(abandonResult().moves);
+    expect(rebuilt.state.moveCount).toBe(1);
+    await r.unmount();
+  });
+
+  it("a hint answered after the board changed and the level was left leaves no step: the abandon still matches", async () => {
+    let resolveHint: (v: unknown) => void = () => undefined;
+    mockSolveBoard.mockImplementation(() => new Promise((resolve) => (resolveHint = resolve)));
+    const r = await renderScreen();
+    await openLevel(r, GOLDEN_LEVEL);
+    await pour(r, 2, 3);
+    await act(async () => {
+      void fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+    await pour(r, 1, 3); // the board changes while the solver runs
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Back to levels"));
+    });
+    await act(async () => {
+      resolveHint({ verdict: "solvable", moves: [{ from: 2, to: 1 }] }); // for a board long gone
+    });
+    await r.unmount();
+    expect(entries()).toEqual([
+      [0, 2, 3],
+      [0, 1, 3],
+    ]);
+    const rebuilt = rebuiltLog();
+    expect(rebuilt.state.moveCount).toBe(abandonResult().moves);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("a hint answered on the same board is a step that changes nothing: the abandon still matches", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 3 }] });
+    const r = await renderScreen();
+    await openLevel(r, GOLDEN_LEVEL);
+    await pour(r, 2, 3);
+    await press(r, "Hint");
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Back to levels"));
+    });
+    expect(entries()).toEqual([
+      [0, 2, 3],
+      [2, 1, 3],
+    ]);
+    const rebuilt = rebuiltLog();
+    expect(rebuilt.state.moveCount).toBe(abandonResult().moves);
+    expect(rebuilt.state.bottles).toEqual(applyPour(opening8(), 2, 3).bottles);
+    await r.unmount();
+  });
+
+  it("background then resume continues the log, and the whole level rebuilds complete to the win", async () => {
+    mockStartGame.mockReturnValue("game-1");
+    const first = await renderScreen();
+    await openLevel(first, GOLDEN_LEVEL);
+    await pour(first, 2, 3);
+    await pour(first, 1, 3);
+    await press(first, "Undo");
+    await setAppState("background"); // unit 1 is handed over, and the board saved with it
+    const saved = lastSave();
+    expect(saved).toEqual(expect.objectContaining({ replayUnit: 1, replayPending: 0 }));
+    await first.unmount();
+
+    // A killed process sends no abandon; the one an unmount sends is dropped here.
+    mockCompleteGame.mockClear();
+    storage.loadProgress.mockResolvedValue(saved);
+    mockResumeGame.mockReturnValue("game-1");
+    const second = await renderScreen();
+    await continueLevel(second, GOLDEN_LEVEL);
+
+    // Play on to the win from wherever the log has the board.
+    const log = () => rebuild(opening8(), entries());
+    for (const m of solver.solve(log().state)!) {
+      await pour(second, m.from, m.to);
+    }
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].outcome).toBe("completed");
+
+    expect(mockStartGame).toHaveBeenCalledTimes(1); // one session across both
+    expect(savedMoves().map((e) => [e.gameId, e.data.unit])).toEqual([
+      ["game-1", 1],
+      ["game-1", 2],
+    ]);
+    const rebuilt = log();
+    expect(rebuilt.error).toBeUndefined();
+    expect(rebuilt.state.isComplete).toBe(true);
+    const payload = mockCompleteGame.mock.calls[0]![2] as {
+      moves: number;
+      undos: number;
+      replay: { u: number };
+    };
+    expect(rebuilt.state.moveCount).toBe(payload.moves);
+    expect(rebuilt.state.undosUsed).toBe(payload.undos);
+    expect(payload.replay.u).toBe(2); // the recorder counts both units
+    await second.unmount();
   });
 });
