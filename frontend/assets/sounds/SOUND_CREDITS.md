@@ -354,20 +354,6 @@ Since #3563 the card and puzzle games' sound effects are being replaced with **o
 - **Generator:** `tools/assets/synth_arcade_sfx.py` (`python tools/assets/synth_arcade_sfx.py frontend/assets/sounds queen-of-spades-gong`), fixed seeds, so the decoded audio is reproducible.
 - **Recipe:** 1.5 s "dark gong": a low whoosh as she lands, the card set down, then an inharmonic gong-like ring (330 Hz).
 
-### hearts-moon-shot.mp3
-
-- **Event:** No game plays it any more (kept in the repo, not bundled). Sudoku, its last user, moved to `sudoku-puzzle-complete.ogg` with #3775; Yacht, 2048 and Mahjong moved off it with #3578, Daily Word with #3665, Blackjack with #3581 (now `result-blackjack.ogg`). Hearts' moon shot used it until #3563 (now `hearts-moon-howl.ogg`).
-- **Original filename:** u_it78ck90s3-orchestral-win-331233.mp3
-- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
-- **Creator:** u_it78ck90s3 on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-25
-- **Notes:** Orchestral win fanfare. Replaced original "wow" sting for a more triumphant moon-shot feel.
-- **Replaced:** kaykay12-wow-171498.mp3 (https://pixabay.com/sound-effects/wow-171498/) — swapped 2026-04-25
-
 ---
 
 ## FreeCell (#844)
@@ -714,31 +700,6 @@ entry below says "Original sound, synthesized" and gives the generator command a
 - **Commercial use:** Yes
 - **Download date:** 2026-04-26
 - **Notes:** Rising power-up tone. Signals the satisfying completion of a full suit.
-
-### solitaire-invalid-move.ogg
-
-- **Event:** No game plays it any more (kept in the repo, not bundled). Sudoku's error entered (`sudoku.errorEntered`) used it until #3775 (now `sudoku-error-entered.ogg`); Solitaire and FreeCell used it for a rejected move until #3563 (now `card-invalid-move.ogg`).
-- **Original filename:** `lowDown.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Descending digital tone. Accompanies the red flash on an invalid move.
-
-### solitaire-game-win (reuses hearts-moon-shot.mp3)
-
-- **Event:** Game complete (all 52 cards in foundations)
-- **Original filename:** (reuses `hearts-moon-shot.mp3` — see Hearts section above)
-- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
-- **Creator:** u_it78ck90s3 on Pixabay
-- **License:** Pixabay Content License
-- **License URL:** https://pixabay.com/service/license-summary/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Notes:** No longer used: Solitaire's game win plays `card-game-won.ogg` since #3563. The fanfare's other former users moved off it too (Yacht and 2048 with #3578, Blackjack with #3581, Sudoku with #3775): no game plays it now.
 
 ---
 
