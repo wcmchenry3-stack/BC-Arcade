@@ -4,12 +4,15 @@
  * Cascade uses) in Node, where every other Mahjong test stubs Skia out.
  *
  * What is real: the CPU raster surface, the canvas transform, the snapshot, the pixels, and
- * `tileFacesFor` itself (the face box, the `ceil(size * scale)` bitmap size, the disposal).
+ * `tileFacesFor` itself (the face box, the `ceil(size * scale)` bitmap size, flushing and disposing
+ * each surface, and returning the cached faces on a second call; all asserted below).
  * What is not: SVG parsing. CanvasKit 0.41 (both the default and the `full` build) has no SVG
  * module, and RN Skia's web API (`JsiSkia`) parses SVG with a DOM `<img>`, which Node lacks. So
  * the adapter below stands in for `Skia.SVG` / `canvas.drawSvg` only: `sharp` (librsvg, already a
  * devDependency) rasterises each face to the pixel size the surface will draw it at, and
- * `drawSvg` blits that into the real surface. A change to Skia's own SVG renderer is therefore
+ * `drawSvg` blits that into the real surface. librsvg is told to fill the box, so a face whose
+ * viewBox aspect differs from the face box would be stretched here where Skia would letterbox it
+ * (the tile assets share one aspect, so the references match). A change to Skia's own SVG renderer is therefore
  * not covered here; on-device compositing is not either (#3684 needed simulator screenshots,
  * #3801; fixed in #3864).
  *
@@ -69,6 +72,8 @@ const CASES = [
 ];
 
 let ck: CanvasKit;
+/** Surface calls seen by the adapter, to assert `tileFacesFor` flushes and disposes each one. */
+const surfaceCalls = { made: 0, flushed: 0, disposed: 0 };
 
 interface Svg {
   readonly source: string;
@@ -110,7 +115,9 @@ function makeSkia() {
       Make: (w: number, h: number) => {
         const surface = ck.MakeSurface(w, h); // a CPU raster surface
         if (!surface) return null;
+        surfaceCalls.made += 1;
         const canvas = surface.getCanvas();
+        const paint = new ck.Paint();
         let sx = 1;
         let sy = 1;
         return {
@@ -128,13 +135,20 @@ function makeSkia() {
                 bitmap,
                 ck.XYWHRect(0, 0, bitmap.width(), bitmap.height()),
                 ck.XYWHRect(0, 0, width, height),
-                new ck.Paint()
+                paint
               );
             },
           }),
-          flush: () => surface.flush(),
+          flush: () => {
+            surfaceCalls.flushed += 1;
+            surface.flush();
+          },
           makeImageSnapshot: () => surface.makeImageSnapshot(),
-          dispose: () => surface.delete(),
+          dispose: () => {
+            surfaceCalls.disposed += 1;
+            paint.delete();
+            surface.delete();
+          },
         };
       },
     },
@@ -184,8 +198,6 @@ afterAll(() => {
   globalThis.TextDecoder = expoTextDecoder;
 });
 
-beforeEach(() => resetTileFaces());
-
 describe("tileFaces raster on real CanvasKit (#3806)", () => {
   const faces = faceFiles();
 
@@ -194,12 +206,29 @@ describe("tileFaces raster on real CanvasKit (#3806)", () => {
     const faceH = cam.faceHeight;
     const pw = Math.ceil((faceW - 2 * ART_INSET) * ratio);
     const ph = Math.ceil((faceH - 2 * ART_INSET) * ratio);
+    let svgs: Svg[];
     let images: (CKImage | null)[];
+    let calls: typeof surfaceCalls;
 
     beforeAll(async () => {
-      const svgs = faces.map((f) => ({ source: f.source, bitmaps: new Map() }) as Svg);
+      svgs = faces.map((f) => ({ source: f.source, bitmaps: new Map() }) as Svg);
       await prepare(svgs, pw, ph);
+      resetTileFaces();
+      surfaceCalls.made = surfaceCalls.flushed = surfaceCalls.disposed = 0;
       images = tileFacesFor(svgs as never, faceW, faceH, ratio) as unknown as (CKImage | null)[];
+      calls = { ...surfaceCalls };
+    });
+
+    afterAll(() => {
+      for (const img of images) img?.delete();
+      for (const svg of svgs) for (const bitmap of svg.bitmaps.values()) bitmap.delete();
+    });
+
+    it("flushes and disposes one surface per face, and returns the cached faces on a second call", () => {
+      expect(calls).toEqual({ made: faces.length, flushed: faces.length, disposed: faces.length });
+      const again = tileFacesFor(svgs as never, faceW, faceH, ratio);
+      expect(again).toBe(images);
+      expect(surfaceCalls.made).toBe(faces.length); // no new rasterising
     });
 
     it.each(faces.map((f, i) => [f.id, i] as const))("%s: size, content, reference", (id, i) => {
