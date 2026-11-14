@@ -133,8 +133,49 @@ These keep the suite split-safe: when a large source file is split into modules,
 - **One test file per module.** Name it after the module it tests (`engine.ts` → `engine.test.ts`; a module of a package behind a barrel → `<file>.<module>.test.ts`, e.g. `starswarm/__tests__/engine.carrier.test.ts` for `starswarm/engine/carrier.ts` (#2988) — the tests keep importing from the barrel, so a move inside the package never touches them). When a test file passes ~1,000 lines, split it along the source's own seams (planned modules or exported-function clusters) by moving whole `describe` blocks: the test count and every test's full name stay the same. Helpers used by more than one of the new files go in `__tests__/helpers/<name>Fixtures.ts` (not a test file: `testMatch` only picks up `*.test.ts(x)`); single-file helpers stay local.
 - **No local re-implementations of shipped code.** A test imports the function it checks. If the logic is inline in a component, extract it into a pure module first (as `game/starswarm/drag.ts` was extracted from `Controls.tsx`) and test that; a copy in the test cannot fail when the shipped code regresses.
 - **Prefer targeted assertions to large snapshots.** Assert the roles, texts and theme tokens that matter (`getByRole`, `getByText`, `toHaveStyle({ color: colors.accent })`, `accessibilityState`) so a token change fails one line with a readable diff instead of regenerating a few thousand lines nobody reviews. A snapshot is fine for one small element or a pure value (`toMatchInlineSnapshot`); keep `.snap` files under a few hundred lines.
-- **Golden replay for seeded engines.** An engine with a seeded RNG gets a golden replay test before it is refactored: seed it, drive the public API with scripted input for N ticks, and compare a hash of the canonical state (keys sorted, non-integer numbers rounded to 6 decimals so Node/V8 float differences cannot move it) at checkpoints, plus exact integer gameplay fields, with a committed fixture (`starswarm/__tests__/goldenReplay.test.ts` and `__fixtures__/golden-replay-seed42.json`; re-record with `UPDATE_GOLDEN=1`). A pure-move refactor must leave the fixture byte-identical; a re-record is a behaviour change and the PR says why (the one sanctioned Star Swarm re-record is the `rng()` range fix of #2985). For replayable games a re-recorded fixture also needs an `engine_version` bump: see [Replay fixture version guard](CI-CHECKS.md#replay-fixture-version-guard-3911) (#3911).
+- **Golden replay for seeded engines.** An engine with a seeded RNG gets a golden replay test before it is refactored: seed it, drive the public API with scripted input for N ticks, and compare a hash of the canonical state (keys sorted, non-integer numbers rounded to 6 decimals so Node/V8 float differences cannot move it) at checkpoints, plus exact integer gameplay fields, with a committed fixture (`starswarm/__tests__/goldenReplay.test.ts` and `__fixtures__/golden-replay-seed42.json`; re-record with `UPDATE_GOLDEN=1`). A pure-move refactor must leave the fixture byte-identical; a re-record is a behaviour change and the PR says why (the one sanctioned Star Swarm re-record is the `rng()` range fix of #2985). For replayable games a re-recorded fixture also needs an `engine_version` bump: see [Replay fixture version guard](CI-CHECKS.md#replay-fixture-version-guard-3911) (#3911). What the bump keeps alive and when it can be removed: [Replay compatibility and sunset](#replay-compatibility-and-sunset) (#3908).
 - **Backend: same rules.** One `test_<module>.py` per module (`test_google_play.py`, `test_google_push_auth.py`, `test_google_rtdn.py`, `test_google_jobs.py`, `test_apple_store.py`, `test_apple_notifications.py` follow the `purchases/` seams of #2998). Shared plain helpers and fixtures for one area live in an underscore harness module (`tests/_google_iap_harness.py`, `tests/_apple_iap_harness.py`): import plain helpers from it, and pull its fixtures in with `pytest_plugins = ["tests._<area>_harness"]` (importing a fixture would trip ruff F811). Plugin fixtures are visible to every backend test module, so give them an area prefix (`google_gp`, `apple_verifier`). Register a new harness for assertion rewriting in `tests/conftest.py` (`pytest.register_assert_rewrite`). Store fakes stay in `google_play_fakes.py` / `apple_jws.py`.
+
+## Replay compatibility and sunset
+
+A stored game is replayed from its inputs (seed and moves), not from its stored outcome. So a rule change that makes the same inputs rebuild a different game breaks every stored game of that version. Policy (#3908): such a change bumps the game's `engine_version`, keeps the old rules and a frozen old-version fixture, and never re-records an old-version fixture to match new rules; a change that leaves outcomes unchanged is approved in `accepted_changes` (see the guard's docs). The guard in [Replay fixture version guard](CI-CHECKS.md#replay-fixture-version-guard-3911) enforces the pin.
+
+**Replay-breaking** means a change to what a recorded input sequence produces: the deal or shuffle, a move, scoring or merge rule, the draw order of an RNG. (A level's board is a catalog version, not an `engine_version`.) **Not replay-breaking:** UI, logging, uploads, and new fields in `game_started` that the rules do not read. A change that alters a fixture's file but not its outcome is approved in `accepted_changes` (see the guard's docs), not by a bump.
+
+**Steps for a replay-breaking change:**
+
+1. **Bump the constant** to the next integer: `ENGINE_VERSION` in the game's `engine.ts` (Sort: `SORT_REPLAY_ENGINE_VERSION` in `replay.ts`), and the game's entry in `CURRENT_ENGINE_VERSIONS` in `backend/games/engine_version.py`. The backend resolver takes its current version from that map, not from the app's constant (`backend/tests/test_engine_version.py` fails if the two differ), and registering the old version with `with_legacy` raises while the map still holds it.
+2. **Keep the old rules registered.** Frontend: in `replay.ts`, `REPLAY_ENGINES = replayEngines(...).withLegacy(<old>, <old rules>)`. Backend reader (where the game has one): `ENGINES = replay_engines(...).with_legacy(<old>, <old rules>)`. Do not delete or edit the old rules.
+3. **Keep the old fixture and add the new one.** Leave `<name>_v<old>.json` as it is (still listed at its old `engine_version`, still replayed by its test) and record the new rules as `<name>_v<new>.json`, listed at the new version, with a test that replays it.
+4. **Update `.github/replay-fixtures.json`**: add the new fixture entry and keep the old one. The guard fails a bump that changes the old fixture in place. Every listed fixture must be named by a test file, and every game keeps a fixture at its current version.
+
+**How readers treat a version.** Both resolvers (`frontend/src/game/_shared/replayEngine.ts` and `backend/games/engine_version.py`) give one of three answers:
+
+- `current`: replayed with today's rules.
+- `legacy`: an older version still registered, replayed with its frozen rules.
+- `incompatible`: anything else (an unknown or sunset version, a non-integer, `null`). Nothing is rebuilt; the reason reads `incompatible engine: engine_version X, this reader rebuilds Y`. A broken game is never shown as a plausible but wrong board.
+
+A `game_started` without `engine_version` is version 1 (`MISSING_ENGINE_VERSION`): builds from before #3909 recorded version-1 rules. A field that is present but `null` is incompatible, not missing.
+
+**Sunset.** Keep the old path for at least `REPLAY_RETENTION_DAYS` (30, `backend/settings.py`; see [DATA-INVENTORY §2a](DATA-INVENTORY.md#2a-replay-storage-budget)), counted from when the new version is the only one in production. Then, in a later change than the bump, make steps 1 and 2 together in one change:
+
+1. Delete the old-rules path (its `withLegacy` / `with_legacy` registration and its code) and the old `_v<old>` fixture.
+2. In `.github/replay-fixtures.json`, remove that fixture entry and add `"<old>": "<reason with a date YYYY-MM-DD or an issue #N>"` to the game's `retired_versions`. Removing the fixture before its version is listed in `retired_versions` fails the guard, and the guard rejects retiring a version in the same change that bumps past it.
+
+A game whose keep-list rows are never pruned has no automatic end to its window. Daily Word's `guess_submitted` is one (see [DATA-INVENTORY §2b](DATA-INVENTORY.md)): record a per-game decision (keep those logs, or accept that old games read as incompatible) before its sunset change. Star Swarm is outside this policy: it records no `engine_version`, and its stored data carries its own `v` / `ev` fields and is never re-run through the engine.
+
+**Checklist for a new recorded game:**
+
+1. Record `engine_version` in `game_started`, from the exported constant through the recorder's helper (never a literal at the call site).
+2. Export a top-level `export const ENGINE_VERSION = 1;` from `engine.ts`. `backend/tests/test_engine_version.py` reads it by pattern from the game's `engine.ts` (Sort's is `SORT_REPLAY_ENGINE_VERSION` in `replay.ts`).
+3. Export `REPLAY_ENGINES = replayEngines("<game>", ENGINE_VERSION, <rules>)` from `replay.ts`, and, if the backend reads the game's stored events, `ENGINES = replay_engines("<game>", <rules>)` in its reader.
+4. Add the game to `CURRENT_ENGINE_VERSIONS` in `backend/games/engine_version.py`, and to the hand-maintained `CASES` table in `frontend/src/game/_shared/__tests__/replayEngines.games.test.ts`.
+5. Register the game's recorded events in the event registry: see [Adding an event type](GAME-CONTRACT.md#adding-an-event-type) and [DATA-INVENTORY §2c](DATA-INVENTORY.md#2c-recorded-event-types-registry-checklist).
+6. Pin a golden fixture at `engine_version` 1 and list it under the game in `.github/replay-fixtures.json`, with a test that replays it.
+
+Read this with the [new-game checklist in GAME-CONTRACT.md](GAME-CONTRACT.md#3-new-game-checklist), which lists the rest of a new game's steps; the two should be read together.
+
+Cascade (#3858) must do all six when its recorder lands.
 
 ## Project-specific test cases
 
