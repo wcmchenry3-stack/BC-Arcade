@@ -65,3 +65,16 @@ beforeEach(() => {
     )
     .__resetPersonalBestForTests();
 });
+
+// AsyncStorage's methods are jest.fn()s with in-memory implementations, and
+// spyOn(...).mockRestore() on one strips that implementation (#3895). Re-install
+// any stripped default so a restore in one test cannot make the next test's
+// storage reads return undefined. A file that supplies its own AsyncStorage mock
+// has no such helper, so the call is optional.
+beforeEach(() => {
+  (
+    jest.requireMock("@react-native-async-storage/async-storage") as {
+      __restoreDefaults?: () => void;
+    }
+  ).__restoreDefaults?.();
+});
