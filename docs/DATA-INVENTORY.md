@@ -268,7 +268,11 @@ wire; on the device at most one ~30 B write per game, ever (4 games, ≈120 B to
 seeded game has a local best, so it is not seeded again). Kill switch without an app release: backend env
 `PERSONAL_BEST_SEED_ENABLED=false` (Render), served on the catalog the app already fetches as
 `personal_best_seed: {enabled}` (≈ 40 B), held in AsyncStorage (`personalBestSeedDial.v1`, `{e, t}`); a value no
-valid fetch confirmed for 7 days falls back to the default (on). Off, nothing is seeded and the local best is unchanged.
+valid fetch confirmed for 7 days falls back to the default (on). With no value held or fetched yet (a fresh install whose
+catalog has not landed) nothing is seeded: it fails toward the kill switch and the next stats response retries. Off, nothing
+is seeded and the local best is unchanged. A server value outside 1..10,000,000 (the backend's counter bound) is ignored,
+and nothing is seeded while "Delete my data" runs. Local bests, seeded ones included, survive "Delete my data" by current
+policy (local saves and stats stay until uninstall); whether they should be cleared is owner-decision issue #3888.
 
 Note for analytics: keep-list types (Star Swarm `wave_completed`, Daily Word `guess_submitted`) upload from every
 session whatever the sample rate. The sample applies to every other non-lifecycle event: at the current 100 % (migration 0045) every session uploads its full replay, and once the rate is lowered (by hand or by the 90 % turn-down) only the sampled

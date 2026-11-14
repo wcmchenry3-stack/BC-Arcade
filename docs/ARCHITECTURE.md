@@ -653,7 +653,11 @@ isNewBest }`, and `judgeResult(game, prior, value)` for screens that read
   Kill switch: backend env `PERSONAL_BEST_SEED_ENABLED` (Render), served on
   `GET /games/catalog` as `personal_best_seed: {enabled}` and taken by
   `replayDialSync` (held as `personalBestSeedDial.v1`; default on after 7 days
-  unconfirmed). Volume and cap: [DATA-INVENTORY.md](DATA-INVENTORY.md).
+  unconfirmed; with no value held or fetched yet nothing is seeded, the next
+  stats response retries). A server value outside 1..10,000,000 is ignored, and
+  nothing is seeded while "Delete my data" runs (`deletingData.ts`, set before
+  its network delete). Local bests survive that deletion by current policy
+  (#3888). Volume and cap: [DATA-INVENTORY.md](DATA-INVENTORY.md).
 - **Fail-safe.** Nothing rejects. A record that can't be parsed reads as no
   best (a Sentry warning, and the record is removed); a value that can't be a
   best is dropped. A record in a format version this build doesn't know (a

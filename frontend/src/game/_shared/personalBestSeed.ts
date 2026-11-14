@@ -29,8 +29,11 @@
  * (backend env `PERSONAL_BEST_SEED_ENABLED`, Render), taken by `replayDialSync` on the fetch it
  * already makes (once per launch, at most hourly in the foreground). Off, nothing is seeded.
  * Held in AsyncStorage (`personalBestSeedDial.v1`, `{e, t}`; read once per process) so an "off"
- * holds across launches; a value no valid fetch confirmed for 7 days, or none at all, is the
- * default: on.
+ * holds across launches; a value no valid fetch confirmed for 7 days is the default: on. With no
+ * value held or fetched yet (a fresh install whose catalog has not landed) nothing is seeded:
+ * it fails toward the kill switch, and the next stats response retries.
+ * A server value outside 1..`MAX_SEED_VALUE` is ignored. While "Delete my data" runs
+ * (`deletingData.ts`) nothing is seeded.
  *
  * Cost (CLAUDE.md): no server I/O of its own: zero extra requests, zero bytes on the wire. On
  * device, per stats response: a cached read per seedable game (4), and at most one ~30-byte
@@ -50,6 +53,9 @@ const SEEDABLE: Readonly<Partial<Record<PersonalBestGame, string>>> = {
   starswarm: "score",
   twenty48: "score",
 };
+
+/** The most a seeded best can be: the backend's counter bound (`starswarm.models.MAX_COUNTER`). */
+export const MAX_SEED_VALUE = 10_000_000;
 
 const STORAGE_KEY = "personalBestSeedDial.v1";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -74,7 +80,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** Whether seeding is on at `now` (see the header). */
 export function isSeedEnabled(now: number = Date.now()): boolean {
-  if (held === null) return true;
+  // No value held or fetched yet (a fresh install whose catalog has not landed): fail toward the
+  // kill switch. The next stats response retries.
+  if (held === null) return false;
   const age = now - held.confirmedAt;
   // Stale, or dated in the future (the clock moved back): the default.
   return age >= 0 && age < SEED_DIAL_MAX_AGE_MS ? held.enabled : true;
@@ -136,6 +144,8 @@ export async function seedPersonalBests(
       if (!isRecord(entry) || entry.best_label_key !== labelKey) continue;
       const value = entry.best_value;
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      // A hostile or buggy server must not plant an unbeatable (or zero-ish) best.
+      if (value < 1 || value > MAX_SEED_VALUE) continue;
       if (!isCurrent()) return;
       if ((await getBest(game)) > 0) continue;
       // Only written while `isCurrent()` still holds, checked again inside the write itself.

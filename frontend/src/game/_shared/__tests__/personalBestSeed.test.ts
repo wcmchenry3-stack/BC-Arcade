@@ -11,6 +11,7 @@ import {
   acceptSeedDial,
   hydrateSeedDial,
   isSeedEnabled,
+  MAX_SEED_VALUE,
   SEED_DIAL_MAX_AGE_MS,
   seedPersonalBests,
 } from "../personalBestSeed";
@@ -38,6 +39,8 @@ beforeEach(async () => {
   jest.clearAllMocks();
   __resetPersonalBestForTests();
   __resetPersonalBestSeedForTests();
+  // The catalog has landed with the switch on (the first-launch case is tested below).
+  await acceptSeedDial({ personal_best_seed: { enabled: true } }, Date.now());
 });
 
 describe("seeding", () => {
@@ -178,11 +181,54 @@ describe("kill switch", () => {
     expect(isSeedEnabled()).toBe(false);
   });
 
-  it("the default with no dial known is on, and a corrupt stored dial is the default", async () => {
-    expect(isSeedEnabled()).toBe(true);
+  it("no dial known (fresh install, catalog not landed) or a corrupt stored dial: off", async () => {
+    __resetPersonalBestSeedForTests();
+    expect(isSeedEnabled()).toBe(false);
     await AsyncStorage.setItem(DIAL_KEY, "{not json");
     await hydrateSeedDial();
-    expect(isSeedEnabled()).toBe(true);
+    expect(isSeedEnabled()).toBe(false);
+  });
+});
+
+describe("first launch: the catalog has not landed yet", () => {
+  it("with no dial yet nothing is seeded; once it arrives enabled, the next response seeds", async () => {
+    __resetPersonalBestSeedForTests();
+    await AsyncStorage.removeItem(DIAL_KEY); // a fresh install: nothing stored either
+    await seedPersonalBests(FULL);
+    expect(await AsyncStorage.getItem(storageKey("cascade"))).toBeNull();
+
+    await acceptSeedDial({ personal_best_seed: { enabled: true } }, Date.now());
+    await seedPersonalBests(FULL);
+    expect(await getBest("cascade")).toBe(900);
+  });
+
+  it("with no dial yet, then a dial that arrives off: it never seeds", async () => {
+    __resetPersonalBestSeedForTests();
+    await AsyncStorage.removeItem(DIAL_KEY); // a fresh install: nothing stored either
+    await seedPersonalBests(FULL);
+    await acceptSeedDial({ personal_best_seed: { enabled: false } }, Date.now());
+    await seedPersonalBests(FULL);
+    await seedPersonalBests(FULL);
+    for (const g of ["cascade", "twenty48", "starswarm", "freecell"] as const) {
+      expect(await AsyncStorage.getItem(storageKey(g))).toBeNull();
+    }
+  });
+});
+
+describe("server values out of range are ignored", () => {
+  it("rejects values above the counter bound or below 1, accepts the bound itself", async () => {
+    await seedPersonalBests(
+      stats({
+        cascade: { best_value: 1e300, best_label_key: "score" },
+        twenty48: { best_value: MAX_SEED_VALUE + 1, best_label_key: "score" },
+        starswarm: { best_value: MAX_SEED_VALUE, best_label_key: "score" },
+        freecell: { best_value: 0.4, best_label_key: "moves" },
+      })
+    );
+    expect(await getBest("cascade")).toBe(0);
+    expect(await getBest("twenty48")).toBe(0);
+    expect(await getBest("starswarm")).toBe(MAX_SEED_VALUE);
+    expect(await getBest("freecell")).toBe(0);
   });
 });
 

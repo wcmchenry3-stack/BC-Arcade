@@ -32,6 +32,7 @@ import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
 import { forceClearSessionTags } from "../game/_shared/sessionTags";
 import { statsApi } from "../api/stats";
 import { clearMyStatsCache } from "../hooks/useMyStats";
+import { setDeletingMyData } from "../game/_shared/deletingData";
 import { clearDisplayName } from "../game/_shared/displayName";
 import { clearDisplayNameSync, forgetSyncedDisplayName } from "../game/_shared/displayNameSync";
 import { isStoreBuild } from "../game/_shared/buildFlavour";
@@ -79,6 +80,9 @@ export default function SettingsScreen() {
 
   const handleDeleteData = async () => {
     setDeleteConfirmVisible(false);
+    // Before anything is sent: a stats response landing from here on is not remembered or
+    // seeded into the personal best (#3802). The generation bump below comes too late for it.
+    setDeletingMyData(true);
     try {
       // First, so a name sync in flight can't recreate the player's name on
       // the server after the delete (#2624).
@@ -114,6 +118,8 @@ export default function SettingsScreen() {
         tags: { subsystem: "settings", op: "deleteData" },
       });
       deleteErrorToast.show();
+    } finally {
+      setDeletingMyData(false);
     }
   };
 

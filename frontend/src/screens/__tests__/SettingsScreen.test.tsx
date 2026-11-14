@@ -1,6 +1,7 @@
 import React from "react";
 import { Linking } from "react-native";
 import * as Sentry from "@sentry/react-native";
+import { isDeletingMyData } from "../../game/_shared/deletingData";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SettingsScreen from "../SettingsScreen";
@@ -262,6 +263,23 @@ describe("SettingsScreen", () => {
     await fireEvent.press(screen.getByTestId("delete-data-confirm"));
     await waitFor(async () => expect(await AsyncStorage.getItem(UPCOMING_KEY)).toBeNull());
     expect(await AsyncStorage.getItem(STATUS_KEY)).toBeNull();
+  });
+
+  it("Delete my data marks the data as being deleted before the server delete is sent, and unmarks it after, failed or not (#3802)", async () => {
+    const { statsApi } = jest.requireMock("../../api/stats");
+    const seen: boolean[] = [];
+    (statsApi.deleteMyData as jest.Mock).mockImplementationOnce(async () => {
+      seen.push(isDeletingMyData());
+      throw new Error("offline");
+    });
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() =>
+      expect(screen.getByText("Deletion failed — please try again")).toBeTruthy()
+    );
+    expect(seen).toEqual([true]);
+    expect(isDeletingMyData()).toBe(false);
   });
 
   it("Delete my data forgets the stats screen's remembered /stats/me (#2635)", async () => {

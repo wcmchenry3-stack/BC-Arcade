@@ -8,7 +8,12 @@ import type { StatsResponse } from "../../../api/types";
 import { fetchAndRememberMyStats, clearMyStatsCache } from "../../../hooks/useMyStats";
 import { getOrCreateSessionId } from "../session";
 import { __resetPersonalBestForTests, getBest, storageKey } from "../personalBest";
-import { __resetPersonalBestSeedForTests, isSeedEnabled } from "../personalBestSeed";
+import { setDeletingMyData } from "../deletingData";
+import {
+  __resetPersonalBestSeedForTests,
+  acceptSeedDial,
+  isSeedEnabled,
+} from "../personalBestSeed";
 import { __resetReplayDialSyncForTests, refresh } from "../replayDialSync";
 
 const STATS = {
@@ -27,6 +32,8 @@ beforeEach(async () => {
   __resetPersonalBestForTests();
   __resetPersonalBestSeedForTests();
   __resetReplayDialSyncForTests();
+  // The catalog has landed with the switch on.
+  await acceptSeedDial({ personal_best_seed: { enabled: true } }, Date.now());
 });
 
 describe("a kept /stats/me response", () => {
@@ -76,6 +83,34 @@ describe("Delete my data between the check and the write", () => {
   });
 });
 
+describe("Delete my data in flight", () => {
+  it("a stats response that lands while the delete request is pending seeds nothing", async () => {
+    await getOrCreateSessionId();
+    let finishFetch: (r: StatsResponse) => void = () => {};
+    const pending = fetchAndRememberMyStats(
+      () => new Promise<StatsResponse>((resolve) => (finishFetch = resolve))
+    );
+    setDeletingMyData(true); // handleDeleteData, before statsApi.deleteMyData() is sent
+    finishFetch(STATS);
+    await pending;
+    setDeletingMyData(false);
+    expect(await AsyncStorage.getItem(storageKey("cascade"))).toBeNull();
+  });
+
+  it("the flag turning on during the seed's own reads blocks the write", async () => {
+    await getOrCreateSessionId();
+    const getMany = jest.mocked(AsyncStorage.getMany);
+    const real = getMany.getMockImplementation();
+    getMany.mockImplementationOnce(async (keys) => {
+      setDeletingMyData(true);
+      return real ? real(keys) : {};
+    });
+    await fetchAndRememberMyStats(() => Promise.resolve(STATS));
+    setDeletingMyData(false);
+    expect(await AsyncStorage.getItem(storageKey("cascade"))).toBeNull();
+  });
+});
+
 describe("the catalog fetch carries the switch", () => {
   it("takes personal_best_seed.enabled=false, and seeding then stops", async () => {
     __resetReplayDialSyncForTests({
@@ -91,5 +126,15 @@ describe("the catalog fetch carries the switch", () => {
     __resetReplayDialSyncForTests({ api: catalogApi(null, false) });
     await refresh();
     expect(isSeedEnabled()).toBe(true);
+  });
+
+  it("a failed catalog fetch with no switch held yet leaves seeding off", async () => {
+    __resetPersonalBestSeedForTests();
+    await AsyncStorage.removeItem("personalBestSeedDial.v1"); // a fresh install
+    __resetReplayDialSyncForTests({ api: catalogApi(null, false) });
+    await refresh();
+    expect(isSeedEnabled()).toBe(false);
+    await fetchAndRememberMyStats(() => Promise.resolve(STATS));
+    expect(await getBest("cascade")).toBe(0);
   });
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/react-native";
 import { statsApi, type StatsResponse } from "../api/stats";
+import { isDeletingMyData } from "../game/_shared/deletingData";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { ApiError, isNetworkError } from "../game/_shared/httpClient";
 import { saveLastKnownStreak } from "../game/_shared/lastKnownStreak";
@@ -81,8 +82,9 @@ export function myStatsToken(): MyStatsToken {
 /** Keep `response` for the stats screen, unless the cache was cleared or the session changed since `token`. */
 export async function rememberMyStats(response: StatsResponse, token: MyStatsToken): Promise<void> {
   try {
+    if (isDeletingMyData()) return;
     const [then, now] = await Promise.all([token.sessionId, getSessionIdIfAny()]);
-    if (then != null && then === now && token.generation === generation) {
+    if (then != null && then === now && token.generation === generation && !isDeletingMyData()) {
       cache = { sessionId: now, response };
       // Kept across launches for Home's streak badge when offline (#3226). A
       // server that predates the streak omits the field: nothing to keep.
@@ -93,7 +95,10 @@ export async function rememberMyStats(response: StatsResponse, token: MyStatsTok
       // (#3802). Only for the session it was fetched for, so never from a deleted player's data.
       // The guard is re-checked right before each write: "Delete my data" bumps the generation
       // (and clears the session) while the awaits above and the seed's own reads are in flight.
-      await seedPersonalBests(response, () => token.generation === generation);
+      await seedPersonalBests(
+        response,
+        () => token.generation === generation && !isDeletingMyData()
+      );
     }
   } catch {
     // Nothing remembered: the stats screen fetches for itself.
