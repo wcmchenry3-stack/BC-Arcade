@@ -105,13 +105,11 @@ The issue says the audit counts 39 "present but not bundled" files. Today's coun
 
 | File (under `frontend/assets/`)     |   Bytes | Note                                                            |
 | ----------------------------------- | ------: | --------------------------------------------------------------- |
-| `sounds/hearts-moon-shot.mp3`       | 321,024 | Third-party. Blackjack dropped it in #3581; Sudoku until #3775. |
 | `celestial-icons/milkyway.webp`     |  47,058 | Cascade, not in any theme list                                  |
 | `cosmos-baked/milkyway.png`         |  37,760 | Cascade, not in any theme list                                  |
 | `fruits-baked/pumpkin.png`          |  16,162 | Cascade, not in any theme list                                  |
-| `sounds/solitaire-invalid-move.ogg` |   5,956 | Replaced by shared `card-invalid-move.ogg`                      |
 | `fruit-icons/pumpkin.webp`          |   4,856 | Cascade, not in any theme list                                  |
-| **Total**                           | 432,816 |                                                                 |
+| **Total**                           | 105,836 |                                                                 |
 
 Deleting them saves **0 B of packaged assets** (they ship nowhere) and 433 KB of repo weight. They are legitimate "delete when the owner agrees" cleanups (rights audit rows would change), not budget wins.
 
