@@ -105,7 +105,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
     if (outcome === "comeback") return colors.accentText;
     if (outcome === "completed") return colors.bonusText;
     if (outcome === "abandoned") return colors.textMuted;
-    return colors.error;
+    return colors.errorText;
   }
 
   return (
@@ -155,7 +155,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                     sessionStats.plChips >= 0
                       ? t("stats.netPLPositive", { amount: sessionStats.plChips })
                       : t("stats.netPLNegative", { amount: sessionStats.plChips }),
-                  valueColor: sessionStats.plChips >= 0 ? colors.bonusText : colors.error,
+                  valueColor: sessionStats.plChips >= 0 ? colors.bonusText : colors.errorText,
                 },
               ]}
             />

@@ -30,8 +30,6 @@
   "a11y.hintDestination": "Hinweis: hier hineingießen",
   "settings.colorblindMode": "Farbenblind-Modus",
   "settings.colorblindModeHint": "Zeigt zusätzlich zur Farbe ein Symbol auf jeder Kugel",
-  "error.loadFailed": "Dieses Level konnte nicht geladen werden.",
-  "error.submitRetry": "Wiederholen",
   "levelSelect.title": "Level wählen",
   "levelSelect.continue": "Level {{level}} fortsetzen",
   "levelSelect.locked": "Gesperrt",

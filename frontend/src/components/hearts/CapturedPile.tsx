@@ -109,7 +109,10 @@ export function OpponentCapturedPile({ cards, seatLabel }: OpponentProps) {
       </View>
       {points > 0 && (
         <Text
-          style={[styles.oppBadge, { color: colors.error, backgroundColor: alpha13(colors.error) }]}
+          style={[
+            styles.oppBadge,
+            { color: colors.errorText, backgroundColor: alpha13(colors.error) },
+          ]}
         >
           {`${scoredCount} · +${points}`}
         </Text>

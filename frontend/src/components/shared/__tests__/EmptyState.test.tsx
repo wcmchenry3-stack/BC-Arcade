@@ -36,10 +36,10 @@ describe("EmptyState", () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it("colors an error message with the theme error color", async () => {
+  it("colors an error message with the theme errorText color", async () => {
     await renderState({ kind: "error", message: "Broken" });
     const color = StyleSheet.flatten(screen.getByText("Broken").props.style).color;
-    expect([dark.error, light.error]).toContain(color);
+    expect([dark.errorText, light.errorText]).toContain(color);
   });
 
   it("colors an empty message with the muted text color", async () => {

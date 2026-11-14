@@ -17,6 +17,12 @@ import {
   resetDragDiagnosticsForTests,
 } from "../dragDiagnostics";
 import type { GhostOffsetReport } from "../dragDiagnostics";
+import {
+  formatDragDebugResult,
+  getDragDebugResult,
+  resetDragDebugForTests,
+  setDragDebugEnabled,
+} from "../dragDebug";
 
 const REPORT: GhostOffsetReport = {
   failKind: "render",
@@ -390,5 +396,66 @@ describe("drag.ghostCheck breadcrumb (#3528)", () => {
         },
       }),
     ]);
+  });
+});
+
+describe("debug overlay result line details (#3896)", () => {
+  beforeEach(() => {
+    resetDragDebugForTests();
+    setDragDebugEnabled(true);
+  });
+  afterEach(() => resetDragDebugForTests());
+
+  const line = () => {
+    const r = getDragDebugResult();
+    if (!r) throw new Error("no overlay result recorded");
+    return formatDragDebugResult(r);
+  };
+
+  it("a render fail shows at, measures and msSinceStart", () => {
+    recordGhostOffset(
+      { ...REPORT, at: "end", measures: 2, msSinceStart: 340.4 },
+      "freecell",
+      "tableau"
+    );
+    expect(line()).toBe("drag-check: FAIL render Δ(0,120) at=end m=2 t=+340ms");
+    expect(line()).toMatch(/^drag-check: FAIL.*/);
+  });
+
+  it("a measureSpace fail keeps the surface offset and adds the details", () => {
+    recordGhostOffset(
+      {
+        ...REPORT,
+        failKind: "measureSpace",
+        surfaceOffsetX: 3,
+        surfaceOffsetY: 60,
+        at: "update",
+        measures: 1,
+        msSinceStart: 140,
+      },
+      "freecell",
+      "tableau"
+    );
+    expect(line()).toBe("drag-check: FAIL measureSpace Δ(3,60) at=update m=1 t=+140ms");
+  });
+
+  it("an unmeasured ghost shows its measures and the ms to the verdict", () => {
+    recordGhostCheck(
+      {
+        status: "unmeasured",
+        deltaX: 0,
+        deltaY: 0,
+        deltaMeasureX: 0,
+        deltaMeasureY: 0,
+        why: "nullMeasure",
+        attempts: 3,
+        measures: 2,
+        mountMs: 120,
+        endMs: 600,
+      },
+      "freecell",
+      "tableau"
+    );
+    expect(line()).toBe("drag-check: unmeasured nullMeasure a=3 m=2 mount=+120ms end=+600ms");
   });
 });

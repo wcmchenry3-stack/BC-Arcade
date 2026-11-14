@@ -86,7 +86,7 @@ export function DockButton({
       : kind === "secondary"
         ? colors.secondaryText
         : kind === "danger"
-          ? colors.error
+          ? colors.errorText
           : colors.text;
   return (
     <Pressable

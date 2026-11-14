@@ -30,8 +30,6 @@
   "a11y.hintDestination": "Indice : verse ici",
   "settings.colorblindMode": "Mode daltonien",
   "settings.colorblindModeHint": "Affiche un symbole sur chaque bille en plus de la couleur",
-  "error.loadFailed": "Impossible de charger ce niveau.",
-  "error.submitRetry": "Réessayer",
   "levelSelect.title": "Choisir un niveau",
   "levelSelect.continue": "Continuer le niveau {{level}}",
   "levelSelect.locked": "Verrouillé",

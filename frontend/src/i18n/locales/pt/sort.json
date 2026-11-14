@@ -30,8 +30,6 @@
   "a11y.hintDestination": "Dica: despeje aqui",
   "settings.colorblindMode": "Modo Daltônico",
   "settings.colorblindModeHint": "Mostra um símbolo em cada bola além da cor",
-  "error.loadFailed": "Não foi possível carregar este nível.",
-  "error.submitRetry": "Repetir",
   "levelSelect.title": "Escolha um Nível",
   "levelSelect.continue": "Continuar Nível {{level}}",
   "levelSelect.locked": "Bloqueado",

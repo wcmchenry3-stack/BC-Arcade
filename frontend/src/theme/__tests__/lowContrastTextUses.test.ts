@@ -1,18 +1,19 @@
 /**
- * Guards #3754 / #3755 / #3819: green (`colors.bonus`), teal (`colors.accent`), purple
+ * Guards #3754 / #3755 / #3819 / #3846: error red (`colors.error`; text uses `errorText`), green (`colors.bonus`), teal (`colors.accent`), purple
  * (`colors.secondary`), lime (`colors.tertiary`) and gold (`colors.celebration`, `#ffd700`) must not
  * colour TEXT, because in the light theme they read 1.2-4.4:1 on cream. Text uses `bonusText` /
- * `accentText` / `secondaryText` / `tertiaryText` / `goldText` (and `warnText` for the amber);
+ * `accentText` / `secondaryText` / `tertiaryText` / `goldText` / `errorText` (and `warnText` for the amber);
  * icons, borders, rings and fills keep the raw token (3:1 non-text rule).
  *
  * A TypeScript AST scan of every non-test source file under `src`. It flags a style property named
  * `color` (the text colour on a <Text>; `borderColor`, `backgroundColor`, `tintColor` and so on are
  * other names) whose value, over any number of lines, mentions:
- *   - `colors.accent` / `bonus` / `secondary` / `tertiary` / `celebration` (also `c.accent`,
+ *   - `colors.accent` / `bonus` / `secondary` / `tertiary` / `celebration` / `error` (also `c.accent`,
  *     `palette.bonus`, `colors["bonus"]`);
  *   - a raw amber / gold constant (`BLACKJACK_CHIPS_LOW`, `MAHJONG_BORDER_SELECTED`);
  *   - a destructured `accent` / `bonus` / ... binding (`const { accent } = colors`);
- *   - a local alias of one of those (`const acc = colors.accent; ... color: acc`).
+ *   - a local alias of one of those (`const acc = colors.accent; ... color: acc`, or a bare
+ *     `let c; c = colors.error;`).
  * Comments are never looked at.
  *
  * Exempt: a GameActionBar action (an object with an `icon`) whose `color` resolves to
@@ -34,7 +35,7 @@ import { join, relative } from "path";
 import ts from "typescript";
 
 const SRC = join(__dirname, "../..");
-const RAW = new Set(["accent", "bonus", "secondary", "tertiary", "celebration"]);
+const RAW = new Set(["accent", "bonus", "secondary", "tertiary", "celebration", "error"]);
 /** Raw gold / amber constants (theme.constants / theme.mahjong): not text colours in light. */
 const RAW_CONSTS = new Set(["BLACKJACK_CHIPS_LOW", "MAHJONG_BORDER_SELECTED"]);
 
@@ -137,6 +138,14 @@ export function findOffenders(source: string, fileName = "x.tsx"): string[] {
         inits.set(n.name.text, n.initializer);
         if (mentionsRaw(n.initializer)) aliases.add(n.name.text);
       }
+    } else if (
+      ts.isBinaryExpression(n) &&
+      n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(n.left) &&
+      mentionsRaw(n.right)
+    ) {
+      // `x = colors.error;` after a bare `let x;`
+      aliases.add(n.left.text);
     }
     ts.forEachChild(n, bind);
   };
@@ -163,7 +172,7 @@ export function findOffenders(source: string, fileName = "x.tsx"): string[] {
   return out;
 }
 
-describe("no low-contrast bonus/accent/secondary/tertiary/gold text (#3754, #3755, #3819)", () => {
+describe("no low-contrast bonus/accent/secondary/tertiary/gold/error text (#3754, #3755, #3819, #3846)", () => {
   it("uses the text tokens for text colour across src", () => {
     const offenders: string[] = [];
     for (const file of walk(SRC)) {
@@ -185,6 +194,13 @@ describe("the scan itself", () => {
       ["a plain secondary", "const s = { color: colors.secondary };"],
       ["a plain tertiary", "const s = { color: colors.tertiary };"],
       ["the celebration gold", "const s = { color: colors.celebration };"],
+      ["a plain error", "const s = { color: colors.error };"],
+      ["an error ternary", "const s = { color: bad ? colors.error : colors.text };"],
+      ["a destructured error", "const { error } = colors;\nconst s = { color: error };"],
+      [
+        "an alias assigned after a bare let",
+        "let c;\nif (bad) {\n  c = colors.error;\n}\nconst s = { color: c };",
+      ],
       [
         "the low-chips amber constant",
         "const s = { color: isLow ? BLACKJACK_CHIPS_LOW : c.text };",
@@ -253,6 +269,16 @@ describe("the scan itself", () => {
   describe("ignores", () => {
     it.each([
       ["the text tokens", "const s = { color: colors.accentText, k: colors.bonusText };"],
+      ["errorText", "const s = { color: colors.errorText };"],
+      [
+        "an error border and fill",
+        "const s = [{ borderColor: colors.error }, { backgroundColor: colors.error }];",
+      ],
+      ["an error icon prop", "const x = <Icon color={colors.error} />;"],
+      [
+        "an error alias used as a border",
+        "let c;\nc = colors.error;\nconst s = { borderColor: c };",
+      ],
       [
         "the new text tokens",
         "const s = [{ color: colors.secondaryText }, { color: colors.tertiaryText }, { color: colors.goldText }, { color: colors.warnText }];",

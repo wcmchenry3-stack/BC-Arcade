@@ -54,12 +54,3 @@ class SortResult(BaseModel):
     # Sent by the #2512 builds; kept so their rows store what they always did.
     outcome: str | None = Field(default=None, max_length=32)
     won: bool | None = None
-
-
-class LevelData(BaseModel):
-    id: int
-    bottles: list[list[str]]
-
-
-class LevelsResponse(BaseModel):
-    levels: list[LevelData]

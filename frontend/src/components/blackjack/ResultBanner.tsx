@@ -116,21 +116,23 @@ export default function ResultBanner({
   }
 
   let payoutText: string;
-  // The outcome's text: the win green and the blackjack lime need their AA variants (the border
-  // keeps `bonus` / `tertiary`)
+  // The outcome's text: the win green, the blackjack lime and the loss red need their AA variants
+  // (the border keeps `bonus` / `tertiary` / `error`)
   const outcomeTextColor =
     outcome === "win"
       ? colors.bonusText
       : outcome === "blackjack"
         ? colors.tertiaryText
-        : accentColor;
+        : outcome === "lose"
+          ? colors.errorText
+          : colors.textMuted;
   let payoutColor: string;
   if (payout > 0) {
     payoutText = t("payout.positive", { amount: payout });
     payoutColor = colors.bonusText;
   } else if (payout < 0) {
     payoutText = t("payout.negative", { amount: payout });
-    payoutColor = colors.error;
+    payoutColor = colors.errorText;
   } else {
     payoutText = t("payout.zero");
     payoutColor = colors.textMuted;

@@ -388,9 +388,19 @@ export function recordGhostCheck(s: GhostCheckSummary, game: string, sourceType:
   });
 }
 
+/** `at=update m=2 t=+340ms`: the fail line's report detail (#3896). Tells a
+ *  late-mounted ghost measured right after it appeared (`t` small, `m` low)
+ *  from a ghost really sitting at an offset mid-drag. Overlay text only. */
+export function formatFailDetail(d: GhostOffsetReport): string {
+  const t = Number.isFinite(d.msSinceStart) ? `+${Math.round(d.msSinceStart)}ms` : "?";
+  const m = Number.isFinite(d.measures) ? Math.round(d.measures) : "?";
+  return `at=${d.at} m=${m} t=${t}`;
+}
+
 /** The debug overlay's result line for a fail (#3529); a no-op unless it is
  *  enabled. A measureSpace fail shows the surface offset, the number that
- *  explains it. */
+ *  explains it. The detail (#3896) adds the report's at / measures /
+ *  msSinceStart, so a CI failure log can tell the fail cases apart. */
 function noteFailForDebugOverlay(d: GhostOffsetReport): void {
   const surface =
     d.failKind === "measureSpace" &&
@@ -401,6 +411,7 @@ function noteFailForDebugOverlay(d: GhostOffsetReport): void {
     failKind: d.failKind,
     dx: surface ? d.surfaceOffsetX : d.deltaX,
     dy: surface ? d.surfaceOffsetY : d.deltaY,
+    detail: formatFailDetail(d),
   });
 }
 

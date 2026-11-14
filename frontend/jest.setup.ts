@@ -261,35 +261,50 @@ jest.mock("@sentry/react-native", () => ({
 // AsyncStorage mock — self-contained in-memory store, no dependency on the
 // package's own jest helper (removed in v3). Each method is a jest.fn() so
 // tests can spy on calls or override with mockResolvedValue.
+//
+// Caveat (#3895): the methods are already mocks, so `jest.spyOn(AsyncStorage, "x")`
+// returns the same fn and `spy.mockRestore()` strips its in-memory implementation
+// ("restoring the original" leaves a bare mock returning undefined). The default
+// implementations are therefore kept in `defaults`, and `__restoreDefaults()`
+// re-installs any that were stripped; jest.setup-after-env.ts calls it before every
+// test so a restore cannot leak into later tests of the same file.
 jest.mock("@react-native-async-storage/async-storage", () => {
   const store: Record<string, string> = {};
-  return {
-    getItem: jest.fn((key: string) => Promise.resolve(store[key] ?? null)),
-    setItem: jest.fn((key: string, value: string) => {
+  const defaults: Record<string, (...args: never[]) => unknown> = {
+    getItem: (key: string) => Promise.resolve(store[key] ?? null),
+    setItem: (key: string, value: string) => {
       store[key] = value;
       return Promise.resolve();
-    }),
-    removeItem: jest.fn((key: string) => {
+    },
+    removeItem: (key: string) => {
       delete store[key];
       return Promise.resolve();
-    }),
-    getMany: jest.fn((keys: string[]) =>
-      Promise.resolve(Object.fromEntries(keys.map((k) => [k, store[k] ?? null])))
-    ),
-    setMany: jest.fn((entries: Record<string, string>) => {
+    },
+    getMany: (keys: string[]) =>
+      Promise.resolve(Object.fromEntries(keys.map((k) => [k, store[k] ?? null]))),
+    setMany: (entries: Record<string, string>) => {
       Object.assign(store, entries);
       return Promise.resolve();
-    }),
-    removeMany: jest.fn((keys: string[]) => {
+    },
+    removeMany: (keys: string[]) => {
       keys.forEach((k) => delete store[k]);
       return Promise.resolve();
-    }),
-    getAllKeys: jest.fn(() => Promise.resolve(Object.keys(store))),
-    clear: jest.fn(() => {
+    },
+    getAllKeys: () => Promise.resolve(Object.keys(store)),
+    clear: () => {
       Object.keys(store).forEach((k) => delete store[k]);
       return Promise.resolve();
-    }),
+    },
   };
+  const mock: Record<string, unknown> = {};
+  for (const [name, impl] of Object.entries(defaults)) mock[name] = jest.fn(impl);
+  mock.__restoreDefaults = () => {
+    for (const [name, impl] of Object.entries(defaults)) {
+      const fn = mock[name] as jest.Mock;
+      if (fn.getMockImplementation() === undefined) fn.mockImplementation(impl);
+    }
+  };
+  return mock;
 });
 
 // useGameSync's foreground clock (#2684) is pinned for every test file to the

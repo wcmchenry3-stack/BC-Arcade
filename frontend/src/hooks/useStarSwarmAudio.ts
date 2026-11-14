@@ -68,8 +68,10 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   waveclear: 0.8,
   gameover: 0.8,
   bosswave: 0.6,
-  bonuslife: 0.9,
-  beamcharge: 0.9,
+  // #3763: bombblast, bonuslife and beamcharge were lowered (about -3 dB each) so their pile-ups
+  // (a Smart Bomb with a bonus life and a beam charge) no longer clip. See useStarSwarmAudio.mix.test.ts.
+  bonuslife: 0.6,
+  beamcharge: 0.6,
   attackrun: 0.9,
   beamfire: 0.9,
   reinforce: 0.6,
@@ -77,7 +79,7 @@ export const DEFAULT_SFX_VOLUMES: SfxVolumes = {
   hullup: 0.8,
   hullhit: 0.7,
   rout: 0.5,
-  bombblast: 1.0,
+  bombblast: 0.7,
   // #3560: the Shield and Buddy parts are mixed relative to each other in the files themselves
   // (shield-on is the loudest, the hums are baked quiet), so related keys share a default.
   shieldon: 0.8,

@@ -30,8 +30,6 @@
   "a11y.hintDestination": "تلميح: اسكب هنا",
   "settings.colorblindMode": "وضع عمى الألوان",
   "settings.colorblindModeHint": "يعرض رمزًا على كل كرة بالإضافة إلى اللون",
-  "error.loadFailed": "تعذر تحميل هذا المستوى.",
-  "error.submitRetry": "أعد المحاولة",
   "levelSelect.title": "اختر مستوى",
   "levelSelect.continue": "متابعة المستوى {{level}}",
   "levelSelect.locked": "مقفل",

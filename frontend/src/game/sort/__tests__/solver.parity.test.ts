@@ -10,12 +10,12 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
+import { SORT_LEVELS } from "../catalog";
 import { applyPour, initState, isComplete, isValidPour } from "../engine";
 import { solveBoard, solveBoardAsync, getNextHintAsync, solve } from "../solver";
 import type { Color, Move, SortState } from "../types";
 
-interface LevelSet {
-  seed: number;
+interface CatalogSet {
   levels: string[][];
   states: number[];
 }
@@ -27,7 +27,7 @@ interface FixtureBoard {
   states: number;
 }
 interface Fixture {
-  levelSets: LevelSet[];
+  catalog: CatalogSet;
   boards: FixtureBoard[];
 }
 
@@ -50,42 +50,60 @@ function replay(state: SortState, moves: readonly Move[]): void {
 }
 
 describe("fixture shape", () => {
-  it("has 20 sets of 23 levels and all three board kinds", () => {
-    expect(fixture.levelSets).toHaveLength(20);
-    for (const set of fixture.levelSets) expect(set.levels).toHaveLength(23);
+  it("has every catalog level and all three board kinds", () => {
+    expect(fixture.catalog.levels).toHaveLength(SORT_LEVELS.length);
+    expect(fixture.catalog.states).toHaveLength(SORT_LEVELS.length);
     expect(new Set(fixture.boards.map((b) => b.kind))).toEqual(
       new Set(["dead-shuffle", "dead-play", "mid-game"])
     );
   });
 });
 
-describe("Hint finds a move on every level (20 seeds x 23 levels)", () => {
-  it.each(fixture.levelSets.map((s) => [s.seed, s] as const))(
-    "seed %i: every level is solved and the solution replays",
-    (_seed, set) => {
-      set.levels.forEach((bottles, i) => {
-        const state = toState(bottles);
-        // Same search as the backend: the state count matches exactly, so the
-        // budget below is the backend's own count for this level.
-        const r = solveBoard(state, set.states[i]);
-        expect(r.verdict).toBe("solvable");
-        if (r.verdict === "solvable") {
-          expect(r.moves.length).toBeGreaterThan(0);
-          replay(state, r.moves);
-        }
-      });
-    }
+/** A board as the fixture writes it: letters in order of first appearance. */
+function lettered(bottles: readonly (readonly string[])[]): string[] {
+  const letters = new Map<string, string>();
+  return bottles.map((b) =>
+    b
+      .map((c) => {
+        if (!letters.has(c)) letters.set(c, String.fromCharCode(65 + letters.size));
+        return letters.get(c)!;
+      })
+      .join("")
   );
+}
 
-  it("the worst level of all 20 sets stays well inside the default budget", () => {
-    const worst = Math.max(...fixture.levelSets.flatMap((s) => s.states));
-    expect(worst).toBeLessThan(20_000);
+describe("Hint finds a move on every catalog level (all 120 levels)", () => {
+  it("the fixture is the catalog: same boards, bottle for bottle", () => {
+    SORT_LEVELS.forEach((level, i) => {
+      expect(fixture.catalog.levels[i]).toEqual(lettered(level.bottles));
+    });
+  });
+
+  it.each(
+    fixture.catalog.levels.map(
+      (bottles, i) => [i + 1, bottles, fixture.catalog.states[i]!] as const
+    )
+  )("level %i: solved and the solution replays", (_n, bottles, states) => {
+    const state = toState(bottles);
+    // Same search as the backend: the state count matches exactly, so the
+    // budget below is the backend's own count for this level.
+    const r = solveBoard(state, states);
+    expect(r.verdict).toBe("solvable");
+    if (r.verdict === "solvable") {
+      expect(r.moves.length).toBeGreaterThan(0);
+      replay(state, r.moves);
+    }
+  });
+
+  it("the worst catalog level stays well inside the default budget", () => {
+    expect(Math.max(...fixture.catalog.states)).toBeLessThan(20_000);
   });
 });
 
 describe("regression: late two-empty levels (plain BFS hit its 200 000 cap)", () => {
   it("solves a 14-colour, 2-empty level within 20 000 states and hints a first pour", async () => {
-    const bottles = fixture.levelSets[0]!.levels[20]!; // level 21
+    // The last catalog level: 14 colours and 2 empty bottles.
+    const bottles = fixture.catalog.levels[fixture.catalog.levels.length - 1]!;
     expect(bottles).toHaveLength(16);
     const state = toState(bottles);
     const r = solveBoard(state, 20_000);
@@ -126,14 +144,11 @@ describe("parity with fast_solver on boards", () => {
 
 describe("solveAsync yields to the event loop", () => {
   it("lets a timer fire during a long search", async () => {
-    // The costliest fixture level expands well over YIELD_EVERY (1 000) states.
-    let best = { set: fixture.levelSets[0]!, i: 0 };
-    for (const set of fixture.levelSets)
-      set.states.forEach((n, i) => {
-        if (n > best.set.states[best.i]!) best = { set, i };
-      });
-    expect(best.set.states[best.i]).toBeGreaterThan(2_000);
-    const state = toState(best.set.levels[best.i]!);
+    // The costliest catalog level expands well over YIELD_EVERY (1 000) states.
+    const { states, levels } = fixture.catalog;
+    const worst = states.indexOf(Math.max(...states));
+    expect(states[worst]).toBeGreaterThan(2_000);
+    const state = toState(levels[worst]!);
     let ticked = false;
     setTimeout(() => {
       ticked = true;

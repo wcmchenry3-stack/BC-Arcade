@@ -95,7 +95,7 @@ export default function SeatPlate({
         </Text>
         <Text style={[styles.score, { color: colors.text }]}>{score}</Text>
         {hasPoints && (
-          <Text style={[styles.points, { color: colors.error }]}>{`+${handPoints}♥`}</Text>
+          <Text style={[styles.points, { color: colors.errorText }]}>{`+${handPoints}♥`}</Text>
         )}
       </Pressable>
     </View>

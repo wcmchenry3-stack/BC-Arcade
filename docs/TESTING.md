@@ -262,6 +262,12 @@ issue.
 `game/_shared/foregroundClock`. A test that needs a different shape still calls `jest.mock` for
 that module; its own mock wins.
 
+The AsyncStorage mock's methods are `jest.fn()`s with in-memory implementations. Because they are
+already mocks, `jest.spyOn(AsyncStorage, "x")` returns the same fn and `spy.mockRestore()` strips
+that implementation (#3895). `jest.setup-after-env.ts` re-installs any stripped default before every
+test, so a restore no longer breaks later tests in the file (a read after the restore, in the same
+test, still sees the bare mock). `src/test-utils/__tests__/asyncStorageMock.test.ts` guards this.
+
 The modules most screens need mocked per test (`@react-navigation/native`, `api/stats`,
 `game/_shared/gameEventClient`, `flushQueuedGames`, `displayNameSync`, `NetworkContext`) have
 factories in `frontend/src/test-utils/mockScreenDeps.ts`. `jest.mock` is hoisted above the
@@ -1244,7 +1250,7 @@ Verifies the drag ghost sits on the finger on a real device (iPhone 17, Android)
 1. Settings → turn on "Drag debug overlay" (already on in test-hook builds).
 2. Open Solitaire or FreeCell and drag a card slowly, then in a quick flick, and release on a legal pile.
 3. While your finger is down you should see the crosshair on the fingertip and the card sitting inside the outline. The bottom-left panel gives finger / expected / grab and the check state.
-4. After you release, read the top line: `drag-check: ok Δ(x,y)` with small x and y (a few px) is a pass. `drag-check: FAIL render Δ(0,118)` means the ghost is drawn that far from the finger; `FAIL measureSpace` means the RN surface is offset from the gesture origin (Δ is that offset). Screenshot the screen (finger down: take it with a second finger or AssistiveTouch) and attach it to the issue.
+4. After you release, read the top line: `drag-check: ok Δ(x,y)` with small x and y (a few px) is a pass. `drag-check: FAIL render Δ(0,118) at=update m=2 t=+340ms` means the ghost is drawn that far from the finger (`at`: where the check ran, `m`: ghost measures, `t`: ms from drag start; #3896); `FAIL measureSpace` means the RN surface is offset from the gesture origin (Δ is that offset). Screenshot the screen (finger down: take it with a second finger or AssistiveTouch) and attach it to the issue.
 5. Turn the toggle off and confirm nothing is drawn and the drag feels the same.
 
 Maestro contract: with test hooks on, the overlay is on, and after every drag the element `id: drag-debug-result` has the text and accessibility label `drag-check: ok ...`. Under it, `id: drag-debug-seq` reads `drag #N`, where N counts the drags of the app process that produced a check result (#3532). A third line, `id: drag-debug-drop`, says how the drag ended: `drop: accepted <zone>` (`(snap)` when only the inflated bounds were hit), `drop: snapBack hit=<zone that refused|none> zones=<registered> missing=<without bounds> finger=x,y near=<nearest legal zone>@x,y,wxh` (its cached window bounds), or `drop: cancelled <reason>` (`gesture` when the pan ended without a lift). It is set on the JS end-of-drag path only and cleared at the next drag's start. Flows don't assert it; `e2e/maestro/diagnose.py` prints every `drag-debug-*` line on a failure. Both are plain opaque `Text` views with a testID, which Maestro sees on Android (resource-id) and iOS (accessibilityIdentifier); don't move them onto a plain `View` or make them transparent or 1 px, or Maestro loses them. The lines are not shown for a drag that produced no check result (web). The check samples the ghost once per drag (shortly after it starts, or at the drop if sooner), so `ok` means the ghost was under the finger at that sample, not for the whole drag.

@@ -197,7 +197,7 @@ export default function LeaderboardMembership() {
         <Text
           accessibilityRole="alert"
           accessibilityLiveRegion="assertive"
-          style={[styles.presenceText, { color: colors.error }]}
+          style={[styles.presenceText, { color: colors.errorText }]}
         >
           {t(errorKey)}
         </Text>

@@ -67,7 +67,7 @@ export function FreeCellGameWinAnimation({ visible, onDismiss }: Props) {
                 top: "50%",
                 marginLeft: offset.x,
                 marginTop: offset.y,
-                color: i % 2 === 0 ? colors.text : colors.error,
+                color: i % 2 === 0 ? colors.text : colors.errorText,
               },
               suitStyles[i],
             ]}

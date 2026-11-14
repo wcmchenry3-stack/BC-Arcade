@@ -30,8 +30,6 @@
   "a11y.hintDestination": "提示：倒入此处",
   "settings.colorblindMode": "色盲模式",
   "settings.colorblindModeHint": "除颜色外，还会在每个球上显示符号",
-  "error.loadFailed": "无法加载该关卡。",
-  "error.submitRetry": "重试",
   "levelSelect.title": "选择关卡",
   "levelSelect.continue": "继续第 {{level}} 关",
   "levelSelect.locked": "已锁定",

@@ -330,7 +330,7 @@ export default function ProfileScreen() {
         {t("recentGames.title")}
       </Text>
       {gamesError && (
-        <Text style={[styles.sectionErrorText, { color: colors.error }]}>
+        <Text style={[styles.sectionErrorText, { color: colors.errorText }]}>
           {t("recentGames.loadError")}
         </Text>
       )}

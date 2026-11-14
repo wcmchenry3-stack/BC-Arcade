@@ -644,6 +644,7 @@ describe("refetch on reconnect after a failed first fetch (#3868)", () => {
     let releaseCache: () => void = () => {};
     const gate = new Promise<void>((r) => (releaseCache = r));
     const realGetMany = AsyncStorage.getMany.bind(AsyncStorage);
+    const realGetManyImpl = (AsyncStorage.getMany as jest.Mock).getMockImplementation();
     const spy = jest.spyOn(AsyncStorage, "getMany").mockImplementationOnce(async (keys) => {
       await gate;
       return realGetMany(keys);
@@ -661,7 +662,9 @@ describe("refetch on reconnect after a failed first fetch (#3868)", () => {
 
     expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(ctx.canPlay("hearts")).toBe(true);
-    spy.mockRestore();
+    // getMany is jest.setup.ts's jest.fn: mockRestore() would strip its store-backed
+    // implementation and leave it returning undefined for every later test.
+    spy.mockImplementation(realGetManyImpl);
   });
 
   it("makes at most one immediate retry when NetInfo is online but the launch fetch fails", async () => {
@@ -700,6 +703,96 @@ describe("refetch on reconnect after a failed first fetch (#3868)", () => {
 
     expect(mockRequest).toHaveBeenCalledTimes(3);
     expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("falls back to a valid cache when a foreground refresh supersedes the launch fetch and fails offline (#3879)", async () => {
+    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(makePayload(["hearts"])));
+    await AsyncStorage.setItem(CACHED_AT_STORAGE_KEY, new Date().toISOString());
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    const boot = deferRequest();
+    await render(
+      <EntitlementProvider>
+        <Probe />
+      </EntitlementProvider>
+    );
+    await flushAsync();
+
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    await act(async () => boot.reject(networkFailure()));
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.isLoading).toBe(false);
+    expect(ctx.canPlay("hearts")).toBe(true);
+
+    // A cached unlock does not wait for the network, as after a failed launch fetch.
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on a reconnect that lands while a superseding refresh reads an empty cache (#3879)", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    deferRequest(); // the launch fetch never settles
+    let releaseCache: () => void = () => {};
+    const gate = new Promise<void>((r) => (releaseCache = r));
+    const realGetManyImpl = (AsyncStorage.getMany as jest.Mock).getMockImplementation();
+    const spy = jest.spyOn(AsyncStorage, "getMany").mockImplementationOnce(async (keys) => {
+      await gate;
+      return realGetManyImpl!(keys);
+    });
+    await render(
+      <EntitlementProvider>
+        <Probe />
+      </EntitlementProvider>
+    );
+    await flushAsync();
+
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    // Connectivity returns while the refresh is still reading the (empty) cache.
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+    await act(async () => releaseCache());
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(ctx.canPlay("hearts")).toBe(true);
+    spy.mockImplementation(realGetManyImpl);
+  });
+
+  it("a refresh network failure does not replace held entitlements with the cache (#3879)", async () => {
+    mockRequest.mockResolvedValueOnce({
+      token: makeToken(makePayload(["hearts", "cascade"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await renderProvider();
+    expect(ctx.canPlay("hearts")).toBe(true);
+    expect(ctx.canPlay("cascade")).toBe(true);
+
+    // The cache now holds less than memory; a transient error must not apply it.
+    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(makePayload([])));
+    await AsyncStorage.setItem(CACHED_AT_STORAGE_KEY, new Date().toISOString());
+    mockRequest.mockRejectedValue(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    await flushAsync();
+
+    expect(ctx.canPlay("hearts")).toBe(true);
+    expect(ctx.canPlay("cascade")).toBe(true);
   });
 
   it("a non-network failure on a reconnect refresh disarms the retry", async () => {

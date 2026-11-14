@@ -3,7 +3,7 @@
 ``frontend/src/game/sort/__tests__/fixtures/solverParity.json`` is what the
 client solver is tested against. Regenerate it with
 ``python scripts/sort_export_solver_fixture.py`` (from ``backend/``) when the
-solver or the level generator changes.
+solver or the level catalog changes.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import sort_export_solver_fixture as export
 
+from sort.catalog import LEVEL_COUNT
 from sort.fast_solver import solve
 
 
@@ -25,10 +26,10 @@ def test_committed_fixture_is_current() -> None:
     ), "solverParity.json is stale: run `python scripts/sort_export_solver_fixture.py`"
 
 
-def test_fixture_covers_every_level_of_twenty_sets() -> None:
+def test_fixture_covers_every_catalog_level() -> None:
     fixture = export.build_fixture()
-    assert len(fixture["levelSets"]) == 20
-    assert all(len(s["levels"]) == 23 for s in fixture["levelSets"])
+    assert len(fixture["catalog"]["levels"]) == LEVEL_COUNT
+    assert len(fixture["catalog"]["states"]) == LEVEL_COUNT
     kinds = {b["kind"]: b["verdict"] for b in fixture["boards"]}
     assert kinds == {
         "dead-shuffle": "unsolvable",

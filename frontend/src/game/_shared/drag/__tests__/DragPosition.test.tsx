@@ -1357,8 +1357,8 @@ describe("drag debug overlay result and frame path (#3529)", () => {
     });
     const { getByTestId } = await render(<Board />);
     await drag();
-    expect(getByTestId("drag-debug-result").props.children).toBe(
-      "drag-check: FAIL render Δ(0,120)"
+    expect(getByTestId("drag-debug-result").props.children).toMatch(
+      /^drag-check: FAIL render Δ\(0,120\) at=(update|end) m=\d+ t=\+\d+ms$/
     );
   });
 
@@ -1367,8 +1367,8 @@ describe("drag debug overlay result and frame path (#3529)", () => {
     const { getByTestId } = await render(<Board />);
     // RNGH puts the finger 60 px lower than measure() page space does.
     await drag(60);
-    expect(getByTestId("drag-debug-result").props.children).toBe(
-      "drag-check: FAIL measureSpace Δ(0,60)"
+    expect(getByTestId("drag-debug-result").props.children).toMatch(
+      /^drag-check: FAIL measureSpace Δ\(0,60\) at=(update|end) m=\d+ t=\+\d+ms$/
     );
   });
 
@@ -1388,8 +1388,8 @@ describe("drag debug overlay result and frame path (#3529)", () => {
     ghostRefValue = null;
     const { getByTestId } = await render(<Board />);
     await drag(60);
-    expect(getByTestId("drag-debug-result").props.children).toBe(
-      "drag-check: FAIL measureSpace Δ(0,60)"
+    expect(getByTestId("drag-debug-result").props.children).toMatch(
+      /^drag-check: FAIL measureSpace Δ\(0,60\) at=(update|end) m=\d+ t=\+\d+ms$/
     );
   });
 
