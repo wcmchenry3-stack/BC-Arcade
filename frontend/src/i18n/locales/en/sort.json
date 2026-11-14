@@ -30,8 +30,6 @@
   "a11y.hintDestination": "Hint: pour here",
   "settings.colorblindMode": "Colorblind Mode",
   "settings.colorblindModeHint": "Shows a symbol on each ball in addition to color",
-  "error.loadFailed": "Could not load this level.",
-  "error.submitRetry": "Retry",
   "levelSelect.title": "Choose a Level",
   "levelSelect.continue": "Continue Level {{level}}",
   "levelSelect.locked": "Locked",

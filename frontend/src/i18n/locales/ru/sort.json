@@ -30,8 +30,6 @@
   "a11y.hintDestination": "Подсказка: лейте сюда",
   "settings.colorblindMode": "Режим дальтоника",
   "settings.colorblindModeHint": "Показывает символ на каждом шаре в дополнение к цвету",
-  "error.loadFailed": "Не удалось загрузить этот уровень.",
-  "error.submitRetry": "Повторить",
   "levelSelect.title": "Выберите уровень",
   "levelSelect.continue": "Продолжить уровень {{level}}",
   "levelSelect.locked": "Закрыто",

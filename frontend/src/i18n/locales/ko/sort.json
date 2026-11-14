@@ -30,8 +30,6 @@
   "a11y.hintDestination": "힌트: 여기에 붓기",
   "settings.colorblindMode": "색맹 모드",
   "settings.colorblindModeHint": "색상 외에도 각 공에 기호를 표시합니다",
-  "error.loadFailed": "이 레벨을 불러올 수 없습니다.",
-  "error.submitRetry": "다시 시도",
   "levelSelect.title": "레벨 선택",
   "levelSelect.continue": "레벨 {{level}} 계속하기",
   "levelSelect.locked": "잠김",

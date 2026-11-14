@@ -79,7 +79,6 @@ from purchases.verifiers import PurchaseError
 from routes.health import _ping_db
 from routes.health import router as health_router
 from settings import Settings
-from sort.router import router as sort_router
 from stats.router import router as stats_router
 
 # Names other modules and tests import from ``main`` (several moved out in #2993).
@@ -274,7 +273,6 @@ def _include_routers(app: FastAPI, settings: Settings) -> None:
     app.include_router(entitlements_router, prefix="/entitlements")
     app.include_router(daily_challenge_router, prefix="/daily-challenge")
     app.include_router(daily_word_router, prefix="/daily-word")
-    app.include_router(sort_router, prefix="/sort")
     app.include_router(games_router, prefix="/games")
     app.include_router(logs_router, prefix="/logs")
     app.include_router(me_router, prefix="/me")

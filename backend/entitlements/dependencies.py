@@ -56,7 +56,7 @@ def require_entitlement(game_slug: str):
     a route taking ``db: DbSession`` also gets) rather than opening a second.
     The check only reads, so its transaction is ended straight away: the
     connection goes back to the pool instead of staying checked out for the
-    rest of a slow route (``/sort/levels`` builds levels for ~0.4 s).
+    rest of a slow route.
     """
 
     async def _dep(request: Request, db: DbSession) -> None:

@@ -56,7 +56,7 @@ const LEVELS_CACHE_KEY = "@sort/levels_cache";
 
 /**
  * Colours of each of the 23 random levels before the catalog (the server's
- * `LEVEL_SPECS` in backend/sort/generate_levels.py), level 1 first.
+ * level specs that `GET /sort/levels` served, removed in #3729), level 1 first.
  */
 export const LEGACY_LEVEL_COLOURS = [
   3, 3, 4, 4, 5, 5, 6, 6, 6, 7, 7, 8, 8, 9, 9, 9, 10, 11, 12, 13, 14, 13, 14,

@@ -30,8 +30,6 @@
   "a11y.hintDestination": "ヒント：ここに注ぐ",
   "settings.colorblindMode": "色覚サポートモード",
   "settings.colorblindModeHint": "色に加えて、各ボールにシンボルを表示します",
-  "error.loadFailed": "このレベルを読み込めませんでした。",
-  "error.submitRetry": "再試行",
   "levelSelect.title": "レベルを選ぼう",
   "levelSelect.continue": "レベル{{level}}を続ける",
   "levelSelect.locked": "ロック中",

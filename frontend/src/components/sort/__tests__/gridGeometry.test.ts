@@ -66,8 +66,8 @@ describe("computeGridShape", () => {
   // silently introduce a bottle-count change that DOESN'T change shape,
   // which would need its own reset trigger that nothing here would exercise.
   //
-  // Bottle counts across the real level progression (backend/sort/
-  // generate_levels.py's LEVEL_SPECS) currently range from 4 (3 colors + 1
+  // Bottle counts across the real level progression
+  // (the level catalog's specs) currently range from 4 (3 colors + 1
   // empty) to 16 (14 colors + 2 empty); 1–40 gives generous headroom for
   // future level additions.
   it("changes shape on every consecutive bottle-count step, 1–40 (regression #2297)", () => {
@@ -85,7 +85,7 @@ describe("computeGridShape", () => {
 
 describe("computeBoardLayout (#2207)", () => {
   const BOTTLE = { width: DEFAULT_BOTTLE_WIDTH, height: DEFAULT_BOTTLE_HEIGHT };
-  // Bottle counts across LEVEL_SPECS in backend/sort/generate_levels.py:
+  // Bottle counts across the catalog's level specs:
   // 3 colours + 1 empty (4) up to 14 colours + 2 empties (16).
   const LEVEL_BOTTLE_COUNTS = Array.from({ length: 13 }, (_, i) => i + 4);
   // Board content boxes (window width minus SortScreen's 2×16 padding, and a
