@@ -7,10 +7,10 @@ deployment procedure and environment-variable inventory.
 
 ## Environments
 
-| Environment | Branch | API service         | API domain                     | Static site              | Site domain                | Database                                  |
-| ----------- | ------ | ------------------- | ------------------------------ | ------------------------ | -------------------------- | ----------------------------------------- |
-| Production  | `main` | `bc-arcade-api`     | `games-api.buffingchi.com`     | `bc-arcade-frontend`     | `games.buffingchi.com`     | **Supabase** Postgres (session pooler)    |
-| Dev         | `dev`  | `bc-arcade-api-dev` | `dev-games-api.buffingchi.com` | `bc-arcade-frontend-dev` | `dev-games.buffingchi.com` | **Supabase** `dev` branch (own database)  |
+| Environment | Branch | API service         | API domain                     | Static site              | Site domain                | Database                                 |
+| ----------- | ------ | ------------------- | ------------------------------ | ------------------------ | -------------------------- | ---------------------------------------- |
+| Production  | `main` | `bc-arcade-api`     | `games-api.buffingchi.com`     | `bc-arcade-frontend`     | `games.buffingchi.com`     | **Supabase** Postgres (session pooler)   |
+| Dev         | `dev`  | `bc-arcade-api-dev` | `dev-games-api.buffingchi.com` | `bc-arcade-frontend-dev` | `dev-games.buffingchi.com` | **Supabase** `dev` branch (own database) |
 
 Dev's database is the persistent **`dev` branch** of the `bc-arcade` Supabase project
 (git branch `dev`, its own project ref, created without data from `main`). The dev API moved
@@ -53,48 +53,49 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 
 ### API (`bc-arcade-api`, `bc-arcade-api-dev`)
 
-| Variable                   | Prod                                                            | Dev                                                                     | Where set           |
-| -------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------- |
-| `PYTHON_VERSION`           | `3.11.0`                                                        | `3.11.0`                                                                | `render.yaml`       |
-| `ENVIRONMENT`              | `production`                                                    | `development`                                                           | `render.yaml`       |
-| `ALLOWED_ORIGINS`          | `https://games.buffingchi.com,https://games-api.buffingchi.com` | `https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com` | `render.yaml`       |
-| `DATABASE_URL`             | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege) | Supabase `dev` branch session pooler URL; the privileged role until `bc_app` exists on dev (#3500) | Dashboard secret    |
-| `MIGRATION_DATABASE_URL`   | optional: the privileged (`postgres`) pooler URL Alembic migrates with; unset → `DATABASE_URL` | optional: the database owner's URL; unset → `DATABASE_URL` | Dashboard secret    |
-| `DB_STATEMENT_TIMEOUT_SECONDS` | leave unset (`5`): Postgres cancels a statement after this | ←                                                                 | —                   |
-| `DB_COMMAND_TIMEOUT_SECONDS` | leave unset (`10`): asyncpg gives up on a reply; must exceed the statement timeout | ←                                         | —                   |
-| `DB_POOL_TIMEOUT_SECONDS`  | leave unset (`10`): longest wait for a free pooled connection   | ←                                                                       | —                   |
-| `SENTRY_DSN`               | same DSN in both — events are split by `ENVIRONMENT`            | ←                                                                       | Dashboard secret    |
-| `ENTITLEMENT_PRIVATE_KEY`  | prod RS256 keypair — **never reuse dev's**                      | dev keypair                                                             | Dashboard secret    |
-| `ENTITLEMENT_PUBLIC_KEY`   | ↑                                                               | ↑                                                                       | Dashboard secret    |
-| `DAILY_WORD_SALT`          | prod-only value                                                 | dev value                                                               | Dashboard secret    |
-| `DAILY_CHALLENGE_SALT`     | prod-only value (integer)                                       | dev value                                                               | Dashboard secret    |
-| `ENTITLEMENT_DEV_OVERRIDE` | **must not exist**                                              | set (unlocks every premium game for every session)                      | Dashboard, dev only |
-| `RENDER_GIT_COMMIT`        | injected by Render — becomes the Sentry `release`               | ←                                                                       | Render (automatic)  |
-| `TRUSTED_PROXY_MODE`       | `cloudflare` (the default; set explicitly)                      | `cloudflare`                                                            | `render.yaml`       |
-| `TRUSTED_PROXY_HOPS`       | leave unset (`1`: Render's proxy)                               | ←                                                                       | —                   |
-| `RATE_LIMIT_STORAGE_URL`   | optional; unset = in-memory counters (see [Rate-limit storage](#rate-limit-storage-and-the-process-model)) | ← | Dashboard secret (optional) |
-| `LOG_PROXY_HEADERS`        | **must not exist** (ignored when `ENVIRONMENT=production`)      | `1` only while running the owner checks below, then remove it           | Dashboard, dev only |
-| `APPLE_BUNDLE_ID`          | set when Apple purchases go live (#2786)                        | set on the purchase-testing backend                                     | Dashboard secret    |
-| `APPLE_APP_ID`             | set with `APPLE_BUNDLE_ID` (required while Production is allowed) | ←                                                                     | Dashboard secret    |
-| `APPLE_IAP_ENVIRONMENTS`   | optional; default `Production,Sandbox`                          | optional                                                                | Dashboard           |
-| `APPLE_IAP_ISSUER_ID`      | optional (App Store Server API); set all three `APPLE_IAP_*` key vars or none | ←                                                         | Dashboard secret    |
-| `APPLE_IAP_KEY_ID`         | ↑                                                               | ↑                                                                       | Dashboard secret    |
-| `APPLE_IAP_PRIVATE_KEY`    | ↑ (the `.p8` PEM)                                               | ↑                                                                       | Dashboard secret    |
-| `APPLE_IAP_ONLINE_CHECKS`  | leave unset (on); `off` is refused in production                | optional; `off` allowed for local testing                               | Dashboard           |
-| `GOOGLE_PLAY_PACKAGE_NAME` | set when Google purchases go live (#2787): `com.buffingchi.games` | set on the purchase-testing backend                                   | Dashboard           |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | required with the package name: the Play API service-account key JSON | ← (same account is fine; the key is per service)             | Dashboard secret    |
-| `GOOGLE_RTDN_AUDIENCE`     | required with the package name: `https://games-api.buffingchi.com/purchases/google/notifications` | `https://dev-games-api.buffingchi.com/purchases/google/notifications` | Dashboard |
-| `GOOGLE_RTDN_PUSH_SA`      | required with the package name: the Pub/Sub push service-account email | ← (its own push subscription)                                   | Dashboard           |
-| `GOOGLE_PLAY_ENVIRONMENTS` | **set `production`** (the default `production,test` lets licence testers unlock for free) | leave the default `production,test`                   | Dashboard           |
-| `REPLAY_RETENTION_DAYS`    | optional; default `30` (days a replay event row is kept, #3292) | optional                                                  | Dashboard           |
-| `REPLAY_STORAGE_BUDGET_MB` | optional; default `250`, at most `500` (budget for `game_events`; the Supabase Free plan is 500 MB in all) | optional         | Dashboard           |
-| `DATABASE_PLAN_MB`         | optional; default `500` (the Supabase plan's database limit; raise it with the plan) | optional                              | Dashboard           |
-| `REPLAY_JOB_HOUR_UTC`      | optional; default `9`, 0–21 (start of the 3-hour off-peak UTC window for the daily prune and budget check) | optional       | Dashboard           |
-| `REPLAY_RECORDING_ENABLED` | optional; default `true`. **Set `false` to stop storing replay events at once** (lifecycle events, games and boards unaffected; a game it cut stays cut when switched back on) | optional | Dashboard |
-| `STARSWARM_HITS_BY_TIER` | optional; default `true`. **Set `false` to stop storing Star Swarm's per-tier hit grid** (`damage.hitsByTier` of `wave_completed`, kept forever, #3710) at once; the rest of each wave is still stored | optional | Dashboard |
-| `CLIENT_SENTRY_ENABLED`    | optional; default `true`. **Set `false` to stop the apps' Sentry events** (keep-list: fatal crashes, native crashes/hangs, player feedback), #3437 | optional | Dashboard |
-| `CLIENT_SENTRY_SAMPLE_RATE` | optional; default `1.0`, 0–1 (share of the apps' Sentry events sent; a value outside 0–1 fails the deploy) | optional | Dashboard |
-| `SORT_CATALOG_EDITION_ENFORCED` | default `false`. **Set `true` once the app builds with Sort's level catalog are live in both stores** (#2761): the Sort board and Stats "Best" then rank only catalog solves, and Sort's daily-challenge goals move from level 3 / 8 / 15 to 10 / 30 / 60 for days not yet frozen (#3728) | optional (set `true` to test the reset) | Dashboard |
+| Variable                           | Prod                                                                                                                                                                                                                                                                                      | Dev                                                                                                | Where set                   |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------- |
+| `PYTHON_VERSION`                   | `3.11.0`                                                                                                                                                                                                                                                                                  | `3.11.0`                                                                                           | `render.yaml`               |
+| `ENVIRONMENT`                      | `production`                                                                                                                                                                                                                                                                              | `development`                                                                                      | `render.yaml`               |
+| `ALLOWED_ORIGINS`                  | `https://games.buffingchi.com,https://games-api.buffingchi.com`                                                                                                                                                                                                                           | `https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com`                            | `render.yaml`               |
+| `DATABASE_URL`                     | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege)                                                                                                                                                                          | Supabase `dev` branch session pooler URL; the privileged role until `bc_app` exists on dev (#3500) | Dashboard secret            |
+| `MIGRATION_DATABASE_URL`           | optional: the privileged (`postgres`) pooler URL Alembic migrates with; unset → `DATABASE_URL`                                                                                                                                                                                            | optional: the database owner's URL; unset → `DATABASE_URL`                                         | Dashboard secret            |
+| `DB_STATEMENT_TIMEOUT_SECONDS`     | leave unset (`5`): Postgres cancels a statement after this                                                                                                                                                                                                                                | ←                                                                                                  | —                           |
+| `DB_COMMAND_TIMEOUT_SECONDS`       | leave unset (`10`): asyncpg gives up on a reply; must exceed the statement timeout                                                                                                                                                                                                        | ←                                                                                                  | —                           |
+| `DB_POOL_TIMEOUT_SECONDS`          | leave unset (`10`): longest wait for a free pooled connection                                                                                                                                                                                                                             | ←                                                                                                  | —                           |
+| `SENTRY_DSN`                       | same DSN in both — events are split by `ENVIRONMENT`                                                                                                                                                                                                                                      | ←                                                                                                  | Dashboard secret            |
+| `ENTITLEMENT_PRIVATE_KEY`          | prod RS256 keypair — **never reuse dev's**                                                                                                                                                                                                                                                | dev keypair                                                                                        | Dashboard secret            |
+| `ENTITLEMENT_PUBLIC_KEY`           | ↑                                                                                                                                                                                                                                                                                         | ↑                                                                                                  | Dashboard secret            |
+| `DAILY_WORD_SALT`                  | prod-only value                                                                                                                                                                                                                                                                           | dev value                                                                                          | Dashboard secret            |
+| `DAILY_CHALLENGE_SALT`             | prod-only value (integer)                                                                                                                                                                                                                                                                 | dev value                                                                                          | Dashboard secret            |
+| `ENTITLEMENT_DEV_OVERRIDE`         | **must not exist**                                                                                                                                                                                                                                                                        | set (unlocks every premium game for every session)                                                 | Dashboard, dev only         |
+| `RENDER_GIT_COMMIT`                | injected by Render — becomes the Sentry `release`                                                                                                                                                                                                                                         | ←                                                                                                  | Render (automatic)          |
+| `TRUSTED_PROXY_MODE`               | `cloudflare` (the default; set explicitly)                                                                                                                                                                                                                                                | `cloudflare`                                                                                       | `render.yaml`               |
+| `TRUSTED_PROXY_HOPS`               | leave unset (`1`: Render's proxy)                                                                                                                                                                                                                                                         | ←                                                                                                  | —                           |
+| `RATE_LIMIT_STORAGE_URL`           | optional; unset = in-memory counters (see [Rate-limit storage](#rate-limit-storage-and-the-process-model))                                                                                                                                                                                | ←                                                                                                  | Dashboard secret (optional) |
+| `LOG_PROXY_HEADERS`                | **must not exist** (ignored when `ENVIRONMENT=production`)                                                                                                                                                                                                                                | `1` only while running the owner checks below, then remove it                                      | Dashboard, dev only         |
+| `APPLE_BUNDLE_ID`                  | set when Apple purchases go live (#2786)                                                                                                                                                                                                                                                  | set on the purchase-testing backend                                                                | Dashboard secret            |
+| `APPLE_APP_ID`                     | set with `APPLE_BUNDLE_ID` (required while Production is allowed)                                                                                                                                                                                                                         | ←                                                                                                  | Dashboard secret            |
+| `APPLE_IAP_ENVIRONMENTS`           | optional; default `Production,Sandbox`                                                                                                                                                                                                                                                    | optional                                                                                           | Dashboard                   |
+| `APPLE_IAP_ISSUER_ID`              | optional (App Store Server API); set all three `APPLE_IAP_*` key vars or none                                                                                                                                                                                                             | ←                                                                                                  | Dashboard secret            |
+| `APPLE_IAP_KEY_ID`                 | ↑                                                                                                                                                                                                                                                                                         | ↑                                                                                                  | Dashboard secret            |
+| `APPLE_IAP_PRIVATE_KEY`            | ↑ (the `.p8` PEM)                                                                                                                                                                                                                                                                         | ↑                                                                                                  | Dashboard secret            |
+| `APPLE_IAP_ONLINE_CHECKS`          | leave unset (on); `off` is refused in production                                                                                                                                                                                                                                          | optional; `off` allowed for local testing                                                          | Dashboard                   |
+| `GOOGLE_PLAY_PACKAGE_NAME`         | set when Google purchases go live (#2787): `com.buffingchi.games`                                                                                                                                                                                                                         | set on the purchase-testing backend                                                                | Dashboard                   |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | required with the package name: the Play API service-account key JSON                                                                                                                                                                                                                     | ← (same account is fine; the key is per service)                                                   | Dashboard secret            |
+| `GOOGLE_RTDN_AUDIENCE`             | required with the package name: `https://games-api.buffingchi.com/purchases/google/notifications`                                                                                                                                                                                         | `https://dev-games-api.buffingchi.com/purchases/google/notifications`                              | Dashboard                   |
+| `GOOGLE_RTDN_PUSH_SA`              | required with the package name: the Pub/Sub push service-account email                                                                                                                                                                                                                    | ← (its own push subscription)                                                                      | Dashboard                   |
+| `GOOGLE_PLAY_ENVIRONMENTS`         | **set `production`** (the default `production,test` lets licence testers unlock for free)                                                                                                                                                                                                 | leave the default `production,test`                                                                | Dashboard                   |
+| `REPLAY_RETENTION_DAYS`            | optional; default `30` (days a replay event row is kept, #3292)                                                                                                                                                                                                                           | optional                                                                                           | Dashboard                   |
+| `REPLAY_STORAGE_BUDGET_MB`         | optional; default `250`, at most `500` (budget for `game_events`; the Supabase Free plan is 500 MB in all)                                                                                                                                                                                | optional                                                                                           | Dashboard                   |
+| `DATABASE_PLAN_MB`                 | optional; default `500` (the Supabase plan's database limit; raise it with the plan)                                                                                                                                                                                                      | optional                                                                                           | Dashboard                   |
+| `REPLAY_JOB_HOUR_UTC`              | optional; default `9`, 0–21 (start of the 3-hour off-peak UTC window for the daily prune and budget check)                                                                                                                                                                                | optional                                                                                           | Dashboard                   |
+| `REPLAY_RECORDING_ENABLED`         | optional; default `true`. **Set `false` to stop storing replay events at once** (lifecycle events, games and boards unaffected; a game it cut stays cut when switched back on)                                                                                                            | optional                                                                                           | Dashboard                   |
+| `STARSWARM_HITS_BY_TIER`           | optional; default `true`. **Set `false` to stop storing Star Swarm's per-tier hit grid** (`damage.hitsByTier` of `wave_completed`, kept forever, #3710) at once; the rest of each wave is still stored                                                                                    | optional                                                                                           | Dashboard                   |
+| `CLIENT_SENTRY_ENABLED`            | optional; default `true`. **Set `false` to stop the apps' Sentry events** (keep-list: fatal crashes, native crashes/hangs, player feedback), #3437                                                                                                                                        | optional                                                                                           | Dashboard                   |
+| `CLIENT_SENTRY_SAMPLE_RATE`        | optional; default `1.0`, 0–1 (share of the apps' Sentry events sent; a value outside 0–1 fails the deploy)                                                                                                                                                                                | optional                                                                                           | Dashboard                   |
+| `PERSONAL_BEST_SEED_ENABLED`       | optional; default `true`. **Set `false` to stop the apps seeding their local best from `/stats/me`** (#3802); no request is saved, only the local write                                                                                                                                   | optional                                                                                           | Dashboard                   |
+| `SORT_CATALOG_EDITION_ENFORCED`    | default `false`. **Set `true` once the app builds with Sort's level catalog are live in both stores** (#2761): the Sort board and Stats "Best" then rank only catalog solves, and Sort's daily-challenge goals move from level 3 / 8 / 15 to 10 / 30 / 60 for days not yet frozen (#3728) | optional (set `true` to test the reset)                                                            | Dashboard                   |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`
@@ -170,11 +171,11 @@ Per-IP rate limits and the request log key on `client_ip` in
 The path is client → Cloudflare → Render's proxy → uvicorn; the socket peer
 uvicorn sees is Render's proxy.
 
-| `TRUSTED_PROXY_MODE` | Client IP is                                                                                             | Use when                                                         |
-| -------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `TRUSTED_PROXY_MODE` | Client IP is                                                                                                             | Use when                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
 | `cloudflare`         | `CF-Connecting-IP`; if absent or invalid, the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` from the right; else the peer | The hostname is proxied by Cloudflare (prod and dev). **Default.** |
-| `render`             | the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` from the right; else the peer                            | Render only, no Cloudflare proxy in front                        |
-| `none`               | the socket peer                                                                                          | uvicorn with no proxy at all (local)                             |
+| `render`             | the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` from the right; else the peer                                           | Render only, no Cloudflare proxy in front                          |
+| `none`               | the socket peer                                                                                                          | uvicorn with no proxy at all (local)                               |
 
 `TRUSTED_PROXY_HOPS` (default `1`, max `10`) is the number of trusted proxies
 that append to `X-Forwarded-For` in front of the app. Render's proxy is one.
@@ -253,7 +254,7 @@ just stop being used.
   The Redis calls are synchronous on the event loop, so a blackholed store (no
   refusal, just silence) can stall requests up to the 1 s timeout during each
   recovery probe. At startup the API logs `{"event": "rate_limit_storage",
-  "shared": …}` (never the URL) and, if the store does not answer, sends one
+"shared": …}` (never the URL) and, if the store does not answer, sends one
   Sentry warning.
 - **Network.** A store outside Render's private network must use `rediss://`
   (TLS); `redis://` is for the internal URL only.
@@ -274,7 +275,7 @@ Two operational traps:
 - **Migrations run before the check.** The start command is
   `alembic upgrade head && uvicorn …`, and Alembic does not import the app, so
   a bad `TRUSTED_PROXY_MODE` / `TRUSTED_PROXY_HOPS` applies pending migrations
-  and *then* fails to boot. Render keeps the previous instance serving — on
+  and _then_ fails to boot. Render keeps the previous instance serving — on
   the new schema.
 
 #### Owner checks
@@ -296,31 +297,31 @@ raw headers:
 
 `curl -H 'X-Forwarded-For: 192.0.2.10' -H 'CF-Connecting-IP: 192.0.2.20' https://dev-games-api.buffingchi.com/health`
 
-| `cf_connecting_ip` | Meaning |
-| --- | --- |
-| `["YOUR_IP"]` | Cloudflare is in front and replaced the forged value. Expected. |
-| `["192.0.2.20"]` | Nothing replaced it — the record is not proxied, or not through Cloudflare. `cloudflare` mode is **unsafe on this host**; stop and report. |
-| `[]` | No Cloudflare anywhere on the path. `cloudflare` mode falls back to `X-Forwarded-For`; check C decides whether that is safe. |
+| `cf_connecting_ip` | Meaning                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `["YOUR_IP"]`      | Cloudflare is in front and replaced the forged value. Expected.                                                                            |
+| `["192.0.2.20"]`   | Nothing replaced it — the record is not proxied, or not through Cloudflare. `cloudflare` mode is **unsafe on this host**; stop and report. |
+| `[]`               | No Cloudflare anywhere on the path. `cloudflare` mode falls back to `X-Forwarded-For`; check C decides whether that is safe.               |
 
 **B. Straight to Render, forged `CF-Connecting-IP`** (skips the owner's zone)
 
 `curl -H 'CF-Connecting-IP: 192.0.2.20' https://gaming-app-api-dev.onrender.com/health`
 
-| `cf_connecting_ip` | Meaning |
-| --- | --- |
-| `["YOUR_IP"]` | Render's own edge is Cloudflare and replaces the header. The bypass cannot forge a bucket. (It also means restricting inbound IPs to Cloudflare ranges would block nothing.) |
-| `[]` | Render strips the header. The bypass cannot forge it; the resolver uses the `X-Forwarded-For` fallback (check C). |
-| `["192.0.2.20"]` | **The bypass is open:** anyone using the `onrender.com` hostname picks their bucket. Apply the mitigation below. |
+| `cf_connecting_ip` | Meaning                                                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `["YOUR_IP"]`      | Render's own edge is Cloudflare and replaces the header. The bypass cannot forge a bucket. (It also means restricting inbound IPs to Cloudflare ranges would block nothing.) |
+| `[]`               | Render strips the header. The bypass cannot forge it; the resolver uses the `X-Forwarded-For` fallback (check C).                                                            |
+| `["192.0.2.20"]`   | **The bypass is open:** anyone using the `onrender.com` hostname picks their bucket. Apply the mitigation below.                                                             |
 
 **C. Straight to Render, forged `X-Forwarded-For`**
 
 `curl -H 'X-Forwarded-For: 192.0.2.10' https://gaming-app-api-dev.onrender.com/health`
 
-| last `xff_tail` entry | Meaning |
-| --- | --- |
-| `YOUR_IP` | Render appends the connecting client. `TRUSTED_PROXY_HOPS=1` is right and the fallback is safe. |
-| `192.0.2.10` | Render passes the client's list through without appending. The right-most entry is forgeable: `render` mode and the `cloudflare` fallback are **unsafe**; report it. |
-| another address (e.g. a Cloudflare range) | Render's edge adds its own hop. `render` mode would bucket everyone by that address; keep `cloudflare`, which is fine as long as B showed `["YOUR_IP"]`. |
+| last `xff_tail` entry                     | Meaning                                                                                                                                                              |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `YOUR_IP`                                 | Render appends the connecting client. `TRUSTED_PROXY_HOPS=1` is right and the fallback is safe.                                                                      |
+| `192.0.2.10`                              | Render passes the client's list through without appending. The right-most entry is forgeable: `render` mode and the `cloudflare` fallback are **unsafe**; report it. |
+| another address (e.g. a Cloudflare range) | Render's edge adds its own hop. `render` mode would bucket everyone by that address; keep `cloudflare`, which is fine as long as B showed `["YOUR_IP"]`.             |
 
 (Without the flag, check C alone can be run by setting
 `TRUSTED_PROXY_MODE=render` on dev for the test and reading the resolved
@@ -445,7 +446,7 @@ CI's `test-postgres` job runs it and checks that the role is refused DDL
 
 The API needs nothing beyond DML at runtime (checked for #3302): no
 `create_all`, `SET` or temporary tables; row locks (`SELECT … FOR UPDATE`) need
-only `UPDATE`, which it has. The role can still create *temporary* tables,
+only `UPDATE`, which it has. The role can still create _temporary_ tables,
 because Postgres grants `TEMPORARY` on every database to `PUBLIC`; the API never
 does, and revoking it from `PUBLIC` would affect every role.
 
@@ -454,13 +455,13 @@ Cut-over, per environment (dev first, then prod):
 1. **Create the role.** Run the whole script as the privileged role, in the
    app's database. Supabase: dashboard → SQL editor (it runs as `postgres`), paste
    the file, run. Render dev: `psql "<owner's external URL>" -f
-   backend/scripts/create_app_role.sql`. It is idempotent and applies all or
+backend/scripts/create_app_role.sql`. It is idempotent and applies all or
    nothing. If it stops with "can still CREATE in schema public", follow the
    message (confirm the migration role keeps its own `CREATE`, then `REVOKE
-   CREATE ON SCHEMA public FROM PUBLIC`) and run it again.
+CREATE ON SCHEMA public FROM PUBLIC`) and run it again.
 2. **Set its password** — never in the repo or the script: in `psql`,
    `\password bc_app`; in the Supabase SQL editor, `ALTER ROLE bc_app WITH
-   PASSWORD '<generated>'`. Store it in the password manager.
+PASSWORD '<generated>'`. Store it in the password manager.
 3. **Build the app URL.** Copy the current `DATABASE_URL` and change only the
    user and password. On Supabase's pooler the user is `<role>.<project-ref>`,
    so `postgres.<ref>` becomes **`bc_app.<ref>`**; host, port **5432** and
@@ -472,13 +473,13 @@ Cut-over, per environment (dev first, then prod):
    migrates as the privileged role; the API runs as `bc_app`.
 5. **Verify**: the boot log shows `db_connected`; `GET /health/db` → `ok`; a
    play-through writes rows; in the SQL editor `SELECT usename, count(*) FROM
-   pg_stat_activity WHERE datname = current_database() GROUP BY 1` shows the API's
+pg_stat_activity WHERE datname = current_database() GROUP BY 1` shows the API's
    connections under `bc_app`.
 6. **Check the timeout through the pooler**: `psql "<app URL>" -c "SHOW
-   statement_timeout"` (the prod session-pooler URL, as `bc_app.<ref>`) must
+statement_timeout"` (the prod session-pooler URL, as `bc_app.<ref>`) must
    print `5s`. That is the role-level backstop, proving the pooler hands the role
    its settings; the API's own connections additionally run `SET
-   statement_timeout` themselves. Anything else (`0`, or a pooler error) — stop and
+statement_timeout` themselves. Anything else (`0`, or a pooler error) — stop and
    report before relying on the bound.
 
 Rollback: set `DATABASE_URL` back to the `MIGRATION_DATABASE_URL` value and
@@ -489,9 +490,9 @@ new tables without grants for `bc_app` — re-run the script as that role.
 
 ## Health checks
 
-| Path             | Touches the DB | Used by                                                        |
-| ---------------- | -------------- | -------------------------------------------------------------- |
-| `GET /health`    | no             | Render's `healthCheckPath` — a DB outage must not restart-loop |
+| Path             | Touches the DB | Used by                                                                |
+| ---------------- | -------------- | ---------------------------------------------------------------------- |
+| `GET /health`    | no             | Render's `healthCheckPath` — a DB outage must not restart-loop         |
 | `GET /health/db` | `SELECT 1`     | UptimeRobot (prod API, 5-minute poll, email alert; set up Sep 23 2026) |
 
 `/health/db` returns `200 {"status":"ok"}`, or `503` with `unavailable` /

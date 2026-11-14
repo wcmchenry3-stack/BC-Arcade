@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { PendingGamesStore } from "../pendingGamesStore";
+import { ORPHAN_GAME_ID_KEY, PendingGamesStore } from "../pendingGamesStore";
 
 describe("PendingGamesStore", () => {
   let store: PendingGamesStore;
@@ -321,6 +321,18 @@ describe("PendingGamesStore", () => {
       expect(next.adoptOrphan("yacht", Date.now(), { puzzle: 1 })).toBe("a");
       expect(next.previousProcessOpenGames()).toEqual([]);
       expect(next.adoptOrphan("yacht", Date.now())).toBeNull();
+    });
+
+    it("adoptOrphan with the reserved id key adopts only that game (#3876)", async () => {
+      await store.create("a", "sort", { level: 5 });
+      await store.markStarted("a");
+      await store.create("b", "sort", { level: 5 });
+      await store.markStarted("b");
+      const next = await relaunch();
+      await next.init();
+      expect(next.adoptOrphan("sort", Date.now(), { [ORPHAN_GAME_ID_KEY]: "zzz" })).toBeNull();
+      expect(next.adoptOrphan("sort", Date.now(), { [ORPHAN_GAME_ID_KEY]: "" })).toBeNull();
+      expect(next.adoptOrphan("sort", Date.now(), { [ORPHAN_GAME_ID_KEY]: "a" })).toBe("a");
     });
 
     it("drops a forgotten or completed game from the list", async () => {

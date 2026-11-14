@@ -55,7 +55,8 @@ replay-storage tunables (#3292) are read lazily through their module's own
 ``REPLAY_JOB_HOUR_UTC`` and ``DATABASE_PLAN_MB`` by ``games.replay_storage``, and
 ``REPLAY_RECORDING_ENABLED`` by ``games.sessions``. The app's Sentry dial (#3437),
 ``CLIENT_SENTRY_ENABLED`` and ``CLIENT_SENTRY_SAMPLE_RATE``, is read lazily by
-``observability.client_sentry_dial``. Sort's leaderboard reset switch (#2761),
+``observability.client_sentry_dial``. The personal-best seed switch (#3802), ``PERSONAL_BEST_SEED_ENABLED``,
+is read lazily by ``observability.personal_best_seed_dial``. Sort's leaderboard reset switch (#2761),
 ``SORT_CATALOG_EDITION_ENFORCED``, is read lazily by ``games.boards.editions``.
 
 Secrets (``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
@@ -277,6 +278,11 @@ class Settings(BaseSettings):
     client_sentry_sample_rate: float = Field(
         default=1.0, alias="CLIENT_SENTRY_SAMPLE_RATE", ge=0, le=1
     )
+
+    # The app's personal-best seed switch (#3802, observability.personal_best_seed_dial):
+    # served on GET /games/catalog as ``personal_best_seed``. false stops the app seeding
+    # its local best from /stats/me. Default is on.
+    personal_best_seed_enabled: bool = Field(default=True, alias="PERSONAL_BEST_SEED_ENABLED")
 
     @model_validator(mode="after")
     def _event_byte_caps_nest(self) -> Settings:

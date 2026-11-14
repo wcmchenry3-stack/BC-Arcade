@@ -78,6 +78,7 @@ import {
   withNoBoard,
 } from "../game/sort/useSortReplay";
 import { SORT_CATALOG_VERSION } from "../game/sort/catalog";
+import { ORPHAN_GAME_ID_KEY } from "../game/_shared/pendingGamesStore";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
@@ -722,7 +723,10 @@ export default function SortScreen() {
     // A restored game continues the session a killed app left open (#2654);
     // resume() counts its play time from here. With no session to resume the
     // level's play time still starts now, not on the level grid (#2710).
-    const resumed = syncResume();
+    // Only the session this board was saved with (#3876): another level's, or
+    // an earlier attempt's, killed session must not take this board's result.
+    // No saved id (no pour yet) matches nothing, so a new session starts.
+    const resumed = syncResume({ [ORPHAN_GAME_ID_KEY]: prog.replayGameId ?? "" });
     if (!resumed) syncResetPlayWindow();
     // The replay carries on from the saved unit count only in the session it went
     // to (the resume may adopt another level's), or stops; with no session

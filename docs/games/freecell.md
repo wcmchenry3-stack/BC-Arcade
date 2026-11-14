@@ -168,7 +168,7 @@ The save holds the game only: the one-shot `events` of the last move are never w
 
 FreeCell does not maintain its own persisted play clock. Duration comes from the shared `useGameSync` active-play window; starting a new deal resets that window.
 
-The local device keeps only the fewest moves in a win, for the result card's Best and "New best": the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:freecell`; the old `freecell_stats_v1` is moved in on the first read), read with the saved game and written only when a win beats it. No server I/O. Server Stats/history are authoritative for shared reporting.
+The local device keeps only the fewest moves in a win, for the result card's Best and "New best": the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:freecell`; the old `freecell_stats_v1` is moved in on the first read), read with the saved game and written only when a win beats it. On a reinstall it is seeded once from the server's best (`best_value` of the stats the app already fetches; [#3802](../ARCHITECTURE.md#4-persistence-and-offline-contract)); nothing is written to the server. Server Stats/history are authoritative for shared reporting.
 
 ## Felt table layout (#3607)
 
