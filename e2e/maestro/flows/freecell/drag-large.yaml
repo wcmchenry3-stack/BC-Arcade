@@ -107,7 +107,7 @@ appId: com.buffingchi.games
 #   (389 - 91) / 6 = 49 pt. Board left 11, so x 10% = 40 is in column 0 and
 #   free cell 0; free cell 0 at y 62 + 161 = 223..306, centre 264 = 30%;
 #   tableau from 318, col0's card 6 at 612..703, centre 657 = 75%.
-#   Uncalibrated.
+#   Calibrated: run 43458619805 confirmed these coordinates.
 - runFlow:
     when:
       platform: iOS
