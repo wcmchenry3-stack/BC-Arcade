@@ -235,7 +235,7 @@ Performance: Arcade and Parlor render no SVG filters. Synthwave renders no filte
 
 ## Cascade-specific theming
 
-Cascade has its own asset pipeline (background removal, vertex extraction, fruit-set definitions) that is orthogonal to BC Arcade's palette/typography system. See [`research/CASCADE-THEMING.md`](research/CASCADE-THEMING.md) for that pipeline.
+Cascade's pieces and bin are drawn in code (`frontend/src/game/cascade/art/`, #3698); the bitmap asset pipeline is gone. Art colours live in `CASCADE_ART`, and the bin uses `CASCADE_BIN_PALETTE` in `theme/theme.cascade.ts`, which equals the theme's surface, accent and border tokens. See [`games/cascade.md`](games/cascade.md). [`research/CASCADE-THEMING.md`](research/CASCADE-THEMING.md) describes the old pipeline and is kept for history.
 
 ---
 

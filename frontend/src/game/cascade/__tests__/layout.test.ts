@@ -16,6 +16,7 @@ describe("calculateCascadeLayout (#3693)", () => {
     expect(l.boardWidth).toBeCloseTo(WORLD_WIDTH * (380 / WORLD_HEIGHT), 6);
     expect(l.offsetX).toBeCloseTo((320 - l.boardWidth) / 2, 6);
     expect(l.offsetX).toBeGreaterThan(0);
+    expect(l.offsetY).toBeCloseTo(0, 6); // height-limited: no spare height
   });
 
   it("large phone: width-limited, flush to the sides", () => {
@@ -25,6 +26,28 @@ describe("calculateCascadeLayout (#3693)", () => {
     expect(l.boardWidth).toBeCloseTo(430, 6);
     expect(l.boardHeight).toBeCloseTo(600 * 1.075, 6);
     expect(l.offsetX).toBeCloseTo(0, 6);
+    // bottom-anchored: the spare height (800 - 645) is above the bin, none below the floor
+    expect(l.offsetY).toBeCloseTo(800 - 600 * 1.075, 6);
+    expect(l.offsetY + l.boardHeight).toBeCloseTo(800, 6);
+  });
+
+  it("bottom-anchors the world: the board's bottom is the area's bottom", () => {
+    for (const [w, h] of [
+      [320, 380],
+      [390, 520],
+      [430, 800],
+      [768, 1100],
+    ]) {
+      const l = calculateCascadeLayout({ containerWidth: w, containerHeight: h });
+      expect(l.offsetY).toBeCloseTo(h - WORLD_HEIGHT * l.scale, 9);
+      expect(l.offsetY + l.boardHeight).toBeCloseTo(h, 9);
+      expect(l.offsetY).toBeGreaterThanOrEqual(-1e-9);
+    }
+  });
+
+  it("is zero offset before the area is measured", () => {
+    const l = calculateCascadeLayout({ containerWidth: 0, containerHeight: 0 });
+    expect(l.offsetY).toBe(0);
   });
 
   it("always fits the whole world", () => {

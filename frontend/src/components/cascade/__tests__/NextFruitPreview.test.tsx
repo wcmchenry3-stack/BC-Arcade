@@ -10,13 +10,21 @@ import type { TestInstance } from "test-renderer";
 import NextFruitPreview from "../NextFruitPreview";
 import { FRUIT_SETS } from "../../../theme/fruitSets";
 import { dark } from "../../../theme/ThemeContext";
+import { piecePicture } from "../../../game/cascade/art/sprites";
+
+// The glyphs' Skia canvas and picture cache are stubbed (the art is tested on real Skia in
+// game/cascade/art/__tests__/art.test.ts).
+jest.mock("@shopify/react-native-skia", () => ({ Canvas: "Canvas", Picture: "Picture" }));
+jest.mock("../../../game/cascade/art/sprites", () => ({
+  piecePicture: jest.fn((set: string, tier: number, size: number) => ({ set, tier, size })),
+}));
 
 const cherry = FRUIT_SETS.fruits!.fruits[0]!;
 const grape = FRUIT_SETS.fruits!.fruits[2]!;
-const moon = { ...FRUIT_SETS.cosmos!.fruits[0]!, icon: undefined };
+const moon = FRUIT_SETS.cosmos!.fruits[0]!;
 
 const flat = (n: TestInstance) => StyleSheet.flatten(n.props.style);
-/** The glyph frame (icon) or disc (no icon) inside a chip: its first child view. */
+/** The glyph frame inside a chip: its first child view. */
 const glyph = (chip: TestInstance) => chip.children[0] as TestInstance;
 
 describe("Cascade NextFruitPreview", () => {
@@ -56,10 +64,10 @@ describe("Cascade NextFruitPreview", () => {
     });
   });
 
-  it("falls back to a colour disc for a fruit without an icon", async () => {
+  it("draws each piece's code-drawn art from its own set (#3698)", async () => {
     await render(<NextFruitPreview current={moon} next={cherry} />);
-    const now = screen.getByLabelText(`Dropping next: ${moon.name}`);
-    expect(flat(glyph(now))).toMatchObject({ backgroundColor: moon.color, borderRadius: 11 });
+    expect(piecePicture).toHaveBeenCalledWith("cosmos", 0, 22);
+    expect(piecePicture).toHaveBeenCalledWith("fruits", 0, 16);
   });
 
   it("names the capstones from the ladder's i18n keys (#3695)", async () => {

@@ -348,7 +348,7 @@ Before the epic, a store bundle shipped the five hidden premium games' code and 
 
 A build counts as a store build when `!context.dev && EXPO_PUBLIC_TEST_HOOKS !== "1"` and `EXPO_PUBLIC_API_URL` is not the pre-launch API. This mirrors `SHOW_HIDDEN_GAMES` in `src/entitlements/gameVisibility.ts` minus `__DEV__`. The stubs are unreachable: `visiblePremiumRoutes()` registers no route for hidden games, and the Mahjong inspector screens are only opened from `MahjongScreen`. Dev, e2e (`TEST_HOOKS=1`) and pre-launch-API builds keep all 12 games.
 
-**Guards.** `src/entitlements/__tests__/storeBundle.test.ts` pins parity between the Metro predicate and `envFlags` (including lookalike hosts), the stub list against `HIDDEN_GAMES`, coverage of every `PREMIUM_ROUTES` lazy import, and resolver passthrough. In CI, `--forbid-hidden-assets` fails the job if any hidden-only asset (BGM, `celestial-icons`, `fruit-icons`, `cosmos-baked`, `fruits-baked`, vertices JSON, Mahjong tile art, Star Swarm sprites) is packaged.
+**Guards.** `src/entitlements/__tests__/storeBundle.test.ts` pins parity between the Metro predicate and `envFlags` (including lookalike hosts), the stub list against `HIDDEN_GAMES`, coverage of every `PREMIUM_ROUTES` lazy import, and resolver passthrough. In CI, `--forbid-hidden-assets` fails the job if any hidden-only asset (BGM, Mahjong tile art, Star Swarm sprites) is packaged. Cascade has no image files since #3698, so it has no pattern there; `assetBudget.test.ts` keeps images out of `assets/`, and the home tile's art code stays out of store bundles (see [Cascade code-drawn art](#cascade-code-drawn-art-3698)).
 
 **What remains in the store bundle (known limitation).**
 
@@ -365,12 +365,12 @@ Measured 2026-11-11 on `dev`, before the dead files were deleted. Part of epic #
 
 | Item                                                                                                                     |                                                  Bytes | State                                                               |
 | ------------------------------------------------------------------------------------------------------------------------ | -----------------------------------------------------: | ------------------------------------------------------------------- |
-| `assets/fruit-icons/` (11 imported WebP; 12 on disk, 255,498 B)                                                          |                                                250,642 | Used; replaced by code-drawn pieces (#3698)                         |
-| `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Used; replaced (#3698)                                              |
-| `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Used; replaced (#3698)                                              |
-| `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Used; replaced (#3698)                                              |
+| `assets/fruit-icons/` (11 imported WebP; 12 on disk, 255,498 B)                                                          |                                                250,642 | Deleted in #3698 (pieces are drawn in code)                         |
+| `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Deleted in #3698                                                    |
+| `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Deleted in #3698                                                    |
+| `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Deleted in #3698                                                    |
 | `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Used; replaced by the sound story                                   |
-| **Cascade assets that ship (44 images + 3 sounds = 47 files)**                                                           |                                          **1,322,143** | Budget: art 0 image bytes, sounds <= 120 KB                         |
+| **Cascade assets that shipped before #3698 (44 images + 3 sounds = 47 files)**                                           |                                          **1,322,143** | Now: 0 image bytes (#3698); sounds <= 120 KB budget                 |
 | Cascade JS, minified (`CascadeScreen` 14,945, `engine2` 5,650, `constants` 2,131, other modules and locale JSON ~11,464) |                                                 34,190 | Stays                                                               |
 | `matter-js` (`matter.js`, minified in the bundle)                                                                        |                                                 83,492 | Removed in #3697 (replaced by `planck`)                             |
 | `assets/fruit-vertices.json` + `cosmos-vertices.json`                                                                    |                                                 99,365 | Dead, deleted in #3692                                              |
@@ -392,9 +392,30 @@ Whole-bundle context (Android, `npx expo export --platform android`): store Herm
 | Sounds                                                            |                             <= 120 KB total |
 | Cascade total (assets + Cascade JS, excluding the physics engine) |                                   <= 200 KB |
 
-Today: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 KB budget; the gap closes when #3698 (art) and the sound story land.
+Before #3698: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 KB budget. After #3698 the art is code (17.4 KB minified, see [Cascade code-drawn art](#cascade-code-drawn-art-3698)) and the image bytes are zero; the sounds are what remains over budget until the sound story lands.
 
-**Guard.** `frontend/src/game/cascade/__tests__/assetBudget.test.ts` fails if `frontend/assets/` gains any Cascade image file or folder beyond the pinned list of the sprites that still ship, or if any of the files deleted in #3692 reappear. #3698 shrinks that list to empty. `scripts/check_large_files.py` (#2967) no longer grandfathers the two deleted source-art folders.
+**Guard.** `frontend/src/game/cascade/__tests__/assetBudget.test.ts` fails if `frontend/assets/` gains any Cascade image file or folder (the pinned list is empty since #3698), or if any of the files deleted in #3692 reappear. `scripts/check_large_files.py` (#2967) no longer grandfathers the two deleted source-art folders.
+
+### Cascade code-drawn art (#3698)
+
+The 24 pieces are drawn in code (`frontend/src/game/cascade/art/`); the sprite folders, `cascade_icon_masters/`, `images.ts` and the bake scripts are deleted. How the art works: [Cascade, Art (#3698)](games/cascade.md#art-3698).
+
+| Measure                                                                |             Value |
+| ---------------------------------------------------------------------- | ----------------: |
+| Art code, minified, both sets (budget 20 KB)                           |           17.4 KB |
+| Art code, gzipped                                                      |            7.2 KB |
+| Bitmap memory per set at game scale (the old sprites were about 23 MB) |        5.3-6.9 MB |
+| Building a set's bitmaps (JS thread, screen open and set switch)       |          75-91 ms |
+| Recording a frame of 60 pieces, headless CanvasKit (JIT / jitless)     | 0.54 ms / 0.75 ms |
+
+Bundle impact, 2026-11-14, `npx expo export:embed --platform android --dev false` as in ci.yml's `android-bundle-check`, on `bd363d7e` (dev) against the same commit plus #3698:
+
+| Config                             | Dev JS bundle (B) | #3698 JS bundle (B) | JS delta (B) | Dev assets              | #3698 assets            |
+| ---------------------------------- | ----------------: | ------------------: | -----------: | ----------------------- | ----------------------- |
+| Store (`games-api` URL, hooks off) |         6,190,131 |           6,190,616 |         +485 | 120 files, 3,054,980 B  | 120 files, 3,054,980 B  |
+| All games (pre-launch API URL)     |         8,556,870 |           8,557,636 |         +766 | 320 files, 22,405,286 B | 276 files, 21,110,885 B |
+
+The all-games bundle gains the art code but loses nothing else in JS; its assets drop by 44 files and 1,294,401 B (the sprites). The store bundle's +485 B is the home tile's emoji-only stub and the `HomeScreen` change. A grep of the store bundle finds none of `CASCADE_ART`, `FRUIT_ART`, `COSMOS_ART`, `drawLayer`, `piecePicture`, `pieceSprites`, `FruitGlyph` or `CascadeTileIcon`, and no `react-native-skia` (the all-games bundle has them); `storeBundle.test.ts` pins the stub mapping. Recording and frame times are from a headless run, not a phone: device frame time is Manual QA.
 
 ### Sentry JS cost (#2832)
 
@@ -419,7 +440,7 @@ The share barely moves because #2830 shrank the denominator in the same period. 
 
 ### Images (#2833)
 
-Two tiers per Cascade theme: 256 px WebP UI thumbnails (`fruit-icons/`, `celestial-icons/`, drawn by `FruitGlyph` at up to 32 pt) and 512 px palette PNG sprites (`fruits-baked/`, `cosmos-baked/`, drawn by Skia in `CascadeBoard`'s Picture). They are not duplicates. The full-resolution processed icons moved to `cascade_icon_masters/` so Metro no longer bundles them. Rendered-size reasoning, the pipeline and the regeneration commands are in [ASSETS.md](ASSETS.md#rendered-sizes-2833), [Prebuild optimization](ASSETS.md#prebuild-optimization) and [Regenerating the runtime icon thumbnails](ASSETS.md#regenerating-the-runtime-icon-thumbnails). Not repeated here.
+**Superseded by #3698.** Cascade's pieces are now drawn in code and its image files (the 256 px WebP thumbnails and 512 px palette PNG sprites below) are deleted; see [Cascade code-drawn art](#cascade-code-drawn-art-3698). The table is what #2833 measured at the time.
 
 Bytes of bundled files, 2026-10-10 (all-games config; Cascade is a hidden game, so none of this is in the store bundle):
 
@@ -753,17 +774,7 @@ For new game additions specifically, the reviewer checklist in [`docs/GAME-CONTR
 
 ### WebP icon enforcement
 
-A separate CI gate in `test-frontend` (`assetTransparency.test.ts`) asserts that no raw PNGs exist in non-exempt icon subdirectories under `frontend/assets/`. To convert new PNGs before staging:
-
-```bash
-python tools/assets/convert_icons_to_webp.py frontend/assets/fruit-icons
-python tools/assets/convert_icons_to_webp.py frontend/assets/celestial-icons
-```
-
-**Exempt directories** (must stay PNG, never pass to the script):
-
-- `*-baked/` (`fruits-baked/`, `cosmos-baked/`) — Skia pipeline textures (palette-quantized by `npm run prebuild`, see [ASSETS.md](ASSETS.md#prebuild-optimization))
-- `source-icons/` — local pipeline inputs, not bundled
+A separate CI gate in `test-frontend` (`assetTransparency.test.ts`) asserts that no raw PNGs exist in the icon subdirectories under `frontend/assets/`. Convert a new PNG to WebP (for example with `sharp` or `cwebp`) before staging it. No directory is exempt since #3698 removed the Cascade `*-baked/` sprites and the local `source-icons/` inputs.
 
 ---
 
@@ -880,15 +891,15 @@ Resolved or superseded; verified on 2026-10-10.
 
 | Directory                                       | Size         | Files    | Bundled?      | Owner / Purpose                                                                                                                                   |
 | ----------------------------------------------- | ------------ | -------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `assets/source-icons/cosmos/`                   | 85.6 MB      | 12 PNG   | No            | Pipeline input — master source files for `npm run process-assets`. Not imported by app code.                                                      |
-| `assets/source-icons/fruits/`                   | 76.8 MB      | 12 PNG   | No            | Pipeline input — same as above.                                                                                                                   |
-| `assets/celestial-icons/`                       | 36.8 MB      | 12 PNG   | **Yes**       | Cosmos theme UI icons. Imported in `src/theme/fruitSets.ts`.                                                                                      |
-| `assets/fruit-icons/`                           | 26.1 MB      | 12 PNG   | **Yes**       | Fruits theme UI icons. Imported in `src/theme/fruitSets.ts`.                                                                                      |
+| `assets/source-icons/cosmos/`                   | 85.6 MB      | 12 PNG   | No            | Pipeline input for `npm run process-assets`. Deleted in #3692 / #3698 (the script is gone).                                                       |
+| `assets/source-icons/fruits/`                   | 76.8 MB      | 12 PNG   | No            | Pipeline input, same as above. Deleted.                                                                                                           |
+| `assets/celestial-icons/`                       | 36.8 MB      | 12 PNG   | **Yes**       | Cosmos theme UI icons. Deleted in #3698 (was imported in `src/theme/fruitSets.ts`).                                                               |
+| `assets/fruit-icons/`                           | 26.1 MB      | 12 PNG   | **Yes**       | Fruits theme UI icons. Deleted in #3698 (was imported in `src/theme/fruitSets.ts`).                                                               |
 | `assets/logo.png`                               | 7.1 MB       | 1 PNG    | **Yes**       | App logo. Imported in `src/components/shared/AppHeader.tsx`.                                                                                      |
 | `assets/adaptive-icon.png`                      | 7.1 MB       | 1 PNG    | Platform only | Android adaptive icon (`app.json`). Identical file to `logo.png`.                                                                                 |
 | `assets/icon.png`                               | 7.1 MB       | 1 PNG    | Platform only | App icon (`app.json`). Identical file to `logo.png`.                                                                                              |
-| `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
-| `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
+| `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces. Deleted in #3698 (was imported in `src/theme/useFruitImages.ts`, also deleted).                                               |
+| `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces. Deleted in #3698 (was imported in `src/theme/useFruitImages.ts`, also deleted).                                               |
 | `assets/*.png` (Android icons, splash, favicon) | ~0.2 MB      | 4 PNG    | Platform only | App store / launcher assets.                                                                                                                      |
 | Hearts                                          | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode ♥ emoji; all card rendering is programmatic.                                               |
 | `src/game/sudoku/puzzles.json`                  | ~261 KB      | 1 JSON   | **Yes**       | Sudoku puzzle bank — 3 000 unique-solution puzzles (1 000 per difficulty). ~60 KB gzipped over the wire. Imported by `src/game/sudoku/engine.ts`. |
@@ -897,45 +908,27 @@ Resolved or superseded; verified on 2026-10-10.
 | **Bundled game assets**                         | **~72 MB**   |          |               | `celestial-icons` + `fruit-icons` + `logo` + `*-baked` + JSON                                                                                     |
 | **Not bundled (pipeline inputs)**               | **162.4 MB** |          |               | `source-icons/` — needed locally, not shipped                                                                                                     |
 
-### Asset pipeline
+### Asset pipeline and two-tier images (removed in #3698)
 
-The `source-icons/` directories are the master source files for the Cascade game piece pipeline:
-
-```
-source-icons/{fruits,cosmos}/*.png   →   npm run process-assets   →   {fruits,cosmos}-baked/*.png
-                                         (remove_backgrounds.py)
-```
-
-The baked outputs are the files actually used for in-game Skia rendering. The `*-icons/` files (medium-size PNGs) are used for UI display (selection screens, theme pickers) and are a separate set from the baked game-piece textures.
-
-### Two-tier image architecture
-
-Each theme set ships two separate image tiers:
-
-| Tier                          | Directories                        | Size    | Use                                       |
-| ----------------------------- | ---------------------------------- | ------- | ----------------------------------------- |
-| **UI icons** (large, April)   | `fruit-icons/`, `celestial-icons/` | 62.9 MB | `fruitSets.ts` — theme selector, previews |
-| **Baked game pieces** (small) | `fruits-baked/`, `cosmos-baked/`   | 2.2 MB  | `useFruitImages.ts` — in-game Skia canvas |
-
-Since #2833 the UI icon tier is 256 px thumbnails and the baked tier is palette PNG; see [Images (#2833)](#images-2833).
+This section described the Cascade sprite pipeline (`source-icons/` to `npm run process-assets` to `*-baked/`) and its two image tiers (UI icons and baked game pieces). Both tiers, the pipeline and its scripts are gone: the 24 pieces are drawn in code (`frontend/src/game/cascade/art/`, [Cascade code-drawn art](#cascade-code-drawn-art-3698)). The directory table above is the April state, kept for the record; `source-icons/`, `celestial-icons/`, `fruit-icons/`, `cosmos-baked/` and `fruits-baked/` no longer exist.
 
 ### Findings and flags for Epic 2b (status as of 2026-10-10)
 
-| #   | April finding                                                                                 | Status                                                                                                                                                        |
-| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `celestial-icons/` + `fruit-icons/` = 62.9 MB of large PNGs bundled                           | Done. WebP (earlier) and 256 px thumbnails (#2833); the 24 bundled-icon files are now about 0.62 MB. Full-resolution masters moved to `cascade_icon_masters/` |
-| 2   | `source-icons/` lives under `frontend/assets/`                                                | Not bundled (Metro ignores unreferenced files). Pipeline inputs and their location are described in [ASSETS.md](ASSETS.md#directory-map)                      |
-| 3   | `adaptive-icon.png`, `icon.png`, `logo.png` are identical 7.1 MB files; `logo.png` is bundled | The store bundle now packages `logo.png` at 37.6 KB (2026-10-10). `icon.png` (491 KB) and `adaptive-icon.png` are platform-only                               |
-| 4   | `pumpkin` and `milkyway` are imported but unused (~6.7 MB)                                    | Done in #2833: no longer imported in `src/game/cascade/images.ts`                                                                                             |
-| 5   | `cosmos-baked/milkyway.png` referenced?                                                       | Moot; same change as 4                                                                                                                                        |
+| #   | April finding                                                                                 | Status                                                                                                                                                       |
+| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `celestial-icons/` + `fruit-icons/` = 62.9 MB of large PNGs bundled                           | Done. WebP (earlier) and 256 px thumbnails (#2833); the 24 bundled-icon files are now about 0.62 MB. The masters were later deleted with the sprites (#3698) |
+| 2   | `source-icons/` lives under `frontend/assets/`                                                | Not bundled (Metro ignores unreferenced files). Pipeline inputs and their location are described in [ASSETS.md](ASSETS.md#directory-map)                     |
+| 3   | `adaptive-icon.png`, `icon.png`, `logo.png` are identical 7.1 MB files; `logo.png` is bundled | The store bundle now packages `logo.png` at 37.6 KB (2026-10-10). `icon.png` (491 KB) and `adaptive-icon.png` are platform-only                              |
+| 4   | `pumpkin` and `milkyway` are imported but unused (~6.7 MB)                                    | Done in #2833; the files went in #3698                                                                                                                       |
+| 5   | `cosmos-baked/milkyway.png` referenced?                                                       | Moot; same change as 4                                                                                                                                       |
 
 ### Not orphaned (corrects Epic 2a assumption)
 
 The epic listed `/celestial_images/` as "suspected dead weight." Investigation found:
 
-- The actual paths are `celestial-icons/` and `cosmos-baked/` (not `celestial_images/`).
-- Both are actively imported and in use.
-- A third set (`source-icons/cosmos/`) is the pipeline input — intentional and necessary locally.
+- The actual paths were `celestial-icons/` and `cosmos-baked/` (not `celestial_images/`).
+- Both were actively imported and in use at the time; both were deleted in #3698.
+- A third set (`source-icons/cosmos/`) was the pipeline input; it was deleted with the pipeline.
 
 ---
 

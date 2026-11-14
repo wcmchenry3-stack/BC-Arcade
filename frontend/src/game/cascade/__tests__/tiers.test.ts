@@ -8,14 +8,7 @@ import * as path from "path";
 
 import { CascadeEngine } from "../engine";
 import { DROPPABLE_PIECE_TIERS, MAX_TIER, PIECE_DEFS } from "../pieceDefs";
-import {
-  CAPSTONE_TIER,
-  DROPPABLE_TIERS,
-  TIER_COUNT,
-  TIERS,
-  spriteHalfSize,
-  tierRadius,
-} from "../tiers";
+import { CAPSTONE_TIER, DROPPABLE_TIERS, TIER_COUNT, TIERS, tierRadius } from "../tiers";
 import type { Fixture } from "planck";
 import { OVERFLOW_LINE_Y, PX_PER_M, WALL_THICKNESS, WORLD_WIDTH } from "../constants";
 import { FRUIT_SETS } from "../../../theme/fruitSets";
@@ -164,23 +157,7 @@ describe("the engine reads the ladder", () => {
 });
 
 describe("drawn size = collider size", () => {
-  it("sizes every sprite so the visible fruit has the ladder radius", () => {
-    for (const set of Object.values(FRUIT_SETS)) {
-      for (const f of set.fruits) {
-        if (f.bakedClipR === undefined) continue;
-        // half-size per unit of fruit radius is bakedClipR, so visible radius = half / bakedClipR
-        expect(spriteHalfSize(f.tier, f.bakedClipR) / f.bakedClipR).toBeCloseTo(
-          tierRadius(f.tier),
-          9
-        );
-      }
-    }
-  });
-
-  it("falls back to the plain ladder radius for a tier with no sprite (placeholder circle)", () => {
-    expect(spriteHalfSize(CAPSTONE_TIER, undefined)).toBe(tierRadius(CAPSTONE_TIER));
-  });
-
+  // The art itself is drawn at the ladder radius: art/__tests__/art.test.ts (#3698).
   it("has no radius, score or density left on the fruit-set definitions", () => {
     for (const set of Object.values(FRUIT_SETS)) {
       for (const f of set.fruits) {
@@ -225,6 +202,11 @@ describe("one table only", () => {
   const NUMERIC_ARRAY = /\[\s*-?\d+(\.\d+)?\s*(,\s*-?\d+(\.\d+)?\s*){2,}\]/;
   /** file (relative to src) -> why a numeric array of 3+ numbers is fine there. */
   const ARRAY_OK: Record<string, string> = {
+    "game/cascade/art/fruits.ts":
+      "drawing coordinates in unit radii (grape positions, leaves, the pineapple crown, the dragonfruit bracts, #3698); every piece is drawn at tierRadius",
+    "game/cascade/art/cosmos.ts":
+      "drawing coordinates in unit radii (blobs, bands, rings, #3698); every piece is drawn at tierRadius",
+    "game/cascade/art/pen.ts": "UNIT_BOX, the unit circle's square (#3698)",
     "game/cascade/testHooks.ts":
       "the demo set-ups' piles are lists of tier ids (which tiers sit side by side), not radii, scores or densities (#3719); sizes still come from tierRadius",
   };

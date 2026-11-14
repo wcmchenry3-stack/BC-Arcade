@@ -7,6 +7,9 @@ import NextFruitPreview from "../NextFruitPreview";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { createScoreStore } from "../../../game/cascade/scoreStore";
 
+// The preview's and selector's glyphs draw with Skia (#3698), which needs a native module.
+jest.mock("../FruitGlyph", () => "FruitGlyph");
+
 describe("ScoreDisplay with a ScoreStore", () => {
   it("shows the store's score and updates once per new integer", async () => {
     const store = createScoreStore(3);

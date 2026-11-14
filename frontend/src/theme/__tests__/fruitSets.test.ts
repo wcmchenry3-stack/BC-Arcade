@@ -34,10 +34,12 @@ describe("fruitSets structure", () => {
         }
       });
 
-      it("tiers 0-10 have image assets; the capstone (11) is a placeholder until the art story (#3698)", () => {
+      it("every piece names its set (its code-drawn art, #3698) and carries no image", () => {
         for (const fruit of set.fruits) {
-          if (fruit.tier === 11) expect(fruit.icon).toBeUndefined();
-          else expect(fruit.icon).toBeTruthy();
+          expect(fruit.set).toBe(setId);
+          expect(fruit).not.toHaveProperty("icon");
+          expect(fruit).not.toHaveProperty("bakedIcon");
+          expect(fruit).not.toHaveProperty("bakedClipR");
         }
       });
     });

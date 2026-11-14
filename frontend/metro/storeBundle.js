@@ -53,6 +53,20 @@ const HIDDEN_GAME_SCREENS = {
   starswarm: ["StarSwarmScreen"],
 };
 
+/**
+ * Modules outside a hidden game's screens that would still pull its code into a store bundle,
+ * and the stand-in each resolves to there. The home tile's Cascade icon (#3698) draws the piece
+ * with Skia and the Cascade art; in a store bundle (Cascade hidden) it resolves to its
+ * emoji-only variant, so neither ships. Keep it while Cascade is hidden or disabled.
+ */
+const CASCADE_COMPONENTS = path.join(__dirname, "..", "src", "components", "cascade");
+const STUBBED_MODULES = new Map([
+  [
+    path.join(CASCADE_COMPONENTS, "CascadeTileIcon.tsx"),
+    path.join(CASCADE_COMPONENTS, "CascadeTileIcon.web.tsx"),
+  ],
+]);
+
 const SCREENS_DIR = path.join(__dirname, "..", "src", "screens");
 const STUB_SCREEN = path.join(SCREENS_DIR, "StoreBuildExcludedScreen.tsx");
 const EXCLUDED_SCREENS = new Set(Object.values(HIDDEN_GAME_SCREENS).flat());
@@ -109,6 +123,8 @@ function withStoreBundleExclusions(config, env = process.env) {
     if (isExcludedScreen(resolution.filePath)) {
       return { type: "sourceFile", filePath: STUB_SCREEN };
     }
+    const standIn = STUBBED_MODULES.get(resolution.filePath);
+    if (standIn) return { type: "sourceFile", filePath: standIn };
     if (isStorePlatform(platform) && isExcludedLocaleFile(resolution.filePath)) {
       return { type: "sourceFile", filePath: STUB_LOCALE };
     }
@@ -119,6 +135,7 @@ function withStoreBundleExclusions(config, env = process.env) {
 
 module.exports = {
   HIDDEN_GAME_SCREENS,
+  STUBBED_MODULES,
   LAUNCH_LOCALES,
   STUB_LOCALE,
   STUB_SCREEN,

@@ -67,9 +67,7 @@ jest.mock("../../components/cascade/ThemeSelector", () => {
 });
 
 // Skia requires a native module — mock the whole package in Jest.
-// useImage returns a non-null stub so useFruitImages resolves immediately
-// and useAssetsReady returns true, allowing CascadeGame to render.
-// Canvas/Group/Image/Circle/Line are stubbed as no-ops for PieceRenderer.
+// Canvas/Group/Picture are stubbed as no-ops for CascadeBoard.
 jest.mock("@shopify/react-native-skia", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
@@ -305,6 +303,13 @@ describe("CascadeGame", () => {
   it("score starts at 0", async () => {
     const renderer = await renderScreen();
     expect(JSON.stringify(renderer.toJSON())).toContain('"0"');
+  });
+
+  it("the tappable board is the bin: exactly the world rect, bottom-anchored in the area (#3698)", async () => {
+    const renderer = await renderScreen();
+    // 300 x 600 area: scale 0.75 -> a 300 x 450 board, the 150 spare px above the bin.
+    const style = findGameArea(renderer)?.props.style;
+    expect(style).toEqual({ position: "absolute", left: 0, top: 150, width: 300, height: 450 });
   });
 
   it("handleTap calls engine.drop once", async () => {
