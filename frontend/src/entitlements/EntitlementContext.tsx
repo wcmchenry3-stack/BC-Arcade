@@ -171,18 +171,29 @@ async function fetchAndApplyToken(
   }
 }
 
-// A refresh that fails offline before anything was applied (it superseded the
-// launch fetch, whose own cache fallback is then dropped as stale) falls back
-// to the cache like init() (#3879). Never replaces entitlements already held,
-// so a transient error cannot downgrade access. Returns null when stale.
-async function applyCacheIfNothingHeld(
-  setEntitledGames: React.Dispatch<React.SetStateAction<Set<string> | null>>,
+// A refresh failed with a network error. With games held, keep them (a
+// transient error must not downgrade access) and arm the reconnect retry if
+// none are premium. With nothing held yet (it superseded the launch fetch,
+// whose own cache fallback is then dropped as stale), fall back to the cache
+// like init() (#3879). The retry is armed before that read, so a reconnect
+// during it still retries, and disarmed after if the cache unlocked games.
+// Once stale, a newer fetch or applyToken owns the state and the flag.
+async function onRefreshNetworkError(
+  entitled: React.MutableRefObject<Set<string> | null>,
+  retry: React.MutableRefObject<boolean>,
+  apply: (games: Set<string>) => void,
   isStale: () => boolean
-): Promise<Set<string> | null> {
+): Promise<void> {
+  if (entitled.current !== null) {
+    if (!entitled.current.size) retry.current = true;
+    return;
+  }
+  retry.current = true;
   const cached = await loadCachedEntitlements();
-  if (isStale()) return null;
-  setEntitledGames((prev) => prev ?? cached);
-  return cached;
+  if (isStale()) return;
+  const held = entitled.current ?? cached;
+  if (entitled.current === null) apply(cached);
+  if (held.size) retry.current = false;
 }
 
 export function EntitlementProvider({ children }: { children: React.ReactNode }) {
@@ -194,9 +205,12 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
   // changed before it resolved is stale and must not apply or persist.
   const generationRef = useRef(0);
 
+  // Mirror for async callbacks (#3868); set on apply, not a commit later (#3879).
+  const entitledRef = useRef<Set<string> | null>(null);
   // A refresh that returns the games already held keeps the same set, so
   // `canPlay` and the gate value keep their identity (#2964).
   const applyEntitled = useCallback((next: Set<string>) => {
+    entitledRef.current = next;
     setEntitledGames((prev) => (prev !== null && sameSet(prev, next) ? prev : next));
   }, []);
 
@@ -205,8 +219,6 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
   // online edge then re-fetches once (#3868). Disarmed when the latest fetch
   // reaches the server (success or a non-network failure) and by applyToken.
   const retryOnReconnectRef = useRef(false);
-  // Mirrors read from async callbacks (#3868).
-  const entitledRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     entitledRef.current = entitledGames;
   }, [entitledGames]);
@@ -215,26 +227,16 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
 
   const refresh = useCallback(async () => {
     const gen = ++generationRef.current;
+    const isStale = () => generationRef.current !== gen;
     try {
-      await fetchAndApplyToken(
-        applyEntitled,
-        setLastRefreshed,
-        () => generationRef.current !== gen
-      );
+      await fetchAndApplyToken(applyEntitled, setLastRefreshed, isStale);
       if (generationRef.current === gen) retryOnReconnectRef.current = false;
     } catch (e) {
       if (generationRef.current === gen) {
         if (!isNetworkError(e)) retryOnReconnectRef.current = false;
-        else {
-          const held =
-            entitledRef.current ??
-            (await applyCacheIfNothingHeld(setEntitledGames, () => generationRef.current !== gen));
-          if (held && !held.size) retryOnReconnectRef.current = true;
-        }
+        else await onRefreshNetworkError(entitledRef, retryOnReconnectRef, applyEntitled, isStale);
       }
-      // Network errors (isNetworkError) are swallowed — in-memory state stays as-is.
-      // Once entitlements are held, refresh() does not fall back to cache:
-      // a transient error should not downgrade access the user already has.
+      // Network errors (isNetworkError) are swallowed: see onRefreshNetworkError.
       if (!isNetworkError(e)) {
         Sentry.addBreadcrumb({
           category: "entitlements",

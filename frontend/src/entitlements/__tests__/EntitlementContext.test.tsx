@@ -736,6 +736,42 @@ describe("refetch on reconnect after a failed first fetch (#3868)", () => {
     expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
+  it("retries on a reconnect that lands while a superseding refresh reads an empty cache (#3879)", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    deferRequest(); // the launch fetch never settles
+    let releaseCache: () => void = () => {};
+    const gate = new Promise<void>((r) => (releaseCache = r));
+    const realGetManyImpl = (AsyncStorage.getMany as jest.Mock).getMockImplementation();
+    const spy = jest.spyOn(AsyncStorage, "getMany").mockImplementationOnce(async (keys) => {
+      await gate;
+      return realGetManyImpl!(keys);
+    });
+    await render(
+      <EntitlementProvider>
+        <Probe />
+      </EntitlementProvider>
+    );
+    await flushAsync();
+
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    // Connectivity returns while the refresh is still reading the (empty) cache.
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+    await act(async () => releaseCache());
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(ctx.canPlay("hearts")).toBe(true);
+    spy.mockImplementation(realGetManyImpl);
+  });
+
   it("a refresh network failure does not replace held entitlements with the cache (#3879)", async () => {
     mockRequest.mockResolvedValueOnce({
       token: makeToken(makePayload(["hearts", "cascade"])),
