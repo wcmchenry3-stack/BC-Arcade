@@ -89,6 +89,13 @@ export const COST_BUDGET_MS = 16;
  */
 export const OVERLAP_MEDIAN_MAX_PX = 3;
 export const OVERLAP_P90_MAX_PX = 5;
+/**
+ * The p90 gate applies only to runs of at least this many games (the full suite's 100 seeds). A
+ * p90 over the PR gate's 50 capstone seeds or the smoke's 3 is a much noisier statistic: the
+ * shipped tuning reads 4.85 px over seeds 1-100 and 5.01 px over seeds 1-50. The median gate and
+ * the gap gate apply to every run.
+ */
+export const OVERLAP_P90_MIN_GAMES = 100;
 export const GAP_MEAN_MIN_PX = -0.5;
 
 export type FlatMetrics = Record<string, number | null>;
@@ -330,13 +337,19 @@ export const ROBUST_KEYS = new Set(["simS.mean", "score.mean", "feel.guardRailPe
 const COARSE_REL = 0.7;
 
 /**
+ * A rate over games: "...Rate" ("endedBy.capRate", "topTier.reachedRate"), "reachedRate.tN" and
+ * "win.rate" (#3904 review: the lower-case one was missed, so the win rate got the generic band).
+ */
+const RATE_KEY = /(Rate|\.rate)$|^reachedRate/;
+
+/**
  * Tolerance around a baseline value: the larger of a relative fraction and an absolute floor
  * that fits the metric's unit. They are drift guards, not targets: #3697 re-baselines.
  */
 export function tolerance(key: string, value: number, games = 100): number {
   const rel = (r: number, floor: number): number => Math.max(Math.abs(value) * r, floor);
   // A rate over n games moves in steps of 1/n: never band tighter than one game.
-  if (/Rate$|^reachedRate/.test(key)) return rel(0.2, Math.max(0.05, 1 / games));
+  if (RATE_KEY.test(key)) return rel(0.2, Math.max(0.05, 1 / games));
   if (/^dropShare|^share\.|packingDensity/.test(key)) return rel(0.2, 0.05);
   if (key.startsWith("drought.") || /drought\.max/.test(key)) return rel(0.25, 6);
   if (/^feel\.(gap|overlap)/.test(key)) return rel(0.3, 1.5);
@@ -384,8 +397,8 @@ function toBands(flat: FlatMetrics, runKey: string, coarse: boolean): BandSet {
       : coarse
         ? Math.max(Math.abs(v) * COARSE_REL, 1)
         : tolerance(k, v, games);
-    // Fractions stay inside [0, 1]; the win rate stays inside [0, 1] too.
-    const unit = /Rate$|^dropShare|^share\.|^reachedRate/.test(k);
+    // Fractions (rates, shares, the win rate) stay inside [0, 1].
+    const unit = RATE_KEY.test(k) || /^dropShare|^share\./.test(k);
     const lo = (x: number): number => (unit ? Math.max(0, x) : x);
     const hi = (x: number): number => (unit ? Math.min(1, x) : x);
     out[k] = {
@@ -597,7 +610,9 @@ function overlapViolations(where: string, run: FlatMetrics): Violation[] {
     OVERLAP_MEDIAN_MAX_PX,
     "deepest overlap median"
   );
-  gate("overlapP90", run["feel.overlapMaxPx.p90"], OVERLAP_P90_MAX_PX, "deepest overlap p90");
+  if ((run["games"] ?? 0) >= OVERLAP_P90_MIN_GAMES) {
+    gate("overlapP90", run["feel.overlapMaxPx.p90"], OVERLAP_P90_MAX_PX, "deepest overlap p90");
+  }
   const gap = run["feel.gapMeanPx"];
   if (gap !== null && gap !== undefined && gap < GAP_MEAN_MIN_PX) {
     out.push({

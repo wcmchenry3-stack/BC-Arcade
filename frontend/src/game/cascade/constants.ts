@@ -13,13 +13,16 @@ export const GRAVITY_PX_S2 = 2500;
 export const PX_PER_M = 50;
 /**
  * Overlap tuning (#3904; owner: the overlap between pieces looks bad; the sim gates the deepest
- * overlap at 3 px median / 5 px p90). Each fixed step runs PHYSICS_SUBSTEPS planck steps of
- * FIXED_STEP_MS / PHYSICS_SUBSTEPS, each with these solver iterations, and planck's position
- * correction (Baumgarte) removes POSITION_BAUMGARTE of an overlap per pass instead of 0.2. The
- * deepest overlap of a skilled game fell from 9.4 px (median) to 2.5. The levers, what each did
- * and what it cost: docs/games/cascade.md#physics.
+ * overlap at 3 px median / 5 px p90). Each fixed step runs PLANCK_STEPS_PER_FIXED_STEP planck
+ * steps of FIXED_STEP_MS / PLANCK_STEPS_PER_FIXED_STEP, each with these solver iterations, and
+ * planck's position correction (Baumgarte) removes POSITION_BAUMGARTE of an overlap per pass
+ * instead of 0.2. The deepest overlap of a skilled game fell from 9.4 px (median) to 2.5. The
+ * levers, what each did and what it cost: docs/games/cascade.md#physics.
+ *
+ * Not MAX_SUBSTEPS: that caps how many fixed steps one frame may run; this is how many planck
+ * world steps make up one fixed step.
  */
-export const PHYSICS_SUBSTEPS = 2;
+export const PLANCK_STEPS_PER_FIXED_STEP = 2;
 /** Box2D solver iterations per planck step (#3697: 10 / 8 per fixed step). */
 export const VELOCITY_ITERATIONS = 10;
 export const POSITION_ITERATIONS = 20;
@@ -52,6 +55,7 @@ export const MAX_SPAWN_VELOCITY = 3; // px per fixed step
 
 // Simulation
 export const FIXED_STEP_MS = 1000 / 60;
+/** Most fixed steps one frame may run (each is PLANCK_STEPS_PER_FIXED_STEP planck steps). */
 export const MAX_SUBSTEPS = 3;
 
 // Game over: the lid (#3694). All counts are fixed physics steps (FIXED_STEP_MS), never frames

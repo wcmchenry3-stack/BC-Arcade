@@ -122,6 +122,7 @@ type MockEngineEvent =
   | { type: "merge"; result: number; x: number; y: number }
   | { type: "score"; delta: number; total: number }
   | { type: "gameOver" }
+  | { type: "win"; x: number; y: number; id: number }
   | { type: "guardRailFired"; reason: string; bodyId: number };
 
 let pendingEngineEvents: MockEngineEvent[] = [];
@@ -132,6 +133,8 @@ const mockEngineDestroy = jest.fn();
 const mockEngineRestore = jest.fn();
 // The lid's drop gate (#3694): open unless a test closes it.
 const mockEngineCanDrop = jest.fn(() => true);
+// #3904: the win ends play; a test sets it when it injects the win event.
+const mockEngineHasWon = jest.fn(() => false);
 const mockEngineStep = jest.fn().mockImplementation(() => {
   const events = [...pendingEngineEvents];
   pendingEngineEvents = [];
@@ -155,6 +158,7 @@ jest.mock("../../game/cascade/engine", () => ({
       destroy: mockEngineDestroy,
       restore: mockEngineRestore,
       canDrop: mockEngineCanDrop,
+      hasWon: mockEngineHasWon,
     };
   }),
 }));
@@ -1049,6 +1053,62 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       renderer.unmount();
     });
     expect(lastDuration()).toBe(4_000);
+  });
+  // #3904 interim win handling (the celebration and the result card are #3699).
+  describe("after the win", () => {
+    afterEach(() => {
+      mockEngineHasWon.mockReturnValue(false);
+    });
+
+    async function win(renderer: ReturnType<typeof create>) {
+      await triggerTap(renderer, 100);
+      await act(() => {
+        jest.advanceTimersByTime(5_000);
+      });
+      await setAppState("background"); // a save, before the win
+      await setAppState("active");
+      expect(await AsyncStorage.getItem("cascade_game_v6")).not.toBeNull();
+      pendingEngineEvents.push({ type: "win", x: 200, y: 400, id: 1 });
+      mockEngineHasWon.mockReturnValue(true);
+      await act(() => {
+        advanceOneFrame();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+
+    it("stops stepping the engine: no frame is scheduled and none steps", async () => {
+      const renderer = await renderScreen();
+      await win(renderer);
+      expect(rafCallbacks).toHaveLength(0);
+      mockEngineStep.mockClear();
+      await act(() => {
+        advanceOneFrame();
+      });
+      // A trip to the background and back does not restart the loop either.
+      await setAppState("background");
+      await setAppState("active");
+      expect(rafCallbacks).toHaveLength(0);
+      expect(mockEngineStep).not.toHaveBeenCalled();
+    });
+
+    it("clears the saved game and saves nothing after it, on pause or otherwise", async () => {
+      const renderer = await renderScreen();
+      await win(renderer);
+      expect(await AsyncStorage.getItem("cascade_game_v6")).toBeNull();
+      await setAppState("background");
+      await act(() => {
+        jest.advanceTimersByTime(10_000);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(await AsyncStorage.getItem("cascade_game_v6")).toBeNull();
+      await act(() => {
+        renderer.unmount();
+      });
+    });
   });
 });
 

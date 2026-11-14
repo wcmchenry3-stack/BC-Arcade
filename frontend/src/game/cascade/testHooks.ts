@@ -27,6 +27,8 @@ import {
 export interface CascadeHookState {
   score: number;
   gameOver: boolean;
+  /** Two capstones touched (#3904): play has ended in a win. */
+  won: boolean;
   nextFruitTier: number;
   comboCount: number;
   fruitCount: number;

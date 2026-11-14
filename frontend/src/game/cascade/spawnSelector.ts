@@ -23,7 +23,8 @@ export const DROUGHT_WINDOW = 10;
 const DROUGHT_BOOST = 3;
 const STREAK_WINDOW = 4;
 /**
- * In danger, tiers at or above this are scaled by DANGER_PENALTY (min weight 1). #3904 removed
+ * In danger, tiers at or above this are scaled by DANGER_PENALTY (fractional weights, no floor
+ * since #3904: the old floor of 1 left tier 7, weight 1, unpenalised). #3904 also removed
  * #3697's second danger rule, which also multiplied the tiers below it by 1.5: on the V1 ladder
  * that stream of small pieces was what kept a mashing player's pile hovering just under the lid
  * (the spam bot outlived the 120 s lid bound), while a careful player is in danger for about
@@ -51,7 +52,7 @@ export function selectNextTier(
   if (isInDanger) {
     for (const tier of DROPPABLE_PIECE_TIERS) {
       if (tier >= DANGER_TIER_THRESHOLD) {
-        weights[tier] = Math.max(1, Math.round((weights[tier] ?? 1) * DANGER_PENALTY));
+        weights[tier] = (weights[tier] ?? 0) * DANGER_PENALTY;
       }
     }
   }

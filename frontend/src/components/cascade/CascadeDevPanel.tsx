@@ -143,7 +143,7 @@ export default function CascadeDevPanel({
             <Text style={[styles.tierLabel, { color: colors.text }]}>
               {def.tier} · {name}
             </Text>
-            <Text style={[styles.tierMeta, { color: colors.textMuted }]}>r={r}</Text>
+            <Text style={[styles.tierMeta, { color: colors.textMuted }]}>r={r.toFixed(1)}</Text>
             <Pressable style={styles.spawnBtn} onPress={() => onSpawn(def.tier)}>
               <Text style={styles.spawnText}>Spawn</Text>
             </Pressable>

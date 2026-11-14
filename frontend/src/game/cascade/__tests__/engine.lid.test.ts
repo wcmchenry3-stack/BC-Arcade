@@ -12,9 +12,9 @@
  * #3697: the fixtures are built from the ladder (`tierRadius`) instead of fixed coordinates, for
  * the smaller lively ladder (r0 / r10 / r11 = 18 / 56 / 63). The old ones (a capstone, a tier 10
  * and a tier 9 at radii 101 / 88 / 77) no longer reach the lid; on the new ladder that takes five
- * or six pieces. Droppable pieces (tiers 0-5) now spawn with their top edge on the canvas, so the
- * tests about a piece whose top edge is above the canvas at spawn drop a big tier (8, r 45, top
- * edge at y = -15) the way the dev panel and the test seams can.
+ * or six pieces. Droppable pieces spawn with their top edge on the canvas (tiers 0-5 then, 0-7
+ * since #3904), so the tests about a piece whose top edge is above the canvas at spawn drop a big
+ * tier (8) the way the dev panel and the test seams can.
  *
  * #3904: the fixtures follow the constant-ratio ladder (r0 / r10 / r11 = 5 / 74.8 / 98; tiers 0-7
  * drop). A capstone and tiers 10, 9 and 8 already stand 547 px tall, so the columns are four or
@@ -31,7 +31,7 @@ import {
   OVERFLOW_IGNORE_MERGE_TICKS,
   OVERFLOW_LINE_Y,
   OVERFLOW_TICKS_THRESHOLD,
-  PHYSICS_SUBSTEPS,
+  PLANCK_STEPS_PER_FIXED_STEP,
   WORLD_HEIGHT,
 } from "../constants";
 
@@ -359,9 +359,11 @@ describe("step(): the accumulator is capped", () => {
     for (let i = 0; i < 50; i++) engine.step(100);
     update.mockClear();
     // Drain whatever backlog is left with empty frames: at most the cap, not 50 frames' worth.
-    // (#3904: each fixed step is PHYSICS_SUBSTEPS planck steps.)
+    // (#3904: each fixed step is PLANCK_STEPS_PER_FIXED_STEP planck steps.)
     for (let i = 0; i < 20; i++) engine.step(0);
-    expect(update.mock.calls.length).toBeLessThanOrEqual(MAX_SUBSTEPS * PHYSICS_SUBSTEPS);
+    expect(update.mock.calls.length).toBeLessThanOrEqual(
+      MAX_SUBSTEPS * PLANCK_STEPS_PER_FIXED_STEP
+    );
     update.mockRestore();
   });
 });

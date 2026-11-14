@@ -71,6 +71,7 @@ const mockEngine = {
   destroy: jest.fn(),
   restore: jest.fn(),
   canDrop: jest.fn(() => true),
+  hasWon: jest.fn(() => false),
   seed: jest.fn(),
 };
 jest.mock("../../game/cascade/engine", () => ({

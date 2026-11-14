@@ -10,14 +10,15 @@
  * Simulated seconds to game over as this test runs them (the sim harness's `spamBot` via
  * `runGame`, #2893), all by overflow:
  *   seed      1     2     3     4     5
- *   60 Hz   75.8  63.0  66.3  83.3  70.8   (16.67 ms frames)
- *   120 Hz  72.6  65.6  66.0  86.5  66.1   (8.33 ms frames)
- * That is the #3904 ladder (radii 5-98, drops 0-7) and overlap tuning, with danger mode no longer
- * boosting the small tiers (#3904). History: #3697's lively ladder read 40-105 s here (seed 3 at
- * 120 Hz, 105.2 s), the 12-tier ladder on Matter.js (#3695) 39-68 s, the 10-tier ladder 34-46 s.
- * The longest spam game of the 100-seed full suite is 94.6 s (60 Hz), so the bound below has
- * about 27 % headroom. Headless and deterministic: the seeded RNG drives the queue, the tap
- * times and the tap x. The bot and the game loop live in `../sim/` (`runGame`, `spamBot`).
+ *   60 Hz   97.8  78.3  88.5  95.0 100.3   (16.67 ms frames)
+ *   120 Hz  81.6  82.8  96.8 114.8 116.4   (8.33 ms frames)
+ * That is the #3904 ladder (radii 5-98, drops 0-7) and overlap tuning, with danger mode scaling
+ * tiers 3-7 by 0.2 and no longer boosting the small tiers (#3904). History: #3697's lively ladder
+ * read 40-105 s here, the 12-tier ladder on Matter.js (#3695) 39-68 s, the 10-tier ladder 34-46 s.
+ * Seed 5 at 120 Hz (116.4 s) is also the longest spam game of the 100-seed full suite, so the
+ * bound below has about 3 % headroom. Headless and deterministic: the seeded RNG drives the
+ * queue, the tap times and the tap x. The bot and the game loop live in `../sim/` (`runGame`,
+ * `spamBot`).
  */
 import { spamBot } from "../sim/bots";
 import { runGame } from "../sim/runGame";

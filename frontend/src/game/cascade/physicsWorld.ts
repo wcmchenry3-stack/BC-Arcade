@@ -6,7 +6,7 @@
  * and is tuned for bodies of 0.1-10 m, so the world is scaled at `PX_PER_M` (50): radii 5-98 px
  * (#3904) are 0.1-1.96 m and the bin is 7.2 x 11.2 m. The engine keeps the units it always had:
  * world pixels, velocities in px per fixed step (`FIXED_STEP_MS`), angles in radians, angular
- * velocity in rad per fixed step. One fixed step is `PHYSICS_SUBSTEPS` planck steps (#3904).
+ * velocity in rad per fixed step. One fixed step is `PLANCK_STEPS_PER_FIXED_STEP` planck steps (#3904).
  *
  * Circles are true circles (no polygon facets). planck 1.4.2's `PolygonShape.computeMass` has a
  * typo (the centre of mass of a dynamic polygon is wrong; fixed in 1.5): Cascade only has dynamic
@@ -24,7 +24,7 @@ import {
   PIECE_FRICTION,
   PIECE_FRICTION_AIR,
   PIECE_RESTITUTION,
-  PHYSICS_SUBSTEPS,
+  PLANCK_STEPS_PER_FIXED_STEP,
   POSITION_BAUMGARTE,
   POSITION_ITERATIONS,
   PX_PER_M,
@@ -59,7 +59,7 @@ export interface PhysicsWorld<P> {
   /** Adds a dynamic circle for `piece`, tagged with it; position and radius in px. */
   addPiece(piece: P, x: number, y: number, radiusPx: number, density: number): Body;
   removePiece(body: Body): void;
-  /** One fixed step (PHYSICS_SUBSTEPS planck steps); `onBegin` sees each contact begun in it. */
+  /** One fixed step (PLANCK_STEPS_PER_FIXED_STEP planck steps); `onBegin` sees its contacts. */
   step(): void;
   destroy(): void;
 }
@@ -130,8 +130,8 @@ export function createPhysicsWorld<P>(
       world.destroyBody(body);
     },
     step() {
-      for (let i = 0; i < PHYSICS_SUBSTEPS; i++) {
-        world.step(STEP_S / PHYSICS_SUBSTEPS, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
+      for (let i = 0; i < PLANCK_STEPS_PER_FIXED_STEP; i++) {
+        world.step(STEP_S / PLANCK_STEPS_PER_FIXED_STEP, VELOCITY_ITERATIONS, POSITION_ITERATIONS);
       }
     },
     destroy() {

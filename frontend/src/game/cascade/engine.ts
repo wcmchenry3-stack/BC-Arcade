@@ -360,7 +360,8 @@ export class CascadeEngine {
       this._comboTicksLeft > 0 &&
       this._comboCount >= 2 &&
       !this._comboEmitted &&
-      !this._gameOver
+      !this._gameOver &&
+      !this._won
     ) {
       events.push({ type: "cascadeCombo", count: this._comboCount });
       this._comboEmitted = true;

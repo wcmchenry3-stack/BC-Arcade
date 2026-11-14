@@ -26,6 +26,7 @@ function deps(): CascadeHookDeps {
     getState: jest.fn(() => ({
       score: 0,
       gameOver: false,
+      won: false,
       nextFruitTier: 0,
       comboCount: 0,
       fruitCount: 0,

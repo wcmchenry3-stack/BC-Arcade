@@ -18,6 +18,7 @@ import {
   GAP_MEAN_MIN_PX,
   OVERLAP_MEDIAN_MAX_PX,
   OVERLAP_P90_MAX_PX,
+  OVERLAP_P90_MIN_GAMES,
   aggregateGames,
   FULL_PARAMS,
   ROBUST_KEYS,
@@ -482,6 +483,11 @@ describe("tolerance", () => {
     expect(tolerance("endedBy.capRate", 0, 10)).toBeCloseTo(0.1, 9);
     expect(tolerance("reachedRate.t7", 0, 100)).toBeCloseTo(0.05, 9);
   });
+
+  // #3904 review: "win.rate" (lower case) is a rate too, not a generic +-25 % / +-1 band.
+  it("bands the win rate as a rate", () => {
+    expect(tolerance("win.rate", 0.47, 100)).toBeCloseTo(0.094, 9);
+  });
 });
 
 describe("settle bands (survivor bias)", () => {
@@ -580,6 +586,9 @@ describe("smoke suite against baseline.json (PR gate)", () => {
     const bad: SuiteResult = JSON.parse(JSON.stringify(result));
     bad.runs["heuristic@60"]!["feel.overlapMaxPx.median"] = OVERLAP_MEDIAN_MAX_PX + 0.1;
     bad.runs["random@120"]!["feel.overlapMaxPx.p90"] = OVERLAP_P90_MAX_PX + 0.1;
+    // The p90 gate needs a full run's games (the smoke plays 3): see OVERLAP_P90_MIN_GAMES.
+    bad.runs["random@120"]!["games"] = OVERLAP_P90_MIN_GAMES;
+    bad.runs["heuristic@120"]!["feel.overlapMaxPx.p90"] = OVERLAP_P90_MAX_PX + 0.1;
     bad.runs["spam@60"]!["feel.gapMeanPx"] = GAP_MEAN_MIN_PX - 0.1;
     const keys = checkSuite(bad, undefined).map((v) => `${v.where}:${v.key}`);
     expect(keys).toEqual(
@@ -589,6 +598,8 @@ describe("smoke suite against baseline.json (PR gate)", () => {
         "spam@60:gapMean",
       ])
     );
+    // ...and not to a run of fewer games (the PR gate's 50 capstone seeds, the smoke's 3).
+    expect(keys).not.toContain("heuristic@120:overlapP90");
     // The smoke itself passes them.
     expect(checkSuite(result, undefined)).toEqual([]);
   });
@@ -655,6 +666,24 @@ describe("baseline.json", () => {
     );
     expect(baseline.suites["full"]!.params.capstone).toEqual(FULL_PARAMS.capstone);
     expect(baseline.suites["smoke"]!.params.capstone).toBeUndefined();
+  });
+
+  it("a collapsed win rate fails the full gate: its band is a rate's, inside [0, 1] (#3904 review)", () => {
+    const full = baseline.suites["full"]!;
+    const band = full.runs["capstone:skilled@60"]!["win.rate"]!;
+    expect(band.min!).toBeGreaterThanOrEqual(0);
+    expect(band.max!).toBeLessThanOrEqual(1);
+    expect(band.max! - band.min!).toBeLessThan(0.3);
+    // The baseline's own values as a run result, then the win rate collapses.
+    const values = (bands: Record<string, { value: number | null }>) =>
+      Object.fromEntries(Object.entries(bands).map(([k, b]) => [k, b.value]));
+    const runs = Object.fromEntries(Object.entries(full.runs).map(([k, b]) => [k, values(b)]));
+    const queue = Object.fromEntries(Object.entries(full.queue).map(([k, b]) => [k, values(b)]));
+    const result: SuiteResult = { params: full.params, runs, cost: {}, queue };
+    expect(checkSuite(result, full).filter((v) => v.key === "win.rate")).toEqual([]);
+    runs["capstone:skilled@60"]!["win.rate"] = 0.05;
+    const bad = checkSuite(result, full).filter((v) => v.key === "win.rate");
+    expect(bad.map((v) => v.where)).toEqual(["capstone:skilled@60"]);
   });
 
   it("bands the capstone runs' win rate and time to the capstone (#3697)", () => {
