@@ -372,7 +372,7 @@ function HandTag({ outcome }: { outcome: string }) {
   const { colors } = useTheme();
   const key = tagKeyOf(outcome);
   const color =
-    key === "tag.win" ? colors.bonusText : key === "tag.lose" ? colors.error : colors.textMuted;
+    key === "tag.win" ? colors.bonusText : key === "tag.lose" ? colors.errorText : colors.textMuted;
   return (
     <Text
       testID="hand-tag"
@@ -409,7 +409,7 @@ function PayoutText({ payout }: { payout: number }) {
       style={[
         styles.payout,
         styles.shrink,
-        { color: payout > 0 ? colors.bonusText : payout < 0 ? colors.error : colors.textMuted },
+        { color: payout > 0 ? colors.bonusText : payout < 0 ? colors.errorText : colors.textMuted },
       ]}
       numberOfLines={1}
       adjustsFontSizeToFit

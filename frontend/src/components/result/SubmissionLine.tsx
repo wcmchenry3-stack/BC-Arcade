@@ -54,7 +54,7 @@ export function SubmissionLine({
     case "error":
       icon = "alert-circle-outline";
       text = t("submission.error");
-      color = colors.error;
+      color = colors.errorText;
       break;
     case "submitting":
       icon = "cloud-upload-outline";

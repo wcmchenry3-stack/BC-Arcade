@@ -25,14 +25,14 @@ export function progressFraction(total: number): number {
 
 interface ScoreColors {
   readonly bonusText: string;
-  readonly error: string;
+  readonly errorText: string;
   readonly text: string;
 }
 
-/** Score text color per spec: bonus for leader, error for losing seat, text otherwise. */
+/** Score text color per spec: bonus for leader, errorText for losing seat, text otherwise. */
 export function scoreColor(index: number, standing: SeatStanding, colors: ScoreColors): string {
   if (index === standing.leaderIndex) return colors.bonusText;
-  if (index === standing.losingIndex) return colors.error;
+  if (index === standing.losingIndex) return colors.errorText;
   return colors.text;
 }
 

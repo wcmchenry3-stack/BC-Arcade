@@ -107,7 +107,7 @@ export default function HeartsScorecard({
                     cellColor = colors.bonusText;
                     display = "0★";
                   } else {
-                    cellColor = colors.error;
+                    cellColor = colors.errorText;
                   }
                 }
                 return (

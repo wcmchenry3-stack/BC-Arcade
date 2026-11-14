@@ -10,6 +10,7 @@ const colors = {
   bonus: "BONUS",
   bonusText: "BONUS_TEXT",
   error: "ERROR",
+  errorText: "ERROR_TEXT",
   text: "TEXT",
   accent: "ACCENT",
 };
@@ -36,12 +37,12 @@ describe("progressFraction", () => {
 });
 
 describe("scoreColor", () => {
-  it("returns bonus for leader, error for losing, text otherwise", () => {
+  it("returns bonus for leader, errorText for losing, text otherwise", () => {
     const standing = { leaderIndex: 1, losingIndex: 3 };
     expect(scoreColor(0, standing, colors)).toBe("TEXT");
     expect(scoreColor(1, standing, colors)).toBe("BONUS_TEXT");
     expect(scoreColor(2, standing, colors)).toBe("TEXT");
-    expect(scoreColor(3, standing, colors)).toBe("ERROR");
+    expect(scoreColor(3, standing, colors)).toBe("ERROR_TEXT");
   });
 });
 

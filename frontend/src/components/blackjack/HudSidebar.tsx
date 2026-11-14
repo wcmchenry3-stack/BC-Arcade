@@ -70,7 +70,7 @@ export default function HudSidebar({
   const isCritical = startingChips > 0 && chips < startingChips * 0.2;
   const showStreak = winStreak >= 3;
 
-  const hudColor = isCritical ? colors.error : isLowChips ? colors.warnText : colors.text;
+  const hudColor = isCritical ? colors.errorText : isLowChips ? colors.warnText : colors.text;
   const barColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : tableAccentColor;
   const hasGoal = runGoal != null;
   const goalProgress = hasGoal ? Math.min(1, chips / runGoal) : 0;
@@ -92,7 +92,7 @@ export default function HudSidebar({
 
         {isCritical && !notice && (
           <Text
-            style={[styles.warning, { color: colors.error, fontFamily: typography.label }]}
+            style={[styles.warning, { color: colors.errorText, fontFamily: typography.label }]}
             numberOfLines={2}
           >
             {t("hud.criticalWarning")}

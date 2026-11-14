@@ -664,7 +664,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
                 <Text
                   style={[
                     styles.error,
-                    { color: colors.error, backgroundColor: colors.surfaceHigh },
+                    { color: colors.errorText, backgroundColor: colors.surfaceHigh },
                   ]}
                   accessibilityRole="alert"
                 >
