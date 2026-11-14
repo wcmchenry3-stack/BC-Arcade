@@ -27,13 +27,6 @@ import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import type { BoardMotion } from "../../game/mahjong/useBoardMotion";
 import { useTileFaces } from "./tileFaces";
 import { MatchGhostNode, TileNode, WinCascadeNode } from "./TileNode";
-import { boardResolution } from "../../game/mahjong/zoom";
-import {
-  canvasPlan,
-  useRenderVariant,
-  isRenderDiagEnabled,
-  noteCanvas,
-} from "../../game/mahjong/renderDiag";
 import { MAHJONG_BOARD_BG } from "../../theme/theme.mahjong";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
@@ -89,26 +82,9 @@ export default function GameCanvas({
   const { t } = useTranslation("mahjong");
   const { faceWidth, faceHeight, boardWidth, boardHeight } = camera;
   // The canvas is the board's size, never larger (#3684: iOS stops presenting, and aliases, a
-  // canvas drawn bigger and shrunk by a View transform), and the faces are rasterised at
-  // PixelRatio x plan.faceRes, which is PixelRatio in production (the demo showed hi-res faces
-  // gave no visible gain for about 3x the face memory).
-  const boardRes = boardResolution(camera.scale, camera.tileWidth);
-  // Always the fixed variant "b" outside a test build; test builds can pick the old renderer
-  // for the before/after demo (renderDiag.ts).
-  const variant = useRenderVariant();
-  const plan = canvasPlan(variant, boardRes);
-  const res = plan.tileRes;
-  const faces = useTileFaces(faceWidth, faceHeight, plan.faceRes);
-  if (isRenderDiagEnabled()) {
-    noteCanvas({
-      variant,
-      res: boardRes,
-      plan,
-      boardWidth,
-      boardHeight,
-      facesReady: faces ? faces.filter(Boolean).length : -1,
-    });
-  }
+  // canvas drawn bigger and shrunk by a View transform), tiles are drawn at scale 1, and the
+  // faces are rasterised at PixelRatio alone.
+  const faces = useTileFaces(faceWidth, faceHeight, 1);
 
   const freeTiles = useMemo(() => freeIds ?? freeTileIds(state.tiles), [freeIds, state.tiles]);
 
@@ -145,21 +121,12 @@ export default function GameCanvas({
 
   return (
     <View style={{ width: boardWidth, height: boardHeight }}>
-      {/* The board's own size (#3684). Only a test build's "old" variant draws larger and scales
-          this View down; production never does (plan.canvasScale and viewScale are 1). */}
       <View
         pointerEvents="none"
-        style={{
-          position: "absolute",
-          width: boardWidth * plan.canvasScale,
-          height: boardHeight * plan.canvasScale,
-          left: (boardWidth - boardWidth * plan.canvasScale) / 2,
-          top: (boardHeight - boardHeight * plan.canvasScale) / 2,
-          transform: [{ scale: plan.viewScale }],
-        }}
+        style={{ position: "absolute", width: boardWidth, height: boardHeight, left: 0, top: 0 }}
       >
         <Canvas
-          style={{ width: boardWidth * plan.canvasScale, height: boardHeight * plan.canvasScale }}
+          style={{ width: boardWidth, height: boardHeight }}
           accessibilityLabel={t("game.canvasLabel")}
           accessibilityRole="none"
         >
@@ -174,15 +141,15 @@ export default function GameCanvas({
               isFree={freeTiles.has(tile.id)}
               isHint={matchingIds.has(tile.id) || hintIds.has(tile.id)}
               debugShowFree={debugShowFree}
-              res={res}
+              res={1}
               motion={motion.tiles.get(tile.id)}
             />
           ))}
           {/* Matched pairs fly together and burst over the board; the win cascade over all. */}
           {motion.ghosts.map((g) => (
-            <MatchGhostNode key={g.key} ghost={g} camera={camera} faces={faces} res={res} />
+            <MatchGhostNode key={g.key} ghost={g} camera={camera} faces={faces} res={1} />
           ))}
-          {motion.cascade && <WinCascadeNode cascade={motion.cascade} camera={camera} res={res} />}
+          {motion.cascade && <WinCascadeNode cascade={motion.cascade} camera={camera} res={1} />}
         </Canvas>
       </View>
 
