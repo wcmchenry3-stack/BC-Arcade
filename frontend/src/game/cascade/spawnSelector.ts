@@ -22,11 +22,15 @@ const BASE_WEIGHTS: Record<number, number> = {
 export const DROUGHT_WINDOW = 10;
 const DROUGHT_BOOST = 3;
 const STREAK_WINDOW = 4;
-/** In danger, tiers at or above this are scaled by DANGER_PENALTY (min weight 1)... */
+/**
+ * In danger, tiers at or above this are scaled by DANGER_PENALTY (min weight 1). #3904 removed
+ * #3697's second danger rule, which also multiplied the tiers below it by 1.5: on the V1 ladder
+ * that stream of small pieces was what kept a mashing player's pile hovering just under the lid
+ * (the spam bot outlived the 120 s lid bound), while a careful player is in danger for about
+ * 10 % of its drops and only at the end of a lost game. See docs/games/cascade.md.
+ */
 const DANGER_TIER_THRESHOLD = 3;
 const DANGER_PENALTY = 0.2;
-/** ...and the tiers below it by this, so the small pieces that clear a pile come more often. */
-const DANGER_SMALL_BOOST = 1.5;
 
 export function selectNextTier(
   history: number[],
@@ -43,13 +47,11 @@ export function selectNextTier(
     }
   }
 
-  // Danger state: suppress large (high-tier) pieces when stack is high, favour the small ones
+  // Danger state: suppress large (high-tier) pieces when the stack is high.
   if (isInDanger) {
     for (const tier of DROPPABLE_PIECE_TIERS) {
       if (tier >= DANGER_TIER_THRESHOLD) {
         weights[tier] = Math.max(1, Math.round((weights[tier] ?? 1) * DANGER_PENALTY));
-      } else {
-        weights[tier] = (weights[tier] ?? 0) * DANGER_SMALL_BOOST;
       }
     }
   }
