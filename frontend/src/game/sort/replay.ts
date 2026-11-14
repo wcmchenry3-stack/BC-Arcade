@@ -49,7 +49,7 @@
  * log with the real engine, with the same rules as the backend's validator.
  */
 
-import { replayEngines } from "../_shared/replayEngine";
+import { replayEngines, type ReplayEngines } from "../_shared/replayEngine";
 import { SORT_MAX_UNITS } from "../_shared/eventQueueConfig";
 import { captureThrottledMessage } from "../_shared/sentryThrottle";
 import { applyPour, isValidPour, undo as undoState } from "./engine";
@@ -397,11 +397,44 @@ export class SortReplay {
   }
 }
 
+/** The rules one engine version rebuilds a level with. */
+interface SortReplayRules {
+  readonly rebuild: (opening: SortState, actions: readonly Action[]) => RebuildResult;
+}
+
+/** What `rebuildRecorded` gives: the rebuilt level, or why nothing was rebuilt. */
+export type RecordedRebuild =
+  (RebuildResult & { readonly incompatible?: undefined }) | { readonly incompatible: string };
+
+/**
+ * The reader's entry point for a stored game (#3912): `started` is its
+ * `game_started` data (undefined: none, read as version 1). The level is rebuilt
+ * with the rules `engines` has for its `engine_version` (today's, or an older
+ * version's frozen rules); any other version rebuilds nothing and says why in
+ * `incompatible`, so a log from other pour rules never gives a plausible board.
+ * `rebuild` itself applies today's rules and knows no version.
+ * @internal The reader's side: tests (and offline tooling) call it (knip --production, #3126).
+ */
+export function rebuildRecorded(
+  started: unknown,
+  opening: SortState,
+  actions: readonly Action[],
+  engines: ReplayEngines<SortReplayRules> = REPLAY_ENGINES
+): RecordedRebuild {
+  const engine = engines.resolve(started);
+  if (engine.kind === "incompatible") return { incompatible: engine.reason };
+  return engine.rules.rebuild(opening, actions);
+}
+
 /**
  * Which rules replay a recorded game, by the `engine_version` in its `game_started`
- * (#3912, `_shared/replayEngine.ts`): the pour, undo and rewind rules (`rebuild`). A reader resolves the game's
- * `game_started` data first; an `incompatible` result rebuilds nothing. An older
- * version stays replayable by registering its frozen rules with `withLegacy`.
+ * (#3912, `_shared/replayEngine.ts`): the pour, undo and rewind rules (`rebuild`).
+ * `rebuildRecorded` resolves through it; an `incompatible` result rebuilds nothing.
+ * An older version stays replayable by registering its frozen rules with `withLegacy`.
  * @internal No production caller: readers (tests, offline tooling) use it (knip --production, #3126).
  */
-export const REPLAY_ENGINES = replayEngines("sort", SORT_REPLAY_ENGINE_VERSION, { rebuild });
+export const REPLAY_ENGINES: ReplayEngines<SortReplayRules> = replayEngines(
+  "sort",
+  SORT_REPLAY_ENGINE_VERSION,
+  { rebuild }
+);
