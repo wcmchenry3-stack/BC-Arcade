@@ -1,0 +1,134 @@
+{
+  "_comment": "Replay fixture version guard (#3911): scripts/check_replay_fixture_versions.py. Each replayable game names its engine_version constant, the fixtures pinned under each version, and the tests that hard-code replay results. Every file under 'scan' must be a game's fixture or listed in 'not_replay'. How to run, what it checks and how to override: docs/CI-CHECKS.md#replay-fixture-version-guard-3911.",
+  "scan": ["backend/tests/fixtures/**/*", "frontend/src/**/__fixtures__/**/*"],
+  "test_globs": [
+    "frontend/src/**/__tests__/**/*.ts",
+    "frontend/src/**/__tests__/**/*.tsx",
+    "backend/tests/**/*.py"
+  ],
+  "games": {
+    "solitaire": {
+      "version": { "file": "frontend/src/game/solitaire/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/solitaire_moves_v1.json", "engine_version": 1 }
+      ],
+      "expectations": ["frontend/src/game/_shared/cards/__tests__/fixtureReplay.test.ts"],
+      "retired_versions": {}
+    },
+    "freecell": {
+      "version": { "file": "frontend/src/game/freecell/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/freecell_moves_v1.json", "engine_version": 1 }
+      ],
+      "expectations": ["frontend/src/game/_shared/cards/__tests__/fixtureReplay.test.ts"],
+      "retired_versions": {}
+    },
+    "mahjong": {
+      "version": { "file": "frontend/src/game/mahjong/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/mahjong_replay_v1.json", "engine_version": 1 },
+        {
+          "path": "frontend/src/game/mahjong/__tests__/__fixtures__/golden-replay.json",
+          "engine_version": 1
+        }
+      ],
+      "expectations": [],
+      "retired_versions": {}
+    },
+    "sort": {
+      "version": {
+        "file": "frontend/src/game/sort/replay.ts",
+        "name": "SORT_REPLAY_ENGINE_VERSION"
+      },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/sort_replay_golden.json", "engine_version": 1 }
+      ],
+      "expectations": ["backend/tests/test_sort_golden.py"],
+      "retired_versions": {}
+    },
+    "sudoku": {
+      "version": { "file": "frontend/src/game/sudoku/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/sudoku_entries_v1.json", "engine_version": 1 }
+      ],
+      "expectations": [],
+      "retired_versions": {}
+    },
+    "hearts": {
+      "version": { "file": "frontend/src/game/hearts/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [{ "path": "backend/tests/fixtures/hearts_replay_v1.json", "engine_version": 1 }],
+      "expectations": ["frontend/src/game/hearts/__tests__/replay.fixture.test.ts"],
+      "retired_versions": {}
+    },
+    "yacht": {
+      "version": { "file": "frontend/src/game/yacht/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/yacht_turn_events_v1.json", "engine_version": 1 },
+        { "path": "backend/tests/fixtures/yacht_turn_events_diff_v1.json", "engine_version": 1 }
+      ],
+      "expectations": ["backend/tests/test_yacht_replay.py"],
+      "retired_versions": {}
+    },
+    "twenty48": {
+      "version": { "file": "frontend/src/game/twenty48/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/twenty48_replay_v1.json", "engine_version": 1 }
+      ],
+      "expectations": [],
+      "retired_versions": {}
+    },
+    "blackjack": {
+      "version": { "file": "frontend/src/game/blackjack/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/blackjack_replay_v1.json", "engine_version": 1 },
+        { "path": "backend/tests/fixtures/blackjack_parity.json", "engine_version": 1 }
+      ],
+      "expectations": [],
+      "retired_versions": {}
+    },
+    "daily_word": {
+      "version": { "file": "frontend/src/game/daily_word/engine.ts", "name": "ENGINE_VERSION" },
+      "fixtures": [
+        { "path": "backend/tests/fixtures/daily_word_guess_events_v1.json", "engine_version": 1 },
+        { "path": "backend/tests/fixtures/daily_word_parity.json", "engine_version": 1 }
+      ],
+      "expectations": [],
+      "retired_versions": {}
+    }
+  },
+  "not_replay": [
+    {
+      "path": "backend/tests/fixtures/starswarm_run_lieutenant_7w.json",
+      "reason": "Star Swarm stores observations (wave stats, timelines) that carry their own v/ev, not inputs re-run through the engine"
+    },
+    {
+      "path": "backend/tests/fixtures/starswarm_wave_stats_v2.json",
+      "reason": "Star Swarm wave_completed wire sample, versioned by WAVE_STATS_VERSION in the payload"
+    },
+    {
+      "path": "backend/tests/fixtures/starswarm_wave_stats_v2_registries.json",
+      "reason": "Star Swarm registry vocabulary parity, versioned by WAVE_STATS_VERSION in the payload"
+    },
+    {
+      "path": "backend/tests/fixtures/starswarm_wave_timeline_v1.json",
+      "reason": "Star Swarm wave_timeline wire contract, versioned by v/ev in the payload"
+    },
+    {
+      "path": "frontend/src/game/starswarm/__tests__/__fixtures__/golden-replay-seed42.json",
+      "reason": "Star Swarm engine refactor guard (TESTING.md golden replay); stored runs are not re-simulated"
+    },
+    {
+      "path": "frontend/src/game/starswarm/__tests__/__fixtures__/golden-replay-seed42.waves.json",
+      "reason": "Star Swarm engine refactor guard; stored runs are not re-simulated"
+    },
+    {
+      "path": "frontend/src/game/starswarm/__tests__/__fixtures__/golden-replay-seed42.timelines.json",
+      "reason": "Star Swarm timeline golden; stored timelines are observations versioned by v/ev"
+    },
+    {
+      "path": "frontend/src/game/_shared/__tests__/__fixtures__/storageCompat.json",
+      "reason": "Local storage compatibility, not a replay log"
+    }
+  ],
+  "accepted_changes": []
+}

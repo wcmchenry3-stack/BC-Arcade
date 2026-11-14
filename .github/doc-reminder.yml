@@ -63,6 +63,10 @@ rules:
   - paths: [".github/workflows/**", ".github/actions/**"]
     docs: [docs/CI-CHECKS.md]
 
+  - paths: [".github/replay-fixtures.json", "scripts/check_replay_fixture_versions.py"]
+    docs: [docs/CI-CHECKS.md]
+    note: "Replay fixture version guard (#3911)"
+
   - paths: ["render.yaml"]
     docs: [docs/RENDER.md]
 
