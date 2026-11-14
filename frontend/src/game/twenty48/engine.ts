@@ -70,7 +70,7 @@ export function _resetTileIds(): void {
  * Operates on parallel value and ID arrays so tile identity is preserved
  * through the slide. Merged tiles receive a new ID; the score delta and
  * the set of newly-merged IDs are returned alongside the output arrays.
- * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ * It is also the merge rule `REPLAY_ENGINES` (replay.ts) replays engine_version 1 with.
  */
 export function slideAndMerge(line: readonly number[]): { line: number[]; score: number } {
   const compacted = line.filter((v) => v !== 0);

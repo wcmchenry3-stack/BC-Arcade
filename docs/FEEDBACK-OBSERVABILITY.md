@@ -489,7 +489,9 @@ row (type, timestamps, outcome, score, duration, metadata) and its events in
 `event_index` order as plain text, each marked `lifecycle` (`game_started`,
 `game_ended`, `hand_resolved`) or `replay`, with a `GAP` line wherever
 `event_index` skips and a summary (counts, gaps, whether `game_started` /
-`game_ended` are present). `--max-chars N` sets the payload truncation (0 =
+`game_ended` are present and, for a game that records its play, its
+`engine_version`: current, an older one replayed with its frozen rules, or
+incompatible, in which case nothing is rebuilt; #3912). `--max-chars N` sets the payload truncation (0 =
 full). It reads `DATABASE_URL` as the app does, issues SELECTs only (and sets the
 Postgres transaction `READ ONLY`), and never prints the install ID. Exit 1: no
 such game. A game with a gap was not fully recorded: a batch dropped by a cap,

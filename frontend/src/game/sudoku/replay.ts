@@ -37,6 +37,7 @@
  * unmount.
  */
 
+import { replayEngines } from "../_shared/replayEngine";
 import { ENGINE_VERSION, applyHint, enterDigit, eraseCell, undo } from "./engine";
 import type { CellValue, SudokuState } from "./types";
 import { variantConfig } from "./types";
@@ -217,3 +218,17 @@ export function startedData(state: Pick<SudokuState, "difficulty" | "variant" | 
     engine_version: ENGINE_VERSION,
   };
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the engine calls a recorded entry replays through. A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. An older
+ * version stays replayable by registering its frozen rules with `withLegacy`.
+ * @internal No production caller: readers (tests, offline tooling) use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("sudoku", ENGINE_VERSION, {
+  enterDigit,
+  eraseCell,
+  undo,
+  applyHint,
+});

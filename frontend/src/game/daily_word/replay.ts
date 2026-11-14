@@ -40,6 +40,7 @@
  */
 
 import { captureThrottledMessage } from "../_shared/sentryThrottle";
+import { replayEngines, type ReplayEngines } from "../_shared/replayEngine";
 import { ENGINE_VERSION, applyServerResult, initialState, markComplete } from "./engine";
 import type { DailyWordState, TileState, TileStatus } from "./types";
 
@@ -175,13 +176,42 @@ export interface RebuiltBoard {
   readonly refusals: number;
   /** Where the event does not fit the board (a bad result, a missing event); empty when it does. */
   readonly problems: readonly string[];
+  /**
+   * Set (the reason) when the game's `engine_version` is not one this reader
+   * rebuilds (#3912): the board is then the empty one, nothing rebuilt.
+   */
+  readonly incompatible?: string;
+}
+
+/** The rules one engine version rebuilds a board with. */
+interface RebuildRules {
+  readonly rebuild: (
+    events: readonly RecordedEvent[],
+    puzzle: { puzzle_id: string; word_length: number; language: string }
+  ) => RebuiltBoard;
 }
 
 /**
- * The board a game's `guess_submitted` event describes, played from an empty one.
+ * The board a game's `guess_submitted` event describes, played from an empty one,
+ * with the rules `engines` has for the `engine_version` of its `game_started` (none:
+ * version 1). Any other version rebuilds nothing and says so in `incompatible`.
  * @internal Exported for tests only (the golden replay); no production caller (knip --production, #3126).
  */
 export function rebuild(
+  events: readonly RecordedEvent[],
+  puzzle: { puzzle_id: string; word_length: number; language: string },
+  engines: ReplayEngines<RebuildRules> = REPLAY_ENGINES
+): RebuiltBoard {
+  const engine = engines.resolve(events.find((e) => e.type === "game_started")?.data);
+  if (engine.kind === "incompatible") {
+    const state = initialState(puzzle.puzzle_id, puzzle.word_length, puzzle.language);
+    return { state, refusals: 0, problems: [engine.reason], incompatible: engine.reason };
+  }
+  return engine.rules.rebuild(events, puzzle);
+}
+
+/** `rebuild` under engine_version 1 (today's rules). */
+function rebuildV1(
   events: readonly RecordedEvent[],
   puzzle: { puzzle_id: string; word_length: number; language: string }
 ): RebuiltBoard {
@@ -221,3 +251,15 @@ export function rebuild(
 export function startedData(puzzleId: string): Record<string, unknown> {
   return { puzzle_id: puzzleId, engine_version: ENGINE_VERSION };
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): version 1 rebuilds with `rebuildV1`. An older
+ * version stays replayable by registering its frozen rules with `withLegacy`.
+ * @internal No production caller: `rebuild` and tests use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES: ReplayEngines<RebuildRules> = replayEngines(
+  "daily_word",
+  ENGINE_VERSION,
+  { rebuild: rebuildV1 }
+);

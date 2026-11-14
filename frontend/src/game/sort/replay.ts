@@ -49,6 +49,7 @@
  * log with the real engine, with the same rules as the backend's validator.
  */
 
+import { replayEngines } from "../_shared/replayEngine";
 import { SORT_MAX_UNITS } from "../_shared/eventQueueConfig";
 import { captureThrottledMessage } from "../_shared/sentryThrottle";
 import { applyPour, isValidPour, undo as undoState } from "./engine";
@@ -395,3 +396,12 @@ export class SortReplay {
     }
   }
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the pour, undo and rewind rules (`rebuild`). A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. An older
+ * version stays replayable by registering its frozen rules with `withLegacy`.
+ * @internal No production caller: readers (tests, offline tooling) use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("sort", SORT_REPLAY_ENGINE_VERSION, { rebuild });

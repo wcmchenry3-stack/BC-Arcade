@@ -49,9 +49,11 @@
  * `resumeAt`, so its next chunk carries on from it (GAME-CONTRACT 2.10).
  */
 
+import { replayEngines } from "../_shared/replayEngine";
 import { MAHJONG_MAX_UNITS } from "../_shared/eventQueueConfig";
 import { captureThrottledMessage } from "../_shared/sentryThrottle";
 import type { MahjongState, SlotTile } from "./types";
+import { ENGINE_VERSION, createGame, selectTile, shuffleBoard, undoMove } from "./engine";
 
 /** Actions per `moves` event (and recorder unit). Sized in docs/games/mahjong.md. */
 export const ACTIONS_PER_CHUNK = 25;
@@ -269,3 +271,17 @@ export class MahjongReplay {
     }
   }
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the deal (`createGame`) and the engine calls a recorded match, undo or shuffle replays through. A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. An older
+ * version stays replayable by registering its frozen rules with `withLegacy`.
+ * @internal No production caller: readers (tests, offline tooling) use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("mahjong", ENGINE_VERSION, {
+  createGame,
+  selectTile,
+  undoMove,
+  shuffleBoard,
+});

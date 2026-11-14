@@ -55,6 +55,7 @@
  * card animations.
  */
 
+import { replayEngines } from "../_shared/replayEngine";
 import { ENGINE_VERSION, handValue, type Card, type EngineState } from "./engine";
 
 /** The action a `["h"|"s"|"d"|"p", ...]` entry records. */
@@ -245,3 +246,12 @@ export function handResolvedData(
 export function startedData(startingChips: number): Record<string, unknown> {
   return { starting_chips: startingChips, engine_version: ENGINE_VERSION };
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the hand-value rule a recorded round is read with (outcomes are read as recorded). A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. An older
+ * version stays replayable by registering its frozen rules with `withLegacy`.
+ * @internal No production caller: readers (tests, offline tooling) use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("blackjack", ENGINE_VERSION, { handValue });

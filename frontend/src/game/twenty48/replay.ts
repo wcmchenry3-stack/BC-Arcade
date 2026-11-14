@@ -47,8 +47,9 @@
  * out never needs another save, and a chunk a kill lost still uses its number.
  */
 
+import { replayEngines } from "../_shared/replayEngine";
 import type { Direction } from "./engine";
-import { ENGINE_VERSION, SIZE } from "./engine";
+import { ENGINE_VERSION, SIZE, slideAndMerge } from "./engine";
 import type { Twenty48State } from "./types";
 import { captureThrottledMessage } from "../_shared/sentryThrottle";
 
@@ -233,3 +234,12 @@ export function guardRecording(call: () => void): void {
 export function startedData(initialBoard: readonly number[]): Record<string, unknown> {
   return { initial_board: initialBoard, engine_version: ENGINE_VERSION };
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the slide-and-merge rule a recorded move replays through (its spawn is recorded). A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. An older
+ * version stays replayable by registering its frozen rules with `withLegacy`.
+ * @internal No production caller: readers (tests, offline tooling) use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("twenty48", ENGINE_VERSION, { slideAndMerge });
