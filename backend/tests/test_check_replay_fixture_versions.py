@@ -508,7 +508,7 @@ TS_REFORMATTED = """/**
  */
 describe("dice replay", () => {
   // the board after the last move
-  it.each([1])("rebuilds the board (%s)", () => {
+  it("rebuilds the final board", () => {
     expect(rebuild(events).board).toEqual([
       2, 4, 8, 16,
     ]);
@@ -578,6 +578,191 @@ def test_a_reformatted_expectation_file_passes_the_guard(repo) -> None:
         '// pinned\nit("rebuilds the dice", () => {\n  expect(\n    score\n  ).toBe(42);\n});\n',
     )
     assert run(root, base) == []
+
+
+# --------------------------------------------------------------------------- review round 2
+
+
+def retire_dice(root: pathlib.Path) -> None:
+    """Take dice out of games into retired_games, its fixture into not_replay, then re-record it."""
+    data = manifest(root)
+    del data["games"]["dice"]
+    data["not_replay"].append({"path": FIXTURE, "reason": "dice removed (#1)"})
+    data["retired_games"] = {
+        "dice": {"version": MANIFEST["games"]["dice"]["version"], "reason": "game removed in #1"}
+    }
+    write(root, guard.MANIFEST, data)
+    change_fixture(root)
+
+
+@pytest.mark.parametrize(
+    "engine",
+    [
+        (
+            "export const ENGINE_VERSION = 1;\n"
+            "function _unused() {\n  const ENGINE_VERSION = 1;\n  return ENGINE_VERSION;\n}\n"
+        ),
+        "export const ENGINE_VERSION = 1 as const;\n",
+    ],
+    ids=["second-definition", "as-const"],
+)
+def test_a_game_whose_constant_is_still_in_its_file_cannot_be_retired(repo, engine: str) -> None:
+    """B1: read_version cannot read these, but the constant (and the game) is still there."""
+    root, base = repo
+    write(root, ENGINE, engine)
+    commit(root, "constant read differently")
+    base = git(root, "rev-parse", "HEAD~1")
+    retire_dice(root)
+    write(root, EXPECT, EXPECT_BODY.replace("42", "43"))
+    errors = run(root, base)
+    assert any("retired_games dice: `ENGINE_VERSION` still exists" in e for e in errors)
+
+
+def test_retiring_one_owner_leaves_a_shared_expectation_checked_for_the_other(repo) -> None:
+    root, _ = repo
+    add_second_game(root)
+    base = commit(root, "two games")
+    retire_dice(root)
+    write(root, ENGINE, "export const OTHER = 9;\n")
+    write(root, EXPECT, EXPECT_BODY.replace("42", "43"))
+    assert any("cards, dice: hard-coded replay results changed" in e for e in run(root, base))
+
+
+def test_an_expectation_renamed_with_changes_fails(repo) -> None:
+    """S1: rename the test, change a value, repoint expectations."""
+    root, base = repo
+    renamed = "src/game/dice/__tests__/expect2.test.ts"
+    (root / EXPECT).unlink()
+    write(root, renamed, EXPECT_BODY.replace("42", "43"))
+    data = manifest(root)
+    data["games"]["dice"]["expectations"] = [renamed]
+    write(root, guard.MANIFEST, data)
+    assert any("deleted or renamed with changes" in e and EXPECT in e for e in run(root, base))
+    write(root, renamed, EXPECT_BODY)  # renamed unchanged: fine
+    assert run(root, base) == []
+
+
+def test_an_expectation_deleted_and_unlisted_fails(repo) -> None:
+    root, base = repo
+    (root / EXPECT).unlink()
+    data = manifest(root)
+    data["games"]["dice"]["expectations"] = []
+    write(root, guard.MANIFEST, data)
+    assert any("deleted or renamed with changes" in e for e in run(root, base))
+    add_v2(root)  # with a bump the old test may go
+    assert run(root, base) == []
+
+
+EXPECT_TS = """it("rebuilds", () => {
+  expect(state.score).toBe(60);
+  expect(state.tableau).toEqual([
+    "5c",
+    "13d? 7d",
+  ]);
+  expect(f(a, b)).toEqual([1, -2]);
+  expect((a + b) * c).toBe(3);
+});
+"""
+EXPECT_PY = "def test_rebuilds() -> None:\n    EXPECTED = 60\n    assert score == EXPECTED\n"
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "edited"),
+    [
+        ("t.test.ts", EXPECT_TS, EXPECT_TS.replace("toBe(60)", "toBe(60 + 1)")),
+        ("t.test.ts", EXPECT_TS, EXPECT_TS.replace("score).toBe(60)", "score).not.toBe(60)")),
+        ("t.test.ts", EXPECT_TS, EXPECT_TS.replace('    "5c",\n', '    "5c",\n    "1s",\n')),
+        ("t.test.ts", EXPECT_TS, EXPECT_TS.replace("[1, -2]", "[1 -2]")),
+        ("t.test.ts", EXPECT_TS, EXPECT_TS.replace("(a + b) * c", "a + b * c")),
+        ("t.test.ts", EXPECT_TS, EXPECT_TS.replace("f(a, b)", "f(a)(b)")),
+        ("t.py", EXPECT_PY, EXPECT_PY.replace("EXPECTED = 60", "EXPECTED = 60 + 1")),
+    ],
+    ids=["plus-one", "not", "tableau-entry", "comma", "parens", "call-split", "python-plus-one"],
+)
+def test_an_insertion_inside_a_statement_is_a_change(path: str, body: str, edited: str) -> None:
+    """S2: inserted tokens are free only as whole new statements; `,`/`;`/`(`/`)` only where a
+    formatter puts them."""
+    assert guard.results_changed(path, body.encode(), edited.encode())
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "edited"),
+    [
+        (
+            "t.test.ts",
+            EXPECT_TS,
+            EXPECT_TS.replace(
+                "  expect(state.score).toBe(60);\n",
+                "  expect(state.score).toBe(60);\n  expect(state.moves).toBe(3);\n",
+            ),
+        ),
+        (
+            "t.test.ts",
+            EXPECT_TS,
+            EXPECT_TS.replace('[\n    "5c",\n    "13d? 7d",\n  ]', '["5c", "13d? 7d"]'),
+        ),
+        (
+            "t.test.ts",
+            EXPECT_TS,
+            EXPECT_TS.replace(
+                "expect(state.score).toBe(60);", "expect(\n    state.score\n  ).toBe(60);"
+            ),
+        ),
+        ("t.py", EXPECT_PY, EXPECT_PY + "    assert moves == 3\n"),
+        (
+            "t.py",
+            EXPECT_PY,
+            EXPECT_PY.replace(
+                "assert score == EXPECTED", "assert (\n        score == EXPECTED\n    )"
+            ),
+        ),
+    ],
+    ids=["new-statement", "unwrap-array", "wrap-call", "python-new-statement", "python-parens"],
+)
+def test_new_statements_and_re_wrapping_stay_free(path: str, body: str, edited: str) -> None:
+    assert not guard.results_changed(path, body.encode(), edited.encode())
+
+
+def test_a_kept_copy_does_not_excuse_an_in_place_re_record_without_a_bump(repo) -> None:
+    """S3: copy the v1 fixture, list the copy at v1, edit the original in place, no bump."""
+    root, base = repo
+    copy_path = "fixtures/dice_replay_v1_orig.json"
+    write(root, copy_path, (root / FIXTURE).read_text())
+    write(root, "src/game/dice/__tests__/replay.test.ts", 'load("dice_replay_v1.json");\n')
+    write(root, "src/game/dice/__tests__/copy.test.ts", "// dice_replay_v1_orig.json\n")
+    data = manifest(root)
+    data["games"]["dice"]["fixtures"].append({"path": copy_path, "engine_version": 1})
+    write(root, guard.MANIFEST, data)
+    change_fixture(root)
+    assert any(FIXTURE in e and guard.BUMP_MESSAGE in e for e in run(root, base))
+
+
+def test_a_comment_that_holds_assertions_is_compared() -> None:
+    """N1: a regex literal with `/*` makes the scanner read code as a comment: fail closed."""
+    path = "t.test.ts"
+    body = 'const re = /a\\/*b/;\nexpect(x).toBe(1);\nconst s = "*/";\n'
+    assert guard.results_changed(path, body.encode(), body.replace("toBe(1)", "toBe(2)").encode())
+
+
+def test_an_each_table_is_data_not_a_title() -> None:
+    """N2: the first argument of it.each is the data table."""
+    path = "t.test.ts"
+    body = 'it.each`\n  a | b\n  ${1} | ${60}\n`("x", () => {});\ntest.each("${60}")("x", f);\n'
+    assert guard.results_changed(path, body.encode(), body.replace('"${60}"', '"${61}"').encode())
+    titled = 'test.skip("old title", () => { expect(a).toBe(1); });\n'
+    assert not guard.results_changed(
+        path, titled.encode(), titled.replace("old title", "new").encode()
+    )
+
+
+def test_a_non_integer_retired_version_is_a_readable_error(repo, capsys) -> None:
+    """N4: no traceback, the run fails."""
+    root, base = repo
+    data = manifest(root)
+    data["games"]["dice"]["retired_versions"] = {"x": "2026-12-15"}
+    write(root, guard.MANIFEST, data)
+    assert any("retired version 'x' is not an integer" in e for e in run(root, base))
+    assert guard.main(["--root", str(root), "--base", base]) == 1
 
 
 # --------------------------------------------------------------------------- this repository

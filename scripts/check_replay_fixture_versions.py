@@ -20,6 +20,7 @@ Docs: docs/CI-CHECKS.md#replay-fixture-version-guard-3911.
 from __future__ import annotations
 
 import argparse
+import bisect
 import difflib
 import hashlib
 import io
@@ -41,13 +42,20 @@ BUMP_MESSAGE = (
 # A retirement (a version or a whole game) names when or why: a date or an issue number.
 RETIRE_REASON = re.compile(r"\d{4}-\d{2}-\d{2}|#\d+")
 # TS/JS scanner: strings and comments are matched first, so `//` or `#` inside a string stays.
+# Regex literals and JSX text are not understood (see the docs' Limitations).
 _TS_TOKEN = re.compile(
     r"""(?P<str>"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)"""
-    r"""|(?P<com>//[^\n]*|/\*[\s\S]*?\*/)|(?P<tok>\w+|[^\w\s])"""
+    r"""|(?P<com>//[^\n]*|/\*[\s\S]*?\*/)"""
+    r"""|(?P<tok>\w+|=>|\.\.\.|[=!]==?|[<>]=|&&|\|\||\?\?|\?\.|[^\w\s])"""
 )
+# A "comment" holding assertion code is kept as a token (fail closed): it may be a regex
+# literal or JSX text the scanner misread, with real code after it.
+_CODE_IN_COMMENT = re.compile(r"expect\(|toBe\(|toEqual\(")
 _TEST_CALLS = {"it", "test", "describe"}
-# Punctuation a formatter adds or drops when it re-wraps an expression.
-_WRAP = frozenset({",", ";", "(", ")"})
+_TEST_MODIFIERS = {"only", "skip", "todo", "concurrent", "failing"}
+_OPEN, _CLOSE = {"(": ")", "[": "]", "{": "}"}, {")", "]", "}"}
+# A `{` after one of these opens a block (statements), not an object literal.
+_BLOCK_AFTER = {")", "=>", "else", "try", "finally", "do"}
 
 
 @dataclass
@@ -57,6 +65,12 @@ class Report:
 
     def error(self, path: str, message: str) -> None:
         self.errors.append((path, message))
+
+
+@dataclass(frozen=True)
+class Tok:
+    text: str
+    line: int
 
 
 # --------------------------------------------------------------------------- content
@@ -70,50 +84,53 @@ def canonical(path: str, data: bytes) -> bytes:
             return json.dumps(json.loads(data), sort_keys=True, separators=(",", ":")).encode()
         except ValueError:
             return data
-    return "\x00".join(code_tokens(path, data)).encode()
+    return "\x00".join(t.text for t in code_tokens(path, data)).encode()
 
 
 def content_hash(path: str, data: bytes) -> str:
     return hashlib.sha256(canonical(path, data)).hexdigest()
 
 
-def code_tokens(path: str, data: bytes) -> list[str]:
-    """A test file as a token list, so whitespace and line wrapping never count. Comments,
-    docstrings, test titles (the first string of ``it``/``test``/``describe``) and Python test
-    function names are dropped: renaming or re-wording them changes no replay result."""
+def code_tokens(path: str, data: bytes) -> list[Tok]:
+    """A test file as tokens with their line numbers, so whitespace never counts. Comments,
+    docstrings, test titles (the first string of ``it``/``test``/``describe``, ``.only`` etc.)
+    and Python test function names are dropped: re-wording them changes no replay result."""
     text = data.decode("utf-8", "replace")
     return _py_tokens(text) if path.endswith(".py") else _ts_tokens(text)
 
 
-def _ts_tokens(text: str) -> list[str]:
-    out: list[str] = []
+def _ts_tokens(text: str) -> list[Tok]:
+    newlines = [i for i, ch in enumerate(text) if ch == "\n"]
+    out: list[Tok] = []
     for match in _TS_TOKEN.finditer(text):
-        if match.lastgroup == "com":
+        token, kind = match.group(), match.lastgroup
+        if kind == "com" and not _CODE_IN_COMMENT.search(token):
             continue
-        token = match.group()
-        if match.lastgroup == "str" and _is_title(out):
+        if kind == "str" and _is_title(out):
             continue
-        out.append(token)
+        line = bisect.bisect_right(newlines, match.start()) + 1
+        out.append(Tok(" ".join(token.split()) if kind == "com" else token, line))
     return out
 
 
-def _is_title(prev: list[str]) -> bool:
-    """True if the next token is the title string of ``it(``, ``describe.each(...)(`` etc."""
-    if not prev or prev[-1] != "(":
+def _is_title(prev: list[Tok]) -> bool:
+    """True if the next token is the title string of ``it(``, ``test.only(``, ``describe.skip(``.
+    Not ``it.each(``: its first argument is the data table."""
+    if not prev or prev[-1].text != "(":
         return False
     i = len(prev) - 2
-    while i >= 1 and prev[i - 1] == ".":  # it.each / describe.skip / test.only
+    while i >= 2 and prev[i].text in _TEST_MODIFIERS and prev[i - 1].text == ".":
         i -= 2
-    return i >= 0 and prev[i] in _TEST_CALLS
+    return i >= 0 and prev[i].text in _TEST_CALLS
 
 
-def _py_tokens(text: str) -> list[str]:
+def _py_tokens(text: str) -> list[Tok]:
     skip = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT}
     try:
         tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
     except (tokenize.TokenError, SyntaxError):
-        return text.split()
-    out: list[str] = []
+        return [Tok(w, n) for n, line in enumerate(text.splitlines(), 1) for w in line.split()]
+    out: list[Tok] = []
     line_start = True
     for i, tok in enumerate(tokens):
         if tok.type in skip or tok.type == tokenize.ENDMARKER:
@@ -129,25 +146,122 @@ def _py_tokens(text: str) -> list[str]:
             and tok.type == tokenize.STRING
             and nxt in (tokenize.NEWLINE, tokenize.ENDMARKER)
         )
-        test_name = out[-1:] == ["def"] and tok.type == tokenize.NAME
+        test_name = [t.text for t in out[-1:]] == ["def"] and tok.type == tokenize.NAME
         line_start = False
         if not (docstring or test_name):
-            out.append(tok.string)
+            out.append(Tok(tok.string, tok.start[0]))
     return out
 
 
-def results_changed(path: str, base: bytes, head: bytes) -> bool:
-    """True if a token of ``base`` is gone or replaced in ``head``. Pure additions pass, and so
-    does adding or dropping only the punctuation a formatter moves when it re-wraps."""
-    old, new = code_tokens(path, base), code_tokens(path, head)
-    ops = difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
-    for tag, i1, i2, j1, j2 in ops:
-        if tag in ("equal", "insert"):
-            continue
-        if set(old[i1:i2]) | set(new[j1:j2]) <= _WRAP:
-            continue
-        return True
+def _wrap_free(toks: list[Tok], k: int) -> bool:
+    """True if token ``k`` is punctuation a formatter adds or drops when it re-wraps: a ``,`` or
+    ``;`` before a closing bracket or at the end of its line, a ``(`` ending its line, a ``)``
+    starting its line (black's and prettier's wrapping parentheses)."""
+    tok = toks[k]
+    nxt = toks[k + 1] if k + 1 < len(toks) else None
+    prv = toks[k - 1] if k > 0 else None
+    if tok.text in (",", ";"):
+        return nxt is None or nxt.text in _CLOSE or nxt.line != tok.line
+    if tok.text == "(":
+        return nxt is not None and nxt.line != tok.line
+    if tok.text == ")":
+        return prv is not None and prv.line != tok.line
     return False
+
+
+def _statement_level(toks: list[Tok], python: bool) -> list[bool]:
+    """For each index: is a token inserted there at statement level (not inside a call, an
+    array or an object literal)? Python: no open bracket. TS: none, or the innermost is a block."""
+    stack: list[bool] = []  # True for a block `{`
+    level: list[bool] = []
+    for k, tok in enumerate(toks):
+        level.append(not stack if python else all(stack[-1:]))
+        if tok.text in _OPEN:
+            prev = toks[k - 1].text if k else ""
+            stack.append(tok.text == "{" and not python and prev in _BLOCK_AFTER)
+        elif tok.text in _CLOSE and stack:
+            stack.pop()
+    level.append(not stack if python else all(stack[-1:]))
+    return level
+
+
+def _balanced(toks: list[Tok]) -> bool:
+    depth = 0
+    for tok in toks:
+        depth += (tok.text in _OPEN) - (tok.text in _CLOSE)
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+def _slides(toks: list[Tok], a: int, b: int) -> list[tuple[int, int]]:
+    """Every window equivalent to the inserted (or deleted) run ``toks[a:b]``: a diff may place a
+    run anywhere it can slide over equal tokens (``expect(`` before or after an ``expect(``)."""
+    out = [(a, b)]
+    lo, hi = a, b
+    while lo > 0 and toks[lo - 1].text == toks[hi - 1].text:
+        lo, hi = lo - 1, hi - 1
+        out.append((lo, hi))
+    lo, hi = a, b
+    while hi < len(toks) and toks[lo].text == toks[hi].text:
+        lo, hi = lo + 1, hi + 1
+        out.append((lo, hi))
+    return out
+
+
+@dataclass
+class _Compare:
+    old: list[Tok]
+    new: list[Tok]
+    python: bool
+
+    def __post_init__(self) -> None:
+        texts = ([t.text for t in self.old], [t.text for t in self.new])
+        self.ops = difflib.SequenceMatcher(None, *texts, autojunk=False).get_opcodes()
+        self.changed = {
+            j for tag, _, _, j1, j2 in self.ops if tag != "equal" for j in range(j1, j2)
+        }
+        self.level = _statement_level(self.new, self.python)
+
+    def new_statement(self, a: int, b: int, original: range) -> bool:
+        """``new[a:b]`` is a whole new statement on lines of its own."""
+        run = self.new[a:b]
+        if not run or not self.level[a] or not _balanced(run):
+            return False
+        inserted = (self.changed - set(original)) | set(range(a, b))
+        lines = {t.line for t in run}
+        return not any(self.new[j].line in lines for j in range(len(self.new)) if j not in inserted)
+
+    def insert_free(self, j1: int, j2: int) -> bool:
+        return any(
+            all(_wrap_free(self.new, k) for k in range(a, b))
+            or self.new_statement(a, b, range(j1, j2))
+            for a, b in _slides(self.new, j1, j2)
+        )
+
+    def delete_free(self, i1: int, i2: int) -> bool:
+        return any(
+            all(_wrap_free(self.old, k) for k in range(a, b)) for a, b in _slides(self.old, i1, i2)
+        )
+
+    def changes(self) -> bool:
+        for tag, i1, i2, j1, j2 in self.ops:
+            if tag == "equal":
+                continue
+            deleted_ok = i1 == i2 or self.delete_free(i1, i2)
+            inserted_ok = j1 == j2 or self.insert_free(j1, j2)
+            if not (deleted_ok and inserted_ok):
+                return True
+        return False
+
+
+def results_changed(path: str, base: bytes, head: bytes) -> bool:
+    """True if ``head`` changes what ``base`` asserts. Free: re-wrapping (whitespace and the
+    punctuation in ``_wrap_free``), dropped comments, docstrings and titles, and whole new
+    statements on lines of their own (a balanced run of inserted tokens at statement level that
+    shares no line with an unchanged token). Anything inserted inside a statement counts."""
+    compare = _Compare(code_tokens(path, base), code_tokens(path, head), path.endswith(".py"))
+    return compare.changes()
 
 
 def read_version(text: str, name: str) -> int | None:
@@ -198,7 +312,8 @@ def game_version(tree: Tree, game: dict) -> int | None:
 
 
 def retired(game: dict) -> set[int]:
-    return {int(v) for v in game.get("retired_versions", {})}
+    """The retired versions; a key that is not an integer is reported by ``check_game_static``."""
+    return {int(v) for v in game.get("retired_versions", {}) if str(v).isdigit()}
 
 
 # --------------------------------------------------------------------------- static rules
@@ -225,7 +340,9 @@ def check_game_static(
         )
         return None
     for version, why in game.get("retired_versions", {}).items():
-        if int(version) >= current or not RETIRE_REASON.search(str(why)):
+        if not str(version).isdigit():
+            report.error(MANIFEST, f"{name}: retired version {version!r} is not an integer")
+        elif int(version) >= current or not RETIRE_REASON.search(str(why)):
             report.error(
                 MANIFEST,
                 f"{name}: retired version {version} must be older than {current} and its reason "
@@ -334,7 +451,8 @@ def check_static(root: Path, manifest: dict, report: Report) -> dict[str, int]:
 
 def check_retired_games(root: Path, manifest: dict, report: Report) -> None:
     """``retired_games`` holds games taken out of the guard: allowed only once the game's code is
-    gone (its version constant can no longer be read), with a dated or numbered reason."""
+    gone (its version file deleted, or the constant's name nowhere in it), with a dated or
+    numbered reason."""
     for name, entry in manifest.get("retired_games", {}).items():
         if name in manifest["games"]:
             report.error(MANIFEST, f"retired_games {name}: still listed under games")
@@ -348,8 +466,8 @@ def check_retired_games(root: Path, manifest: dict, report: Report) -> None:
         constant = version.get("name", "")
         if not version.get("file") or not constant:
             report.error(MANIFEST, f'retired_games {name}: give the game\'s old "version"')
-        elif (
-            text is not None and read_version(text.decode("utf-8", "replace"), constant) is not None
+        elif text is not None and re.search(
+            rf"\b{re.escape(constant)}\b", text.decode("utf-8", "replace")
         ):
             report.error(
                 version.get("file", MANIFEST),
@@ -423,46 +541,56 @@ class GameDiff:
     def check_old_fixture(
         self, path: str, version: int, heads: list[tuple[str, int, bytes | None]], report: Report
     ) -> None:
-        """A base fixture must still be pinned under its game, unchanged and at its version."""
+        """A base fixture must still be pinned under its game, unchanged and at its version. A copy
+        elsewhere counts only when this path is gone (a rename), or for a bump that re-records
+        this path at the new version while the copy keeps the old one."""
         old = self.base.read(path)
         if old is None:
             return
-        kept = any(
-            v == version and data is not None and canonical(p, data) == canonical(path, old)
+        new = self.head.read(path)
+        mine = [v for p, v, _ in heads if p == path]
+        listed = bool(mine) and new is not None
+        if listed and self.is_accepted(path, new):
+            return
+        same = listed and canonical(path, new) == canonical(path, old)
+        if same and mine[0] == version:
+            return
+        kept_elsewhere = any(
+            p != path
+            and v == version
+            and data is not None
+            and canonical(p, data) == canonical(path, old)
             for p, v, data in heads
         )
-        new = self.head.read(path)
-        listed = any(p == path for p, _, _ in heads)
-        if kept or (listed and self.is_accepted(path, new)):
-            return
+        if kept_elsewhere and (not listed or self.bumped):
+            return  # a rename, or the bump's layout; check_relabel checks this path's version
+        report.error(path, f"{self.name}: {self.old_fixture_message(path, version, new, listed)}")
+
+    def old_fixture_message(self, path: str, version: int, new: bytes | None, listed: bool) -> str:
         if new is None:
-            message = (
+            return (
                 f"fixture for engine_version {version} was removed. {BUMP_MESSAGE}. To sunset an "
                 f'expired version add "{version}": "<date or issue>" to '
                 f"games.{self.name}.retired_versions. Docs: {DOCS}"
             )
-        elif not listed:
-            message = (
+        if not listed:
+            return (
                 f"fixture for engine_version {version} is no longer pinned under {self.name} "
                 f"(moved to not_replay or dropped from the manifest). {BUMP_MESSAGE}. Docs: {DOCS}"
             )
-        elif version < self.before:
-            message = (
+        if version < self.before:
+            return (
                 f"fixture frozen at engine_version {version} changed. {BUMP_MESSAGE}. "
                 f"{accept_hint(path, new)}"
             )
-        elif self.bumped:
-            message = (
+        if self.bumped:
+            return (
                 f"{self.constant} went {self.before} -> {self.current} but the fixture recorded under "
                 f"{version} was changed in place. Keep the old one: restore it (listed at "
                 f"engine_version {version}) and add the new recording as a separate fixture at "
                 f"engine_version {self.current}. Docs: {DOCS}"
             )
-        else:
-            message = (
-                f"{BUMP_MESSAGE}. {self.constant} is still {self.current}. {accept_hint(path, new)}"
-            )
-        report.error(path, f"{self.name}: {message}")
+        return f"{BUMP_MESSAGE}. {self.constant} is still {self.current}. {accept_hint(path, new)}"
 
     def check_relabel(self, path: str, version: int, data: bytes | None, report: Report) -> None:
         """A fixture whose content changed on this branch holds the current rules' results."""
@@ -495,7 +623,8 @@ class Diff:
 
     def check(self) -> None:
         games, old_games = self.manifest["games"], self.base_manifest["games"]
-        done: set[str] = set()  # bumped or fully retired: their expectation tests may change
+        bumped: set[str] = set()
+        retired_games: set[str] = set()
         for name in sorted(set(games) | set(old_games)):
             old_game, game = old_games.get(name), games.get(name)
             # a new game has nothing stored under older rules yet
@@ -504,7 +633,7 @@ class Diff:
                 continue
             if game is None:
                 if self.check_removed_game(name, old_game):
-                    done.add(name)
+                    retired_games.add(name)
                 continue
             if name not in self.versions:
                 continue  # unreadable constant: reported by the static rules
@@ -522,8 +651,8 @@ class Diff:
             )
             diff.check(self.report)
             if diff.bumped:
-                done.add(name)
-        self.check_expectations(done)
+                bumped.add(name)
+        self.check_expectations(bumped, retired_games)
 
     def check_removed_game(self, name: str, old_game: dict) -> bool:
         """A game leaves the manifest only as a full retirement (see ``check_retired_games``)."""
@@ -552,27 +681,46 @@ class Diff:
         )
         return False
 
-    def check_expectations(self, done: set[str]) -> None:
-        """Tests that hard-code replay results, over the base and branch lists. A file shared by
-        several games (Solitaire and FreeCell) may change when any of them bumped (or retired)."""
+    def check_expectations(self, bumped: set[str], retired_games: set[str]) -> None:
+        """Tests that hard-code replay results, over the base and branch lists. A file may change
+        when one of its games bumped (a file shared by Solitaire and FreeCell: either), or when
+        every game that owns it is fully retired."""
         owners: dict[str, set[str]] = {}
         for games in (self.base_manifest["games"], self.manifest["games"]):
             for name, game in games.items():
                 for path in game.get("expectations", []):
                     owners.setdefault(path, set()).add(name)
+        listed = {p for g in self.manifest["games"].values() for p in g.get("expectations", [])}
         for path, names in sorted(owners.items()):
             old, new = self.base.read(path), self.head.read(path)
-            if old is None or new is None or names & done:
+            if old is None or names & bumped or names <= retired_games:
+                continue
+            games = ", ".join(sorted(names))
+            if new is None:
+                if not self.renamed(path, old, listed):
+                    self.report.error(
+                        path,
+                        f"{games}: a test that hard-codes replay results was deleted or renamed "
+                        f"with changes. {BUMP_MESSAGE}. Rename it unchanged (and list the new "
+                        f"path), or remove it with a bump. Docs: {DOCS}",
+                    )
                 continue
             if (path, content_hash(path, new)) in self.accepted:
                 continue
             if results_changed(path, old, new):
-                games = ", ".join(sorted(names))
                 self.report.error(
                     path,
-                    f"{games}: hard-coded replay results changed. {BUMP_MESSAGE}. Only additions "
-                    f"are free. {accept_hint(path, new)}",
+                    f"{games}: hard-coded replay results changed. {BUMP_MESSAGE}. Only whole new "
+                    f"statements are free. {accept_hint(path, new)}",
                 )
+
+    def renamed(self, path: str, old: bytes, listed: set[str]) -> bool:
+        """The old test's content is listed, unchanged, under another path."""
+        want = canonical(path, old)
+        return any(
+            p != path and (data := self.head.read(p)) is not None and canonical(p, data) == want
+            for p in listed
+        )
 
 
 def check_diff(
