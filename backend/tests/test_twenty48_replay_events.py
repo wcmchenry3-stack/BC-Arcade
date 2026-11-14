@@ -117,7 +117,8 @@ def test_every_event_the_app_builds_validates_and_is_stored_as_sent(sent: list) 
 
 def test_game_started_is_the_opening_board_the_app_sends() -> None:
     data = _game()["game_started"]
-    assert set(data) == {"initial_board"}
+    assert set(data) == {"initial_board", "engine_version"}
+    assert data["engine_version"] == 1  # #3909
     assert twenty48_module.validate_event("game_started", copy.deepcopy(data)) == data
     board = data["initial_board"]
     assert sorted(v for v in board if v) in ([2, 2], [2, 4], [4, 4])  # two spawned tiles

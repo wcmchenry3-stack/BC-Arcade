@@ -34,7 +34,7 @@ import {
   slideAndMerge,
   type Direction,
 } from "../engine";
-import { DIRECTION_ORDER, createMoveLog, moveTuple, type MoveTuple } from "../replay";
+import { DIRECTION_ORDER, createMoveLog, moveTuple, startedData, type MoveTuple } from "../replay";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -58,7 +58,7 @@ const EXPECTED_BOARD: number[][] = [
 const ORDER_TRIED: readonly Direction[] = ["left", "up", "right", "down"];
 
 interface Golden {
-  game_started: { initial_board: number[] };
+  game_started: { initial_board: number[]; engine_version: number };
   events: { type: string; data: unknown }[];
   final: { board: number[]; score: number; moves: number };
 }
@@ -115,7 +115,7 @@ function playGolden(): Golden {
   recorder.endSession();
 
   return {
-    game_started: { initial_board },
+    game_started: startedData(initial_board) as Golden["game_started"],
     events: saved.map((e) => ({ type: e.type, data: e.data })),
     final: { board: flatten(state.board), score: state.score, moves },
   };
