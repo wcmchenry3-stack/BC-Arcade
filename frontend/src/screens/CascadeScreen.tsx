@@ -30,7 +30,6 @@
 import React, { Profiler, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   StyleSheet,
   View,
   LayoutChangeEvent,
@@ -52,8 +51,6 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitTier } from "../theme/fruitSets";
-import { useFruitImages, getImagesForSet } from "../theme/useFruitImages";
-import { useAssetsReady } from "../game/_shared/useAssetsReady";
 import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine";
 import { WORLD_WIDTH, OVERFLOW_LINE_Y, DANGER_STACK_MARGIN } from "../game/cascade/constants";
 import { calculateCascadeLayout, tapToWorldX } from "../game/cascade/layout";
@@ -138,9 +135,6 @@ function CascadeGame() {
   const { colors, theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeFruitSet } = useFruitSet();
-  // decoded images will be forwarded to the Skia canvas renderer in a follow-up
-  const fruitImages = useFruitImages();
-  const assetsReady = useAssetsReady([...fruitImages.fruits, ...fruitImages.cosmos]);
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Cascade">>();
 
   const [devPanelOpen, setDevPanelOpen] = useState(false);
@@ -891,10 +885,6 @@ function CascadeGame() {
     () => [styles.canvasOuter, { backgroundColor: colors.surface, borderColor: colors.border }],
     [colors.surface, colors.border]
   );
-  const boardImages = useMemo(
-    () => getImagesForSet(fruitImages, activeFruitSet.id),
-    [fruitImages, activeFruitSet.id]
-  );
   const removeBurst = useCallback(
     (id: string) => setMergeBursts((prev) => prev.filter((b) => b.id !== id)),
     []
@@ -915,79 +905,72 @@ function CascadeGame() {
       onOpenLeaderboard={openLeaderboard}
       style={shellStyle}
     >
-      {!assetsReady ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" accessibilityLabel={t("common:loading")} />
-        </View>
-      ) : (
-        <>
-          <ScoreDisplay store={scoreStore}>{preview}</ScoreDisplay>
+      <>
+        <ScoreDisplay store={scoreStore}>{preview}</ScoreDisplay>
 
-          <ThemeSelector />
+        <ThemeSelector />
 
-          <View style={styles.canvasWrapper}>
-            <View style={canvasOuterStyle} onLayout={onLayout}>
-              {scale > 0 && (
-                <Pressable testID="cascade-game-area" onPress={onBoardPress} style={boardAreaStyle}>
-                  <CascadeBoard
-                    frame={frameSV}
-                    scale={scale}
-                    lidPalette={CASCADE_LID_PALETTE[theme]}
-                    fruitDefs={activeFruitSet.fruits}
-                    images={boardImages}
-                  />
-                </Pressable>
-              )}
-            </View>
-
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-              {mergeBursts.map((burst) => (
-                <MergeBurst key={burst.id} {...burst} onDone={removeBurst} />
-              ))}
-            </View>
+        <View style={styles.canvasWrapper}>
+          <View style={canvasOuterStyle} onLayout={onLayout}>
+            {scale > 0 && (
+              <Pressable testID="cascade-game-area" onPress={onBoardPress} style={boardAreaStyle}>
+                <CascadeBoard
+                  frame={frameSV}
+                  scale={scale}
+                  lidPalette={CASCADE_LID_PALETTE[theme]}
+                  setId={activeFruitSet.id}
+                />
+              </Pressable>
+            )}
           </View>
 
-          {areTestHooksEnabled() && (
-            <CascadeTestControls
-              onChain={() => applySetup("chain")}
-              onNearLid={() => applySetup("nearLid")}
-              onFillBin={() => applySetup("fillBin")}
-              onForceGameOver={forceGameOver}
-            />
-          )}
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            {mergeBursts.map((burst) => (
+              <MergeBurst key={burst.id} {...burst} onDone={removeBurst} />
+            ))}
+          </View>
+        </View>
 
-          <GameResultModal
-            visible={gameOver}
-            outcome="ended"
-            eyebrow={t("cascade:game.title")}
-            hero={{
-              kind: "score",
-              label: tResult("stat.score"),
-              value: result?.score ?? scoreStore.get(),
-            }}
-            isNewBest={result?.isNewBest ?? false}
-            stats={
-              result
-                ? [
-                    { label: tResult("stat.best"), value: result.bestScore },
-                    { label: tResult("stat.merges"), value: result.merges },
-                  ]
-                : []
-            }
-            submission={
-              result && !result.submittable
-                ? // No game id: nothing can reach the leaderboard, and there is
-                  // nothing to retry — say so instead of showing no line.
-                  { status: "error" }
-                : toSubmission(leaderboard)
-            }
-            onViewLeaderboard={openLeaderboard}
-            onPlayAgain={handleRestart}
-            onHome={goHome}
-            testID="cascade-result"
+        {areTestHooksEnabled() && (
+          <CascadeTestControls
+            onChain={() => applySetup("chain")}
+            onNearLid={() => applySetup("nearLid")}
+            onFillBin={() => applySetup("fillBin")}
+            onForceGameOver={forceGameOver}
           />
-        </>
-      )}
+        )}
+
+        <GameResultModal
+          visible={gameOver}
+          outcome="ended"
+          eyebrow={t("cascade:game.title")}
+          hero={{
+            kind: "score",
+            label: tResult("stat.score"),
+            value: result?.score ?? scoreStore.get(),
+          }}
+          isNewBest={result?.isNewBest ?? false}
+          stats={
+            result
+              ? [
+                  { label: tResult("stat.best"), value: result.bestScore },
+                  { label: tResult("stat.merges"), value: result.merges },
+                ]
+              : []
+          }
+          submission={
+            result && !result.submittable
+              ? // No game id: nothing can reach the leaderboard, and there is
+                // nothing to retry — say so instead of showing no line.
+                { status: "error" }
+              : toSubmission(leaderboard)
+          }
+          onViewLeaderboard={openLeaderboard}
+          onPlayAgain={handleRestart}
+          onHome={goHome}
+          testID="cascade-result"
+        />
+      </>
 
       <CascadeDevPanel
         enabled={__DEV__}
@@ -1018,11 +1001,6 @@ export default function CascadeScreen() {
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
   canvasWrapper: {
     flex: 1,
   },

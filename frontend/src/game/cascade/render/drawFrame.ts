@@ -2,11 +2,12 @@
  * #2960: draw one Cascade frame (`frame.ts`) onto a Skia canvas, in world units.
  *
  * Runs as a worklet on the UI thread inside `createPicture` (`components/cascade/CascadeBoard`),
- * so it touches only Skia, the frame buffer, the board style and the images it is handed. It is a
- * straight port of the declarative renderer it replaced (`PieceRenderer` in `CascadeScreen.tsx`
- * and the `LidLine` / `OverLidWash` / `Spawner` components of #3694): the same primitives, in the
- * same order, with the same paints, so the board looks exactly as it did. Every lid decision
- * (colours, wash, ring, ghost) still comes from the pure mappings in `lidVisuals.ts`.
+ * so it touches only Skia, the frame buffer, the board style and the piece bitmaps it is handed. The
+ * lid, wash and spawner are a straight port of the declarative renderer it replaced (#3694): the
+ * same primitives, in the same order, with the same paints. Every lid decision (colours, wash,
+ * ring, ghost) still comes from the pure mappings in `lidVisuals.ts`. The pieces are the
+ * code-drawn art (#3698), cached as bitmaps on the JS thread (`art/sprites.ts`) and drawn here
+ * as three images each, rotated with the physics except their light.
  *
  * Paint handling copies what the declarative renderer does for each element: a fresh
  * anti-aliased paint, the element's colour, then its opacity multiplied into the alpha. One paint
@@ -30,6 +31,7 @@ import type {
   SkPathEffect,
 } from "@shopify/react-native-skia";
 import type { CascadeLidPalette } from "../../../theme/theme.cascade";
+import type { PieceSprite, PieceSprites, SpriteRect } from "../art/sprites";
 import {
   GHOST_FILL_OPACITY,
   GHOST_OUTLINE_OPACITY,
@@ -48,23 +50,19 @@ import { FRAME_HEADER, FRAME_STRIDE, HEADER_FIELD, PIECE_FIELD } from "./frame";
 
 /**
  * What the board draws with that is not per frame: per-tier sizes and placeholder colours, and
- * the lid palette. Built on the JS thread when the fruit set or the theme changes
- * (`boardStyle.ts`), so the worklet looks things up and decides nothing.
+ * the lid palette. Built on the JS thread when the theme changes (`boardStyle.ts`), so the
+ * worklet looks things up and decides nothing.
  */
 export interface BoardStyle {
   /** Collider (and drawn) radius per tier; 0 for a tier the board does not draw. */
   readonly radius: readonly number[];
-  /** Half the square a tier's baked sprite is drawn into: radius x bakedClipR (#3695). */
-  readonly spriteHalf: readonly number[];
-  /** A sprite's half-size per unit of radius (bakedClipR, or 1): sizes the spawner's sprite. */
-  readonly spriteScale: readonly number[];
-  /** Placeholder circle colour per tier, while a sprite has not decoded. */
+  /** Placeholder circle colour per tier, for a tier whose art could not be drawn. */
   readonly color: readonly string[];
   readonly palette: CascadeLidPalette;
 }
 
-/** Decoded sprites by tier; null while one is still loading (drawn as a placeholder circle). */
-export type BoardImages = readonly (SkImage | null)[];
+/** The pieces' cached bitmaps by tier (`game/cascade/art/sprites.ts`); null = placeholder circle. */
+export type BoardSprites = PieceSprites;
 
 /** The ghost outline's dash, and the ring glow's blur (the declarative props they replace). */
 const GHOST_DASH = [4, 4];
@@ -124,59 +122,49 @@ function strokePaint(paint: SkPaint, width: number): SkPaint {
   return paint;
 }
 
-/**
- * Where an image of `imgW x imgH` lands in a square box, with `fit="contain"` (the declarative
- * `<Image>`'s fit): scaled to fit, aspect kept, centred.
- */
-export function containRect(
-  imgW: number,
-  imgH: number,
-  x: number,
-  y: number,
-  w: number,
-  h: number
-): { x: number; y: number; width: number; height: number } {
+function drawImage(canvas: SkCanvas, paint: SkPaint, img: SkImage, rect: SpriteRect): void {
   "worklet";
-  if (imgW <= 0 || imgH <= 0) return { x, y, width: w, height: h };
-  // The same arithmetic as Skia's own `fitRects("contain", ...)` (applyBoxFit, then inscribe),
-  // so a sprite lands on exactly the pixels the declarative `<Image>` used.
-  let dw: number;
-  let dh: number;
-  if (w / h > imgW / imgH) {
-    dw = (imgW * h) / imgH;
-    dh = h;
-  } else {
-    dw = w;
-    dh = (imgH * w) / imgW;
-  }
-  return { x: x + (w - dw) / 2.0, y: y + (h - dh) / 2.0, width: dw, height: dh };
+  canvas.drawImageRectOptions(
+    img,
+    Skia.XYWHRect(0, 0, img.width(), img.height()),
+    Skia.XYWHRect(rect[0], rect[1], rect[2], rect[3]),
+    FilterMode.Linear,
+    MipmapMode.None,
+    paint
+  );
 }
 
-/** An image in the square of half-size `half` centred on (cx, cy), linear filtering like `<Image>`. */
+/**
+ * A piece's cached art (#3698) centred on (cx, cy), `size` times its full size (the grow-in, the
+ * spawner's smaller copy), turned by `angle` (radians): the body and the top (face, front
+ * overhangs) turn with the physics, the light between them stays upright. With `opacity` below
+ * 1 the three are faded together, as one piece.
+ */
 function drawSprite(
   canvas: SkCanvas,
   cache: DrawCache,
-  img: SkImage,
+  sprite: PieceSprite,
   cx: number,
   cy: number,
-  half: number,
+  size: number,
+  angle: number,
   opacity: number
 ): void {
   "worklet";
-  const w = img.width();
-  const h = img.height();
-  // Through an SkRect first, as `<Image x y width height>` is: its float32 storage rounds the box
-  // the same way before the fit, so the sprite samples exactly the same pixels.
-  const box = Skia.XYWHRect(cx - half, cy - half, half * 2, half * 2);
-  const dst = containRect(w, h, box.x, box.y, box.width, box.height);
-  canvas.drawImageRectOptions(
-    img,
-    Skia.XYWHRect(0, 0, w, h),
-    Skia.XYWHRect(dst.x, dst.y, dst.width, dst.height),
-    FilterMode.Linear,
-    MipmapMode.None,
-    elementPaint(cache, null, opacity)
-  );
+  canvas.save();
+  if (opacity < 1) canvas.saveLayer(elementPaint(cache, null, opacity));
+  canvas.translate(cx, cy);
+  if (size !== 1) canvas.scale(size, size);
+  const deg = (angle * 180) / Math.PI;
+  const paint = elementPaint(cache, null, 1);
+  canvas.rotate(deg, 0, 0);
+  drawImage(canvas, paint, sprite.body, sprite.rect);
+  canvas.rotate(-deg, 0, 0);
+  drawImage(canvas, paint, sprite.light, sprite.lightRect);
+  canvas.rotate(deg, 0, 0);
+  drawImage(canvas, paint, sprite.top, sprite.rect);
+  if (opacity < 1) canvas.restore();
+  canvas.restore();
 }
 
 /** The pieces, each with its over-lid wash. */
@@ -185,7 +173,7 @@ function drawPieces(
   cache: DrawCache,
   frame: Float64Array,
   style: BoardStyle,
-  images: BoardImages,
+  sprites: BoardSprites,
   dangerRatio: number
 ): void {
   "worklet";
@@ -199,10 +187,9 @@ function drawPieces(
     if (r <= 0) continue;
     const x = frame[o + PIECE_FIELD.x] ?? 0;
     const y = frame[o + PIECE_FIELD.y] ?? 0;
-    const sprite = images[tier];
+    const sprite = sprites[tier];
     if (sprite) {
-      const half = style.spriteHalf[tier];
-      drawSprite(canvas, cache, sprite, x, y, half === undefined ? r : half * scale, 1);
+      drawSprite(canvas, cache, sprite, x, y, scale, frame[o + PIECE_FIELD.angle] ?? 0, 1);
     } else {
       canvas.drawCircle(x, y, r, elementPaint(cache, style.color[tier] ?? null, 1));
     }
@@ -235,7 +222,7 @@ function drawSpawner(
   canvas: SkCanvas,
   cache: DrawCache,
   style: BoardStyle,
-  images: BoardImages,
+  sprites: BoardSprites,
   dangerRatio: number,
   canDrop: boolean,
   tier: number
@@ -250,9 +237,9 @@ function drawSpawner(
   const pieceOpacity = canDrop ? 1 : GHOST_FILL_OPACITY;
 
   if (hasPiece) {
-    const image = images[tier];
-    if (image) {
-      drawSprite(canvas, cache, image, cx, cy, r * (style.spriteScale[tier] ?? 1), pieceOpacity);
+    const sprite = sprites[tier];
+    if (sprite) {
+      drawSprite(canvas, cache, sprite, cx, cy, r / radius, 0, pieceOpacity);
     } else {
       canvas.drawCircle(cx, cy, r, elementPaint(cache, style.color[tier] ?? null, pieceOpacity));
     }
@@ -301,14 +288,14 @@ export function drawFrame(
   canvas: SkCanvas,
   frame: Float64Array,
   style: BoardStyle,
-  images: BoardImages
+  sprites: BoardSprites
 ): void {
   "worklet";
   const cache = drawCache();
   const dangerRatio = frame[HEADER_FIELD.dangerRatio] ?? 0;
   const canDrop = (frame[HEADER_FIELD.canDrop] ?? 1) !== 0;
   const spawnerTier = frame[HEADER_FIELD.spawnerTier] ?? -1;
-  drawPieces(canvas, cache, frame, style, images, dangerRatio);
+  drawPieces(canvas, cache, frame, style, sprites, dangerRatio);
   drawLidLine(canvas, cache, style, dangerRatio);
-  drawSpawner(canvas, cache, style, images, dangerRatio, canDrop, spawnerTier);
+  drawSpawner(canvas, cache, style, sprites, dangerRatio, canDrop, spawnerTier);
 }

@@ -4,11 +4,10 @@ import { useTranslation } from "react-i18next";
 import { FRUIT_SETS } from "../../theme/fruitSets";
 import { useFruitSet } from "../../theme/FruitSetContext";
 import { useTheme } from "../../theme/ThemeContext";
+import FruitGlyph from "./FruitGlyph";
 
-const TAB_EMOJIS: Record<string, string> = {
-  fruits: "\uD83C\uDF52",
-  cosmos: "\uD83C\uDF19",
-};
+/** Each tab shows its set's first piece (Cherry, Moon), drawn as on the board (#3698). */
+const TAB_GLYPH_SIZE = 18;
 
 function ThemeSelector() {
   const { t } = useTranslation("cascade");
@@ -33,7 +32,7 @@ function ThemeSelector() {
             accessibilityLabel={t("theme.optionLabel", { label: set.label })}
             style={[styles.tab, active && { backgroundColor: colors.accent }]}
           >
-            <Text style={styles.emoji}>{TAB_EMOJIS[set.id] ?? ""}</Text>
+            {set.fruits[0] && <FruitGlyph fruit={set.fruits[0]} size={TAB_GLYPH_SIZE} />}
             <Text
               style={[styles.label, { color: active ? colors.textOnAccent : colors.textMuted }]}
             >
@@ -65,9 +64,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 14,
     minHeight: 28,
-  },
-  emoji: {
-    fontSize: 16,
   },
   label: {
     fontSize: 13,

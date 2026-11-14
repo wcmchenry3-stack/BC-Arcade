@@ -105,10 +105,3 @@ export function tierRadius(tier: number): number {
   return TIERS[tier]?.radius ?? 0;
 }
 
-/**
- * Half the side of the square a baked sprite is drawn into so the visible fruit has exactly the
- * collider's radius. `bakedClipR` is the sprite canvas half-size per unit of fruit radius.
- */
-export function spriteHalfSize(tier: number, bakedClipR: number | undefined): number {
-  return tierRadius(tier) * (bakedClipR ?? 1);
-}

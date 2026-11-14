@@ -53,3 +53,126 @@ export const CASCADE_LID_PALETTE: Readonly<Record<"light" | "dark", CascadeLidPa
   light: { lid: "#6b5e4a", ringSafe: "#1bc5d4", danger: "#d94a42", ink: "#1a1412" },
   dark: { lid: "#a0a0ac", ringSafe: "#8ff5ff", danger: "#ff716c", ink: "#e8e8f0" },
 };
+
+/**
+ * A colour of one piece part (#3698): base `b`, light `l` and dark `d` (the body's gradient and
+ * its shading) and `o` (the sticker outline).
+ */
+export interface CascadeTone {
+  readonly b: string;
+  readonly l?: string;
+  readonly d?: string;
+  readonly o?: string;
+}
+
+/**
+ * The code-drawn piece art's colours (#3698, kawaii glossy sticker style, owner pick 2026-11-14).
+ * Used only by `game/cascade/art/` (the drawings) and nothing else. Tones are `#rrggbb`: the
+ * drawing code mixes them and sets their alpha itself.
+ */
+export const CASCADE_ART = {
+  /** Highlights, glints and stars. */
+  white: "#ffffff",
+  /** The darker rim inside every piece's edge (drawn at low alpha). */
+  rim: "#40001a",
+  /** Cheeks: fruits (open eyes) and cosmos (closed eyes). */
+  blushOpen: "#ff3b6b",
+  blushClosed: "#ff6f91",
+  fruits: {
+    cherry: { b: "#d81e3a", l: "#ff5a6e", d: "#8a0b20", o: "#6e0718" },
+    blue: { b: "#3f55b8", l: "#7d93ea", d: "#1f2b6e", o: "#18204f" },
+    blueCalyx: "#141a3e",
+    lemon: { b: "#f7d531", l: "#fff08a", d: "#c9a20a", o: "#9c7a06" },
+    grapeBg: { b: "#3e1a5e", l: "#5a2a84", d: "#24103a" },
+    grape: { b: "#8a45c0", l: "#c08aec", d: "#55237e", o: "#3b145c" },
+    orange: { b: "#f58a1f", l: "#ffb766", d: "#c2560a", o: "#8f3c05" },
+    orangeStem: "#3f8a2a",
+    orangeStemDot: "#2c6a1c",
+    apple: { b: "#c8102e", l: "#f2505e", d: "#7a0616", o: "#5e0411" },
+    peach: { b: "#ffb27a", l: "#ffd9b0", d: "#e46a4e", o: "#b8452f" },
+    peachBlush: "#f2706a",
+    coconut: { b: "#6e4426", l: "#9b6b44", d: "#3e2312", o: "#2b170b" },
+    coconutEye: "#24130a",
+    pine: { b: "#f3b52a", l: "#ffdc72", d: "#bb7a14", o: "#8a5508" },
+    pineCrown: { b: "#3f9a3a", o: "#174a1a" },
+    melon: { b: "#2f9a3e", l: "#6bd06a", d: "#17602a", o: "#0f4a1f" },
+    pumpkin: { b: "#f27a1a", l: "#ffab4e", d: "#b44a08", o: "#843405" },
+    leaf: { b: "#4fae3c", l: "#8ad66a", d: "#2c7424", o: "#1e5418" },
+    stem: { b: "#7a4a22", o: "#3a1f0a" },
+    pumpkinStem: { b: "#6d7d2c", o: "#334010" },
+    dragonfruit: { b: "#d93a63", l: "#f2708f", d: "#a51f51" },
+    bract: "#8dbb45",
+    bractLight: "#acd862",
+    bractDark: "#4a872b",
+    bractBase: "#dc5470",
+    /** Face ink per tier (eyes, smile), and the dragonfruit's own blush. */
+    ink: [
+      "#3a1418",
+      "#0f1330",
+      "#4a3205",
+      "#1c0830",
+      "#4a2003",
+      "#3a0208",
+      "#5a1a0c",
+      "#1a0c04",
+      "#3a1418",
+      "#4a2a02",
+      "#0a2a10",
+      "#4a1a02",
+    ],
+    dragonfruitBlush: "#b0103c",
+  },
+  cosmos: {
+    moon: { b: "#cfd0d4", l: "#f2f2f4", d: "#8e9098" },
+    maria: "#9d9fa8",
+    pluto: { b: "#c99d76", l: "#e9c9a6", d: "#8d6244" },
+    plutoDark: "#7d4a33",
+    plutoHeart: "#f6ead6",
+    mercury: { b: "#7f776d", l: "#a49b8f", d: "#4e4842" },
+    mars: { b: "#c4532c", l: "#ec8152", d: "#7c2a12" },
+    marsDark: "#8e3418",
+    marsCap: "#fbf3ee",
+    venus: { b: "#e9c87c", l: "#fbe6ae", d: "#b48b3c" },
+    venusBands: ["#c9a050", "#fff2c8"],
+    earth: { b: "#2f72d6", l: "#68a8ff", d: "#173f8c" },
+    land: "#3fa64e",
+    neptune: { b: "#2a4fd6", l: "#5b80ff", d: "#132683" },
+    neptuneBands: ["#4a70f0", "#1a35a8"],
+    neptuneSpot: "#101e6a",
+    neptuneStreak: "#d8e6ff",
+    uranus: { b: "#9fe2e6", l: "#dbf8f8", d: "#5fb0bb" },
+    uranusRing: { b: "#e6fbff", o: "#4d8f99" },
+    saturn: { b: "#e1bf7f", l: "#f7e0b0", d: "#a98348" },
+    saturnRingBack: { b: "#d8bf8c", d: "#8c7044", o: "#6a5230" },
+    saturnRingFront: { b: "#e7d3a6", d: "#8c7044", o: "#6a5230" },
+    saturnBands: ["#c9a062", "#f6e2b8", "#c29658"],
+    saturnShadow: "#5a4020",
+    jupiter: { b: "#d9a877", l: "#f3d6ae", d: "#97643a" },
+    jupiterBands: ["#b8784a", "#f1dcbc", "#c08250", "#f3e0c4", "#b97848", "#d9b088"],
+    jupiterSpot: "#c4452a",
+    sun: { b: "#ffb31c", l: "#ffe36a", d: "#f07000" },
+    sunSpot: "#c45a00",
+    sunRing: "#ff8a00",
+    sunBlush: "#ff5a3a",
+    galaxy: { b: "#1d1650", l: "#3d2f96", d: "#0a0822" },
+    galaxyArm: "#7d6cf0",
+    galaxyArmCore: "#d9d0ff",
+    galaxyCore: ["#fff6dc", "#ffd98a", "#ffd980"],
+    galaxyBlush: "#ff8ac0",
+    /** Face ink per tier. */
+    ink: [
+      "#2a2a33",
+      "#3a2416",
+      "#1a1612",
+      "#3a1004",
+      "#4a3006",
+      "#0c1e44",
+      "#e8f0ff",
+      "#18454c",
+      "#3a2a0e",
+      "#3a1c06",
+      "#6a2a00",
+      "#f4eaff",
+    ],
+  },
+} as const;

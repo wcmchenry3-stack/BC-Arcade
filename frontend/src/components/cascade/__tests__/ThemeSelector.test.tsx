@@ -11,6 +11,14 @@ import ThemeSelector from "../ThemeSelector";
 import { FruitSetProvider, useFruitSet } from "../../../theme/FruitSetContext";
 import { FRUIT_SETS } from "../../../theme/fruitSets";
 import { dark } from "../../../theme/ThemeContext";
+import { piecePicture } from "../../../game/cascade/art/sprites";
+
+// The glyphs' Skia canvas and picture cache are stubbed (the art is tested on real Skia in
+// game/cascade/art/__tests__/art.test.ts).
+jest.mock("@shopify/react-native-skia", () => ({ Canvas: "Canvas", Picture: "Picture" }));
+jest.mock("../../../game/cascade/art/sprites", () => ({
+  piecePicture: jest.fn((set: string, tier: number, size: number) => ({ set, tier, size })),
+}));
 
 const STORAGE_KEY = "gaming_app_fruit_set";
 
@@ -46,8 +54,9 @@ describe("Cascade ThemeSelector", () => {
     expect(radio("Cosmos theme")).toBeTruthy();
     expect(screen.getByText("Fruits")).toBeTruthy();
     expect(screen.getByText("Cosmos")).toBeTruthy();
-    expect(screen.getByText("🍒")).toBeTruthy();
-    expect(screen.getByText("🌙")).toBeTruthy();
+    // Each tab shows its set's first piece, drawn as on the board (#3698; was 🍒 / 🌙).
+    expect(piecePicture).toHaveBeenCalledWith("fruits", 0, 18);
+    expect(piecePicture).toHaveBeenCalledWith("cosmos", 0, 18);
   });
 
   it("checks and highlights the active set (Fruits by default)", async () => {

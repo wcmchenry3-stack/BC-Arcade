@@ -1,50 +1,34 @@
-import React from "react";
-import { Image, StyleSheet, View } from "react-native";
-import { FruitDefinition } from "../../theme/fruitSets";
+/**
+ * One Cascade piece as a small icon (#3698): the same code-drawn art the board draws, upright and
+ * fitted (overhangs included) into a `size` x `size` square, recorded once as a vector Picture per
+ * set, tier and size (`game/cascade/art/sprites.ts`), so it is sharp at any pixel ratio. Used by
+ * the next-piece preview, the theme selector and the dev panel. Decorative: the caller labels it.
+ */
+import React, { useMemo } from "react";
+import { View } from "react-native";
+import { Canvas, Picture } from "@shopify/react-native-skia";
+import type { TierSetId } from "../../game/cascade/tiers";
+import { piecePicture } from "../../game/cascade/art/sprites";
 
 interface Props {
-  fruit: FruitDefinition;
+  /** The piece: its set and tier. */
+  fruit: { readonly set: TierSetId; readonly tier: number };
   size: number;
 }
 
 export default function FruitGlyph({ fruit, size }: Props) {
-  if (fruit.icon) {
-    return (
-      <View
-        style={[styles.iconFrame, { width: size, height: size }]}
-        importantForAccessibility="no"
-      >
-        <Image
-          source={fruit.icon}
-          style={styles.icon}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
-          onError={() => console.warn(`FruitGlyph: failed to load icon for "${fruit.name}"`)}
-        />
-      </View>
-    );
-  }
-
-  // No icon configured — colored circle fallback.
+  const picture = useMemo(
+    () => piecePicture(fruit.set, fruit.tier, size),
+    [fruit.set, fruit.tier, size]
+  );
+  const box = useMemo(() => ({ width: size, height: size }), [size]);
   return (
-    <View
-      style={[
-        styles.colorCircle,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: fruit.color },
-      ]}
-      importantForAccessibility="no"
-    />
+    <View style={box} importantForAccessibility="no">
+      {picture && (
+        <Canvas style={box}>
+          <Picture picture={picture} />
+        </Canvas>
+      )}
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  iconFrame: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  icon: {
-    width: "100%",
-    height: "100%",
-  },
-  colorCircle: {},
-});
