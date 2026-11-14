@@ -362,12 +362,12 @@ Measured 2026-11-11 on `dev`, before the dead files were deleted. Part of epic #
 
 | Item                                                                                                                     |                                                  Bytes | State                                                               |
 | ------------------------------------------------------------------------------------------------------------------------ | -----------------------------------------------------: | ------------------------------------------------------------------- |
-| `assets/fruit-icons/` (11 imported WebP; 12 on disk, 255,498 B)                                                          |                                                250,642 | Used; replaced by code-drawn pieces (#3698)                         |
-| `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Used; replaced (#3698)                                              |
-| `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Used; replaced (#3698)                                              |
-| `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Used; replaced (#3698)                                              |
+| `assets/fruit-icons/` (11 imported WebP; 12 on disk, 255,498 B)                                                          |                                                250,642 | Deleted in #3698 (pieces are drawn in code)                         |
+| `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Deleted in #3698                                                    |
+| `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Deleted in #3698                                                    |
+| `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Deleted in #3698                                                    |
 | `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Used; replaced by the sound story                                   |
-| **Cascade assets that ship (44 images + 3 sounds = 47 files)**                                                           |                                          **1,322,143** | Budget: art 0 image bytes, sounds <= 120 KB                         |
+| **Cascade assets that shipped before #3698 (44 images + 3 sounds = 47 files)**                                           |                                          **1,322,143** | Now: 0 image bytes (#3698); sounds <= 120 KB budget                 |
 | Cascade JS, minified (`CascadeScreen` 14,945, `engine2` 5,650, `constants` 2,131, other modules and locale JSON ~11,464) |                                                 34,190 | Stays                                                               |
 | `matter-js` (`matter.js`, minified in the bundle)                                                                        |                                                 83,492 | Removed in #3697 (replaced by `planck`)                             |
 | `assets/fruit-vertices.json` + `cosmos-vertices.json`                                                                    |                                                 99,365 | Dead, deleted in #3692                                              |
@@ -887,15 +887,15 @@ Resolved or superseded; verified on 2026-10-10.
 
 | Directory                                       | Size         | Files    | Bundled?      | Owner / Purpose                                                                                                                                   |
 | ----------------------------------------------- | ------------ | -------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `assets/source-icons/cosmos/`                   | 85.6 MB      | 12 PNG   | No            | Pipeline input — master source files for `npm run process-assets`. Not imported by app code.                                                      |
-| `assets/source-icons/fruits/`                   | 76.8 MB      | 12 PNG   | No            | Pipeline input — same as above.                                                                                                                   |
-| `assets/celestial-icons/`                       | 36.8 MB      | 12 PNG   | **Yes**       | Cosmos theme UI icons. Imported in `src/theme/fruitSets.ts`.                                                                                      |
-| `assets/fruit-icons/`                           | 26.1 MB      | 12 PNG   | **Yes**       | Fruits theme UI icons. Imported in `src/theme/fruitSets.ts`.                                                                                      |
+| `assets/source-icons/cosmos/`                   | 85.6 MB      | 12 PNG   | No            | Pipeline input for `npm run process-assets`. Deleted in #3692 / #3698 (the script is gone).                                                       |
+| `assets/source-icons/fruits/`                   | 76.8 MB      | 12 PNG   | No            | Pipeline input, same as above. Deleted.                                                                                                           |
+| `assets/celestial-icons/`                       | 36.8 MB      | 12 PNG   | **Yes**       | Cosmos theme UI icons. Deleted in #3698 (was imported in `src/theme/fruitSets.ts`).                                                               |
+| `assets/fruit-icons/`                           | 26.1 MB      | 12 PNG   | **Yes**       | Fruits theme UI icons. Deleted in #3698 (was imported in `src/theme/fruitSets.ts`).                                                               |
 | `assets/logo.png`                               | 7.1 MB       | 1 PNG    | **Yes**       | App logo. Imported in `src/components/shared/AppHeader.tsx`.                                                                                      |
 | `assets/adaptive-icon.png`                      | 7.1 MB       | 1 PNG    | Platform only | Android adaptive icon (`app.json`). Identical file to `logo.png`.                                                                                 |
 | `assets/icon.png`                               | 7.1 MB       | 1 PNG    | Platform only | App icon (`app.json`). Identical file to `logo.png`.                                                                                              |
-| `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
-| `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
+| `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces. Deleted in #3698 (was imported in `src/theme/useFruitImages.ts`, also deleted).                                               |
+| `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces. Deleted in #3698 (was imported in `src/theme/useFruitImages.ts`, also deleted).                                               |
 | `assets/*.png` (Android icons, splash, favicon) | ~0.2 MB      | 4 PNG    | Platform only | App store / launcher assets.                                                                                                                      |
 | Hearts                                          | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode ♥ emoji; all card rendering is programmatic.                                               |
 | `src/game/sudoku/puzzles.json`                  | ~261 KB      | 1 JSON   | **Yes**       | Sudoku puzzle bank — 3 000 unique-solution puzzles (1 000 per difficulty). ~60 KB gzipped over the wire. Imported by `src/game/sudoku/engine.ts`. |
@@ -922,9 +922,9 @@ This section described the Cascade sprite pipeline (`source-icons/` to `npm run 
 
 The epic listed `/celestial_images/` as "suspected dead weight." Investigation found:
 
-- The actual paths are `celestial-icons/` and `cosmos-baked/` (not `celestial_images/`).
-- Both are actively imported and in use.
-- A third set (`source-icons/cosmos/`) is the pipeline input — intentional and necessary locally.
+- The actual paths were `celestial-icons/` and `cosmos-baked/` (not `celestial_images/`).
+- Both were actively imported and in use at the time; both were deleted in #3698.
+- A third set (`source-icons/cosmos/`) was the pipeline input; it was deleted with the pipeline.
 
 ---
 

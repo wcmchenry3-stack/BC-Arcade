@@ -267,6 +267,19 @@ describe("Cascade placeholder piece colours (#3693)", () => {
   });
 });
 
+describe("Cascade bin palette (#3698)", () => {
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s equals the theme's surface / accent / border tokens", (name, colors) => {
+    expect(cascade.CASCADE_BIN_PALETTE[name]).toEqual({
+      surface: colors.surface,
+      accent: colors.accent,
+      border: colors.border,
+    });
+  });
+});
+
 describe("Cascade lid palette (#3694)", () => {
   it.each([
     ["light", light],

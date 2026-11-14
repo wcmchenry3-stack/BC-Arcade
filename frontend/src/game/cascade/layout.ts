@@ -23,6 +23,11 @@ export interface CascadeLayout {
   readonly boardHeight: number;
   /** Left edge of the board in the area (it is centred horizontally). */
   readonly offsetX: number;
+  /**
+   * Top edge of the board in the area. The world is bottom-anchored (`areaH - boardHeight`), so
+   * the bin's floor is the bottom of the area and any spare height sits above the bin.
+   */
+  readonly offsetY: number;
 }
 
 export function calculateCascadeLayout({
@@ -38,6 +43,7 @@ export function calculateCascadeLayout({
     boardWidth: WORLD_WIDTH * scale,
     boardHeight: WORLD_HEIGHT * scale,
     offsetX: (containerWidth - WORLD_WIDTH * scale) / 2,
+    offsetY: containerHeight - WORLD_HEIGHT * scale,
   };
 }
 

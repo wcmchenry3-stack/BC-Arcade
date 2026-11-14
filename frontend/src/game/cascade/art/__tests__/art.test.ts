@@ -17,6 +17,16 @@ import type { CanvasKit } from "canvaskit-wasm";
 import type { SkImage, SkSurface } from "@shopify/react-native-skia";
 
 import { TIER_COUNT, tierRadius } from "../../tiers";
+import { FLOOR_THICKNESS, WALL_THICKNESS, WORLD_HEIGHT, WORLD_WIDTH } from "../../constants";
+import { CASCADE_BIN_PALETTE } from "../../../../theme/theme.cascade";
+import {
+  BIN_FLOOR_TOP,
+  BIN_INNER_LEFT,
+  BIN_INNER_RADIUS,
+  BIN_INNER_RIGHT,
+  __resetBinCacheForTests,
+  binPicture,
+} from "../bin";
 import { LAYERS, drawLayer, drawPiece, type ArtSet } from "../pen";
 import {
   ART_SETS,
@@ -25,6 +35,7 @@ import {
   artSet,
   pieceSprites,
   piecePicture,
+  quantizePx,
 } from "../sprites";
 
 // Skia is the real web API on CanvasKit for this file; installed in `beforeAll`.
@@ -281,12 +292,43 @@ describe("caches", () => {
 
   it("rasterises at screen size x pixel ratio: never fewer bitmap pixels than screen pixels", () => {
     for (const px of [1, 2.625, 3]) {
+      const q = quantizePx(px); // rounded up to 0.05, never down
+      expect(q).toBeGreaterThanOrEqual(px);
       pieceSprites("cosmos", px).forEach((s, tier) => {
         const r = tierRadius(tier);
-        expect(s!.light.width()).toBe(Math.ceil(2 * r * px));
+        expect(s!.light.width()).toBe(Math.ceil(2 * r * q));
         expect(s!.body.width()).toBeGreaterThanOrEqual(s!.rect[2] * px - 1e-9);
-        expect(s!.body.width() / s!.rect[2]).toBeCloseTo(px, 9);
+        expect(s!.body.width() / s!.rect[2]).toBeCloseTo(q, 9);
       });
+    }
+  });
+
+  it("rounds the pixel scale in the key: a one-pixel resize reuses the set", () => {
+    expect(quantizePx(2.625)).toBeCloseTo(2.65, 9);
+    expect(quantizePx(2.65)).toBeCloseTo(2.65, 9);
+    const a = pieceSprites("fruits", 2.626);
+    expect(pieceSprites("fruits", 2.649)).toBe(a);
+    expect(pieceSprites("fruits", 2.651)).not.toBe(a);
+  });
+
+  it("never evicts or disposes the set just requested, however many keys follow", () => {
+    for (let i = 0; i < MAX_SPRITE_SETS * 3; i++) {
+      const active = pieceSprites("fruits", 1 + i * 0.5);
+      const spies = active.map((s) => jest.spyOn(s!.body, "dispose"));
+      expect(pieceSprites("fruits", 1 + i * 0.5)).toBe(active);
+      spies.forEach((spy) => expect(spy).not.toHaveBeenCalled());
+    }
+  });
+
+  it("stops rasterising a tier after its first failed layer", () => {
+    const real = adapter.skia;
+    const make = jest.fn(() => null);
+    adapter.skia = { ...Skia, Surface: { Make: make } };
+    try {
+      pieceSprites("fruits", 7);
+      expect(make).toHaveBeenCalledTimes(TIER_COUNT); // body only, once per tier
+    } finally {
+      adapter.skia = real;
     }
   });
 
@@ -311,6 +353,13 @@ describe("caches", () => {
     expect(piecePicture("fruits", 8, 16)).not.toBe(p);
     expect(piecePicture("cosmos", 8, 22)).not.toBe(p);
     expect(piecePicture("fruits", 42, 22)).toBeNull();
+  });
+
+  it("disposes the icon pictures when the picture cache clears", () => {
+    const first = piecePicture("fruits", 0, 10)!;
+    const spy = jest.spyOn(first, "dispose");
+    for (let size = 11; size < 11 + 100; size++) piecePicture("fruits", 0, size);
+    expect(spy).toHaveBeenCalled();
   });
 
   it("fits a piece and its overhangs inside the icon square", () => {
@@ -343,6 +392,74 @@ describe("caches", () => {
     adapter.skia = { ...Skia, Surface: { Make: () => null } };
     try {
       expect(pieceSprites("fruits", 7).every((s) => s === null)).toBe(true);
+    } finally {
+      adapter.skia = real;
+    }
+  });
+});
+
+describe("the bin (soft outline)", () => {
+  beforeEach(() => __resetBinCacheForTests());
+
+  /** The bin of `theme` at 1 px per world unit: a pixel reader. */
+  function binPixels(theme: "light" | "dark") {
+    const { px } = render(WORLD_WIDTH, WORLD_HEIGHT, (c) => c.drawPicture(binPicture(theme)));
+    return (x: number, y: number) => {
+      const i = (y * WORLD_WIDTH + x) * 4;
+      return [px[i]!, px[i + 1]!, px[i + 2]!, px[i + 3]!];
+    };
+  }
+  const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const near = (a: number[], b: number[], tol: number) =>
+    a.slice(0, 3).every((v, i) => Math.abs(v - b[i]!) <= tol);
+
+  it("puts the inner faces and floor top exactly at the physics", () => {
+    expect(BIN_INNER_LEFT).toBe(WALL_THICKNESS);
+    expect(BIN_INNER_RIGHT).toBe(WORLD_WIDTH - WALL_THICKNESS);
+    expect(BIN_FLOOR_TOP).toBe(WORLD_HEIGHT - FLOOR_THICKNESS);
+    expect(BIN_INNER_RADIUS).toBeLessThanOrEqual(tierRadius(0));
+  });
+
+  it.each(["light", "dark"] as const)(
+    "%s: the solid rail is outside the cavity and the cavity is clear to the floor",
+    (theme) => {
+      const at = binPixels(theme);
+      const accent = hex(CASCADE_BIN_PALETTE[theme].accent);
+      const surface = hex(CASCADE_BIN_PALETTE[theme].surface);
+      const mid = Math.floor(WORLD_WIDTH / 2);
+      // Rail: solid accent on the band side of each face and under the floor top.
+      expect(near(at(WALL_THICKNESS - 2, 300), accent, 2)).toBe(true);
+      expect(near(at(WORLD_WIDTH - WALL_THICKNESS + 1, 300), accent, 2)).toBe(true);
+      expect(near(at(mid, BIN_FLOOR_TOP + 2), accent, 2)).toBe(true);
+      // Cavity: no rail ink at or inside the face, and none above the floor top.
+      expect(near(at(WALL_THICKNESS, 300), accent, 12)).toBe(false);
+      expect(near(at(WALL_THICKNESS + 1, 300), accent, 12)).toBe(false);
+      expect(near(at(mid, BIN_FLOOR_TOP - 1), accent, 12)).toBe(false);
+      // Above the wash the cavity is the card surface.
+      expect(near(at(mid, 100), surface, 1)).toBe(true);
+      // The inner bottom corner is rounded: the square corner (21, 579) is band, not cavity.
+      expect(
+        near(at(WALL_THICKNESS + BIN_INNER_RADIUS, BIN_FLOOR_TOP - BIN_INNER_RADIUS), accent, 12)
+      ).toBe(false);
+      expect(near(at(WALL_THICKNESS + 1, BIN_FLOOR_TOP - 1), surface, 6)).toBe(false);
+    }
+  );
+
+  it("draws the same in both sets, once per theme", () => {
+    expect(binPicture("dark")).toBe(binPicture("dark"));
+    expect(binPicture("dark")).not.toBe(binPicture("light"));
+  });
+
+  it("is null, not a throw, when Skia cannot record", () => {
+    const real = adapter.skia;
+    adapter.skia = {
+      ...Skia,
+      PictureRecorder: () => {
+        throw new Error("no");
+      },
+    };
+    try {
+      expect(binPicture("light")).toBeNull();
     } finally {
       adapter.skia = real;
     }

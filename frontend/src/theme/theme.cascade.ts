@@ -176,3 +176,22 @@ export const CASCADE_ART = {
     ],
   },
 } as const;
+
+/**
+ * The bin's colours for one theme (#3698, owner pick: the soft outline). Equal the theme's
+ * surface / accent / border tokens (`ThemeContext.tsx`, checked in gamePalettes.test.ts), kept as
+ * hex because `art/bin.ts` sets their alpha itself and draws on a Picture, outside React.
+ */
+export interface CascadeBinPalette {
+  /** The bin's inside (the card). */
+  readonly surface: string;
+  /** The band, the inner rail and the floor wash. */
+  readonly accent: string;
+  /** The card's outer hairline. */
+  readonly border: string;
+}
+
+export const CASCADE_BIN_PALETTE: Readonly<Record<"light" | "dark", CascadeBinPalette>> = {
+  light: { surface: "#fbf4e2", accent: "#1bc5d4", border: "#d8c9a6" },
+  dark: { surface: "#19191f", accent: "#8ff5ff", border: "#2e2e38" },
+};

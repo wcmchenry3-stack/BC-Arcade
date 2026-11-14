@@ -23,7 +23,7 @@ export default function FruitGlyph({ fruit, size }: Props) {
   );
   const box = useMemo(() => ({ width: size, height: size }), [size]);
   return (
-    <View style={box} importantForAccessibility="no">
+    <View style={box} importantForAccessibility="no" accessible={false}>
       {picture && (
         <Canvas style={box}>
           <Picture picture={picture} />

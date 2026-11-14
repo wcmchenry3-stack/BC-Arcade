@@ -9,7 +9,11 @@
  *   `pxPerUnit` = board scale x device pixel ratio: one bitmap pixel per screen pixel at the
  *   tier's ladder radius, so a piece is never drawn from a bitmap scaled up (only down, for the
  *   133 ms grow-in and the spawner's smaller copy). The key is the set and `pxPerUnit`; the
- *   last `MAX_SPRITE_SETS` keys are kept and an evicted key's bitmaps are disposed.
+ *   last `MAX_SPRITE_SETS` keys are kept and an evicted key's bitmaps are disposed. `pxPerUnit`
+ *   is rounded up to `PX_STEP` first, so a resize by a pixel or two reuses the set instead of
+ *   churning through new ones. The board (`CascadeBoard`) is the only holder of a set: its
+ *   UI-thread closure keeps the sprites it was given alive, and a set it still draws is always
+ *   the most recently requested key, which is never the one evicted.
  * - **Icon pictures** (`piecePicture`): a whole piece, upright, recorded as an `SkPicture` (vector)
  *   fitted into a `size` x `size` box, for the next-piece preview, the dev panel, the theme
  *   selector and the home tile. A Picture replays its paths at whatever pixel ratio the canvas
@@ -58,6 +62,14 @@ export type PieceSprites = readonly (PieceSprite | null)[];
 /** Sprite sets (set x pixel scale) kept before the least recently used is disposed. */
 export const MAX_SPRITE_SETS = 3;
 
+/** `pxPerUnit` is rounded up to this step (never down: bitmaps stay at least screen sharp). */
+export const PX_STEP = 0.05;
+
+/** `px` rounded up to `PX_STEP`; the scale the bitmaps are drawn at and the cache keys on. */
+export function quantizePx(px: number): number {
+  return Math.round(Math.ceil(px / PX_STEP - 1e-9) * PX_STEP * 1e6) / 1e6;
+}
+
 /** A bitmap of one layer and the world rect it covers. */
 function rasterise(
   set: ArtSet,
@@ -93,13 +105,16 @@ function drawTier(set: ArtSet, tier: number, px: number): PieceSprite | null {
   if (!art || r <= 0 || !(px > 0)) return null;
   const made: SkImage[] = [];
   try {
+    // Bail on the first layer that fails: no point rasterising the rest.
     const body = rasterise(set, tier, "body", art.box, r, px);
-    if (body) made.push(body.image);
+    if (!body) return null;
+    made.push(body.image);
     const light = rasterise(set, tier, "light", UNIT_BOX, r, px);
-    if (light) made.push(light.image);
+    if (!light) throw new Error("surface");
+    made.push(light.image);
     const top = rasterise(set, tier, "top", art.box, r, px);
-    if (top) made.push(top.image);
-    if (!body || !light || !top) throw new Error("surface");
+    if (!top) throw new Error("surface");
+    made.push(top.image);
     return {
       body: body.image,
       light: light.image,
@@ -121,7 +136,8 @@ const spriteCache = new Map<string, PieceSprites>();
  * call for that key and cached after it (as the most recently used).
  */
 export function pieceSprites(setId: string, pxPerUnit: number): PieceSprites {
-  const key = `${setId}@${pxPerUnit}`;
+  const px = quantizePx(pxPerUnit);
+  const key = `${setId}@${px}`;
   const hit = spriteCache.get(key);
   if (hit) {
     spriteCache.delete(key);
@@ -129,7 +145,7 @@ export function pieceSprites(setId: string, pxPerUnit: number): PieceSprites {
     return hit;
   }
   const set = artSet(setId);
-  const sprites = Array.from({ length: TIER_COUNT }, (_, tier) => drawTier(set, tier, pxPerUnit));
+  const sprites = Array.from({ length: TIER_COUNT }, (_, tier) => drawTier(set, tier, px));
   spriteCache.set(key, sprites);
   for (const [k, old] of spriteCache) {
     if (spriteCache.size <= MAX_SPRITE_SETS) break;
@@ -141,6 +157,11 @@ export function pieceSprites(setId: string, pxPerUnit: number): PieceSprites {
     }
   }
   return sprites;
+}
+
+function clearPictures(): void {
+  for (const p of pictureCache.values()) p?.dispose();
+  pictureCache.clear();
 }
 
 /** Icon pictures per set|tier|size. Few sizes exist (preview, panel, selector, home). */
@@ -171,7 +192,7 @@ export function piecePicture(setId: string, tier: number, size: number): SkPictu
       picture = null;
     }
   }
-  if (pictureCache.size >= MAX_PICTURES) pictureCache.clear();
+  if (pictureCache.size >= MAX_PICTURES) clearPictures();
   pictureCache.set(key, picture);
   return picture;
 }

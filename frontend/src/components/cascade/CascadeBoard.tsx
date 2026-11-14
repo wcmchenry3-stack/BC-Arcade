@@ -6,7 +6,8 @@
  * through React state every frame. React renders this component only when its props change (the
  * board's scale, the fruit set, the theme); a new frame re-records the Picture without touching
  * React. Drawing is `game/cascade/render/drawFrame.ts`; the pieces are the code-drawn art (#3698),
- * rasterised once per set and on-screen size (`game/cascade/art/sprites.ts`).
+ * rasterised once per set and on-screen size (`game/cascade/art/sprites.ts`), over the bin
+ * (`art/bin.ts`), which is the board's card: the canvas is exactly the board rect.
  */
 import React, { useMemo } from "react";
 import { PixelRatio, View } from "react-native";
@@ -18,6 +19,7 @@ import { WORLD_HEIGHT, WORLD_WIDTH } from "../../game/cascade/constants";
 import { drawFrame } from "../../game/cascade/render/drawFrame";
 import { buildBoardStyle } from "../../game/cascade/render/boardStyle";
 import { pieceSprites } from "../../game/cascade/art/sprites";
+import { binPicture } from "../../game/cascade/art/bin";
 import type { CascadeLidPalette } from "../../theme/theme.cascade";
 
 /** A throw inside the UI-thread renderer is reported once per board, on the JS thread. */
@@ -39,14 +41,18 @@ export interface CascadeBoardProps {
   /** The active fruit set's id: which pieces are drawn. */
   readonly setId: string;
   readonly lidPalette: CascadeLidPalette;
+  /** The active theme: the bin's colours. */
+  readonly theme: "light" | "dark";
 }
 
-function CascadeBoard({ frame, scale, setId, lidPalette }: CascadeBoardProps) {
+function CascadeBoard({ frame, scale, setId, lidPalette, theme }: CascadeBoardProps) {
   const { t } = useTranslation("cascade");
   const style = useMemo(() => buildBoardStyle(lidPalette), [lidPalette]);
   // One bitmap pixel per screen pixel at each tier's ladder radius (never scaled up).
   const pxPerUnit = scale * PixelRatio.get();
   const sprites = useMemo(() => pieceSprites(setId, pxPerUnit), [setId, pxPerUnit]);
+  // The bin (#3698): a static Picture per theme, recorded once and drawn under the pieces.
+  const bin = useMemo(() => binPicture(theme), [theme]);
   const canvasStyle = useMemo(
     () => ({ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }),
     [scale]
@@ -79,6 +85,7 @@ function CascadeBoard({ frame, scale, setId, lidPalette }: CascadeBoardProps) {
     >
       <Canvas style={canvasStyle}>
         <Group transform={transform}>
+          {bin && <Picture picture={bin} />}
           <Picture picture={picture} />
         </Group>
       </Canvas>

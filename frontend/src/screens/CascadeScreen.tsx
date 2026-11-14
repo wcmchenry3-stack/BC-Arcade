@@ -302,8 +302,8 @@ function CascadeGame() {
   const settlingTicksLeftRef = useRef<number>(0);
 
   // For merge burst position calculation
-  const scaleRef = useRef(0);
-  const containerWidthRef = useRef(0);
+  // The latest layout (`calculateCascadeLayout`), for the merge bursts in the RAF loop.
+  const layoutRef = useRef({ scale: 0, offsetX: 0, offsetY: 0 });
   const piecesRef = useRef<PieceSnapshot[]>([]);
 
   const startInstrumentedSession = useCallback(
@@ -441,7 +441,6 @@ function CascadeGame() {
     const { width, height } = e.nativeEvent.layout;
     setContainerWidth(Math.floor(width));
     setContainerHeight(Math.floor(height));
-    containerWidthRef.current = Math.floor(width);
   }, []);
 
   const handleMerge = useCallback(
@@ -515,10 +514,9 @@ function CascadeGame() {
     handleMerge({ tier, x, y });
     playFruitMerge(tier);
     if (!reduceMotion) {
-      const s = scaleRef.current;
-      const offsetX = (containerWidthRef.current - WORLD_WIDTH * s) / 2;
+      const { scale: s, offsetX, offsetY } = layoutRef.current;
       const dispX = offsetX + x * s;
-      const dispY = y * s;
+      const dispY = offsetY + y * s;
       const fruit = activeFruitSet.fruits[tier];
       if (fruit) {
         const burstId = `${nextBurstId}-${Date.now()}-${x.toFixed(0)}`;
@@ -850,11 +848,11 @@ function CascadeGame() {
   const currentDef = activeFruitSet.fruits[queue.current];
   const nextDef = activeFruitSet.fruits[queue.next];
 
-  const { scale, boardWidth, boardHeight } = calculateCascadeLayout({
+  const { scale, boardWidth, boardHeight, offsetX, offsetY } = calculateCascadeLayout({
     containerWidth,
     containerHeight,
   });
-  scaleRef.current = scale;
+  layoutRef.current = { scale, offsetX, offsetY };
 
   // Hoisted (#2960) so the memoized children see the same props until something real changes.
   const goHome = useCallback(() => navigation.popToTop(), [navigation]);
@@ -877,13 +875,16 @@ function CascadeGame() {
     (e: GestureResponderEvent) => handleTap(tapToWorldX(e.nativeEvent.locationX, scale)),
     [handleTap, scale]
   );
+  // The bin is the card: the board rect, bottom-anchored in the measured area.
   const boardAreaStyle = useMemo(
-    () => ({ width: boardWidth, height: boardHeight }),
-    [boardWidth, boardHeight]
-  );
-  const canvasOuterStyle = useMemo(
-    () => [styles.canvasOuter, { backgroundColor: colors.surface, borderColor: colors.border }],
-    [colors.surface, colors.border]
+    () => ({
+      position: "absolute" as const,
+      left: offsetX,
+      top: offsetY,
+      width: boardWidth,
+      height: boardHeight,
+    }),
+    [offsetX, offsetY, boardWidth, boardHeight]
   );
   const removeBurst = useCallback(
     (id: string) => setMergeBursts((prev) => prev.filter((b) => b.id !== id)),
@@ -910,19 +911,18 @@ function CascadeGame() {
 
         <ThemeSelector />
 
-        <View style={styles.canvasWrapper}>
-          <View style={canvasOuterStyle} onLayout={onLayout}>
-            {scale > 0 && (
-              <Pressable testID="cascade-game-area" onPress={onBoardPress} style={boardAreaStyle}>
-                <CascadeBoard
-                  frame={frameSV}
-                  scale={scale}
-                  lidPalette={CASCADE_LID_PALETTE[theme]}
-                  setId={activeFruitSet.id}
-                />
-              </Pressable>
-            )}
-          </View>
+        <View style={styles.canvasWrapper} onLayout={onLayout}>
+          {scale > 0 && (
+            <Pressable testID="cascade-game-area" onPress={onBoardPress} style={boardAreaStyle}>
+              <CascadeBoard
+                frame={frameSV}
+                scale={scale}
+                lidPalette={CASCADE_LID_PALETTE[theme]}
+                theme={theme}
+                setId={activeFruitSet.id}
+              />
+            </Pressable>
+          )}
 
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             {mergeBursts.map((burst) => (
@@ -1001,19 +1001,9 @@ export default function CascadeScreen() {
 }
 
 const styles = StyleSheet.create({
+  // The measured board area; the bin (the card) is drawn bottom-anchored inside it.
   canvasWrapper: {
     flex: 1,
-  },
-  canvasOuter: {
-    flex: 1,
-    alignItems: "center",
     marginHorizontal: 8,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 48,
-    borderBottomRightRadius: 48,
-    borderWidth: 1,
-    opacity: 0.95,
-    overflow: "hidden",
   },
 });
