@@ -47,7 +47,7 @@
  */
 
 import type { EventTypeOf } from "../_shared/eventQueueConfig";
-import { detectMoon } from "./engine";
+import { ENGINE_VERSION, detectMoon } from "./engine";
 import type { PrincipleId } from "./conservative/terms";
 import { resolvePersona } from "./types";
 import type { AiPreset, Card, HeartsState, PassDirection, TrickCard } from "./types";
@@ -159,7 +159,13 @@ export function principleNumber(principle: PrincipleId | null | undefined): numb
 /** The seats and preset of a new game: `game_started`'s data. `seats` are `"human"` or the persona. */
 export function gameStartedData(preset: AiPreset): Record<string, unknown> {
   const seats = [0, 1, 2, 3].map((seat) => (seat === 0 ? "human" : resolvePersona(preset, seat)));
-  return { initial_score: 0, preset, target: TARGET_SCORE, seats };
+  return {
+    initial_score: 0,
+    preset,
+    target: TARGET_SCORE,
+    seats,
+    engine_version: ENGINE_VERSION,
+  };
 }
 
 /**

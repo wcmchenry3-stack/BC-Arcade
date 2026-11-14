@@ -18,6 +18,7 @@ import path from "path";
 
 import { notesOf, playGolden, valuesOf } from "./helpers/goldenGame";
 import { rebuildFromEvents } from "./helpers/rebuild";
+import { startedData } from "../replay";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -28,7 +29,7 @@ function games() {
   const classic = playGolden("hard", "classic", () => 0.77);
   const mini = playGolden("easy", "mini", () => 0.5);
   const describe = (g: typeof classic) => ({
-    game_started: { difficulty: g.difficulty, variant: g.variant, puzzle: g.puzzle },
+    game_started: startedData(g),
     events: g.saved.map((e) => ({ type: e.type, data: e.data })),
     final: { values: valuesOf(g.state), notes: notesOf(g.state), errors: g.state.errorCount },
   });

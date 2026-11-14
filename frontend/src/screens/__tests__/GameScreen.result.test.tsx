@@ -454,11 +454,17 @@ async function settle() {
 }
 
 // game_started carries the mode and the computer (#3282).
-const STARTED_VS_HARD = { v: 1, mode: "vs", cpu_type: "oracle", difficulty: "hard" };
+const STARTED_VS_HARD = {
+  v: 1,
+  mode: "vs",
+  cpu_type: "oracle",
+  difficulty: "hard",
+  engine_version: 1,
+};
 
 describe("Yacht reporting — mode metadata (#2630)", () => {
   it.each([
-    ["solo", undefined, { mode: "solo" }, { v: 1, mode: "solo" }],
+    ["solo", undefined, { mode: "solo" }, { v: 1, mode: "solo", engine_version: 1 }],
     ["vs", "hard", { mode: "vs", difficulty: "hard" }, STARTED_VS_HARD],
   ])(
     "a restored %s game starts its session with the mode",
@@ -481,7 +487,7 @@ describe("Yacht reporting — mode metadata (#2630)", () => {
     expect(startGame).toHaveBeenCalledWith(
       "yacht",
       { mode: "vs", difficulty: "medium" },
-      { v: 1, mode: "vs", cpu_type: "oracle", difficulty: "medium" }
+      { v: 1, mode: "vs", cpu_type: "oracle", difficulty: "medium", engine_version: 1 }
     );
   });
 
@@ -490,7 +496,11 @@ describe("Yacht reporting — mode metadata (#2630)", () => {
     await act(async () => {
       await fireEvent.press(r.getByTestId("yacht-mode-solo"));
     });
-    expect(startGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, { v: 1, mode: "solo" });
+    expect(startGame).toHaveBeenCalledWith(
+      "yacht",
+      { mode: "solo" },
+      { v: 1, mode: "solo", engine_version: 1 }
+    );
   });
 
   it("Play Again in vs mode keeps the mode and difficulty", async () => {
@@ -505,7 +515,7 @@ describe("Yacht reporting — mode metadata (#2630)", () => {
     expect(startGame).toHaveBeenCalledWith(
       "yacht",
       { mode: "vs", difficulty: "easy" },
-      { v: 1, mode: "vs", cpu_type: "oracle", difficulty: "easy" }
+      { v: 1, mode: "vs", cpu_type: "oracle", difficulty: "easy", engine_version: 1 }
     );
   });
 });

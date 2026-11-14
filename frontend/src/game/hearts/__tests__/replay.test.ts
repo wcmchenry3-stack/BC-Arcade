@@ -120,6 +120,7 @@ describe("gameStartedData", () => {
       preset: "conservative",
       target: 100,
       seats: ["human", "conservative", "conservative", "conservative"],
+      engine_version: 1,
     });
   });
 
@@ -129,6 +130,7 @@ describe("gameStartedData", () => {
       preset: "mixed",
       target: 100,
       seats: ["human", "cautious", "schemer", "daring"],
+      engine_version: 1,
     });
   });
 

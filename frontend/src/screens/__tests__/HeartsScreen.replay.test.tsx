@@ -186,6 +186,7 @@ describe("a trick completed by the human", () => {
         preset: "mixed",
         target: 100,
         seats: ["human", "cautious", "schemer", "daring"],
+        engine_version: 1,
       }
     );
   });

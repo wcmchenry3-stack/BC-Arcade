@@ -584,7 +584,11 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
   it("calls startGame('yacht') on mount", async () => {
     await renderScreen();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
-    expect(mockStartGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, { v: 1, mode: "solo" });
+    expect(mockStartGame).toHaveBeenCalledWith(
+      "yacht",
+      { mode: "solo" },
+      { v: 1, mode: "solo", engine_version: 1 }
+    );
   });
 
   it("does not start a new session when mounted with a game_over state", async () => {
@@ -849,7 +853,11 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       const soloBtn = queryByRole("button", { name: /^solo$/i });
       if (soloBtn) fireEvent.press(soloBtn);
     });
-    expect(mockStartGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, { v: 1, mode: "solo" });
+    expect(mockStartGame).toHaveBeenCalledWith(
+      "yacht",
+      { mode: "solo" },
+      { v: 1, mode: "solo", engine_version: 1 }
+    );
   });
 
   it("client failures do not block gameplay (the recorder's save throws)", async () => {

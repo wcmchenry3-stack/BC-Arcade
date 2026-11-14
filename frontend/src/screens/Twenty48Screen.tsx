@@ -68,6 +68,7 @@ import {
   guardRecording,
   moveTuple,
   savedPosition,
+  startedData,
   withRecorded,
 } from "../game/twenty48/replay";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
@@ -356,7 +357,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       const resumed = !!saved && syncResume();
       if (resumed) moveLog.reset(...savedPosition(saved));
       if (!resumed) {
-        syncStart({ initial_board: flattenBoard(next.board) });
+        syncStart(startedData(flattenBoard(next.board)));
         // Resuming a saved mid-game means the player already started — mark it.
         if (saved) syncMarkStarted();
       }
@@ -540,7 +541,7 @@ export default function Twenty48Screen({ navigation }: Props) {
     // The new game's log counts from 0.
     flushMoves();
     moveLog.reset();
-    syncStart({ initial_board: flattenBoard(next.board) });
+    syncStart(startedData(flattenBoard(next.board)));
     setState(next);
     moveCountRef.current = 0;
   }, [

@@ -256,12 +256,13 @@ describe("TurnLog", () => {
 
 describe("game_started data", () => {
   it("names the mode, and in a vs game the computer's type and difficulty", () => {
-    expect(startedData(null)).toEqual({ v: 1, mode: "solo" });
+    expect(startedData(null)).toEqual({ v: 1, mode: "solo", engine_version: 1 });
     expect(startedData("hard")).toEqual({
       v: 1,
       mode: "vs",
       cpu_type: "oracle",
       difficulty: "hard",
+      engine_version: 1,
     });
   });
 });

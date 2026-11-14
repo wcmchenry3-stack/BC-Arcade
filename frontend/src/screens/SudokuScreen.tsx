@@ -66,7 +66,13 @@ import {
 import { getBests, judgeResult, recordResult, type Bests } from "../game/_shared/personalBest";
 import { sudokuVariant } from "../game/_shared/personalBestGames";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
-import { applyRecorded, createEntryLog, unitOfEntry, type EntryTuple } from "../game/sudoku/replay";
+import {
+  applyRecorded,
+  createEntryLog,
+  startedData,
+  unitOfEntry,
+  type EntryTuple,
+} from "../game/sudoku/replay";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
@@ -495,7 +501,7 @@ export default function SudokuScreen() {
       if (!syncGetGameId()) {
         const settings = { difficulty: next.difficulty, variant: next.variant };
         // The givens go in `game_started` once (#3288): the entries rebuild from them.
-        syncStart({ ...settings, puzzle: next.puzzle }, settings);
+        syncStart(startedData(next), settings);
       }
       syncMarkStarted();
     },
@@ -514,7 +520,7 @@ export default function SudokuScreen() {
       // The old puzzle's last chunk goes to the recorder first, so the restart
       // saves it to that game; the new one counts from its first entry (#3288).
       flushEntries();
-      syncRestart({ ...settings, puzzle: fresh.puzzle }, settings);
+      syncRestart(startedData(fresh), settings);
       resetEntries(0);
       skipReplayRef.current = false;
     },

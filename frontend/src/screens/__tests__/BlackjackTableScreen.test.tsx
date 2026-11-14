@@ -438,7 +438,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     for (const key of ["best_run_chips", "total_runs", "runs_completed", "current_table"]) {
       expect(meta).not.toHaveProperty(key);
     }
-    expect(eventData).toEqual({ starting_chips: 1000 });
+    expect(eventData).toEqual({ starting_chips: 1000, engine_version: 1 });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
     }
@@ -895,7 +895,11 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     });
 
     await waitFor(() => {
-      expect(mockStartGame).toHaveBeenCalledWith("blackjack", {}, { starting_chips: 1000 });
+      expect(mockStartGame).toHaveBeenCalledWith(
+        "blackjack",
+        {},
+        { starting_chips: 1000, engine_version: 1 }
+      );
     });
   });
 
