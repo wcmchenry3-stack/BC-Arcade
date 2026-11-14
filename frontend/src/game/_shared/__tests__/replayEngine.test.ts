@@ -7,6 +7,7 @@
 
 import {
   MISSING_ENGINE_VERSION,
+  UNPRINTABLE,
   engineVersionOf,
   incompatibleEngineReason,
   replayEngines,
@@ -83,5 +84,38 @@ describe("replayEngines (#3912)", () => {
     expect(() => engines().withLegacy(1, OLD)).toThrow(); // the current version is not legacy
     expect(() => engines().withLegacy(1.5, OLD)).toThrow();
     expect(() => replayEngines("demo", -1, TODAY)).toThrow();
+  });
+
+  it("reports a value it cannot print (too deep, a cycle) without throwing", () => {
+    let deep: unknown = [];
+    for (let i = 0; i < 100_000; i += 1) deep = [deep];
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    for (const version of [deep, cyclic]) {
+      const r = engines().resolve({ engine_version: version });
+      expect(r.kind === "incompatible" && r.reason).toBe(
+        `incompatible engine: engine_version ${UNPRINTABLE}, this reader rebuilds 1`
+      );
+    }
+  });
+
+  it("reads a recorded 1.0 as the integer 1 (the backend twin reads it as incompatible)", () => {
+    // JS has one number type: JSON `1.0` parses to 1. The app always records an int.
+    expect(engines().resolve(JSON.parse('{"engine_version": 1.0}'))).toMatchObject({
+      kind: "current",
+      version: 1,
+    });
+  });
+
+  it("prints objects and arrays as the backend does", () => {
+    // backend/tests/test_engine_version.py pins the same strings.
+    const shown = (v: unknown) =>
+      incompatibleEngineReason(v, [1])
+        .replace("incompatible engine: engine_version ", "")
+        .replace(", this reader rebuilds 1", "");
+    expect(shown([1, 2])).toBe("[1,2]");
+    expect(shown({ a: 1, b: [true, null] })).toBe('{"a":1,"b":[true,null]}');
+    expect(shown([[{ v: "x" }]])).toBe('[[{"v":"x"}]]');
+    expect(shown("é✓")).toBe('"\\u00e9\\u2713"');
   });
 });

@@ -62,14 +62,27 @@ CURRENT_ENGINE_VERSIONS: dict[str, int] = {
 game's ``engine.ts``; Sort's ``SORT_REPLAY_ENGINE_VERSION`` in ``replay.ts``)."""
 
 
+UNPRINTABLE = "<unprintable>"
+"""What ``printable`` shows for a value it cannot serialise (too deep, an int too long)."""
+
+
 def printable(value: Any) -> str:
-    """A client-supplied value, safe to print: ASCII JSON, truncated."""
-    text = json.dumps(value, ensure_ascii=True, default=str)
+    """A client-supplied value, safe to print: compact ASCII JSON (as the app's
+    ``JSON.stringify``), truncated."""
+    try:
+        text = json.dumps(value, ensure_ascii=True, default=str, separators=(",", ":"))
+    except (ValueError, RecursionError, TypeError):
+        # An int over Python's 4300-digit limit (ValueError), deep nesting (RecursionError).
+        return UNPRINTABLE
     return text if len(text) <= 40 else text[:40] + "..."
 
 
 def _is_version(value: Any) -> bool:
-    return type(value) is int and value >= 0  # not bool
+    """A non-negative ``int`` (not bool). A recorded ``1.0`` is a float here, so it is
+    incompatible, while the app's twin (JS, one number type) reads it as 1. The app
+    always records an int, so a real game never meets the difference; tests in both
+    twins pin it."""
+    return type(value) is int and value >= 0
 
 
 def engine_version_of(started: Mapping[str, Any] | None) -> Any:

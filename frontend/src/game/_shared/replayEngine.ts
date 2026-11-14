@@ -4,8 +4,14 @@
  * Every game that records its play puts an integer `engine_version` in its
  * `game_started` data (#3909). Each game's `replay.ts` exports `REPLAY_ENGINES`,
  * built here: the version it records today with today's rules, and any older
- * version still supported with that version's frozen rules (`withLegacy`). A
- * reader resolves the game's `game_started` data and gets one of three answers:
+ * version still supported with that version's frozen rules (`withLegacy`). The
+ * registries are the contract for any frontend reader. Today two frontend
+ * functions rebuild a game from its stored events, Daily Word's `rebuild` and
+ * Sort's `rebuildRecorded`, and both resolve through them; the other games'
+ * frontend replay code only applies single steps (their stored games are read by
+ * the backend readers, `backend/games/engine_version.py`). A new frontend
+ * rebuilder must resolve first. A reader resolves the game's `game_started` data
+ * and gets one of three answers:
  *
  *  - `current`: today's version, replayed with today's rules;
  *  - `legacy`: an older version still supported, replayed with its frozen rules;
@@ -46,8 +52,17 @@ export interface ReplayEngines<R> {
   withLegacy(version: number, rules: R): ReplayEngines<R>;
 }
 
+/**
+ * A version is a non-negative integer. JS has one number type, so a recorded `1.0`
+ * is the integer 1 here, while the backend twin (Python) reads `1.0` as a float and
+ * so as incompatible. The app always records an int, so the two never disagree on
+ * a real game; tests in both twins pin the difference.
+ */
 const isVersion = (x: unknown): x is number =>
   typeof x === "number" && Number.isInteger(x) && x >= 0;
+
+/** What `printable` shows for a value it cannot serialise (too deep, a cycle). */
+export const UNPRINTABLE = "<unprintable>";
 
 /** A client-supplied value, safe to print: ASCII JSON, truncated (`printable` in the backend). */
 function printable(value: unknown): string {
@@ -55,10 +70,15 @@ function printable(value: unknown): string {
   try {
     text = JSON.stringify(value) ?? String(value);
   } catch {
-    text = String(value);
+    // A deeply nested value overflows the stack (RangeError), a cycle throws a
+    // TypeError; String() of the same value can throw too, so nothing else is tried.
+    return UNPRINTABLE;
   }
   // JSON.stringify already escapes control characters; escape non-ASCII as Python's json does.
-  text = text.replace(/[\u0080-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  text = text.replace(
+    /[\u0080-\uffff]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`
+  );
   return text.length <= 40 ? text : `${text.slice(0, 40)}...`;
 }
 

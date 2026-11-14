@@ -9,6 +9,7 @@ current versions are held equal to the app's constants.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -21,9 +22,11 @@ from games.engine_version import (
     INCOMPATIBLE,
     LEGACY,
     MISSING_ENGINE_VERSION,
+    UNPRINTABLE,
     ReplayEngines,
     engine_version_of,
     incompatible_reason,
+    printable,
     replay_engines,
 )
 
@@ -127,3 +130,38 @@ def _frontend_version(game: str) -> int:
 @pytest.mark.parametrize("game", sorted(CURRENT_ENGINE_VERSIONS))
 def test_current_versions_equal_the_apps_constants(game: str) -> None:
     assert CURRENT_ENGINE_VERSIONS[game] == _frontend_version(game)
+
+
+def _deep_list(depth: int) -> list[Any]:
+    value: list[Any] = []
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+@pytest.mark.parametrize("version", [10**5000, _deep_list(200_000)], ids=["long_int", "deep_list"])
+def test_a_value_that_cannot_be_printed_is_incompatible_not_a_traceback(version: Any) -> None:
+    r = engines().resolve({"engine_version": version})
+    assert r.kind == INCOMPATIBLE
+    assert r.reason == f"incompatible engine: engine_version {UNPRINTABLE}, this reader rebuilds 1"
+
+
+def test_a_recorded_float_1_0_is_incompatible_here_though_the_app_reads_it_as_1() -> None:
+    """Documented twin difference: JS has one number type, so replayEngine.ts reads
+    ``1.0`` as 1 (current); Python keeps it a float. The app always records an int."""
+    r = engines().resolve(json.loads('{"engine_version": 1.0}'))
+    assert r.kind == INCOMPATIBLE and r.version == 1.0
+
+
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        ([1, 2], "[1,2]"),
+        ({"a": 1, "b": [True, None]}, '{"a":1,"b":[true,null]}'),
+        ([[{"v": "x"}]], '[[{"v":"x"}]]'),
+        ("é✓", '"\\u00e9\\u2713"'),
+    ],
+)
+def test_printable_matches_the_apps_json_stringify(value: Any, shown: str) -> None:
+    """frontend/src/game/_shared/__tests__/replayEngine.test.ts pins the same strings."""
+    assert printable(value) == shown
