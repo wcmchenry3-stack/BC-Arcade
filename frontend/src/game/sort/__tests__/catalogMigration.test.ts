@@ -16,6 +16,15 @@ import {
 
 const VERSION_KEY = "@sort/catalog_version";
 
+/**
+ * A pre-catalog build's best moves, in the bytes its `saveBestMoves` wrote
+ * (`JSON.stringify` of the map, in `@sort/best_moves`). Since #3821 the app
+ * writes bests to the shared personal best, so old saves are seeded directly.
+ */
+async function seedLegacyBests(bests: Record<string, number>): Promise<void> {
+  await AsyncStorage.setItem("@sort/best_moves", JSON.stringify(bests));
+}
+
 function colours(level: LevelData): number {
   return level.bottles.filter((b) => b.length > 0).length;
 }
@@ -79,7 +88,7 @@ describe("migrateToCatalog", () => {
 
   it("maps a pre-catalog save: unlocked level by colours, bests and board dropped", async () => {
     await saveProgress({ unlockedLevel: 10, currentLevelId: 9, currentState: legacyBoard });
-    await saveBestMoves({ "1": 6, "9": 40 });
+    await seedLegacyBests({ "1": 6, "9": 40 });
     await AsyncStorage.setItem("@sort/levels_cache", '{"levels":[]}');
 
     await expect(migrateToCatalog()).resolves.toBe("current");
@@ -89,14 +98,17 @@ describe("migrateToCatalog", () => {
       currentLevelId: null,
       currentState: null,
     });
-    await expect(loadBestMoves()).resolves.toEqual({});
     await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBe("{}");
+    await expect(loadBestMoves()).resolves.toEqual({});
+    // The personal best (#3821) moved the emptied bests in (nothing) and removed the old key.
+    await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBeNull();
+    await expect(AsyncStorage.getItem("personal_best_v1:sort")).resolves.toBeNull();
     await expect(AsyncStorage.getItem("@sort/levels_cache")).resolves.toBeNull();
     await expect(AsyncStorage.getItem(VERSION_KEY)).resolves.toBe(String(SORT_CATALOG_VERSION));
   });
 
   it("maps bests alone (no progress saved) from the highest solved level", async () => {
-    await saveBestMoves({ "4": 12 }); // old level 5 next: 5 colours
+    await seedLegacyBests({ "4": 12 }); // old level 5 next: 5 colours
     await expect(migrateToCatalog()).resolves.toBe("current");
     await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: firstWith(5) });
   });
@@ -124,7 +136,7 @@ describe("migrateToCatalog", () => {
 
   it("writes progress, emptied bests and the version in one write", async () => {
     await saveProgress({ unlockedLevel: 3, currentLevelId: null, currentState: null });
-    await saveBestMoves({ "2": 9 });
+    await seedLegacyBests({ "2": 9 });
     const setMany = jest.spyOn(AsyncStorage, "setMany");
     setMany.mockClear();
     await migrateToCatalog();
@@ -144,6 +156,8 @@ describe("migrateToCatalog", () => {
 
     await expect(migrateToCatalog()).resolves.toBe("foreign");
     await saveProgress({ unlockedLevel: 2, currentLevelId: null, currentState: null });
+    // Nor does a read of the bests move that catalog's old key in (#3821).
+    await expect(loadBestMoves()).resolves.toEqual({});
 
     await expect(
       AsyncStorage.getMany([VERSION_KEY, "@sort/progress", "@sort/best_moves"])
@@ -161,7 +175,7 @@ describe("migrateToCatalog", () => {
     "reports a failed %s, leaves the old save whole, and migrates it on the next load",
     async (op) => {
       // Only bests on record: the unlock comes from them (old level 5, 5 colours).
-      await saveBestMoves({ "4": 12 });
+      await seedLegacyBests({ "4": 12 });
       jest.spyOn(AsyncStorage, op).mockRejectedValueOnce(new Error("disk"));
 
       await expect(migrateToCatalog()).resolves.toBe("failed");
@@ -169,7 +183,11 @@ describe("migrateToCatalog", () => {
         tags: { subsystem: "sort.storage", op: "migrateToCatalog" },
       });
       await expect(AsyncStorage.getItem(VERSION_KEY)).resolves.toBeNull();
-      await expect(loadBestMoves()).resolves.toEqual({ "4": 12 });
+      await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBe('{"4":12}');
+      // Before the catalog migration lands, the personal best (#3821) never takes the old
+      // random levels' bests as catalog bests, and leaves them whole for the migration.
+      await expect(loadBestMoves()).resolves.toEqual({});
+      await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBe('{"4":12}');
 
       await expect(migrateToCatalog()).resolves.toBe("current");
       await expect(loadProgress()).resolves.toMatchObject({ unlockedLevel: firstWith(5) });

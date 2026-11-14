@@ -26,6 +26,15 @@
  * The unlock carries over so the player can play on, but the leaderboard
  * counts only levels solved on the catalog: `SortScreen`'s frontier comes
  * from the bests, never from the unlocked level.
+ *
+ * The bests now live in the shared personal best (#3821,
+ * `personal_best_v1:sort`), but a save from before the catalog can only hold
+ * them in the old `@sort/best_moves`, so that is the key read and emptied
+ * here. The personal best moves that key in only once the catalog version is
+ * stored (`personalBestGames.ts`), so the old random levels' bests can never
+ * reach it: after this migration it moves in the emptied `{}` (nothing) and
+ * removes the key. This migration runs before any read of the bests
+ * (`useSortLevels`).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
@@ -37,10 +46,12 @@ import {
   type BestMoves,
   type SortProgress,
 } from "./storage";
+import {
+  SORT_CATALOG_VERSION_KEY as VERSION_KEY,
+  SORT_LEGACY_BEST_MOVES_KEY as BEST_MOVES_KEY,
+} from "../_shared/personalBestGames";
 
-const VERSION_KEY = "@sort/catalog_version";
 const PROGRESS_KEY = "@sort/progress";
-const BEST_MOVES_KEY = "@sort/best_moves";
 const LEVELS_CACHE_KEY = "@sort/levels_cache";
 
 /**

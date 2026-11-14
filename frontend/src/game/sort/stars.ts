@@ -9,7 +9,7 @@
  *   1 star:  anything else
  *
  * A level's best stars are not stored: they are derived from its best moves
- * (`@sort/best_moves`) and its par, so there is one copy of the truth and a
+ * (the shared personal best, #3821) and its par, so there is one copy of the truth and a
  * save from before stars needs no migration.
  *
  * Pure data. No React, no side effects.

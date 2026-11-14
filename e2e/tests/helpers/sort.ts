@@ -5,6 +5,10 @@ import { installEntitlementsMock } from "./api-mock";
 
 const STORAGE_KEY = "@sort/progress";
 const CATALOG_VERSION_KEY = "@sort/catalog_version";
+// Best moves per level (#3821): the shared personal best's record, and the
+// key that held them before (moved in, then removed, on the first read).
+export const BEST_MOVES_KEY = "personal_best_v1:sort";
+export const LEGACY_BEST_MOVES_KEY = "@sort/best_moves";
 
 // The levels ship in the app (#2761): the specs play the catalog's own
 // level 1, read from the same file the app bundles, so a new catalog only
@@ -22,6 +26,11 @@ const CATALOG: CatalogFile = JSON.parse(
 );
 
 export const CATALOG_VERSION = CATALOG.version;
+
+/** Catalog level `id`'s par (its target moves, #3687). */
+export function catalogPar(id: number): number {
+  return CATALOG.levels[id - 1][1];
+}
 
 /** Catalog level `id`'s bottles (bottom first, colour names). */
 export function catalogLevel(id: number): string[][] {
@@ -123,6 +132,8 @@ export async function injectSortProgress(
 }
 
 // A save from before the catalog (#2761): progress with no catalog version.
+// Such a build kept its bests in `@sort/best_moves` (never in the personal
+// best, which came later, #3821), so that is where they are injected.
 export async function injectLegacySortSave(
   page: Page,
   progress: Record<string, unknown>,
@@ -131,12 +142,62 @@ export async function injectLegacySortSave(
   await installEntitlementsMock(page);
   await page.goto("/");
   await page.evaluate(
-    ([key, state, bests, versionKey]) => {
+    ([key, state, bests, versionKey, legacyBestsKey, bestsKey]) => {
       localStorage.setItem(key as string, JSON.stringify(state));
-      localStorage.setItem("@sort/best_moves", JSON.stringify(bests));
+      localStorage.setItem(legacyBestsKey as string, JSON.stringify(bests));
+      localStorage.removeItem(bestsKey as string);
       localStorage.removeItem(versionKey as string);
     },
-    [STORAGE_KEY, progress, bestMoves, CATALOG_VERSION_KEY] as const,
+    [
+      STORAGE_KEY,
+      progress,
+      bestMoves,
+      CATALOG_VERSION_KEY,
+      LEGACY_BEST_MOVES_KEY,
+      BEST_MOVES_KEY,
+    ] as const,
   );
   await page.goto("/");
+}
+
+// A catalog save from before #3821: progress and the catalog version, with
+// the best moves still in `@sort/best_moves` (the bytes that build wrote).
+export async function injectCatalogSaveWithOldBests(
+  page: Page,
+  progress: Record<string, unknown>,
+  bestMoves: Record<string, number>,
+): Promise<void> {
+  await installEntitlementsMock(page);
+  await page.goto("/");
+  await page.evaluate(
+    ([key, state, bests, versionKey, version, legacyBestsKey, bestsKey]) => {
+      localStorage.setItem(key as string, JSON.stringify(state));
+      localStorage.setItem(versionKey as string, String(version));
+      localStorage.setItem(legacyBestsKey as string, JSON.stringify(bests));
+      localStorage.removeItem(bestsKey as string);
+    },
+    [
+      STORAGE_KEY,
+      progress,
+      bestMoves,
+      CATALOG_VERSION_KEY,
+      CATALOG_VERSION,
+      LEGACY_BEST_MOVES_KEY,
+      BEST_MOVES_KEY,
+    ] as const,
+  );
+  await page.goto("/");
+}
+
+/** The stored best moves: the personal best's record and the old key, raw. */
+export async function readSortBests(
+  page: Page,
+): Promise<{ bests: string | null; legacy: string | null }> {
+  return page.evaluate(
+    ([bestsKey, legacyBestsKey]) => ({
+      bests: localStorage.getItem(bestsKey),
+      legacy: localStorage.getItem(legacyBestsKey),
+    }),
+    [BEST_MOVES_KEY, LEGACY_BEST_MOVES_KEY] as const,
+  );
 }
