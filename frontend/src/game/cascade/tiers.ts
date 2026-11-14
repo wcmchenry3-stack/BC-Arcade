@@ -104,4 +104,3 @@ export const DROPPABLE_TIERS: readonly number[] = TIERS.filter((t) => t.droppabl
 export function tierRadius(tier: number): number {
   return TIERS[tier]?.radius ?? 0;
 }
-
