@@ -12,7 +12,8 @@ The manifest, ``.github/replay-fixtures.json``, names for each replayable game i
 ``engine_version`` constant, its pinned fixtures (each with the version it was recorded under)
 and the tests that hard-code replay results. Policy (#3908): a change that alters how stored
 games replay bumps the game's engine_version and keeps the old fixture, frozen, until old logs
-expire; a retired version's fixture is removed by listing it in ``retired_versions``.
+expire; a retired version's fixture is removed by listing it in ``retired_versions`` (in a
+later change than the bump), and a game whose code is deleted leaves via ``retired_games``.
 Docs: docs/CI-CHECKS.md#replay-fixture-version-guard-3911.
 """
 
@@ -21,11 +22,13 @@ from __future__ import annotations
 import argparse
 import difflib
 import hashlib
+import io
 import json
 import os
 import re
 import subprocess
 import sys
+import tokenize
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,7 +38,16 @@ BUMP_MESSAGE = (
     "this change alters how stored games replay: bump engine_version and keep the old rules "
     "until old logs expire (see docs)"
 )
-_COMMENT = re.compile(r"^(//|#|\*|/\*|\*/)")
+# A retirement (a version or a whole game) names when or why: a date or an issue number.
+RETIRE_REASON = re.compile(r"\d{4}-\d{2}-\d{2}|#\d+")
+# TS/JS scanner: strings and comments are matched first, so `//` or `#` inside a string stays.
+_TS_TOKEN = re.compile(
+    r"""(?P<str>"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)"""
+    r"""|(?P<com>//[^\n]*|/\*[\s\S]*?\*/)|(?P<tok>\w+|[^\w\s])"""
+)
+_TEST_CALLS = {"it", "test", "describe"}
+# Punctuation a formatter adds or drops when it re-wraps an expression.
+_WRAP = frozenset({",", ";", "(", ")"})
 
 
 @dataclass
@@ -52,30 +64,90 @@ class Report:
 
 def canonical(path: str, data: bytes) -> bytes:
     """What the guard compares: JSON parsed and re-serialised (so reformatting is not a
-    change), any other file as its significant lines (blank and comment lines dropped)."""
+    change), any other file as its code tokens (see ``code_tokens``)."""
     if path.endswith(".json"):
         try:
             return json.dumps(json.loads(data), sort_keys=True, separators=(",", ":")).encode()
         except ValueError:
             return data
-    return "\n".join(significant_lines(data)).encode()
-
-
-def significant_lines(data: bytes) -> list[str]:
-    lines = (line.strip() for line in data.decode("utf-8", "replace").splitlines())
-    return [line for line in lines if line and not _COMMENT.match(line)]
+    return "\x00".join(code_tokens(path, data)).encode()
 
 
 def content_hash(path: str, data: bytes) -> str:
     return hashlib.sha256(canonical(path, data)).hexdigest()
 
 
-def lines_removed(base: bytes, head: bytes) -> bool:
-    """True if a significant line of ``base`` is gone or changed in ``head`` (pure additions pass)."""
-    ops = difflib.SequenceMatcher(
-        None, significant_lines(base), significant_lines(head), autojunk=False
-    )
-    return any(tag in ("replace", "delete") for tag, *_ in ops.get_opcodes())
+def code_tokens(path: str, data: bytes) -> list[str]:
+    """A test file as a token list, so whitespace and line wrapping never count. Comments,
+    docstrings, test titles (the first string of ``it``/``test``/``describe``) and Python test
+    function names are dropped: renaming or re-wording them changes no replay result."""
+    text = data.decode("utf-8", "replace")
+    return _py_tokens(text) if path.endswith(".py") else _ts_tokens(text)
+
+
+def _ts_tokens(text: str) -> list[str]:
+    out: list[str] = []
+    for match in _TS_TOKEN.finditer(text):
+        if match.lastgroup == "com":
+            continue
+        token = match.group()
+        if match.lastgroup == "str" and _is_title(out):
+            continue
+        out.append(token)
+    return out
+
+
+def _is_title(prev: list[str]) -> bool:
+    """True if the next token is the title string of ``it(``, ``describe.each(...)(`` etc."""
+    if not prev or prev[-1] != "(":
+        return False
+    i = len(prev) - 2
+    while i >= 1 and prev[i - 1] == ".":  # it.each / describe.skip / test.only
+        i -= 2
+    return i >= 0 and prev[i] in _TEST_CALLS
+
+
+def _py_tokens(text: str) -> list[str]:
+    skip = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT}
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError):
+        return text.split()
+    out: list[str] = []
+    line_start = True
+    for i, tok in enumerate(tokens):
+        if tok.type in skip or tok.type == tokenize.ENDMARKER:
+            line_start = line_start or tok.type in (
+                tokenize.NEWLINE,
+                tokenize.INDENT,
+                tokenize.DEDENT,
+            )
+            continue
+        nxt = tokens[i + 1].type if i + 1 < len(tokens) else tokenize.ENDMARKER
+        docstring = (
+            line_start
+            and tok.type == tokenize.STRING
+            and nxt in (tokenize.NEWLINE, tokenize.ENDMARKER)
+        )
+        test_name = out[-1:] == ["def"] and tok.type == tokenize.NAME
+        line_start = False
+        if not (docstring or test_name):
+            out.append(tok.string)
+    return out
+
+
+def results_changed(path: str, base: bytes, head: bytes) -> bool:
+    """True if a token of ``base`` is gone or replaced in ``head``. Pure additions pass, and so
+    does adding or dropping only the punctuation a formatter moves when it re-wraps."""
+    old, new = code_tokens(path, base), code_tokens(path, head)
+    ops = difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+    for tag, i1, i2, j1, j2 in ops:
+        if tag in ("equal", "insert"):
+            continue
+        if set(old[i1:i2]) | set(new[j1:j2]) <= _WRAP:
+            continue
+        return True
+    return False
 
 
 def read_version(text: str, name: str) -> int | None:
@@ -153,10 +225,11 @@ def check_game_static(
         )
         return None
     for version, why in game.get("retired_versions", {}).items():
-        if int(version) >= current or not str(why).strip():
+        if int(version) >= current or not RETIRE_REASON.search(str(why)):
             report.error(
                 MANIFEST,
-                f"{name}: retired version {version} must be older than {current} and give a reason",
+                f"{name}: retired version {version} must be older than {current} and its reason "
+                "must name a date (YYYY-MM-DD) or an issue (#123)",
             )
     for fixture in game["fixtures"]:
         check_fixture_static(root, name, fixture, current, retired(game), tests, report)
@@ -255,7 +328,34 @@ def check_static(root: Path, manifest: dict, report: Report) -> dict[str, int]:
             versions[name] = current
     check_classified(root, manifest, report)
     check_accepted(root, manifest, report)
+    check_retired_games(root, manifest, report)
     return versions
+
+
+def check_retired_games(root: Path, manifest: dict, report: Report) -> None:
+    """``retired_games`` holds games taken out of the guard: allowed only once the game's code is
+    gone (its version constant can no longer be read), with a dated or numbered reason."""
+    for name, entry in manifest.get("retired_games", {}).items():
+        if name in manifest["games"]:
+            report.error(MANIFEST, f"retired_games {name}: still listed under games")
+        if not RETIRE_REASON.search(str(entry.get("reason", ""))):
+            report.error(
+                MANIFEST,
+                f"retired_games {name}: the reason must name a date (YYYY-MM-DD) or an issue (#123)",
+            )
+        version = entry.get("version", {})
+        text = Tree(root).read(version.get("file", ""))
+        constant = version.get("name", "")
+        if not version.get("file") or not constant:
+            report.error(MANIFEST, f'retired_games {name}: give the game\'s old "version"')
+        elif (
+            text is not None and read_version(text.decode("utf-8", "replace"), constant) is not None
+        ):
+            report.error(
+                version.get("file", MANIFEST),
+                f"retired_games {name}: `{version.get('name')}` still exists; a game leaves the "
+                "guard only when its code (and its engine_version constant) is removed",
+            )
 
 
 # --------------------------------------------------------------------------- diff rules
@@ -292,39 +392,65 @@ class GameDiff:
                 f"{self.name}: {self.constant} went down from {self.before} to {self.current}",
             )
             return
+        gone = self.check_retirements(report)
         heads = [
             (f["path"], f["engine_version"], self.head.read(f["path"]))
             for f in self.game["fixtures"]
         ]
         for fixture in self.old_game["fixtures"]:
-            self.check_old_fixture(fixture["path"], fixture["engine_version"], heads, report)
+            if fixture["engine_version"] not in gone:
+                self.check_old_fixture(fixture["path"], fixture["engine_version"], heads, report)
         for path, version, data in heads:
             self.check_relabel(path, version, data, report)
-        for path in self.game.get("expectations", []):
-            self.check_expectation(path, report)
+
+    def check_retirements(self, report: Report) -> set[int]:
+        """The retired versions that count. A newly retired version must be older than the
+        base's version: the bump has to ship first, then the old version expires (#3908)."""
+        old = retired(self.old_game)
+        valid = set(old)
+        for version in sorted(retired(self.game) - old):
+            if version < self.before:
+                valid.add(version)
+                continue
+            report.error(
+                MANIFEST,
+                f"{self.name}: engine_version {version} cannot be retired in the change that "
+                f"replaces it (the base is still at {self.before}). Ship the bump first, and retire "
+                f"{version} in a later change once its logs have expired. Docs: {DOCS}",
+            )
+        return valid
 
     def check_old_fixture(
         self, path: str, version: int, heads: list[tuple[str, int, bytes | None]], report: Report
     ) -> None:
-        """A base fixture must still be in the tree, unchanged and at its version, somewhere."""
+        """A base fixture must still be pinned under its game, unchanged and at its version."""
         old = self.base.read(path)
-        if old is None or version in retired(self.game):
+        if old is None:
             return
         kept = any(
             v == version and data is not None and canonical(p, data) == canonical(path, old)
             for p, v, data in heads
         )
         new = self.head.read(path)
-        if kept or self.is_accepted(path, new):
+        listed = any(p == path for p, _, _ in heads)
+        if kept or (listed and self.is_accepted(path, new)):
             return
         if new is None:
             message = (
                 f"fixture for engine_version {version} was removed. {BUMP_MESSAGE}. To sunset an "
-                f'expired version add "{version}": "<reason>" to games.{self.name}.retired_versions. '
-                f"Docs: {DOCS}"
+                f'expired version add "{version}": "<date or issue>" to '
+                f"games.{self.name}.retired_versions. Docs: {DOCS}"
+            )
+        elif not listed:
+            message = (
+                f"fixture for engine_version {version} is no longer pinned under {self.name} "
+                f"(moved to not_replay or dropped from the manifest). {BUMP_MESSAGE}. Docs: {DOCS}"
             )
         elif version < self.before:
-            message = f"fixture frozen at engine_version {version} changed. {BUMP_MESSAGE}. {accept_hint(path, new)}"
+            message = (
+                f"fixture frozen at engine_version {version} changed. {BUMP_MESSAGE}. "
+                f"{accept_hint(path, new)}"
+            )
         elif self.bumped:
             message = (
                 f"{self.constant} went {self.before} -> {self.current} but the fixture recorded under "
@@ -351,31 +477,108 @@ class GameDiff:
                 f"{self.current}",
             )
 
-    def check_expectation(self, path: str, report: Report) -> None:
-        old, new = self.base.read(path), self.head.read(path)
-        if old is None or new is None or self.bumped or self.is_accepted(path, new):
-            return
-        if lines_removed(old, new):
-            report.error(
-                path,
-                f"{self.name}: hard-coded replay results changed. {BUMP_MESSAGE}. {self.constant} is "
-                f"still {self.current}. Only additions are free. {accept_hint(path, new)}",
+
+@dataclass
+class Diff:
+    root: Path
+    manifest: dict
+    base_rev: str
+    versions: dict[str, int]
+    report: Report
+
+    def __post_init__(self) -> None:
+        self.head, self.base = Tree(self.root), Tree(self.root, self.base_rev)
+        self.base_manifest = self.base.manifest() or self.manifest
+        self.accepted = {
+            (e.get("path"), e.get("sha256")) for e in self.manifest.get("accepted_changes", [])
+        }
+
+    def check(self) -> None:
+        games, old_games = self.manifest["games"], self.base_manifest["games"]
+        done: set[str] = set()  # bumped or fully retired: their expectation tests may change
+        for name in sorted(set(games) | set(old_games)):
+            old_game, game = old_games.get(name), games.get(name)
+            # a new game has nothing stored under older rules yet
+            before = game_version(self.base, old_game) if old_game else None
+            if old_game is None or before is None:
+                continue
+            if game is None:
+                if self.check_removed_game(name, old_game):
+                    done.add(name)
+                continue
+            if name not in self.versions:
+                continue  # unreadable constant: reported by the static rules
+            if not self.check_version_location(name, old_game, game, before):
+                continue
+            diff = GameDiff(
+                name,
+                game,
+                old_game,
+                before,
+                self.versions[name],
+                self.head,
+                self.base,
+                self.accepted,
             )
+            diff.check(self.report)
+            if diff.bumped:
+                done.add(name)
+        self.check_expectations(done)
+
+    def check_removed_game(self, name: str, old_game: dict) -> bool:
+        """A game leaves the manifest only as a full retirement (see ``check_retired_games``)."""
+        entry = self.manifest.get("retired_games", {}).get(name)
+        if entry is not None and entry.get("version") == old_game["version"]:
+            self.report.notes.append(f"{name}: retired game, its fixtures are no longer pinned")
+            return True
+        self.report.error(
+            MANIFEST,
+            f"{name}: removed from games. {BUMP_MESSAGE}. A game leaves the guard only when its "
+            f'code is gone: list it in retired_games with its old "version" and a dated reason. '
+            f"Docs: {DOCS}",
+        )
+        return False
+
+    def check_version_location(self, name: str, old_game: dict, game: dict, before: int) -> bool:
+        """The constant may move (a refactor) only if it reads the same value as at the base;
+        a bump at a new location would compare two different constants."""
+        if old_game["version"] == game["version"] or self.versions[name] == before:
+            return True
+        self.report.error(
+            game["version"]["file"],
+            f"{name}: the version constant moved from `{old_game['version']['name']}` in "
+            f"{old_game['version']['file']} and its value changed ({before} -> "
+            f"{self.versions[name]}). Move it and bump it in separate changes. Docs: {DOCS}",
+        )
+        return False
+
+    def check_expectations(self, done: set[str]) -> None:
+        """Tests that hard-code replay results, over the base and branch lists. A file shared by
+        several games (Solitaire and FreeCell) may change when any of them bumped (or retired)."""
+        owners: dict[str, set[str]] = {}
+        for games in (self.base_manifest["games"], self.manifest["games"]):
+            for name, game in games.items():
+                for path in game.get("expectations", []):
+                    owners.setdefault(path, set()).add(name)
+        for path, names in sorted(owners.items()):
+            old, new = self.base.read(path), self.head.read(path)
+            if old is None or new is None or names & done:
+                continue
+            if (path, content_hash(path, new)) in self.accepted:
+                continue
+            if results_changed(path, old, new):
+                games = ", ".join(sorted(names))
+                self.report.error(
+                    path,
+                    f"{games}: hard-coded replay results changed. {BUMP_MESSAGE}. Only additions "
+                    f"are free. {accept_hint(path, new)}",
+                )
 
 
 def check_diff(
     root: Path, manifest: dict, base_rev: str, versions: dict[str, int], report: Report
 ) -> None:
-    head, base = Tree(root), Tree(root, base_rev)
-    base_manifest = base.manifest() or manifest
-    accepted = {(e.get("path"), e.get("sha256")) for e in manifest.get("accepted_changes", [])}
-    for name, game in manifest["games"].items():
-        old_game = base_manifest["games"].get(name)
-        # a new game has nothing stored under older rules; an unreadable constant is reported above
-        before = game_version(base, old_game) if old_game else None
-        if name not in versions or old_game is None or before is None:
-            continue
-        GameDiff(name, game, old_game, before, versions[name], head, base, accepted).check(report)
+    Diff(root, manifest, base_rev, versions, report).check()
 
 
 # --------------------------------------------------------------------------- entry point

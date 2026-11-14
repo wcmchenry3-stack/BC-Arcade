@@ -345,6 +345,241 @@ def test_a_base_without_the_manifest_uses_the_branch_manifest(tmp_path: pathlib.
     assert any(guard.BUMP_MESSAGE in e for e in run(tmp_path, base))
 
 
+# --------------------------------------------------------------------------- review round 1
+
+
+def commit(root: pathlib.Path, message: str) -> str:
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", message)
+    return git(root, "rev-parse", "HEAD")
+
+
+def test_removing_a_game_from_the_manifest_fails(repo) -> None:
+    """Finding 1: the game drops out and its fixture moves to not_replay, then changes."""
+    root, base = repo
+    data = manifest(root)
+    del data["games"]["dice"]
+    data["not_replay"].append({"path": FIXTURE, "reason": "gone"})
+    write(root, guard.MANIFEST, data)
+    change_fixture(root)
+    assert any("dice: removed from games" in e for e in run(root, base))
+
+
+def test_a_fixture_moved_to_not_replay_fails(repo) -> None:
+    root, base = repo
+    add_v2(root)
+    base = commit(root, "bump")
+    data = manifest(root)
+    data["games"]["dice"]["fixtures"] = [{"path": FIXTURE_V2, "engine_version": 2}]
+    data["not_replay"].append({"path": FIXTURE, "reason": "not a replay log"})
+    write(root, guard.MANIFEST, data)
+    assert any("no longer pinned under dice" in e and FIXTURE in e for e in run(root, base))
+
+
+def test_a_game_is_retired_only_once_its_constant_is_gone(repo) -> None:
+    root, base = repo
+    data = manifest(root)
+    del data["games"]["dice"]
+    data["not_replay"].append({"path": FIXTURE, "reason": "dice removed (#1)"})
+    data["retired_games"] = {
+        "dice": {"version": MANIFEST["games"]["dice"]["version"], "reason": "game removed in #1"}
+    }
+    write(root, guard.MANIFEST, data)
+    write(root, "src/game/dice/__tests__/expect.test.ts", "")
+    assert any("still exists" in e for e in run(root, base))
+    write(root, ENGINE, "export const OTHER = 9;\n")  # the game's code is gone
+    assert run(root, base) == []
+    data["retired_games"]["dice"]["reason"] = "gone"
+    write(root, guard.MANIFEST, data)
+    assert any("retired_games dice: the reason must name" in e for e in run(root, base))
+
+
+def test_an_expectation_dropped_from_the_list_is_still_checked(repo) -> None:
+    root, base = repo
+    data = manifest(root)
+    data["games"]["dice"]["expectations"] = []
+    write(root, guard.MANIFEST, data)
+    write(root, EXPECT, EXPECT_BODY.replace("42", "43"))
+    assert any(EXPECT in e and guard.BUMP_MESSAGE in e for e in run(root, base))
+
+
+def test_repointing_the_version_to_a_higher_constant_fails(repo) -> None:
+    root, base = repo
+    data = manifest(root)
+    data["games"]["dice"]["version"]["name"] = "OTHER"  # reads 9
+    write(root, guard.MANIFEST, data)
+    change_fixture(root)
+    errors = run(root, base)
+    assert any("version constant moved" in e for e in errors)
+
+
+def test_moving_the_version_constant_with_the_same_value_passes(repo) -> None:
+    root, base = repo
+    write(root, "src/game/dice/version.ts", "export const DICE_ENGINE_VERSION = 1;\n")
+    write(root, ENGINE, "export const OTHER = 9;\n")
+    data = manifest(root)
+    data["games"]["dice"]["version"] = {
+        "file": "src/game/dice/version.ts",
+        "name": "DICE_ENGINE_VERSION",
+    }
+    write(root, guard.MANIFEST, data)
+    assert run(root, base) == []
+    change_fixture(root)  # and the bump guard still works at the new location
+    assert any(guard.BUMP_MESSAGE in e for e in run(root, base))
+
+
+def test_a_version_cannot_be_retired_in_the_change_that_bumps_it(repo) -> None:
+    """Finding 2: bump 1 -> 2, delete v1, add v2 and retire 1, all in one change."""
+    root, base = repo
+    add_v2(root)
+    (root / FIXTURE).unlink()
+    write(root, "src/game/dice/__tests__/replay.test.ts", 'load("dice_replay_v2.json");\n')
+    data = manifest(root)
+    data["games"]["dice"]["fixtures"] = [{"path": FIXTURE_V2, "engine_version": 2}]
+    data["games"]["dice"]["retired_versions"] = {"1": "v1 logs expired 2026-12-15 (#1)"}
+    write(root, guard.MANIFEST, data)
+    errors = run(root, base)
+    assert any("cannot be retired in the change that replaces it" in e for e in errors)
+    assert any("was removed" in e for e in errors)
+
+
+def test_a_retirement_reason_needs_a_date_or_an_issue(repo) -> None:
+    root, _ = repo
+    add_v2(root)
+    bumped = commit(root, "bump")
+    (root / FIXTURE).unlink()
+    write(root, "src/game/dice/__tests__/replay.test.ts", 'load("dice_replay_v2.json");\n')
+    data = manifest(root)
+    data["games"]["dice"]["fixtures"] = [{"path": FIXTURE_V2, "engine_version": 2}]
+    data["games"]["dice"]["retired_versions"] = {"1": "gone"}
+    write(root, guard.MANIFEST, data)
+    assert any("must name a date" in e for e in run(root, bumped))
+    for reason in ("v1 logs expired 2026-12-15", "expired, see #4021"):
+        data["games"]["dice"]["retired_versions"] = {"1": reason}
+        write(root, guard.MANIFEST, data)
+        assert run(root, bumped) == []
+
+
+def add_second_game(root: pathlib.Path) -> None:
+    """A second game, cards, sharing the dice expectation file (like Solitaire and FreeCell)."""
+    write(root, "src/game/cards/engine.ts", "export const ENGINE_VERSION = 1;\n")
+    write(root, "fixtures/cards_v1.json", {"seed": 3})
+    write(root, "src/game/cards/__tests__/replay.test.ts", 'load("cards_v1.json");\n')
+    data = manifest(root)
+    data["games"]["cards"] = {
+        "version": {"file": "src/game/cards/engine.ts", "name": "ENGINE_VERSION"},
+        "fixtures": [{"path": "fixtures/cards_v1.json", "engine_version": 1}],
+        "expectations": [EXPECT],
+        "retired_versions": {},
+    }
+    write(root, guard.MANIFEST, data)
+
+
+def test_a_shared_expectation_may_change_when_one_owner_bumped(repo) -> None:
+    """Finding 3: the dice bump keeps v1 and changes the shared file's dice assertion."""
+    root, _ = repo
+    add_second_game(root)
+    base = commit(root, "two games")
+    add_v2(root)
+    write(root, EXPECT, EXPECT_BODY.replace("42", "43"))
+    assert run(root, base) == []
+
+
+def test_a_shared_expectation_change_without_any_bump_names_every_owner(repo) -> None:
+    root, _ = repo
+    add_second_game(root)
+    base = commit(root, "two games")
+    write(root, EXPECT, EXPECT_BODY.replace("42", "43"))
+    errors = run(root, base)
+    assert len(errors) == 1 and "cards, dice: hard-coded replay results changed" in errors[0]
+
+
+TS_BODY = """/** Pinned results of the dice replay. */
+describe("dice", () => {
+  it("rebuilds the board", () => {
+    expect(rebuild(events).board).toEqual([2, 4, 8, 16]);
+    expect(rebuild(events).score).toBe(42);
+  });
+});
+"""
+
+TS_REFORMATTED = """/**
+ * Pinned results of the dice replay, reworded.
+ */
+describe("dice replay", () => {
+  // the board after the last move
+  it.each([1])("rebuilds the board (%s)", () => {
+    expect(rebuild(events).board).toEqual([
+      2, 4, 8, 16,
+    ]);
+    expect(
+      rebuild(events).score
+    ).toBe(42);
+  });
+});
+"""
+
+PY_BODY = '''"""Dice replay."""
+
+
+def test_rebuilds() -> None:
+    """The rebuilt score."""
+    assert rebuild(events).score == 42  # pinned
+    assert render(events) == "#1 roll 6"
+'''
+
+PY_REFORMATTED = '''"""Dice replay: what the server rebuilds, reworded."""
+
+
+def test_the_server_rebuilds_the_score() -> None:
+    """The rebuilt score, reworded."""
+    # a comment
+    assert (
+        rebuild(events).score == 42
+    )
+    assert render(events) == "#1 roll 6"
+'''
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "reformatted", "changed"),
+    [
+        (EXPECT, TS_BODY, TS_REFORMATTED, TS_BODY.replace("16", "32")),
+        (
+            "backend/tests/test_dice.py",
+            PY_BODY,
+            PY_REFORMATTED,
+            PY_BODY.replace("#1 roll 6", "#1 roll 5"),
+        ),
+    ],
+)
+def test_re_wrapping_comments_docstrings_and_titles_are_not_result_changes(
+    tmp_path: pathlib.Path, path: str, body: str, reformatted: str, changed: str
+) -> None:
+    """Finding 4: a formatter re-wrap, a reworded comment or docstring, a renamed test title or
+    test function is not a change; a changed value is, even inside a string holding `#`."""
+    assert not guard.results_changed(path, body.encode(), reformatted.encode())
+    assert guard.results_changed(path, body.encode(), changed.encode())
+    assert guard.results_changed(path, reformatted.encode(), changed.encode())
+
+
+def test_a_comment_marker_inside_a_string_is_kept() -> None:
+    path = "src/x.test.ts"
+    before = b'expect(url).toBe("http://a//b"); // note\n'
+    after = b'expect(url).toBe("http://a//c"); // note\n'
+    assert guard.results_changed(path, before, after)
+
+
+def test_a_reformatted_expectation_file_passes_the_guard(repo) -> None:
+    root, base = repo
+    write(
+        root,
+        EXPECT,
+        '// pinned\nit("rebuilds the dice", () => {\n  expect(\n    score\n  ).toBe(42);\n});\n',
+    )
+    assert run(root, base) == []
+
+
 # --------------------------------------------------------------------------- this repository
 
 
@@ -367,6 +602,19 @@ def test_the_real_manifest_covers_every_game_that_records_an_engine_version() ->
         "blackjack",
         "daily_word",
     }
+
+
+def test_the_real_manifest_lists_the_tests_that_hand_write_replay_results() -> None:
+    """Finding 5: tests whose own literals pin a rebuilt outcome are expectations."""
+    games = json.loads((REPO / guard.MANIFEST).read_text())["games"]
+    listed = {name: set(g["expectations"]) for name, g in games.items()}
+    assert "frontend/src/game/twenty48/__tests__/replay.fixture.test.ts" in listed["twenty48"]
+    assert "frontend/src/game/blackjack/__tests__/replay.golden.test.tsx" in listed["blackjack"]
+    assert "frontend/src/game/daily_word/__tests__/replay.fixture.test.ts" in listed["daily_word"]
+    # its PINNED dict is byte sizes, but it also pins the rebuilt moves/undos and steps
+    assert "backend/tests/test_sort_golden.py" in listed["sort"]
+    shared = "frontend/src/game/_shared/cards/__tests__/fixtureReplay.test.ts"
+    assert shared in listed["solitaire"] and shared in listed["freecell"]
 
 
 def test_the_ci_step_runs_the_guard() -> None:

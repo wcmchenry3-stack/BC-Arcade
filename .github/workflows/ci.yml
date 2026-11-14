@@ -107,8 +107,9 @@ jobs:
     secrets: inherit
 
   # Repo hygiene (#3113): the former conflict-markers, forbidden-terms and
-  # large-file-guard jobs, one step each. Each check step runs even if an earlier
-  # one failed, so every failure shows under its own step name in a single run.
+  # large-file-guard jobs, one step each, plus the replay fixture version guard
+  # (#3911). Each check step runs even if an earlier one failed, so every failure
+  # shows under its own step name in a single run.
   repo-hygiene:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft

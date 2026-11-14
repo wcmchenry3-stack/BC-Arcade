@@ -1,5 +1,5 @@
 {
-  "_comment": "Replay fixture version guard (#3911): scripts/check_replay_fixture_versions.py. Each replayable game names its engine_version constant, the fixtures pinned under each version, and the tests that hard-code replay results. Every file under 'scan' must be a game's fixture or listed in 'not_replay'. How to run, what it checks and how to override: docs/CI-CHECKS.md#replay-fixture-version-guard-3911.",
+  "_comment": "Replay fixture version guard (#3911): scripts/check_replay_fixture_versions.py. Each replayable game names its engine_version constant, the fixtures pinned under each version, and the tests that hard-code replay results. 'expectations' is a chosen subset of tests whose hand-written values pin replay results; the fixture pin is the main protection. Every file under 'scan' must be a game's fixture or listed in 'not_replay'. How to run, what it checks and how to override: docs/CI-CHECKS.md#replay-fixture-version-guard-3911.",
   "scan": ["backend/tests/fixtures/**/*", "frontend/src/**/__fixtures__/**/*"],
   "test_globs": [
     "frontend/src/**/__tests__/**/*.ts",
@@ -74,7 +74,7 @@
       "fixtures": [
         { "path": "backend/tests/fixtures/twenty48_replay_v1.json", "engine_version": 1 }
       ],
-      "expectations": [],
+      "expectations": ["frontend/src/game/twenty48/__tests__/replay.fixture.test.ts"],
       "retired_versions": {}
     },
     "blackjack": {
@@ -83,7 +83,7 @@
         { "path": "backend/tests/fixtures/blackjack_replay_v1.json", "engine_version": 1 },
         { "path": "backend/tests/fixtures/blackjack_parity.json", "engine_version": 1 }
       ],
-      "expectations": [],
+      "expectations": ["frontend/src/game/blackjack/__tests__/replay.golden.test.tsx"],
       "retired_versions": {}
     },
     "daily_word": {
@@ -92,10 +92,11 @@
         { "path": "backend/tests/fixtures/daily_word_guess_events_v1.json", "engine_version": 1 },
         { "path": "backend/tests/fixtures/daily_word_parity.json", "engine_version": 1 }
       ],
-      "expectations": [],
+      "expectations": ["frontend/src/game/daily_word/__tests__/replay.fixture.test.ts"],
       "retired_versions": {}
     }
   },
+  "retired_games": {},
   "not_replay": [
     {
       "path": "backend/tests/fixtures/starswarm_run_lieutenant_7w.json",
