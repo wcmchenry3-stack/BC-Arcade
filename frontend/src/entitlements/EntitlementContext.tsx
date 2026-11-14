@@ -171,6 +171,20 @@ async function fetchAndApplyToken(
   }
 }
 
+// A refresh that fails offline before anything was applied (it superseded the
+// launch fetch, whose own cache fallback is then dropped as stale) falls back
+// to the cache like init() (#3879). Never replaces entitlements already held,
+// so a transient error cannot downgrade access. Returns null when stale.
+async function applyCacheIfNothingHeld(
+  setEntitledGames: React.Dispatch<React.SetStateAction<Set<string> | null>>,
+  isStale: () => boolean
+): Promise<Set<string> | null> {
+  const cached = await loadCachedEntitlements();
+  if (isStale()) return null;
+  setEntitledGames((prev) => prev ?? cached);
+  return cached;
+}
+
 export function EntitlementProvider({ children }: { children: React.ReactNode }) {
   const [entitledGames, setEntitledGames] = useState<Set<string> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -211,10 +225,15 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
     } catch (e) {
       if (generationRef.current === gen) {
         if (!isNetworkError(e)) retryOnReconnectRef.current = false;
-        else if (!entitledRef.current?.size) retryOnReconnectRef.current = true;
+        else {
+          const held =
+            entitledRef.current ??
+            (await applyCacheIfNothingHeld(setEntitledGames, () => generationRef.current !== gen));
+          if (held && !held.size) retryOnReconnectRef.current = true;
+        }
       }
       // Network errors (isNetworkError) are swallowed — in-memory state stays as-is.
-      // Unlike init(), refresh() intentionally does not fall back to cache:
+      // Once entitlements are held, refresh() does not fall back to cache:
       // a transient error should not downgrade access the user already has.
       if (!isNetworkError(e)) {
         Sentry.addBreadcrumb({

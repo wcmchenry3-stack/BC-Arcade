@@ -1099,6 +1099,12 @@ when it cannot refresh (reviewed for paid access and retained: [IAP.md §10](IAP
 premium access is denied locally until the app reconnects. Free games remain
 accessible.
 
+The cache is read when the launch fetch fails, and when a foreground refresh
+fails with a network error before any entitlements are loaded (it superseded
+the launch fetch, whose own fallback is then dropped, #3879). A refresh that
+fails once entitlements are held keeps them as they are: it never re-reads the
+cache, so a transient error cannot downgrade access.
+
 This grace is client-side continuity only. Once online, current server
 authorization comes from the session's database entitlement rows, not from a
 client-presented JWT claim.
