@@ -2,8 +2,9 @@
 
 `MaterialIcons.subset.ttf` and `MaterialCommunityIcons.subset.ttf` are generated files (#3843): the
 upstream icon fonts from `@expo/vector-icons` (the version in `frontend/package-lock.json`) cut down
-to the glyphs the app uses. The outlines, metrics, hinting and name table are the upstream ones, so
-every icon renders exactly as it did from the full font.
+to the glyphs the app uses. The outlines, metrics and hinting are the upstream ones, and the family
+and licence name records are kept (only the Windows-platform name IDs 0 to 6; the generator-credit
+IDs 10 and 11 are dropped), so every icon renders exactly as it did from the full font.
 
 - Used names: `frontend/src/components/icons/iconNames.ts` (one `as const` list per family).
 - Generator: `python tools/assets/subset_icon_fonts.py` from the repo root, after

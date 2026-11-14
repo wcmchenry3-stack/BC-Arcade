@@ -10,9 +10,11 @@ those lists, takes each glyph's codepoint from the upstream glyph map in
     frontend/assets/fonts/<Family>.subset.ttf              the subset font
     frontend/src/components/icons/<Family>.glyphmap.json   name -> codepoint
 
-The subset keeps the upstream outlines, metrics, hinting and name table
-(only the layout features are dropped: icon fonts are looked up by
-codepoint), so a glyph renders exactly as it did from the full font.
+The subset keeps the upstream outlines, metrics and hinting, and the family
+and licence name records (fontTools' defaults keep name IDs 0-6 on the Windows
+platform only, so the Mac-platform records and the generator-credit IDs 10 and
+11 are dropped). The layout features are dropped too: icon fonts are looked up
+by codepoint. A glyph renders exactly as it did from the full font.
 
 Adding an icon: add its name to the list in `iconNames.ts`, then run from the
 repo root (after `cd frontend && npm ci`):

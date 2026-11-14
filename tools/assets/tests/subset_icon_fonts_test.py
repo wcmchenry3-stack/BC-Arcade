@@ -1,7 +1,7 @@
 """pytest suite for subset_icon_fonts.py (#3843).
 
 The jest test `frontend/src/__tests__/iconSubset.test.ts` checks the generated files against
-the upstream fonts (it has `node_modules`). These tests cover the parts that need neither:
+the upstream glyph maps and the committed subset fonts' cmap (it has `node_modules`). These tests cover the parts that need neither:
 reading the name lists from `iconNames.ts`, and that the committed glyph maps hold exactly
 those names.
 """
