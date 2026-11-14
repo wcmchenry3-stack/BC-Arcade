@@ -1,6 +1,57 @@
 {
   "_comment": "#3904 proposals: pass one entry as CASCADE_VARIANT (JSON) to tools/sim/cascade-3904-worker.ts or cascade-3904-snap.ts. r_n = r0 * k^n, unrounded; k = (r11 / r0)^(1/11). Capstone r11 is above the 4-capstone packing bound of the bin (97.21 at wall 20, 101.45 at wall 10), so at most 3 fit.",
-  "V1": { "name": "V1", "r0": 5, "k": 1.3106234, "maxDrop": 7, "weights": [2, 3, 3, 3, 3, 3, 2, 1], "wall": 20, "pairWin": true },
-  "V2": { "name": "V2", "r0": 6, "k": 1.2890789, "maxDrop": 7, "weights": [1, 2, 2, 3, 3, 3, 3, 2], "wall": 20, "pairWin": true },
-  "V3": { "name": "V3", "r0": 5, "k": 1.3159826, "maxDrop": 7, "weights": [2, 3, 3, 3, 3, 3, 2, 1], "wall": 10, "pairWin": true }
+  "V1": {
+    "name": "V1",
+    "r0": 5,
+    "k": 1.3106231194715554,
+    "maxDrop": 7,
+    "weights": [
+      2,
+      3,
+      3,
+      3,
+      3,
+      3,
+      2,
+      1
+    ],
+    "wall": 20,
+    "pairWin": true
+  },
+  "V2": {
+    "name": "V2",
+    "r0": 6,
+    "k": 1.2890789883459093,
+    "maxDrop": 7,
+    "weights": [
+      1,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      2
+    ],
+    "wall": 20,
+    "pairWin": true
+  },
+  "V3": {
+    "name": "V3",
+    "r0": 5,
+    "k": 1.3159832180215811,
+    "maxDrop": 7,
+    "weights": [
+      2,
+      3,
+      3,
+      3,
+      3,
+      3,
+      2,
+      1
+    ],
+    "wall": 10,
+    "pairWin": true
+  }
 }
