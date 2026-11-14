@@ -132,7 +132,7 @@ function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] }
 function CascadeGame() {
   const { t } = useTranslation(["cascade", "common"]);
   const { t: tResult } = useTranslation("result");
-  const { colors, theme } = useTheme();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { activeFruitSet } = useFruitSet();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Cascade">>();
