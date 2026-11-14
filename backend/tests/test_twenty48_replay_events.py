@@ -80,6 +80,7 @@ def _replay(game: dict[str, Any]) -> tuple[list[int], int, int]:
         for direction, cell, value, gained, total in event["data"]["m"]:
             board, got = _slide(board, direction)
             assert got == gained, (count, direction)
+            assert board[cell] == 0 and value in (2, 4), (count, cell, value)
             board[cell] = value
             score += got
             assert score == total, count
