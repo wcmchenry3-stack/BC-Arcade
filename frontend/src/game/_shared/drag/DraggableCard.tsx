@@ -18,6 +18,12 @@ import {
 } from "./dragGeometry";
 import { recordGhostCheck, recordGhostOffset } from "./dragDiagnostics";
 import { noteDragDebugDrop } from "./dragDebug";
+import {
+  dragDebugTouchForCard,
+  dragDebugTouchIfEnabled,
+  noteDragDebugTouch,
+  noteDragDebugTouchJs,
+} from "./dragDebugTouch";
 import type { DragStartDiagnostics, GhostCheckSummary, GhostOffsetReport } from "./dragDiagnostics";
 import {
   GHOST_FAIL,
@@ -158,7 +164,10 @@ export function DraggableCard({
   // stale cached copy, #2772) — and so only ever cancel this card's own drag.
   const ownDragRef = useRef<DragState | null>(null);
   const triggerStartDrag = useCallback(
-    (origin: DragStartDiagnostics) => {
+    (origin: DragStartDiagnostics, activatedAt: number) => {
+      // The debug overlay's touch line (#3878): this start reached JS, and how late.
+      const touchDebug = dragDebugTouchIfEnabled();
+      if (touchDebug) noteDragDebugTouchJs(touchDebug, activatedAt);
       ownDragRef.current = startDrag(dragSourceRef.current, dragCardsRef.current, origin);
     },
     [startDrag]
@@ -223,6 +232,11 @@ export function DraggableCard({
   const cardWidth = dragCards[0]?.width ?? 0;
   const cardHeight = dragCards[0]?.height ?? 0;
   const ghostCheckEnabled = Platform.OS !== "web";
+  // The debug overlay's touch counters (#3878) and the setting's shared value:
+  // the worklets check the flag at each phase, so this is the same object for
+  // the whole process whatever the setting does (no gesture rebuild when it
+  // flips). Null in a store build: nothing read or written.
+  const touchDebug = dragDebugTouchForCard();
 
   // A card that unmounts (its pile changed under the drag) or stops being
   // draggable mid-pan has its native handler dropped: neither onEnd nor
@@ -583,10 +597,12 @@ export function DraggableCard({
         // (the handler was dropped), so a later finalize can't snap back a
         // drag this pan never started.
         panActivated.value = false;
+        noteDragDebugTouch(touchDebug, "down");
       })
       .onStart((e) => {
         "worklet";
         panActivated.value = true;
+        noteDragDebugTouch(touchDebug, "active");
         // The ghost's position comes from the finger alone (#3531). The grab
         // is the finger's offset inside the card's gesture view at activation
         // (`e.x/y`; the view hasn't moved). RNGH resets the translation to 0
@@ -674,28 +690,31 @@ export function DraggableCard({
           gc.cardMeasuredY = cardMeasured.pageY;
         }
         ghostCheck.value = gc;
-        runOnJS(triggerStartDrag)({
-          cardSource: origin.cardSource,
-          containerSource: origin.containerSource,
-          anomalous: origin.anomalous,
-          cardMismatch: origin.cardMismatch,
-          fingerOutsideCard: origin.fingerOutsideCard,
-          originOutsideContainer: origin.originOutsideContainer,
-          containerUnknown: origin.containerUnknown,
-          originX: origin.x,
-          originY: origin.y,
-          fingerX: e.absoluteX,
-          fingerY: e.absoluteY,
-          gestureLocalX: e.x,
-          gestureLocalY: e.y,
-          containerX: origin.containerX,
-          containerY: origin.containerY,
-          mismatchX: origin.mismatchX,
-          mismatchY: origin.mismatchY,
-          containerDriftX: origin.containerDriftX,
-          containerDriftY: origin.containerDriftY,
-          containerAgeMs: measuredAt > 0 ? now - measuredAt : -1,
-        });
+        runOnJS(triggerStartDrag)(
+          {
+            cardSource: origin.cardSource,
+            containerSource: origin.containerSource,
+            anomalous: origin.anomalous,
+            cardMismatch: origin.cardMismatch,
+            fingerOutsideCard: origin.fingerOutsideCard,
+            originOutsideContainer: origin.originOutsideContainer,
+            containerUnknown: origin.containerUnknown,
+            originX: origin.x,
+            originY: origin.y,
+            fingerX: e.absoluteX,
+            fingerY: e.absoluteY,
+            gestureLocalX: e.x,
+            gestureLocalY: e.y,
+            containerX: origin.containerX,
+            containerY: origin.containerY,
+            mismatchX: origin.mismatchX,
+            mismatchY: origin.mismatchY,
+            containerDriftX: origin.containerDriftX,
+            containerDriftY: origin.containerDriftY,
+            containerAgeMs: measuredAt > 0 ? now - measuredAt : -1,
+          },
+          now
+        );
       })
       .onUpdate((e) => {
         "worklet";
@@ -728,6 +747,7 @@ export function DraggableCard({
         "worklet";
         if (!panActivated.value) return;
         panActivated.value = false;
+        noteDragDebugTouch(touchDebug, "end");
         // A drag shorter than GHOST_CHECK_DELAY_MS is checked here (#3528).
         const gc = ghostCheck.value;
         if (gc.state === GHOST_PENDING || gc.state === GHOST_LAG) {
@@ -753,6 +773,7 @@ export function DraggableCard({
         "worklet";
         if (!panActivated.value) return;
         panActivated.value = false;
+        noteDragDebugTouch(touchDebug, "end");
         runOnJS(finishSnapBack)(ghostSummary());
       });
 
@@ -774,6 +795,7 @@ export function DraggableCard({
     cardWidth,
     cardHeight,
     ghostCheckEnabled,
+    touchDebug,
     viewRef,
     panActivated,
     cardX,

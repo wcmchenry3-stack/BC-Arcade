@@ -21,6 +21,11 @@ import {
   isDragDebugEnabled,
   subscribeDragDebugResult,
 } from "./dragDebug";
+import {
+  DRAG_DEBUG_TOUCH_TEST_ID,
+  formatDragDebugTouch,
+  getDragDebugTouch,
+} from "./dragDebugTouch";
 import { GHOST_LIFT } from "./dragGeometry";
 import {
   GHOST_FAIL,
@@ -110,6 +115,8 @@ export function formatPanelText(
  * `drag-check:` result line (testID `drag-debug-result`) and under it the
  * drag's sequence number (`drag #N`, testID `drag-debug-seq`) and how it
  * ended (`drop: accepted|snapBack|cancelled ...`, testID `drag-debug-drop`).
+ * Under them, from the first touch on a card: the touch line (testID
+ * `drag-debug-touch`, #3878), drawn from the UI thread.
  *
  * Maestro reads both lines (#3532): each is a real, opaque `Text` with a
  * testID, which React Native never flattens and exposes on Android as the
@@ -128,39 +135,41 @@ export function DragDebugOverlay({ drag }: { drag: GhostHostDrag | null }) {
   const text = result ? formatDragDebugResult(result) : null;
   return (
     <>
-      {drag?.debug && <LiveLayer key={dragKey(drag)} drag={drag} />}
-      {(text || drop) && (
-        <View
-          style={[styles.result, { top: insets.top + 4, backgroundColor: colors.surface }]}
-          pointerEvents="none"
-        >
-          {text && (
-            <>
+      {/* One top-left column: the result block, then the touch line under it,
+          so the two never overlap however wide the result lines get. */}
+      <View style={[styles.stack, { top: insets.top + 4 }]} pointerEvents="none">
+        {(text || drop) && (
+          <View style={[styles.result, { backgroundColor: colors.surface }]} pointerEvents="none">
+            {text && (
+              <>
+                <Text
+                  testID={DRAG_DEBUG_RESULT_TEST_ID}
+                  accessibilityLabel={text}
+                  style={[styles.mono, { color: colors.text }]}
+                >
+                  {text}
+                </Text>
+                <Text
+                  testID={DRAG_DEBUG_SEQ_TEST_ID}
+                  style={[styles.mono, { color: colors.textMuted }]}
+                >
+                  {formatDragDebugSeq(getDragDebugResultSeq())}
+                </Text>
+              </>
+            )}
+            {drop && (
               <Text
-                testID={DRAG_DEBUG_RESULT_TEST_ID}
-                accessibilityLabel={text}
-                style={[styles.mono, { color: colors.text }]}
-              >
-                {text}
-              </Text>
-              <Text
-                testID={DRAG_DEBUG_SEQ_TEST_ID}
+                testID={DRAG_DEBUG_DROP_TEST_ID}
                 style={[styles.mono, { color: colors.textMuted }]}
               >
-                {formatDragDebugSeq(getDragDebugResultSeq())}
+                {drop}
               </Text>
-            </>
-          )}
-          {drop && (
-            <Text
-              testID={DRAG_DEBUG_DROP_TEST_ID}
-              style={[styles.mono, { color: colors.textMuted }]}
-            >
-              {drop}
-            </Text>
-          )}
-        </View>
-      )}
+            )}
+          </View>
+        )}
+        {Platform.OS !== "web" && <TouchLine />}
+      </View>
+      {drag?.debug && <LiveLayer key={dragKey(drag)} drag={drag} />}
     </>
   );
 }
@@ -175,6 +184,39 @@ function dragKey(drag: GhostHostDrag): number {
     dragKeys.set(drag, k);
   }
   return k;
+}
+
+/**
+ * The touch line (#3878): what the pan and the JS thread saw, written on the
+ * UI thread whenever a count changes (see dragDebugTouch.ts), so it updates
+ * while the JS thread is blocked. Hidden until the first touch on a card. A
+ * TextInput, not a Text, because only its text can be set from the UI thread;
+ * Maestro reads its value as the element's text. Native only: web has no
+ * Maestro, and axe flags the unlabelled input there.
+ */
+function TouchLine() {
+  const { colors } = useTheme();
+  const { ui, js } = getDragDebugTouch();
+  const textProps = useAnimatedProps(() => {
+    const text = formatDragDebugTouch(ui.value, js.value);
+    return { text, defaultValue: text };
+  });
+  const shown = useAnimatedStyle(() => ({ opacity: ui.value.down > 0 ? 0.9 : 0 }));
+  return (
+    <Animated.View
+      style={[styles.touch, { backgroundColor: colors.surface }, shown]}
+      pointerEvents="none"
+    >
+      <AnimatedTextInput
+        testID={DRAG_DEBUG_TOUCH_TEST_ID}
+        editable={false}
+        pointerEvents="none"
+        underlineColorAndroid="transparent"
+        style={[styles.mono, { color: colors.textMuted }]}
+        animatedProps={textProps}
+      />
+    </Animated.View>
+  );
 }
 
 function LiveLayer({ drag }: { drag: GhostHostDrag }) {
@@ -269,13 +311,18 @@ function LiveLayer({ drag }: { drag: GhostHostDrag }) {
 }
 
 const styles = StyleSheet.create({
+  stack: { position: "absolute", left: 4, right: 4, alignItems: "flex-start" },
   result: {
-    position: "absolute",
-    left: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
     opacity: 0.9,
+  },
+  touch: {
+    marginTop: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   panel: {
     position: "absolute",
