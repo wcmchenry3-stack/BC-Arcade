@@ -24,6 +24,7 @@ const storeBundle = require("../../../metro/storeBundle") as {
   LAUNCH_LOCALES: string[];
   STUB_LOCALE: string;
   STUB_SCREEN: string;
+  STUBBED_MODULES: Map<string, string>;
   isExcludedLocaleFile: (filePath: string) => boolean;
   isExcludedScreen: (filePath: string) => boolean;
   isStoreBundle: (dev: boolean, env: Record<string, string | undefined>) => boolean;
@@ -282,6 +283,38 @@ describe("Cascade test controls stay out of store bundles (#3719)", () => {
     expect(importers.map((f) => path.relative(SRC, f))).toEqual([
       path.join("screens", "CascadeScreen.tsx"),
     ]);
+  });
+});
+
+/**
+ * The home tile's Cascade icon (#3698) draws the piece with Skia. HomeScreen ships in every build,
+ * so a store bundle (Cascade hidden) resolves the icon to its emoji-only variant: no Skia, no art.
+ */
+describe("the home tile's Cascade icon stays out of store bundles (#3698)", () => {
+  const COMPONENTS = path.resolve(__dirname, "../../components/cascade");
+  const drawn = path.join(COMPONENTS, "CascadeTileIcon.tsx");
+  const emoji = path.join(COMPONENTS, "CascadeTileIcon.web.tsx");
+  const resolve = (dev: boolean, env: Record<string, string | undefined>) =>
+    storeBundle.withStoreBundleExclusions({ resolver: {} }, env).resolver.resolveRequest!(
+      {
+        dev,
+        resolveRequest: (_c: object, name: string) => ({ type: "sourceFile", filePath: name }),
+      } as object,
+      drawn,
+      "android"
+    ).filePath;
+
+  it("maps exactly the drawn icon to the emoji variant, and both exist", () => {
+    expect([...storeBundle.STUBBED_MODULES]).toEqual([[drawn, emoji]]);
+    expect(fs.existsSync(drawn)).toBe(true);
+    expect(fs.existsSync(emoji)).toBe(true);
+    expect(fs.readFileSync(emoji, "utf8")).not.toMatch(/react-native-skia|FruitGlyph|\/art\//);
+  });
+
+  it("a store bundle gets the emoji; dev, e2e and pre-launch bundles draw the piece", () => {
+    expect(resolve(false, STORE_ENV)).toBe(emoji);
+    expect(resolve(true, STORE_ENV)).toBe(drawn);
+    expect(resolve(false, { ...STORE_ENV, EXPO_PUBLIC_TEST_HOOKS: "1" })).toBe(drawn);
   });
 });
 

@@ -18,8 +18,8 @@
  * `dangerRatio` moved a few sprite and wash pixels by one colour step against the old renderer.
  * With float64 the headless comparison is pixel-identical; the cost is 8 bytes a number.
  *
- * Positions are world units. `angle` is carried for the code-drawn art (#3698); today's sprites
- * are drawn unrotated, as before.
+ * Positions are world units. `angle` (radians) turns the code-drawn art (#3698): its body and
+ * face roll with the piece, its light stays upright.
  *
  * Sleeping pieces are drawn where they fell asleep (`FrozenPositions`), carried over from the old
  * declarative `PieceRenderer` (#1746): it hides sub-pixel drift of settled pieces, and it is what

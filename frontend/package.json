@@ -18,7 +18,6 @@
     "check-colors": "node scripts/check-color-literals.mjs",
     "test:check-colors": "node --test scripts/check-color-literals.test.mjs",
     "test:check-i18n": "node --test scripts/i18n-placeholders.test.mjs",
-    "process-assets": "python ../tools/assets/remove_backgrounds.py",
     "bundlesize": "bundlesize",
     "size-report": "node scripts/size-report.mjs --bundle dist/index.android.bundle --assets dist/assets --sources",
     "test:size-report": "node --test scripts/size-report.test.mjs",

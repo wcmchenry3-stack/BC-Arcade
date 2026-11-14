@@ -48,13 +48,16 @@ import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { getLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 import starSwarmTile from "../../assets/home/starswarm-tile.webp";
+import CascadeTileIcon from "../components/cascade/CascadeTileIcon";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
 
-// A tile's icon is an emoji, or a generated image drawn at the emoji's footprint (#3599).
+// A tile's icon is an emoji, or a generated image drawn at the emoji's footprint (#3599), or
+// Cascade's code-drawn piece (#3698), which shows the emoji until it is ready (and on web).
 type GameCardIcon =
-  { emoji: string; image?: undefined } | { image: ImageSourcePropType; emoji?: undefined };
+  | { emoji: string; image?: undefined; drawn?: boolean }
+  | { image: ImageSourcePropType; emoji?: undefined; drawn?: undefined };
 
 type GameCard = GameCardIcon & {
   key: string;
@@ -230,6 +233,7 @@ export default function HomeScreen() {
       key: "cascade",
       slug: "cascade",
       emoji: "🍉",
+      drawn: true,
       title: t("cascade:game.title"),
       description: t("cascade:game.description"),
       action: () => navigation.navigate("Cascade"),
@@ -387,6 +391,19 @@ export default function HomeScreen() {
                 resizeMode="contain"
                 accessible={false}
                 testID={`game-icon-${item.slug}`}
+              />
+            ) : item.drawn ? (
+              <CascadeTileIcon
+                size={styles.cardImage.width}
+                testID={`game-art-${item.slug}`}
+                fallback={
+                  <Text
+                    style={[styles.cardEmoji, { color: colors.text }]}
+                    testID={`game-icon-${item.slug}`}
+                  >
+                    {item.emoji}
+                  </Text>
+                }
               />
             ) : (
               <Text

@@ -4,7 +4,7 @@
  * expectations, plus the pieces `PieceRenderer` drew. Pixel parity with the old renderer was
  * checked headlessly (see the PR); these pin what is drawn, in what order, with which paint.
  */
-import { drawFrame, containRect, type BoardStyle } from "../drawFrame";
+import { drawFrame, type BoardStyle } from "../drawFrame";
 import { buildBoardStyle } from "../boardStyle";
 import { createFramePacker, packFrame, type FramePiece } from "../frame";
 import { CASCADE_LID_PALETTE } from "../../../../theme/theme.cascade";
@@ -82,7 +82,12 @@ type Op =
       img: unknown;
       dst: { x: number; y: number; width: number; height: number };
       p: PaintState;
-    };
+    }
+  | { k: "save" | "restore" }
+  | { k: "layer"; p: PaintState }
+  | { k: "translate"; x: number; y: number }
+  | { k: "scale"; x: number; y: number }
+  | { k: "rotate"; deg: number };
 
 function recorder() {
   const ops: Op[] = [];
@@ -102,6 +107,12 @@ function recorder() {
       _m: unknown,
       paint: { st: PaintState }
     ) => ops.push({ k: "image", img, dst, p: snap(paint) }),
+    save: () => ops.push({ k: "save" }),
+    restore: () => ops.push({ k: "restore" }),
+    saveLayer: (paint: { st: PaintState }) => ops.push({ k: "layer", p: snap(paint) }),
+    translate: (x: number, y: number) => ops.push({ k: "translate", x, y }),
+    scale: (x: number, y: number) => ops.push({ k: "scale", x, y }),
+    rotate: (deg: number) => ops.push({ k: "rotate", deg }),
   };
   return { ops, canvas: canvas as never };
 }
@@ -118,18 +129,37 @@ function frameOf(
   return packer.buf.slice(0, packer.length);
 }
 
-function draw(frame: Float64Array, images: readonly unknown[] = NONE, style?: BoardStyle) {
+function draw(frame: Float64Array, sprites: readonly unknown[] = NONE, style?: BoardStyle) {
   const { ops, canvas } = recorder();
-  drawFrame(canvas, frame, style ?? buildBoardStyle([], palette), images as never);
+  drawFrame(canvas, frame, style ?? buildBoardStyle(palette), sprites as never);
   return ops;
 }
 
-const piece = (id: number, tier: number, x: number, y: number): FramePiece => ({
+/** A tier's cached art (#3698): three images and where they land at the tier's radius. */
+function spriteOf(tier: number) {
+  const r = tierRadius(tier);
+  const img = (name: string) => ({ name, width: () => 64, height: () => 64 });
+  return {
+    body: img("body"),
+    light: img("light"),
+    top: img("top"),
+    rect: [-r, -1.4 * r, 2 * r, 2.4 * r],
+    lightRect: [-r, -r, 2 * r, 2 * r],
+  };
+}
+const spritesAt = (tier: number, sprite: unknown = spriteOf(tier)) => {
+  const out: unknown[] = [];
+  out[tier] = sprite;
+  return out;
+};
+const images = (ops: Op[]) => ops.filter((o): o is Extract<Op, { k: "image" }> => o.k === "image");
+
+const piece = (id: number, tier: number, x: number, y: number, angle = 0): FramePiece => ({
   id,
   tier,
   x,
   y,
-  angle: 0,
+  angle,
   isSleeping: false,
 });
 
@@ -151,28 +181,33 @@ describe("pieces", () => {
     expect(ops[0]!.p).toMatchObject({ style: "fill", alpha: 1, antiAlias: true });
   });
 
-  it("draws a decoded sprite into radius x bakedClipR, centred on the piece", () => {
-    const img = { width: () => 512, height: () => 512 };
-    const images = [null, null, img];
-    const style = buildBoardStyle([undefined, undefined, { bakedClipR: 1.5 }], palette);
-    const ops = draw(frameOf([piece(1, 2, 200, 300)]), images, style);
-    const half = tierRadius(2) * 1.5;
-    expect(ops[0]).toMatchObject({
-      k: "image",
-      img,
-      dst: { x: 200 - half, y: 300 - half, width: half * 2, height: half * 2 },
-    });
+  it("draws a piece's art (#3698): body and top turned with the piece, the light upright", () => {
+    const sprite = spriteOf(2);
+    const ops = draw(frameOf([piece(1, 2, 150, 300, Math.PI / 2)]), spritesAt(2, sprite));
+    const r = tierRadius(2);
+    const at = ops.findIndex((o) => o.k === "translate");
+    expect(ops.slice(at - 1, at + 8)).toMatchObject([
+      { k: "save" },
+      { k: "translate", x: 150, y: 300 },
+      { k: "rotate", deg: 90 },
+      { k: "image", img: sprite.body, dst: { x: -r, y: -1.4 * r, width: 2 * r, height: 2.4 * r } },
+      { k: "rotate", deg: -90 },
+      { k: "image", img: sprite.light, dst: { x: -r, y: -r, width: 2 * r, height: 2 * r } },
+      { k: "rotate", deg: 90 },
+      { k: "image", img: sprite.top, dst: { x: -r, y: -1.4 * r, width: 2 * r, height: 2.4 * r } },
+      { k: "restore" },
+    ]);
+    expect(images(ops).every((o) => o.p.alpha === 1 && o.p.antiAlias)).toBe(true);
+    // No placeholder circle where the art is drawn.
+    expect(ops.some((o) => o.k === "circle" && o.cx === 150)).toBe(false);
   });
 
-  it("draws a piece growing in (#3697) at its scale of the ladder radius, sprite and circle", () => {
+  it("draws a piece growing in (#3697) at its scale of the ladder radius, art and circle", () => {
     const growing = { ...piece(1, 3, 120, 400), scale: 0.9 };
     const ops = draw(frameOf([growing]));
     expect(ops[0]).toMatchObject({ k: "circle", cx: 120, cy: 400, r: tierRadius(3) * 0.9 });
-    const img = { width: () => 512, height: () => 512 };
-    const style = buildBoardStyle([undefined, undefined, undefined, { bakedClipR: 1.5 }], palette);
-    const sprite = draw(frameOf([growing]), [null, null, null, img], style)[0];
-    const half = tierRadius(3) * 1.5 * 0.9;
-    expect(sprite).toMatchObject({ k: "image", dst: { width: half * 2, height: half * 2 } });
+    const art = draw(frameOf([growing]), spritesAt(3));
+    expect(art.find((o) => o.k === "scale")).toEqual({ k: "scale", x: 0.9, y: 0.9 });
   });
 
   it("skips a tier the ladder does not have", () => {
@@ -185,9 +220,7 @@ describe("pieces", () => {
     const kinds = ops.map((o) => o.k);
     expect(kinds.indexOf("circle")).toBe(0);
     expect(kinds.indexOf("line")).toBe(1);
-    expect(ops.slice(2).every((o) => o.k === "circle" || o.k === "path" || o.k === "image")).toBe(
-      true
-    );
+    expect(ops.slice(2).every((o) => o.k === "circle" || o.k === "path")).toBe(true);
   });
 });
 
@@ -241,7 +274,7 @@ describe("lid line", () => {
 });
 
 describe("spawner", () => {
-  const color = buildBoardStyle([], palette).color[0];
+  const color = buildBoardStyle(palette).color[0];
 
   it("calm and ready: the piece at full opacity inside a full cyan ring, no ghost", () => {
     const ops = draw(frameOf([]));
@@ -280,28 +313,31 @@ describe("spawner", () => {
     expect(ringCircles(ops)).toHaveLength(1);
   });
 
-  it("draws a decoded sprite instead of the plain circle, sized by bakedClipR", () => {
-    const img = { width: () => 1, height: () => 1 };
-    const style = buildBoardStyle([{ bakedClipR: 1.5 }], palette);
-    const ops = draw(frameOf([]), [img], style);
-    const sprite = ops.find((o) => o.k === "image") as Extract<Op, { k: "image" }>;
-    // Tier 0 at its ladder radius (under the spawner's cap), times bakedClipR (was a literal 22).
-    expect(sprite.dst.width).toBe(tierRadius(0) * 1.5 * 2);
+  it("draws the piece's art instead of the plain circle, at the spawner's size", () => {
+    const ops = draw(frameOf([]), spritesAt(0));
+    expect(images(ops)).toHaveLength(3);
+    expect(ops).toContainEqual({ k: "translate", x: SPAWNER.cx, y: SPAWNER.cy });
+    // Tier 0 is under the spawner's cap: full size, so no scale.
+    expect(ops.some((o) => o.k === "scale")).toBe(false);
     expect(atSpawner(ops).find((c) => c.p.color === color)).toBeUndefined();
+  });
+
+  it("draws a big piece's art at the spawner's cap", () => {
+    const tier = 5;
+    const ops = draw(frameOf([], { spawnerTier: tier }), spritesAt(tier));
+    const k = SPAWNER.maxPieceRadius / tierRadius(tier);
+    expect(ops.find((o) => o.k === "scale")).toEqual({ k: "scale", x: k, y: k });
+  });
+
+  it("waiting: fades the three layers of the art together", () => {
+    const ops = draw(frameOf([], { canDrop: false }), spritesAt(0));
+    const layer = ops.find((o): o is Extract<Op, { k: "layer" }> => o.k === "layer")!;
+    expect(layer.p.alpha).toBeLessThan(0.5);
+    expect(images(ops).every((o) => o.p.alpha === 1)).toBe(true);
   });
 
   it("no spawner piece (tier -1): the ring only", () => {
     const ops = draw(frameOf([], { spawnerTier: -1 }));
     expect(atSpawner(ops).every((c) => c.r === SPAWNER.ringRadius)).toBe(true);
-  });
-});
-
-describe("containRect", () => {
-  it("fits a wide image into the square, centred", () => {
-    expect(containRect(200, 100, 0, 0, 50, 50)).toEqual({ x: 0, y: 12.5, width: 50, height: 25 });
-  });
-
-  it("fills the box for an image with no size", () => {
-    expect(containRect(0, 0, 1, 2, 3, 4)).toEqual({ x: 1, y: 2, width: 3, height: 4 });
   });
 });

@@ -33,11 +33,6 @@ test("bucketPackagedAsset groups Metro-flattened android asset names", () => {
     ),
     "images: libraries (node_modules)"
   );
-  assert.equal(
-    bucketPackagedAsset("drawable-mdpi/assets_celestialicons_earth.webp"),
-    "images: celestial/cosmos"
-  );
-  assert.equal(bucketPackagedAsset("drawable-mdpi/assets_fruitsbaked_apple.png"), "images: fruits");
   assert.equal(bucketPackagedAsset("raw/keep.xml"), "other");
 });
 
@@ -51,10 +46,6 @@ test("findHiddenPremiumAssets flags premium-only art and BGM but not shared soun
   const hits = findHiddenPremiumAssets([
     f("raw/assets_sounds_starswarmbg1.mp3"),
     f("raw/assets_sounds_mahjongbg3.mp3"),
-    f("drawable-mdpi/assets_celestialicons_sun.webp"),
-    f("drawable-mdpi/assets_fruiticons_apple.webp"),
-    f("drawable-mdpi/assets_cosmosbaked_moon.png"),
-    f("drawable-mdpi/assets_fruitsbaked_lemon.png"),
     f("raw/assets_mahjong_01whitedragon.svg"),
     f("drawable-mdpi/assets_starswarm_playership.webp"),
     // allowed: shared / free-game assets
@@ -62,7 +53,7 @@ test("findHiddenPremiumAssets flags premium-only art and BGM but not shared soun
     f("raw/assets_sounds_blackjackwin.ogg"),
     f("drawable-mdpi/assets_logo.png"),
   ]);
-  assert.equal(hits.length, 8);
+  assert.equal(hits.length, 4);
   assert.ok(hits.every((h) => !h.file.includes("yacht") && !h.file.includes("logo")));
 });
 
@@ -151,7 +142,7 @@ test("CLI exit codes and JSON output", () => {
 
 test("metroAssetName flattens like Metro's Android asset names", () => {
   assert.equal(metroAssetName("sounds/hearts-broken.mp3"), "assets_sounds_heartsbroken.mp3");
-  assert.equal(metroAssetName("fruit-icons/Cherry.webp"), "assets_fruiticons_cherry.webp");
+  assert.equal(metroAssetName("home/Star-Tile.webp"), "assets_home_startile.webp");
 });
 
 test("hiddenOnlySoundNames: premium-only sounds, not ones a free game shares", () => {

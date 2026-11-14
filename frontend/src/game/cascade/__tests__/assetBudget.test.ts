@@ -1,11 +1,10 @@
 /**
  * #3692: Cascade art budget guard. Cascade piece art is drawn in code (<= 20 KB, no image
- * files), so `frontend/assets/` must not gain Cascade image files, and the dead pipeline
- * outputs deleted in #3692 must not come back. See docs/PERFORMANCE.md "Cascade size budget".
+ * files; #3698 `game/cascade/art/`), so `frontend/assets/` must not gain Cascade image files,
+ * no Cascade source may import an image, and the dead pipeline outputs deleted in #3692 and the
+ * sprites deleted in #3698 must not come back. See docs/PERFORMANCE.md "Cascade size budget".
  *
- * ALLOWED_CASCADE_IMAGES pins the sprites that still ship today. Story #3698 replaces them
- * with code-drawn pieces and shrinks this map to empty (`{}`); until then any NEW Cascade
- * image file or folder fails here.
+ * ALLOWED_CASCADE_IMAGES is empty since #3698: any Cascade image file or folder fails here.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -13,44 +12,8 @@ import * as path from "path";
 const ASSETS_DIR = path.join(__dirname, "../../../../assets");
 const REPO_ROOT = path.join(ASSETS_DIR, "../..");
 
-const THEME_NAMES = {
-  fruits: [
-    "apple",
-    "blueberry",
-    "cherry",
-    "coconut",
-    "dragonfruit",
-    "grapes",
-    "lemon",
-    "orange",
-    "peach",
-    "pineapple",
-    "watermelon",
-  ],
-  bodies: [
-    "earth",
-    "jupiter",
-    "mars",
-    "mercury",
-    "moon",
-    "neptune",
-    "pluto",
-    "saturn",
-    "sun",
-    "uranus",
-    "venus",
-  ],
-};
-
-const withExt = (names: string[], ext: string) => names.map((n) => `${n}.${ext}`).sort();
-
-/** Folder (relative to frontend/assets) -> exact image files it may hold. Shrinks to {} in #3698. */
-const ALLOWED_CASCADE_IMAGES: Record<string, string[]> = {
-  "fruit-icons": withExt(THEME_NAMES.fruits, "webp"),
-  "fruits-baked": withExt(THEME_NAMES.fruits, "png"),
-  "celestial-icons": withExt(THEME_NAMES.bodies, "webp"),
-  "cosmos-baked": withExt(THEME_NAMES.bodies, "png"),
-};
+/** Folder (relative to frontend/assets) -> exact image files it may hold. Empty since #3698. */
+const ALLOWED_CASCADE_IMAGES: Record<string, string[]> = {};
 
 const IMAGE_EXT = /\.(png|webp|jpe?g|gif|svg|avif)$/i;
 // Name heuristic for "looks like Cascade art". If another game ever adds a folder
@@ -108,6 +71,28 @@ describe("Cascade asset budget guard (#3692)", () => {
     ]) {
       expect(fs.existsSync(path.join(ASSETS_DIR, gone))).toBe(false);
     }
+  });
+
+  it("the sprite folders replaced by code-drawn art in #3698 stay deleted", () => {
+    for (const gone of ["fruit-icons", "fruits-baked", "celestial-icons", "cosmos-baked"]) {
+      expect(fs.existsSync(path.join(ASSETS_DIR, gone))).toBe(false);
+    }
+  });
+
+  it("no Cascade source imports or requires an image (#3698)", () => {
+    const SRC = path.join(ASSETS_DIR, "../src");
+    const roots = ["game/cascade", "components/cascade", "theme/fruitSets.ts"];
+    const sources = roots.flatMap((r) => {
+      const full = path.join(SRC, r);
+      if (fs.statSync(full).isFile()) return [full];
+      return listFiles(full)
+        .filter((f) => !f.includes("__tests__") && /\.(ts|tsx)$/.test(f))
+        .map((f) => path.join(full, f));
+    });
+    expect(sources.length).toBeGreaterThan(10);
+    const IMAGE_IMPORT = /(?:from\s+|require\(\s*)["'][^"']+\.(png|webp|jpe?g|gif|svg|avif)["']/;
+    const offenders = sources.filter((f) => IMAGE_IMPORT.test(fs.readFileSync(f, "utf8")));
+    expect(offenders.map((f) => path.relative(SRC, f))).toEqual([]);
   });
 
   it("the dead Cascade files deleted in #3692 stay deleted", () => {

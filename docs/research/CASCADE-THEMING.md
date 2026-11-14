@@ -1,3 +1,5 @@
+> **Superseded by #3698.** Cascade's pieces are now drawn in code (`frontend/src/game/cascade/art/`); the sprite pipeline, the image files and the scripts this document describes are deleted. See [`docs/games/cascade.md`](../games/cascade.md#art-3698). Kept for the history only.
+
 > **Historical research, not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the rework is tracked in epic #3033.
 
 # Cascade — New Theme Onboarding Guide
