@@ -72,6 +72,8 @@ export interface GameMetrics {
   /** The engine's win event (#3697: emitted when the capstone is made; #3699 builds on it). */
   won: boolean;
   timeToWinMs: number | null;
+  /** Most pieces on the board in any frame (#3904 proposals: step cost context). */
+  maxPieces: number;
   /** Simulated ms at which each tier first existed (dropped or merged), null if never. */
   tierFirstMs: (number | null)[];
   feel: {
@@ -183,6 +185,7 @@ export function runGame(opts: RunOptions): GameMetrics {
   const frameState: GameState = createGameState();
   let wallDepthMax = 0;
   let wallPenetrations = 0;
+  let maxPieces = 0;
   // Chain latency: watched merge product id -> simulated ms it was made.
   const chainWatch = new Map<number, number>();
   const chainLatencyMs: number[] = [];
@@ -192,7 +195,9 @@ export function runGame(opts: RunOptions): GameMetrics {
     const minX = c.wallThickness;
     const maxX = c.worldWidth - c.wallThickness;
     const floorTop = c.worldHeight - c.floorThickness;
-    for (const p of engine.getState(frameState).pieces) {
+    const all = engine.getState(frameState).pieces;
+    if (all.length > maxPieces) maxPieces = all.length;
+    for (const p of all) {
       const r = c.physicsRadius(p.tier) * (p.scale ?? 1);
       const depth = Math.max(0, minX + r - p.x, p.x + r - maxX, p.y + r - floorTop);
       if (depth > wallDepthMax) wallDepthMax = depth;
@@ -408,6 +413,7 @@ export function runGame(opts: RunOptions): GameMetrics {
     maxDroughtByTier,
     won,
     timeToWinMs,
+    maxPieces,
     tierFirstMs,
     feel: {
       packingDensity: mean(densitySum, densityN),

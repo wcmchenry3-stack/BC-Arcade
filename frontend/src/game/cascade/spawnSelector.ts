@@ -7,8 +7,11 @@
  * capstone (2048 of them) is about 210 perfect drops away. See docs/games/cascade.md.
  */
 import { DROPPABLE_PIECE_TIERS } from "./pieceDefs";
+import { VARIANT } from "./variant";
 
-const BASE_WEIGHTS: Record<number, number> = { 0: 2, 1: 3, 2: 3, 3: 3, 4: 3, 5: 2 };
+const BASE_WEIGHTS: Record<number, number> = VARIANT
+  ? Object.fromEntries(VARIANT.weights.map((w, t) => [t, w]))
+  : { 0: 2, 1: 3, 2: 3, 3: 3, 4: 3, 5: 2 };
 
 export const DROUGHT_WINDOW = 10;
 const DROUGHT_BOOST = 3;

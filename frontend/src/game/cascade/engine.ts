@@ -71,6 +71,7 @@ import type { Body, Fixture } from "planck";
 import { createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { PIECE_DEFS, MAX_TIER } from "./pieceDefs";
 import { TIERS, tierRadius } from "./tiers";
+import { VARIANT } from "./variant";
 import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
@@ -114,6 +115,9 @@ const DROP_SPAWN_INSET = 5;
 const DROP_NUDGE_PX = 0.4;
 const DEFAULT_SEED = 0x2545f491;
 const FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;
+/** #3904 proposal: two capstones merge into the win, so tiers below TIER_COUNT merge. */
+const PAIR_WIN = VARIANT?.pairWin ?? false;
+const MERGE_LIMIT = PAIR_WIN ? MAX_TIER + 1 : MAX_TIER;
 
 export interface EngineConfig {
   /**
@@ -286,7 +290,7 @@ export class CascadeEngine {
       if (typeof b === "object" && a !== "wall") this._land(b);
     }
     if (typeof a !== "object" || typeof b !== "object") return;
-    if (a.tier === b.tier && a.tier < MAX_TIER) this._queueMerge(a, b);
+    if (a.tier === b.tier && a.tier < MERGE_LIMIT) this._queueMerge(a, b);
   };
 
   private _land(e: PieceEntry): void {
@@ -449,7 +453,7 @@ export class CascadeEngine {
 
   /** Same-tier pairs whose circles are within `MERGE_GAP_PX` join the pending merges. */
   private _scanMergeGaps(): void {
-    for (let tier = 0; tier < MAX_TIER; tier++) {
+    for (let tier = 0; tier < MERGE_LIMIT; tier++) {
       const list = this._byTier[tier]!;
       const n = list.length;
       if (n < 2) continue;
@@ -469,7 +473,7 @@ export class CascadeEngine {
   /** Same-tier pieces a growing piece would touch at full size join the pending merges. */
   private _chainReach(): void {
     for (const g of this._growing) {
-      if (g.tier >= MAX_TIER) continue;
+      if (g.tier >= MERGE_LIMIT) continue;
       for (const o of this._byTier[g.tier]!) {
         if (o === g) continue;
         const reach = g.full + o.r + CHAIN_REACH_PX;
@@ -532,8 +536,35 @@ export class CascadeEngine {
     pendB.length = 0;
   }
 
+  /**
+   * #3904 proposal: two touching capstones are the win. Both burst (are removed, so the pile
+   * drops into the hole they leave), the pair scores twice the capstone, and `win` is emitted at
+   * their contact point, with the lower id. The engine does not end the game (#3699 shows the
+   * result); the merge grace applies if either was in the danger band.
+   */
+  private _winPair(a: PieceEntry, b: PieceEntry, events: EngineEvent[]): void {
+    const pa = a.body.getPosition();
+    const pb = b.body.getPosition();
+    const x = ((pa.x + pb.x) / 2) * PX_PER_M;
+    const y = ((pa.y + pb.y) / 2) * PX_PER_M;
+    const nearLid = Math.min(pa.y, pb.y) * PX_PER_M - a.full <= OVERFLOW_LINE_Y + DANGER_STACK_MARGIN;
+    if (this._drop === a || this._drop === b) this._drop = null;
+    const id = Math.min(a.id, b.id);
+    this._removePiece(a);
+    this._removePiece(b);
+    const delta = 2 * PIECE_DEFS[MAX_TIER]!.scoreValue;
+    this._score += delta;
+    events.push({ type: "score", delta, total: this._score });
+    events.push({ type: "win", x, y, id });
+    if (nearLid) this._ticksSinceNearLidMerge = 0;
+  }
+
   private _merge(a: PieceEntry, b: PieceEntry, events: EngineEvent[]): void {
     const tier = a.tier;
+    if (PAIR_WIN && tier === MAX_TIER) {
+      this._winPair(a, b, events);
+      return;
+    }
     const newTier = tier + 1;
     const full = tierRadius(newTier);
     const pa = a.body.getPosition();
@@ -586,7 +617,7 @@ export class CascadeEngine {
       parentIds: [a.id, b.id],
     });
     events.push({ type: "score", delta: scoreValue, total: this._score });
-    if (newTier === MAX_TIER) events.push({ type: "win", x: mx, y: my, id: e.id });
+    if (newTier === MAX_TIER && !PAIR_WIN) events.push({ type: "win", x: mx, y: my, id: e.id });
     if (nearLid) this._ticksSinceNearLidMerge = 0;
     if (this._comboTicksLeft > 0) this._comboCount++;
   }

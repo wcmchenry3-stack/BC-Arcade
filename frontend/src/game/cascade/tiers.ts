@@ -39,6 +39,8 @@
  * piece no longer drives small ones through each other (#3696). Only ratios matter to Box2D.
  */
 
+import { VARIANT } from "./variant";
+
 export type TierSetId = "fruits" | "cosmos";
 
 export interface TierDef {
@@ -65,7 +67,7 @@ const R10 = 56;
 /** Exponent of the density rule `(r0 / r) ^ DENSITY_EXPONENT`. */
 const DENSITY_EXPONENT = 0.5;
 /** Highest droppable tier (0-5 drop, #3697). */
-const MAX_DROPPABLE_TIER = 5;
+const MAX_DROPPABLE_TIER = VARIANT ? VARIANT.maxDrop : 5;
 
 type Names = readonly [nameKeyFruits: string, nameKeyCosmos: string];
 
@@ -84,7 +86,8 @@ const NAMES: readonly Names[] = [
   ["pumpkin", "milkyWay"],
 ];
 
-const ladderRadius = (tier: number): number => Math.round(R0 * (R10 / R0) ** (tier / 10));
+const ladderRadius = (tier: number): number =>
+  VARIANT ? VARIANT.r0 * VARIANT.k ** tier : Math.round(R0 * (R10 / R0) ** (tier / 10));
 
 export const TIERS: readonly TierDef[] = NAMES.map(([fruits, cosmos], tier) => ({
   tier,

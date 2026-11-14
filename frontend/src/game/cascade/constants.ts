@@ -1,7 +1,9 @@
+import { VARIANT } from "./variant";
+
 // World dimensions
 export const WORLD_WIDTH = 400;
 export const WORLD_HEIGHT = 600;
-export const WALL_THICKNESS = 20;
+export const WALL_THICKNESS = VARIANT ? VARIANT.wall : 20;
 export const FLOOR_THICKNESS = 20;
 export const OVERFLOW_LINE_Y = 80; // y from top: the lid (game-over line, #3694)
 
