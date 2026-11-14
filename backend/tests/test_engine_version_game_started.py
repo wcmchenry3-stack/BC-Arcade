@@ -56,10 +56,20 @@ def test_game_started_without_engine_version_is_still_accepted_as_version_1(
     assert _version_of(data) == 1
 
 
+# Fields a metadata model requires; the rest have defaults.
+VALID_METADATA: dict[str, dict] = {
+    "daily_word": {"puzzle_id": "x"},
+    "sudoku": {"difficulty": "easy"},
+}
+
+
 @pytest.mark.parametrize("game_type", sorted(LEGACY))
 def test_engine_version_is_not_accepted_as_row_metadata(game_type: str) -> None:
+    model = _REGISTRY[game_type].metadata_model
+    valid = VALID_METADATA.get(game_type, {})
+    model.model_validate(valid)  # the base is valid, so only the extra key can fail it
     with pytest.raises(ValidationError):
-        _REGISTRY[game_type].metadata_model.model_validate({"engine_version": 1})
+        model.model_validate({**valid, "engine_version": 1})
 
 
 def test_the_sudoku_fixture_records_it_in_game_started() -> None:
