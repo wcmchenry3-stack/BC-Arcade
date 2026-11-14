@@ -55,11 +55,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const HIDDEN_PREMIUM_PATTERNS = [
   // `bgm?`: Star Swarm's one track is `starswarm-bgm.mp3` (#3638), Mahjong's `mahjong-bg-N.mp3`.
   { name: "Star Swarm / Mahjong BGM", re: /(?:^|_)(?:starswarm|mahjong)bgm?\d*\./ },
-  { name: "celestial-icons", re: /(?:^|_)celestialicons_/ },
-  { name: "fruit-icons", re: /(?:^|_)fruiticons_/ },
-  { name: "cosmos-baked", re: /(?:^|_)cosmosbaked_/ },
-  { name: "fruits-baked", re: /(?:^|_)fruitsbaked_/ },
-  { name: "cosmos/fruit vertices", re: /(?:^|_)(?:cosmos|fruit)vertices\./ },
   { name: "Mahjong tile art", re: /(?:^|_)assets_mahjong_/ },
   { name: "Star Swarm sprites", re: /(?:^|_)assets_starswarm_/ },
 ];
@@ -73,11 +68,8 @@ export function bucketPackagedAsset(rel) {
     if (base.startsWith("node_modules_")) return "images: libraries (node_modules)";
     if (/(?:^|_)(?:icon|adaptiveicon|splashicon|favicon|logo)\./.test(base))
       return "images: app icon/splash";
-    if (/(?:^|_)(?:celestialicons|cosmosbaked)_/.test(base)) return "images: celestial/cosmos";
-    if (/(?:^|_)(?:fruiticons|fruitsbaked)_/.test(base)) return "images: fruits";
     if (/(?:^|_)mahjong_/.test(base)) return "images: mahjong tiles";
     if (/(?:^|_)starswarm_/.test(base)) return "images: starswarm sprites";
-    if (/(?:^|_)svgsprites_/.test(base)) return "images: svg sprites";
     return "images: other";
   }
   return "other";
