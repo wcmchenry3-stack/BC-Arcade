@@ -53,6 +53,8 @@ _TS_TOKEN = re.compile(
 _CODE_IN_COMMENT = re.compile(r"expect\(|toBe\(|toEqual\(")
 _TEST_CALLS = {"it", "test", "describe"}
 _TEST_MODIFIERS = {"only", "skip", "todo", "concurrent", "failing"}
+# A "new statement" holding one of these may switch a golden test off: not free.
+_NEUTERING = {"skip", "xfail", "only", "todo"}
 _OPEN, _CLOSE = {"(": ")", "[": "]", "{": "}"}, {")", "]", "}"}
 # A `{` after one of these opens a block (statements), not an object literal.
 _BLOCK_AFTER = {")", "=>", "else", "try", "finally", "do"}
@@ -185,6 +187,34 @@ def _statement_level(toks: list[Tok], python: bool) -> list[bool]:
     return level
 
 
+def _import_mask(toks: list[Tok], python: bool) -> list[bool]:
+    """For each token: is it part of an import statement? Names added to or dropped from an
+    import (a list, or a whole import line) change no asserted value."""
+    mask = [False] * len(toks)
+    level = _statement_level(toks, python)
+    k = 0
+    while k < len(toks):
+        tok = toks[k]
+        starts = tok.text in (("import", "from") if python else ("import",))
+        if not (starts and level[k] and (k == 0 or toks[k - 1].line != tok.line or not python)):
+            k += 1
+            continue
+        depth, j = 0, k
+        while j < len(toks):
+            t = toks[j]
+            if (
+                j > k
+                and depth == 0
+                and (t.line != toks[j - 1].line if python else toks[j - 1].text == ";")
+            ):
+                break
+            depth += (t.text in _OPEN) - (t.text in _CLOSE)
+            mask[j] = True
+            j += 1
+        k = j
+    return mask
+
+
 def _balanced(toks: list[Tok]) -> bool:
     depth = 0
     for tok in toks:
@@ -222,26 +252,34 @@ class _Compare:
             j for tag, _, _, j1, j2 in self.ops if tag != "equal" for j in range(j1, j2)
         }
         self.level = _statement_level(self.new, self.python)
+        self.old_imports = _import_mask(self.old, self.python)
+        self.new_imports = _import_mask(self.new, self.python)
 
     def new_statement(self, a: int, b: int, original: range) -> bool:
         """``new[a:b]`` is a whole new statement on lines of its own."""
         run = self.new[a:b]
         if not run or not self.level[a] or not _balanced(run):
             return False
+        texts = {t.text for t in run}
+        if texts & _NEUTERING or (run[0].text == "@" and "def" not in texts):
+            return False  # skips or xfails a test, or decorates an existing one
+        if not self.python and a > 0 and self.new[a - 1].text not in (";", "{", "}"):
+            return False  # continues the previous expression (`expect(x)` + `.not.toBe(1)`)
         inserted = (self.changed - set(original)) | set(range(a, b))
         lines = {t.line for t in run}
         return not any(self.new[j].line in lines for j in range(len(self.new)) if j not in inserted)
 
     def insert_free(self, j1: int, j2: int) -> bool:
         return any(
-            all(_wrap_free(self.new, k) for k in range(a, b))
+            all(_wrap_free(self.new, k) or self.new_imports[k] for k in range(a, b))
             or self.new_statement(a, b, range(j1, j2))
             for a, b in _slides(self.new, j1, j2)
         )
 
     def delete_free(self, i1: int, i2: int) -> bool:
         return any(
-            all(_wrap_free(self.old, k) for k in range(a, b)) for a, b in _slides(self.old, i1, i2)
+            all(_wrap_free(self.old, k) or self.old_imports[k] for k in range(a, b))
+            for a, b in _slides(self.old, i1, i2)
         )
 
     def changes(self) -> bool:
@@ -290,9 +328,9 @@ class Tree:
         )
         return out.stdout if out.returncode == 0 else None
 
-    def manifest(self) -> dict | None:
+    def manifest(self, report: Report) -> dict | None:
         data = self.read(MANIFEST)
-        return json.loads(data) if data is not None else None
+        return None if data is None else load_manifest(data, f"{MANIFEST} at the base", report)
 
 
 def glob_files(root: Path, patterns: list[str]) -> set[str]:
@@ -314,6 +352,73 @@ def game_version(tree: Tree, game: dict) -> int | None:
 def retired(game: dict) -> set[int]:
     """The retired versions; a key that is not an integer is reported by ``check_game_static``."""
     return {int(v) for v in game.get("retired_versions", {}) if str(v).isdigit()}
+
+
+# --------------------------------------------------------------------------- manifest shape
+
+
+def load_manifest(data: bytes, where: str, report: Report) -> dict | None:
+    """The parsed manifest, or None after a readable error (bad JSON or a wrong shape)."""
+    try:
+        manifest = json.loads(data)
+    except ValueError as exc:
+        report.error(MANIFEST, f"{where} is not valid JSON: {exc}")
+        return None
+    problems = manifest_problems(manifest)
+    for problem in problems:
+        report.error(MANIFEST, f"{where}: {problem}")
+    return None if problems else manifest
+
+
+def manifest_problems(manifest: object) -> list[str]:
+    if not isinstance(manifest, dict):
+        return ["must be a JSON object"]
+    problems = [
+        f'"{key}" must be a list of strings'
+        for key in ("scan", "test_globs")
+        if not _is_list(manifest.get(key), str)
+    ]
+    games = manifest.get("games")
+    if not isinstance(games, dict):
+        return [*problems, '"games" must be an object']
+    for name, game in games.items():
+        problems += [f"games.{name}: {p}" for p in _game_problems(game)]
+    retired_games = manifest.get("retired_games", {})
+    if not isinstance(retired_games, dict):
+        problems.append('"retired_games" must be an object')
+        retired_games = {}
+    for name, entry in retired_games.items():
+        if not isinstance(entry, dict) or not isinstance(entry.get("version"), dict):
+            problems.append(f'retired_games.{name} must be an object with "version" and "reason"')
+    for key in ("not_replay", "accepted_changes"):
+        if not _is_list(manifest.get(key, []), dict):
+            problems.append(f'"{key}" must be a list of objects')
+    return problems
+
+
+def _game_problems(game: object) -> list[str]:
+    if not isinstance(game, dict):
+        return ["must be an object"]
+    problems = []
+    version = game.get("version")
+    if not isinstance(version, dict) or not all(
+        isinstance(version.get(k), str) for k in ("file", "name")
+    ):
+        problems.append('"version" must be {"file": ..., "name": ...}')
+    fixtures = game.get("fixtures")
+    if not _is_list(fixtures, dict) or not all(
+        "path" in f and "engine_version" in f for f in fixtures
+    ):
+        problems.append('"fixtures" must be a list of {"path": ..., "engine_version": ...}')
+    if not _is_list(game.get("expectations", []), str):
+        problems.append('"expectations" must be a list of paths')
+    if not isinstance(game.get("retired_versions", {}), dict):
+        problems.append('"retired_versions" must be an object')
+    return problems
+
+
+def _is_list(value: object, kind: type) -> bool:
+    return isinstance(value, list) and all(isinstance(v, kind) for v in value)
 
 
 # --------------------------------------------------------------------------- static rules
@@ -375,7 +480,7 @@ def check_fixture_static(
         return
     if not isinstance(version, int) or not 1 <= version <= current:
         report.error(
-            path, f"{name}: engine_version {version} is not between 1 and the current {current}"
+            path, f"{name}: engine_version {version!r} is not between 1 and the current {current}"
         )
     if version in gone:
         report.error(path, f"{name}: version {version} is retired, so its fixture must be removed")
@@ -616,7 +721,7 @@ class Diff:
 
     def __post_init__(self) -> None:
         self.head, self.base = Tree(self.root), Tree(self.root, self.base_rev)
-        self.base_manifest = self.base.manifest() or self.manifest
+        self.base_manifest = self.base.manifest(self.report) or self.manifest
         self.accepted = {
             (e.get("path"), e.get("sha256")) for e in self.manifest.get("accepted_changes", [])
         }
@@ -744,7 +849,9 @@ def default_base(root: Path) -> str | None:
 
 def run(root: Path, base: str | None, static: bool = False) -> Report:
     report = Report()
-    manifest = json.loads((root / MANIFEST).read_text("utf-8"))
+    manifest = load_manifest((root / MANIFEST).read_bytes(), MANIFEST, report)
+    if manifest is None:
+        return report
     versions = check_static(root, manifest, report)
     if static:
         return report

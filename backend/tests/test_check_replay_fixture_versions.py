@@ -765,6 +765,159 @@ def test_a_non_integer_retired_version_is_a_readable_error(repo, capsys) -> None
     assert guard.main(["--root", str(root), "--base", base]) == 1
 
 
+# --------------------------------------------------------------------------- review round 3
+
+IMPORTS_TS = """import {
+  dealGame,
+  type Direction,
+} from "../engine";
+import { rebuild } from "../replay";
+
+it("rebuilds", () => {
+  expect(rebuild(events).score).toBe(60);
+});
+"""
+IMPORTS_PY = """from yacht.replay import (
+    rebuild,
+    render_scorecards,
+)
+from yacht.turn_event import validate_turn
+
+
+def test_rebuilds() -> None:
+    assert rebuild(events).total == 405
+"""
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "edited"),
+    [
+        (
+            "t.test.ts",
+            IMPORTS_TS,
+            IMPORTS_TS.replace("  type Direction,\n", "  type Direction,\n  canMove,\n"),
+        ),
+        ("t.test.ts", IMPORTS_TS, IMPORTS_TS.replace("  dealGame,\n", "")),
+        ("t.test.ts", IMPORTS_TS, 'import fs from "fs";\n' + IMPORTS_TS),
+        ("t.test.ts", IMPORTS_TS, IMPORTS_TS.replace('import { rebuild } from "../replay";\n', "")),
+        (
+            "t.py",
+            IMPORTS_PY,
+            IMPORTS_PY.replace(
+                "    render_scorecards,\n", "    render_scorecards,\n    score_turn,\n"
+            ),
+        ),
+        ("t.py", IMPORTS_PY, IMPORTS_PY.replace("    rebuild,\n", "")),
+        ("t.py", IMPORTS_PY, "import json\n" + IMPORTS_PY),
+        (
+            "t.py",
+            IMPORTS_PY,
+            IMPORTS_PY.replace("from yacht.turn_event import validate_turn\n", ""),
+        ),
+    ],
+    ids=[
+        "ts-add-name",
+        "ts-drop-name",
+        "ts-add-line",
+        "ts-drop-line",
+        "py-add-name",
+        "py-drop-name",
+        "py-add-line",
+        "py-drop-line",
+    ],
+)
+def test_import_changes_are_free(path: str, body: str, edited: str) -> None:
+    """Round 3, 1: a name added to or dropped from an import, or a whole import line."""
+    assert not guard.results_changed(path, body.encode(), edited.encode())
+
+
+def test_import_freedom_does_not_cover_the_assertions() -> None:
+    edited = IMPORTS_TS.replace("toBe(60)", "toBe(60 + 1)")
+    assert guard.results_changed("t.test.ts", IMPORTS_TS.encode(), edited.encode())
+    edited = IMPORTS_PY.replace("== 405", "== 405 + 1")
+    assert guard.results_changed("t.py", IMPORTS_PY.encode(), edited.encode())
+
+
+@pytest.mark.parametrize(
+    "edited",
+    [
+        IMPORTS_PY.replace(
+            "def test_rebuilds", '@pytest.mark.xfail(reason="engine change")\ndef test_rebuilds'
+        ),
+        IMPORTS_PY.replace("-> None:\n", '-> None:\n    pytest.skip("later")\n'),
+    ],
+    ids=["xfail-decorator", "pytest-skip"],
+)
+def test_a_new_statement_that_switches_a_test_off_is_a_change(edited: str) -> None:
+    """Round 3, 2: a decorator on an existing test, or a skip, is not a free new statement."""
+    assert guard.results_changed("t.py", IMPORTS_PY.encode(), edited.encode())
+
+
+def test_a_new_test_even_decorated_is_still_free() -> None:
+    new = (
+        '\n\n@pytest.mark.parametrize("n", [1, 2])\n'
+        "def test_more(n: int) -> None:\n    assert rebuild(events).turns == 13\n"
+    )
+    assert not guard.results_changed("t.py", IMPORTS_PY.encode(), (IMPORTS_PY + new).encode())
+    ts_new = '\nit("counts moves", () => {\n  expect(rebuild(events).moves).toBe(99);\n});\n'
+    assert not guard.results_changed(
+        "t.test.ts", IMPORTS_TS.encode(), (IMPORTS_TS + ts_new).encode()
+    )
+    skipped = ts_new.replace("it(", "it.skip(")
+    assert guard.results_changed("t.test.ts", IMPORTS_TS.encode(), (IMPORTS_TS + skipped).encode())
+
+
+def test_an_each_title_is_compared() -> None:
+    """Round 3, 3: the title after `it.each(table)(` is compared (documented)."""
+    body = 'it.each(games)("%s: rebuilds to the board", (_label, game) => {});\n'
+    edited = body.replace("rebuilds to the board", "rebuilds")
+    assert guard.results_changed("t.test.ts", body.encode(), edited.encode())
+
+
+def test_a_run_that_continues_the_previous_expression_is_a_change() -> None:
+    """Round 3, 5: `expect(x).toBe(X)` -> `expect(x)` + `.not` + `.toBe(X)` on new lines."""
+    body = 'it("x", () => {\n  expect(rebuilt.score).toBe(768);\n});\n'
+    edited = body.replace(
+        "expect(rebuilt.score).toBe(768);", "expect(rebuilt.score)\n    .not\n    .toBe(768);"
+    )
+    assert guard.results_changed("t.test.ts", body.encode(), edited.encode())
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (lambda m: "{not json", "is not valid JSON"),
+        (
+            lambda m: {**m, "games": {"dice": {**m["games"]["dice"], "fixtures": None}}},
+            '"fixtures" must be',
+        ),
+        (
+            lambda m: {**m, "retired_games": {"dice": "gone in #1"}},
+            "retired_games.dice must be an object",
+        ),
+    ],
+    ids=["invalid-json", "no-fixtures", "retired-game-string"],
+)
+def test_a_malformed_manifest_is_a_readable_error(repo, capsys, change, message) -> None:
+    """Round 3, 6: a message and exit 1, no traceback."""
+    root, base = repo
+    write(root, guard.MANIFEST, change(manifest(root)))
+    assert any(message in e for e in run(root, base))
+    assert guard.main(["--root", str(root), "--base", base]) == 1
+    assert message in capsys.readouterr().out
+
+
+def test_a_string_engine_version_is_quoted_in_the_message(repo) -> None:
+    """Round 3, 7."""
+    root, base = repo
+    data = manifest(root)
+    data["games"]["dice"]["fixtures"][0]["engine_version"] = "1"
+    write(root, guard.MANIFEST, data)
+    assert any(
+        "engine_version '1' is not between 1 and the current 1" in e for e in run(root, base)
+    )
+
+
 # --------------------------------------------------------------------------- this repository
 
 
