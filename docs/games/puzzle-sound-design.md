@@ -32,7 +32,7 @@ Saved options so far: Daily Word's win and loss B and C (recovered from the #366
 
 A snapshot of what the six games played before this story; each game's current table is in its doc.
 
-The six games' effects on `dev` total about 525 KB, but 321 KB of that is one file, `hearts-moon-shot.mp3` (10 s), shared by four games' wins and Yacht's jackpots, and 88 KB is `freecell-game-win.mp3` (Sort's win). Both are shared with the card games, so they are only deleted once no registry uses them.
+The six games' effects on `dev` total about 525 KB, but 321 KB of that is one file, `hearts-moon-shot.mp3` (10 s), shared by four games' wins and Yacht's jackpots, and 88 KB is `freecell-game-win.mp3` (Sort's win). Both are shared with the card games, so they are only deleted once no registry uses them (`freecell-game-win.mp3` was, in #3871).
 
 | File                         | Size      | Length  | Used by                                                     |
 | ---------------------------- | --------- | ------- | ----------------------------------------------------------- |
@@ -518,24 +518,24 @@ Adds 57,389 B now; nothing is deleted.
   - The pour sounds like pouring: a touch as the bottle lifts, then a stream of many tiny bubbles that rises in pitch as the bottle fills and lasts exactly as long as the stream on screen, so a four-unit pour is a longer pour, not more gulps.
   - The "no" is dull taps against the bright glass of everything else, and the win's chord lands on the card instead of 10 s after it.
 
-| File                            | Old size                    | New size             | Old length | New length |
-| ------------------------------- | --------------------------- | -------------------- | ---------- | ---------- |
-| `cascade-fruit-merge.ogg`       | 5,910 B, Cascade's, stays   | — (Sort's use only)  | 0.55 s     | —          |
-| `freecell-game-win.mp3`         | 87,960 B, stays in the repo | — (Sort's use only)  | 10.56 s    | —          |
-| `sort-select-1/2/3.ogg`         | —                           | 14.5 KB (14,882 B)   | —          | 0.12 s     |
-| `sort-pour-lift-1/2/3.ogg`      | —                           | 17.3 KB (17,708 B)   | —          | 0.2 s      |
-| `sort-pour-stream-1u-1/2/3.ogg` | —                           | 30.3 KB (30,313 B)   | —          | 0.48 s     |
-| `sort-pour-stream-2u-1/2/3.ogg` | —                           | 39.2 KB (40,113 B)   | —          | 0.78 s     |
-| `sort-pour-stream-3u-1/2/3.ogg` | —                           | 46.9 KB (48,028 B)   | —          | 1.08 s     |
-| `sort-pour-stream-4u-1/2/3.ogg` | —                           | 59.3 KB (60,672 B)   | —          | 1.38 s     |
-| `sort-refused.ogg`              | —                           | 5.8 KB (5,960 B)     | —          | 0.26 s     |
-| `sort-complete.ogg`             | —                           | 7.1 KB (7,272 B)     | —          | 0.5 s      |
-| `sort-undo.ogg`                 | —                           | 5.9 KB (6,021 B)     | —          | 0.3 s      |
-| `sort-hint.ogg`                 | —                           | 7.7 KB (7,863 B)     | —          | 0.65 s     |
-| `sort-win.ogg`                  | —                           | 16.3 KB (16,676 B)   | —          | 2.0 s      |
-| **Sort's total**                | 91.7 KB (93,870 B)          | 249.5 KB (255,508 B) |            |            |
+| File                            | Old size                   | New size             | Old length | New length |
+| ------------------------------- | -------------------------- | -------------------- | ---------- | ---------- |
+| `cascade-fruit-merge.ogg`       | 5,910 B, Cascade's, stays  | — (Sort's use only)  | 0.55 s     | —          |
+| `freecell-game-win.mp3`         | 87,960 B, deleted in #3871 | — (Sort's use only)  | 10.56 s    | —          |
+| `sort-select-1/2/3.ogg`         | —                          | 14.5 KB (14,882 B)   | —          | 0.12 s     |
+| `sort-pour-lift-1/2/3.ogg`      | —                          | 17.3 KB (17,708 B)   | —          | 0.2 s      |
+| `sort-pour-stream-1u-1/2/3.ogg` | —                          | 30.3 KB (30,313 B)   | —          | 0.48 s     |
+| `sort-pour-stream-2u-1/2/3.ogg` | —                          | 39.2 KB (40,113 B)   | —          | 0.78 s     |
+| `sort-pour-stream-3u-1/2/3.ogg` | —                          | 46.9 KB (48,028 B)   | —          | 1.08 s     |
+| `sort-pour-stream-4u-1/2/3.ogg` | —                          | 59.3 KB (60,672 B)   | —          | 1.38 s     |
+| `sort-refused.ogg`              | —                          | 5.8 KB (5,960 B)     | —          | 0.26 s     |
+| `sort-complete.ogg`             | —                          | 7.1 KB (7,272 B)     | —          | 0.5 s      |
+| `sort-undo.ogg`                 | —                          | 5.9 KB (6,021 B)     | —          | 0.3 s      |
+| `sort-hint.ogg`                 | —                          | 7.7 KB (7,863 B)     | —          | 0.65 s     |
+| `sort-win.ogg`                  | —                          | 16.3 KB (16,676 B)   | —          | 2.0 s      |
+| **Sort's total**                | 91.7 KB (93,870 B)         | 249.5 KB (255,508 B) |            |            |
 
-Twenty-three files added, none removed: Sort's sound files grow by 161,638 B (the twelve streams are 179,126 B; the three glug files this replaced, 23,921 B, never shipped), and its two borrowed files (one of them the 10.56 s fanfare) are no longer played. No single file is over 50 KB (the largest is the 4-unit stream, variation 2, at 20,927 B; a 4-unit set of three is 59.3 KB). `cascade-fruit-merge.ogg` stays for Cascade. `freecell-game-win.mp3` is no longer used by any game (FreeCell moved to synthesized sounds in #3563), so it is no longer bundled; it stays in the repo, with its CC BY credit, until the owner decides to delete it (see the rights audit).
+Twenty-three files added, none removed: Sort's sound files grow by 161,638 B (the twelve streams are 179,126 B; the three glug files this replaced, 23,921 B, never shipped), and its two borrowed files (one of them the 10.56 s fanfare) are no longer played. No single file is over 50 KB (the largest is the 4-unit stream, variation 2, at 20,927 B; a 4-unit set of three is 59.3 KB). `cascade-fruit-merge.ogg` stays for Cascade. `freecell-game-win.mp3` is no longer used by any game (FreeCell moved to synthesized sounds in #3563), so it is no longer bundled; the owner had it deleted in #3871, together with its CC BY credit (see the rights audit).
 
 ### Sudoku sounds (#3775)
 
