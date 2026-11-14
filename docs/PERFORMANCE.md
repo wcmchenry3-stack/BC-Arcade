@@ -157,9 +157,9 @@ Yacht runs on the device; the server only records games. `YachtGameUser` replays
 
 The free tier shuts down after ~15 minutes of inactivity. Cold starts add 20–45 seconds to the first request. The CI workflow includes a warm-up step (up to 5 curl retries × 15s) before timing begins. First-request latency is not representative of steady-state performance.
 
-### Matter.js runtime performance
+### Cascade physics runtime performance
 
-Lighthouse measures initial load quality (LCP, CLS, TBT) on the static export. It does **not** measure frame rate or physics jank during gameplay. Runtime performance of the Matter.js physics engine requires a Playwright trace or browser DevTools recording — not covered by this setup. On native, Cascade's frame time and React commits are read from its dev panel ([Cascade renderer (#2960)](#cascade-renderer-2960)).
+Lighthouse measures initial load quality (LCP, CLS, TBT) on the static export. It does **not** measure frame rate or physics jank during gameplay. Runtime performance of the planck.js physics engine (#3697; Matter.js before) requires a Playwright trace or browser DevTools recording — not covered by this setup. On native, Cascade's frame time and React commits are read from its dev panel ([Cascade renderer (#2960)](#cascade-renderer-2960)), and its step cost from the dev panel's step bench ([Cascade physics step cost (#3697)](#cascade-physics-step-cost-3697)).
 
 ---
 
@@ -352,7 +352,7 @@ A build counts as a store build when `!context.dev && EXPO_PUBLIC_TEST_HOOKS !==
 - Small shared modules that free surfaces import: hidden games' i18n namespaces (all locales), the `GameDetail` Hearts and Star Swarm sections, Hearts and Blackjack scorecards and models, the Blackjack and Hearts contexts and storage, and the Star Swarm engine (reached through `scoreLedger`, `GameDetail` and `LeaderboardScreen`). All pure JS, no large assets.
 - No sound that looks premium by name is required by a free game any more: `cascade-fruit-merge.ogg` stopped being Bottle Sort's with #3661, `hearts-moon-shot.mp3` stopped being Sudoku's with #3775 (it is not bundled at all, and the file was deleted in #3885), and `cascade-game-over.ogg` and `cascade-combo.ogg` are used by Cascade only, so the store bundle leaves out all three Cascade sounds with the hidden-premium exclusion (`blackjack-win.ogg` was deleted with #3581). `freecell-game-win.mp3` was bundled by no game either and was deleted in #3871. The guard deliberately does not flag SFX.
 - The Blackjack and Hearts providers stay mounted at startup (about 26 KB of source).
-- No premium-only native dependency exists (`matter-js` is pure JS), so native size is unchanged by #2830.
+- No premium-only native dependency exists (`planck`, Cascade's physics since #3697, is pure JS like `matter-js` before it), so native size is unchanged by #2830.
 
 ### Cascade size baseline and budget (#3692)
 
@@ -360,22 +360,24 @@ Measured 2026-11-11 on `dev`, before the dead files were deleted. Part of epic #
 
 **Store builds already exclude Cascade (#2830).** `metro/storeBundle.js` stubs `CascadeScreen`, so a store bundle contains no Cascade code, no matter-js and none of the art below (store export: 99 assets, 3.77 MB; Hermes bundle 7,959,422 B). The numbers below are what a build with Cascade included carries: a dev build, an e2e build (`EXPO_PUBLIC_TEST_HOOKS=1`), a pre-launch-API build, or a store build once Cascade is unhidden. Cascade is not a separate line in a store AAB today.
 
-| Item                                                                                                                     |                                                  Bytes | State                                                                         |
-| ------------------------------------------------------------------------------------------------------------------------ | -----------------------------------------------------: | ----------------------------------------------------------------------------- |
-| `assets/fruit-icons/` (11 imported WebP; 12 on disk, 255,498 B)                                                          |                                                250,642 | Used; replaced by code-drawn pieces (#3698)                                   |
-| `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Used; replaced (#3698)                                                        |
-| `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Used; replaced (#3698)                                                        |
-| `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Used; replaced (#3698)                                                        |
-| `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Used; replaced by the sound story                                             |
-| **Cascade assets that ship (44 images + 3 sounds = 47 files)**                                                           |                                          **1,322,143** | Budget: art 0 image bytes, sounds <= 120 KB                                   |
-| Cascade JS, minified (`CascadeScreen` 14,945, `engine2` 5,650, `constants` 2,131, other modules and locale JSON ~11,464) |                                                 34,190 | Stays                                                                         |
-| `matter-js` (`matter.js`, minified in the bundle)                                                                        |                                                 83,492 | Stays; excluded from the budget (physics engine; `matter.min.js` is 83,476 B) |
-| `assets/fruit-vertices.json` + `cosmos-vertices.json`                                                                    |                                                 99,365 | Dead, deleted in #3692                                                        |
-| `assets/svg-sprites/` (22 SVG)                                                                                           |                                                 57,652 | Dead, deleted in #3692                                                        |
-| `poly-decomp`                                                                                                            | n/a in bundle (never registered with Matter.js, #2971) | Dead, removed in #3692                                                        |
-| Repo-root `fruit_images/` + `celestial_images/` (24 PNG, not in the app)                                                 |                                                ~163 MB | Deleted in #3692; history not rewritten, so clone size is unchanged           |
+| Item                                                                                                                     |                                                  Bytes | State                                                               |
+| ------------------------------------------------------------------------------------------------------------------------ | -----------------------------------------------------: | ------------------------------------------------------------------- |
+| `assets/fruit-icons/` (11 imported WebP; 12 on disk, 255,498 B)                                                          |                                                250,642 | Used; replaced by code-drawn pieces (#3698)                         |
+| `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Used; replaced (#3698)                                              |
+| `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Used; replaced (#3698)                                              |
+| `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Used; replaced (#3698)                                              |
+| `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Used; replaced by the sound story                                   |
+| **Cascade assets that ship (44 images + 3 sounds = 47 files)**                                                           |                                          **1,322,143** | Budget: art 0 image bytes, sounds <= 120 KB                         |
+| Cascade JS, minified (`CascadeScreen` 14,945, `engine2` 5,650, `constants` 2,131, other modules and locale JSON ~11,464) |                                                 34,190 | Stays                                                               |
+| `matter-js` (`matter.js`, minified in the bundle)                                                                        |                                                 83,492 | Removed in #3697 (replaced by `planck`)                             |
+| `assets/fruit-vertices.json` + `cosmos-vertices.json`                                                                    |                                                 99,365 | Dead, deleted in #3692                                              |
+| `assets/svg-sprites/` (22 SVG)                                                                                           |                                                 57,652 | Dead, deleted in #3692                                              |
+| `poly-decomp`                                                                                                            | n/a in bundle (never registered with Matter.js, #2971) | Dead, removed in #3692                                              |
+| Repo-root `fruit_images/` + `celestial_images/` (24 PNG, not in the app)                                                 |                                                ~163 MB | Deleted in #3692; history not rewritten, so clone size is unchanged |
 
 Whole-bundle context (Android, `npx expo export --platform android`): store Hermes bundle 7,959,422 B and 99 assets (3,769,852 B); with all hidden games (`EXPO_PUBLIC_TEST_HOOKS=1`) the Hermes bundle is 10,063,185 B and 287 assets (27,681,308 B). The Hermes delta (2,103,763 B) covers every hidden game, not Cascade alone; the Cascade-only figure is the minified-JS attribution above (from the source map of a `--no-bytecode --dump-sourcemap` export, summing generated bytes per source file). A Hermes-bytecode figure per module is not separable.
+
+**#3697: planck.js replaced matter-js.** `npx expo export:embed --platform android --dev false` (ci.yml's steps), 2026-11-13: the store-config bundle is unchanged at 6,172,682 B (Cascade is stubbed out of store bundles, so neither engine is in it); the all-games bundle (pre-launch API URL) went from 8,396,787 B to 8,534,470 B, **+137,683 B** (planck in, matter-js out). That leaves 116,282 B under the 8.25 MiB all-games ceiling (#3791). planck is excluded from the Cascade art/sound budget like matter-js was (it is the physics engine).
 
 **AAB measurement: owner/CI follow-up.** No CI job publishes an AAB or APK as an artifact (`mobile-smoke-android.yml` builds a debug APK only for the smoke run), and this environment has no Android SDK, so `./gradlew bundleRelease` was not run. Because store builds exclude Cascade, the AAB figure for Cascade is currently zero; measure a Cascade-included AAB (`bundleRelease` with `EXPO_PUBLIC_TEST_HOOKS=1`) only if Cascade is unhidden. Recorded on #2828 by the orchestrator.
 
@@ -452,7 +454,7 @@ Method (2026-10-10): for every `dependencies` entry, checked `node_modules` for 
 | Largest native cost, premium-only use | `@shopify/react-native-skia` (Star Swarm and Mahjong canvases; Skia is C++, 24M of source)                                                                                                                                       | Keep; per-game owners starswarm and mahjong. Standalone-app rule applies to anything new                                                                                     |
 | Audio                                 | `expo-audio` (SFX and current BGM), `react-native-audio-api` 0.13.5                                                                                                                                                              | Keep both for now, see below                                                                                                                                                 |
 | Dev tooling                           | `expo-dev-client`                                                                                                                                                                                                                | Keep. Its native modules `expo-dev-launcher` and `expo-dev-menu` are `debugOnly` in autolinking, so they are not linked in Release (not verified with a release binary here) |
-| JS only                               | navigation (3), `i18next` stack, `@formatjs/intl-pluralrules`, `fflate`, `@expo/vector-icons`, `matter-js`                                                                                                                       | Keep. `matter-js` is Cascade physics (hidden game, in the all-games bundle only)                                                                                             |
+| JS only                               | navigation (3), `i18next` stack, `@formatjs/intl-pluralrules`, `fflate`, `@expo/vector-icons`, `planck`                                                                                                                          | Keep. `planck` is Cascade physics since #3697 (hidden game, in the all-games bundle only)                                                                                    |
 
 **`react-native-audio-api` is kept, justified by #1779.** Its only importer is the dev spike screen `src/screens/__dev__/AudioLibrarySpikeScreen.tsx`, which nothing imports, so neither the library's JS nor the screen is in the production JS bundle; only the native library ships (autolinked). It is the candidate gapless BGM engine (spike #1782, preliminary recommendation 2026-05-22: `AudioBufferSourceNode.loop` for BGM) while `expo-audio` keeps SFX. If #1779 settles on `expo-audio` for BGM, remove it: `package.json`, the `app.json` plugin entry, the Podfile `DISABLE_AUDIOAPI_FFMPEG` line, `disableAudioapiFFmpeg` in `android/gradle.properties`, the `RNAudioAPI` lock entry, the audio-api bullets in [ANDROID-CI.md](ANDROID-CI.md), and the spike screen.
 
@@ -1197,7 +1199,7 @@ React commits of the Cascade screen, counted with React's `Profiler` in `src/scr
 | Pieces moving, danger and `canDrop` changing every frame |           60 |           0 |
 | Score changes once, then holds (30 frames)               |           30 |           1 |
 
-Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`); a frame that changes allocates one `Float64Array` of 4 + 6 x pieces numbers (about 2 KB for a 40-piece board) for the copy handed to the UI thread; a settled frame allocates nothing and publishes nothing. The post-physics pass skips bodies that stay asleep.
+Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`); a frame that changes allocates one `Float64Array` of 4 + 7 x pieces numbers (about 2.3 KB for a 40-piece board; 7 since #3697 added the grow-in scale) for the copy handed to the UI thread; a settled frame allocates nothing and publishes nothing. The post-physics pass skips bodies that stay asleep.
 
 **Device numbers: owner follow-up.** Open the dev panel (`DEV`) during play; its _Frame_ line shows `avg / p95 ms · frames · commits/s` over the last second, counting every commit of the screen, `ScoreDisplay`'s alone included (dev builds only, like the panel: React runs in development mode there, so read the frame times as an upper bound and the commit counts as exact). Record a settled board and a 4-chain on a mid-range Android and an older iPhone:
 
@@ -1212,11 +1214,11 @@ Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`)
 
 On web Cascade draws with Skia's web runtime, CanvasKit (how and why: [games/cascade.md](games/cascade.md#rendering-2960)). Measured on the web export (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`, 2026-11-12, `canvaskit-wasm` 0.41.0 for `@shopify/react-native-skia` 2.14.0):
 
-| What                                                                    |         Raw |     gzip -9 | When it downloads                                                                                          |
-| ----------------------------------------------------------------------- | ----------: | ----------: | ---------------------------------------------------------------------------------------------------------- |
-| `canvaskit.<hash>.wasm` (`dist/assets/node_modules/canvaskit-wasm/...`) | 8,076,553 B | 3,246,406 B | The first time Cascade opens. Same origin, content-hashed name, so the browser caches it                   |
-| `CascadeRoute-<hash>.js` (route, loader, CanvasKit's JS glue)           |   124,717 B |    37,713 B | When Cascade opens, or in the lobby's background prefetch for a player who can play Cascade                |
-| `CascadeScreen-<hash>.js` (screen, Matter.js, Skia's JS)                |   681,063 B |   166,321 B | After CanvasKit has loaded. No longer prefetched from the lobby: the prefetch now stops at the route chunk |
+| What                                                                                           |         Raw |     gzip -9 | When it downloads                                                                                          |
+| ---------------------------------------------------------------------------------------------- | ----------: | ----------: | ---------------------------------------------------------------------------------------------------------- |
+| `canvaskit.<hash>.wasm` (`dist/assets/node_modules/canvaskit-wasm/...`)                        | 8,076,553 B | 3,246,406 B | The first time Cascade opens. Same origin, content-hashed name, so the browser caches it                   |
+| `CascadeRoute-<hash>.js` (route, loader, CanvasKit's JS glue)                                  |   124,717 B |    37,713 B | When Cascade opens, or in the lobby's background prefetch for a player who can play Cascade                |
+| `CascadeScreen-<hash>.js` (screen, Matter.js when measured (planck.js since #3697), Skia's JS) |   681,063 B |   166,321 B | After CanvasKit has loaded. No longer prefetched from the lobby: the prefetch now stops at the route chunk |
 
 - **Nothing else pays it.** The lobby, start-up and every other web game never request the `.wasm` and never evaluate Skia (checked by `e2e/tests/cascade-smoke.spec.ts`; in the export, Skia's JS appears only in the `CascadeScreen` chunk and CanvasKit's glue only in the `CascadeRoute` chunk).
 - **Compression is the host's.** The gzip column is what a compressing host sends; whether Render's static sites compress `.wasm` has not been checked. Uncompressed it is 8.1 MB on the first open.
@@ -1224,6 +1226,33 @@ On web Cascade draws with Skia's web runtime, CanvasKit (how and why: [games/cas
 - **Load time.** Local, uncached: the board is up about 0.7 s after tapping Play (Chromium, loopback). On a slow 3G link the ~3.2 MB takes about a minute, which is why the load timeout is 60 s (`CANVASKIT_LOAD_TIMEOUT_MS`); past it the player gets an error with Try again, and the download keeps going.
 - **Cost.** Static files from the web host only: no API, database or Sentry volume, except one Sentry event (`subsystem: cascade.canvaskit`) for the first failed load in a page session; later failed attempts only add a breadcrumb, so Retry cannot multiply events. Web is not a store platform; the store web build leaves Cascade out until #3703 (`metro/storeBundle.js`), so production web does not serve the `.wasm` to players yet.
 - **Native: unchanged.** iOS and Android do not get the loader or the `.wasm`: `CascadeRoute.tsx` is the screen itself there. An Android export with every game (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform android --no-bytecode`) has no `.wasm` asset and none of CanvasKit's loader code (`CanvasKitInit`, `locateFile`, `canvaskit.wasm` all absent; the `CanvasKit` identifiers it does contain are Skia's own `JsiSk*` JS classes, not from this change). The three new strings (loading, error, Try again) ship in the `cascade` translations on every platform, a few hundred bytes per locale.
+
+## Cascade physics step cost (#3697)
+
+Cascade's physics moved from Matter.js to planck.js 1.4.2 (#3697, the owner's "3 lively" tuning; [games/cascade.md](games/cascade.md#physics)). Box2D's solver costs more per piece than Matter's, and the smaller ladder lets a board hold more pieces (lively's random and spam games reach 70-90 against 45-50 before), so the step is the number to watch on a phone. Nothing new runs on the frame path for measurement: the sim measures from outside the engine, and the bench below runs only when pressed.
+
+**Bench protocol** (`frontend/src/game/cascade/stepBench.ts`, the #3696 spike's): merges and the lid off, tier-0 and tier-1 pieces dropped every 250 ms across the bin, one `step(1000 / 60)` per frame, timed from the (n - 4)th piece to 3 s after the last; best of 5 runs here. `node --jitless` (V8's interpreter) is a rough stand-in for Hermes; a shared 4-core container, so compare ratios, not absolutes.
+
+Measured 2026-11-13 (the production engines, best of 5):
+
+| Step cost, ms per 60 Hz frame                | Matter.js (before, `dev`) | planck lively (after) | Proposal's lively (sim candidate) |
+| -------------------------------------------- | ------------------------: | --------------------: | --------------------------------: |
+| 64 pieces, `--jitless`: mean / p95           |               1.89 / 7.44 |           3.64 / 6.60 |                       7.25 / 9.41 |
+| 90 pieces, `--jitless`: mean / p95           |              2.92 / 13.71 |           5.14 / 9.75 |                     10.90 / 14.04 |
+| 64 pieces, with JIT: mean / p95              |               0.11 / 0.50 |           0.15 / 0.28 |                       0.41 / 0.56 |
+| 90 pieces, with JIT: mean / p95              |               0.17 / 0.75 |           0.23 / 0.43 |                                 - |
+| Real games, 20+ pieces, JIT (sim, random@60) |                      0.06 |                  0.14 |                              0.24 |
+
+The mean is about 1.8x Matter's (Box2D's solver does more per contact), while the p95 is lower than Matter's here. The production engine is about half the cost of the proposal's candidate at 90 pieces: the merge-gap scan only compares same-tier pieces, and the per-step pass reads planck's vectors in place instead of allocating a state object per piece. The before column runs `dev`'s `CascadeEngine` with merges and the lid stubbed out (a one-off script, same protocol; not committed).
+
+**Device check: owner TODO.** Open the dev panel (`DEV`) on a dev build and press **Step bench (90 pieces)** under _Physics_: it prints `90 pieces · mean · p95 · max ms` for the step alone (the JS thread blocks for the run, a few seconds). A 60 Hz frame has 16.7 ms; the step should stay well under half of it at p95. Record it here:
+
+| Device                  | Scenario             | mean / p95 step ms | Notes |
+| ----------------------- | -------------------- | ------------------ | ----- |
+| Mid-range Android (TBD) | Step bench 90 pieces | TODO               |       |
+| Older iPhone (TBD)      | Step bench 90 pieces | TODO               |       |
+
+If p95 is over 8 ms on the mid-range Android, the levers are the solver iterations (`VELOCITY_ITERATIONS` / `POSITION_ITERATIONS` in `constants.ts`, 10 / 8) and the ladder (a larger r0 holds fewer pieces); both change the feel, so re-run the sim gate.
 
 ## Star Swarm timeline diagnostics (#3396)
 

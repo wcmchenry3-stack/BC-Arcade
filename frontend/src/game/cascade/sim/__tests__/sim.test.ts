@@ -11,12 +11,16 @@ import { contactPair } from "../contactSpawn";
 import { DEFAULT_CONSTANTS, streamRng, type SimConstants, type SimEngine } from "../config";
 import { packingDensity, touchingGaps } from "../physicsFeel";
 import { sampleQueue } from "../queueSampler";
-import { runGame, type GameMetrics } from "../runGame";
+import { CHAIN_WATCH_MS, runGame, type GameMetrics } from "../runGame";
 import {
+  CHAIN_LATENCY_BOUND_MS,
   COST_BUDGET_MS,
+  aggregateGames,
+  FULL_PARAMS,
   ROBUST_KEYS,
   SMOKE_PARAMS,
   SPAM_GAME_OVER_BOUND_MS,
+  baselineForCapstoneSeeds,
   checkSuite,
   formatTable,
   makeBaselineSuite,
@@ -35,6 +39,27 @@ function deterministic(m: GameMetrics): Omit<GameMetrics, "cost"> {
   const { cost: _cost, ...rest } = m;
   return rest;
 }
+
+const emptyState = (): GameState => ({
+  pieces: [],
+  score: 0,
+  gameOver: false,
+  dangerRatio: 0,
+  canDrop: true,
+});
+
+const snap = (id: number, tier: number, x: number, y: number) => ({
+  id,
+  tier,
+  x,
+  y,
+  vx: 0,
+  vy: 0,
+  angle: 0,
+  shapeKind: "circle" as const,
+  isSleeping: true,
+  scale: 1,
+});
 
 /** A scripted engine: lets a test feed events and see exactly what the sim calls. */
 function fakeEngine(script: (frame: number) => EngineEvent[]): SimEngine & {
@@ -71,11 +96,13 @@ function fakeEngine(script: (frame: number) => EngineEvent[]): SimEngine & {
 }
 
 describe("determinism and the engine seam", () => {
-  it("replays the same game from the same seed (body ids differ between runs)", () => {
-    const a = runGame({ seed: 7, hz: 60, bot: heuristicBot, maxSimMs: 30_000 });
-    const b = runGame({ seed: 7, hz: 60, bot: heuristicBot, maxSimMs: 30_000 });
-    expect(deterministic(a)).toEqual(deterministic(b));
-    expect(a.drops).toBeGreaterThan(10);
+  it("replays the same game from the same seed, at 60 and at 120 Hz", () => {
+    for (const hz of [60, 120] as const) {
+      const a = runGame({ seed: 7, hz, bot: heuristicBot, maxSimMs: 30_000 });
+      const b = runGame({ seed: 7, hz, bot: heuristicBot, maxSimMs: 30_000 });
+      expect(deterministic(a)).toEqual(deterministic(b));
+      expect(a.drops).toBeGreaterThan(10);
+    }
   });
 
   it("different seeds give different games", () => {
@@ -157,7 +184,7 @@ describe("determinism and the engine seam", () => {
   });
 
   it("the win event plugs in (#3699): an engine event of type win sets won and the time", () => {
-    const win = { type: "win" } as unknown as EngineEvent;
+    const win: EngineEvent = { type: "win", x: 200, y: 500, id: 1 };
     const engine = fakeEngine((f) => (f === 60 ? [win] : []));
     const m = runGame({
       seed: 1,
@@ -170,10 +197,96 @@ describe("determinism and the engine seam", () => {
     expect(m.timeToWinMs!).toBeCloseTo(1000, 0);
   });
 
-  it("today's engine has no win event: win reads false / n/a", () => {
+  it("a short game does not reach the capstone: win reads false / n/a", () => {
     const m = runGame({ seed: 1, hz: 60, bot: randomBot, maxSimMs: 5000 });
     expect(m.won).toBe(false);
     expect(m.timeToWinMs).toBeNull();
+  });
+
+  it("a stopOnWin run ends at the engine's win, and records when each tier first existed", () => {
+    const win: EngineEvent = { type: "win", x: 200, y: 500, id: 1 };
+    const engine = fakeEngine((f) => (f === 90 ? [win] : []));
+    const m = runGame({
+      seed: 1,
+      hz: 60,
+      bot: spamBot,
+      maxSimMs: 10_000,
+      stopOnWin: true,
+      config: { createEngine: () => engine },
+    });
+    expect(m.endedBy).toBe("win");
+    expect(m.simMs).toBeCloseTo(1500, 0);
+    const first = m.tierFirstMs.findIndex((ms) => ms === 0);
+    expect(first).toBeGreaterThanOrEqual(0);
+  });
+
+  it("times a chain merge from the merge events' piece ids (#3697)", () => {
+    // Two cherries touching on the floor and a tier 1 resting in the valley on top of them: their
+    // product (a 1, made at their midpoint) touches it at full size, though it starts smaller.
+    const r0 = DEFAULT_CONSTANTS.physicsRadius(0);
+    const r1 = DEFAULT_CONSTANTS.physicsRadius(1);
+    const floor = DEFAULT_CONSTANTS.worldHeight - DEFAULT_CONSTANTS.floorThickness;
+    const half = r0 - 0.5;
+    const valleyY = floor - r0 - Math.sqrt((r0 + r1) ** 2 - half ** 2) - 0.5;
+    const engine = new CascadeEngine({});
+    engine.restore(
+      [
+        { tier: 0, x: 200 - half, y: floor - r0 },
+        { tier: 0, x: 200 + half, y: floor - r0 },
+        { tier: 1, x: 200, y: valleyY },
+      ],
+      0
+    );
+    const m = runGame({
+      seed: 1,
+      hz: 60,
+      bot: { name: "idle", nextDelayMs: () => 1e9, shouldTap: () => false, chooseX: () => 0 },
+      maxSimMs: 2000,
+      config: { createEngine: () => engine },
+    });
+    expect(m.merges).toBe(2);
+    expect(m.feel.chainLatencyMs).toHaveLength(1);
+    expect(m.feel.chainLatencyMs[0]!).toBeLessThan(150);
+    expect(m.feel.chainMisses).toBe(0);
+  });
+
+  it("chains that never merge again count as late in the latency percentiles (PR #3863)", () => {
+    const idle = runGame({
+      seed: 1,
+      hz: 60,
+      bot: { name: "idle", nextDelayMs: () => 1e9, shouldTap: () => false, chooseX: () => 0 },
+      maxSimMs: 100,
+    });
+    const game = (latency: number[], misses: number): GameMetrics => ({
+      ...idle,
+      feel: { ...idle.feel, chainLatencyMs: latency, chainMisses: misses },
+    });
+    // 17 chains merge in one step, 3 (15 %) stall past the watch limit.
+    const games = [
+      ...Array.from({ length: 17 }, () => game([1000 / 60], 0)),
+      ...Array.from({ length: 3 }, () => game([], 1)),
+    ];
+    const out = aggregateGames(games, CAPSTONE_TIER);
+    expect(out["feel.chainLatency.watched"]).toBe(20);
+    expect(out["feel.chainLatencyMs.median"]).toBeCloseTo(1000 / 60);
+    expect(out["feel.chainLatencyMs.p90"]).toBe(CHAIN_WATCH_MS);
+    expect(out["feel.chainLatencyMs.p90"]!).toBeGreaterThanOrEqual(CHAIN_LATENCY_BOUND_MS);
+    expect(out["feel.chainUnder150Rate"]).toBeCloseTo(0.85);
+  });
+
+  it("measures wall penetration from the snapshots, at each piece's current size", () => {
+    const pieces = [{ ...snap(1, 0, DEFAULT_CONSTANTS.wallThickness + 2, 300), scale: 0.5 }];
+    const engine = { ...fakeEngine(() => []), getState: () => ({ ...emptyState(), pieces }) };
+    const m = runGame({
+      seed: 1,
+      hz: 60,
+      bot: spamBot,
+      maxSimMs: 100,
+      config: { createEngine: () => engine },
+    });
+    // Half of a tier-0 radius is 9 px; its centre 2 px from the wall: 7 px in.
+    expect(m.feel.wallDepthMaxPx).toBeCloseTo(DEFAULT_CONSTANTS.physicsRadius(0) / 2 - 2, 9);
+    expect(m.feel.wallPenetrationPerMin).toBeGreaterThan(0);
   });
 
   it("counts guard-rail events and never deletes or moves bodies itself", () => {
@@ -275,6 +388,7 @@ describe("pure physics-feel measures", () => {
     angle: 0,
     shapeKind: "circle" as const,
     isSleeping: true,
+    scale: 1,
   });
   const c = DEFAULT_CONSTANTS;
 
@@ -301,13 +415,22 @@ describe("pure physics-feel measures", () => {
 describe("bots", () => {
   it("the heuristic bot merges more than the random bot on the same seeds", () => {
     const seeds = [1, 2, 3];
+    // A full-length game (180 s, the full suite's): over 60 s the two bots are within noise of each
+    // other (40-seed means 1233 vs 1336 before the drop nudge), so a 3-seed check was a coin flip.
     const score = (bot: typeof heuristicBot) =>
-      seeds.reduce((s, seed) => s + runGame({ seed, hz: 60, bot, maxSimMs: 60_000 }).score, 0);
+      seeds.reduce((s, seed) => s + runGame({ seed, hz: 60, bot, maxSimMs: 180_000 }).score, 0);
     expect(score(heuristicBot)).toBeGreaterThan(score(randomBot));
   });
 
-  it("registers heuristic, random and spam", () => {
-    expect(Object.keys(BOTS).sort()).toEqual(["heuristic", "random", "spam"]);
+  it("registers heuristic, random, spam and (#3697) skilled", () => {
+    expect(Object.keys(BOTS).sort()).toEqual(["heuristic", "random", "skilled", "spam"]);
+  });
+
+  it("the skilled bot drops inside the walls and merges", () => {
+    const m = runGame({ seed: 2, hz: 60, bot: BOTS.skilled!, maxSimMs: 30_000 });
+    expect(m.drops).toBeGreaterThan(15);
+    expect(m.merges / m.drops).toBeGreaterThan(0.5);
+    expect(m.feel.guardRailEvents).toBe(0);
   });
 });
 
@@ -316,14 +439,16 @@ describe("queue sampler", () => {
     const a = sampleQueue(5, 300, false);
     expect(sampleQueue(5, 300, false)).toEqual(a);
     expect(a.share.reduce((x, y) => x + y, 0)).toBeCloseTo(1, 9);
-    expect(a.share.slice(5).every((s) => s === 0)).toBe(true);
+    // #3697: tiers 0-5 drop; nothing above.
+    expect(a.share.slice(6).every((s) => s === 0)).toBe(true);
+    expect(a.share[5]!).toBeGreaterThan(0);
   });
 
-  it("danger mode suppresses the large tiers", () => {
+  it("danger mode suppresses the large tiers and (#3697) favours the small ones", () => {
     const calm = sampleQueue(10, 500, false);
     const danger = sampleQueue(10, 500, true);
-    expect(danger.share[3]!).toBeLessThan(calm.share[3]!);
-    expect(danger.share[4]!).toBeLessThan(calm.share[4]!);
+    for (const t of [3, 4, 5]) expect(danger.share[t]!).toBeLessThan(calm.share[t]!);
+    for (const t of [0, 1, 2]) expect(danger.share[t]!).toBeGreaterThan(calm.share[t]!);
   });
 });
 
@@ -432,12 +557,29 @@ describe("smoke suite against baseline.json (PR gate)", () => {
     expect(keys).toContain("random@60:stepCost");
   });
 
+  it("flags a guard rail and a slow chain merge as hard gates (#3697)", () => {
+    const bad: SuiteResult = JSON.parse(JSON.stringify(result));
+    bad.runs["random@120"]!["feel.guardRailEvents.mean"] = 0.01;
+    bad.runs["heuristic@120"]!["feel.chainLatencyMs.p90"] = CHAIN_LATENCY_BOUND_MS;
+    const keys = checkSuite(bad, undefined).map((v) => `${v.where}:${v.key}`);
+    expect(keys.sort()).toEqual(["heuristic@120:chainLatency", "random@120:guardRail"]);
+  });
+
+  it("no guard rail fires, nothing goes into a wall, and chains merge in under 150 ms", () => {
+    for (const run of Object.values(result.runs)) {
+      expect(run["feel.guardRailEvents.mean"]).toBe(0);
+      expect(run["feel.wallDepthMaxPx"]!).toBeLessThan(1);
+      const p90 = run["feel.chainLatencyMs.p90"];
+      if (p90 !== null && p90 !== undefined) expect(p90).toBeLessThan(CHAIN_LATENCY_BOUND_MS);
+    }
+  });
+
   it("a run missing from the result is a violation", () => {
     const partial: SuiteResult = { ...result, runs: {} };
     expect(checkSuite(partial, baseline.suites["smoke"]).length).toBeGreaterThan(0);
   });
 
-  it("win metrics are n/a / 0 until #3699", () => {
+  it("no smoke game (60 s) reaches the capstone: win metrics read 0 / n/a", () => {
     for (const run of Object.values(result.runs)) {
       expect(run["win.rate"]).toBe(0);
       expect(run["win.timeToWinS.mean"]).toBeNull();
@@ -462,11 +604,36 @@ describe("smoke suite against baseline.json (PR gate)", () => {
 describe("baseline.json", () => {
   it("has the full (100 seeds) and smoke suites for both frame rates", () => {
     expect(baseline.suites["full"]!.params.seeds).toBe(100);
-    for (const name of ["full", "smoke"]) {
-      const runs = Object.keys(baseline.suites[name]!.runs).sort();
-      expect(runs).toEqual(
-        ["heuristic", "random", "spam"].flatMap((b) => [`${b}@120`, `${b}@60`]).sort()
-      );
+    const both = ["heuristic", "random", "spam"].flatMap((b) => [`${b}@120`, `${b}@60`]);
+    expect(Object.keys(baseline.suites["smoke"]!.runs).sort()).toEqual(both.sort());
+    // #3697: the full suite also has the capstone runs (never in the smoke).
+    expect(Object.keys(baseline.suites["full"]!.runs).sort()).toEqual(
+      [...both, "capstone:skilled@60"].sort()
+    );
+    expect(baseline.suites["full"]!.params.capstone).toEqual(FULL_PARAMS.capstone);
+    expect(baseline.suites["smoke"]!.params.capstone).toBeUndefined();
+  });
+
+  it("bands the capstone runs' win rate and time to the capstone (#3697)", () => {
+    for (const bot of ["skilled"]) {
+      const bands = baseline.suites["full"]!.runs[`capstone:${bot}@60`]!;
+      expect(bands["win.rate"]!.value!).toBeGreaterThan(0);
+      expect(bands["win.rate"]!.min).not.toBeNull();
+      expect(bands["win.timeToWinS.median"]!.min).not.toBeNull();
     }
+  });
+
+  it("widens the capstone bands, and only those, for a smaller capstone seed count (PR gate: 50)", () => {
+    const full = baseline.suites["full"]!;
+    const half = baselineForCapstoneSeeds(full, 50);
+    expect(half.params.capstone!.seeds).toBe(50);
+    expect(baselineForCapstoneSeeds(full, 100)).toBe(full);
+    const wide = half.runs["capstone:skilled@60"]!["win.timeToWinS.median"]!;
+    const orig = full.runs["capstone:skilled@60"]!["win.timeToWinS.median"]!;
+    expect(wide.value).toBe(orig.value);
+    expect(wide.value! - wide.min!).toBeCloseTo((orig.value! - orig.min!) * Math.SQRT2, 9);
+    expect(wide.max! - wide.value!).toBeCloseTo((orig.max! - orig.value!) * Math.SQRT2, 9);
+    expect(half.runs["heuristic@60"]).toBe(full.runs["heuristic@60"]);
+    expect(half.queue).toBe(full.queue);
   });
 });

@@ -131,6 +131,8 @@ Preserve these because they contain evidence and rationale, but use the canonica
 | [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md)                 | Cascade asset investigation                                                                                       |
 | [asset-budget-plan.md](research/asset-budget-plan.md)                     | Packaged-asset budget plan (#3631): store-config measurement, ranked size wins, budget rule                       |
 | [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md)                         | Cascade physics design/reference                                                                                  |
+| [CASCADE_PHYSICS_SPIKE.md](research/CASCADE_PHYSICS_SPIKE.md)             | Cascade spike (#3696): tuned Matter.js vs planck.js, measured with the sim harness                                |
+| [CASCADE_FEEL_PROPOSALS.md](research/CASCADE_FEEL_PROPOSALS.md)           | Cascade feel (#3697, phase 1): three planck.js tunings; the owner chose "3 lively", shipped in phase 2            |
 | [CASCADE-THEMING.md](research/CASCADE-THEMING.md)                         | Cascade theming design/reference                                                                                  |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md)     | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
 | [starswarm-hits-by-tier-plan.md](research/starswarm-hits-by-tier-plan.md) | Star Swarm: record which enemy tier hit the player (#3710): plan, replay/save impact, data cost, owner decisions  |

@@ -16,7 +16,7 @@ export interface PieceDef {
    */
   color: string;
   scoreValue: number;
-  /** Multiplier on Matter's default body density (from the ladder). */
+  /** planck.js density (from the ladder, `tiers.ts`). */
   density: number;
   shape: ShapeDef; // physics + collision shape — lives HERE, not in a separate file
   sprite?: SpriteRef;

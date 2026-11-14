@@ -6,10 +6,14 @@
  * output is a flat `Record<string, number | null>` per run ("score.mean", "dropShare.t3", ...)
  * so the baseline, the bands and the table all use the same keys. Only deterministic metrics go
  * in the baseline: step cost (wall clock) is reported but never banded here (see `COST_BUDGET`).
+ *
+ * #3697: the full suite also plays the capstone runs (`capstone`): the skilled bot for up to 10
+ * simulated minutes per game, stopping at the win, for the win rate and the time to the capstone.
+ * They are slow (a game can run 36,000 fixed steps), so the PR smoke never plays them.
  */
 import { BOTS } from "./bots";
 import { FRAME_RATES_HZ, resolveConstants, type SimConfig } from "./config";
-import { runGame, type GameMetrics } from "./runGame";
+import { CHAIN_WATCH_MS, runGame, type GameMetrics } from "./runGame";
 import { sampleQueue } from "./queueSampler";
 
 export interface SuiteParams {
@@ -28,7 +32,14 @@ export interface SuiteParams {
    * different seed set. The smoke uses it; per-tier rates, shares and settle live in the full suite.
    */
   coarse?: boolean;
+  /** The capstone runs (#3697): bots x frame rates x seeds, each to the win or `maxSimMs`. */
+  capstone?: { seeds: number; bots: string[]; hzs: number[]; maxSimMs: number };
 }
+
+/** Capstone runs per bot and frame rate in the full suite (each up to 10 simulated minutes). */
+export const CAPSTONE_SEEDS = 100;
+/** A capstone run's cap: 10 simulated minutes (a session). */
+export const CAPSTONE_MAX_SIM_MS = 600_000;
 
 /**
  * The long run (gate workflow): 100 seeded sessions per bot and frame rate (#1605 metric 5).
@@ -41,6 +52,12 @@ export const FULL_PARAMS: SuiteParams = {
   maxSimMs: 180_000,
   queueSeeds: 100,
   queueDraws: 1000,
+  capstone: {
+    seeds: CAPSTONE_SEEDS,
+    bots: ["skilled"],
+    hzs: [60],
+    maxSimMs: CAPSTONE_MAX_SIM_MS,
+  },
 };
 
 /** The PR smoke (inside the ordinary jest run): a few seeds, well under 30 s. */
@@ -56,6 +73,11 @@ export const SMOKE_PARAMS: SuiteParams = {
 
 /** The spam bot must reach game over inside this much simulated time (#3694). */
 export const SPAM_GAME_OVER_BOUND_MS = 120_000;
+/**
+ * Chain latency gate (#3697): a merge product touching a same-tier piece must merge again within
+ * this (p90 over a run's watched products), i.e. the chain reads as one motion.
+ */
+export const CHAIN_LATENCY_BOUND_MS = 150;
 /** Step budget (#1605): mean `engine.step` cost with 20+ pieces on the board, in ms. */
 export const COST_BUDGET_MS = 16;
 
@@ -63,7 +85,7 @@ export type FlatMetrics = Record<string, number | null>;
 
 export interface SuiteResult {
   params: SuiteParams;
-  /** Keyed "bot@hz". */
+  /** Keyed "bot@hz"; the capstone runs "capstone:bot@hz". */
   runs: Record<string, FlatMetrics>;
   /** Wall-clock step cost per run: reported, not baselined. */
   cost: Record<
@@ -88,6 +110,12 @@ function minOf(xs: Num[]): number | null {
   const v = xs.filter((x): x is number => typeof x === "number");
   return v.length ? Math.min(...v) : null;
 }
+/** Nearest-rank percentile (p in (0, 1]) of the numbers, null if there are none. */
+function pct(xs: Num[], p: number): number | null {
+  const v = xs.filter((x): x is number => typeof x === "number").sort((a, b) => a - b);
+  if (v.length === 0) return null;
+  return v[Math.min(v.length, Math.max(1, Math.ceil(p * v.length))) - 1]!;
+}
 
 /** Aggregate one bot x frame rate over its seeds into flat metrics. */
 export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetrics {
@@ -107,14 +135,23 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   out["endedBy.overflowRate"] = avg(games.map((g) => (g.endedBy === "overflow" ? 1 : 0)));
   out["endedBy.hardStopRate"] = avg(games.map((g) => (g.endedBy === "hardStop" ? 1 : 0)));
   out["endedBy.capRate"] = avg(games.map((g) => (g.endedBy === "cap" ? 1 : 0)));
+  out["endedBy.winRate"] = avg(games.map((g) => (g.endedBy === "win" ? 1 : 0)));
   out["topTier.mean"] = avg(games.map((g) => g.topTier));
   // Top-tier reached rate: the share of games in which the top tier existed at some point.
   out["topTier.reachedRate"] = avg(games.map((g) => (g.topTier >= maxTier ? 1 : 0)));
-  // Win (#3699): the engine has no win event yet, so these read 0 / null until it does.
+  // The win (#3697: the engine emits it when the capstone is made).
   out["win.rate"] = avg(games.map((g) => (g.won ? 1 : 0)));
-  out["win.timeToWinS.mean"] = avg(
-    games.map((g) => (g.timeToWinMs === null ? null : g.timeToWinMs / 1000))
-  );
+  const winS = games.map((g) => (g.timeToWinMs === null ? null : g.timeToWinMs / 1000));
+  out["win.timeToWinS.mean"] = avg(winS);
+  // Over the games that won: the middle half and the median.
+  out["win.timeToWinS.p25"] = pct(winS, 0.25);
+  out["win.timeToWinS.median"] = pct(winS, 0.5);
+  out["win.timeToWinS.p75"] = pct(winS, 0.75);
+  const t10 = games.map((g) => {
+    const ms = g.tierFirstMs?.[maxTier - 1];
+    return ms === null || ms === undefined ? null : ms / 1000;
+  });
+  out["tier10.timeS.median"] = pct(t10, 0.5);
 
   const totalDrops = games.reduce((a, g) => a + g.drops, 0);
   for (let t = 0; t <= maxTier; t++) {
@@ -147,6 +184,22 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   out["feel.jitterPxPerS"] = f((g) => g.feel.jitterPxPerS);
   out["feel.guardRailEvents.mean"] = f((g) => g.feel.guardRailEvents);
   out["feel.guardRailPerMin"] = f((g) => g.feel.guardRailPerMin);
+  out["feel.wallDepthMaxPx"] = maxOf(games.map((g) => g.feel.wallDepthMaxPx));
+  out["feel.wallPenetrationPerMin"] = f((g) => g.feel.wallPenetrationPerMin);
+  const lat = games.flatMap((g) => g.feel.chainLatencyMs ?? []);
+  const misses = sumOf((g) => g.feel.chainMisses ?? 0);
+  out["feel.chainLatency.watched"] = lat.length + misses;
+  // A watched product that never merged again is a censored late sample: it counts at the watch
+  // limit, so stalled chains raise the percentiles instead of dropping out of them (PR #3863).
+  const latWithMisses =
+    misses > 0 ? lat.concat(new Array<number>(misses).fill(CHAIN_WATCH_MS)) : lat;
+  out["feel.chainLatencyMs.median"] = pct(latWithMisses, 0.5);
+  out["feel.chainLatencyMs.p90"] = pct(latWithMisses, 0.9);
+  // Share of watched merge products that merged again within the bound (misses count as late).
+  out["feel.chainUnder150Rate"] =
+    lat.length + misses > 0
+      ? lat.filter((ms) => ms < CHAIN_LATENCY_BOUND_MS).length / (lat.length + misses)
+      : null;
   return out;
 }
 
@@ -171,6 +224,26 @@ export function runSuite(params: SuiteParams, config?: SimConfig): SuiteResult {
         meanStepMs: avg(games.map((g) => g.cost.meanStepMs)) ?? 0,
         meanStepMsGe20: avg(games.map((g) => g.cost.meanStepMsGe20)),
         // The worst game's own p95 (not a p95 over all steps).
+        worstGameP95StepMs: maxOf(games.map((g) => g.cost.p95StepMs)) ?? 0,
+      };
+    }
+  }
+  const cap = params.capstone;
+  for (const botName of cap?.bots ?? []) {
+    const bot = BOTS[botName];
+    if (!bot) throw new Error(`unknown bot: ${botName}`);
+    for (const hz of cap!.hzs) {
+      const games: GameMetrics[] = [];
+      for (let i = 1; i <= cap!.seeds; i++) {
+        const seed = (params.seedOffset ?? 0) + i;
+        const maxSimMs = cap!.maxSimMs;
+        games.push(runGame({ seed, hz: hz as 60 | 120, bot, maxSimMs, config, stopOnWin: true }));
+      }
+      const key = `capstone:${botName}@${hz}`;
+      runs[key] = aggregateGames(games, c.maxTier);
+      cost[key] = {
+        meanStepMs: avg(games.map((g) => g.cost.meanStepMs)) ?? 0,
+        meanStepMsGe20: avg(games.map((g) => g.cost.meanStepMsGe20)),
         worstGameP95StepMs: maxOf(games.map((g) => g.cost.p95StepMs)) ?? 0,
       };
     }
@@ -220,7 +293,7 @@ export interface Baseline {
 
 /** Keys that are informational and never banded (counts of episodes depend on timing noise). */
 const NOT_BANDED =
-  /^(games|draws|feel\.(dropEpisodes|chainEpisodes)\.mean|feel\.(settle|chain)Episodes\.total|feel\.settleCensoredFraction)$/;
+  /^(games|draws|feel\.(dropEpisodes|chainEpisodes)\.mean|feel\.(settle|chain)Episodes\.total|feel\.settleCensoredFraction|feel\.chainLatency\.watched)$/;
 
 /** Settle means are only banded when this many episodes finished (the rest were cut off). */
 export const MIN_SETTLE_EPISODES = 20;
@@ -247,7 +320,11 @@ export function tolerance(key: string, value: number, games = 100): number {
   if (/^feel\.(gap|overlap)/.test(key)) return rel(0.3, 1.5);
   if (/^feel\.settle/.test(key)) return rel(0.3, 150);
   if (/^feel\.jitter/.test(key)) return rel(0.3, 3);
-  if (/^feel\.guardRail/.test(key)) return rel(0.3, 50);
+  // #3697: no guard rail fires in normal play and nothing goes into a wall: these stay near 0.
+  if (/^feel\.guardRail/.test(key)) return rel(0.3, 1);
+  if (/^feel\.wall/.test(key)) return rel(0.3, 1);
+  if (/^feel\.chainLatencyMs/.test(key)) return rel(0.3, 34);
+  if (/^win\.timeToWinS|^tier10\.timeS/.test(key)) return rel(0.2, 30);
   return rel(0.25, 1);
 }
 
@@ -309,6 +386,49 @@ export function makeBaselineSuite(result: SuiteResult): BaselineSuite {
   return { params: result.params, runs, queue };
 }
 
+/**
+ * The baseline for a run whose capstone runs play `capstoneSeeds` games instead of the baseline's
+ * (the PR runs play 50, the nightly 100): the same suite with the capstone runs' bands widened
+ * around their value by sqrt(baselineGames / capstoneSeeds), the growth of a mean's sampling
+ * error when the games are fewer (50 vs 100: x1.41). The seeds 1..N are a prefix of the baseline's,
+ * so the result is the baseline's own games, fewer; the wider band absorbs that subset's
+ * drift, while a real physics change (a win rate or time to the capstone moving by tens of
+ * percent) still leaves it. Every other run keeps its bands.
+ * @public Used by tools/sim/simulate-cascade.ts, outside the knip workspace.
+ */
+export function baselineForCapstoneSeeds(
+  baseline: BaselineSuite,
+  capstoneSeeds: number
+): BaselineSuite {
+  const base = baseline.params.capstone;
+  if (!base || base.seeds === capstoneSeeds) return baseline;
+  const factor = Math.sqrt(base.seeds / capstoneSeeds);
+  const runs: BaselineSuite["runs"] = {};
+  for (const [k, bands] of Object.entries(baseline.runs)) {
+    if (!k.startsWith("capstone:")) {
+      runs[k] = bands;
+      continue;
+    }
+    const wide: BandSet = {};
+    for (const [key, b] of Object.entries(bands)) {
+      wide[key] =
+        b.value === null || b.min === null || b.max === null
+          ? b
+          : {
+              value: b.value,
+              min: b.value - (b.value - b.min) * factor,
+              max: b.value + (b.max - b.value) * factor,
+            };
+    }
+    runs[k] = wide;
+  }
+  return {
+    ...baseline,
+    params: { ...baseline.params, capstone: { ...base, seeds: capstoneSeeds } },
+    runs,
+  };
+}
+
 export interface Violation {
   where: string;
   key: string;
@@ -326,7 +446,7 @@ function checkSet(where: string, flat: FlatMetrics | undefined, bands: BandSet):
   for (const [key, band] of Object.entries(bands)) {
     const value = flat[key] ?? null;
     if (band.min === null || band.max === null) {
-      // Unbanded: a null baseline stays null (win metrics until #3699).
+      // Unbanded: a null baseline stays null (a win time where the baseline had no win).
       if (band.value === null && value !== null && key.startsWith("win.")) {
         out.push({ where, key, value, min: null, max: null, message: "expected n/a" });
       }
@@ -346,7 +466,11 @@ function checkSet(where: string, flat: FlatMetrics | undefined, bands: BandSet):
   return out;
 }
 
-/** Violations of the banded metrics and of the hard gates (spam loses, step budget). */
+/**
+ * Violations of the banded metrics and of the hard gates: the spam bot loses inside the lid's
+ * bound, no guard rail fires (#3697: nothing is ever teleported), chain merges are prompt (p90
+ * under `CHAIN_LATENCY_BOUND_MS`), and the step budget.
+ */
 export function checkSuite(result: SuiteResult, baseline: BaselineSuite | undefined): Violation[] {
   const out: Violation[] = [];
   if (baseline) {
@@ -371,6 +495,30 @@ export function checkSuite(result: SuiteResult, baseline: BaselineSuite | undefi
           message: `spam bot did not always reach game over within ${SPAM_GAME_OVER_BOUND_MS / 1000} s`,
         });
       }
+    }
+  }
+  for (const [k, run] of Object.entries(result.runs)) {
+    const rails = run["feel.guardRailEvents.mean"];
+    if (rails !== null && rails !== undefined && rails > 0) {
+      out.push({
+        where: k,
+        key: "guardRail",
+        value: rails,
+        min: null,
+        max: 0,
+        message: `guard rail fired (${rails} per game): a piece escaped the bin`,
+      });
+    }
+    const p90 = run["feel.chainLatencyMs.p90"];
+    if (p90 !== null && p90 !== undefined && p90 >= CHAIN_LATENCY_BOUND_MS) {
+      out.push({
+        where: k,
+        key: "chainLatency",
+        value: p90,
+        min: null,
+        max: CHAIN_LATENCY_BOUND_MS,
+        message: `chain merge latency p90 ${p90.toFixed(0)} ms is not under ${CHAIN_LATENCY_BOUND_MS} ms`,
+      });
     }
   }
   for (const [k, c] of Object.entries(result.cost)) {
@@ -432,6 +580,20 @@ export function formatTable(result: SuiteResult): string {
     ["jitter px/s", (k) => fmt(result.runs[k]!["feel.jitterPxPerS"])],
     ["guard rail events / game", (k) => fmt(result.runs[k]!["feel.guardRailEvents.mean"], 0)],
     ["guard rail events / min", (k) => fmt(result.runs[k]!["feel.guardRailPerMin"], 0)],
+    ["deepest wall penetration px", (k) => fmt(result.runs[k]!["feel.wallDepthMaxPx"])],
+    ["wall penetration > 1 px / min", (k) => fmt(result.runs[k]!["feel.wallPenetrationPerMin"])],
+    [
+      "chain latency ms, median / p90",
+      (k) =>
+        `${fmt(result.runs[k]!["feel.chainLatencyMs.median"], 0)} / ${fmt(result.runs[k]!["feel.chainLatencyMs.p90"], 0)}`,
+    ],
+    ["chain merges under 150 ms", (k) => fmt(result.runs[k]!["feel.chainUnder150Rate"])],
+    [
+      "time to capstone s, p25 / median / p75 (winners)",
+      (k) =>
+        `${fmt(result.runs[k]!["win.timeToWinS.p25"], 0)} / ${fmt(result.runs[k]!["win.timeToWinS.median"], 0)} / ${fmt(result.runs[k]!["win.timeToWinS.p75"], 0)}`,
+    ],
+    ["time to tier 10 s, median", (k) => fmt(result.runs[k]!["tier10.timeS.median"], 0)],
     ["step ms (20+ pieces, wall clock)", (k) => fmt(result.cost[k]?.meanStepMsGe20, 3)],
     ["step ms, worst game p95 (wall clock)", (k) => fmt(result.cost[k]?.worstGameP95StepMs, 3)],
   ];

@@ -1,12 +1,14 @@
 appId: com.buffingchi.games
-# Cascade demo flow (#3719): a chain of 3 merges from two drops. Tagged `demo`, so only the
+# Cascade demo flow (#3719): a chain of 3 merges from one drop. Tagged `demo`, so only the
 # `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
 #
-# `cascade-test-chain` (test-build-only, see demo-loss.yaml) restores tiers 1, 2 and 3 side by
-# side and scripts the queue as cherries. Two drops down the middle: the first rolls aside, the
-# second merges with it (0+0), then the result merges with the 1 and the 2 in turn: 3 merges,
-# 2 + 4 + 8 = 14 points. The score label reads "Score: 14"; the check accepts any two-digit
-# score or more (a lone merge scores at most 8), so a small layout difference cannot fail it.
+# `cascade-test-chain` (test-build-only, see demo-loss.yaml) restores a column of tiers 2, 1 and 0
+# (a cherry on top) under the middle and scripts the queue as cherries (#3697: the old two-drop
+# set-up relied on a free cherry coming to rest, which it no longer does on the lively physics).
+# One drop down the middle merges with the cherry (0+0), then the result drops onto the 1 and the
+# 2 in turn: 3 merges, 2 + 4 + 8 = 14 points. The score label reads "Score: 14"; the check
+# accepts any two-digit score or more (a lone merge scores at most 8), so a small layout
+# difference cannot fail it.
 tags:
   - demo
 ---
@@ -19,12 +21,6 @@ tags:
 - waitForAnimationToEnd:
     timeout: 1500
 - takeScreenshot: cascade-demo-chain-before
-- tapOn:
-    id: "cascade-game-area"
-    retryTapIfNoChange: false
-# The first piece has to fall below the lid before the next drop is allowed.
-- waitForAnimationToEnd:
-    timeout: 2500
 - tapOn:
     id: "cascade-game-area"
     retryTapIfNoChange: false

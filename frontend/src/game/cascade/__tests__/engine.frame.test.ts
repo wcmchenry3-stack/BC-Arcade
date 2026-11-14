@@ -2,7 +2,7 @@
  * #2960: the engine's per-frame read allocates nothing, and the post-physics pass skips bodies
  * that stay asleep without changing the simulation.
  */
-import * as Matter from "matter-js";
+import { Body } from "planck";
 import { CascadeEngine } from "../engine";
 import { createGameState } from "../render/frame";
 
@@ -49,7 +49,8 @@ describe("getState(into)", () => {
 
 describe("sleeping bodies in the post-physics pass", () => {
   it("are not touched once they have been checked asleep, and are again once awake", () => {
-    const spy = jest.spyOn(Matter.Body, "setAngularVelocity");
+    // #3697 (planck): the pass reads each body it checks; a skipped body is not read at all.
+    const spy = jest.spyOn(Body.prototype, "getPosition");
     const engine = new CascadeEngine();
     engine.drop(0, 120);
     // Long enough for the piece to land and fall asleep.

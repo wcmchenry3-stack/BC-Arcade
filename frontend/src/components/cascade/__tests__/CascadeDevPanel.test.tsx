@@ -87,3 +87,20 @@ describe("CascadeDevPanel", () => {
     expect(p.onSpawn).toHaveBeenCalledWith(11);
   });
 });
+
+describe("CascadeDevPanel step bench (#3697)", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it("runs the bench on press and shows its mean and p95", async () => {
+    await renderPanel();
+    expect(screen.queryByTestId("cascade-step-bench-result")).toBeNull();
+    await fireEvent.press(screen.getByTestId("cascade-step-bench"));
+    expect(screen.getByTestId("cascade-step-bench-result")).toHaveTextContent("running…");
+    await act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    const line = screen.getByTestId("cascade-step-bench-result");
+    expect(line).toHaveTextContent(/^90 pieces · [\d.]+ ms mean · [\d.]+ p95/);
+  });
+});

@@ -51,11 +51,11 @@ export async function gotoCascade(page: Page): Promise<void> {
 
 /** Wait for the board to render and the engine to accept drops. */
 export async function waitForCascadeBoard(page: Page): Promise<void> {
-  // Matter.js engine may take a moment to initialise — wait for the canvas label
+  // physics engine may take a moment to initialise — wait for the canvas label
   await page
     .getByRole("img", { name: /Cascade game/i })
     .waitFor({ timeout: 15_000 });
-  // The canvas DOM mounts before the Matter.js engine finishes async init; without
+  // The canvas DOM mounts before the physics engine finishes init; without
   // this wait the first spawnTierAt() calls can silently no-op because
   // engineRef is still null, causing flaky first-run failures (#375).
   await page.waitForFunction(

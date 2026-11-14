@@ -6,8 +6,12 @@
  * #2960: the frame readout (Star Swarm's `render/frameStats.ts` ring buffer): the loop's frame
  * time and the screen's React commits per second over the last second, polled at 4 Hz while the
  * panel is open. A settled board should read 0 commits/s.
+ *
+ * #3697: the step bench (`game/cascade/stepBench.ts`): a button that times the planck engine's
+ * step with ~90 pieces on this device, mean and p95, for the owner's device check
+ * (docs/PERFORMANCE.md). It runs only when pressed, off the game's frame loop.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeContext";
 import { DEV_ACCENT_DIM } from "../../theme/theme.constants";
@@ -17,10 +21,13 @@ import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
 import { tierRadius } from "../../game/cascade/tiers";
 import type { FruitSet } from "../../theme/fruitSets";
 import { formatFrameStats } from "../../game/starswarm/render/frameStats";
+import { formatStepBench, runStepBench } from "../../game/cascade/stepBench";
 import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 
 /** How often the open panel re-reads the frame stats. */
 export const FRAME_STATS_POLL_MS = 250;
+/** Pieces the step bench drops (docs/PERFORMANCE.md's device check). */
+export const STEP_BENCH_PIECES = 90;
 
 export interface CascadeDevPanelProps {
   readonly enabled: boolean;
@@ -53,6 +60,45 @@ function FrameStatsLine({ read }: { read: () => FrameStatsSummary | null }) {
   );
 }
 
+/** The step bench: a button, then its result line. Runs after the "running" line has drawn. */
+function StepBench() {
+  const { colors } = useTheme();
+  const [line, setLine] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The panel can close before the 50 ms is up: no bench run, no state set after unmount.
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    []
+  );
+  const run = () => {
+    setLine("running…");
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setLine(formatStepBench(runStepBench({ pieces: STEP_BENCH_PIECES })));
+    }, 50);
+  };
+  return (
+    <>
+      <DevActionButton
+        label={`Step bench (${STEP_BENCH_PIECES} pieces)`}
+        onPress={run}
+        testID="cascade-step-bench"
+      />
+      {line !== null ? (
+        <Text
+          style={[styles.frameStats, { color: colors.text }]}
+          testID="cascade-step-bench-result"
+        >
+          {line}
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
 export default function CascadeDevPanel({
   enabled,
   open,
@@ -79,6 +125,9 @@ export default function CascadeDevPanel({
           <FrameStatsLine read={readFrameStats} />
         </>
       ) : null}
+
+      <DevSection title="Physics" color={colors.textMuted} />
+      <StepBench />
 
       <DevSection title="Engine Pieces" color={colors.textMuted} />
       <Text style={[styles.hint, { color: colors.textMuted }]}>

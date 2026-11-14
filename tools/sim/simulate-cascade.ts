@@ -3,13 +3,19 @@
  *
  * Usage (from the repo root, or `npm run sim:cascade -- <flags>` in frontend/):
  *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts                 # smoke suite, prints the table
- *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts --full          # 100 seeds x 3 bots x 60/120 Hz (~3 min)
+ *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts --full          # 100 seeds x 3 bots x 60/120 Hz, plus the capstone runs (~10 min)
  *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts --full --gate   # ... and fail on a band / lid / step-budget violation
  *   npx --prefix frontend tsx tools/sim/simulate-cascade.ts --full --update-baseline   # rewrite baseline.json "full"
  *
  * Flags:
- *   --full               the long suite (default: the smoke suite)
- *   --seeds N            override the seed count
+ *   --full               the long suite (default: the smoke suite), with the capstone runs
+ *                        (#3697: the skilled bot, 60 Hz, up to 10 simulated minutes
+ *                        each, stopping at the win)
+ *   --seeds N            override the seed count (the capstone runs' too); bands are skipped
+ *   --capstone-seeds N   override the capstone runs' seed count only (the PR gate plays 50, the
+ *                        nightly 100); the bands still apply, the capstone ones widened by
+ *                        sqrt(100 / N) (baselineForCapstoneSeeds)
+ *   --no-capstone        skip the capstone runs (a quicker look; bands are then skipped)
  *   --bots a,b           override the bots (heuristic, random, spam)
  *   --gate               compare with baseline.json and exit 1 on a violation
  *   --update-baseline    write this run's deterministic metrics and bands into baseline.json
@@ -23,6 +29,7 @@ import { resolve } from "node:path";
 import {
   FULL_PARAMS,
   SMOKE_PARAMS,
+  baselineForCapstoneSeeds,
   checkSuite,
   formatTable,
   makeBaselineSuite,
@@ -36,7 +43,14 @@ const BASELINE_PATH = resolve(
   "../../frontend/src/game/cascade/sim/baseline.json",
 );
 
-const VALUE_FLAGS = ["--seeds", "--bots", "--seed-offset", "--md", "--json"];
+const VALUE_FLAGS = [
+  "--seeds",
+  "--capstone-seeds",
+  "--bots",
+  "--seed-offset",
+  "--md",
+  "--json",
+];
 
 class UsageError extends Error {}
 
@@ -63,13 +77,33 @@ function intArg(name: string, min: number): number | undefined {
 
 function main(): number {
   for (const f of process.argv.slice(2).filter((a) => a.startsWith("--"))) {
-    const known = ["--full", "--gate", "--update-baseline", ...VALUE_FLAGS];
+    const known = [
+      "--full",
+      "--gate",
+      "--update-baseline",
+      "--no-capstone",
+      ...VALUE_FLAGS,
+    ];
     if (!known.includes(f)) throw new UsageError(`unknown flag ${f}`);
   }
   const suiteName = has("--full") ? "full" : "smoke";
   const params = { ...(suiteName === "full" ? FULL_PARAMS : SMOKE_PARAMS) };
   const seeds = intArg("--seeds", 1);
   if (seeds !== undefined) params.seeds = seeds;
+  if (params.capstone) {
+    params.capstone = { ...params.capstone };
+    if (seeds !== undefined) params.capstone.seeds = seeds;
+    if (has("--no-capstone")) delete params.capstone;
+  }
+  const capstoneSeeds = intArg("--capstone-seeds", 1);
+  if (capstoneSeeds !== undefined) {
+    if (!params.capstone) {
+      throw new UsageError(
+        "--capstone-seeds needs --full and no --no-capstone",
+      );
+    }
+    params.capstone.seeds = capstoneSeeds;
+  }
   const offset = intArg("--seed-offset", 0);
   if (offset !== undefined) params.seedOffset = offset;
   const bots = arg("--bots");
@@ -83,10 +117,14 @@ function main(): number {
     }
   }
   const custom =
-    seeds !== undefined || offset !== undefined || bots !== undefined;
+    seeds !== undefined ||
+    capstoneSeeds !== undefined ||
+    offset !== undefined ||
+    bots !== undefined ||
+    has("--no-capstone");
   if (has("--update-baseline") && custom) {
     throw new UsageError(
-      "--update-baseline cannot be combined with --seeds, --seed-offset or --bots: it would overwrite the suite with a subset",
+      "--update-baseline cannot be combined with --seeds, --capstone-seeds, --seed-offset or --bots: it would overwrite the suite with a subset",
     );
   }
 
@@ -124,12 +162,19 @@ function main(): number {
   if (has("--gate")) {
     // The bands assume the baseline's seed count, bots and time cap; any other run is a quick
     // look: the table prints and only the hard gates (lid, step budget) apply.
-    const base = baseline.suites[suiteName];
+    // Only the capstone seed count may differ: its bands are widened for the smaller sample.
+    const stored = baseline.suites[suiteName];
+    const base =
+      stored && params.capstone
+        ? baselineForCapstoneSeeds(stored, params.capstone.seeds)
+        : stored;
     const comparable =
       base !== undefined &&
       base.params.seeds === params.seeds &&
       base.params.maxSimMs === params.maxSimMs &&
-      base.params.bots.join() === params.bots.join();
+      base.params.bots.join() === params.bots.join() &&
+      JSON.stringify(base.params.capstone ?? null) ===
+        JSON.stringify(params.capstone ?? null);
     if (!comparable) {
       console.log(
         "\nNote: seeds/bots differ from the baseline; band checks skipped (hard gates only).",

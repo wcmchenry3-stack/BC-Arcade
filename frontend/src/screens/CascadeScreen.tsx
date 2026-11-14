@@ -2,7 +2,7 @@
  * CascadeScreen: Cascade (a Suika-style merge game) wired to `CascadeEngine` (#1751, #1754).
  *
  * Concerns:
- *   1. Game logic: the engine (`game/cascade/engine.ts`, Matter.js) is stepped from a RAF loop
+ *   1. Game logic: the engine (`game/cascade/engine.ts`, planck.js) is stepped from a RAF loop
  *      recreated on `gameKey`; the screen drops pieces from the queue and reads state back
  *      each frame. The engine owns the physics, scoring and game over; the screen owns none.
  *   2. Rendering (#2960): no per-frame React state. The loop reads the engine into a reused
@@ -572,7 +572,8 @@ function CascadeGame() {
 
   // RAF game loop — recreated on gameKey change (restart / theme switch)
   useEffect(() => {
-    const engine = new CascadeEngine({});
+    // Live play seeds the drop nudge from the clock; a test seed replaces it (`handleSetSeed`).
+    const engine = new CascadeEngine({ seed: (Math.random() * 0x100000000) >>> 0 });
     engineRef.current = engine;
     engine.start();
 
@@ -707,6 +708,7 @@ function CascadeGame() {
     (seed: number) => {
       const rng = createSeededRng(seed);
       queueRngRef.current = rng;
+      engineRef.current?.seed(seed);
       const seeded = makeQueue(rng);
       queueRef.current = seeded.queue;
       queueHistoryRef.current = seeded.history;

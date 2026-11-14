@@ -27,21 +27,21 @@ function run(engine: CascadeEngine, seconds: number): EngineEvent[] {
 }
 
 describe("cascadeSetup('chain')", () => {
+  // #3697: the pile is a column of tiers 2, 1, 0 and one drop makes the chain (was tiers 1, 2, 3
+  // side by side and two drops: on the lively physics the first drop rolled away).
   it("scripts a queue of cherries and settles with no merge yet", () => {
     const setup = cascadeSetup("chain");
     expect(setup.queue?.slice(0, 2)).toEqual([0, 0]);
     const { engine, events } = load("chain");
     expect(events.filter((e) => e.type === "merge")).toHaveLength(0);
     expect(engine.getState().score).toBe(0);
-    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([1, 2, 3]);
+    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([2, 1, 0]);
   });
 
   it.each([197, 198, 199, 200, 201, 202, 203])(
-    "two cherries dropped at x=%d chain 3 merges (14 points)",
+    "a cherry dropped at x=%d chains 3 merges (14 points)",
     (x) => {
       const { engine } = load("chain");
-      engine.drop(0, x);
-      run(engine, 1.5);
       engine.drop(0, x);
       const merges = run(engine, 4).filter((e) => e.type === "merge");
       expect(merges).toHaveLength(3);

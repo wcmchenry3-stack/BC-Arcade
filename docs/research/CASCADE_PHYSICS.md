@@ -1,4 +1,4 @@
-> **Historical research, not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the rework is tracked in epic #3033.
+> **Historical research, not the current contract.** It describes the old Matter.js engine; since #3697 Cascade runs on planck.js. Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the rework is tracked in epic #3033.
 
 # Cascade Physics — Architecture & Developer Reference
 

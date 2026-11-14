@@ -16,7 +16,8 @@ import {
   spriteHalfSize,
   tierRadius,
 } from "../tiers";
-import { OVERFLOW_LINE_Y, WALL_THICKNESS, WORLD_WIDTH } from "../constants";
+import type { Fixture } from "planck";
+import { OVERFLOW_LINE_Y, PX_PER_M, WALL_THICKNESS, WORLD_WIDTH } from "../constants";
 import { FRUIT_SETS } from "../../../theme/fruitSets";
 
 const INNER_WIDTH = WORLD_WIDTH - 2 * WALL_THICKNESS;
@@ -36,21 +37,28 @@ describe("the ladder", () => {
     }
   });
 
-  it("follows the documented geometric series, radius(n) = round(22 * 4^(n/10))", () => {
-    TIERS.forEach((t) => expect(t.radius).toBe(Math.round(22 * Math.pow(4, t.tier / 10))));
+  // #3697 (owner's "3 lively"): the ladder went from round(22 * 4^(n/10)) to 18 / 56 / 63.
+  it("follows the documented geometric series, radius(n) = round(18 * (56 / 18)^(n/10))", () => {
+    TIERS.forEach((t) => expect(t.radius).toBe(Math.round(18 * Math.pow(56 / 18, t.tier / 10))));
+    expect([TIERS[0]!.radius, TIERS[10]!.radius, TIERS[CAPSTONE_TIER]!.radius]).toEqual([
+      18, 56, 63,
+    ]);
   });
 
   it("scores double per tier (provisional until the time-bonus story, #3700)", () => {
     TIERS.forEach((t) => expect(t.score).toBe(2 ** t.tier));
   });
 
-  it("has a density on every tier (1 until the physics story, #3697)", () => {
-    TIERS.forEach((t) => expect(t.density).toBe(1));
+  // #3697: density (r0 / r)^0.5 replaced 1 on every tier, so mass grows as r^1.5.
+  it("has the density (r0 / r)^0.5 on every tier", () => {
+    TIERS.forEach((t) => expect(t.density).toBeCloseTo((TIERS[0]!.radius / t.radius) ** 0.5, 12));
+    expect(TIERS[0]!.density).toBe(1);
   });
 
-  it("drops tiers 0-4 only; the capstone is never dropped", () => {
-    expect(DROPPABLE_TIERS).toEqual([0, 1, 2, 3, 4]);
-    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4]);
+  // #3697: tier 5 joined the drops (owner decision).
+  it("drops tiers 0-5 only; the capstone is never dropped", () => {
+    expect(DROPPABLE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
     expect(TIERS[CAPSTONE_TIER]!.droppable).toBe(false);
   });
 
@@ -116,18 +124,19 @@ describe("the ladder", () => {
 });
 
 describe("the engine reads the ladder", () => {
-  type Internals = {
-    _pieces: Map<number, { body: { circleRadius: number; density: number }; tier: number }>;
-  };
-  const bodies = (e: CascadeEngine) => Array.from((e as unknown as Internals)._pieces.values());
+  // #3697: the engine's pieces are planck fixtures now (radius in metres, PX_PER_M px each).
+  type Internals = { _pieces: Map<number, { fixture: Fixture }> };
+  const fixtures = (e: CascadeEngine) =>
+    Array.from((e as unknown as Internals)._pieces.values(), (p) => p.fixture);
 
   it("gives every tier a collider of exactly its ladder radius and density", () => {
     for (const t of TIERS) {
       const engine = new CascadeEngine({});
       engine.restore([{ tier: t.tier, x: 200, y: 500 }], 0);
-      const [piece] = bodies(engine);
-      expect(piece!.body.circleRadius).toBe(t.radius);
-      expect(piece!.body.density).toBeCloseTo(0.001 * t.density, 10);
+      const [fixture] = fixtures(engine);
+      expect(fixture!.getShape().getRadius() * PX_PER_M).toBeCloseTo(t.radius, 9);
+      expect(fixture!.getDensity()).toBe(t.density);
+      engine.destroy();
     }
   });
 

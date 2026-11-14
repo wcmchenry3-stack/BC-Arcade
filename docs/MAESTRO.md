@@ -86,7 +86,7 @@ Visual and audio stories must show the owner the change running on iOS and Andro
 | `demo-open.yaml`   | Home → Cascade board                                                                               | `cascade-demo-open`                                                                | `cascade-demo-open`   |
 | `demo-drop.yaml`   | one drop down the middle                                                                           | `cascade-demo-drop-before`, `cascade-demo-drop-after`                              | `cascade-demo-drop`   |
 | `demo-merge.yaml`  | drops until the score container (`cascade-score`, label "Score: N") leaves 0, i.e. a merge         | `cascade-demo-merge-before`, `cascade-demo-merge-after`                            | `cascade-demo-merge`  |
-| `demo-chain.yaml`  | `cascade-test-chain`, then two drops: a chain of 3 merges (14 points; score check "Score: ≥10")    | `cascade-demo-chain-before`, `cascade-demo-chain-after`                            | `cascade-demo-chain`  |
+| `demo-chain.yaml`  | `cascade-test-chain`, then one drop: a chain of 3 merges (14 points; score check "Score: ≥10")     | `cascade-demo-chain-before`, `cascade-demo-chain-after`                            | `cascade-demo-chain`  |
 | `demo-danger.yaml` | `cascade-test-near-lid`: the spawner's clock ring draining, then the lid ends the game             | `cascade-demo-danger-ring`, `cascade-demo-danger-result`                           | `cascade-demo-danger` |
 | `demo-loss.yaml`   | `cascade-test-fill-bin`: the lid rule ends the game, then the result card (`cascade-result-title`) | `cascade-demo-loss-before`, `cascade-demo-loss-filled`, `cascade-demo-loss-result` | `cascade-demo-loss`   |
 
@@ -94,12 +94,12 @@ Visual and audio stories must show the owner the change running on iOS and Andro
 
 Maestro cannot call the app's `__cascade_*` hooks (`game/cascade/testHooks.ts`): they live on the app's JavaScript `globalThis`, and Maestro's `runScript`/`evalScript` run in Maestro's own engine on the host. So the Cascade screen shows a small, faint row of buttons under the board (`components/cascade/CascadeTestControls.tsx`) **only when `EXPO_PUBLIC_TEST_HOOKS=1`**. One row of four buttons, not a menu: each is one `tapOn`, and an open menu would need a second tap and a wait. Each runs a set-up that restores a pile into the real engine (`cascadeSetup` in `testHooks.ts`), so the engine's rules play out; the same set-ups are hooks too (`__cascade_setupChain`, `__cascade_setupNearLid`, `__cascade_fillBin`, `__cascade_seedQueue(tiers)`) for Playwright.
 
-| testID                   | Set-up                                                                                                 | What follows                                                                     |
-| ------------------------ | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `cascade-test-chain`     | tiers 1, 2, 3 side by side on the floor; queue scripted as cherries                                    | two taps on the board make 3 merges (holds for a drop within 3 px of the middle) |
-| `cascade-test-near-lid`  | a capstone, a tier 10 and a tier 9 stacked over the lid, then 1.5 s simulated (past the restore grace) | the ring drains and the lid ends the game about 2.5 s later                      |
-| `cascade-test-fill-bin`  | that tower plus a second tower, both over the lid                                                      | the lid ends the game about 4 s after (overflow rule; nothing is forced)         |
-| `cascade-test-game-over` | none: forces the result card                                                                           | an extra, not used by the demos                                                  |
+| testID                   | Set-up                                                                                                  | What follows                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `cascade-test-chain`     | a column of tiers 2, 1 and 0 (a cherry on top) under the middle; queue scripted as cherries             | one tap on the board makes 3 merges, 14 points (holds for a drop within 3 px of the middle) |
+| `cascade-test-near-lid`  | a capstone and tiers 10, 9, 8 and 7 stacked over the lid, then 1.5 s simulated (past the restore grace) | the ring drains and the lid ends the game about 2.5 s later                                 |
+| `cascade-test-fill-bin`  | that tower plus a second tower, both over the lid                                                       | the lid ends the game about 4 s after (overflow rule; nothing is forced)                    |
+| `cascade-test-game-over` | none: forces the result card                                                                            | an extra, not used by the demos                                                             |
 
 Win set-up is blocked on #3699: `testHooks.ts` has a marked TODO for `setupWin` and the component for a `cascade-test-win` button; there is no UI yet.
 

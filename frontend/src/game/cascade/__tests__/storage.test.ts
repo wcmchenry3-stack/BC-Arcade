@@ -3,10 +3,10 @@ import * as Sentry from "@sentry/react-native";
 import { saveGame, loadGame, clearGame, looksValid, SAVE_VERSION } from "../storage";
 import type { SavedState } from "../storage";
 
-const STORAGE_KEY = "cascade_game_v4";
+const STORAGE_KEY = "cascade_game_v5";
 
 const makeSavedState = (overrides: Partial<SavedState> = {}): SavedState => ({
-  version: 4,
+  version: 5,
   pieces: [{ tier: 1, x: 100, y: 200 }],
   score: 42,
   savedAt: 1700000000000,
@@ -23,8 +23,9 @@ describe("cascade storage — looksValid", () => {
     expect(looksValid(makeSavedState({ pieces: [] }))).toBe(true);
   });
 
-  it("returns false for version !== 4", () => {
+  it("returns false for version !== 5", () => {
     expect(looksValid({ ...makeSavedState(), version: 2 })).toBe(false);
+    expect(looksValid({ ...makeSavedState(), version: 4 })).toBe(false);
   });
 
   it("returns false when pieces is not an array", () => {
@@ -104,7 +105,7 @@ describe("cascade storage — save / load roundtrip", () => {
     await expect(loadGame()).resolves.toBeNull();
   });
 
-  it("version !== 4 → looksValid returns false and loadGame returns null", async () => {
+  it("version !== 5 → looksValid returns false and loadGame returns null", async () => {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...makeSavedState(), version: 2 }));
     expect(await loadGame()).toBeNull();
   });
@@ -190,8 +191,8 @@ describe("cascade storage — old v3 saves are discarded (#3695: the 12-tier lad
     (Sentry.captureMessage as jest.Mock).mockClear();
   });
 
-  it("is saved as version 4", () => {
-    expect(SAVE_VERSION).toBe(4);
+  it("is saved as version 5 (#3697)", () => {
+    expect(SAVE_VERSION).toBe(5);
   });
 
   it("does not restore a v3 save (a new game), and removes the old key", async () => {
@@ -202,14 +203,14 @@ describe("cascade storage — old v3 saves are discarded (#3695: the 12-tier lad
     expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("keeps a v4 save and still removes a leftover v3 one", async () => {
+  it("keeps a v5 save and still removes a leftover v3 one", async () => {
     await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
     await saveGame(makeSavedState({ score: 7 }));
     expect((await loadGame())?.score).toBe(7);
     expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
   });
 
-  it("an invalid v4 save is discarded and never falls back to a leftover v3 save", async () => {
+  it("an invalid v5 save is discarded and never falls back to a leftover v3 save", async () => {
     await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ ...makeSavedState(), score: "x" }));
     await expect(loadGame()).resolves.toBeNull();
@@ -227,5 +228,56 @@ describe("cascade storage — old v3 saves are discarded (#3695: the 12-tier lad
     await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(v3Fixture()));
     await clearGame();
     expect(await AsyncStorage.getItem(LEGACY_KEY)).toBeNull();
+  });
+});
+
+describe("cascade storage — old v4 saves are discarded (#3697: the lively ladder on planck.js)", () => {
+  const V4_KEY = "cascade_game_v4";
+  /** A v4 save from #3695's ladder (radii 22-101): a capstone and a Watermelon on the floor. */
+  const v4Fixture = () => ({
+    version: 4,
+    pieces: [
+      { tier: 11, x: 121, y: 479 },
+      { tier: 10, x: 290, y: 492 },
+    ],
+    score: 4096,
+    savedAt: 1700000000000,
+    queue: { current: 2, next: 0 },
+    playedMs: 300_000,
+  });
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    (Sentry.captureException as jest.Mock).mockClear();
+    (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+
+  it("does not restore a v4 save (a new game), and removes its key", async () => {
+    await AsyncStorage.setItem(V4_KEY, JSON.stringify(v4Fixture()));
+    await expect(loadGame()).resolves.toBeNull();
+    expect(await AsyncStorage.getItem(V4_KEY)).toBeNull();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("a v4 payload under the v5 key is invalid and discarded", async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(v4Fixture()));
+    await expect(loadGame()).resolves.toBeNull();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps a v5 save and removes leftover v3 and v4 ones", async () => {
+    await AsyncStorage.setItem(V4_KEY, JSON.stringify(v4Fixture()));
+    await AsyncStorage.setItem("cascade_game_v3", JSON.stringify({ version: 3 }));
+    await saveGame(makeSavedState({ score: 11 }));
+    expect((await loadGame())?.score).toBe(11);
+    expect(await AsyncStorage.getItem(V4_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem("cascade_game_v3")).toBeNull();
+  });
+
+  it("clearGame removes a v4 save too", async () => {
+    await AsyncStorage.setItem(V4_KEY, JSON.stringify(v4Fixture()));
+    await clearGame();
+    expect(await AsyncStorage.getItem(V4_KEY)).toBeNull();
   });
 });

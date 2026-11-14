@@ -14,15 +14,17 @@
  *
  * ## Radii
  *
- * Geometric: `radius(n) = round(22 * 4 ^ (n / 10))`, so r0 = 22, r10 = 88 and the ratio between
- * tiers is about 1.149. The series continues to the capstone: r11 = 101. Why those ends: the bin
- * is 400 wide with 20 px walls, so 360 px of inner width. Two tier-10 pieces side by side need
- * 4 * 88 = 352 px, which fits (8 px to spare) and leaves them free to touch. The capstone is 202 px
- * across and fits. Droppable tiers are 0-4 (radius 22-38): the largest spawns at
- * `OVERFLOW_LINE_Y - r - inset`, its top edge at y = -1, so a spawn is on the canvas (a tier-5+
- * piece, which only the dev panel drops, spawns further above it). A first try with r0 = 15
- * (r10 = 85) made a game 2x longer: the spam bot took 100-123 s to lose where it took 35-46 s on
- * the old ladder, so the lid test's bound had no headroom; r0 = 22 puts it at 54-73 s.
+ * Geometric (#3697, the owner's "3 lively" tuning): `radius(n) = round(R0 * (R10 / R0) ^ (n / 10))`
+ * with R0 = 18 and R10 = 56, so the ratio between tiers is about 1.12 and the series continues to
+ * the capstone: r11 = 63. Smaller and flatter than #3695's ladder (22 / 88 / 101) so the capstone
+ * can be built in one session: holding a tier 10 while the second one is built (one piece of each
+ * tier 0-10) covers about 25 % of the bin under the lid, against 53 % on the old ladder, where no
+ * bot ever reached tier 10. Two tier-10 pieces side by side need 224 px of the 360 px inner width,
+ * and the capstone (126 px across) fits. Droppable tiers are 0-5 (radius 18-32): the largest spawns
+ * at `OVERFLOW_LINE_Y - r - inset`, its top edge at y = 11, on the canvas. Why 18 / 56 and not the
+ * 16 / 52 the other two proposals used: on lively physics (low friction, bounce) the spam bot
+ * outlived the lid's 120 s bound in 6-10 % of games on 16 / 52; 18 / 56 puts its longest game at
+ * about 107-109 s (docs/research/CASCADE_FEEL_PROPOSALS.md).
  *
  * ## Scores
  *
@@ -32,8 +34,9 @@
  *
  * ## Density
  *
- * A multiplier on Matter's default body density (0.001), so 1 leaves the physics as it was. The
- * field lives here so the physics story (#3697) tunes it in one place; it is 1 for every tier now.
+ * planck.js density per tier: `(r0 / r) ^ 0.5`, so mass grows as r^1.5 instead of r^2. The largest
+ * mass ratio on the board (capstone : tier 0) is then 3.5^1.5 = 6.5 : 1 instead of 12 : 1, so a big
+ * piece no longer drives small ones through each other (#3696). Only ratios matter to Box2D.
  */
 
 export type TierSetId = "fruits" | "cosmos";
@@ -44,7 +47,7 @@ export interface TierDef {
   readonly radius: number;
   /** Points for a merge that makes this tier. */
   readonly score: number;
-  /** Multiplier on Matter's default density. */
+  /** planck.js density (only the ratios between tiers matter). */
   readonly density: number;
   /** True if the spawner may offer this tier. */
   readonly droppable: boolean;
@@ -56,31 +59,38 @@ export const TIER_COUNT = 12;
 /** The capstone: never dropped, never merges. */
 export const CAPSTONE_TIER = TIER_COUNT - 1;
 
-type Row = readonly [radius: number, nameKeyFruits: string, nameKeyCosmos: string];
+/** The ladder's ends (see "Radii" above): tier 0's and tier 10's radius, world px. */
+const R0 = 18;
+const R10 = 56;
+/** Exponent of the density rule `(r0 / r) ^ DENSITY_EXPONENT`. */
+const DENSITY_EXPONENT = 0.5;
+/** Highest droppable tier (0-5 drop, #3697). */
+const MAX_DROPPABLE_TIER = 5;
 
-const ROWS: readonly Row[] = [
-  [22, "cherry", "moon"],
-  [25, "blueberry", "pluto"],
-  [29, "lemon", "mercury"],
-  [33, "grape", "mars"],
-  [38, "orange", "venus"],
-  [44, "apple", "earth"],
-  [51, "peach", "neptune"],
-  [58, "coconut", "uranus"],
-  [67, "dragonfruit", "saturn"],
-  [77, "pineapple", "jupiter"],
-  [88, "watermelon", "sun"],
-  [101, "pumpkin", "milkyWay"],
+type Names = readonly [nameKeyFruits: string, nameKeyCosmos: string];
+
+const NAMES: readonly Names[] = [
+  ["cherry", "moon"],
+  ["blueberry", "pluto"],
+  ["lemon", "mercury"],
+  ["grape", "mars"],
+  ["orange", "venus"],
+  ["apple", "earth"],
+  ["peach", "neptune"],
+  ["coconut", "uranus"],
+  ["dragonfruit", "saturn"],
+  ["pineapple", "jupiter"],
+  ["watermelon", "sun"],
+  ["pumpkin", "milkyWay"],
 ];
 
-/** Highest droppable tier (0-4 drop; unchanged from the 10-tier ladder). */
-const MAX_DROPPABLE_TIER = 4;
+const ladderRadius = (tier: number): number => Math.round(R0 * (R10 / R0) ** (tier / 10));
 
-export const TIERS: readonly TierDef[] = ROWS.map(([, fruits, cosmos], tier) => ({
+export const TIERS: readonly TierDef[] = NAMES.map(([fruits, cosmos], tier) => ({
   tier,
-  radius: ROWS[tier]![0],
+  radius: ladderRadius(tier),
   score: 2 ** tier,
-  density: 1,
+  density: (ladderRadius(0) / ladderRadius(tier)) ** DENSITY_EXPONENT,
   droppable: tier <= MAX_DROPPABLE_TIER,
   nameKeys: { fruits, cosmos },
 }));
