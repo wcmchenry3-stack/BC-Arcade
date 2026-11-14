@@ -345,6 +345,13 @@ around it must never flood Sentry or bury real errors.
 
 The apps' Sentry volume can be turned down or off without an app release.
 
+The same carrier also serves one non-Sentry dial: `personal_best_seed: {enabled}`
+(#3802, `PERSONAL_BEST_SEED_ENABLED`, default `true`), which stops the one-time
+seeding of the local personal best from `GET /stats/me`. It adds no event, no
+request and no storage beyond one about 30 B write per seeded game; see
+[DATA-INVENTORY.md](DATA-INVENTORY.md) and the
+[RENDER.md runbook](RENDER.md#environment-variables).
+
 - **Source.** Backend env vars on Render: `CLIENT_SENTRY_ENABLED` (default
   `true`) and `CLIENT_SENTRY_SAMPLE_RATE` (default `1.0`, 0–1; a value outside
   the range fails `Settings` validation, so the deploy fails and the running

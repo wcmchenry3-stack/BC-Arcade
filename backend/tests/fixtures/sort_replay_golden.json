@@ -1,0 +1,9 @@
+{
+ "level": 8,
+ "events": [
+  {"type":"game_started","data":{"level":8,"catalog":1,"engine_version":1}},
+  {"type":"moves","data":{"m":[[0,2,3],[1],[0,2,3],[0,1,3],[2,2,1],[2,2,1],[2,2,1],[0,2,1],[0,3,2],[0,0,3],[0,1,0],[3,2],[0,1,3],[1],[0,1,3],[2,0,1],[2,0,1],[2,0,1],[0,0,1],[2,0,3],[2,0,3],[2,0,3],[0,0,3],[2,0,1],[2,0,1]],"v":1,"unit":1,"t_ms":60000}},
+  {"type":"moves","data":{"m":[[2,0,1],[0,0,1]],"v":1,"unit":2,"t_ms":120000}},
+  {"type":"game_ended","data":{"outcome":"completed","won":true,"level":8,"moves":8,"undos":4,"level_reached":8,"catalog_version":1,"stars":3,"replay":{"u":2,"n":2,"b":277}}}
+ ]
+}

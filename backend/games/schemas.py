@@ -295,6 +295,14 @@ class ClientSentryDialOut(BaseModel):
     sample_rate: float = Field(ge=0, le=1)
 
 
+class PersonalBestSeedDialOut(BaseModel):
+    """The personal-best seed switch (#3802): read by the app with the replay dial."""
+
+    # PERSONAL_BEST_SEED_ENABLED (env): false stops the app seeding its local best.
+    enabled: bool
+
+
 class CatalogResponse(BaseModel):
     items: list[GameTypeOut]
     client_sentry: ClientSentryDialOut
+    personal_best_seed: PersonalBestSeedDialOut
