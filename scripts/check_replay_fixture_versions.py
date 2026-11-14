@@ -148,9 +148,13 @@ def _py_tokens(text: str) -> list[Tok]:
             and tok.type == tokenize.STRING
             and nxt in (tokenize.NEWLINE, tokenize.ENDMARKER)
         )
-        test_name = [t.text for t in out[-1:]] == ["def"] and tok.type == tokenize.NAME
         line_start = False
-        if not (docstring or test_name):
+        if [t.text for t in out[-1:]] == ["def"] and tok.type == tokenize.NAME:
+            # The name is dropped, but whether pytest collects it (default `test` prefix) is kept:
+            # `test_a` -> `test_b` is free, `test_a` -> `check_a` (or back) is a change.
+            marker = "<collected>" if tok.string.startswith("test") else "<not collected>"
+            out.append(Tok(marker, tok.start[0]))
+        elif not docstring:
             out.append(Tok(tok.string, tok.start[0]))
     return out
 

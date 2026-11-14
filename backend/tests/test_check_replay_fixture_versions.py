@@ -918,6 +918,27 @@ def test_a_string_engine_version_is_quoted_in_the_message(repo) -> None:
     )
 
 
+# --------------------------------------------------------------------------- Codex P2
+
+COLLECTED_PY = "def test_the_human_card() -> None:\n    assert card.total == 405\n"
+
+
+def test_renaming_a_python_test_so_pytest_no_longer_collects_it_is_a_change() -> None:
+    edited = COLLECTED_PY.replace("def test_the_human_card", "def check_the_human_card")
+    assert guard.results_changed("t.py", COLLECTED_PY.encode(), edited.encode())
+
+
+def test_renaming_a_python_test_that_keeps_its_test_prefix_is_free() -> None:
+    edited = COLLECTED_PY.replace("def test_the_human_card", "def test_the_players_card")
+    assert not guard.results_changed("t.py", COLLECTED_PY.encode(), edited.encode())
+
+
+def test_renaming_a_helper_so_pytest_starts_collecting_it_is_also_a_change() -> None:
+    """Fail closed both ways: a changed set of collected tests is reviewed with a bump or entry."""
+    helper = COLLECTED_PY.replace("def test_the_human_card", "def check_the_human_card")
+    assert guard.results_changed("t.py", helper.encode(), COLLECTED_PY.encode())
+
+
 # --------------------------------------------------------------------------- this repository
 
 
