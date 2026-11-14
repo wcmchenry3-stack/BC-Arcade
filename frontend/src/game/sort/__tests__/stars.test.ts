@@ -1,6 +1,7 @@
 import { bestStarsFor, starsFor, twoStarMoves } from "../stars";
 import { loadBestMoves, saveBestMoves } from "../storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SORT_CATALOG_VERSION } from "../catalog";
 
 describe("starsFor (#3687)", () => {
   it.each([
@@ -48,7 +49,9 @@ describe("bestStarsFor", () => {
 
   it("loads stars from a save made before stars existed (best moves only)", async () => {
     await AsyncStorage.clear();
-    // The pre-stars format: just moves per level.
+    // The pre-stars format: just moves per level, on this catalog (moved into the shared
+    // personal best on this first read, #3821).
+    await AsyncStorage.setItem("@sort/catalog_version", String(SORT_CATALOG_VERSION));
     await AsyncStorage.setItem("@sort/best_moves", JSON.stringify({ "1": 6, "2": 12 }));
     const bests = await loadBestMoves();
     expect(bests).toEqual({ "1": 6, "2": 12 });
@@ -56,9 +59,10 @@ describe("bestStarsFor", () => {
     expect(bestStarsFor(bests ?? {}, 2, 8)).toBe(1);
     // Saving again adds nothing: there is no second copy to keep in step.
     await saveBestMoves(bests ?? {});
-    expect(JSON.parse((await AsyncStorage.getItem("@sort/best_moves")) ?? "{}")).toEqual({
-      "1": 6,
-      "2": 12,
+    expect(JSON.parse((await AsyncStorage.getItem("personal_best_v1:sort")) ?? "{}")).toEqual({
+      v: 1,
+      b: { "1": 6, "2": 12 },
     });
+    await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBeNull();
   });
 });

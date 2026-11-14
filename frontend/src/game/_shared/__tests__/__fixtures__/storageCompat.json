@@ -848,20 +848,6 @@
     "storage": {},
     "sentry": "[]"
   },
-  "sort: best moves": {
-    "result": "{\"1\":8,\"2\":11}",
-    "storage": {
-      "@sort/best_moves": "{\"1\":8,\"2\":11}"
-    },
-    "sentry": "[]"
-  },
-  "sort: best moves filtered": {
-    "result": "{\"1\":5}",
-    "storage": {
-      "@sort/best_moves": "{\"1\":5,\"2\":\"x\",\"3\":-1}"
-    },
-    "sentry": "[]"
-  },
   "sort: clear": {
     "result": "\"__undefined\"",
     "storage": {
@@ -878,23 +864,6 @@
   },
   "sort: progress read fails": {
     "result": "{\"unlockedLevel\":1,\"currentLevelId\":null,\"currentState\":null}",
-    "storage": {},
-    "sentry": "[]"
-  },
-  "sort: best moves corrupt": {
-    "result": "{}",
-    "storage": {
-      "@sort/best_moves": "{x"
-    },
-    "sentry": "[]"
-  },
-  "sort: best moves read fails": {
-    "result": "null",
-    "storage": {},
-    "sentry": "[]"
-  },
-  "sort: best moves write fails": {
-    "result": "false",
     "storage": {},
     "sentry": "[]"
   }

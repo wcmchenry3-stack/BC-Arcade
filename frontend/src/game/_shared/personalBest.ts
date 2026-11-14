@@ -20,7 +20,12 @@
  * - **Older saves** (each game's key before #3757) are moved in on the first read: the older
  *   value is merged in (the better one wins, so a best is never lowered or lost), written in the
  *   new format, and only once that write has landed is the old key removed. A failed write leaves
- *   the old key for the next read to try again, so the move is idempotent.
+ *   the old key for the next read to try again, so the move is idempotent. A game may hold its
+ *   older save back until it can be read correctly (Sort's, until it is on the level catalog,
+ *   #3821): it is then left exactly as stored and counts for nothing until a later read.
+ * - **Kept in memory** (Sort, #3821): a game that decides from bests it holds in memory reads them
+ *   with `readBests` (`null` when they must not be written back) and mirrors them with
+ *   `recordBests` (merged in, the better value winning, one write).
  * - **Fail-safe.** Nothing here throws. A payload that can't be parsed reads as no best (reported
  *   as a warning and removed); a stored value that can't be a best for its game is dropped. A
  *   record in a format version this build doesn't know (a newer build's, kept across a rollback)
@@ -40,6 +45,7 @@ import { bestOf, type BestResult } from "./bestOf";
 import { captureThrottledMessage, sentryThrottle } from "./sentryThrottle";
 import {
   PERSONAL_BEST_GAMES,
+  type LegacySave,
   type PersonalBestGame,
   type PersonalBestSpec,
 } from "./personalBestGames";
@@ -193,6 +199,23 @@ async function write(game: PersonalBestGame, bests: Bests): Promise<boolean> {
   }
 }
 
+/**
+ * The plausible bests in the older save, or `null` when it can't be moved in yet (the game holds
+ * it back). A save that can't be read holds no best to keep.
+ */
+function readLegacy(
+  spec: PersonalBestSpec,
+  legacy: LegacySave,
+  stored: Readonly<Record<string, string | null>>
+): Bests | null {
+  try {
+    const read = legacy.read(stored);
+    return read === null ? null : keepPlausible(spec, read);
+  } catch {
+    return {};
+  }
+}
+
 /** The stored bests, with any older save moved in (see the header). Never rejects. */
 async function load(game: PersonalBestGame): Promise<Loaded> {
   const cached = cache.get(game);
@@ -200,9 +223,10 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
   const spec = PERSONAL_BEST_GAMES[game];
   const key = storageKey(game);
   const legacyKeys = spec.legacy?.keys ?? [];
+  const contextKeys = spec.legacy?.context ?? [];
   let stored: Record<string, string | null>;
   try {
-    stored = await AsyncStorage.getMany([key, ...legacyKeys]);
+    stored = await AsyncStorage.getMany([key, ...legacyKeys, ...contextKeys]);
   } catch (e) {
     report(e, game, "load");
     return { bests: {}, readable: false };
@@ -237,12 +261,10 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
     return { bests: current, readable };
   }
 
-  let imported: Bests = {};
-  try {
-    imported = keepPlausible(spec, spec.legacy.read(stored));
-  } catch {
-    // An older save that can't be read holds no best to keep.
-  }
+  const imported = readLegacy(spec, spec.legacy, stored);
+  // Not movable yet (Sort before its catalog migration): left as stored, counted for nothing,
+  // and not cached, so a later read tries again.
+  if (imported === null) return { bests: current, readable };
   const merged = mergeBests(game, current, imported);
   // Over a record this build can't read, the older save counts in memory only, and stays stored.
   if (!readable) return { bests: merged, readable };
@@ -264,6 +286,36 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
 /** Every stored best for `game`, by variant. Never rejects: none on failure. */
 export function getBests(game: PersonalBestGame): Promise<Bests> {
   return inOrder(game, async () => (await load(game)).bests);
+}
+
+/**
+ * Every stored best for `game`, by variant, or `null` when storage could not be read or holds a
+ * record in a format this build doesn't know: a caller that keeps bests in memory must then not
+ * write them back (`recordBests` refuses to as well). Never rejects.
+ */
+export function readBests(game: PersonalBestGame): Promise<Bests | null> {
+  return inOrder(game, async () => {
+    const { bests, readable } = await load(game);
+    return readable ? bests : null;
+  });
+}
+
+/**
+ * Merges `bests` (by variant) into the stored ones in one write, the better value per variant
+ * winning, and writes only when that changes something: for a game that keeps its bests in memory
+ * and mirrors them to storage (Sort, #3821). Values that can't be a best are ignored. Resolves
+ * true when storage holds them afterwards; false when storage could not be read (nothing is
+ * written then) or the write failed (reported). Never rejects.
+ */
+export function recordBests(game: PersonalBestGame, bests: Bests): Promise<boolean> {
+  return inOrder(game, async () => {
+    const loaded = await load(game);
+    if (!loaded.readable) return false;
+    const spec = PERSONAL_BEST_GAMES[game];
+    const merged = mergeBests(game, loaded.bests, keepPlausible(spec, bests));
+    if (sameBests(merged, loaded.bests)) return true;
+    return write(game, merged);
+  });
 }
 
 /** The best for `game` (and `variant`); 0 when none is on record. Never rejects. */

@@ -15,6 +15,8 @@ import {
   getBests,
   judgeResult,
   mergeBests,
+  readBests,
+  recordBests,
   recordResult,
   storageKey,
 } from "../personalBest";
@@ -190,6 +192,38 @@ describe("recordResult / getBest", () => {
       recordResult("cascade", 600),
     ]);
     await expect(getBest("cascade")).resolves.toBe(900);
+  });
+});
+
+describe("readBests / recordBests: bests kept in memory (Sort, #3821)", () => {
+  it("recordBests merges every variant in one write, the better value winning", async () => {
+    await AsyncStorage.setItem(storageKey("sort"), record({ "1": 8, "2": 11 }));
+    setItem.mockClear();
+    await expect(recordBests("sort", { "1": 9, "2": 10, "3": 30 })).resolves.toBe(true);
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(await stored("sort")).toEqual({ v: 1, b: { "1": 8, "2": 10, "3": 30 } });
+  });
+
+  it("recordBests writes nothing when nothing improves, and ignores values that can't be a best", async () => {
+    await AsyncStorage.setItem(storageKey("sort"), record({ "1": 8 }));
+    setItem.mockClear();
+    await expect(recordBests("sort", { "1": 8, "2": 0, "3": 2.5, "4": -1 })).resolves.toBe(true);
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("recordBests resolves false on a failed write, and readBests is null when storage can't be read", async () => {
+    setItem.mockRejectedValueOnce(new Error("full"));
+    await expect(recordBests("sort", { "1": 8 })).resolves.toBe(false);
+    getMany.mockRejectedValueOnce(new Error("disk"));
+    await expect(readBests("sort")).resolves.toBeNull();
+    await expect(readBests("sort")).resolves.toEqual({});
+  });
+
+  it("readBests is null over another format version, and recordBests never writes over it", async () => {
+    await AsyncStorage.setItem(storageKey("sort"), '{"v":2,"b":{}}');
+    await expect(readBests("sort")).resolves.toBeNull();
+    await expect(recordBests("sort", { "1": 8 })).resolves.toBe(false);
+    await expect(AsyncStorage.getItem(storageKey("sort"))).resolves.toBe('{"v":2,"b":{}}');
   });
 });
 

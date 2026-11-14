@@ -119,7 +119,8 @@ export default function SortScreen() {
   /**
    * The best moves per level: the one source of truth for every solve's card
    * and score, so the session completes before the player can move on.
-   * Loaded (merged) from `@sort/best_moves` with the screen; storage mirrors it.
+   * Loaded (merged) from the shared personal best (`personal_best_v1:sort`,
+   * #3821) with the screen; storage mirrors it.
    */
   const bestMovesRef = useRef<BestMoves>({});
   /** Storage was read, so writing `bestMovesRef` can't lose a stored best. */
