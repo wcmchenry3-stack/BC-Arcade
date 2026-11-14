@@ -30,8 +30,6 @@
   "a11y.hintDestination": "संकेत: यहाँ डालें",
   "settings.colorblindMode": "कलरब्लाइंड मोड",
   "settings.colorblindModeHint": "रंग के अलावा हर बॉल पर एक चिन्ह भी दिखाता है",
-  "error.loadFailed": "यह लेवल लोड नहीं हो सका।",
-  "error.submitRetry": "पुनः प्रयास",
   "levelSelect.title": "एक लेवल चुनें",
   "levelSelect.continue": "लेवल {{level}} जारी रखें",
   "levelSelect.locked": "लॉक",

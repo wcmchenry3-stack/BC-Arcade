@@ -30,8 +30,6 @@
   "a11y.hintDestination": "Pista: vierte aquí",
   "settings.colorblindMode": "Modo Daltónico",
   "settings.colorblindModeHint": "Muestra un símbolo en cada bola además del color",
-  "error.loadFailed": "No se pudo cargar este nivel.",
-  "error.submitRetry": "Reintentar",
   "levelSelect.title": "Elige un nivel",
   "levelSelect.continue": "Continuar nivel {{level}}",
   "levelSelect.locked": "Bloqueado",

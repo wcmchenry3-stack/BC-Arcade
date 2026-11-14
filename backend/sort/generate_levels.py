@@ -1,18 +1,15 @@
-"""Generate the 23 Sort Puzzle levels, each proven solvable.
+"""Deal Sort Puzzle boards, each proven solvable.
 
-``build_levels`` is what ``GET /sort/levels`` serves: it runs on every request
-with no seed, so each fetch gets new random mixtures of the same
-``LEVEL_SPECS`` (#2746). Nothing is saved to disk. Only app builds from before
-the fixed level catalog call it (#2761); ``deal_level`` is also how
-``scripts/sort_build_catalog.py`` deals the catalog's candidates.
+``deal_level`` is how ``scripts/sort_build_catalog.py`` deals the fixed level
+catalog's candidates (#2761). The app ships that catalog and never fetches
+levels (the random-level ``GET /sort/levels`` was removed in #3729).
 
-Every level is a uniform random shuffle of its colours, dealt again until
+Every board is a uniform random shuffle of its colours, dealt again until
 ``sort.fast_solver`` proves it has a solution (#2764). A deal the solver proves
 dead, or can't decide within ``SOLVER_BUDGET`` states, is thrown away, so no
-level is ever served on an assumption. If ``MAX_ATTEMPTS`` deals of one level
-all fail, ``build_levels`` logs and raises ``LevelGenerationError`` rather than
-serve an unverified level; with the measured solvable rates that is
-practically unreachable (see ``MAX_ATTEMPTS``).
+level is ever accepted on an assumption. If ``MAX_ATTEMPTS`` deals all fail,
+``deal_level`` logs and raises ``LevelGenerationError`` rather than return an
+unverified board.
 """
 
 from __future__ import annotations
@@ -27,13 +24,13 @@ logger = logging.getLogger(__name__)
 
 # Distinct states the solver may visit per deal before giving up (verdict
 # "unknown", which is rejected like a dead deal). Across 5,000 raw shuffles of
-# every configuration in LEVEL_SPECS the most any deal needed was 40,340 (a dead
+# every configuration the catalog uses the most any deal needed was 40,340 (a dead
 # 14-colour deal); solvable ones were decided in at most 27,914. Five times the
 # observed maximum, and it only bounds the time spent on a pathological deal:
 # the budget can never let an undecided level through.
 SOLVER_BUDGET = 200_000
 
-# Deals tried per level before giving up. The hardest configuration is 9
+# Deals tried per level before giving up (``deal_level``'s default). The hardest configuration is 9
 # colours with one empty bottle, where about 1% of random shuffles are
 # solvable (52 of 5,000 measured): the chance that 5,000 deals in a row fail is
 # about (1 - 0.0104) ** 5000, around 1e-23. The other configurations are far
@@ -80,11 +77,6 @@ def deal_level(
     )
 
 
-def to_json_bottles(state: list[list[str]]) -> list[list[str]]:
-    """Pad each bottle to DEPTH slots; '' marks an empty slot."""
-    return [b + [""] * (DEPTH - len(b)) for b in state]
-
-
 COLORS_3 = ["red", "blue", "green"]
 COLORS_4 = ["red", "blue", "green", "yellow"]
 COLORS_5 = ["red", "blue", "green", "yellow", "orange"]
@@ -97,51 +89,3 @@ COLORS_11 = [*COLORS_10, "navy"]
 COLORS_12 = [*COLORS_11, "maroon"]
 COLORS_13 = [*COLORS_12, "gold"]
 COLORS_14 = [*COLORS_13, "indigo"]
-
-# 23-level progression: 3→14 colors.
-# Tiers 3–9c: alternating tight (1 empty) / relaxed (2 empties).
-# Tiers 10–14c: 2 empties only. Random 1-empty deals at 9 colors are already
-# ~99% dead, so 10+ colors with one empty bottle would take too many deals.
-# No two consecutive levels share the same (colors, n_empty) pair.
-LEVEL_SPECS = [
-    # (id, colors, n_empty)
-    (1, COLORS_3, 2),  # tutorial — generous
-    (2, COLORS_3, 1),  # tighten within 3-color tier
-    (3, COLORS_4, 1),  # new tier, tight
-    (4, COLORS_4, 2),  # ease off
-    (5, COLORS_5, 1),  # new tier, tight
-    (6, COLORS_5, 2),  # ease off
-    (7, COLORS_6, 1),  # new tier, tight
-    (8, COLORS_6, 2),  # ease off
-    (9, COLORS_6, 1),  # plateau buster — revisit 6c tight
-    (10, COLORS_7, 1),  # new tier, tight
-    (11, COLORS_7, 2),  # ease off
-    (12, COLORS_8, 1),  # new tier, tight
-    (13, COLORS_8, 2),  # ease off
-    (14, COLORS_9, 1),  # new tier, tight
-    (15, COLORS_9, 2),  # ease off
-    (16, COLORS_9, 1),  # plateau buster — revisit 9c tight
-    (17, COLORS_10, 2),  # new tier
-    (18, COLORS_11, 2),  # new tier
-    (19, COLORS_12, 2),  # new tier
-    (20, COLORS_13, 2),  # new tier
-    (21, COLORS_14, 2),  # new tier
-    # Levels 22–23 revisit 13c then 14c: the color count briefly dips then peaks,
-    # providing a slight ease before the true endgame. Consecutive constraint holds
-    # because 14c separates the two 13c entries and 13c separates the two 14c entries.
-    (22, COLORS_13, 2),  # revisit 13c — brief ease before endgame
-    (23, COLORS_14, 2),  # endgame
-]
-
-
-def build_levels(seed: int | None = None) -> list[dict]:
-    """Deal the 23 levels, each proven solvable. seed=None uses a random seed.
-
-    Raises ``LevelGenerationError`` (after logging) if a level has no provably
-    solvable deal within ``MAX_ATTEMPTS``; an unverified level is never served.
-    """
-    rng = random.Random(seed)
-    return [
-        {"id": level_id, "bottles": to_json_bottles(deal_level(colors, n_empty, rng))}
-        for level_id, colors, n_empty in LEVEL_SPECS
-    ]

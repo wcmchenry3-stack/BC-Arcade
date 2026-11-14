@@ -278,24 +278,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "error.loadFailed": {
-    "component": "SortScreen",
-    "description": "Error message when a level fails to load.",
-    "tone": "apologetic, clear",
-    "characterLimit": 60,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "error.submitRetry": {
-    "component": "SortScreen win overlay",
-    "description": "Button label to retry a failed leaderboard submission.",
-    "tone": "action",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "levelSelect.title": {
     "component": "LevelSelectScreen",
     "description": "Heading of the level-select grid screen.",

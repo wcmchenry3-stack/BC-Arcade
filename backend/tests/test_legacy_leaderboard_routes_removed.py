@@ -2,13 +2,14 @@
 
 Every game ranks on the generic board (``GET /games/leaderboard/{game_type}``,
 #2618) and its result card reads ``GET /games/{id}/rank`` (#2677). The
-per-game submit, read and name routes, their routers (all but Sort's, which
-keeps ``GET /sort/levels``) and their request/response models were deleted,
+per-game submit, read and name routes, their routers and their
+request/response models were deleted (Sort's last route, ``GET /sort/levels``,
+went in #3729),
 and so was the generic ``PATCH /games/{id}/name``: a name is set with
 ``PUT /players/me``.
 
 Every removed path answers 404, not 405, even with live siblings under the
-same prefix (``GET /sort/levels``, ``GET /games/{id}/rank``, ...): no route
+same prefix (``GET /games/{id}/rank``, ...): no route
 matches the path with any method.
 """
 
@@ -66,7 +67,7 @@ def test_no_removed_route_is_registered() -> None:
     # The schema lists every route with its full path (app.routes holds each
     # included router lazily, without its prefix).
     paths = set(app.openapi()["paths"])
-    assert "/sort/levels" in paths and "/games/leaderboard/{game_type}" in paths
+    assert "/games/leaderboard/{game_type}" in paths
     removed = {path.replace(_GAME_ID, "{game_id}") for _, path, _ in REMOVED_ROUTES}
     removed |= {"/sudoku/scores/{difficulty}"}
     assert paths.isdisjoint(removed), sorted(paths & removed)
@@ -82,15 +83,15 @@ def test_the_name_route_models_and_service_are_gone() -> None:
         assert not hasattr(mod, "set_player_name"), mod.__name__
 
 
-def test_sort_levels_is_unaffected() -> None:
-    """Sort's router stays for ``GET /sort/levels`` (Sort is free: no grant needed)."""
+def test_sort_levels_route_is_gone() -> None:
+    """``GET /sort/levels`` served random levels to pre-catalog builds (#3729)."""
     r = client.get("/sort/levels", headers={"X-Session-ID": str(uuid.uuid4())})
-    assert r.status_code == 200, r.text
-    assert len(r.json()["levels"]) == 23
+    assert r.status_code == 404, r.text
+    assert "/sort/levels" not in app.openapi()["paths"]
 
 
 @pytest.mark.parametrize(
-    "game", ["cascade", "freecell", "hearts", "mahjong", "solitaire", "starswarm", "sudoku"]
+    "game", ["cascade", "freecell", "hearts", "mahjong", "solitaire", "sort", "starswarm", "sudoku"]
 )
 def test_router_module_is_gone(game: str) -> None:
     with pytest.raises(ModuleNotFoundError):
