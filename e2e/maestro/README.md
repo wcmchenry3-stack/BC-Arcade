@@ -190,7 +190,7 @@ dragged card leaves the finger, not only when the move ends up wrong. When you
 add a swipe (an Android/iOS pair of `runFlow` blocks, below), add the subflow
 after the pair and renumber the later ones.
 When `drag #N` never appears, the failure log's `drag-debug-touch` line
-(#3878; docs/TESTING.md) says how far the swipe got. A missing line or
+(#3878; docs/TESTING.md; native only, not rendered on web where axe flags an unlabelled input and Maestro doesn't run) says how far the swipe got. A missing line or
 `down=0` both mean no touch reached a card's pan (the line is hidden by opacity
 until the first touch, so the log may list it as `down=0`); `active=0` means the
 pan didn't activate, `js=0` or a large `lag` that the JS thread was busy.

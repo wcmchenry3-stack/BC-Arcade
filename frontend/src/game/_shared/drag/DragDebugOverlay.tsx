@@ -167,7 +167,7 @@ export function DragDebugOverlay({ drag }: { drag: GhostHostDrag | null }) {
             )}
           </View>
         )}
-        <TouchLine />
+        {Platform.OS !== "web" && <TouchLine />}
       </View>
       {drag?.debug && <LiveLayer key={dragKey(drag)} drag={drag} />}
     </>
@@ -191,7 +191,8 @@ function dragKey(drag: GhostHostDrag): number {
  * UI thread whenever a count changes (see dragDebugTouch.ts), so it updates
  * while the JS thread is blocked. Hidden until the first touch on a card. A
  * TextInput, not a Text, because only its text can be set from the UI thread;
- * Maestro reads its value as the element's text.
+ * Maestro reads its value as the element's text. Native only: web has no
+ * Maestro, and axe flags the unlabelled input there.
  */
 function TouchLine() {
   const { colors } = useTheme();

@@ -6,7 +6,7 @@
  * drive the real DraggableCard pan callbacks as RNGH calls them.
  */
 import React from "react";
-import { Text } from "react-native";
+import { Platform, Text } from "react-native";
 import { act, render } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Reanimated from "react-native-reanimated";
@@ -186,6 +186,19 @@ describe("drag debug touch line (#3878)", () => {
       text: "touch down=1 active=1 end=1 js=1 lag=0ms",
       opacity: 0.9,
     });
+  });
+
+  it("is not rendered on web (axe flags an unlabelled input; Maestro doesn't run there)", async () => {
+    setDragDebugEnabled(true);
+    jest.replaceProperty(Platform, "OS", "web");
+    const { queryByTestId } = await render(<Board />);
+    expect(queryByTestId(DRAG_DEBUG_TOUCH_TEST_ID)).toBeNull();
+  });
+
+  it("is rendered on native", async () => {
+    setDragDebugEnabled(true);
+    const { queryByTestId } = await render(<Board />);
+    expect(queryByTestId(DRAG_DEBUG_TOUCH_TEST_ID)).not.toBeNull();
   });
 
   it("overlay off: no line and nothing counted", async () => {
