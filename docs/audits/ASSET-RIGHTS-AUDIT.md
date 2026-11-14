@@ -148,7 +148,7 @@ Sudoku's sounds added in #3775 (recounted from the tree and `node frontend/scrip
 synthesized sounds under the same names, and `sudoku-digit-place-2.ogg`, `sudoku-digit-place-3.ogg`,
 `sudoku-error-entered.ogg` and `sudoku-puzzle-complete.ogg` were added. Sudoku no longer requires
 `solitaire-invalid-move.ogg` (Kenney) or `hearts-moon-shot.mp3` (Pixabay), the last code users of
-both, so neither is bundled any more; they stay in the repo (Section 3.4). Net: files under `assets/`
+both, so neither is bundled any more; they stayed in the repo then (Section 3.4; deleted later in #3845). Net: files under `assets/`
 276 to 280, bundled 271 to 273, not bundled under `assets/` 5 to 7 (29 to 31 with the icon masters),
 shipped 306 to 308 (native bundle 270 to 272), the free bucket 70 to 72 (Sudoku 4 to 6), and 4 fewer
 third-party files (third-party sounds 11 to 7; third-party 18 to 14, with a recorded source 18 to 14).
