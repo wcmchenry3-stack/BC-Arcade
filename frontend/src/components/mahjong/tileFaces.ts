@@ -8,7 +8,7 @@
  *   that failed to load or parse is retried on the next mount, up to `MAX_FACE_ATTEMPTS`
  *   times; the ones that loaded are kept, and the set keeps its identity when nothing changed.
  * - Rasterising: `tileFacesFor` draws each face into a CPU raster surface at the art box's
- *   size times the device pixel ratio times the canvas's face resolution (`canvasPlan` in `renderDiag.ts`; 1 in production, so PixelRatio alone) (the snapshot is a plain bitmap, no GPU readback), and
+ *   size times the device pixel ratio times the canvas's face resolution (the native canvas passes 1, so PixelRatio alone) (the snapshot is a plain bitmap, no GPU readback), and
  *   keeps the result per size (`faceWidth`x`faceHeight`) in an LRU of `MAX_CACHED_SIZES`
  *   sizes. Each mounted canvas holds the size it draws (`useTileFaces` acquires it and
  *   releases it on a size change or unmount); only a size no canvas holds is evicted, and its
@@ -25,7 +25,6 @@ import { PixelRatio } from "react-native";
 import { loadData, Skia } from "@shopify/react-native-skia";
 import type { SkImage, SkSVG } from "@shopify/react-native-skia";
 import { TILE_REQUIRES } from "./tileAssets";
-import { isRenderDiagEnabled, noteFaceRaster } from "../../game/mahjong/renderDiag";
 
 /** Index `faceId - 1`: one entry per face asset, null where it didn't load. */
 export type TileFaces = ReadonlyArray<SkImage | null>;
@@ -218,17 +217,8 @@ export function useTileFaces(
   useEffect(() => {
     if (!svgs) return;
     const timer = setTimeout(() => {
-      // Test builds time each pass for the #3684 readout (renderDiag.ts).
-      const diag = isRenderDiagEnabled();
-      const t0 = diag ? Date.now() : 0;
       const k = sizeKey(faceWidth, faceHeight, scale);
-      // A cache hit draws nothing: the readout counts only passes that rasterised.
-      const cached = diag && rasterised.get(k)?.svgs === svgs;
       const faces = tileFacesFor(svgs, faceWidth, faceHeight, scale);
-      if (diag && !cached) {
-        const ready = faces.filter(Boolean).length;
-        noteFaceRaster({ key: k, ms: Date.now() - t0, ready, nulls: faces.length - ready });
-      }
       setDrawn((prev) => (prev?.key === k && prev.faces === faces ? prev : { key: k, faces }));
     }, 0);
     return () => clearTimeout(timer);

@@ -305,7 +305,7 @@ export interface TileNodeProps {
   isFree: boolean;
   isHint: boolean;
   debugShowFree: boolean;
-  /** Board space to canvas pixels: 1 in production (#3684); the old test-build renderer uses `boardResolution`. */
+  /** Board space to canvas pixels: always 1 (#3684: the canvas is the board's size). */
   res: number;
   /** Its animations, when it is in any (#3613). */
   motion?: TileMotion;

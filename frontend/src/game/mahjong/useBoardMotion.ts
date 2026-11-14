@@ -39,7 +39,6 @@ import {
   shuffleDelay,
 } from "./motion";
 import type { MotionClock, TileMotion } from "./motion";
-import { noteDealSkipped, noteDealStart, noteDealTimerFired } from "./renderDiag";
 
 /** A matched pair after it left the board: drawn on top until its burst ends. */
 export interface MatchGhost {
@@ -316,10 +315,7 @@ export function useBoardMotion(
         (id) => ({ delay: dealDelay(layerOf.get(id) ?? 0, layers) })
       );
       dealClock.current = clock;
-      // Test builds only (#3684 readout, renderDiag.ts); inert otherwise.
-      noteDealStart(clock.progress);
       later(DEAL_IN_MS, () => {
-        noteDealTimerFired();
         if (dealClock.current === clock) dealClock.current = null;
       });
     },
@@ -333,7 +329,6 @@ export function useBoardMotion(
   const skipDeal = useCallback(() => {
     const clock = dealClock.current;
     if (!clock) return;
-    noteDealSkipped();
     dealClock.current = null;
     clock.progress.value = 1;
     setMotion((m) => withoutClock(m, "deal", clock));

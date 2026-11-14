@@ -285,7 +285,6 @@ describe("Mahjong GameCanvas (native) — canvas", () => {
       height: 160,
       left: 0,
       top: 0,
-      transform: [{ scale: 1 }],
     });
     for (const id of PAINT_ORDER) expect(group(id).props.transform).toEqual([{ scale: 1 }]);
   });
@@ -732,5 +731,42 @@ describe("Mahjong GameCanvas (native) — motion (#3613)", () => {
     }
     // The ghosts fade as they burst.
     expect(groups[3]!.props.opacity.value).toBeLessThan(1);
+  });
+});
+
+describe("Mahjong GameCanvas (native) — #3684 regression", () => {
+  /** The face bitmap's pixel size at `faceRes` times the device pixel ratio. */
+  function rasterSize(faceRes: number) {
+    const px = PixelRatio.get() * faceRes;
+    return [Math.ceil((FACE_W - 4) * px), Math.ceil((FACE_H - 4) * px)];
+  }
+
+  it("never draws a canvas larger than the board, nor a View downscale", async () => {
+    await mount();
+    const res = boardResolution(camera.scale, camera.tileWidth);
+    const canvas = screen.getByTestId("sk-canvas");
+    const frame = StyleSheet.flatten(canvas.parent!.props.style);
+    expect(res).toBeGreaterThan(1);
+    expect(canvas.props.style.width).toBeLessThanOrEqual(200);
+    expect(canvas.props.style.height).toBeLessThanOrEqual(160);
+    expect(frame.width).toBeLessThanOrEqual(200);
+    expect(frame.height).toBeLessThanOrEqual(160);
+    // No View downscale: the wrapper carries no transform at all (it was scale 1 before #3887).
+    expect(frame.transform).toBeUndefined();
+  });
+
+  it("draws every tile at scale 1", async () => {
+    await mount();
+    for (const id of PAINT_ORDER) expect(group(id).props.transform).toEqual([{ scale: 1 }]);
+  });
+
+  it("rasterises the faces at the device pixel ratio, not times boardResolution (> 1 here)", async () => {
+    mockMakeSvg.mockImplementation((src: number) => ({ svg: src }));
+    await mount();
+    expect(boardResolution(camera.scale, camera.tileWidth)).toBeGreaterThan(1);
+    expect(mockRaster).toHaveBeenCalledWith(...rasterSize(1));
+    expect(mockRaster).not.toHaveBeenCalledWith(
+      ...rasterSize(boardResolution(camera.scale, camera.tileWidth))
+    );
   });
 });
