@@ -46,8 +46,9 @@
  * §2.10), unique and increasing within a game, parts included.
  */
 
+import { replayEngines } from "../_shared/replayEngine";
 import type { EventTypeOf } from "../_shared/eventQueueConfig";
-import { ENGINE_VERSION, detectMoon } from "./engine";
+import { ENGINE_VERSION, commitPass, dealGame, dealNextHand, detectMoon, playCard } from "./engine";
 import type { PrincipleId } from "./conservative/terms";
 import { resolvePersona } from "./types";
 import type { AiPreset, Card, HeartsState, PassDirection, TrickCard } from "./types";
@@ -443,3 +444,21 @@ export class HeartsReplay {
     this.pending?.clear();
   }
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the engine calls a recorded deal, pass and trick replay through, and the moon rule. A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. It is the
+ * contract for any frontend reader of this game: none rebuilds from stored events
+ * today (this file applies single steps; the backend reads stored games), and a
+ * new one must resolve here first. An older version stays replayable by
+ * registering its frozen rules with `withLegacy`.
+ * @internal No production caller: tests use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("hearts", ENGINE_VERSION, {
+  dealGame,
+  dealNextHand,
+  commitPass,
+  playCard,
+  detectMoon,
+});

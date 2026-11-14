@@ -37,8 +37,9 @@
  * show as a gap in `s`.
  */
 
+import { replayEngines } from "../_shared/replayEngine";
 import type { Action } from "../_shared/cards/moveLog";
-import { applyHint, applyMove, undoMove } from "./engine";
+import { ENGINE_VERSION, applyHint, applyMove, dealGame, undoMove } from "./engine";
 import type { FreeCellState, Move } from "./types";
 import { SUITS } from "./types";
 
@@ -162,3 +163,15 @@ export function applyAction(state: FreeCellState, action: Action): FreeCellState
       throw new Error(`unknown action ${code}`);
   }
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the deal (`dealGame`) and each recorded action (`applyAction`). A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. It is the
+ * contract for any frontend reader of this game: none rebuilds from stored events
+ * today (this file applies single steps; the backend reads stored games), and a
+ * new one must resolve here first. An older version stays replayable by
+ * registering its frozen rules with `withLegacy`.
+ * @internal No production caller: tests use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("freecell", ENGINE_VERSION, { dealGame, applyAction });

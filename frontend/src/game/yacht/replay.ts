@@ -46,8 +46,16 @@
 
 import * as Sentry from "@sentry/react-native";
 
+import { replayEngines } from "../_shared/replayEngine";
 import { sentryThrottle } from "../_shared/sentryThrottle";
-import { CATEGORIES, ENGINE_VERSION, jokerActive, type Category } from "./engine";
+import {
+  CATEGORIES,
+  ENGINE_VERSION,
+  calculateJokerScore,
+  calculateScore,
+  jokerActive,
+  type Category,
+} from "./engine";
 import type { GameState } from "./types";
 
 /** The event type. */
@@ -221,3 +229,19 @@ export function startedData(difficulty: string | null): Record<string, unknown> 
     ? { v: 1, mode: "vs", cpu_type: "oracle", difficulty, engine_version: ENGINE_VERSION }
     : { v: 1, mode: "solo", engine_version: ENGINE_VERSION };
 }
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the scoring rules a recorded turn replays through. A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. It is the
+ * contract for any frontend reader of this game: none rebuilds from stored events
+ * today (this file applies single steps; the backend reads stored games), and a
+ * new one must resolve here first. An older version stays replayable by
+ * registering its frozen rules with `withLegacy`.
+ * @internal No production caller: tests use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("yacht", ENGINE_VERSION, {
+  calculateScore,
+  calculateJokerScore,
+  jokerActive,
+});
