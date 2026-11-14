@@ -1046,6 +1046,11 @@ refunds, the product catalog) is specified in [IAP.md](IAP.md). Purchases write
 
 1. The client calls `GET /entitlements` on startup and on every foreground-resume.
    Purchase and restore responses also carry a fresh token ([IAP.md §8.2](IAP.md#82-endpoints)).
+   If a fetch fails with a network error and no premium games are cached, the
+   client also re-fetches once on each offline → online edge (`useNetwork()`),
+   or at once if the launch fetch failed while already online, until a fetch
+   reaches the server or a token is applied (#3868). A cached unlock or a
+   non-network failure (401/5xx) arms no retry.
 2. The server returns an **RS256-signed JWT** containing:
    - `sub`: session_id
    - `entitled_games`: array of game slugs the session may access

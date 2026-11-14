@@ -11,6 +11,7 @@ import { AppState, AppStateStatus } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { createGameClient, isNetworkError } from "../game/_shared/httpClient";
+import { useNetwork } from "../game/_shared/NetworkContext";
 import { clearGame as clearHearts } from "../game/hearts/storage";
 import { clearGame as clearBlackjack } from "../game/blackjack/storage";
 import { clearGame as clearSudoku } from "../game/sudoku/storage";
@@ -185,6 +186,19 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
     setEntitledGames((prev) => (prev !== null && sameSet(prev, next) ? prev : next));
   }, []);
 
+  // Armed when the latest fetch failed with a network error and no premium
+  // games are cached, so a paying player sees Locked. The next offline →
+  // online edge then re-fetches once (#3868). Disarmed when the latest fetch
+  // reaches the server (success or a non-network failure) and by applyToken.
+  const retryOnReconnectRef = useRef(false);
+  // Mirrors read from async callbacks (#3868).
+  const entitledRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    entitledRef.current = entitledGames;
+  }, [entitledGames]);
+  const network = useNetwork();
+  const networkRef = useRef(network);
+
   const refresh = useCallback(async () => {
     const gen = ++generationRef.current;
     try {
@@ -193,7 +207,12 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
         setLastRefreshed,
         () => generationRef.current !== gen
       );
+      if (generationRef.current === gen) retryOnReconnectRef.current = false;
     } catch (e) {
+      if (generationRef.current === gen) {
+        if (!isNetworkError(e)) retryOnReconnectRef.current = false;
+        else if (!entitledRef.current?.size) retryOnReconnectRef.current = true;
+      }
       // Network errors (isNetworkError) are swallowed — in-memory state stays as-is.
       // Unlike init(), refresh() intentionally does not fall back to cache:
       // a transient error should not downgrade access the user already has.
@@ -215,6 +234,7 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
       // Apply in memory first (invalidating any in-flight fetch), then persist
       // best-effort: a storage failure must not undo a verified purchase.
       generationRef.current++;
+      retryOnReconnectRef.current = false;
       applyEntitled(new Set(result.payload.entitled_games));
       setLastRefreshed(new Date());
       try {
@@ -237,15 +257,26 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
       const isStale = () => generationRef.current !== gen;
       try {
         await fetchAndApplyToken(applyEntitled, setLastRefreshed, isStale);
-      } catch {
+      } catch (e) {
         const cached = await loadCachedEntitlements();
-        if (!isStale()) applyEntitled(cached);
+        if (!isStale()) {
+          applyEntitled(cached);
+          // Only an unreachable server with no premium games cached waits for
+          // the network to return; a 401/5xx or a cached unlock does not (#3868).
+          if (isNetworkError(e) && cached.size === 0) {
+            retryOnReconnectRef.current = true;
+            // Already back online (reconnected while this ran, or NetInfo says
+            // online but the fetch failed): retry once now, not on an edge.
+            const { isOnline, isInitialized } = networkRef.current;
+            if (isInitialized && isOnline) void refresh();
+          }
+        }
       } finally {
         setIsLoading(false);
       }
     }
     init();
-  }, [applyEntitled]);
+  }, [applyEntitled, refresh]);
 
   // Re-fetch on every foreground transition.
   useEffect(() => {
@@ -256,6 +287,24 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
     });
     return () => sub.remove();
   }, [refresh]);
+
+  // Re-fetch once on each offline → online edge while armed (#3868). Every edge
+  // refreshes, even while an earlier reconnect refresh is pending: the
+  // generation check drops the older response as stale, and skipping an edge
+  // would leave the player Locked if that pending request then fails. Only
+  // after NetInfo has initialized, so the boot "true → true" is not a
+  // reconnect. Without a NetworkProvider the default context never changes, so
+  // this is inert.
+  const { isOnline, isInitialized } = network;
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    networkRef.current = { isOnline, isInitialized };
+    const prev = wasOnlineRef.current;
+    wasOnlineRef.current = isOnline;
+    if (!isInitialized || prev || !isOnline) return;
+    if (!retryOnReconnectRef.current) return;
+    void refresh();
+  }, [isOnline, isInitialized, refresh]);
 
   // Detect revocations and clean up local state for any game no longer entitled.
   // Note: this effect fires after the new entitledGames state commits (canPlay has already
