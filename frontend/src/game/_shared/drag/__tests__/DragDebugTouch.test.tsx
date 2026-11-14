@@ -17,9 +17,10 @@ import { DragProvider } from "../DragContext";
 import type { DragCard, DragSource } from "../DragContext";
 import { DraggableCard } from "../DraggableCard";
 import { DragGhostHost } from "../DragGhostHost";
-import { resetDragDebugForTests, setDragDebugEnabled } from "../dragDebug";
+import { getDragDebugEnabledFlag, resetDragDebugForTests, setDragDebugEnabled } from "../dragDebug";
 import {
   DRAG_DEBUG_TOUCH_TEST_ID,
+  dragDebugTouchForCard,
   formatDragDebugTouch,
   getDragDebugTouch,
   resetDragDebugTouchForTests,
@@ -207,5 +208,63 @@ describe("drag debug touch line (#3878)", () => {
     await p.end(true);
     expect(queryByTestId(DRAG_DEBUG_TOUCH_TEST_ID)).toBeNull();
     expect(counts()).toBe("touch down=0 active=0 end=0 js=0 lag=none");
+  });
+});
+
+describe("the setting flipping after the cards mounted (#3878)", () => {
+  /** The pan gestures the card has handed RNGH so far, oldest first. */
+  const gestures = () => mockDetected.filter((d) => d.childTestID === "face").map((d) => d.gesture);
+
+  it("turned on after mount: the next drag is counted whole", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(1000);
+    await render(<Board />);
+    await act(() => setDragDebugEnabled(true));
+    const p = pan();
+    await p.begin();
+    await p.start();
+    await p.end(true);
+    await p.finalize();
+    expect(counts()).toBe("touch down=1 active=1 end=1 js=1 lag=0ms");
+  });
+
+  it("turned off after mount: nothing more is written", async () => {
+    setDragDebugEnabled(true);
+    jest.spyOn(Date, "now").mockReturnValue(1000);
+    await render(<Board />);
+    const p = pan();
+    await p.begin();
+    await p.start();
+    await p.end(true);
+    expect(counts()).toBe("touch down=1 active=1 end=1 js=1 lag=0ms");
+
+    await act(() => setDragDebugEnabled(false));
+    const q = pan();
+    await q.begin();
+    await q.start();
+    await q.end(true);
+    await q.finalize();
+    expect(counts()).toBe("touch down=1 active=1 end=1 js=1 lag=0ms");
+  });
+
+  it("a card re-rendered across a flip keeps its gesture (no fresh worklets)", async () => {
+    const { rerender } = await render(<Board />);
+    const first = gestures()[0];
+    expect(first).toBeDefined();
+
+    await act(() => setDragDebugEnabled(true));
+    await rerender(<Board />);
+    await act(() => setDragDebugEnabled(false));
+    await rerender(<Board />);
+
+    const all = gestures();
+    expect(all.length).toBeGreaterThan(1);
+    for (const g of all) expect(g).toBe(first);
+  });
+
+  it("store build: no flag and no card handle are made", () => {
+    __forceStoreBuildForTests(true);
+    setDragDebugEnabled(true);
+    expect(getDragDebugEnabledFlag()).toBeNull();
+    expect(dragDebugTouchForCard()).toBeNull();
   });
 });

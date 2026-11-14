@@ -12,6 +12,8 @@
  * while the overlay is off.
  */
 import { useEffect, useState } from "react";
+import { makeMutable } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 
 import { isStoreBuild } from "../buildFlavour";
 import { areTestHooksEnabled } from "../envFlags";
@@ -44,15 +46,33 @@ let loadStarted = false;
 let chosen = false;
 const enabledListeners = new Set<() => void>();
 
+// The setting as a shared value, for worklets that must follow it without
+// the setting being a render-time dependency (#3878: a gesture memo that
+// depended on it would rebuild the pan when it flips). Made on first use,
+// never in a store build; written only when the setting changes.
+let enabledFlag: SharedValue<boolean> | null = null;
+
 function setEnabledState(next: boolean): void {
   if (isEnabled() === next) return;
   enabled = next;
+  if (enabledFlag) enabledFlag.value = isDragDebugEnabled();
   for (const l of enabledListeners) l();
 }
 
 /** Whether the overlay may show: never in a store build, even if stored on. */
 export function isDragDebugEnabled(): boolean {
   return !isStoreBuild() && isEnabled();
+}
+
+/**
+ * The setting for the UI thread: a shared value that follows
+ * isDragDebugEnabled() as it changes, read by a worklet once per gesture
+ * phase. Null in a store build (nothing is made there, and the overlay can't
+ * be on). The same object for the whole process, so it is safe as a memo dep.
+ */
+export function getDragDebugEnabledFlag(): SharedValue<boolean> | null {
+  if (isStoreBuild()) return null;
+  return (enabledFlag ??= makeMutable(isDragDebugEnabled()));
 }
 
 /** Reads the stored choice once per process (a choice made first wins). */
@@ -229,6 +249,7 @@ export function formatDragDebugSeq(seq: number): string {
 /** Test-only reset of the module state. @internal */
 export function resetDragDebugForTests(): void {
   enabled = null;
+  enabledFlag = null;
   loadStarted = false;
   chosen = false;
   result = null;

@@ -22,14 +22,18 @@
  * The line is drawn from the UI thread (an animated TextInput), so it still
  * updates while the JS thread is blocked, which is the case it must show.
  *
- * Internal builds with the overlay on only: DraggableCard passes no counter
- * otherwise, so a store build writes nothing. Each count is one shared-value
- * write per gesture phase (never per frame), with no storage or network.
+ * Internal builds with the overlay on only. A card holds the counters and the
+ * setting's shared value (dragDebug.ts) for the whole process and its pan
+ * worklets read that flag at each phase, so the setting can flip after cards
+ * mount without rebuilding their gestures, and a card writes nothing while it
+ * is off. A store build gets neither (null: no flag, no counters, no reads).
+ * Each count is one shared-value read, and with the overlay on one write, per
+ * gesture phase (never per frame), with no storage or network.
  */
 import { makeMutable } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 
-import { isDragDebugEnabled } from "./dragDebug";
+import { getDragDebugEnabledFlag, isDragDebugEnabled } from "./dragDebug";
 
 export const DRAG_DEBUG_TOUCH_TEST_ID = "drag-debug-touch";
 
@@ -65,13 +69,14 @@ export function getDragDebugTouch(): DragDebugTouch {
   return (touch ??= { ui: makeMutable(UI_ZERO), js: makeMutable(JS_ZERO) });
 }
 
-/** The counters a card should write: null (write nothing) while the overlay
- *  is off, and always in a store build. */
+/** The counters the JS thread should write: null (write nothing) while the
+ *  overlay is off, and always in a store build. */
 export function dragDebugTouchIfEnabled(): DragDebugTouch | null {
   return isDragDebugEnabled() ? getDragDebugTouch() : null;
 }
 
-/** Counts one pan phase. A worklet: UI thread, once per gesture phase. */
+/** Counts one pan phase (declared before its worklet callers, which the
+ *  worklets transform needs). A worklet: UI thread, once per gesture phase. */
 export function bumpDragDebugTouch(ui: SharedValue<DragDebugTouchUi>, phase: DragDebugTouchPhase) {
   "worklet";
   const c = ui.value;
@@ -80,6 +85,30 @@ export function bumpDragDebugTouch(ui: SharedValue<DragDebugTouchUi>, phase: Dra
     active: c.active + (phase === "active" ? 1 : 0),
     end: c.end + (phase === "end" ? 1 : 0),
   };
+}
+
+/** What a card's pan worklets hold: the UI counters and the setting's flag. */
+export interface DragDebugTouchCard {
+  readonly on: SharedValue<boolean>;
+  readonly ui: SharedValue<DragDebugTouchUi>;
+}
+
+let card: DragDebugTouchCard | null = null;
+
+/** The card's handle, the same object for the whole process (a stable memo
+ *  dep whatever the setting does); null in a store build. */
+export function dragDebugTouchForCard(): DragDebugTouchCard | null {
+  const on = getDragDebugEnabledFlag();
+  if (!on) return null;
+  if (card?.on !== on) card = { on, ui: getDragDebugTouch().ui };
+  return card;
+}
+
+/** Counts one pan phase if the overlay is on. A worklet: UI thread, once per
+ *  gesture phase; one read, and a write only while on. */
+export function noteDragDebugTouch(c: DragDebugTouchCard | null, phase: DragDebugTouchPhase) {
+  "worklet";
+  if (c && c.on.value) bumpDragDebugTouch(c.ui, phase);
 }
 
 /** Counts a drag start handled on the JS thread; `activatedAt` is the
@@ -99,5 +128,6 @@ export function formatDragDebugTouch(ui: DragDebugTouchUi, js: DragDebugTouchJs)
 /** Test-only reset. @internal */
 export function resetDragDebugTouchForTests(): void {
   touch = null;
+  card = null;
   jsCount = 0;
 }
