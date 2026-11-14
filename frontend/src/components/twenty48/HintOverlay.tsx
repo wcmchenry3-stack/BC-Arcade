@@ -13,7 +13,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import MaterialIcons from "../icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useTheme } from "../../theme/ThemeContext";

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { AccessibilityInfo, Pressable, StyleSheet, Text } from "react-native";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialCommunityIcons from "../../icons/MaterialCommunityIcons";
 import { NavigationContext } from "@react-navigation/native";
 import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,7 +26,7 @@ import type { GameType } from "../../../api/vocab";
 
 // This suite asserts on real glyph codepoints, so it opts out of the shared icon mock
 // in jest.setup.ts (#3107).
-jest.unmock("@expo/vector-icons/MaterialCommunityIcons");
+jest.unmock("../../icons/MaterialCommunityIcons");
 
 jest.mock("expo-haptics", () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),

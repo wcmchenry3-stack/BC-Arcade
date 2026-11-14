@@ -14,7 +14,7 @@ import {
   View,
   type LayoutChangeEvent,
 } from "react-native";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import MaterialIcons from "../icons/MaterialIcons";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { PILL_DISABLED_OPACITY } from "./PillButton";
