@@ -166,45 +166,68 @@ describe("drawn radius = ladder radius", () => {
 });
 
 describe("overhangs", () => {
-  /** Pieces that draw outside the collider (owner-approved list, 2026-11-14). */
-  const OVERHANGING: Record<string, number[]> = {
-    // cherry, grape, apple, peach, dragonfruit, pineapple, pumpkin (stems, leaves, crowns)
-    fruits: [0, 3, 5, 6, 8, 9, 11],
-    // Uranus and Saturn (rings)
-    cosmos: [7, 8],
+  /**
+   * How far each overhanging piece's ink reaches past the collider circle, in radii, measured with
+   * the outline strokes included (owner-approved 2026-11-14: these are the approved pixels).
+   * [left, top, right, bottom]; anything not listed overhangs nowhere.
+   */
+  const OVERHANG: Record<string, Record<number, [number, number, number, number]>> = {
+    fruits: {
+      0: [0, 0.52, 0, 0], // cherry stem
+      3: [0, 0.4, 0, 0], // grape stem
+      5: [0, 0.4, 0, 0], // apple stem and leaf
+      6: [0, 0.28, 0, 0], // peach stem
+      8: [0.12, 0.475, 0.12, 0], // dragonfruit: crown on top, side bracts
+      9: [0, 0.45, 0, 0], // pineapple crown
+      11: [0, 0.335, 0, 0], // pumpkin stem
+    },
+    cosmos: {
+      7: [0, 0.265, 0, 0.245], // Uranus ring (a tilted ring, both ends)
+      8: [0.305, 0, 0.305, 0], // Saturn rings
+    },
   };
-  /** The largest overhang allowed, any piece, in radii: the cherry's stem with its cap. */
-  const MAX_OVERHANG = 0.55;
+  /** Measurement slack: one pixel of the R = 200 render, and the box margin. */
+  const EPS = 0.006;
+  const BOX_MARGIN = 0.03;
 
-  it("only the approved pieces declare a box past the circle, and none past the cap", () => {
+  /** The ink's extent past the unit circle on each side, in radii. */
+  function inkOverhang(set: ArtSet, tier: number): [number, number, number, number] {
+    const R = 200;
+    const S = R * 4;
+    const { px } = render(S, S, (c) => {
+      c.translate(S / 2, S / 2);
+      c.scale(R, R);
+      for (const layer of LAYERS) drawLayer(c, set, tier, layer);
+    });
+    let l = S;
+    let t = S;
+    let r = 0;
+    let b = 0;
+    for (let y = 0; y < S; y++)
+      for (let x = 0; x < S; x++)
+        if (px[(y * S + x) * 4 + 3]! > 0) {
+          l = Math.min(l, x);
+          r = Math.max(r, x + 1);
+          t = Math.min(t, y);
+          b = Math.max(b, y + 1);
+        }
+    const o = (v: number) => Math.max(0, v / R);
+    return [o(S / 2 - l - R), o(S / 2 - t - R), o(r - S / 2 - R), o(b - S / 2 - R)];
+  }
+
+  it("each piece overhangs the circle by its measured amount and nowhere else", () => {
     for (const [id, set] of SETS) {
       set.pieces.forEach((art, tier) => {
+        const want = OVERHANG[id]![tier] ?? [0, 0, 0, 0];
+        const got = inkOverhang(set, tier);
+        got.forEach((v, i) => expect(Math.abs(v - want[i]!)).toBeLessThanOrEqual(EPS));
+        // The declared box hugs the ink: it contains it, with at most a small margin.
         const [l, t, r, b] = art.box;
-        const over = Math.max(-1 - l, -1 - t, r - 1, b - 1);
-        expect(over).toBeLessThanOrEqual(MAX_OVERHANG);
-        if (OVERHANGING[id]!.includes(tier)) expect(over).toBeGreaterThan(0);
-        else expect(art.box).toEqual([-1, -1, 1, 1]);
-      });
-    }
-  });
-
-  it("draws nothing outside each piece's box", () => {
-    const R = 100;
-    const S = R * 4;
-    for (const [, set] of SETS) {
-      set.pieces.forEach((art, tier) => {
-        const { px } = render(S, S, (c) => {
-          c.translate(S / 2, S / 2);
-          c.scale(R, R);
-          for (const layer of LAYERS) drawLayer(c, set, tier, layer);
+        const box = [-1 - l, -1 - t, r - 1, b - 1];
+        box.forEach((v, i) => {
+          expect(v).toBeGreaterThanOrEqual(got[i]! - 1e-9);
+          expect(v).toBeLessThanOrEqual(got[i]! + BOX_MARGIN);
         });
-        const [l, t, r, b] = art.box.map((v) => S / 2 + v * R);
-        let outside = 0;
-        for (let y = 0; y < S; y++)
-          for (let x = 0; x < S; x++)
-            if (px[(y * S + x) * 4 + 3]! > 0 && (x < l! || x >= r! || y < t! || y >= b!))
-              outside++;
-        expect({ tier, outside }).toEqual({ tier, outside: 0 });
       });
     }
   });
@@ -302,7 +325,14 @@ describe("caches", () => {
         for (let y = 0; y < W; y++)
           for (let x = 0; x < W; x++) {
             const out = x < 10 || y < 10 || x >= 10 + size || y >= 10 + size;
-            if (out) expect(px[(y * W + x) * 4 + 3]).toBe(0);
+            if (out)
+              expect({ id, tier, x, y, a: px[(y * W + x) * 4 + 3] }).toEqual({
+                id,
+                tier,
+                x,
+                y,
+                a: 0,
+              });
           }
       });
     }

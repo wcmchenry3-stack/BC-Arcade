@@ -1,14 +1,23 @@
 /**
  * #3698: the Fruits set, tiers 0-11, as small descriptions for the kawaii pen (`pen.ts`), in
  * unit space (collider radius 1, centre 0, 0, y down). `body` is clipped to the circle; `back`
- * and `front` are the only parts drawn outside it, the owner-approved overhangs (2026-11-14):
- * cherry stem 0.45 r, apple 0.35 r, grape, peach and pumpkin stems 0.3 r, pineapple crown 0.42 r,
- * lemon nubs 0.17 r, dragonfruit crown 0.45 r and side bracts 0.10 r (`dragonfruit.ts`). `box`
- * bounds each piece's ink, strokes included.
+ * and `front` are the only parts drawn outside it, the owner-approved overhangs (2026-11-14)
+ * (measured with the outline strokes, in radii past the circle: cherry 0.52, grape and apple 0.40,
+ * pineapple 0.45, peach 0.28, pumpkin 0.335, dragonfruit crown 0.475 and sides 0.12; the lemon's
+ * nubs stay inside). `box` bounds each piece's ink, strokes included, within 0.03 r.
  */
 import { CASCADE_ART } from "../../../theme/theme.cascade";
-import { DRAGONFRUIT } from "./dragonfruit";
-import { P, UNIT_BOX, type ArtSet, type Pen, type PieceArt } from "./pen";
+import {
+  P,
+  UNIT_BOX,
+  asStroke,
+  linear,
+  mix,
+  rgba,
+  type ArtSet,
+  type Pen,
+  type PieceArt,
+} from "./pen";
 
 const T = CASCADE_ART.fruits;
 
@@ -57,7 +66,7 @@ const cherry: PieceArt = {
     stemLeaf(pen, 0.04, -0.82, 0.28, -1.42, [0.22, -1.3, 0.78, -1.2, 0.17]);
   },
   face: { y: 0.12, s: 0.95 },
-  box: [-1, -1.55, 1, 1],
+  box: [-1, -1.535, 1, 1],
 };
 
 const blueberry: PieceArt = {
@@ -127,7 +136,7 @@ const grape: PieceArt = {
     stemLeaf(pen, 0, -0.85, 0.1, -1.3);
   },
   face: { y: 0.1, s: 0.9 },
-  box: [-1, -1.45, 1, 1],
+  box: [-1, -1.415, 1, 1],
 };
 
 const orange: PieceArt = {
@@ -165,7 +174,7 @@ const apple: PieceArt = {
     stemLeaf(pen, 0, -0.8, 0.07, -1.3, [0.07, -1.12, 0.62, -1.3, 0.15]);
   },
   face: { y: 0.1 },
-  box: [-1, -1.45, 1, 1],
+  box: [-1, -1.415, 1, 1],
 };
 
 const peach: PieceArt = {
@@ -205,7 +214,7 @@ const peach: PieceArt = {
     );
   },
   face: { y: 0.12 },
-  box: [-1, -1.35, 1, 1],
+  box: [-1, -1.295, 1, 1],
 };
 
 /** Coconut fibres: [x, y, angle] of each, fixed so every render is identical. */
@@ -274,7 +283,7 @@ const pineapple: PieceArt = {
       );
   },
   face: { y: 0.15 },
-  box: [-1, -1.5, 1, 1],
+  box: [-1, -1.465, 1, 1],
 };
 
 const watermelon: PieceArt = {
@@ -320,7 +329,84 @@ const pumpkin: PieceArt = {
     );
   },
   face: { y: 0.1 },
-  box: [-1, -1.4, 1, 1],
+  box: [-1, -1.35, 1, 1],
+};
+
+/**
+ * Dragonfruit (tier 8), take B of the three redraws, the owner's pick (2026-11-14): "simplified for
+ * game size". A round magenta body that is the collider circle; flame-shaped bracts with a
+ * pink-to-green base, a lighter green centre and a darker outline that fades into the skin; three
+ * crown bracts on top as the one big overhang, and two side bracts a side peeking out behind it.
+ */
+/** One bract: base centre x, y, half width, tip x, y, notch depth, tip curl. */
+type Bract = readonly [number, number, number, number, number, number, number];
+
+const OUTLINE = 0.045;
+
+function bract(pen: Pen, [bx, by, w, tx, ty, k, c]: Bract, opaqueBase: boolean): void {
+  const { canvas } = pen;
+  const path = P((s) => s.bract(bx, by, w, tx, ty, k, c));
+  const base = opaqueBase ? rgba(T.dragonfruit.b) : rgba(T.bractBase, 0);
+  const green = rgba(T.bract);
+  canvas.drawPath(
+    path,
+    linear(bx, by, tx, ty, [base, mix(T.bractBase, T.bract, 0.55), green, green], [0, 0.3, 0.52, 1])
+  );
+  // The lighter centre: a smaller bract inset towards the tip.
+  const inset = P((s) =>
+    s.bract(
+      bx + (tx - bx) * 0.3,
+      by + (ty - by) * 0.3,
+      w * 0.5,
+      tx - (tx - bx) * 0.12,
+      ty - (ty - by) * 0.12,
+      k * 0.7,
+      c * 0.6
+    )
+  );
+  const light = rgba(T.bractLight, 0);
+  canvas.drawPath(inset, linear(bx, by, tx, ty, [light, light, rgba(T.bractLight)], [0, 0.4, 0.7]));
+  // The dark outline fades out at the base, so the bract grows out of the skin.
+  const dark = rgba(T.bractDark);
+  canvas.drawPath(
+    path,
+    asStroke(linear(bx, by, tx, ty, [rgba(T.bractDark, 0), dark, dark], [0.05, 0.35, 1]), OUTLINE)
+  );
+}
+
+/** Each bract and its mirror image across the vertical axis. */
+function mirror(list: readonly Bract[]): Bract[] {
+  return list.flatMap((b) => [b, [-b[0], b[1], b[2], -b[3], b[4], b[5], -b[6]] as const]);
+}
+
+const CROWN: readonly Bract[] = [
+  ...mirror([[-0.28, -0.75, 0.22, -0.36, -1.3, 0.35, 0.03]]),
+  [0, -0.72, 0.3, 0, -1.45, 0.35, 0],
+];
+const TOP: Bract = [0, -0.5, 0.34, 0, -1.06, 0.34, 0];
+const SIDES = mirror([
+  [-0.72, 0.05, 0.22, -1.05, -0.42, 0.4, -0.03],
+  [-0.72, 0.62, 0.2, -1.08, 0.24, 0.4, -0.02],
+]);
+const FRONT = mirror([
+  [-0.6, -0.28, 0.23, -0.66, -0.8, 0.32, 0.02],
+  [-0.58, 0.68, 0.22, -0.68, 0.24, 0.32, 0.02],
+]);
+
+const dragonfruit: PieceArt = {
+  back(pen) {
+    for (const b of SIDES) bract(pen, b, true);
+  },
+  body(pen) {
+    pen.body(T.dragonfruit);
+    for (const b of FRONT) bract(pen, b, false);
+  },
+  front(pen) {
+    for (const b of CROWN) bract(pen, b, true);
+    bract(pen, TOP, false);
+  },
+  face: { y: 0.06, s: 1.05, blush: T.dragonfruitBlush },
+  box: [-1.135, -1.49, 1.135, 1],
 };
 
 export const FRUIT_ART: ArtSet = {
@@ -333,7 +419,7 @@ export const FRUIT_ART: ArtSet = {
     apple,
     peach,
     coconut,
-    DRAGONFRUIT,
+    dragonfruit,
     pineapple,
     watermelon,
     pumpkin,

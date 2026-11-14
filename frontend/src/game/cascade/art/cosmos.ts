@@ -1,7 +1,7 @@
 /**
  * #3698: the Cosmos set, tiers 0-11, as small descriptions for the kawaii pen (`pen.ts`); see
- * `fruits.ts` for the unit space. Overhangs (owner-approved 2026-11-14): Saturn's rings 0.33 r
- * each side and Uranus's ring 0.26 r, each drawn as a back arc (before the body) and a front arc
+ * `fruits.ts` for the unit space. Overhangs (owner-approved 2026-11-14): Saturn's rings 0.305 r
+ * each side and Uranus's ring 0.265 r (measured with the strokes), each drawn as a back arc (before the body) and a front arc
  * (after it), never clipped; no haze on the Sun or the Milky Way.
  *
  * The look-alike groups get a second cue besides hue: Moon (light, big dark maria), Pluto (tan,
@@ -280,7 +280,7 @@ const uranus: PieceArt = {
     uranusRing(pen, -90);
   },
   face: { x: -0.25, y: 0.1, s: 0.85 },
-  box: [-1, -1.3, 1, 1.3],
+  box: [-1, -1.295, 1, 1.275],
 };
 
 const saturn: PieceArt = {
@@ -308,7 +308,7 @@ const saturn: PieceArt = {
     ring(pen, 1.2, 0.36, -14, 0.24, T.saturnRingFront, true, true);
   },
   face: { y: -0.12, s: 0.85 },
-  box: [-1.35, -1, 1.35, 1],
+  box: [-1.335, -1, 1.335, 1],
 };
 
 const jupiter: PieceArt = {
