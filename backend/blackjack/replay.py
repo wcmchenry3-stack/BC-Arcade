@@ -16,14 +16,18 @@ hand that reaches 21 stands on its own, and the app records that stand as ``["s"
 the entry a tapped Stand makes, so it reads here as "stand hand N on 21". Events from
 builds before #3284 carry no cards, so a round made of them is listed as such
 and not rebuilt. A round with events missing (the app drops an event over its
-cap, or a batch is lost) is shown as far as it goes.
+cap, or a batch is lost) is shown as far as it goes. The reader is chosen by the
+game's ``engine_version`` (``ENGINES``, ``games/engine_version.py``; ``read``): a
+version it does not read sets ``Run.incompatible`` and nothing is rebuilt.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
+
+from games.engine_version import ReplayEngines, replay_engines
 
 _VALUE = {"A": 11, "T": 10, "J": 10, "Q": 10, "K": 10}
 _ACTION = {"h": "hit", "s": "stand", "d": "double", "p": "split"}
@@ -187,10 +191,43 @@ def rounds(events: Iterable[tuple[str, Mapping[str, Any]]]) -> list[Round]:
     return out
 
 
-def render_rounds(events: Iterable[tuple[str, Mapping[str, Any]]]) -> list[str]:
+Rules = Callable[[list[tuple[str, Mapping[str, Any]]]], list[Round]]
+
+ENGINES: ReplayEngines[Rules] = replay_engines("blackjack", rounds)
+"""The engine versions ``read`` reads, each with its reader (version 1: ``rounds``)."""
+
+
+@dataclass
+class Run:
+    """The rounds of a run, or why its ``engine_version`` could not be read."""
+
+    rounds: list[Round] = field(default_factory=list)
+    incompatible: str | None = None
+
+
+def read(
+    events: Iterable[tuple[str, Mapping[str, Any]]],
+    engines: ReplayEngines[Rules] | None = None,
+) -> Run:
+    """The run's rounds with the reader ``engines`` (``ENGINES`` when omitted) has for its
+    ``engine_version``; for any other version no round is rebuilt."""
+    pairs = list(events)
+    engine = (engines or ENGINES).resolve_events(pairs)
+    if engine.rules is None:
+        return Run(incompatible=engine.reason)
+    return Run(rounds=engine.rules(pairs))
+
+
+def render_rounds(
+    events: Iterable[tuple[str, Mapping[str, Any]]],
+    engines: ReplayEngines[Rules] | None = None,
+) -> list[str]:
     """Plain-text lines for every round of the run; empty when nothing was dealt."""
     lines: list[str] = []
-    all_rounds = rounds(events)
+    run = read(events, engines)
+    if run.incompatible:
+        return [f"{run.incompatible}; nothing rebuilt"]
+    all_rounds = run.rounds
     for n, r in enumerate(all_rounds, start=1):
         head = f"round {r.unit if r.unit is not None else n}"
         head += f"  bet {r.bet}" if r.bet is not None else "  bet ?"

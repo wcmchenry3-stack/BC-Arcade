@@ -12,16 +12,19 @@ and everything else the event says is checked against the result.
 game with a gap (a dropped batch, an app kill: a turn whose ``ro`` is set lost
 some of its rolls, a missing round shows as a round mismatch) still rebuilds as
 far as it goes; every disagreement is a line in ``Rebuilt.problems``, never an
-exception.
+exception. The rules are chosen by the game's ``engine_version`` (``ENGINES``,
+``games/engine_version.py``): a version this reader does not rebuild sets
+``Rebuilt.incompatible`` and rebuilds nothing.
 """
 
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from games.engine_version import ReplayEngines, replay_engines
 from yacht.models import CATEGORY_MAX, UPPER_BONUS_THRESHOLD, UPPER_BONUS_VALUE, UPPER_CATEGORIES
 from yacht.turn_event import CATEGORY_ORDER, TURN_COMPLETED
 
@@ -101,6 +104,8 @@ class Rebuilt:
 
     cards: dict[int, Card] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
+    incompatible: str | None = None
+    """Set (the reason) when the game's ``engine_version`` is not one this reader rebuilds."""
 
 
 def _alternatives(card: Card, dice: list[int], chosen: str) -> list[int]:
@@ -119,8 +124,25 @@ def _alternatives(card: Card, dice: list[int], chosen: str) -> list[int]:
     return [x for c in options if c != chosen for x in (CATEGORY_ORDER.index(c), value(c, dice))]
 
 
-def rebuild(events: Iterable[tuple[str, Mapping[str, Any]]]) -> Rebuilt:
+def rebuild(
+    events: Iterable[tuple[str, Mapping[str, Any]]],
+    engines: ReplayEngines[Rules] | None = None,
+) -> Rebuilt:
     """Both scorecards from ``(event_type, data)`` pairs in ``event_index`` order.
+
+    The rules are the ones ``engines`` (``ENGINES`` when omitted) has for the
+    game's ``engine_version``; for any other version nothing is rebuilt and
+    ``incompatible`` says why.
+    """
+    pairs = list(events)
+    engine = (engines or ENGINES).resolve_events(pairs)
+    if engine.rules is None:
+        return Rebuilt(problems=[str(engine.reason)], incompatible=engine.reason)
+    return engine.rules(pairs)
+
+
+def _rebuild_v1(events: Iterable[tuple[str, Mapping[str, Any]]]) -> Rebuilt:
+    """``rebuild`` under engine_version 1 (today's rules).
 
     Anything that is not a ``turn_completed`` event is ignored. A turn that
     does not fit the card (an unknown or filled category, a malformed shape) is
@@ -178,9 +200,17 @@ def rebuild(events: Iterable[tuple[str, Mapping[str, Any]]]) -> Rebuilt:
     return out
 
 
+Rules = Callable[[list[tuple[str, Mapping[str, Any]]]], Rebuilt]
+
+ENGINES: ReplayEngines[Rules] = replay_engines("yacht", _rebuild_v1)
+"""The engine versions ``rebuild`` replays, each with its rules."""
+
+
 def render_scorecards(rebuilt: Rebuilt, final_score: int | None = None) -> list[str]:
     """The rebuilt scorecards as plain text lines, one column per seat."""
     lines = ["scorecards rebuilt from turn_completed events"]
+    if rebuilt.incompatible:
+        return [*lines, f"  {rebuilt.incompatible}; nothing rebuilt"]
     if not rebuilt.cards:
         return [*lines, "  no turn_completed events (a game from before #3282, or none recorded)"]
     seats = sorted(rebuilt.cards)
