@@ -9,7 +9,7 @@ The budget rule that came out of this is in [PERFORMANCE.md: Packaged-asset budg
 - Store-config packaged assets are **3,699,614 B (3.53 MiB, 127 files)** against the **4.0 MiB hard limit** (4,194,304 B): **494,690 B (0.47 MiB) of headroom**. The proposed 3.75 MiB warn line (3,932,160 B) leaves **232,546 B (0.22 MiB)** before it trips.
 - The issue's framing is out of date. **Sounds are 851 KB (23% of the total). Fonts are 2.71 MiB (75%).** There are no mp3 files in the store config at all: every packaged sound is a small `.ogg`. The Star Swarm and Mahjong mp3 loops are hidden-premium-only and the `--forbid-hidden-assets` guard keeps them out of the store bundle.
 - The best saving is **not audible and not in sounds**: the app loads 5 font files but the Google-fonts barrel imports make Metro package 12 (7 Manrope weights, 5 Space Grotesk weights). Importing the five by subpath **saves 648,186 B (0.62 MiB), taking packaged assets to 3.51 to 2.91 MiB** (measured, see below). That alone clears the issue's "about 3.3 MB" target.
-- A second, larger lever needs a design decision: `MaterialCommunityIcons.ttf` is 1.31 MB for about 15 glyphs.
+- A second, larger lever needs a design decision: `MaterialCommunityIcons.ttf` is 1.31 MB for about 15 glyphs. **Done in #3843** (owner chose subset fonts): both icon fonts are subsets of the 50 glyphs in use, measured store assets 3,054,980 to 1,397,878 B (-1,657,102 B) and store JS 6,190,131 to 5,960,039 B (-230,092 B).
 - #3795 and #3820 cover the all-games JS ceiling and are not part of this plan.
 
 ## How it was measured
@@ -105,15 +105,15 @@ The issue says the audit counts 39 "present but not bundled" files. The audit ha
 
 The six were then deleted in two steps. #3885 (#3578 cleanup) deleted `sounds/hearts-moon-shot.mp3` and `sounds/solitaire-invalid-move.ogg`; #3845 (owner decision, #3881) deleted the other four. `list-bundled-assets.mjs` now reports 0 unreferenced files under `frontend/assets/`, and the "present but not bundled" figure is the 24 icon masters only (it was 30 with the six). Packaged assets are unchanged: the bundled count stays 299 and shipped stays 334.
 
-| File (under `frontend/assets/`)                       |   Bytes | Deleted in | Note                                                            |
-| ----------------------------------------------------- | ------: | ---------- | --------------------------------------------------------------- |
-| `sounds/hearts-moon-shot.mp3`                         | 321,024 | #3885      | Third-party. Blackjack dropped it in #3581; Sudoku until #3775. |
-| `celestial-icons/milkyway.webp`                       |  47,058 | #3845      | Cascade, not in any theme list                                  |
-| `cosmos-baked/milkyway.png`                           |  37,760 | #3845      | Cascade, not in any theme list                                  |
-| `fruits-baked/pumpkin.png`                            |  16,162 | #3845      | Cascade, not in any theme list                                  |
-| `sounds/solitaire-invalid-move.ogg`                   |   5,956 | #3885      | Replaced by shared `card-invalid-move.ogg`                      |
-| `fruit-icons/pumpkin.webp`                            |   4,856 | #3845      | Cascade, not in any theme list                                  |
-| **Total**                                             | 432,816 |            |                                                                 |
+| File (under `frontend/assets/`)     |   Bytes | Deleted in | Note                                                            |
+| ----------------------------------- | ------: | ---------- | --------------------------------------------------------------- |
+| `sounds/hearts-moon-shot.mp3`       | 321,024 | #3885      | Third-party. Blackjack dropped it in #3581; Sudoku until #3775. |
+| `celestial-icons/milkyway.webp`     |  47,058 | #3845      | Cascade, not in any theme list                                  |
+| `cosmos-baked/milkyway.png`         |  37,760 | #3845      | Cascade, not in any theme list                                  |
+| `fruits-baked/pumpkin.png`          |  16,162 | #3845      | Cascade, not in any theme list                                  |
+| `sounds/solitaire-invalid-move.ogg` |   5,956 | #3885      | Replaced by shared `card-invalid-move.ogg`                      |
+| `fruit-icons/pumpkin.webp`          |   4,856 | #3845      | Cascade, not in any theme list                                  |
+| **Total**                           | 432,816 |            |                                                                 |
 
 #3845's four files total 47,058 + 37,760 + 16,162 + 4,856 = 105,836 B; #3885's two total 321,024 + 5,956 = 326,980 B.
 
@@ -145,6 +145,8 @@ Verified, then reverted (no change is in this PR): replacing the two import bloc
 Follow-up story to file: "Load only the used Google font weights", one file (`App.tsx`), plus a guard test or a `size-report.mjs` check that fails if an unused-weight file name is packaged.
 
 ### 2 and 3. Icon fonts (estimate, needs a design decision)
+
+> **Done in #3843 (2026-11-14).** Option (a) for both fonts: 20 MaterialCommunityIcons and 30 MaterialIcons glyphs, generated by `tools/assets/subset_icon_fonts.py` into `frontend/assets/fonts/`, loaded through `createIconSet` in `frontend/src/components/icons/`. MaterialCommunityIcons 1,307,660 to 3,708 B, MaterialIcons 356,840 to 3,796 B; the estimate below undercounted the glyphs (50, not about 15) but not the saving. Measured numbers are in [PERFORMANCE.md: Measurements](../PERFORMANCE.md#measurements-2026-10-10). No native change was needed.
 
 `MaterialCommunityIcons.ttf` is 1,307,660 B (35% of all packaged assets) and serves about 15 glyphs (`trophy-outline`, `minus-circle-outline`, `equal`, `check-circle-outline`, `play-circle-outline`, `exit-to-app`, `flag-outline`, `podium`, `home-outline`, `hand-back-right`, `numeric-2-circle-outline`, ...) in 8 files. Options: (a) generate a subset font with `fonttools`/`pyftsubset` and register it with `createIconSet` (a few KB; no visual change; needs a repeatable script and a test that every used glyph name is in the subset), or (b) switch those call sites to `MaterialIcons` (one font fewer, some glyphs differ visually). (a) is the safe one. `MaterialIcons.ttf` (356,840 B, 10 call sites) can be subset the same way. This also touches the iOS bundle (same Metro assets), so check both stores. Not done here: it is app code and a visual change.
 
