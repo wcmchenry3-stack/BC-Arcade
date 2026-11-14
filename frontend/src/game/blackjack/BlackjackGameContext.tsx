@@ -25,6 +25,7 @@ import {
   openRoundLog,
   resumedRoundLog,
   roundPlayedData,
+  startedData,
   type RoundLog,
 } from "./replay";
 import type { GameOutcome } from "../../api/vocab";
@@ -269,7 +270,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         return;
       }
       // No run aggregates on the game row (#3140): nothing read them.
-      syncStart({ starting_chips: startingChips });
+      syncStart(startedData(startingChips));
       // Mark the session as already started when resuming a mid-game save.
       // Must come after syncStart so the game ID exists.
       if (resuming) syncMarkStarted();

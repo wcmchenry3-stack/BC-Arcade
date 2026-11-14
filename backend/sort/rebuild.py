@@ -12,9 +12,11 @@ The opening board is never in the events: ``game_started`` carries
 ``{level, catalog, engine_version}`` and the board is that level of the shipped
 catalog file (``frontend/src/game/sort/levels.catalog.json``). There is no
 fallback board. A different ``catalog`` version, a level outside the file or an
-``engine_version`` other than 1 is reported as incompatible, and nothing is
-rebuilt. (A catalog bump keeps the old catalog file, so a later version of this
-reader can load the file by version; today only the current file exists.)
+``engine_version`` this reader does not rebuild (``ENGINES``, the shared
+``games/engine_version.py``; a ``game_started`` without the field is version 1)
+is reported as incompatible, and nothing is rebuilt. (A catalog bump keeps the
+old catalog file, so a later version of this reader can load the file by
+version; today only the current file exists.)
 
 Verdict:
 
@@ -43,13 +45,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from games.engine_version import ReplayEngines, replay_engines
 from games.replay_caps import SORT_MAX_UNITS
 
 CATALOG_PATH = Path(__file__).resolve().parents[2] / "frontend/src/game/sort/levels.catalog.json"
 
 BOTTLE_DEPTH = 4
 """Units a bottle holds (``BOTTLE_DEPTH`` in engine types.ts); a test holds it equal to the app's and the solver's."""
-ENGINE_VERSION = 1
 MOVES_VERSION = 1
 MAX_BOTTLES = 16
 MAX_REWIND = 1000
@@ -260,23 +262,27 @@ class _Reader:
         out.steps.append(Step(moves=out.moves, undos=out.undos, solved=out.solved, **step))
 
 
+ENGINES: ReplayEngines[type[_Reader]] = replay_engines("sort", _Reader)
+"""The engine versions this reader rebuilds (today's is ``SORT_REPLAY_ENGINE_VERSION`` in
+replay.ts), each with its pour and undo rules: the reader class."""
+
+
 def _incompatible(out: Rebuilt, kind: str, message: str) -> None:
     out.flags.append(Flag(kind, INVALID, message))
 
 
-def _opening(out: Rebuilt, started: dict[str, Any], catalog: dict[str, Any] | None) -> Board | None:
-    """The opening board, or ``None`` after flagging why there is none."""
+def _opening(
+    out: Rebuilt, started: dict[str, Any], catalog: dict[str, Any] | None, reason: str | None
+) -> Board | None:
+    """The opening board, or ``None`` after flagging why there is none.
+
+    ``reason`` is set when the game's ``engine_version`` is not one ``ENGINES`` rebuilds."""
     level = started.get("level")
     version = started.get("catalog")
-    engine = started.get("engine_version")
     out.level = level if _is_int(level) else None
     out.catalog = version if _is_int(version) else None
-    if not _is_int(engine) or engine != ENGINE_VERSION:
-        _incompatible(
-            out,
-            "incompatible_engine",
-            f"incompatible engine: engine_version {_v(engine)}, this reader rebuilds {ENGINE_VERSION}",
-        )
+    if reason is not None:
+        _incompatible(out, "incompatible_engine", reason)
         return None
     if catalog is None or not _is_int(version) or version != catalog.get("version"):
         have = catalog.get("version") if catalog else "no catalog file"
@@ -493,10 +499,15 @@ def _check_result(out: Rebuilt, ended: dict[str, Any]) -> None:
         )
 
 
-def rebuild(events: Iterable[tuple[str, Any]], catalog: dict[str, Any] | None = None) -> Rebuilt:
+def rebuild(
+    events: Iterable[tuple[str, Any]],
+    catalog: dict[str, Any] | None = None,
+    engines: ReplayEngines[type[_Reader]] | None = None,
+) -> Rebuilt:
     """Rebuild one Sort game from its ``(event_type, data)`` pairs, in ``event_index`` order.
 
     ``catalog`` is the parsed catalog file; omitted, the shipped file is read.
+    ``engines`` is the versions this reader rebuilds (``ENGINES`` when omitted).
     """
     out = Rebuilt()
     started: dict[str, Any] | None = None
@@ -515,11 +526,14 @@ def rebuild(events: Iterable[tuple[str, Any]], catalog: dict[str, Any] | None = 
             Flag("no_start", INVALID, "no game_started event: the opening board is unknown")
         )
     else:
-        opening = _opening(out, started, catalog if catalog is not None else load_catalog())
-        if opening is not None:
+        engine = (engines or ENGINES).resolve(started)
+        opening = _opening(
+            out, started, catalog if catalog is not None else load_catalog(), engine.reason
+        )
+        if opening is not None and engine.rules is not None:
             out.opening = out.bottles = opening
             out.solved = is_solved(opening)
-            reader = _Reader(out, opening)
+            reader = engine.rules(out, opening)
             last_unit = _units(reader, moves)
             if not reader.stopped:
                 if out.ended is None:

@@ -275,7 +275,7 @@ describe("BlackjackGameContext hidden-game sessions (#3328)", () => {
 
     // useGameRecorder.start passes the metadata argument on (undefined here).
     expect(mockStart).toHaveBeenCalledWith(
-      { starting_chips: TABLE_CONFIGS[0]!.startingChips },
+      { starting_chips: TABLE_CONFIGS[0]!.startingChips, engine_version: 1 },
       undefined
     );
   });

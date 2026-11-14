@@ -37,7 +37,8 @@
  * unmount.
  */
 
-import { applyHint, enterDigit, eraseCell, undo } from "./engine";
+import { replayEngines } from "../_shared/replayEngine";
+import { ENGINE_VERSION, applyHint, enterDigit, eraseCell, undo } from "./engine";
 import type { CellValue, SudokuState } from "./types";
 import { variantConfig } from "./types";
 
@@ -204,3 +205,33 @@ export function createEntryLog(
     },
   };
 }
+
+/**
+ * The `game_started` data (#3288, #3909): the settings, the puzzle's givens and
+ * the engine version, about 15 B more than the givens alone.
+ */
+export function startedData(state: Pick<SudokuState, "difficulty" | "variant" | "puzzle">) {
+  return {
+    difficulty: state.difficulty,
+    variant: state.variant,
+    puzzle: state.puzzle,
+    engine_version: ENGINE_VERSION,
+  };
+}
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the engine calls a recorded entry replays through. A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. It is the
+ * contract for any frontend reader of this game: none rebuilds from stored events
+ * today (this file applies single steps; the backend reads stored games), and a
+ * new one must resolve here first. An older version stays replayable by
+ * registering its frozen rules with `withLegacy`.
+ * @internal No production caller: tests use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("sudoku", ENGINE_VERSION, {
+  enterDigit,
+  eraseCell,
+  undo,
+  applyHint,
+});

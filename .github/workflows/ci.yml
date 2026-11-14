@@ -107,8 +107,9 @@ jobs:
     secrets: inherit
 
   # Repo hygiene (#3113): the former conflict-markers, forbidden-terms and
-  # large-file-guard jobs, one step each. Each check step runs even if an earlier
-  # one failed, so every failure shows under its own step name in a single run.
+  # large-file-guard jobs, one step each, plus the replay fixture version guard
+  # (#3911). Each check step runs even if an earlier one failed, so every failure
+  # shows under its own step name in a single run.
   repo-hygiene:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
@@ -172,6 +173,22 @@ jobs:
       - name: Large tracked file guard (over 5 MiB)
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: python3 scripts/check_large_files.py
+      # #3911: a pinned replay fixture (or a test's hard-coded replay result) may not change
+      # without the game's engine_version bump. Stdlib-only; manifest .github/replay-fixtures.json;
+      # docs/CI-CHECKS.md#replay-fixture-version-guard-3911. PRs into dev and pushes to dev diff
+      # against the base commit (one shallow fetch); main runs the manifest rules only, since every
+      # change reached it through a dev PR that ran the diff.
+      - name: Replay fixture version guard
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ (github.event_name == 'pull_request' && github.base_ref == 'dev' && github.event.pull_request.base.sha) || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && github.event.before) || '' }}
+        run: |
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            python3 scripts/check_replay_fixture_versions.py --static
+          else
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            python3 scripts/check_replay_fixture_versions.py --base "$BASE_SHA"
+          fi
 
   # === Tier 1: Substantive fast checks (need lint + secret-scan) ===========
 

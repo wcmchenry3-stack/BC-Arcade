@@ -49,7 +49,7 @@ import { devLog } from "../../game/daily_word/devLog";
 import { ApiError, isNetworkError } from "../../game/_shared/httpClient";
 import { isValidEnglishGuess, scoreGuess } from "../../game/daily_word/localScoring";
 import { recordedOutcome } from "../../game/_shared/recordedOutcome";
-import type { GuessReplay } from "../../game/daily_word/replay";
+import { startedData, type GuessReplay } from "../../game/daily_word/replay";
 import type { UseGameSyncReturn } from "../../game/_shared/useGameSync";
 import { rowFlipMs } from "../../game/daily_word/motion";
 
@@ -125,7 +125,7 @@ function heavyHaptic(): Promise<void> {
 /** Opens the puzzle's session if none is open, and marks it started. */
 function ensureSession(sync: DailyWordSubmitSync, s: DailyWordState): void {
   if (!sync.getGameId()) {
-    sync.start({ puzzle_id: s.puzzle_id }, { puzzle_id: s.puzzle_id, language: s.language });
+    sync.start(startedData(s.puzzle_id), { puzzle_id: s.puzzle_id, language: s.language });
   }
   sync.markStarted();
 }

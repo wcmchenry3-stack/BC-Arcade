@@ -14,6 +14,14 @@
 import { createRngSlot, createSeededRng } from "../_shared/seededRng";
 import { BlackjackGameEvent, BlackjackState, CardResponse, GameRules, HandResponse } from "./types";
 
+/**
+ * Version of the rules this engine plays by (#3909, epic #3273). Sent in
+ * `game_started` as `engine_version` so a stored game says which rules made it.
+ * Bump it when a change to this engine would make an older recorded game
+ * replay differently; a `game_started` without the field is version 1.
+ */
+export const ENGINE_VERSION = 1;
+
 const SUITS = ["♠", "♥", "♦", "♣"] as const;
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"] as const;
 

@@ -14,9 +14,9 @@ Fill every empty cell so every row, column, and box contains each allowed digit 
 ### Variants
 
 | Variant | Grid | Digits | Box shape |
-| --- | ---: | --- | --- |
-| Classic | 9×9 | 1–9 | 3×3 |
-| Mini | 6×6 | 1–6 | 2×3 |
+| ------- | ---: | ------ | --------- |
+| Classic |  9×9 | 1–9    | 3×3       |
+| Mini    |  6×6 | 1–6    | 2×3       |
 
 Pre-filled givens cannot be changed.
 
@@ -34,10 +34,10 @@ Each bank contains **1,000 puzzles per difficulty**, for 3,000 Classic + 3,000 M
 Difficulty is classified by clue count:
 
 | Difficulty | Classic clues | Mini clues |
-| --- | ---: | ---: |
-| Easy | 36–44 | 14–18 |
-| Medium | 28–35 | 11–13 |
-| Hard | 22–27 | 8–10 |
+| ---------- | ------------: | ---------: |
+| Easy       |         36–44 |      14–18 |
+| Medium     |         28–35 |      11–13 |
+| Hard       |         22–27 |       8–10 |
 
 The generator removes clues only when uniqueness is preserved. Backend puzzle-bank tests verify all 3,000 Classic puzzles have exactly one solution and the expected clue range; Mini verifies every puzzle's clue range and a 50-puzzle-per-tier uniqueness sample.
 
@@ -83,10 +83,10 @@ The header holds only back, the title and ⋯ (the Undo pill is gone).
 
 ### Two kinds of error, told apart
 
-| | Meaning | Style | Label |
-| --- | --- | --- | --- |
+|          | Meaning                                                           | Style                                                                                                               | Label                                                                                                   |
+| -------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Conflict | The digit repeats one in its row, column or box (an illegal move) | red digit on a red wash, and a **red ring on each cell it clashes with** (the same digit in its row, column or box) | "conflict, repeats a digit in its row, column or box"; the clashing cells say "clashes with a conflict" |
-| Mistake | Show mistakes is on and the legal digit is not the solution | red digit with a red **underline** bar, no wash | "mistake, wrong digit" |
+| Mistake  | Show mistakes is on and the legal digit is not the solution       | red digit with a red **underline** bar, no wash                                                                     | "mistake, wrong digit"                                                                                  |
 
 A conflict that is also not the solution shows the conflict. These are static styles; motion for errors is a later story.
 
@@ -104,6 +104,7 @@ A conflict that is also not the solution shows the conflict. These are static st
 In Notes mode, tapping a digit toggles that pencil mark in the selected cell.
 
 Notes:
+
 - do not increment the error count;
 - do not complete a cell;
 - do not create an undo snapshot.
@@ -113,6 +114,7 @@ Normal digit placement clears that cell's pencil marks, and **removes the placed
 ### Hints
 
 A hint:
+
 - works only on a selected, empty, non-given cell;
 - enters the correct solution digit through the normal placement logic;
 - starts the puzzle clock (if not already running) on any press, even one that does nothing such as no cell selected, and starts the sync session only when it actually places a digit;
@@ -124,15 +126,15 @@ A hint:
 
 The owner picked proposal 1, "Calm". Every timing is in [`frontend/src/game/sudoku/motion.ts`](../../frontend/src/game/sudoku/motion.ts); `__tests__/motion.test.ts` holds the ceilings. Every animation is a single run: no loops, no timer left running, nothing on the frame path for data collection. Times are from the move that caused them.
 
-| What | Constant(s) | When / how long | Notes |
-| --- | --- | --- | --- |
-| Place (a digit or a hint landing) | `PLACE_MS` 150, `PLACE_FROM_SCALE` 0.9 | 0 to 150 ms | the cell's digit fades in and scales 0.9 to 1 (`PlaceIn`, Reanimated) |
-| Error (an illegal digit) | `ERROR_PULSE_MS` 380, `ERROR_PULSE_PEAK` 0.55 | 0 to 380 ms | the cell pulses red once; replaces the full-screen red flash. The resting conflict and mistake styles (see UI) are unchanged |
-| Clash ring | `CLASH_BLINK_DELAY_MS` 100, `CLASH_BLINK_OFF_MS` 120, `CLASH_BLINK_DIM` 0.15, `CLASH_BLINK_EDGE_MS` 20 | 100 to 260 ms | the red ring of each clashing cell blinks once (dims, then back) |
-| Unit complete | `UNIT_SWEEP_START_MS` 50, `UNIT_SWEEP_MS` 450, `UNIT_CELL_MS` 200, `UNIT_PEAK` 0.34, `UNIT_SWEEP_TOTAL_MS` 550 | 50 to 500 ms, over by 550 ms | a soft teal glow passes along the completed row (left to right), column (top to bottom) or box (reading order), cell by cell; replaces the full-screen glow. The cells come from the engine event's `unit` and `index` (`unitCells`; a box's `index` is its top-left cell's `row * size + col`), so Mini's 2 × 3 boxes work |
-| Solved wave | `WAVE_CELL_MS` 300, `WAVE_STAGGER_MS` 600, `WAVE_TOTAL_MS` 900, `WAVE_PEAK` 0.3 | 0 to 900 ms | a teal brighten along the diagonals: each cell 300 ms, starting up to 600 ms after the top-left one. The solving move's unit sweeps are not drawn: the wave stands in for them |
-| **Result card** | `SOLVED_BEAT_MS` 1000 | **+1.0 s after the solving entry** | held until then (`useSolveBeat`) |
-| Key press | none (a style) | while the finger is down | digit keys and the action bar's buttons dip (scale 0.96 and 0.94) and dim; this is press feedback, not motion, so it stays under Reduce Motion |
+| What                              | Constant(s)                                                                                                    | When / how long                    | Notes                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Place (a digit or a hint landing) | `PLACE_MS` 150, `PLACE_FROM_SCALE` 0.9                                                                         | 0 to 150 ms                        | the cell's digit fades in and scales 0.9 to 1 (`PlaceIn`, Reanimated)                                                                                                                                                                                                                                                       |
+| Error (an illegal digit)          | `ERROR_PULSE_MS` 380, `ERROR_PULSE_PEAK` 0.55                                                                  | 0 to 380 ms                        | the cell pulses red once; replaces the full-screen red flash. The resting conflict and mistake styles (see UI) are unchanged                                                                                                                                                                                                |
+| Clash ring                        | `CLASH_BLINK_DELAY_MS` 100, `CLASH_BLINK_OFF_MS` 120, `CLASH_BLINK_DIM` 0.15, `CLASH_BLINK_EDGE_MS` 20         | 100 to 260 ms                      | the red ring of each clashing cell blinks once (dims, then back)                                                                                                                                                                                                                                                            |
+| Unit complete                     | `UNIT_SWEEP_START_MS` 50, `UNIT_SWEEP_MS` 450, `UNIT_CELL_MS` 200, `UNIT_PEAK` 0.34, `UNIT_SWEEP_TOTAL_MS` 550 | 50 to 500 ms, over by 550 ms       | a soft teal glow passes along the completed row (left to right), column (top to bottom) or box (reading order), cell by cell; replaces the full-screen glow. The cells come from the engine event's `unit` and `index` (`unitCells`; a box's `index` is its top-left cell's `row * size + col`), so Mini's 2 × 3 boxes work |
+| Solved wave                       | `WAVE_CELL_MS` 300, `WAVE_STAGGER_MS` 600, `WAVE_TOTAL_MS` 900, `WAVE_PEAK` 0.3                                | 0 to 900 ms                        | a teal brighten along the diagonals: each cell 300 ms, starting up to 600 ms after the top-left one. The solving move's unit sweeps are not drawn: the wave stands in for them                                                                                                                                              |
+| **Result card**                   | `SOLVED_BEAT_MS` 1000                                                                                          | **+1.0 s after the solving entry** | held until then (`useSolveBeat`)                                                                                                                                                                                                                                                                                            |
+| Key press                         | none (a style)                                                                                                 | while the finger is down           | digit keys and the action bar's buttons dip (scale 0.96 and 0.94) and dim; this is press feedback, not motion, so it stays under Reduce Motion                                                                                                                                                                              |
 
 **The moment the card shows, for the sound story #3775.** The solving entry lands at t = 0: that render has the last digit, the wave and the card held. `useGameEvents` runs the `puzzleComplete` handler (`playPuzzleComplete`) in the effect of that same commit, so a sound played from it starts at t = 0 and the card comes **1.0 s later** (`SOLVED_BEAT_MS`), after the 0.9 s wave. A sound that should land with the card is started 1.0 s after t = 0 (the hook has no `onStart` yet: add one as `useYachtEndBeat` has if the sound needs it). Under Reduce Motion the card shows at t = 0. A game restored already solved shows the card at once and has no beat (and no `puzzleComplete` event, since a save drops its events).
 
@@ -177,10 +179,10 @@ Sudoku ranks by a simple accuracy score; elapsed time does **not** affect leader
 `score = max(0, difficulty base − 10 × errors)`
 
 | Difficulty | Base / maximum score |
-| --- | ---: |
-| Easy | 100 |
-| Medium | 200 |
-| Hard | 300 |
+| ---------- | -------------------: |
+| Easy       |                  100 |
+| Medium     |                  200 |
+| Hard       |                  300 |
 
 `errors` is the number of illegal moves (rule conflicts), not the number of digits that differ from the solution. Hints have no direct penalty because they enter a correct digit, even when it duplicates a wrong digit the player left in a peer cell.
 
@@ -204,6 +206,7 @@ Equal scores use the shared final tie rule: the completion the server received f
 The on-screen timer starts on the **first interaction** (#2942): the first cell press, number pad press or hint press, whichever comes first, even one that changes nothing (for example, a digit with no cell selected). It does not start when the grid renders, so the HUD shows 0:00 until the player touches the board. The sync session still starts only on the first state-changing move, so a puzzle where the player only selected cells is discarded, not abandoned (see Session outcomes). A first interaction that lands while the player is away starts the clock paused.
 
 It pauses while:
+
 - the app is backgrounded; or
 - another screen such as Stats/Leaderboard covers the puzzle.
 
@@ -235,6 +238,7 @@ Sudoku has no competitive winner concept.
 - An untouched puzzle (including one where only cells were selected) can be discarded without creating a meaningful played result.
 
 Per-game creation metadata is:
+
 - `difficulty`;
 - `variant`.
 
@@ -244,17 +248,17 @@ For generic syncing, ranking, display-name, Stats, and result-card behavior, see
 
 _(#3288, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).)_
 
-The puzzle is recorded once, in `game_started`: `{ difficulty, variant, puzzle }`, with `puzzle` the **givens** as one digit per cell (81 characters for Classic, 36 for Mini, `0` = empty, row by row; the string the bank holds). It is not a bank index or a seed: the banks can change between app versions, the string cannot. It rides in the event only (`syncStart(eventData, metadata)`): `SudokuMetadata` forbids unknown keys, so the metadata stays `{ difficulty, variant }`. The givens (`puzzle`) plus the **`entries` events** in `event_index` order rebuild the final grid.
+The puzzle is recorded once, in `game_started`: `{ difficulty, variant, puzzle, engine_version }` (`ENGINE_VERSION`, #3909; a game from before it has none and is version 1), with `puzzle` the **givens** as one digit per cell (81 characters for Classic, 36 for Mini, `0` = empty, row by row; the string the bank holds). It is not a bank index or a seed: the banks can change between app versions, the string cannot. It rides in the event only (`syncStart(eventData, metadata)`): `SudokuMetadata` forbids unknown keys, so the metadata stays `{ difficulty, variant }`. The givens (`puzzle`) plus the **`entries` events** in `event_index` order rebuild the final grid.
 
 **One entry** is a short list of numbers (`cell` = `row * size + col`, 0..80; 0..35 for Mini):
 
-| Entry                  | Meaning                                                                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `[0, cell, digit]`     | a digit placed; a 4th number, `1`, is the **wrong-entry flag**: the digit duplicated one in its row, column or box (what `errors` counts) |
-| `[1, cell, digit]`     | a pencil note toggled (on or off)                                                                                                    |
-| `[2, cell]`            | the cell erased (value and notes)                                                                                                    |
-| `[3]`                  | undo                                                                                                                                 |
-| `[4, cell, digit]`     | a hint: the solution digit placed (never flagged: a hint costs no error)                                                             |
+| Entry              | Meaning                                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `[0, cell, digit]` | a digit placed; a 4th number, `1`, is the **wrong-entry flag**: the digit duplicated one in its row, column or box (what `errors` counts) |
+| `[1, cell, digit]` | a pencil note toggled (on or off)                                                                                                         |
+| `[2, cell]`        | the cell erased (value and notes)                                                                                                         |
+| `[3]`              | undo                                                                                                                                      |
+| `[4, cell, digit]` | a hint: the solution digit placed (never flagged: a hint costs no error)                                                                  |
 
 Not recorded: selecting a cell, switching pencil mode, and any action that changes nothing (a digit on a given or with nothing selected, an erase of an empty cell, an undo with nothing to undo, a hint with nothing to give). `applyRecorded` (`game/sudoku/replay.ts`) runs the engine and returns the entry only when the state changed, and the screen and the golden test both go through it.
 

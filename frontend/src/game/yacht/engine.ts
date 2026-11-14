@@ -12,6 +12,14 @@
 import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { GameEvent, GameState } from "./types";
 
+/**
+ * Version of the rules this engine plays by (#3909, epic #3273). Sent in
+ * `game_started` as `engine_version` so a stored game says which rules made it.
+ * Bump it when a change to this engine would make an older recorded game
+ * replay differently; a `game_started` without the field is version 1.
+ */
+export const ENGINE_VERSION = 1;
+
 /** Codes for rule violations the UI maps to translated messages (#2221). */
 export type YachtErrorCode =
   | "noRolls"

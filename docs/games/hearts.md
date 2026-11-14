@@ -15,6 +15,7 @@ Shared session, offline, result-card, leaderboard and Stats behavior lives in [G
 Hearts is a penalty-point trick-taking game. The goal is to finish the game with the **lowest cumulative score**.
 
 Per hand:
+
 - each heart taken is 1 point;
 - Queen of Spades is 13 points;
 - there are 26 penalty points available in an ordinary hand.
@@ -33,6 +34,7 @@ Before play, each player normally selects 3 cards to pass. Pass direction rotate
 Then the cycle repeats.
 
 The engine records pass memory for each player:
+
 - cards they passed away;
 - who received them;
 - cards they received;
@@ -49,6 +51,7 @@ Players must follow the led suit when possible. If they cannot follow, they may 
 ### First trick restrictions
 
 On the first trick:
+
 - the leader must play 2♣;
 - followers who hold clubs must follow clubs;
 - a player void in clubs may not discard a heart or Q♠ unless their entire remaining hand consists only of hearts/Q♠.
@@ -56,6 +59,7 @@ On the first trick:
 ### Hearts broken
 
 After the first trick:
+
 - hearts cannot be led until hearts have been broken;
 - hearts become broken when a heart is played off-suit;
 - if a player's hand contains only hearts, they may lead hearts even before the normal break condition.
@@ -73,6 +77,7 @@ Only cards in the led suit compete for the trick.
 The highest rank in that suit wins; Ace is high.
 
 The winner:
+
 - takes all four cards and their penalty points;
 - leads the next trick.
 
@@ -81,12 +86,14 @@ The engine also tracks when players demonstrate they are void in a suit by playi
 ## Shooting the Moon
 
 A player shoots the moon by taking:
+
 - all 13 hearts; and
 - Q♠
 
 in the same hand.
 
 BC Arcade applies:
+
 - shooter: 0 points for the hand;
 - every other player: 26 points.
 
@@ -101,6 +108,7 @@ The game ends once at least one player has reached **100 or more** cumulative po
 The player with the lowest cumulative score wins.
 
 For the human player's server result:
+
 - sole lowest score → `win`;
 - tied for lowest → `push`;
 - otherwise → `loss`.
@@ -117,11 +125,11 @@ For a non-Mixed preset, all three AI seats use that persona.
 
 Mixed uses a fixed canonical assignment:
 
-| Seat | Position | Persona |
-| ---: | --- | --- |
-| 1 | left AI | Cautious |
-| 2 | top AI | Schemer |
-| 3 | right AI | Daring |
+| Seat | Position | Persona  |
+| ---: | -------- | -------- |
+|    1 | left AI  | Cautious |
+|    2 | top AI   | Schemer  |
+|    3 | right AI | Daring   |
 
 The selected preset (`ai_difficulty`: `conservative` in store builds) is recorded in game metadata but does **not** partition the public leaderboard.
 
@@ -138,6 +146,7 @@ For each legal action, the AI scores considerations and chooses among them using
 - tactical play such as ducking with the highest safe card, winning high when a win is forced/useful, and spade flushing.
 
 Pass selection uses:
+
 - danger/passing quality;
 - suit-voiding utility;
 - Daring-specific moon-control logic when a hand qualifies.
@@ -167,18 +176,21 @@ The AI does not inspect hidden opponents' exact hands.
 ### Cautious
 
 Primary character:
+
 - strongest emphasis on minimizing immediate points;
 - strong Q♠ avoidance;
 - relatively little pass-phase suit-voiding pressure;
 - never initiates a moon attempt.
 
 Current play weights:
+
 - minimize points: 3.0
 - Q♠ risk: 2.0
 - moon threat: 1.0
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 0.2
 
@@ -189,17 +201,20 @@ Despite the high frequency, mistakes are no longer uniform-random cards; see Pla
 ### Schemer
 
 Primary character:
+
 - more balanced self-protection and moon defense;
 - stronger suit-void creation during passing than Cautious;
 - does not intentionally shoot the moon.
 
 Current play weights:
+
 - minimize points: 2.0
 - Q♠ risk: 1.5
 - moon threat: 1.5
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 0.8
 
@@ -208,6 +223,7 @@ Current mistake/noise rate: **19%**.
 ### Daring
 
 Primary character:
+
 - zero ordinary decision noise;
 - strongest Q♠ manipulation;
 - strongest suit-void pressure in passing;
@@ -215,12 +231,14 @@ Primary character:
 - has special endgame/adversarial weighting modes.
 
 Standard play weights:
+
 - minimize points: 1.5
 - Q♠ risk: 3.0
 - moon threat: 1.0
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 2.5
 
@@ -250,6 +268,7 @@ The core assessment considers:
 Daring is currently the only persona that acts on this moon assessment.
 
 During the pass phase, a viable Daring hand tries to retain:
+
 - hearts;
 - Q♠ / relevant spade control;
 - Aces;
@@ -281,6 +300,7 @@ The exact strength of that defense remains part of the current utility model and
 ## Endgame / adversarial modes
 
 Daring has special non-moon modes for situations such as:
+
 - late-game score pressure;
 - opportunities to dump Q♠ or high hearts onto the human/score leader.
 
@@ -319,6 +339,7 @@ Until #2587 lands, this document's **Current AI architecture** sections describe
 ## Persistence and timing
 
 Hearts state persists locally, including:
+
 - cumulative scores;
 - hand/score history;
 - pass direction/state;
@@ -329,6 +350,7 @@ Hearts state persists locally, including:
 Hearts uses its own active-play clock.
 
 The clock pauses when:
+
 - another screen covers Hearts;
 - the app is backgrounded/inactive.
 
@@ -339,6 +361,7 @@ Saved elapsed play time survives a relaunch.
 Backend module: `backend/hearts/module.py`.
 
 Public board:
+
 - `final_score = max(0, 100 - human penalty points)`;
 - higher is better;
 - max value 100;
@@ -374,7 +397,7 @@ Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](.
 The screen is a card table (owner-approved "layout A"), not a stack of rows:
 
 - **Felt.** A rounded green felt (`HEARTS_FELT_*` in `theme/theme.hearts.ts`, the same in light and dark mode) fills the middle of the screen.
-- **Seat plates.** North (top centre), West (left), East (right) and You (above the hand). Each shows the name, the **game score**, and **this hand's penalty points** as `+N♥` once they are above 0. The plate of the player whose turn it is during play has an accent border and glow (none while passing). Each plate is one button with one accessibility label: *name, score, N points this hand, their turn* (`plate.*` strings in `hearts.json`).
+- **Seat plates.** North (top centre), West (left), East (right) and You (above the hand). Each shows the name, the **game score**, and **this hand's penalty points** as `+N♥` once they are above 0. The plate of the player whose turn it is during play has an accent border and glow (none while passing). Each plate is one button with one accessibility label: _name, score, N points this hand, their turn_ (`plate.*` strings in `hearts.json`).
 - **Captured cards.** The old "TAKEN" row is gone. Tapping any plate opens that seat's captured cards (your own face-up, the opponents' as before) in a dialog with a Close button.
 - **Opponents' hands.** A small fan of up to four card backs by each opponent's plate (the active deck's back, so every deck draws its own); the label still carries the real card count.
 - **Trick.** 66 dp cards (at the mockup size) around the felt's centre in the four seat directions, each with its own small tilt. A played card flies in from its seat, and the sweep after a trick slides the four cards to the winner's plate ([timing](#card-play-and-trick-motion-timed-to-the-sounds-3574)); the completion callback still resolves the AI loop (`handleCardPress` ignores taps while `lastTrick` is showing, otherwise the loop would never resume).
@@ -389,13 +412,13 @@ Motion: the plates' glow is static (a border and shadow), so nothing here depend
 
 The owner picked direction **A. Brisk** in the design audition (2026-11-09). Every value is a named constant in `frontend/src/components/hearts/trickMotion.ts`; `TrickArea` runs the motion and cues the sounds, and `HeartsScreen` plays them.
 
-| Step | Motion | Sound |
-| --- | --- | --- |
-| A card is played | It flies from its seat's plate (yours: from below your plate) to its trick slot in **280 ms**, out-cubic (`FLIGHT_MS`) | Card place (`hearts.cardPlay`) **40 ms before contact** (`SOUND_LEAD_MS`): the file's transient peaks at about 45 ms, so it lands on the contact. The Q♠ has no card place |
-| The Q♠ lands | Like any card | Its moment (scrim and gong) starts **on landing**, not on the throw |
-| The trick's 4th card lands | A **300 ms** hold (`TRICK_HOLD_MS`) | None |
-| The sweep | All four cards together to the winner's plate in **200 ms**, in-quad (`SWEEP_MS`); they fade from 60% of the way (`SWEEP_FADE_FROM`) | Trick gathered (`hearts.trickWon`) **at the sweep's start**: its thump peaks at 193 ms, so it lands as the cards arrive |
-| The next CPU play | The CPU players play every **450 ms** (`AI_PACE_MS`, at least a flight plus about 100 ms) | |
+| Step                       | Motion                                                                                                                               | Sound                                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A card is played           | It flies from its seat's plate (yours: from below your plate) to its trick slot in **280 ms**, out-cubic (`FLIGHT_MS`)               | Card place (`hearts.cardPlay`) **40 ms before contact** (`SOUND_LEAD_MS`): the file's transient peaks at about 45 ms, so it lands on the contact. The Q♠ has no card place |
+| The Q♠ lands               | Like any card                                                                                                                        | Its moment (scrim and gong) starts **on landing**, not on the throw                                                                                                        |
+| The trick's 4th card lands | A **300 ms** hold (`TRICK_HOLD_MS`)                                                                                                  | None                                                                                                                                                                       |
+| The sweep                  | All four cards together to the winner's plate in **200 ms**, in-quad (`SWEEP_MS`); they fade from 60% of the way (`SWEEP_FADE_FROM`) | Trick gathered (`hearts.trickWon`) **at the sweep's start**: its thump peaks at 193 ms, so it lands as the cards arrive                                                    |
+| The next CPU play          | The CPU players play every **450 ms** (`AI_PACE_MS`, at least a flight plus about 100 ms)                                            |                                                                                                                                                                            |
 
 - **Cues come from the motion, not the state change.** The engine's state still changes at the tap or the CPU's play; the cues are timed from the flight's and the sweep's own clocks.
 - **UI thread.** The flight and the sweep are Reanimated timings (the sweep moved off RN `Animated`, which ran on the JS thread). The JS side is two timers per card (the cue and the landing) and one per trick (the sweep's start), never a frame callback.
@@ -411,11 +434,11 @@ The owner picked direction **A. Brisk** in the design audition (2026-11-09). Eve
 
 Three owner-approved moments (designed in #3574) mark Hearts' big events. Each is timed against its sound (#3563), runs on the UI thread (one Reanimated clock per moment, every element's frame read from it; `playTimedPhases` only mounts the captions and reports the end), draws its shapes with `react-native-svg` paths of its own, and takes its colours from `theme/theme.hearts.ts`. The timelines are in `frontend/src/components/hearts/momentTimeline.ts`.
 
-| Moment | Component | Starts | What happens (ms from the start) | Over at |
-| --- | --- | --- | --- | --- |
-| Queen of Spades | `HeartsQueenOfSpadesAnimation` | the Q♠, played by anyone, lands in the trick (with the gong; #3574) | at the gong's strike (230): a purple-dark radial scrim, the Q♠ lifts to 1.32× with a magenta glow and settles at 1.22×, two gong rings spread 260 ms apart, the trick's other cards nudge outward once; the caption "The Queen of Spades · 13 points" (580); everything returns at 1930 | 2330 |
-| Hearts broken | `HeartsBrokenAnimation` | hearts are broken (with the heartbeat) | on the "lub" (0) a large heart pops over the trick; on the "dub" (160) it beats again and a jagged crack draws through it; the table's edges pulse red with both beats; "Hearts are broken" (200); the halves fall apart and fade (540) | 1700 |
-| Moon shot | `HeartsMoonShotAnimation` | a moon shot (the howl when the human shot it) | night falls with twinkling stars, a full moon rises behind a dark hill; a howling wolf on the hill (700), "You shot the moon!" (or "*name* shot the moon!") and "+26 to *the other three*" (1200, 1600), a smaller, farther wolf with the answering howl (1450); the scene fades at 3300 | 3700 |
+| Moment          | Component                      | Starts                                                              | What happens (ms from the start)                                                                                                                                                                                                                                                         | Over at |
+| --------------- | ------------------------------ | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Queen of Spades | `HeartsQueenOfSpadesAnimation` | the Q♠, played by anyone, lands in the trick (with the gong; #3574) | at the gong's strike (230): a purple-dark radial scrim, the Q♠ lifts to 1.32× with a magenta glow and settles at 1.22×, two gong rings spread 260 ms apart, the trick's other cards nudge outward once; the caption "The Queen of Spades · 13 points" (580); everything returns at 1930  | 2330    |
+| Hearts broken   | `HeartsBrokenAnimation`        | hearts are broken (with the heartbeat)                              | on the "lub" (0) a large heart pops over the trick; on the "dub" (160) it beats again and a jagged crack draws through it; the table's edges pulse red with both beats; "Hearts are broken" (200); the halves fall apart and fade (540)                                                  | 1700    |
+| Moon shot       | `HeartsMoonShotAnimation`      | a moon shot (the howl when the human shot it)                       | night falls with twinkling stars, a full moon rises behind a dark hill; a howling wolf on the hill (700), "You shot the moon!" (or "_name_ shot the moon!") and "+26 to _the other three_" (1200, 1600), a smaller, farther wolf with the answering howl (1450); the scene fades at 3300 | 3700    |
 
 How the screen plays them (`HeartsScreen.tsx`):
 
@@ -442,14 +465,14 @@ _(#3283, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTR
 
 Every build records what decides a game's score, for all four seats, so a stored game can be retraced hand by hand and the computer players analysed. It is the production form of the dev-only hand log (`debugLog.ts`, [below](#debug-panel-why-the-cpu-played-a-card)), without `DebugPosition` (large, and rebuildable from the deal and the plays).
 
-**`game_started`** (lifecycle, sent when the first card opens the session) carries `initial_score: 0` as before, and `preset` (`conservative`, or `mixed` and the legacy presets in dev / pre-launch builds), `target` (100) and `seats`: `["human", persona, persona, persona]`, the persona being each computer seat's (`conservative`, or `cautious` / `schemer` / `daring` on the mixed table).
+**`game_started`** (lifecycle, sent when the first card opens the session) carries `initial_score: 0` as before, and `preset` (`conservative`, or `mixed` and the legacy presets in dev / pre-launch builds), `target` (100) and `seats`: `["human", persona, persona, persona]`, the persona being each computer seat's (`conservative`, or `cautious` / `schemer` / `daring` on the mixed table), and `engine_version` (`ENGINE_VERSION`, #3909).
 
 **Two replay events a hand** (`gameEventRegistry.hearts`, replay tier; wire form and validation in `backend/hearts/events.py`), each with the recorder's envelope (`v` 1, `unit`, `t_ms`) and `h`, the hand number:
 
-| Event         | Data                                                                                                                                                                                                                                                  | When                                                  |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `hand_opened` | `d` pass direction (0 left, 1 right, 2 across, 3 none; `(h - 1) % 4`), `c` the four starting hands, 13 cards each, in seat order; `p` the three cards each seat passed (not on a hold hand); `r` the CPU's principle digit per passed card, 3 a seat    | the pass is committed (the deal, on a hold hand)      |
-| `hand_played` | `l` lead seat of the first trick, `c` the plays of the tricks in order, 8 characters a trick (all 13: 104); `n` the first trick of the row (left out for 1); `r` one principle digit per play (left out when all 0); on the row that ends the hand `s` the four applied deltas (after the moon), `t` the four totals, `m` the shooter on a moon hand | the hand ends, or the app is backgrounded (a part)    |
+| Event         | Data                                                                                                                                                                                                                                                                                                                                                 | When                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `hand_opened` | `d` pass direction (0 left, 1 right, 2 across, 3 none; `(h - 1) % 4`), `c` the four starting hands, 13 cards each, in seat order; `p` the three cards each seat passed (not on a hold hand); `r` the CPU's principle digit per passed card, 3 a seat                                                                                                 | the pass is committed (the deal, on a hold hand)   |
+| `hand_played` | `l` lead seat of the first trick, `c` the plays of the tricks in order, 8 characters a trick (all 13: 104); `n` the first trick of the row (left out for 1); `r` one principle digit per play (left out when all 0); on the row that ends the hand `s` the four applied deltas (after the moon), `t` the four totals, `m` the shooter on a moon hand | the hand ends, or the app is backgrounded (a part) |
 
 **Why two, not sixteen.** A first design recorded a deal, a pass, thirteen tricks and a score as separate events: 16 rows a hand, 174 rows and about 55 KB stored for an 11-hand game, most of it the 200 B each stored row costs on the server. A hand is now two rows: about 22 rows and 10 KB for the same game (below).
 
@@ -527,6 +550,7 @@ The seed migration `0039_hearts_hand_events` (seed only, no schema change) must 
 Current rules and reporting can be considered documented now.
 
 The AI section remains explicitly provisional while:
+
 - #2587 — production PIMC strong engine;
 - #2283 — unified one-engine difficulty epic;
 - #2233 — remaining Hearts AI robustness work
@@ -541,12 +565,12 @@ Registry: `frontend/src/game/hearts/sounds.ts` (`HEARTS_SOUNDS`), played through
 
 Triggers are in `frontend/src/screens/HeartsScreen.tsx`; card place and trick gathered are cued by the trick's motion in `frontend/src/components/hearts/TrickArea.tsx` ([timing](#card-play-and-trick-motion-timed-to-the-sounds-3574)).
 
-| Key | File | Plays when | Volume |
-| --- | --- | --- | --- |
-| `hearts.cardPlay` / `hearts.cardPlay2` / `hearts.cardPlay3` | `card-place-1/2/3.ogg` (shared with Solitaire, FreeCell; synthesized) | any card except the Q♠ is played, by anyone: 40 ms before its flight lands (at once with Reduce Motion) (`useSoundVariants`: one of three, at random, never the same twice in a row) | 1.0 |
-| `hearts.queenOfSpades` | `queen-of-spades-gong.ogg` (synthesized) | the Q♠, played by anyone, lands in the trick (its moment starts) | 1.0 |
-| `hearts.trickWon` / `hearts.trickWon2` / `hearts.trickWon3` | `trick-gathered-1/2/3.ogg` (synthesized) | every trick but the hand's last, at the sweep's start, 300 ms after the last card lands (with Reduce Motion, as the trick clears); never while a moment holds the trick (`useSoundVariants`) | 1.0 |
-| `hearts.heartsBroken` | `hearts-broken-heartbeat.ogg` (synthesized) | hearts are broken | 1.0 |
-| `hearts.moonShot` | `hearts-moon-howl.ogg` (synthesized wolf howl) | the human shoots the moon, as the moon-shot moment starts (after the Queen of Spades' moment when the same trick had the Q♠) | 1.0 |
-| `hearts.gameWon` | `card-game-won.ogg` (shared with Solitaire and FreeCell) | the game ends with the human lowest, or tied for lowest | 1.0 |
-| `hearts.gameLost` | `card-game-lost.ogg` | the game ends with another seat lowest | 1.0 |
+| Key                                                         | File                                                                  | Plays when                                                                                                                                                                                   | Volume |
+| ----------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `hearts.cardPlay` / `hearts.cardPlay2` / `hearts.cardPlay3` | `card-place-1/2/3.ogg` (shared with Solitaire, FreeCell; synthesized) | any card except the Q♠ is played, by anyone: 40 ms before its flight lands (at once with Reduce Motion) (`useSoundVariants`: one of three, at random, never the same twice in a row)         | 1.0    |
+| `hearts.queenOfSpades`                                      | `queen-of-spades-gong.ogg` (synthesized)                              | the Q♠, played by anyone, lands in the trick (its moment starts)                                                                                                                             | 1.0    |
+| `hearts.trickWon` / `hearts.trickWon2` / `hearts.trickWon3` | `trick-gathered-1/2/3.ogg` (synthesized)                              | every trick but the hand's last, at the sweep's start, 300 ms after the last card lands (with Reduce Motion, as the trick clears); never while a moment holds the trick (`useSoundVariants`) | 1.0    |
+| `hearts.heartsBroken`                                       | `hearts-broken-heartbeat.ogg` (synthesized)                           | hearts are broken                                                                                                                                                                            | 1.0    |
+| `hearts.moonShot`                                           | `hearts-moon-howl.ogg` (synthesized wolf howl)                        | the human shoots the moon, as the moon-shot moment starts (after the Queen of Spades' moment when the same trick had the Q♠)                                                                 | 1.0    |
+| `hearts.gameWon`                                            | `card-game-won.ogg` (shared with Solitaire and FreeCell)              | the game ends with the human lowest, or tied for lowest                                                                                                                                      | 1.0    |
+| `hearts.gameLost`                                           | `card-game-lost.ogg`                                                  | the game ends with another seat lowest                                                                                                                                                       | 1.0    |

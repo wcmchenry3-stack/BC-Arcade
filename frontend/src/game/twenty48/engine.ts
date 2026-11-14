@@ -20,6 +20,14 @@ import {
   withClock,
 } from "../_shared/playClock";
 
+/**
+ * Version of the rules this engine plays by (#3909, epic #3273). Sent in
+ * `game_started` as `engine_version` so a stored game says which rules made it.
+ * Bump it when a change to this engine would make an older recorded game
+ * replay differently; a `game_started` without the field is version 1.
+ */
+export const ENGINE_VERSION = 1;
+
 export const SIZE = 4;
 
 export type Direction = "up" | "down" | "left" | "right";
@@ -62,7 +70,7 @@ export function _resetTileIds(): void {
  * Operates on parallel value and ID arrays so tile identity is preserved
  * through the slide. Merged tiles receive a new ID; the score delta and
  * the set of newly-merged IDs are returned alongside the output arrays.
- * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ * It is also the merge rule `REPLAY_ENGINES` (replay.ts) replays engine_version 1 with.
  */
 export function slideAndMerge(line: readonly number[]): { line: number[]; score: number } {
   const compacted = line.filter((v) => v !== 0);
