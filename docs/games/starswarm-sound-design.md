@@ -346,6 +346,8 @@ The owner asked for "one last pass" so that no one sound feels alien in the game
 | Lightning loop          | Brightest sound by far (~10 kHz centroid vs 0.3–2.5 kHz for most)                                    | Crackles low-passed at 4 kHz and ~3 dB quieter (~3.6 kHz centroid)                                         |
 | Asteroid split / small  | Next brightest (6–7 kHz)                                                                             | Cracks and gravel darkened (~4.8–5.4 kHz)                                                                  |
 
+Later change (#3763): to stop stacked effects clipping the mix, the default volumes of Beam charge (0.9 → 0.6), Smart Bomb (1.0 → 0.7) and Bonus life (0.9 → 0.6) were lowered by about 3 dB. This partly undoes the phone loudness fix above for those three; see the default-volume table in `docs/games/starswarm.md`.
+
 The boss sting's reactor bed still uses the original `beam_charge`, so the sting itself is unchanged. Rule for future sounds:
 
 - **Danger cues** are at least as audible on a phone as reward cues.
