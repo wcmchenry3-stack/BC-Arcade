@@ -25,7 +25,6 @@ const THEME_NAMES = {
     "orange",
     "peach",
     "pineapple",
-    "pumpkin",
     "watermelon",
   ],
   bodies: [
@@ -33,7 +32,6 @@ const THEME_NAMES = {
     "jupiter",
     "mars",
     "mercury",
-    "milkyway",
     "moon",
     "neptune",
     "pluto",
@@ -96,6 +94,19 @@ describe("Cascade asset budget guard (#3692)", () => {
         .map((f) => f.slice(dir.length + 1))
         .sort();
       expect(present).toEqual(names);
+    }
+  });
+
+  it("the unreferenced files deleted in #3845 stay deleted", () => {
+    for (const gone of [
+      "fruit-icons/pumpkin.webp",
+      "fruits-baked/pumpkin.png",
+      "celestial-icons/milkyway.webp",
+      "cosmos-baked/milkyway.png",
+      "sounds/hearts-moon-shot.mp3",
+      "sounds/solitaire-invalid-move.ogg",
+    ]) {
+      expect(fs.existsSync(path.join(ASSETS_DIR, gone))).toBe(false);
     }
   });
 

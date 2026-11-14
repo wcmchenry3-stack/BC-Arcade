@@ -63,7 +63,7 @@ Rule: a runtime image must be at least its largest rendered size in points times
 
 The world is 400 × 600 units. The canvas takes the whole game area, so `scale` peaks around 2.0–2.3 on a 13" iPad in portrait (1376 pt tall at most, so `scale` can never pass 1376 / 600 ≈ 2.3) and around 1.06 on a 440 pt-wide phone. Baked sprites should stay at 512 px or more; a bigger bake (`HALF` in `bake_sprites.py`) would sharpen the top tiers on tablets.
 
-`pumpkin` and `milkyway` are future tiers that no `FruitSet` uses. They are not imported in `src/game/cascade/images.ts` (so they do not ship), but their files stay in the asset and master folders for the pipeline.
+`pumpkin` and `milkyway` are future tiers that no `FruitSet` uses. They are not imported in `src/game/cascade/images.ts`, and their `assets/` files (`pumpkin` and `milkyway` icon WebPs and baked PNGs) were deleted in #3845; only the masters in `cascade_icon_masters/` remain. Re-add the asset files with the set that uses them.
 
 ## Size budgets
 
