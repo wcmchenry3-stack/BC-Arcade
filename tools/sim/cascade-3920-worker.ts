@@ -28,7 +28,7 @@ for (let seed = Number(a); seed <= Number(b); seed++) {
     topTier: m.topTier,
     drops: m.drops,
     merges: m.merges,
-    capstoneFirstMs: m.tierFirstMs[11],
+    capstoneFirstMs: m.tierFirstMs[m.tierFirstMs.length - 1],
     tierFirstMs: m.tierFirstMs,
     maxPieces: m.maxPieces,
     meanPieces: m.meanPieces,

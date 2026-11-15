@@ -18,6 +18,10 @@ export interface CascadeVariant {
   dangerFrom: number;
   dangerPenalty: number;
   dangerTop: number;
+  /** #3920 round 2: tier count (capstone = tiers - 1); default 12. */
+  tiers?: number;
+  /** #3920 round 2: making one capstone is the win (play ends), instead of two touching. */
+  singleWin?: boolean;
 }
 
 function read(): CascadeVariant | null {

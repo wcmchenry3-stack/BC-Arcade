@@ -76,6 +76,7 @@ import type { Body, Fixture } from "planck";
 import { createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { PIECE_DEFS, MAX_TIER } from "./pieceDefs";
 import { TIERS, tierRadius } from "./tiers";
+import { VARIANT } from "./variant";
 import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
@@ -622,6 +623,13 @@ export class CascadeEngine {
     events.push({ type: "score", delta: scoreValue, total: this._score });
     if (nearLid) this._ticksSinceNearLidMerge = 0;
     if (this._comboTicksLeft > 0) this._comboCount++;
+    // #3920 round 2 proposal: making one capstone is the win; play ends as with the pair win.
+    if (VARIANT?.singleWin && newTier === MAX_TIER) {
+      this._won = true;
+      this._drop = null;
+      this._overflowTicksCount = 0;
+      events.push({ type: "win", x: mx, y: my, id: e.id });
+    }
   }
 
   /** The lid (#3694): drop gate, hard stop and overflow count, once per fixed step. */

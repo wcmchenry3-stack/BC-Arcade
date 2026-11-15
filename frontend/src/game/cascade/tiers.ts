@@ -71,7 +71,7 @@ export interface TierDef {
   readonly nameKeys: Readonly<Record<TierSetId, string>>;
 }
 
-export const TIER_COUNT = 12;
+export const TIER_COUNT = VARIANT?.tiers ?? 12;
 /** The capstone: never dropped; two that touch are the win (#3904). */
 export const CAPSTONE_TIER = TIER_COUNT - 1;
 
@@ -106,7 +106,7 @@ const NAMES: readonly Names[] = [
 
 const ladderRadius = (tier: number): number => R0 * K ** tier;
 
-export const TIERS: readonly TierDef[] = NAMES.map(([fruits, cosmos], tier) => ({
+export const TIERS: readonly TierDef[] = NAMES.slice(0, TIER_COUNT).map(([fruits, cosmos], tier) => ({
   tier,
   radius: ladderRadius(tier),
   drawnRadius: ladderRadius(tier) * (1 - DRAW_INSET),
