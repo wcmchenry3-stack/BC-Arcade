@@ -21,7 +21,7 @@ jest.mock("../../../game/cascade/art/sprites", () => ({
 
 const cherry = FRUIT_SETS.fruits!.fruits[0]!;
 const grape = FRUIT_SETS.fruits!.fruits[2]!;
-const moon = FRUIT_SETS.cosmos!.fruits[0]!;
+const pluto = FRUIT_SETS.cosmos!.fruits[0]!;
 
 const flat = (n: TestInstance) => StyleSheet.flatten(n.props.style);
 /** The glyph frame inside a chip: its first child view. */
@@ -65,7 +65,7 @@ describe("Cascade NextFruitPreview", () => {
   });
 
   it("draws each piece's code-drawn art from its own set (#3698)", async () => {
-    await render(<NextFruitPreview current={moon} next={cherry} />);
+    await render(<NextFruitPreview current={pluto} next={cherry} />);
     expect(piecePicture).toHaveBeenCalledWith("cosmos", 0, 22);
     expect(piecePicture).toHaveBeenCalledWith("fruits", 0, 16);
   });

@@ -73,6 +73,7 @@ import {
 import type { FrameState } from "../game/cascade/render/frame";
 import { createScoreStore } from "../game/cascade/scoreStore";
 import { useTieredMergeSound } from "../game/cascade/useTieredMergeSound";
+import { createLoopGate } from "../game/cascade/winTail";
 import {
   createFrameStats,
   recordCommit,
@@ -585,6 +586,8 @@ function CascadeGame() {
     let generation = 0;
     let rafId: number | null = null;
     let last = performance.now();
+    // After the win the loop runs on until the capstone has grown in (#3920, `winTail.ts`).
+    const gate = createLoopGate(engine, () => gameOverRef.current);
 
     function schedule() {
       const scheduledFor = generation;
@@ -613,10 +616,8 @@ function CascadeGame() {
       for (const ev of result.events) {
         if (ev.type === "merge") {
           onMergeRef.current(ev.result as FruitTier, ev.x, ev.y);
-        } else if (ev.type === "gameOver") {
-          onGameOverRef.current();
-        } else if (ev.type === "win") {
-          onGameOverRef.current(true);
+        } else if (ev.type === "gameOver" || ev.type === "win") {
+          onGameOverRef.current(ev.type === "win"); // the win ends the game too (#3904, #3920)
         } else if (ev.type === "guardRailFired") {
           if (__DEV__) console.log(`[Cascade] guard rail: ${ev.reason} body=${ev.bodyId}`);
         }
@@ -629,11 +630,11 @@ function CascadeGame() {
       piecesRef.current = state.pieces;
       publishBoard(state);
 
-      if (!gameOverRef.current && !engine.hasWon()) schedule();
+      if (gate.afterFrame(delta, state.pieces)) schedule();
     }
 
     resumeLoopRef.current = () => {
-      if (gameOverRef.current || engine.hasWon()) return;
+      if (!gate.runs()) return;
       if (rafId !== null) cancelAnimationFrame(rafId);
       generation++;
       last = performance.now();

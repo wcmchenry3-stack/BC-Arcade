@@ -19,10 +19,10 @@
  * One constant ratio for the whole ladder (#3920, owner decision after the playtest of #3904's
  * V1): `radius(n) = R0 * K ^ n`, unrounded, with R0 = 11.5 and K = (R10 / R0) ^ (1 / 10) =
  * 1.2389..., so the capstone is exactly R10 = 98 and every tier-to-tier ratio is exactly K. The
- * Cherry / Pluto is about 6.4 % of the bin's 360 px inner width across (about 21 pt on a 390 pt
+ * Cherry / Pluto is about 6.4 % of the bin's 360 px inner width across (about 22 pt on a 390 pt
  * phone), the share of the owner's reference game; the Pumpkin stays about half the bin. Droppable
  * tiers are 0-5 (radius 11.5-33.6). Measured in the sim as shipped (100 seeds, 10 min cap):
- * skilled bot wins about 59 %, heuristic about 38 %, median time to win about 3.5-4 min;
+ * skilled bot wins 66 %, heuristic 49 %, skilled median time to win 215 s (about 3.6 min);
  * docs/games/cascade.md. (#3904's V1 was R0 = 5 on 12 tiers with a two-capstone win.)
  *
  * ## Scores

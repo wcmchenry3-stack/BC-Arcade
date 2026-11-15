@@ -357,15 +357,16 @@ export function runGame(opts: RunOptions): GameMetrics {
         timeToWinMs = t;
       }
     }
-    // Play has ended (#3920): no watched piece can merge again, so none is a miss.
-    if (won) chainWatch.clear();
-    else if (products) watchChain(products);
+    if (!won && products) watchChain(products);
     for (const [id, made] of chainWatch) {
       if (t - made > CHAIN_WATCH_MS) {
         chainMisses++;
         chainWatch.delete(id);
       }
     }
+    // Play has ended (#3920): no watched piece can merge again, so the watches still open are
+    // not misses (one already due on this frame was counted just above).
+    if (won) chainWatch.clear();
     measureWalls();
 
     if (t >= nextSampleAt) {

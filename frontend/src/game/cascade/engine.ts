@@ -47,8 +47,10 @@
  *     extra), then `{ type: "win", x, y, id }` at the capstone's spawn point with its id. The win
  *     ends the play: from that step on `canDrop()` is false, `drop()` does nothing, no other merge
  *     (pending in the same step or later) or lid rule runs (no `gameOver` follows a win) and the
- *     score is final; the physics still steps, so the capstone grows in and the pile settles while
- *     #3699's celebration and result card show. `restore()` starts a new game.
+ *     score is final; the physics still steps if asked, so the capstone grows in and the pile
+ *     settles. The screen keeps stepping until no piece is growing in, plus a short settle
+ *     (`winTail.ts`), then stops its loop; #3699 builds the celebration and result card on the
+ *     event. `restore()` starts a new game.
  *   - The lid rule, the merge grace and the drop gate always use a tier's FULL radius.
  *
  * Combo window: `COMBO_WINDOW_TICKS` (120) is counted in fixed steps like the lid, so it is 2 s

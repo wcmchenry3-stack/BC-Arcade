@@ -256,9 +256,11 @@ describe("determinism and the engine seam", () => {
     expect(m.feel.chainMisses).toBe(0);
   });
 
-  // #3920: the win ends play, so a merge product watched for a chain when the win comes can never
-  // merge again. That is the end of the game, not a stalled chain: it is not a miss.
-  it("a chain watch still open at the win is not a miss, and the run ends there (#3920)", () => {
+  /**
+   * #3920: a fake game where a merge product made on frame 10 touches a same-tier piece (so the
+   * sim watches it for a chain), it never merges again, and the win comes on `winFrame`.
+   */
+  function watchedThenWin(winFrame: number): GameMetrics {
     const r1 = DEFAULT_CONSTANTS.physicsRadius(1);
     const made: EngineEvent = {
       type: "merge",
@@ -271,7 +273,7 @@ describe("determinism and the engine seam", () => {
       parentIds: [1, 2],
     };
     const win: EngineEvent = { type: "win", x: 300, y: 480, id: 9 };
-    const engine = fakeEngine((f) => (f === 10 ? [made] : f === 12 ? [win] : []));
+    const engine = fakeEngine((f) => (f === 10 ? [made] : f === winFrame ? [win] : []));
     // A tier 1 resting against the product, so the sim watches it for a chain.
     const neighbour = { id: 3, tier: 1, x: 100 + 2 * r1, y: 500, angle: 0 };
     engine.getState = (): GameState => ({
@@ -281,18 +283,39 @@ describe("determinism and the engine seam", () => {
       dangerRatio: 0,
       canDrop: true,
     });
-    const m = runGame({
+    return runGame({
       seed: 1,
       hz: 60,
       bot: { name: "idle", nextDelayMs: () => 1e9, shouldTap: () => false, chooseX: () => 0 },
       maxSimMs: 5000,
       config: { createEngine: () => engine },
     });
+  }
+
+  // #3920: the win ends play, so a merge product watched for a chain when the win comes can never
+  // merge again. That is the end of the game, not a stalled chain: it is not a miss.
+  it("a chain watch still open at the win is not a miss, and the run ends there (#3920)", () => {
+    const m = watchedThenWin(12);
     expect(m.won).toBe(true);
     expect(m.endedBy).toBe("win");
     expect(m.simMs).toBeCloseTo(200, 0);
     expect(m.feel.chainLatencyMs).toEqual([]);
     expect(m.feel.chainMisses).toBe(0);
+  });
+
+  // ...but a watch whose 1 s ran out on the win's own frame was already a miss (review of #3920).
+  it("a chain watch that runs out on the win's frame still counts as a miss (#3920)", () => {
+    // The first frame on which the watch is past CHAIN_WATCH_MS, accumulated as runGame does.
+    let t = 0;
+    let made = 0;
+    let due = 0;
+    for (let f = 1; due === 0; f++) {
+      t += 1000 / 60;
+      if (f === 10) made = t;
+      if (f > 10 && t - made > CHAIN_WATCH_MS) due = f;
+    }
+    expect(watchedThenWin(due - 1).feel.chainMisses).toBe(0);
+    expect(watchedThenWin(due).feel.chainMisses).toBe(1);
   });
 
   it("chains that never merge again count as late in the latency percentiles (PR #3863)", () => {

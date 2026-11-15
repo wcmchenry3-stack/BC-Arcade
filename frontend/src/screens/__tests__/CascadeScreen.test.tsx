@@ -12,6 +12,8 @@ import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
+import { GROW_IN_STEPS } from "../../game/cascade/constants";
+import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getBest, storageKey } from "../../game/_shared/personalBest";
@@ -140,8 +142,17 @@ const mockEngineStep = jest.fn().mockImplementation(() => {
   pendingEngineEvents = [];
   return { events };
 });
+// The board the mock engine reports (#3920: the win tail reads the capstone's grow-in scale).
+let mockEnginePieces: {
+  id: number;
+  tier: number;
+  x: number;
+  y: number;
+  angle: number;
+  scale?: number;
+}[] = [];
 const mockEngineGetState = jest.fn().mockImplementation(() => ({
-  pieces: [],
+  pieces: mockEnginePieces,
   score: mockEngineScore,
   gameOver: false,
 }));
@@ -1075,8 +1086,17 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
   });
   // #3904 interim win handling (the celebration and the result card are #3699).
   describe("after the win", () => {
+    beforeEach(() => {
+      // The board: the one piece of this block, or the capstone a test sets (#3920).
+      mockEngineGetState.mockImplementation(() => ({
+        pieces: mockEnginePieces.length > 0 ? mockEnginePieces : ONE_PIECE,
+        score: mockEngineScore,
+        gameOver: false,
+      }));
+    });
     afterEach(() => {
       mockEngineHasWon.mockReturnValue(false);
+      mockEnginePieces = [];
     });
 
     async function win(renderer: ReturnType<typeof create>) {
@@ -1097,19 +1117,65 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       });
     }
 
-    it("stops stepping the engine: no frame is scheduled and none steps", async () => {
+    /** The capstone the mock engine reports, at `scale` of its size (#3920: it grows in). */
+    const capstone = (scale: number) => [
+      { id: 9, tier: CAPSTONE_TIER, x: 200, y: 480, angle: 0, scale },
+    ];
+    /** Runs one frame at 60 Hz; true if the loop scheduled another. */
+    async function frame(): Promise<boolean> {
+      jest.advanceTimersByTime(1000 / 60);
+      await act(() => {
+        advanceOneFrame();
+      });
+      return rafCallbacks.length > 0;
+    }
+
+    // #3920: the capstone is made at its parents' size and grows in over GROW_IN_STEPS steps; the
+    // loop runs on until it is full size (plus a short settle), then stops.
+    it("keeps stepping until the capstone has grown in, then stops for good", async () => {
       const renderer = await renderScreen();
+      mockEnginePieces = capstone(0.8);
       await win(renderer);
-      expect(rafCallbacks).toHaveLength(0);
+      // Still running: the capstone is growing in.
+      expect(rafCallbacks).toHaveLength(1);
+      let frames = 0;
+      for (let i = 1; i < GROW_IN_STEPS; i++) {
+        mockEnginePieces = capstone(0.8 + (0.2 * i) / GROW_IN_STEPS);
+        expect(await frame()).toBe(true);
+        frames++;
+      }
+      // A trip to the background in the middle pauses it; the resume finishes the same tail.
+      await setAppState("background");
+      expect(await frame()).toBe(false);
+      await setAppState("active");
+      expect(rafCallbacks).toHaveLength(1);
+      mockEnginePieces = capstone(1);
+      while (await frame()) {
+        frames++;
+        expect(frames).toBeLessThan(GROW_IN_STEPS + 20);
+      }
+      // About GROW_IN_STEPS frames, plus the settle (100 ms: 6 frames at 60 Hz).
+      expect(frames).toBeGreaterThanOrEqual(GROW_IN_STEPS);
+      expect(frames).toBeLessThanOrEqual(GROW_IN_STEPS + 8);
       mockEngineStep.mockClear();
       await act(() => {
         advanceOneFrame();
       });
-      // A trip to the background and back does not restart the loop either.
+      // Ended for good: a trip to the background and back does not restart the loop.
       await setAppState("background");
       await setAppState("active");
       expect(rafCallbacks).toHaveLength(0);
       expect(mockEngineStep).not.toHaveBeenCalled();
+    });
+
+    it("with nothing growing in, stops after the short settle", async () => {
+      const renderer = await renderScreen();
+      mockEnginePieces = capstone(1);
+      await win(renderer);
+      let frames = 0;
+      while (await frame()) frames++;
+      expect(frames).toBeLessThanOrEqual(7);
+      expect(rafCallbacks).toHaveLength(0);
     });
 
     it("completes the session once and keeps a new best (Codex on #3919)", async () => {
