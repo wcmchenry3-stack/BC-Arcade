@@ -5,7 +5,10 @@ appId: com.buffingchi.games
 # `cascade-test-near-lid` (test-build-only, see demo-loss.yaml) restores a pile over the lid and
 # fast-forwards past the restore grace, so the ring is already draining when the board shows it.
 # Left alone the lid ends the game about 2.5 s later (the video shows the ring drain to red and
-# the result card). The screenshots are taken straight away, while the ring still has time on it.
+# the result card). The ring screenshot is taken straight after the tap, while the ring still has
+# time on it: the tap waits at most 300 ms for the screen to settle (#3699). By default Maestro
+# waits for the screen to stop changing, and the draining ring kept it changing until the lid had
+# ended the game, so the "ring" screenshot showed the result card.
 tags:
   - demo
 ---
@@ -15,6 +18,7 @@ tags:
 - tapOn:
     id: "cascade-test-near-lid"
     retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 300
 - takeScreenshot: cascade-demo-danger-ring
 - extendedWaitUntil:
     visible:

@@ -17,7 +17,8 @@ class CascadeModule(GameModuleBase):
     game_type = GameType.CASCADE
     metadata_model = CascadeMetadata
     result_model = None
-    has_winner = False
+    # A capstone records win, the lid loss (#3699); builds before it send completed.
+    has_winner = True
     # No natural ceiling (#2519 decision 14). Every non-abandoned game counts.
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
 

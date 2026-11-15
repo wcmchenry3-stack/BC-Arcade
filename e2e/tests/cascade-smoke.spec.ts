@@ -22,6 +22,7 @@ import {
   gotoCascade,
   openCascade,
   setSeed,
+  setupWin,
   spawnTierAt,
   triggerGameOver,
   waitForCascadeBoard,
@@ -190,6 +191,33 @@ test.describe("Cascade on web (CanvasKit)", () => {
     await triggerGameOver(page);
     await expect.poll(async () => (await getState(page)).gameOver).toBe(true);
     await expect(page.getByTestId("cascade-result")).toBeVisible();
+  });
+
+  // #3699: the win via the test hook: the celebration plays, and only then the win card.
+  test("win via test hook: the celebration, then the win card", async ({
+    page,
+  }) => {
+    await gotoCascade(page);
+    await setupWin(page);
+    await expect.poll(async () => (await getState(page)).won).toBe(true);
+    // The card waits for the celebration (about 2.1 s, #2201): not up straight after the win.
+    const title = page.getByTestId("cascade-result-title");
+    await expect(title).toBeHidden();
+    await expect(title).toBeVisible({ timeout: 8_000 });
+    await expect(title).toHaveText("You Win!");
+    const card = page.getByTestId("cascade-result");
+    await expect(card.getByText("Time", { exact: true })).toBeVisible();
+    await expect(card.getByText("Merges", { exact: true })).toBeVisible();
+
+    // Play Again starts a fresh game.
+    await card.getByRole("button", { name: "Play Again" }).click();
+    await expect(title).toBeHidden();
+    await expect
+      .poll(async () => {
+        const s = await getState(page);
+        return [s.won, s.gameOver, s.fruitCount];
+      })
+      .toEqual([false, false, 0]);
   });
 
   test("a failed CanvasKit download shows an error, and Retry recovers", async ({

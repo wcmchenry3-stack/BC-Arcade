@@ -8,6 +8,11 @@
  * React. Drawing is `game/cascade/render/drawFrame.ts`; the pieces are the code-drawn art (#3698),
  * rasterised once per set and on-screen size (`game/cascade/art/sprites.ts`), over the bin
  * (`art/bin.ts`), which is the board's card: the canvas is exactly the board rect.
+ *
+ * The win celebration (#3699) is drawn into the same Picture, over the board: `celebration` is a
+ * shared value the screen animates (ms since the win, -1 for none), so the celebration plays on
+ * the UI thread with no JS loop. At the win (`won`) the board builds what it draws once
+ * (`render/celebrationStyle.ts`), including the capstone rasterised bigger, with its cheering face.
  */
 import React, { useMemo } from "react";
 import { PixelRatio, View } from "react-native";
@@ -17,8 +22,12 @@ import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../../game/cascade/constants";
 import { drawFrame } from "../../game/cascade/render/drawFrame";
+import { drawCelebration } from "../../game/cascade/render/drawCelebration";
+import { buildCelebrationStyle } from "../../game/cascade/render/celebrationStyle";
+import { CELEBRATION_START_MS } from "../../game/cascade/celebration";
 import { buildBoardStyle } from "../../game/cascade/render/boardStyle";
-import { pieceSprites } from "../../game/cascade/art/sprites";
+import { capstoneSprite, pieceSprites } from "../../game/cascade/art/sprites";
+import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import { binPicture } from "../../game/cascade/art/bin";
 import type { CascadeLidPalette } from "../../theme/theme.cascade";
 
@@ -43,14 +52,46 @@ export interface CascadeBoardProps {
   readonly lidPalette: CascadeLidPalette;
   /** The active theme: the bin's colours. */
   readonly theme: "light" | "dark";
+  /** The game was won (#3699): build the celebration. */
+  readonly won?: boolean;
+  /** The celebration's calm version (no rise, rotation, pulse, rays or twinkles). */
+  readonly reduceMotion?: boolean;
+  /** Ms since the win, animated by the screen (-1: no celebration). */
+  readonly celebration?: { readonly value: number };
 }
 
-function CascadeBoard({ frame, scale, setId, lidPalette, theme }: CascadeBoardProps) {
+/** No celebration (a board without the prop). */
+const NO_CELEBRATION = { value: -1 };
+
+function CascadeBoard({
+  frame,
+  scale,
+  setId,
+  lidPalette,
+  theme,
+  won = false,
+  reduceMotion = false,
+  celebration = NO_CELEBRATION,
+}: CascadeBoardProps) {
   const { t } = useTranslation("cascade");
   const style = useMemo(() => buildBoardStyle(lidPalette), [lidPalette]);
   // One bitmap pixel per screen pixel at each tier's ladder radius (never scaled up).
   const pxPerUnit = scale * PixelRatio.get();
   const sprites = useMemo(() => pieceSprites(setId, pxPerUnit), [setId, pxPerUnit]);
+  // The win (#3699): the capstone rasterised once at the celebration's size, and the rest of what
+  // the celebration draws. Made when the win happens, never during play.
+  const celebrationStyle = useMemo(
+    () =>
+      won
+        ? buildCelebrationStyle({
+            setId,
+            theme,
+            reduceMotion,
+            sprite: capstoneSprite(setId, pxPerUnit) ?? sprites[CAPSTONE_TIER] ?? null,
+          })
+        : null,
+    [won, setId, theme, reduceMotion, pxPerUnit, sprites]
+  );
   // The bin (#3698): a static Picture per theme, recorded once and drawn under the pieces.
   const bin = useMemo(() => binPicture(theme), [theme]);
   const canvasStyle = useMemo(
@@ -61,9 +102,12 @@ function CascadeBoard({ frame, scale, setId, lidPalette, theme }: CascadeBoardPr
   const drawErrorReported = useSharedValue(false);
   const picture = useDerivedValue(() => {
     const buf = frame.value;
+    const t = celebration.value;
+    const celeb = t >= CELEBRATION_START_MS ? celebrationStyle : null;
     return createPicture((canvas) => {
       try {
-        drawFrame(canvas, buf, style, sprites);
+        drawFrame(canvas, buf, style, sprites, celeb ? CAPSTONE_TIER : -1);
+        if (celeb) drawCelebration(canvas, buf, celeb, t);
       } catch (e) {
         // Whatever drew before the throw stays; report once, never take down the UI thread.
         if (!drawErrorReported.value) {
@@ -72,7 +116,7 @@ function CascadeBoard({ frame, scale, setId, lidPalette, theme }: CascadeBoardPr
         }
       }
     }, WORLD_BOUNDS);
-  }, [style, sprites]);
+  }, [style, sprites, celebrationStyle]);
 
   // The board's role and label sit on a wrapping View: on web Skia's Canvas drops accessibility
   // props, and the board must still read as an image there (#2960, CanvasKit on web).

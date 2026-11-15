@@ -11,13 +11,18 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
+import { Modal } from "react-native";
+import CascadeCelebration from "../../components/cascade/CascadeCelebration";
+import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
+import { CELEBRATION_CARD_MS, CELEBRATION_CARD_MS_REDUCED } from "../../game/cascade/celebration";
+import { formatMs } from "../../game/_shared/formatMs";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
 import { GROW_IN_STEPS } from "../../game/cascade/constants";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getBest, storageKey } from "../../game/_shared/personalBest";
-import { AppState } from "react-native";
+import { AccessibilityInfo, AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import {
   resetDisplayNameCacheForTests,
@@ -501,7 +506,8 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     const completeCall = mockCompleteGame.mock.calls[0];
     if (completeCall === undefined) throw new Error("Expected completeGame call");
     const [, summary, eventData] = completeCall;
-    expect(summary.outcome).toBe("completed");
+    // The lid's game over is a loss (#3699; "completed" before Cascade had a win).
+    expect(summary.outcome).toBe("loss");
     expect(eventData).toEqual(
       expect.objectContaining({
         final_score: expect.any(Number),
@@ -509,7 +515,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
         theme: expect.any(String),
         total_drops: 1,
         total_merges: 1,
-        outcome: "completed",
+        outcome: "loss",
       })
     );
     for (const key of RESERVED_KEYS) {
@@ -683,9 +689,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
 
     const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
     expect(summary.result).toEqual(eventData);
-    expect(summary.result).toEqual(
-      expect.objectContaining({ total_drops: 1, outcome: "completed" })
-    );
+    expect(summary.result).toEqual(expect.objectContaining({ total_drops: 1, outcome: "loss" }));
   });
 
   it("client failures do not block gameplay (enqueueEvent throws)", async () => {
@@ -1056,6 +1060,36 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
     expect(lastDuration()).toBe(25_000);
   });
 
+  // #3699: only a game that ended shows a card; a restored game is in progress.
+  it("restores an in-progress game with no result card", async () => {
+    await AsyncStorage.setItem(
+      "cascade_game_v7",
+      JSON.stringify({
+        version: 7,
+        pieces: [{ tier: 9, x: 120, y: 500 }],
+        score: 900,
+        savedAt: Date.now(),
+        queue: { current: 0, next: 1 },
+        playedMs: 60_000,
+      })
+    );
+    const renderer = await renderScreen();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockEngineRestore).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    const modal = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (n: any) => n.props.testID === "cascade-result" && n.props.visible !== undefined
+    )[0]!;
+    expect(modal.props.visible).toBe(false);
+    expect(modal.props.celebration).toBeUndefined();
+    expect(renderer.root.findAllByType(Modal).some((m) => m.props.visible === true)).toBe(false);
+  });
+
   // An older build's save has no playedMs: its earlier play is unknown, so
   // the clock counts from the load. It must still restore the board.
   it("restores an older build's save without playedMs, counting from the load", async () => {
@@ -1185,7 +1219,8 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       mockCompleteGame.mockClear();
       await win(renderer);
       expect(mockCompleteGame).toHaveBeenCalledTimes(1);
-      expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("completed");
+      // #3699: the win is recorded as a win ("completed" before the win card).
+      expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("win");
       await expect(getBest("cascade")).resolves.toBe(9000);
       // Leaving afterwards does not file the won game as abandoned.
       await act(() => {
@@ -1193,6 +1228,189 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       });
       const outcomes = mockCompleteGame.mock.calls.map((c) => c[1]?.outcome);
       expect(outcomes).not.toContain("abandoned");
+    });
+
+    // #3699: the celebration, then the win card.
+    describe("the celebration and the win card (#3699)", () => {
+      let reduceMotionListeners: ((enabled: boolean) => void)[] = [];
+      beforeEach(() => {
+        resetReduceMotionForTests();
+        reduceMotionListeners = [];
+        jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(false);
+        jest
+          .spyOn(AccessibilityInfo, "addEventListener")
+          .mockImplementation((event: string, handler: unknown) => {
+            if (event === "reduceMotionChanged") {
+              reduceMotionListeners.push(handler as (enabled: boolean) => void);
+            }
+            return { remove: jest.fn() } as unknown as ReturnType<
+              typeof AccessibilityInfo.addEventListener
+            >;
+          });
+      });
+      afterEach(() => resetReduceMotionForTests());
+
+      /** The RN Modal that holds the card: shown only once the celebration is over. */
+      const cardShown = (renderer: ReturnType<typeof create>) =>
+        renderer.root.findAllByType(Modal).some((m) => m.props.visible === true);
+      const resultModal = (renderer: ReturnType<typeof create>) =>
+        renderer.root.findAll(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (n: any) => n.props.testID === "cascade-result" && n.props.visible !== undefined
+        )[0]!;
+      const board = (renderer: ReturnType<typeof create>) =>
+        renderer.root.findAll(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (n: any) => n.props.frame !== undefined && n.props.scale !== undefined
+        )[0]!;
+      const celebrating = (renderer: ReturnType<typeof create>) =>
+        renderer.root.findAllByType(CascadeCelebration).length > 0;
+      async function advance(ms: number) {
+        await act(async () => {
+          jest.advanceTimersByTime(ms);
+        });
+      }
+      async function setReduceMotion(enabled: boolean) {
+        await act(async () => {
+          for (const l of reduceMotionListeners) l(enabled);
+        });
+      }
+
+      it("plays the celebration first; the win card only after it, at 2.1 s (#2201)", async () => {
+        const renderer = await renderScreen();
+        mockEngineScore = 4321;
+        await win(renderer);
+        // The board celebrates: it knows of the win and its clock runs to the card's time.
+        expect(board(renderer).props.won).toBe(true);
+        expect(board(renderer).props.celebration.value).toBe(CELEBRATION_CARD_MS);
+        expect(celebrating(renderer)).toBe(true);
+        expect(resultModal(renderer).props).toMatchObject({ visible: true, outcome: "win" });
+        // No card, not even one render early.
+        expect(cardShown(renderer)).toBe(false);
+        await advance(CELEBRATION_CARD_MS - 1);
+        expect(cardShown(renderer)).toBe(false);
+        await advance(1);
+        expect(cardShown(renderer)).toBe(true);
+        expect(celebrating(renderer)).toBe(false);
+      });
+
+      it("the win card shows the score, Best, Merges and the play time", async () => {
+        await AsyncStorage.setItem("cascade_best_score", "1000");
+        const renderer = await renderScreen();
+        mockEngineScore = 9000;
+        mockCompleteGame.mockClear();
+        await win(renderer);
+        await advance(CELEBRATION_CARD_MS);
+        const card = resultModal(renderer).props;
+        expect(card.outcome).toBe("win");
+        expect(card.hero).toEqual({ kind: "score", label: "Score", value: 9000 });
+        expect(card.isNewBest).toBe(true);
+        // The time is the play clock at the win: the session's own duration.
+        const playedMs = mockCompleteGame.mock.calls[0]![1].result.duration_ms as number;
+        expect(playedMs).toBeGreaterThanOrEqual(5_000);
+        expect(card.stats).toEqual([
+          { label: "Best", value: 9000 },
+          { label: "Merges", value: 0 },
+          { label: "Time", value: formatMs(playedMs) },
+        ]);
+      });
+
+      it("drops the merge burst for the winning merge only", async () => {
+        const renderer = await renderScreen();
+        const bursts = () => renderer.root.findAll((n) => n.props.onDone !== undefined).length;
+        await injectMerge(3, 100, 200);
+        expect(bursts()).toBe(1);
+        await injectMerge(CAPSTONE_TIER, 200, 400);
+        expect(bursts()).toBe(1);
+      });
+
+      it("Reduce Motion: the calm version, and the card at 1.6 s", async () => {
+        jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+        const renderer = await renderScreen();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        await win(renderer);
+        expect(board(renderer).props.reduceMotion).toBe(true);
+        expect(board(renderer).props.celebration.value).toBe(CELEBRATION_CARD_MS_REDUCED);
+        await advance(CELEBRATION_CARD_MS_REDUCED - 1);
+        expect(cardShown(renderer)).toBe(false);
+        await advance(1);
+        expect(cardShown(renderer)).toBe(true);
+      });
+
+      it("Reduce Motion switched on late in the celebration shows the card at once", async () => {
+        const renderer = await renderScreen();
+        await win(renderer);
+        await advance(1_800); // past the calm version's 1.6 s
+        expect(cardShown(renderer)).toBe(false);
+        await setReduceMotion(true);
+        await advance(0);
+        expect(cardShown(renderer)).toBe(true);
+      });
+
+      it("Reduce Motion switched off mid-way carries on to the full celebration", async () => {
+        jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+        const renderer = await renderScreen();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        await win(renderer);
+        await advance(1_000);
+        await setReduceMotion(false);
+        // Same clock, the full timeline: the card at 2.1 s, past the calm version's 1.6 s.
+        await advance(CELEBRATION_CARD_MS - 1_000 - 1);
+        expect(cardShown(renderer)).toBe(false);
+        await advance(1);
+        expect(cardShown(renderer)).toBe(true);
+      });
+
+      it("a trip to the background mid-celebration neither restarts play nor shows the card twice", async () => {
+        const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+        announce.mockClear();
+        const renderer = await renderScreen();
+        await win(renderer);
+        // Let the win tail end (the board's loop stops after the capstone's grow-in).
+        let frames = 0;
+        while (await frame()) expect(++frames).toBeLessThan(20);
+        await advance(300);
+        await setAppState("background");
+        await setAppState("active");
+        mockEngineStep.mockClear();
+        await act(() => {
+          advanceOneFrame();
+        });
+        expect(mockEngineStep).not.toHaveBeenCalled();
+        await advance(CELEBRATION_CARD_MS);
+        expect(cardShown(renderer)).toBe(true);
+        await setAppState("background");
+        await setAppState("active");
+        await advance(CELEBRATION_CARD_MS);
+        expect(cardShown(renderer)).toBe(true);
+        const wins = announce.mock.calls.filter(([text]) => String(text).startsWith("You Win!"));
+        expect(wins).toHaveLength(1);
+      });
+
+      it("Play Again after a win starts a fresh game", async () => {
+        const renderer = await renderScreen();
+        await win(renderer);
+        await advance(CELEBRATION_CARD_MS);
+        mockEngineHasWon.mockReturnValue(false);
+        const engines = mockEngineInstanceCount;
+        mockStartGame.mockClear();
+        await act(() => {
+          resultModal(renderer).props.onPlayAgain();
+        });
+        expect(resultModal(renderer).props.visible).toBe(false);
+        expect(cardShown(renderer)).toBe(false);
+        expect(board(renderer).props.won).toBe(false);
+        expect(board(renderer).props.celebration.value).toBe(-1);
+        await act(() => {
+          advanceOneFrame();
+        });
+        expect(mockEngineInstanceCount).toBe(engines + 1);
+        expect(mockStartGame).toHaveBeenCalledTimes(1);
+      });
     });
 
     it("clears the saved game and saves nothing after it, on pause or otherwise", async () => {

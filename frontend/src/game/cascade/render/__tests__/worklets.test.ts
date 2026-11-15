@@ -96,4 +96,22 @@ describe("UI-thread board renderer: every reachable function is a worklet", () =
     }
     expect(missing).toEqual([]);
   });
+
+  // #3699: the win celebration is recorded into the same Picture.
+  it("every function in drawCelebration.ts, and the celebration timeline it calls", () => {
+    const file = path.join(RENDER, "drawCelebration.ts");
+    const worklets = workletsOf(file);
+    expect([...functionsOf(file)].filter((n) => !worklets.has(n))).toEqual([]);
+    const timeline = path.resolve(RENDER, "..", "celebration.ts");
+    const imported = importedFunctions(file)
+      .filter(([f]) => f === timeline)
+      .map(([, n]) => n);
+    expect(imported).toEqual(
+      expect.arrayContaining(["celebrationPose", "createCelebrationPose", "twinkleAlpha"])
+    );
+    // What celebrationPose calls in its own module.
+    const need = [...imported, "segment", "easeOutCubic", "easeOutBack"];
+    const timelineWorklets = workletsOf(timeline);
+    expect(need.filter((n) => !timelineWorklets.has(n))).toEqual([]);
+  });
 });
