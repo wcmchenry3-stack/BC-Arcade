@@ -89,15 +89,19 @@ describe("cascadeSetup('fillBin')", () => {
   });
 });
 
-describe("cascadeSetup('win') (#3904)", () => {
-  it("restores two capstones, not yet touching, that touch and win within 0.5 s", () => {
+describe("cascadeSetup('win') (#3904; #3920: one capstone)", () => {
+  it("restores two tier-9 pieces, not yet touching, that merge into the capstone and win within 0.5 s", () => {
     const { engine } = load("win");
-    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER, CAPSTONE_TIER]);
+    const before = engine.getState().pieces;
+    expect(before.map((p) => p.tier)).toEqual([CAPSTONE_TIER - 1, CAPSTONE_TIER - 1]);
+    const [a, b] = before;
+    expect(Math.hypot(a!.x - b!.x, a!.y - b!.y)).toBeGreaterThan(2 * tierRadius(CAPSTONE_TIER - 1));
     expect(engine.hasWon()).toBe(false);
     const events = run(engine, 0.5);
     expect(events.filter((e) => e.type === "win")).toHaveLength(1);
     expect(events.some((e) => e.type === "gameOver")).toBe(false);
     expect(engine.hasWon()).toBe(true);
     expect(engine.canDrop()).toBe(false);
+    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER]);
   });
 });

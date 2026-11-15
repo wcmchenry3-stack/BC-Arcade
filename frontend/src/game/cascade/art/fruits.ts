@@ -1,10 +1,11 @@
 /**
- * #3698: the Fruits set, tiers 0-11, as small descriptions for the kawaii pen (`pen.ts`), in
- * unit space (collider radius 1, centre 0, 0, y down). `body` is clipped to the circle; `back`
- * and `front` are the only parts drawn outside it, the owner-approved overhangs (2026-11-14)
- * (measured with the outline strokes, in radii past the circle: cherry 0.52, grape and apple 0.40,
- * pineapple 0.45, peach 0.28, pumpkin 0.335, dragonfruit crown 0.475 and sides 0.12; the lemon's
- * nubs stay inside). `box` bounds each piece's ink, strokes included, within 0.03 r.
+ * #3698: the Fruits set, tiers 0-10 (#3920: the Peach removed, the Apple green; both old pieces
+ * are kept as recipes in `FRUIT_ART.retired`, never drawn in play), as small descriptions for the kawaii pen (`pen.ts`), in unit space (collider radius 1, centre 0, 0, y
+ * down). `body` is clipped to the circle; `back` and `front` are the only parts drawn outside it,
+ * the owner-approved overhangs (2026-11-14) (measured with the outline strokes, in radii past the
+ * circle: cherry 0.52, grape and apple 0.40, pineapple 0.45, pumpkin 0.335, dragonfruit crown 0.475
+ * and sides 0.12; the lemon's nubs stay inside). `box` bounds each piece's ink, strokes included,
+ * within 0.03 r.
  */
 import { CASCADE_ART } from "../../../theme/theme.cascade";
 import {
@@ -160,23 +161,33 @@ const orange: PieceArt = {
   box: UNIT_BOX,
 };
 
-const apple: PieceArt = {
-  body(pen) {
-    pen.body(T.apple);
-    pen.line(
-      P((b) => b.M(-0.22, -0.84).Q(0, -0.7, 0.22, -0.84)),
-      T.apple.d,
-      0.08,
-      0.9
-    );
-  },
-  front(pen) {
-    stemLeaf(pen, 0, -0.8, 0.07, -1.3, [0.07, -1.12, 0.62, -1.3, 0.15]);
-  },
-  face: { y: 0.1 },
-  box: [-1, -1.415, 1, 1],
-};
+/** The apple's drawing in a skin colour: green in play (#3920), red when retired. */
+function appleIn(skin: typeof T.apple | typeof T.appleRed): PieceArt {
+  return {
+    body(pen) {
+      pen.body(skin);
+      pen.line(
+        P((b) => b.M(-0.22, -0.84).Q(0, -0.7, 0.22, -0.84)),
+        skin.d,
+        0.08,
+        0.9
+      );
+    },
+    front(pen) {
+      stemLeaf(pen, 0, -0.8, 0.07, -1.3, [0.07, -1.12, 0.62, -1.3, 0.15]);
+    },
+    face: { y: 0.1 },
+    box: [-1, -1.415, 1, 1],
+  };
+}
 
+/** #3920: the Apple is green in play, so it no longer reads as the Cherry. */
+const apple = appleIn(T.apple);
+
+/** Retired by #3920 (see `FRUIT_ART.retired`): the red Apple, the Apple until #3920. */
+const appleRed = appleIn(T.appleRed);
+
+/** Retired by #3920 (see `FRUIT_ART.retired`): the Peach, Fruits tier 6 until #3920. */
 const peach: PieceArt = {
   body(pen) {
     pen.body(T.peach);
@@ -333,7 +344,7 @@ const pumpkin: PieceArt = {
 };
 
 /**
- * Dragonfruit (tier 8), take B of the three redraws, the owner's pick (2026-11-14): "simplified for
+ * Dragonfruit (tier 7 since #3920), take B of the three redraws, the owner's pick (2026-11-14): "simplified for
  * game size". A round magenta body that is the collider circle; flame-shaped bracts with a
  * pink-to-green base, a lighter green centre and a darker outline that fades into the skin; three
  * crown bracts on top as the one big overhang, and two side bracts a side peeking out behind it.
@@ -417,7 +428,6 @@ export const FRUIT_ART: ArtSet = {
     grape,
     orange,
     apple,
-    peach,
     coconut,
     dragonfruit,
     pineapple,
@@ -426,4 +436,13 @@ export const FRUIT_ART: ArtSet = {
   ],
   ink: T.ink,
   closedEyes: false,
+  // #3920: kept as recipes, never drawn in play (docs/games/cascade.md#retired-pieces-3920).
+  retired: {
+    peach: { art: peach, ink: T.retiredInk.peach, was: "tier 6; removed from the ladder by #3920" },
+    appleRed: {
+      art: appleRed,
+      ink: T.retiredInk.appleRed,
+      was: "the Apple (tier 5) until #3920, which made it green",
+    },
+  },
 };

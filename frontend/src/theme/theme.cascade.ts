@@ -12,23 +12,21 @@
  */
 
 /**
- * Debug-only placeholder colour per tier of the ladder (`game/cascade/tiers.ts`, tiers 0-11).
- * Each is distinct from its neighbours so stacked circles stay readable. Tier 11 (the capstone,
- * Pumpkin / Milky Way) is drawn with this colour until its art lands (#3698).
+ * Debug-only placeholder colour per tier of the ladder (`game/cascade/tiers.ts`, tiers 0-10,
+ * #3920). Each is distinct from its neighbours so stacked circles stay readable.
  */
 export const CASCADE_PIECE_COLORS = [
-  "#e63946", // 0 Cherry / Moon
-  "#4361ee", // 1 Blueberry / Pluto
-  "#f9c80e", // 2 Lemon / Mercury
-  "#6a0572", // 3 Grape / Mars
-  "#f77f00", // 4 Orange / Venus
-  "#c1121f", // 5 Apple / Earth
-  "#ffb347", // 6 Peach / Neptune
-  "#6f4e37", // 7 Coconut / Uranus
-  "#ff4d9d", // 8 Dragonfruit / Saturn
-  "#ffd166", // 9 Pineapple / Jupiter
-  "#2d6a4f", // 10 Watermelon / Sun
-  "#e76f00", // 11 Pumpkin / Milky Way (capstone)
+  "#e63946", // 0 Cherry / Pluto
+  "#4361ee", // 1 Blueberry / Mercury
+  "#f9c80e", // 2 Lemon / Mars
+  "#6a0572", // 3 Grape / Venus
+  "#f77f00", // 4 Orange / Earth
+  "#7cc242", // 5 Apple (green, #3920) / Neptune
+  "#6f4e37", // 6 Coconut / Uranus
+  "#ff4d9d", // 7 Dragonfruit / Saturn
+  "#ffd166", // 8 Pineapple / Jupiter
+  "#2d6a4f", // 9 Watermelon / Sun
+  "#e76f00", // 10 Pumpkin / Milky Way (capstone)
 ] as const;
 
 /** The lid and danger-state colours for one theme (#3694). All `#rrggbb`: the screen mixes them. */
@@ -88,7 +86,11 @@ export const CASCADE_ART = {
     orange: { b: "#f58a1f", l: "#ffb766", d: "#c2560a", o: "#8f3c05" },
     orangeStem: "#3f8a2a",
     orangeStemDot: "#2c6a1c",
-    apple: { b: "#c8102e", l: "#f2505e", d: "#7a0616", o: "#5e0411" },
+    /** #3920: a bright glossy apple green (Granny Smith), apart from the Lemon and Watermelon. */
+    apple: { b: "#7cc242", l: "#c4ec7a", d: "#3f8a1e", o: "#2a5e12" },
+    /** Retired by #3920 (kept for `FRUIT_ART.retired`, never drawn in play): the red Apple. */
+    appleRed: { b: "#c8102e", l: "#f2505e", d: "#7a0616", o: "#5e0411" },
+    /** Retired by #3920: the Peach. */
     peach: { b: "#ffb27a", l: "#ffd9b0", d: "#e46a4e", o: "#b8452f" },
     peachBlush: "#f2706a",
     coconut: { b: "#6e4426", l: "#9b6b44", d: "#3e2312", o: "#2b170b" },
@@ -112,8 +114,7 @@ export const CASCADE_ART = {
       "#4a3205",
       "#1c0830",
       "#4a2003",
-      "#3a0208",
-      "#5a1a0c",
+      "#1a3a06",
       "#1a0c04",
       "#3a1418",
       "#4a2a02",
@@ -121,8 +122,11 @@ export const CASCADE_ART = {
       "#4a1a02",
     ],
     dragonfruitBlush: "#b0103c",
+    /** Face ink of the retired pieces (#3920). */
+    retiredInk: { appleRed: "#3a0208", peach: "#5a1a0c" },
   },
   cosmos: {
+    /** Retired by #3920 (kept for `COSMOS_ART.retired`, never drawn in play): the Moon. */
     moon: { b: "#cfd0d4", l: "#f2f2f4", d: "#8e9098" },
     maria: "#9d9fa8",
     pluto: { b: "#c99d76", l: "#e9c9a6", d: "#8d6244" },
@@ -161,7 +165,6 @@ export const CASCADE_ART = {
     galaxyBlush: "#ff8ac0",
     /** Face ink per tier. */
     ink: [
-      "#2a2a33",
       "#3a2416",
       "#1a1612",
       "#3a1004",
@@ -174,6 +177,8 @@ export const CASCADE_ART = {
       "#6a2a00",
       "#f4eaff",
     ],
+    /** Face ink of the retired pieces (#3920). */
+    retiredInk: { moon: "#2a2a33" },
   },
 } as const;
 

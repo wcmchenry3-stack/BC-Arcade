@@ -1,17 +1,19 @@
 /**
  * Cascade's tier-scaled merge sound (moved out of `CascadeScreen.tsx` in #2960): one player for
  * `cascade.fruitMerge`, louder for bigger merges (volume 0.35 at tier 0 to 1.0 at the capstone,
- * tier 11, #3695). Silent while the game sound is muted. The sound story (#3702) replaces it.
+ * `CAPSTONE_TIER`, tier 10 since #3920). Silent while the game sound is muted. The sound story
+ * (#3702) replaces it.
  */
 import { useCallback, useEffect, useRef } from "react";
 import { createAudioPlayer } from "expo-audio";
 import { GAME_AUDIO_PLAYER_OPTIONS, retainAudioSession } from "../_shared/audioSession";
 import { useSoundSettings } from "../_shared/SoundContext";
 import { CASCADE_SOUNDS } from "./sounds";
+import { CAPSTONE_TIER } from "./tiers";
 
 /** The merge sound's volume for a merge into `tier`. */
 export function mergeVolume(tier: number): number {
-  return 0.35 + (tier * 0.65) / 11;
+  return 0.35 + (tier * 0.65) / CAPSTONE_TIER;
 }
 
 /** Returns `play(tier)`. */

@@ -59,7 +59,7 @@ export const DEFAULT_CONSTANTS: SimConstants = {
   dangerMargin: DANGER_STACK_MARGIN,
   fixedStepMs: FIXED_STEP_MS,
   // Every per-tier number comes from the ladder (`../tiers.ts`, #3695): the sim restates none.
-  // maxTier is the capstone: it is never dropped; two touching are the win (#3904).
+  // maxTier is the capstone: it is never dropped; making it is the win (#3920).
   maxTier: CAPSTONE_TIER,
   droppableTiers: DROPPABLE_TIERS,
   physicsRadius: tierRadius,

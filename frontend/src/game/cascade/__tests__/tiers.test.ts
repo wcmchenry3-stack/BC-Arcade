@@ -16,11 +16,12 @@ import { FRUIT_SETS } from "../../../theme/fruitSets";
 const INNER_WIDTH = WORLD_WIDTH - 2 * WALL_THICKNESS;
 
 describe("the ladder", () => {
-  it("has 12 tiers, numbered 0..11", () => {
-    expect(TIER_COUNT).toBe(12);
-    expect(TIERS).toHaveLength(12);
-    expect(TIERS.map((t) => t.tier)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-    expect(CAPSTONE_TIER).toBe(11);
+  // #3920 (owner decision): 11 tiers, the Peach and the Moon removed.
+  it("has 11 tiers, numbered 0..10", () => {
+    expect(TIER_COUNT).toBe(11);
+    expect(TIERS).toHaveLength(11);
+    expect(TIERS.map((t) => t.tier)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(CAPSTONE_TIER).toBe(10);
   });
 
   it("has strictly increasing radius and score", () => {
@@ -30,12 +31,12 @@ describe("the ladder", () => {
     }
   });
 
-  // #3904 (owner pick V1): one constant ratio for the whole ladder, unrounded, 5 to 98.
-  it("follows the documented constant-ratio series, radius(n) = 5 * (98 / 5)^(n / 11)", () => {
-    const k = (98 / 5) ** (1 / 11);
-    expect(k).toBeCloseTo(1.31062, 5);
-    TIERS.forEach((t) => expect(t.radius).toBeCloseTo(5 * k ** t.tier, 9));
-    expect(TIERS[0]!.radius).toBe(5);
+  // #3920 (owner decision): one constant ratio for the whole ladder, unrounded, 11.5 to 98.
+  it("follows the documented constant-ratio series, radius(n) = 11.5 * (98 / 11.5)^(n / 10)", () => {
+    const k = (98 / 11.5) ** (1 / 10);
+    expect(k).toBeCloseTo(1.23895, 5);
+    TIERS.forEach((t) => expect(t.radius).toBeCloseTo(11.5 * k ** t.tier, 9));
+    expect(TIERS[0]!.radius).toBe(11.5);
     expect(TIERS[CAPSTONE_TIER]!.radius).toBeCloseTo(98, 9);
     // Every tier-to-tier ratio is the same.
     for (let i = 1; i < TIERS.length; i++) {
@@ -53,23 +54,23 @@ describe("the ladder", () => {
     expect(TIERS[0]!.density).toBe(1);
   });
 
-  // #3904 (owner pick V1): tiers 0-7 drop.
-  it("drops tiers 0-7 only; the capstone is never dropped", () => {
-    expect(DROPPABLE_TIERS).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  // #3920 (owner decision): tiers 0-5 drop.
+  it("drops tiers 0-5 only; the capstone is never dropped", () => {
+    expect(DROPPABLE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
     expect(TIERS[CAPSTONE_TIER]!.droppable).toBe(false);
   });
 
-  it("lets two tier-10 pieces sit side by side in the bin and touch, and fits the capstone", () => {
-    expect(4 * TIERS[10]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
+  it("lets two tier-9 pieces sit side by side in the bin and touch, and fits the capstone", () => {
+    expect(4 * TIERS[CAPSTONE_TIER - 1]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
     expect(2 * TIERS[CAPSTONE_TIER]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
   });
 
-  // #3904 owner rule: at most 3 capstones fit under the lid. Four circles of radius r fit in the
-  // 360 x 500 room under the lid only as a zigzag column (touching the left and right walls in
-  // turn, each touching the one below), which needs 2r + 3 * sqrt((2r)^2 - (360 - 2r)^2) <= 500,
-  // so r <= 97.21. r11 = 98 leaves room for three, and two are never side by side on the floor
-  // (4r > 360): the win is a diagonal or stacked touch.
+  // #3904 owner rule, kept by #3920 (the capstone is still r 98): at most 3 capstones fit under
+  // the lid. Four circles of radius r fit in the 360 x 500 room under the lid only as a zigzag
+  // column (touching the left and right walls in turn, each touching the one below), which needs
+  // 2r + 3 * sqrt((2r)^2 - (360 - 2r)^2) <= 500, so r <= 97.21. Since #3920 making one capstone
+  // is the win, so play never holds two; the geometry still pins the capstone's size.
   it("fits at most three capstones under the lid, and never two side by side on the floor", () => {
     const r = TIERS[CAPSTONE_TIER]!.radius;
     expect(4 * r).toBeGreaterThan(INNER_WIDTH);
@@ -106,7 +107,6 @@ describe("the ladder", () => {
       "grape",
       "orange",
       "apple",
-      "peach",
       "coconut",
       "dragonfruit",
       "pineapple",
@@ -114,7 +114,6 @@ describe("the ladder", () => {
       "pumpkin",
     ]);
     expect(TIERS.map((t) => t.nameKeys.cosmos)).toEqual([
-      "moon",
       "pluto",
       "mercury",
       "mars",
@@ -153,26 +152,29 @@ describe("the engine reads the ladder", () => {
     }
   });
 
-  it("merges two tier-10 pieces into the capstone and scores it from the ladder", () => {
+  it("merges two tier-9 pieces into the capstone and scores it from the ladder", () => {
     const engine = new CascadeEngine({});
-    engine.drop(10, 200);
-    engine.drop(10, 200);
+    engine.drop(CAPSTONE_TIER - 1, 200);
+    engine.drop(CAPSTONE_TIER - 1, 200);
     const events = engine.step(16.67).events;
-    expect(events.some((e) => e.type === "merge" && e.result === 11)).toBe(true);
+    expect(events.some((e) => e.type === "merge" && e.result === CAPSTONE_TIER)).toBe(true);
     const state = engine.getState();
-    expect(state.pieces.map((p) => p.tier)).toEqual([11]);
-    expect(state.score).toBe(TIERS[11]!.score);
+    expect(state.pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER]);
+    expect(state.score).toBe(TIERS[CAPSTONE_TIER]!.score);
   });
 
-  // #3904: two capstones no longer stay apart: touching, they are the win (engine.physics.test).
-  it("never merges two capstones into a further tier: they burst into the win", () => {
+  // #3920: capstones never merge (no tier above), and two touching are no longer the win (#3904's
+  // pair win is gone). Only the dev panel or a restore can put two on the board.
+  it("never merges two capstones, and two touching are not a win", () => {
     const engine = new CascadeEngine({});
     engine.drop(CAPSTONE_TIER, 200);
     engine.drop(CAPSTONE_TIER, 200);
-    const events = engine.step(16.67).events;
+    const events: ReturnType<CascadeEngine["step"]>["events"] = [];
+    for (let i = 0; i < 60; i++) events.push(...engine.step(16.67).events);
     expect(events.some((e) => e.type === "merge")).toBe(false);
-    expect(events.some((e) => e.type === "win")).toBe(true);
-    expect(engine.getState().pieces).toEqual([]);
+    expect(events.some((e) => e.type === "win")).toBe(false);
+    expect(engine.hasWon()).toBe(false);
+    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER, CAPSTONE_TIER]);
   });
 });
 

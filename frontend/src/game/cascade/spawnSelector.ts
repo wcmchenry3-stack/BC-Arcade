@@ -1,10 +1,10 @@
 /**
- * The spawner (#3697; weights #3904, owner pick "V1"). Which tier the queue offers next, by
+ * The spawner (#3697; weights #3920, owner decision). Which tier the queue offers next, by
  * weight: base weights, a drought boost for a tier not seen lately, a danger mode when the pile is
  * near the lid, and an anti-streak ban. The numbers make the win reachable in a session: tiers
- * 0-7 drop, weighted 2 3 3 3 3 3 2 1, so a drop carries about 22.2 tier-0 pieces' worth of
- * material on average and the win (two capstones, 2 x 2048 of them) is about 185 perfect drops
- * away. See docs/games/cascade.md.
+ * 0-5 drop, weighted 2 3 3 3 2 1, so a drop carries about 7.7 tier-0 pieces' worth of material on
+ * average and the win (one capstone, 1024 of them) is about 133 perfect drops away. See
+ * docs/games/cascade.md.
  */
 import { DROPPABLE_PIECE_TIERS } from "./pieceDefs";
 
@@ -13,10 +13,8 @@ const BASE_WEIGHTS: Record<number, number> = {
   1: 3,
   2: 3,
   3: 3,
-  4: 3,
-  5: 3,
-  6: 2,
-  7: 1,
+  4: 2,
+  5: 1,
 };
 
 export const DROUGHT_WINDOW = 10;
@@ -24,19 +22,20 @@ const DROUGHT_BOOST = 3;
 const STREAK_WINDOW = 4;
 /**
  * In danger, tiers at or above this are scaled by DANGER_PENALTY, the top tier by
- * DANGER_PENALTY_TOP (fractional weights, no floor since #3904: the old floor of 1 left tier 7,
- * weight 1, unpenalised). #3904 also removed
+ * DANGER_PENALTY_TOP (fractional weights, no floor since #3904: the old floor of 1 left the
+ * weight-1 top tier unpenalised). #3920: tiers 2-4 x0.2 and tier 5 x0.35 (on #3904's ladder,
+ * tiers 3-6 and 7; the same intent, measured on the sim's spam suite). #3904 also removed
  * #3697's second danger rule, which also multiplied the tiers below it by 1.5: on the V1 ladder
  * that stream of small pieces was what kept a mashing player's pile hovering just under the lid
  * (the spam bot outlived the 120 s lid bound), while a careful player is in danger for about
  * 10 % of its drops and only at the end of a lost game. See docs/games/cascade.md.
  */
-const DANGER_TIER_THRESHOLD = 3;
+const DANGER_TIER_THRESHOLD = 2;
 const DANGER_PENALTY = 0.2;
 /**
- * The top droppable tier (the Coconut / Uranus, weight 1) gets a milder danger factor (owner
- * decision on PR #3919). At x0.2, with tiers 3-6 at x0.2 too, a mashing player's pile hovered
- * just under the lid for longer: the spam bot's longest game was 116.4 s against the 120 s bound.
+ * The top droppable tier (the Apple / Neptune since #3920, weight 1) gets a milder danger factor
+ * (owner decision on PR #3919, kept by #3920). The numbers below are #3904's ladder. At x0.2,
+ * with tiers 3-6 at x0.2 too, a mashing player's pile hovered just under the lid for longer: the spam bot's longest game was 116.4 s against the 120 s bound.
  * Measured on the 100-seed spam suite (longest game 60 / 120 Hz): x0.2 110.0 / 116.4 s, x0.35
  * 99.3 / 100.0, x0.5 100.7 / 96.8, x0.7 90.5 / 85.0. x0.35 keeps the top tier well below its
  * calm share in danger (6.4 % against 8.0 %; x0.5 leaves it at 7.8 %, a hair under) and the

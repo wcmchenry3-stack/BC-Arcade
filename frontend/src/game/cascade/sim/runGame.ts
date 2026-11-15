@@ -13,6 +13,10 @@
  * #3697 adds, all measured here from what the engine exposes (nothing in the engine is for the
  * sim): wall penetration (every frame, from the snapshots, at each piece's current size), chain
  * merge latency (from the merge events' piece ids), when each tier first existed, and the win.
+ *
+ * #3920: making the capstone is the win and ends play (no more drops or merges), so every run
+ * ends at the win, and a chain watch still open then is dropped, not counted as a miss: its piece
+ * cannot merge again because play ended, not because the chain stalled.
  */
 import type { GameState, PieceSnapshot } from "../engine";
 import { advanceQueue, createPieceQueue } from "../pieceQueue";
@@ -48,7 +52,7 @@ export const CHAIN_WATCH_MS = 1000;
 /** A piece more than this far into a wall or the floor is a penetration a player could see. */
 export const WALL_PENETRATION_PX = 1;
 
-/** How a run ended: the lid, the time cap, or (a `stopOnWin` run) the capstone. */
+/** How a run ended: the lid, the time cap, or the win (the capstone was made, #3920). */
 export type EndedBy = "overflow" | "hardStop" | "cap" | "win";
 
 export interface GameMetrics {
@@ -69,7 +73,7 @@ export interface GameMetrics {
   scoreByTier: number[];
   /** Longest run of consecutive drops without each tier (0 for non-droppable tiers). */
   maxDroughtByTier: number[];
-  /** The engine's win event (#3904: two capstones touching; #3699 builds on it). */
+  /** The engine's win event (#3920: the capstone was made; #3699 builds on it). */
   won: boolean;
   timeToWinMs: number | null;
   /** Simulated ms at which each tier first existed (dropped or merged), null if never. */
@@ -121,8 +125,6 @@ export interface RunOptions {
   bot: Bot;
   maxSimMs?: number;
   config?: SimConfig;
-  /** End the run at the first win event (the capstone runs: time to the win). */
-  stopOnWin?: boolean;
 }
 
 const nowMs = (): number =>
@@ -355,13 +357,16 @@ export function runGame(opts: RunOptions): GameMetrics {
         timeToWinMs = t;
       }
     }
-    if (products) watchChain(products);
+    if (!won && products) watchChain(products);
     for (const [id, made] of chainWatch) {
       if (t - made > CHAIN_WATCH_MS) {
         chainMisses++;
         chainWatch.delete(id);
       }
     }
+    // Play has ended (#3920): no watched piece can merge again, so the watches still open are
+    // not misses (one already due on this frame was counted just above).
+    if (won) chainWatch.clear();
     measureWalls();
 
     if (t >= nextSampleAt) {
@@ -369,7 +374,7 @@ export function runGame(opts: RunOptions): GameMetrics {
       nextSampleAt += SAMPLE_MS;
     }
     if (over) break;
-    if (won && opts.stopOnWin) {
+    if (won) {
       endedBy = "win";
       break;
     }

@@ -21,7 +21,7 @@ jest.mock("../../../game/cascade/art/sprites", () => ({
 
 const cherry = FRUIT_SETS.fruits!.fruits[0]!;
 const grape = FRUIT_SETS.fruits!.fruits[2]!;
-const moon = FRUIT_SETS.cosmos!.fruits[0]!;
+const pluto = FRUIT_SETS.cosmos!.fruits[0]!;
 
 const flat = (n: TestInstance) => StyleSheet.flatten(n.props.style);
 /** The glyph frame inside a chip: its first child view. */
@@ -65,14 +65,15 @@ describe("Cascade NextFruitPreview", () => {
   });
 
   it("draws each piece's code-drawn art from its own set (#3698)", async () => {
-    await render(<NextFruitPreview current={moon} next={cherry} />);
+    await render(<NextFruitPreview current={pluto} next={cherry} />);
     expect(piecePicture).toHaveBeenCalledWith("cosmos", 0, 22);
     expect(piecePicture).toHaveBeenCalledWith("fruits", 0, 16);
   });
 
   it("names the capstones from the ladder's i18n keys (#3695)", async () => {
-    const pumpkin = FRUIT_SETS.fruits!.fruits[11]!;
-    const milkyWay = FRUIT_SETS.cosmos!.fruits[11]!;
+    // #3920: the capstone is tier 10.
+    const pumpkin = FRUIT_SETS.fruits!.fruits[10]!;
+    const milkyWay = FRUIT_SETS.cosmos!.fruits[10]!;
     expect(pumpkin.i18nKey).toBe("fruits.pumpkin");
     await render(<NextFruitPreview current={pumpkin} next={milkyWay} />);
     expect(screen.getByLabelText("Dropping next: Pumpkin")).toBeTruthy();

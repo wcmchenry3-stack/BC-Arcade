@@ -37,9 +37,9 @@ describe("selectNextTier — distribution over 1000 samples", () => {
     }
   });
 
-  // #3904: the base weights over tiers 0-7 are 2 3 3 3 3 3 2 1 (owner pick V1), so tier 0 is not
-  // the most common any more: tiers 1-5 are, then tiers 0 and 6, and tier 7 is the rarest.
-  it("follows the base weights 2 3 3 3 3 3 2 1 (no danger)", () => {
+  // #3920: the base weights over tiers 0-5 are 2 3 3 3 2 1 (owner decision), so tier 0 is not the
+  // most common: tiers 1-3 are, then tiers 0 and 4, and tier 5 is the rarest.
+  it("follows the base weights 2 3 3 3 2 1 (no danger)", () => {
     const rng = seededRng(42);
     const results: number[] = [];
     const running: number[] = [];
@@ -49,10 +49,31 @@ describe("selectNextTier — distribution over 1000 samples", () => {
       running.push(t);
     }
     const counts = DROPPABLE_PIECE_TIERS.map((t) => results.filter((r) => r === t).length);
-    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    const weight3 = counts.slice(1, 6);
-    expect(Math.max(counts[0]!, counts[6]!)).toBeLessThan(Math.min(...weight3));
-    expect(counts[7]!).toBeLessThan(Math.min(counts[0]!, counts[6]!));
+    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
+    const weight3 = counts.slice(1, 4);
+    expect(Math.max(counts[0]!, counts[4]!)).toBeLessThan(Math.min(...weight3));
+    expect(counts[5]!).toBeLessThan(Math.min(counts[0]!, counts[4]!));
+  });
+});
+
+describe("selectNextTier — exact weights (#3920)", () => {
+  // Every tier was seen in the last DROUGHT_WINDOW drops (no drought boost) and there is no streak,
+  // so the draw is the base weights, or in danger tiers 2-4 x 0.2 and tier 5 x 0.35, unrounded.
+  const HISTORY = [0, 1, 2, 3, 4, 5];
+  const pickAt = (u: number, danger: boolean) => selectNextTier(HISTORY, danger, () => u);
+
+  it.each([
+    ["calm", false, [2, 3, 3, 3, 2, 1]],
+    ["danger", true, [2, 3, 3 * 0.2, 3 * 0.2, 2 * 0.2, 1 * 0.35]],
+  ] as const)("%s: each tier's share of the draw is its weight", (_, danger, weights) => {
+    const total = weights.reduce((a, b) => a + b, 0);
+    let upTo = 0;
+    weights.forEach((w, tier) => {
+      // Just inside each end of the tier's interval of the draw.
+      expect(pickAt((upTo + 1e-9) / total, danger)).toBe(tier);
+      upTo += w;
+      expect(pickAt((upTo - 1e-9) / total, danger)).toBe(tier);
+    });
   });
 });
 
@@ -92,10 +113,10 @@ describe("selectNextTier — anti-streak", () => {
 });
 
 describe("selectNextTier — danger state", () => {
-  it("high tiers (>=3) appear less often in danger than out of danger", () => {
+  it("high tiers (>=2, #3920) appear less often in danger than out of danger", () => {
     const safe = sampleN(1000, [], false);
     const danger = sampleN(1000, [], true);
-    const highTiers = DROPPABLE_PIECE_TIERS.filter((t) => t >= 3);
+    const highTiers = DROPPABLE_PIECE_TIERS.filter((t) => t >= 2);
     const safeHigh = safe.filter((t) => highTiers.includes(t)).length;
     const dangerHigh = danger.filter((t) => highTiers.includes(t)).length;
     expect(dangerHigh).toBeLessThan(safeHigh);

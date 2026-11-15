@@ -4,17 +4,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const SUBSYSTEM = "cascade.storage";
 
 /**
- * The current save format. v6 = the constant-ratio ladder (#3904: radii 5-98). v5 (the lively
- * ladder on planck.js, #3697: radii 18-63), v4 (the #3695 ladder, radii 22-101, on Matter.js) and
- * v3 (the old 10-tier ladder) are discarded.
+ * The current save format. v7 = the 11-tier ladder (#3920: radii 11.5-98, the Peach and the Moon
+ * removed). v6 (#3904's 12-tier ladder, radii 5-98), v5 (the lively ladder on planck.js, #3697:
+ * radii 18-63), v4 (the #3695 ladder, radii 22-101, on Matter.js) and v3 (the old 10-tier ladder)
+ * are discarded.
  */
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 /** Older save keys. Their saves are discarded, not migrated (see `loadGame`). */
-const LEGACY_KEYS = ["cascade_game_v3", "cascade_game_v4", "cascade_game_v5"];
+const LEGACY_KEYS = ["cascade_game_v3", "cascade_game_v4", "cascade_game_v5", "cascade_game_v6"];
 
 export interface SavedState {
-  version: 6;
+  version: 7;
   pieces: Array<{ tier: number; x: number; y: number }>;
   score: number;
   savedAt: number;
@@ -56,7 +57,7 @@ export function looksValid(data: unknown): data is SavedState {
 }
 
 const currentSlot = createJsonSlot<SavedState>({
-  key: "cascade_game_v6",
+  key: "cascade_game_v7",
   subsystem: SUBSYSTEM,
   isValid: looksValid,
   corruptExtra: "keyAndRaw",
@@ -69,9 +70,12 @@ async function discardLegacy(): Promise<void> {
 }
 
 /**
- * Loads the saved game (v6 only).
+ * Loads the saved game (v7 only).
  *
- * A v5 save (key `cascade_game_v5`, #3697's lively ladder) is DISCARDED, not migrated (#3904):
+ * A v6 save (key `cascade_game_v6`, #3904's 12-tier ladder) is DISCARDED, not migrated (#3920):
+ * every tier above 0 means a different piece (the Peach and the Moon are gone, so a saved tier 6
+ * is now a Coconut, and the old tier 11 does not exist) and every radius changed (Cherry 5 to
+ * 11.5), so its board would be other pieces, overlapping. A v5 save (key `cascade_game_v5`, #3697's lively ladder) is DISCARDED, not migrated (#3904):
  * every radius changed (Cherry 18 to 5, Watermelon 56 to 74.8, the capstone 63 to 98), so its
  * positions would overlap or leave gaps, and a single capstone in it would now be half a win.
  * A v4 save (key `cascade_game_v4`, #3695's ladder on Matter.js) is DISCARDED, not migrated
@@ -80,7 +84,7 @@ async function discardLegacy(): Promise<void> {
  * different board from the one that was saved, and its pile was built on the old physics. A v3
  * save (the 10-tier ladder) was already discarded by #3695 for the same reason. Cascade has not
  * shipped: only dev and test builds can hold an older save, so the cost is one abandoned dev
- * game. The old keys are removed so they do not linger. A v6 key that is present but invalid is
+ * game. The old keys are removed so they do not linger. A v7 key that is present but invalid is
  * discarded by the slot and never falls back to anything older.
  */
 export async function loadGame(): Promise<SavedState | null> {

@@ -18,7 +18,7 @@ export interface CascadeState {
   fruitCount: number;
   dangerRatio: number;
   gameOver: boolean;
-  /** Two capstones touched (#3904): play has ended in a win. */
+  /** The capstone was made (#3920): play has ended in a win. */
   won: boolean;
   nextFruitTier: number;
   comboCount: number;

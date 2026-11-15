@@ -1,10 +1,12 @@
 /**
  * The physics of #3697 (planck.js 1.4.2, the owner's "3 lively" tuning): grow-in, the merge gap,
- * chain reach, per-tier density, the win (two capstones, #3904), no teleports, and replays (the same frame deltas
- * replay the same board, at 60 and at 120 Hz; 60 and 120 Hz are not bit-identical to each other).
+ * chain reach, per-tier density, the win (making the capstone, #3920), no teleports, and replays
+ * (the same frame deltas replay the same board, at 60 and at 120 Hz; 60 and 120 Hz are not
+ * bit-identical to each other).
  */
-import type { Fixture } from "planck";
+import type { Body, Fixture } from "planck";
 import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
+import { setPositionPx } from "../physicsWorld";
 import { CAPSTONE_TIER, TIERS, tierRadius } from "../tiers";
 import {
   CHAIN_REACH_PX,
@@ -13,6 +15,7 @@ import {
   GROW_IN_STEPS,
   MAX_SPAWN_VELOCITY,
   MERGE_GAP_PX,
+  PX_PER_M,
   WALL_THICKNESS,
   WORLD_HEIGHT,
   WORLD_WIDTH,
@@ -168,7 +171,7 @@ describe("the merge gap and chain reach", () => {
   describe(`chain reach (${CHAIN_REACH_PX} px at full size, from a piece still growing in)`, () => {
     /**
      * Two tier-7 pieces touching on the floor merge on step 1 into a tier 8 that starts at their
-     * radius (40 px, 5 px short of its own 45), at their midpoint, resting on the floor. A second
+     * radius (#3920: 51.5 px, 12 px short of its own 63.8), at their midpoint, on the floor. A second
      * tier 8 hangs straight above it, its circle `extra` px beyond touching the product's FULL
      * circle at the start (it falls about 2 px in two steps). While the product is still small its
      * CURRENT circle is not within MERGE_GAP_PX of that piece, so only chain reach (or the
@@ -197,6 +200,32 @@ describe("the merge gap and chain reach", () => {
     it("leaves a same-tier piece beyond the reach alone in the first steps of the grow-in", () => {
       expect(mergeSteps(chainAt(5), 2)).toEqual([1]);
     });
+
+    /**
+     * #3920: chain reach is also checked where the product is made. The solver can shove a product
+     * made at its parents' size on top of a third piece several px in its first step (up to 12 px
+     * in the sim on the 11.5-98 ladder), out of reach of the piece it was made touching: the chain
+     * was lost. Here the shove is done by hand, 40 px sideways after the merge step.
+     */
+    function shovedAfterMerge(extra: number): number[] {
+      const engine = chainAt(extra);
+      const steps = mergeSteps(engine, 1);
+      type Internals = { _pieces: Map<number, { tier: number; body: Body }> };
+      const product = Array.from((engine as unknown as Internals)._pieces.values()).find(
+        (p) => p.tier === 8 && p.body.getPosition().y * PX_PER_M > FLOOR_TOP - tierRadius(8) - 20
+      )!;
+      const at = product.body.getPosition();
+      setPositionPx(product.body, at.x * PX_PER_M + 40, at.y * PX_PER_M);
+      return [...steps, ...mergeSteps(engine, 2).map((s) => s + 1)];
+    }
+
+    it("merges the next step with a piece the full circle reached where it was made, though shoved away (#3920)", () => {
+      expect(shovedAfterMerge(1)).toEqual([1, 2]);
+    });
+
+    it("does not reach a piece that was out of reach where it was made, once shoved (#3920)", () => {
+      expect(shovedAfterMerge(5)).toEqual([1]);
+    });
   });
 });
 
@@ -221,97 +250,110 @@ describe("density per tier", () => {
     const m = (tier: number) => masses.find((x) => x.tier === tier)!.mass;
     const ratio = m(CAPSTONE_TIER) / m(0);
     expect(ratio).toBeCloseTo((tierRadius(CAPSTONE_TIER) / tierRadius(0)) ** 1.5, 6);
-    // #3904: 87 : 1 on the 5-98 ladder (384 : 1 at one density for every tier). Flattening it
-    // cost the win rate more than it helped the overlap: docs/games/cascade.md#physics.
-    expect(ratio).toBeCloseTo(86.8, 0);
+    // #3920: 24.9 : 1 on the 11.5-98 ladder (87 : 1 on #3904's 5-98; 73 : 1 at one density for
+    // every tier). Flattening it cost the win rate more than it helped the overlap (#3904):
+    // docs/games/cascade.md#physics.
+    expect(ratio).toBeCloseTo(24.9, 1);
     engine.destroy();
   });
 });
 
-describe("the win: two capstones touching (#3904; #3699 builds on it)", () => {
+describe("the win: making the capstone (#3920; #3699 builds on it)", () => {
   const CAPSTONE_SCORE = TIERS[CAPSTONE_TIER]!.score;
+  /** The tier whose merge makes the capstone. */
+  const PRE = CAPSTONE_TIER - 1;
 
-  it("two touching capstones both burst, score 2 x the capstone, and emit one win at their midpoint", () => {
+  it("two touching tier-9 pieces merge into the capstone: merge, its own score, then one win there", () => {
     const engine = new CascadeEngine({});
-    const placed = pair(CAPSTONE_TIER);
-    engine.restore(placed, 100);
-    const ids = engine.getState().pieces.map((p) => p.id);
+    engine.restore(pair(PRE), 100);
     const step = engine.step(HZ60).events;
-    expect(step.map((e) => e.type)).toEqual(["score", "win"]);
-    expect(step[0]).toEqual({
-      type: "score",
-      delta: 2 * CAPSTONE_SCORE,
-      total: 100 + 2 * CAPSTONE_SCORE,
-    });
-    const win = step[1] as Extract<EngineEvent, { type: "win" }>;
-    expect(win.id).toBe(Math.min(...ids));
-    expect(win.x).toBeCloseTo(200, 0);
-    expect(win.y).toBeCloseTo(FLOOR_TOP - tierRadius(CAPSTONE_TIER), 0);
-    expect(engine.getState().pieces).toHaveLength(0);
+    expect(step.map((e) => e.type)).toEqual(["merge", "score", "win"]);
+    const merge = step[0] as Extract<EngineEvent, { type: "merge" }>;
+    expect(merge.result).toBe(CAPSTONE_TIER);
+    // The capstone merge's normal score, no extra.
+    expect(step[1]).toEqual({ type: "score", delta: CAPSTONE_SCORE, total: 100 + CAPSTONE_SCORE });
+    expect(step[2]).toEqual({ type: "win", x: merge.x, y: merge.y, id: merge.id });
+    expect(merge.x).toBeCloseTo(200, 0);
+    expect(merge.y).toBeCloseTo(FLOOR_TOP - tierRadius(CAPSTONE_TIER), 0);
+    const pieces = engine.getState().pieces;
+    expect(pieces.map((p) => [p.tier, p.id])).toEqual([[CAPSTONE_TIER, merge.id]]);
     expect(engine.hasWon()).toBe(true);
   });
 
-  it("two capstones resting within the merge gap (no contact) also win", () => {
+  it("two tier-9 pieces resting within the merge gap (no contact) also make the capstone and win", () => {
     const engine = new CascadeEngine({});
-    const r = tierRadius(CAPSTONE_TIER);
+    const r = tierRadius(PRE);
     const gap = MERGE_GAP_PX / 2;
     engine.restore(
       [
-        { tier: CAPSTONE_TIER, x: 200 - r - gap / 2, y: FLOOR_TOP - r },
-        { tier: CAPSTONE_TIER, x: 200 + r + gap / 2, y: FLOOR_TOP - r },
+        { tier: PRE, x: 200 - r - gap / 2, y: FLOOR_TOP - r },
+        { tier: PRE, x: 200 + r + gap / 2, y: FLOOR_TOP - r },
       ],
       0
     );
     const evs = events(run(engine, 2));
     expect(evs.filter((e) => e.type === "win")).toHaveLength(1);
-    expect(evs.some((e) => e.type === "merge")).toBe(false);
+    expect(evs.filter((e) => e.type === "merge")).toHaveLength(1);
   });
 
-  it("ends the play: no drops and no merges after the win; the physics still steps", () => {
+  it("ends the play: no drops and no merges after the win, the score is final; the physics still steps", () => {
     const engine = new CascadeEngine({});
     const r0 = tierRadius(0);
-    // Two capstones, and two cherries off to the side, one 20 px above the other: the top one
+    // Two tier 9s, and two cherries off to the side, one 20 px above the other: the top one
     // lands on the bottom one after the win, which would merge them in play.
     const lowY = FLOOR_TOP - r0;
     const highY = lowY - 2 * r0 - 20;
     engine.restore(
-      [...pair(CAPSTONE_TIER), { tier: 0, x: 350, y: lowY }, { tier: 0, x: 350, y: highY }],
+      [...pair(PRE, 170), { tier: 0, x: 360, y: lowY }, { tier: 0, x: 360, y: highY }],
       0
     );
     expect(engine.step(HZ60).events.some((e) => e.type === "win")).toBe(true);
     expect(engine.canDrop()).toBe(false);
     engine.drop(0, 200);
-    expect(engine.getState().pieces).toHaveLength(2);
+    expect(engine.getState().pieces).toHaveLength(3);
     expect(events(run(engine, 300))).toEqual([]);
     expect(engine.getState().gameOver).toBe(false);
-    expect(engine.getState().score).toBe(2 * TIERS[CAPSTONE_TIER]!.score);
+    expect(engine.getState().score).toBe(CAPSTONE_SCORE);
     // The cherries did not merge; the top one fell onto the other.
-    const cherries = engine.getState().pieces;
-    expect(cherries.map((p) => p.tier)).toEqual([0, 0]);
+    const cherries = engine.getState().pieces.filter((p) => p.tier === 0);
+    expect(cherries).toHaveLength(2);
     expect(Math.min(...cherries.map((c) => c.y))).toBeGreaterThan(highY + 10);
+    // The capstone grew in to its full size.
+    const capstone = engine.getState().pieces.find((p) => p.tier === CAPSTONE_TIER)!;
+    expect(capstone.scale ?? 1).toBe(1);
   });
 
-  it("a capstone still growing in wins against a capstone its full circle reaches (chain reach)", () => {
-    // Two tier 10s on the floor make a capstone at their radius (74.8, not 98); a second
-    // capstone hangs above, 3 px beyond touching the product's full circle.
-    const full = tierRadius(CAPSTONE_TIER);
+  it("a tier 9 still growing in makes the capstone with a tier 9 its full circle reaches (chain reach)", () => {
+    // Two tier 8s on the floor make a tier 9 at their radius (63.8, not 79.1); a second tier 9
+    // hangs above, 3 px beyond touching the product's full circle.
+    const full = tierRadius(PRE);
     const engine = new CascadeEngine({});
     engine.restore(
-      [
-        ...pair(CAPSTONE_TIER - 1),
-        { tier: CAPSTONE_TIER, x: 200, y: FLOOR_TOP - full - (2 * full + 3) },
-      ],
+      [...pair(PRE - 1), { tier: PRE, x: 200, y: FLOOR_TOP - full - (2 * full + 3) }],
       0
     );
     const rs = run(engine, 3);
     const steps = rs.flatMap((r, i) => (r.events.some((e) => e.type === "win") ? [i + 1] : []));
     expect(steps).toEqual([2]);
-    expect(events(rs).filter((e) => e.type === "merge")).toHaveLength(1);
+    expect(merges(rs).map((m) => m.result)).toEqual([PRE, CAPSTONE_TIER]);
+  });
+
+  it("two capstones never merge and are not a win (the pair win of #3904 is gone)", () => {
+    // Only the dev panel or a restore can put two on the board: touching, by contact and gap.
+    const engine = new CascadeEngine({});
+    engine.restore(pair(CAPSTONE_TIER), 0);
+    const evs = events(run(engine, 120));
+    expect(evs.filter((e) => e.type === "merge" || e.type === "win" || e.type === "score")).toEqual(
+      []
+    );
+    expect(engine.hasWon()).toBe(false);
+    expect(engine.canDrop()).toBe(true);
+    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER, CAPSTONE_TIER]);
   });
 
   it("restore() starts a new game after a win", () => {
     const engine = new CascadeEngine({});
-    engine.restore(pair(CAPSTONE_TIER), 0);
+    engine.restore(pair(PRE), 0);
     engine.step(HZ60);
     expect(engine.hasWon()).toBe(true);
     engine.restore([], 0);
@@ -319,23 +361,14 @@ describe("the win: two capstones touching (#3904; #3699 builds on it)", () => {
     expect(engine.canDrop()).toBe(true);
   });
 
-  it("making a capstone is an ordinary merge, not the win", () => {
-    const engine = new CascadeEngine({});
-    engine.restore(pair(CAPSTONE_TIER - 1), 0);
-    const step = engine.step(HZ60).events;
-    expect(step.map((e) => e.type)).toEqual(["merge", "score"]);
-    expect(events(run(engine, 120)).some((e) => e.type === "win")).toBe(false);
-    expect(engine.hasWon()).toBe(false);
-    expect(engine.canDrop()).toBe(true);
-  });
-
-  it("no merge below the capstone emits a win", () => {
-    for (let tier = 0; tier < CAPSTONE_TIER; tier++) {
+  it("no merge below the one that makes the capstone emits a win", () => {
+    for (let tier = 0; tier < PRE; tier++) {
       const engine = new CascadeEngine({});
       engine.restore(pair(tier), 0);
       const evs = events(run(engine, 2));
       expect(evs.some((e) => e.type === "merge")).toBe(true);
       expect(evs.some((e) => e.type === "win")).toBe(false);
+      expect(engine.hasWon()).toBe(false);
     }
   });
 });

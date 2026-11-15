@@ -188,15 +188,6 @@
     "doNotTranslate": [],
     "notes": "A fruit."
   },
-  "pieces.fruits.peach": {
-    "component": "NextFruitPreview",
-    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "A fruit."
-  },
   "pieces.fruits.coconut": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
@@ -241,15 +232,6 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "A fruit."
-  },
-  "pieces.cosmos.moon": {
-    "component": "NextFruitPreview",
-    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "A planet, moon or star; Milky Way is our galaxy."
   },
   "pieces.cosmos.pluto": {
     "component": "NextFruitPreview",

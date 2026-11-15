@@ -6,7 +6,7 @@ import { useFruitSet } from "../../theme/FruitSetContext";
 import { useTheme } from "../../theme/ThemeContext";
 import FruitGlyph from "./FruitGlyph";
 
-/** Each tab shows its set's first piece (Cherry, Moon), drawn as on the board (#3698). */
+/** Each tab shows its set's first piece (Cherry, Pluto), drawn as on the board (#3698). */
 const TAB_GLYPH_SIZE = 18;
 
 function ThemeSelector() {
