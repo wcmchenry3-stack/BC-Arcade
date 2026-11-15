@@ -500,18 +500,24 @@ function CascadeGame() {
     [lookupRank]
   );
 
-  const handleGameOver = useCallback(() => {
-    gameOverRef.current = true;
-    setGameOver(true);
-    const gameId = endInstrumentedSession("completed");
-    clearCascadeGame().catch(() => {});
-    showResult(gameId);
-  }, [endInstrumentedSession, showResult]);
+  // `won`: the capstone pair won (#3904). The engine reports no game over after a win, so the win
+  // ends the game here too (session, best, save, result) but does not show the card: #3699 adds
+  // the win card, which reads the result this records.
+  const handleGameOver = useCallback(
+    (won = false) => {
+      gameOverRef.current = true;
+      const gameId = endInstrumentedSession("completed");
+      clearCascadeGame().catch(() => {});
+      if (!won) setGameOver(true);
+      showResult(gameId);
+    },
+    [endInstrumentedSession, showResult]
+  );
 
   // Always-fresh refs for the RAF loop — updated every render so the loop
   // never captures stale closures for merge/gameOver handling.
   const onMergeRef = useRef<(tier: FruitTier, x: number, y: number) => void>(() => {});
-  const onGameOverRef = useRef<() => void>(() => {});
+  const onGameOverRef = useRef<(won?: boolean) => void>(() => {});
 
   onMergeRef.current = (tier, x, y) => {
     handleMerge({ tier, x, y });
@@ -531,10 +537,8 @@ function CascadeGame() {
     }
   };
 
-  onGameOverRef.current = () => {
-    playGameOver();
-    handleGameOver();
-  };
+  onGameOverRef.current = (won = false) =>
+    won ? handleGameOver(true) : (playGameOver(), handleGameOver());
   // Lets the (mount-once) e2e test hook reach the latest showResult.
   const showResultRef = useRef(showResult);
   showResultRef.current = showResult;
@@ -612,7 +616,7 @@ function CascadeGame() {
         } else if (ev.type === "gameOver") {
           onGameOverRef.current();
         } else if (ev.type === "win") {
-          clearCascadeGame().catch(() => {}); // #3904 interim: the game is over (#3699)
+          onGameOverRef.current(true);
         } else if (ev.type === "guardRailFired") {
           if (__DEV__) console.log(`[Cascade] guard rail: ${ev.reason} body=${ev.bodyId}`);
         }

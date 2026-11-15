@@ -1093,6 +1093,23 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       expect(mockEngineStep).not.toHaveBeenCalled();
     });
 
+    it("completes the session once and keeps a new best (Codex on #3919)", async () => {
+      await AsyncStorage.setItem("cascade_best_score", "1000");
+      const renderer = await renderScreen();
+      mockEngineScore = 9000;
+      mockCompleteGame.mockClear();
+      await win(renderer);
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("completed");
+      await expect(getBest("cascade")).resolves.toBe(9000);
+      // Leaving afterwards does not file the won game as abandoned.
+      await act(() => {
+        renderer.unmount();
+      });
+      const outcomes = mockCompleteGame.mock.calls.map((c) => c[1]?.outcome);
+      expect(outcomes).not.toContain("abandoned");
+    });
+
     it("clears the saved game and saves nothing after it, on pause or otherwise", async () => {
       const renderer = await renderScreen();
       await win(renderer);
