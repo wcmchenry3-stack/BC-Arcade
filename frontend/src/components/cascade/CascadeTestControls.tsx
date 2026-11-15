@@ -16,7 +16,7 @@
  * | `cascade-test-chain`       | chain pile + queue of cherries (3 merges from 1 tap)   |
  * | `cascade-test-near-lid`    | pile over the lid, clock ring draining                 |
  * | `cascade-test-fill-bin`    | bin filled above the lid; the lid ends the game        |
- * | `cascade-test-win`         | two capstones about to touch: the win (#3904)          |
+ * | `cascade-test-win`         | two tier-9 pieces about to make the capstone: the win  |
  * | `cascade-test-game-over`   | forces game over (an extra; the loss demo uses fill)   |
  *
  * The win's result card is #3699: today the win stops play (no more drops) and shows nothing.

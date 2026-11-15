@@ -183,18 +183,18 @@ describe("overhangs", () => {
    * [left, top, right, bottom]; anything not listed overhangs nowhere.
    */
   const OVERHANG: Record<string, Record<number, [number, number, number, number]>> = {
+    // #3920: the Peach (Fruits) and the Moon (Cosmos) are gone, so tiers above them moved down.
     fruits: {
       0: [0, 0.52, 0, 0], // cherry stem
       3: [0, 0.4, 0, 0], // grape stem
       5: [0, 0.4, 0, 0], // apple stem and leaf
-      6: [0, 0.28, 0, 0], // peach stem
-      8: [0.12, 0.475, 0.12, 0], // dragonfruit: crown on top, side bracts
-      9: [0, 0.45, 0, 0], // pineapple crown
-      11: [0, 0.335, 0, 0], // pumpkin stem
+      7: [0.12, 0.475, 0.12, 0], // dragonfruit: crown on top, side bracts
+      8: [0, 0.45, 0, 0], // pineapple crown
+      10: [0, 0.335, 0, 0], // pumpkin stem
     },
     cosmos: {
-      7: [0, 0.265, 0, 0.245], // Uranus ring (a tilted ring, both ends)
-      8: [0.305, 0, 0.305, 0], // Saturn rings
+      6: [0, 0.265, 0, 0.245], // Uranus ring (a tilted ring, both ends)
+      7: [0.305, 0, 0.305, 0], // Saturn rings
     },
   };
   /** Measurement slack: one pixel of the R = 200 render, and the box margin. */
@@ -240,6 +240,70 @@ describe("overhangs", () => {
           expect(v).toBeLessThanOrEqual(got[i]! + BOX_MARGIN);
         });
       });
+    }
+  });
+
+  /**
+   * #3920: the retired pieces (`<set>.retired`) are kept as recipes, never drawn in play. Drawing
+   * them here keeps them from rotting: each still renders, fills its circle, overhangs by its
+   * owner-approved amount (as when it was in the ladder) and stays inside its box.
+   */
+  const RETIRED: Record<string, Record<string, [number, number, number, number]>> = {
+    fruits: {
+      peach: [0, 0.28, 0, 0], // stem and leaf
+      appleRed: [0, 0.4, 0, 0], // stem and leaf, the same drawing as the green Apple
+    },
+    cosmos: { moon: [0, 0, 0, 0] },
+  };
+
+  it("keeps every retired piece's recipe, and it still draws as approved (#3920)", () => {
+    for (const [id, set] of SETS) {
+      expect(Object.keys(set.retired ?? {}).sort()).toEqual(Object.keys(RETIRED[id]!).sort());
+      for (const [name, piece] of Object.entries(set.retired ?? {})) {
+        const one: ArtSet = { pieces: [piece.art], ink: [piece.ink], closedEyes: set.closedEyes };
+        const got = inkOverhang(one, 0);
+        const want = RETIRED[id]![name]!;
+        got.forEach((v, i) =>
+          expect({ name, i, v: Math.abs(v - want[i]!) <= EPS }).toEqual({ name, i, v: true })
+        );
+        const [l, t, r, b] = piece.art.box;
+        [-1 - l, -1 - t, r - 1, b - 1].forEach((v, i) => {
+          expect(v).toBeGreaterThanOrEqual(got[i]! - 1e-9);
+          expect(v).toBeLessThanOrEqual(got[i]! + BOX_MARGIN);
+        });
+        // The body fills the circle: opaque at its centre and just inside its edge.
+        const { px } = render(100, 100, (c) => {
+          c.translate(50, 50);
+          c.scale(40, 40);
+          drawPiece(c, one, 0);
+        });
+        for (const [x, y] of [
+          [50, 50],
+          [12, 50],
+          [88, 50],
+          [50, 88],
+        ] as const) {
+          expect(px[(y * 100 + x) * 4 + 3]).toBe(255);
+        }
+      }
+    }
+  });
+
+  // knip (`npx knip`, `npx knip --production`) sees no unused export for the retired pieces: they
+  // are a property of each set's ArtSet, which the board uses, not an export of their own. This
+  // pins that shape, so a later `export const RETIRED_...` does not need a knip ignore.
+  it("keeps the retired pieces on the sets, with no export of their own (#3920, knip)", () => {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    expect(Object.keys(require("../fruits"))).toEqual(["FRUIT_ART"]);
+    expect(Object.keys(require("../cosmos"))).toEqual(["COSMOS_ART"]);
+    /* eslint-enable @typescript-eslint/no-require-imports */
+  });
+
+  it("never puts a retired piece in play: the ladder's pieces are not the retired ones (#3920)", () => {
+    for (const [, set] of SETS) {
+      for (const piece of Object.values(set.retired ?? {})) {
+        expect(set.pieces).not.toContain(piece.art);
+      }
     }
   });
 });

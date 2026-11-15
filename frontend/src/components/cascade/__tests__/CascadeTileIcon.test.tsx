@@ -5,6 +5,7 @@
 import React from "react";
 import { Text } from "react-native";
 import { render, screen, waitFor } from "@testing-library/react-native";
+import { FRUIT_SETS } from "../../../theme/fruitSets";
 
 /** Loads the native icon with FruitGlyph replaced: a host stub, or a module that throws. */
 function load(glyph: "ok" | "fail") {
@@ -24,7 +25,12 @@ describe("CascadeTileIcon (native)", () => {
     await render(<CascadeTileIcon size={56} fallback={fallback} testID="art" />);
     const glyphs = () => screen.root!.queryAll((n) => n.type === "FruitGlyph");
     await waitFor(() => expect(glyphs()).toHaveLength(1));
-    expect(glyphs()[0]!.props).toEqual({ fruit: { set: "fruits", tier: 10 }, size: 56 });
+    // #3920: the Watermelon is tier 9 since the Peach was removed (tier 10 is the Pumpkin).
+    const watermelon = FRUIT_SETS.fruits!.fruits.find((f) => f.name === "Watermelon")!;
+    expect(glyphs()[0]!.props).toEqual({
+      fruit: { set: "fruits", tier: watermelon.tier },
+      size: 56,
+    });
     expect(screen.queryByText("🍉")).toBeNull();
   });
 

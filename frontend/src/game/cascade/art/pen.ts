@@ -323,13 +323,29 @@ export interface PieceArt {
   readonly box: readonly [number, number, number, number];
 }
 
-/** One set's twelve pieces, by tier, and its face style. */
+/**
+ * A piece taken out of the ladder (#3920), kept as a recipe so it can come back: its drawing and
+ * its face ink. Not a tier: nothing in play draws it (docs/games/cascade.md#retired-pieces-3920).
+ */
+export interface RetiredPiece {
+  readonly art: PieceArt;
+  readonly ink: string;
+  /** Where it was in the ladder, and why it left. */
+  readonly was: string;
+}
+
+/** One set's pieces (eleven since #3920), by tier, and its face style. */
 export interface ArtSet {
   readonly pieces: readonly PieceArt[];
   /** Per-tier face ink. */
   readonly ink: readonly string[];
   /** Cosmos sleep (closed eyes and blush); fruits look at you. */
   readonly closedEyes: boolean;
+  /**
+   * Retired pieces (#3920), by name. Never read by the sprite caches, the icons or the ladder:
+   * only the art tests draw them, so the recipes keep rendering.
+   */
+  readonly retired?: Readonly<Record<string, RetiredPiece>>;
 }
 
 /** The unit circle, the collider. */

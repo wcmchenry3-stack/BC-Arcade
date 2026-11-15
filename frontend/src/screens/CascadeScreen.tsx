@@ -500,7 +500,7 @@ function CascadeGame() {
     [lookupRank]
   );
 
-  // `won`: the capstone pair won (#3904). The engine reports no game over after a win, so the win
+  // `won`: the capstone was made (#3920). The engine reports no game over after a win, so the win
   // ends the game here too (session, best, save, result) but does not show the card: #3699 adds
   // the win card, which reads the result this records.
   const handleGameOver = useCallback(

@@ -9,7 +9,7 @@
  *
  * #3697: the full suite also plays the capstone runs (`capstone`): the skilled bot for up to 10
  * simulated minutes per game, stopping at the win, for the win rate and the time to the win
- * (#3904: two capstones touching).
+ * (#3920: making the capstone; every run stops at the win, since play ends there).
  * They are slow (a game can run 36,000 fixed steps), so the PR smoke never plays them.
  */
 import { BOTS } from "./bots";
@@ -156,7 +156,7 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   out["topTier.mean"] = avg(games.map((g) => g.topTier));
   // Top-tier reached rate: the share of games in which the top tier existed at some point.
   out["topTier.reachedRate"] = avg(games.map((g) => (g.topTier >= maxTier ? 1 : 0)));
-  // The win (#3904: the engine emits it when two capstones touch).
+  // The win (#3920: the engine emits it when the capstone is made).
   out["win.rate"] = avg(games.map((g) => (g.won ? 1 : 0)));
   const winS = games.map((g) => (g.timeToWinMs === null ? null : g.timeToWinMs / 1000));
   out["win.timeToWinS.mean"] = avg(winS);
@@ -164,11 +164,12 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   out["win.timeToWinS.p25"] = pct(winS, 0.25);
   out["win.timeToWinS.median"] = pct(winS, 0.5);
   out["win.timeToWinS.p75"] = pct(winS, 0.75);
-  const t10 = games.map((g) => {
+  // The time to the tier below the capstone (tier 9 since #3920): one more merge of it is the win.
+  const tPre = games.map((g) => {
     const ms = g.tierFirstMs?.[maxTier - 1];
     return ms === null || ms === undefined ? null : ms / 1000;
   });
-  out["tier10.timeS.median"] = pct(t10, 0.5);
+  out["preCapstone.timeS.median"] = pct(tPre, 0.5);
 
   const totalDrops = games.reduce((a, g) => a + g.drops, 0);
   for (let t = 0; t <= maxTier; t++) {
@@ -262,7 +263,7 @@ export function runSuite(params: SuiteParams, config?: SimConfig): SuiteResult {
       for (let i = 1; i <= cap!.seeds; i++) {
         const seed = (params.seedOffset ?? 0) + i;
         const maxSimMs = cap!.maxSimMs;
-        games.push(runGame({ seed, hz: hz as 60 | 120, bot, maxSimMs, config, stopOnWin: true }));
+        games.push(runGame({ seed, hz: hz as 60 | 120, bot, maxSimMs, config }));
       }
       const key = `capstone:${botName}@${hz}`;
       runs[key] = aggregateGames(games, c.maxTier);
@@ -359,7 +360,7 @@ export function tolerance(key: string, value: number, games = 100): number {
   if (/^feel\.guardRail/.test(key)) return rel(0.3, 1);
   if (/^feel\.wall/.test(key)) return rel(0.3, 1);
   if (/^feel\.chainLatencyMs/.test(key)) return rel(0.3, 34);
-  if (/^win\.timeToWinS|^tier10\.timeS/.test(key)) return rel(0.2, 30);
+  if (/^win\.timeToWinS|^preCapstone\.timeS/.test(key)) return rel(0.2, 30);
   return rel(0.25, 1);
 }
 
@@ -689,7 +690,10 @@ export function formatTable(result: SuiteResult): string {
       (k) =>
         `${fmt(result.runs[k]!["win.timeToWinS.p25"], 0)} / ${fmt(result.runs[k]!["win.timeToWinS.median"], 0)} / ${fmt(result.runs[k]!["win.timeToWinS.p75"], 0)}`,
     ],
-    ["time to tier 10 s, median", (k) => fmt(result.runs[k]!["tier10.timeS.median"], 0)],
+    [
+      "time to the tier below the capstone s, median",
+      (k) => fmt(result.runs[k]!["preCapstone.timeS.median"], 0),
+    ],
     ["step ms (20+ pieces, wall clock)", (k) => fmt(result.cost[k]?.meanStepMsGe20, 3)],
     ["step ms, worst game p95 (wall clock)", (k) => fmt(result.cost[k]?.worstGameP95StepMs, 3)],
   ];

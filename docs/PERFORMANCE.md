@@ -398,7 +398,7 @@ Before #3698: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against t
 
 ### Cascade code-drawn art (#3698)
 
-The 24 pieces are drawn in code (`frontend/src/game/cascade/art/`); the sprite folders, `cascade_icon_masters/`, `images.ts` and the bake scripts are deleted. How the art works: [Cascade, Art (#3698)](games/cascade.md#art-3698).
+The pieces (24 then, 22 since #3920) are drawn in code (`frontend/src/game/cascade/art/`); the sprite folders, `cascade_icon_masters/`, `images.ts` and the bake scripts are deleted. How the art works: [Cascade, Art (#3698)](games/cascade.md#art-3698).
 
 | Measure                                                                |             Value |
 | ---------------------------------------------------------------------- | ----------------: |
@@ -910,7 +910,7 @@ Resolved or superseded; verified on 2026-10-10.
 
 ### Asset pipeline and two-tier images (removed in #3698)
 
-This section described the Cascade sprite pipeline (`source-icons/` to `npm run process-assets` to `*-baked/`) and its two image tiers (UI icons and baked game pieces). Both tiers, the pipeline and its scripts are gone: the 24 pieces are drawn in code (`frontend/src/game/cascade/art/`, [Cascade code-drawn art](#cascade-code-drawn-art-3698)). The directory table above is the April state, kept for the record; `source-icons/`, `celestial-icons/`, `fruit-icons/`, `cosmos-baked/` and `fruits-baked/` no longer exist.
+This section described the Cascade sprite pipeline (`source-icons/` to `npm run process-assets` to `*-baked/`) and its two image tiers (UI icons and baked game pieces). Both tiers, the pipeline and its scripts are gone: the pieces (22 since #3920) are drawn in code (`frontend/src/game/cascade/art/`, [Cascade code-drawn art](#cascade-code-drawn-art-3698)). The directory table above is the April state, kept for the record; `source-icons/`, `celestial-icons/`, `fruit-icons/`, `cosmos-baked/` and `fruits-baked/` no longer exist.
 
 ### Findings and flags for Epic 2b (status as of 2026-10-10)
 

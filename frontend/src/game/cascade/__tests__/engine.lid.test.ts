@@ -3,9 +3,9 @@
  *
  * Fixtures are columns of pieces of distinct tiers (so nothing merges; two equal neighbours
  * would), stacked exactly on top of each other on the floor at x = 121 (`stack`). planck keeps
- * such a stack (no sideways force acts on it). `COLUMN` is a capstone and tiers 10, 9 and 7:
- * its top piece rests with its centre under the lid (`OVERFLOW_LINE_Y` = 80) and its top edge at
- * y = 54, over it. The right half of the bin is an empty lane with one Cherry on the floor.
+ * such a stack (no sideways force acts on it). `COLUMN` is a capstone and tiers 9, 7 and 4
+ * (#3920 ladder): its top piece rests with its centre under the lid (`OVERFLOW_LINE_Y` = 80) and
+ * its top edge at y = 69, over it. The right half of the bin is an empty lane with one Cherry on the floor.
  * Restore grants the merge grace once (`OVERFLOW_IGNORE_MERGE_TICKS`), so the count starts after
  * it.
  *
@@ -19,6 +19,10 @@
  * #3904: the fixtures follow the constant-ratio ladder (r0 / r10 / r11 = 5 / 74.8 / 98; tiers 0-7
  * drop). A capstone and tiers 10, 9 and 8 already stand 547 px tall, so the columns are four or
  * five pieces with different tops. BIG stays tier 8 (r 43.5): its spawn top edge is at y = -12.
+ *
+ * #3920: the 11-tier ladder (r0 / r9 / r10 = 11.5 / 79.1 / 98; tiers 0-5 drop; the capstone is
+ * tier 10). The columns are rebuilt from it with the same tops' roles. BIG stays tier 8 (r 63.8):
+ * its spawn top edge is at y = -53.
  */
 import { World } from "planck";
 import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
@@ -64,11 +68,11 @@ function stackTop(pieces: Placed[]): number {
   return top.y - tierRadius(top.tier);
 }
 
-/** Top edge at y = 54: over the lid, top piece's centre (y = 87) under it. */
-const COLUMN_TIERS = [11, 10, 9, 7];
+/** Top edge at y = 69: over the lid, top piece's centre (y = 96) under it. */
+const COLUMN_TIERS = [10, 9, 7, 4];
 const COLUMN = [...stack(COLUMN_TIERS), { tier: 0, x: LANE_X, y: FLOOR_TOP - tierRadius(0) }];
-/** Top edge at y = 11: a tier 2 (r 8.6) on it has its top edge at y = -6, above the canvas. */
-const TALL = stack([11, 10, 9, 8, 3]);
+/** Top edge at y = 15: a tier 2 (r 17.7) on it has its top edge at y = -20, above the canvas. */
+const TALL = stack([10, 9, 8, 6]);
 /** Fixed steps from a COLUMN restore to game over: the grace, then the full count. */
 const COLUMN_GAME_OVER_STEP = OVERFLOW_IGNORE_MERGE_TICKS + OVERFLOW_TICKS_THRESHOLD;
 
@@ -186,8 +190,8 @@ describe("the lid: merge grace only near the lid", () => {
 describe("the lid: hard stop", () => {
   it("a settled piece whose top edge reaches the canvas top ends the game at once", () => {
     const engine = new CascadeEngine({});
-    // The tall stack with a tier-2 piece (radius 8.6) on top: its top edge is at y = -6. Restore's
-    // grace does not delay the hard stop.
+    // The tall stack with a tier-2 piece (radius 17.7) on top: its top edge is at y = -20.
+    // Restore's grace does not delay the hard stop.
     const top = stackTop(TALL);
     expect(top - 2 * radius(2)).toBeLessThan(-5);
     engine.restore([...TALL, { tier: 2, x: STACK_X, y: top - radius(2) }], 0);
@@ -206,8 +210,8 @@ describe("the lid: hard stop", () => {
 });
 
 describe("the lid: hard stop grace for the dropped piece", () => {
-  /** A capstone and tiers 10, 9 and 5: its top edge rests at about y = 82. */
-  const LEDGE = stack([11, 10, 9, 5]);
+  /** A capstone and tiers 9, 7 and 2: its top edge rests at about y = 88. */
+  const LEDGE = stack([10, 9, 7, 2]);
 
   it("a large piece touching a pile just under the lid is not a hard stop at once", () => {
     const engine = new CascadeEngine({});
@@ -226,8 +230,8 @@ describe("the lid: hard stop grace for the dropped piece", () => {
     // The drop must land dead centre on the column (the nudge would roll it off the top).
     const engine = new CascadeEngine({ bench: { noDropNudge: true } });
     // #3904: a drop spawns with its bottom edge at y = 75, so only a big one can come to rest
-    // above the canvas: BIG (r 43.5) dropped on the ledge (top edge at y = 82) rests on top, its
-    // top edge at about y = -5.
+    // above the canvas: BIG (r 63.8, #3920) dropped on the ledge (top edge at y = 88) rests on
+    // top, its top edge at about y = -40.
     engine.restore(LEDGE, 0);
     engine.drop(BIG, STACK_X);
     const results = run(engine, 120);
@@ -278,17 +282,17 @@ describe("the lid: drop gating", () => {
   });
 
   it("a piece that lands and rests over the lid cannot deadlock: the game ends", () => {
-    // A capstone and tiers 10, 9 and 5: the stack's top edge is at y = 82, under the lid.
+    // A capstone and tiers 9, 7 and 2: the stack's top edge is at y = 88, under the lid.
     // The drop must land dead centre on the column (the nudge would roll it off the top).
     const engine = new CascadeEngine({ bench: { noDropNudge: true } });
-    const under = stack([11, 10, 9, 5]);
+    const under = stack([10, 9, 7, 2]);
     expect(stackTop(under)).toBeGreaterThan(OVERFLOW_LINE_Y);
     engine.restore(under, 0);
     run(engine, OVERFLOW_IGNORE_MERGE_TICKS + 10);
     expect(engine.getState().dangerRatio).toBe(0);
     expect(engine.canDrop()).toBe(true);
-    // A Blueberry (tier 1, radius 6.6) dropped on top lands with its top edge at about y = 69:
-    // over the lid, for good.
+    // A Blueberry (tier 1, radius 14.2, #3920) dropped on top lands with its top edge at about
+    // y = 59: over the lid, for good.
     engine.drop(1, STACK_X);
     const results = run(engine, 600);
     const landed = engine.getState().pieces.find((p) => p.tier === 1)!;

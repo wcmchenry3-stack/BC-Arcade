@@ -71,8 +71,9 @@ describe("Cascade NextFruitPreview", () => {
   });
 
   it("names the capstones from the ladder's i18n keys (#3695)", async () => {
-    const pumpkin = FRUIT_SETS.fruits!.fruits[11]!;
-    const milkyWay = FRUIT_SETS.cosmos!.fruits[11]!;
+    // #3920: the capstone is tier 10.
+    const pumpkin = FRUIT_SETS.fruits!.fruits[10]!;
+    const milkyWay = FRUIT_SETS.cosmos!.fruits[10]!;
     expect(pumpkin.i18nKey).toBe("fruits.pumpkin");
     await render(<NextFruitPreview current={pumpkin} next={milkyWay} />);
     expect(screen.getByLabelText("Dropping next: Pumpkin")).toBeTruthy();

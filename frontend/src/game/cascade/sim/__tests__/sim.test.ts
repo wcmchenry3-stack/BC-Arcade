@@ -209,7 +209,8 @@ describe("determinism and the engine seam", () => {
     expect(m.timeToWinMs).toBeNull();
   });
 
-  it("a stopOnWin run ends at the engine's win, and records when each tier first existed", () => {
+  // #3920: the win ends play, so every run ends at it (it was an option of the capstone runs).
+  it("a run ends at the engine's win, and records when each tier first existed", () => {
     const win: EngineEvent = { type: "win", x: 200, y: 500, id: 1 };
     const engine = fakeEngine((f) => (f === 90 ? [win] : []));
     const m = runGame({
@@ -217,7 +218,6 @@ describe("determinism and the engine seam", () => {
       hz: 60,
       bot: spamBot,
       maxSimMs: 10_000,
-      stopOnWin: true,
       config: { createEngine: () => engine },
     });
     expect(m.endedBy).toBe("win");
@@ -253,6 +253,45 @@ describe("determinism and the engine seam", () => {
     expect(m.merges).toBe(2);
     expect(m.feel.chainLatencyMs).toHaveLength(1);
     expect(m.feel.chainLatencyMs[0]!).toBeLessThan(150);
+    expect(m.feel.chainMisses).toBe(0);
+  });
+
+  // #3920: the win ends play, so a merge product watched for a chain when the win comes can never
+  // merge again. That is the end of the game, not a stalled chain: it is not a miss.
+  it("a chain watch still open at the win is not a miss, and the run ends there (#3920)", () => {
+    const r1 = DEFAULT_CONSTANTS.physicsRadius(1);
+    const made: EngineEvent = {
+      type: "merge",
+      tierA: 0,
+      tierB: 0,
+      result: 1,
+      x: 100,
+      y: 500,
+      id: 5,
+      parentIds: [1, 2],
+    };
+    const win: EngineEvent = { type: "win", x: 300, y: 480, id: 9 };
+    const engine = fakeEngine((f) => (f === 10 ? [made] : f === 12 ? [win] : []));
+    // A tier 1 resting against the product, so the sim watches it for a chain.
+    const neighbour = { id: 3, tier: 1, x: 100 + 2 * r1, y: 500, angle: 0 };
+    engine.getState = (): GameState => ({
+      pieces: [neighbour as GameState["pieces"][number]],
+      score: 0,
+      gameOver: false,
+      dangerRatio: 0,
+      canDrop: true,
+    });
+    const m = runGame({
+      seed: 1,
+      hz: 60,
+      bot: { name: "idle", nextDelayMs: () => 1e9, shouldTap: () => false, chooseX: () => 0 },
+      maxSimMs: 5000,
+      config: { createEngine: () => engine },
+    });
+    expect(m.won).toBe(true);
+    expect(m.endedBy).toBe("win");
+    expect(m.simMs).toBeCloseTo(200, 0);
+    expect(m.feel.chainLatencyMs).toEqual([]);
     expect(m.feel.chainMisses).toBe(0);
   });
 
@@ -356,7 +395,7 @@ describe("1 px-contact spawn helper (#1302)", () => {
   });
 });
 
-describe("the 12-tier ladder (#3695)", () => {
+describe("the ladder (#3695; 11 tiers since #3920)", () => {
   it("takes every per-tier number from the ladder", () => {
     expect(DEFAULT_CONSTANTS.maxTier).toBe(CAPSTONE_TIER);
     expect(DEFAULT_CONSTANTS.droppableTiers).toBe(DROPPABLE_TIERS);
@@ -368,23 +407,26 @@ describe("the 12-tier ladder (#3695)", () => {
     }
   });
 
-  it("a 10 + 10 contact pair makes the capstone, and two capstones are the win (#3904)", () => {
+  it("a 9 + 9 contact pair makes the capstone, and that is the win; two capstones are not (#3920)", () => {
     const engine = new CascadeEngine({});
     engine.restore(contactPair(CAPSTONE_TIER - 1, 200), 0);
-    let merged: EngineEvent | undefined;
-    for (let i = 0; i < 20 && !merged; i++) {
-      merged = engine.step(1000 / 60).events.find((e) => e.type === "merge");
+    const events: EngineEvent[] = [];
+    for (let i = 0; i < 20 && !events.some((e) => e.type === "merge"); i++) {
+      events.push(...engine.step(1000 / 60).events);
     }
-    expect(merged).toMatchObject({ type: "merge", result: CAPSTONE_TIER });
+    expect(events.find((e) => e.type === "merge")).toMatchObject({
+      type: "merge",
+      result: CAPSTONE_TIER,
+    });
+    expect(events.filter((e) => e.type === "win")).toHaveLength(1);
     engine.destroy();
 
     const caps = new CascadeEngine({});
     caps.restore(contactPair(CAPSTONE_TIER, 200), 0);
-    const events: EngineEvent[] = [];
-    for (let i = 0; i < 30; i++) events.push(...caps.step(1000 / 60).events);
-    expect(events.some((e) => e.type === "merge")).toBe(false);
-    expect(events.filter((e) => e.type === "win")).toHaveLength(1);
-    expect(caps.getState().pieces).toEqual([]);
+    const capEvents: EngineEvent[] = [];
+    for (let i = 0; i < 30; i++) capEvents.push(...caps.step(1000 / 60).events);
+    expect(capEvents.some((e) => e.type === "merge" || e.type === "win")).toBe(false);
+    expect(caps.getState().pieces).toHaveLength(2);
     caps.destroy();
   });
 });
@@ -459,19 +501,20 @@ describe("queue sampler", () => {
     const a = sampleQueue(5, 300, false);
     expect(sampleQueue(5, 300, false)).toEqual(a);
     expect(a.share.reduce((x, y) => x + y, 0)).toBeCloseTo(1, 9);
-    // #3904: tiers 0-7 drop; nothing above.
-    expect(a.share.slice(8).every((s) => s === 0)).toBe(true);
-    expect(a.share[7]!).toBeGreaterThan(0);
+    // #3920: tiers 0-5 drop; nothing above.
+    expect(a.share.slice(6).every((s) => s === 0)).toBe(true);
+    expect(a.share[5]!).toBeGreaterThan(0);
   });
 
   it("danger mode suppresses the large tiers and (#3697) favours the small ones", () => {
     const calm = sampleQueue(10, 500, false);
     const danger = sampleQueue(10, 500, true);
-    for (const t of [3, 4, 5, 6, 7]) expect(danger.share[t]!).toBeLessThan(calm.share[t]!);
+    // #3920: tiers 2-4 x0.2 and the top tier (5) x0.35 in danger.
+    for (const t of [2, 3, 4, 5]) expect(danger.share[t]!).toBeLessThan(calm.share[t]!);
     // PR #3919: the top tier's danger factor is milder (0.35), but it still comes clearly less
-    // often in danger than calm (here 6.2 % against 7.8 %), not a hair less.
-    expect(danger.share[7]!).toBeLessThan(calm.share[7]! * 0.9);
-    for (const t of [0, 1, 2]) expect(danger.share[t]!).toBeGreaterThan(calm.share[t]!);
+    // often in danger than calm (#3920: about 8.4 % against 10.1 %), not a hair less.
+    expect(danger.share[5]!).toBeLessThan(calm.share[5]! * 0.9);
+    for (const t of [0, 1]) expect(danger.share[t]!).toBeGreaterThan(calm.share[t]!);
   });
 });
 

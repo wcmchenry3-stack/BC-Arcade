@@ -5,18 +5,19 @@
  * every seed, a merge somewhere in the bin kept resetting the overflow count and the pile grew
  * off the top of the canvas. With the lid, the same bot (tapping every 200-250 ms, which is as
  * fast as the screen's tap debounce allows, and gated by `canDrop()` as the screen is) loses on
- * every seed.
+ * every seed, and (#3904) never wins.
  *
  * Simulated seconds to game over as this test runs them (the sim harness's `spamBot` via
  * `runGame`, #2893), all by overflow:
  *   seed      1     2     3     4     5
- *   60 Hz   93.8  82.0  80.9  85.9  83.8   (16.67 ms frames)
- *   120 Hz  91.7  73.4  82.5  80.7  71.6   (8.33 ms frames)
- * That is the #3904 ladder (radii 5-98, drops 0-7) and overlap tuning, with danger mode scaling
- * tiers 3-6 by 0.2 and tier 7 by 0.35, and no longer boosting the small tiers (#3904). History:
- * #3697's lively ladder read 40-105 s here, the 12-tier ladder on Matter.js (#3695) 39-68 s, the
- * 10-tier ladder 34-46 s. The longest spam game of the 100-seed full suite is about 100 s, so the
- * bound below has about 20 % headroom. Headless and deterministic: the seeded RNG drives the
+ *   60 Hz   65.4  55.3  60.6  68.5  72.0   (16.67 ms frames)
+ *   120 Hz  57.3  48.2  71.8  51.8  54.6   (8.33 ms frames)
+ * That is the #3920 ladder (11 tiers, radii 11.5-98, drops 0-5, making the capstone is the win)
+ * on #3904's overlap tuning, with danger mode scaling tiers 2-4 by 0.2 and tier 5 by 0.35.
+ * History: #3904's 5-98 ladder read 72-94 s here, #3697's lively ladder 40-105 s, the 12-tier
+ * ladder on Matter.js (#3695) 39-68 s, the 10-tier ladder 34-46 s. The longest spam game of the
+ * 100-seed full suite is 84.9 s at 60 Hz and 84.4 s at 120 Hz, so the bound below has about 40 %
+ * headroom (#3904: about 20 %). Headless and deterministic: the seeded RNG drives the
  * queue, the tap times and the tap x. The bot and the game loop live in `../sim/` (`runGame`,
  * `spamBot`).
  */
@@ -36,6 +37,9 @@ describe("the lid: spam bot always loses (#3694)", () => {
       const result = runGame({ seed, hz, bot: spamBot, maxSimMs: SPAM_GAME_OVER_BOUND_MS });
       expect(result.endedBy).not.toBe("cap");
       expect(result.simMs).toBeLessThanOrEqual(SPAM_GAME_OVER_BOUND_MS);
+      // #3904: mindless play never wins (#3920: a run ends at the win, so check it outright).
+      expect(result.won).toBe(false);
+      expect(["overflow", "hardStop"]).toContain(result.endedBy);
       // It played a real game first, not an instant loss.
       expect(result.drops).toBeGreaterThan(30);
     });
