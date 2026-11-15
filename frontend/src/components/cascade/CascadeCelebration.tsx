@@ -11,7 +11,13 @@
  * once, and it is never left waiting.
  */
 import { useEffect, useRef } from "react";
-import { Easing, withSequence, withTiming, type SharedValue } from "react-native-reanimated";
+import {
+  Easing,
+  ReduceMotion,
+  withSequence,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
 import { celebrationCardMs, celebrationRemainingMs } from "../../game/cascade/celebration";
 
 export interface CascadeCelebrationProps {
@@ -41,11 +47,23 @@ export default function CascadeCelebration({
     if (first) startedAtRef.current = now;
     const elapsed = now - (startedAtRef.current ?? now);
     const remaining = celebrationRemainingMs(elapsed, reduceMotion);
+    // `clock` is a logical clock, not motion: the calm visuals come from `celebrationPose` reading
+    // `reduceMotion`. Reanimated's default (ReduceMotion.System) would jump it to its end under the
+    // OS setting, skipping the grow-in and the calm fade (Codex on #3924), so it never reduces.
     const run = withTiming(celebrationCardMs(reduceMotion), {
       duration: remaining,
       easing: Easing.linear,
+      reduceMotion: ReduceMotion.Never,
     });
-    clock.set(first ? withSequence(withTiming(0, { duration: 0 }), run) : run);
+    clock.set(
+      first
+        ? withSequence(
+            ReduceMotion.Never,
+            withTiming(0, { duration: 0, reduceMotion: ReduceMotion.Never }),
+            run
+          )
+        : run
+    );
     const timer = setTimeout(() => onDoneRef.current(), remaining);
     return () => clearTimeout(timer);
   }, [clock, reduceMotion]);

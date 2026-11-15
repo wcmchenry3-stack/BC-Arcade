@@ -115,6 +115,7 @@ jest.mock("react-native-reanimated", () => {
     withTiming: noopAnim,
     withSpring: noopAnim,
     withSequence: (...args: unknown[]) => args[args.length - 1],
+    ReduceMotion: { System: "system", Always: "always", Never: "never" },
     withRepeat: (v: unknown) => v,
     withDelay: (_ms: number, v: unknown) => v,
     Easing: {
