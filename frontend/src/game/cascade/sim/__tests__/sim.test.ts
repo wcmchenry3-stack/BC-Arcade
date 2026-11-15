@@ -468,6 +468,9 @@ describe("queue sampler", () => {
     const calm = sampleQueue(10, 500, false);
     const danger = sampleQueue(10, 500, true);
     for (const t of [3, 4, 5, 6, 7]) expect(danger.share[t]!).toBeLessThan(calm.share[t]!);
+    // PR #3919: the top tier's danger factor is milder (0.35), but it still comes clearly less
+    // often in danger than calm (here 6.2 % against 7.8 %), not a hair less.
+    expect(danger.share[7]!).toBeLessThan(calm.share[7]! * 0.9);
     for (const t of [0, 1, 2]) expect(danger.share[t]!).toBeGreaterThan(calm.share[t]!);
   });
 });

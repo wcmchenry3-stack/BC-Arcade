@@ -23,8 +23,9 @@ export const DROUGHT_WINDOW = 10;
 const DROUGHT_BOOST = 3;
 const STREAK_WINDOW = 4;
 /**
- * In danger, tiers at or above this are scaled by DANGER_PENALTY (fractional weights, no floor
- * since #3904: the old floor of 1 left tier 7, weight 1, unpenalised). #3904 also removed
+ * In danger, tiers at or above this are scaled by DANGER_PENALTY, the top tier by
+ * DANGER_PENALTY_TOP (fractional weights, no floor since #3904: the old floor of 1 left tier 7,
+ * weight 1, unpenalised). #3904 also removed
  * #3697's second danger rule, which also multiplied the tiers below it by 1.5: on the V1 ladder
  * that stream of small pieces was what kept a mashing player's pile hovering just under the lid
  * (the spam bot outlived the 120 s lid bound), while a careful player is in danger for about
@@ -32,6 +33,18 @@ const STREAK_WINDOW = 4;
  */
 const DANGER_TIER_THRESHOLD = 3;
 const DANGER_PENALTY = 0.2;
+/**
+ * The top droppable tier (the Coconut / Uranus, weight 1) gets a milder danger factor (owner
+ * decision on PR #3919). At x0.2, with tiers 3-6 at x0.2 too, a mashing player's pile hovered
+ * just under the lid for longer: the spam bot's longest game was 116.4 s against the 120 s bound.
+ * Measured on the 100-seed spam suite (longest game 60 / 120 Hz): x0.2 110.0 / 116.4 s, x0.35
+ * 99.3 / 100.0, x0.5 100.7 / 96.8, x0.7 90.5 / 85.0. x0.35 keeps the top tier well below its
+ * calm share in danger (6.4 % against 8.0 %; x0.5 leaves it at 7.8 %, a hair under) and the
+ * skilled bot at 50 %.
+ */
+const DANGER_PENALTY_TOP = 0.35;
+/** The top droppable tier. */
+const TOP_TIER = DROPPABLE_PIECE_TIERS[DROPPABLE_PIECE_TIERS.length - 1] ?? 0;
 
 export function selectNextTier(
   history: number[],
@@ -52,7 +65,8 @@ export function selectNextTier(
   if (isInDanger) {
     for (const tier of DROPPABLE_PIECE_TIERS) {
       if (tier >= DANGER_TIER_THRESHOLD) {
-        weights[tier] = (weights[tier] ?? 0) * DANGER_PENALTY;
+        const penalty = tier === TOP_TIER ? DANGER_PENALTY_TOP : DANGER_PENALTY;
+        weights[tier] = (weights[tier] ?? 0) * penalty;
       }
     }
   }

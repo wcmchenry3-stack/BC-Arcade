@@ -23,7 +23,7 @@
  * touch. Droppable tiers are 0-7 (radius 5-33.2); the largest spawns at
  * `OVERFLOW_LINE_Y - r - inset`, its top edge at y = 8.6, on the canvas. The cherry (5) is the
  * main lever on the win rate (more, smaller material) and draws about 9 pt across on a phone.
- * Measured in the sim as shipped (100 seeds, 10 min cap): skilled bot wins 49 %, heuristic 29 %,
+ * Measured in the sim as shipped (100 seeds, 10 min cap): skilled bot wins 50 %, heuristic 30 %,
  * median time to win about 4 min; docs/games/cascade.md.
  *
  * ## Scores
