@@ -351,6 +351,20 @@ describe("drops at the edge of the bin", () => {
   });
 });
 
+describe("a drop x that is not a number", () => {
+  it("is ignored, so the world never takes NaN (the web drop bug)", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(2, Number.NaN);
+    engine.drop(2, Number.POSITIVE_INFINITY);
+    expect(engine.getState().pieces).toHaveLength(0);
+    expect(engine.canDrop()).toBe(true);
+    engine.drop(2, 200);
+    for (let i = 0; i < 120; i++) engine.step(1000 / 60);
+    const [piece] = engine.getState().pieces;
+    expect(Number.isFinite(piece!.x) && Number.isFinite(piece!.y)).toBe(true);
+  });
+});
+
 describe("no teleports in normal play", () => {
   it("a crowded bin of drops at random spots never fires the guard rail", () => {
     const engine = new CascadeEngine({});
