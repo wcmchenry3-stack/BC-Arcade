@@ -322,6 +322,25 @@ describe("CascadeGame", () => {
     expect(mockEngineDrop).toHaveBeenCalledTimes(1);
   });
 
+  it("a web press (offsetX, no locationX) drops at that x", async () => {
+    const renderer = await renderScreen();
+    const area = findGameArea(renderer);
+    await act(() => {
+      area?.props.onPress({ nativeEvent: { offsetX: 150 * 0.75 } });
+    });
+    expect(mockEngineDrop).toHaveBeenCalledTimes(1);
+    expect(mockEngineDrop.mock.calls[0]?.[1]).toBeCloseTo(150);
+  });
+
+  it("a press with no usable x drops nothing", async () => {
+    const renderer = await renderScreen();
+    const area = findGameArea(renderer);
+    await act(() => {
+      area?.props.onPress({ nativeEvent: {} });
+    });
+    expect(mockEngineDrop).not.toHaveBeenCalled();
+  });
+
   it("second tap within 200ms cooldown is ignored", async () => {
     const renderer = await renderScreen();
     await triggerTap(renderer);

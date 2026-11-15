@@ -53,7 +53,7 @@ import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitTier } from "../theme/fruitSets";
 import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine";
 import { WORLD_WIDTH, OVERFLOW_LINE_Y, DANGER_STACK_MARGIN } from "../game/cascade/constants";
-import { calculateCascadeLayout, tapToWorldX } from "../game/cascade/layout";
+import { calculateCascadeLayout, tapToWorldX, type BoardPressPoint } from "../game/cascade/layout";
 import {
   registerCascadeTestHooks,
   cascadeSetup,
@@ -653,7 +653,8 @@ function CascadeGame() {
   }, [gameKey, awayRef, scoreStore, publishBoard]);
 
   const handleTap = useCallback(
-    (x: number) => {
+    (x: number | null) => {
+      if (x === null) return; // a press with no usable x (`tapToWorldX`)
       const now = Date.now();
       const interval = now - lastDropTimeRef.current;
 
@@ -884,7 +885,7 @@ function CascadeGame() {
     [currentDef, nextDef]
   );
   const onBoardPress = useCallback(
-    (e: GestureResponderEvent) => handleTap(tapToWorldX(e.nativeEvent.locationX, scale)),
+    (e: GestureResponderEvent) => handleTap(tapToWorldX(e.nativeEvent as BoardPressPoint, scale)),
     [handleTap, scale]
   );
   // The bin is the card: the board rect, bottom-anchored in the measured area.

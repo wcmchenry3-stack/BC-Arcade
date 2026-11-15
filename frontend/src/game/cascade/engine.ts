@@ -764,6 +764,8 @@ export class CascadeEngine {
   drop(tier: number, x: number): void {
     if (this._gameOver || this._won) return;
     if (!PIECE_DEFS[tier]) return;
+    // A non-finite x would put NaN into the planck world and break every later step.
+    if (!Number.isFinite(x)) return;
     const r = tierRadius(tier);
     // A tap at the edge of the bin (the screen clamps it to the walls' inner faces) places the
     // piece against the wall, not inside it: Box2D would push it out by position, a visible jump.

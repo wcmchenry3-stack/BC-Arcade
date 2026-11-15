@@ -47,8 +47,21 @@ export function calculateCascadeLayout({
   };
 }
 
-/** A tap's x inside the board (px) as a drop x in world units, kept between the walls. */
-export function tapToWorldX(locationX: number, scale: number): number {
-  const rawX = locationX / scale;
-  return Math.max(WALL_THICKNESS, Math.min(WORLD_WIDTH - WALL_THICKNESS, rawX));
+/** The parts of a press event's `nativeEvent` that locate it inside the board. */
+export interface BoardPressPoint {
+  locationX?: number;
+  offsetX?: number;
+}
+
+/**
+ * A press on the board as a drop x in world units, kept between the walls, or null when the
+ * press has no usable x. iOS and Android report `locationX`. react-native-web's mouse and touch
+ * presses do not, so the web reads the DOM `offsetX` instead (the board canvas, the press's only
+ * child, fills the pressable). Without it the drop x was NaN, which broke the physics world and
+ * no piece ever fell on the web.
+ */
+export function tapToWorldX(point: BoardPressPoint, scale: number): number | null {
+  const px = Number.isFinite(point.locationX) ? point.locationX : point.offsetX;
+  if (px === undefined || !Number.isFinite(px) || !(scale > 0)) return null;
+  return Math.max(WALL_THICKNESS, Math.min(WORLD_WIDTH - WALL_THICKNESS, px / scale));
 }
