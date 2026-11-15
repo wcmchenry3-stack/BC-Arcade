@@ -16,6 +16,8 @@ import CascadeCelebration from "../../components/cascade/CascadeCelebration";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
 import { CELEBRATION_CARD_MS, CELEBRATION_CARD_MS_REDUCED } from "../../game/cascade/celebration";
 import { formatMs } from "../../game/_shared/formatMs";
+import * as pen from "../../game/cascade/art/pen";
+import { __resetArtCachesForTests } from "../../game/cascade/art/sprites";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
 import { GROW_IN_STEPS } from "../../game/cascade/constants";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
@@ -73,6 +75,8 @@ jest.mock("../../components/cascade/ThemeSelector", () => {
   };
 });
 
+// The Skia API (`Skia.*`): none, unless a test installs a fake (#3699: the capstone's raster).
+let mockSkiaApi: unknown = undefined;
 // Skia requires a native module — mock the whole package in Jest.
 // Canvas/Group/Picture are stubbed as no-ops for CascadeBoard.
 jest.mock("@shopify/react-native-skia", () => {
@@ -100,6 +104,9 @@ jest.mock("@shopify/react-native-skia", () => {
     Path: () => null,
     DashPathEffect: () => null,
     BlurMask: () => null,
+    get Skia() {
+      return mockSkiaApi;
+    },
   };
 });
 
@@ -1389,6 +1396,47 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         expect(cardShown(renderer)).toBe(true);
         const wins = announce.mock.calls.filter(([text]) => String(text).startsWith("You Win!"));
         expect(wins).toHaveLength(1);
+      });
+
+      // Review on #3924: the capstone's cheering-face raster throws at the win.
+      it("a throw rasterising the cheering face neither breaks the board nor holds the card", async () => {
+        const images: { dispose: jest.Mock }[] = [];
+        const noop = new Proxy({}, { get: () => () => undefined });
+        mockSkiaApi = {
+          Surface: {
+            Make: (w: number, h: number) => ({
+              getCanvas: () => noop,
+              flush: () => undefined,
+              dispose: () => undefined,
+              makeImageSnapshot: () => {
+                const img = { dispose: jest.fn(), width: () => w, height: () => h };
+                images.push(img);
+                return img;
+              },
+            }),
+          },
+        };
+        __resetArtCachesForTests();
+        const drawLayer = jest.spyOn(pen, "drawLayer").mockImplementation((_c, _s, _t, layer) => {
+          if (layer === "cheer") throw new Error("cheer");
+        });
+        try {
+          const renderer = await renderScreen();
+          images.length = 0; // the board's own sprites, made at mount
+          await win(renderer);
+          expect(drawLayer.mock.calls.some((c) => c[3] === "cheer")).toBe(true);
+          // The three capstone bitmaps made before the throw were released.
+          expect(images).toHaveLength(3);
+          images.forEach((img) => expect(img.dispose).toHaveBeenCalledTimes(1));
+          expect(board(renderer).props.won).toBe(true);
+          await advance(CELEBRATION_CARD_MS);
+          expect(cardShown(renderer)).toBe(true);
+          expect(resultModal(renderer).props.outcome).toBe("win");
+        } finally {
+          drawLayer.mockRestore();
+          mockSkiaApi = undefined;
+          __resetArtCachesForTests();
+        }
       });
 
       it("Play Again after a win starts a fresh game", async () => {

@@ -175,12 +175,16 @@ export const CAPSTONE_RASTER_SCALE = 1.4;
 /** Capstone rasters kept (set x pixel scale), least recently used disposed first. */
 export const MAX_CAPSTONE_SPRITES = 2;
 
+/** Per key: the raster, or null where it could not be drawn (remembered, never retried). */
 const capstoneCache = new Map<string, CapstoneSprite | null>();
 
 /**
- * The capstone of `setId` at `CAPSTONE_RASTER_SCALE` x `pxPerUnit`, made once per key, when a
- * win needs it (about 4 x 275² px at a 3x phone). Only the board holds one, while it celebrates.
- * Null if it could not be drawn: the celebration then draws the board's own capstone.
+ * The capstone of `setId` at `CAPSTONE_RASTER_SCALE` x `pxPerUnit`, made once per key, at the
+ * first win that needs it (about 4 x 275² px at a 3x phone).
+ * The last `MAX_CAPSTONE_SPRITES` keys are kept, celebrating or not (up to about 2 MB), and are
+ * not disposed on a restart: the board may still be drawing one. Null if it could not be drawn,
+ * whatever the reason (a throw included, its partial bitmaps disposed): the celebration then
+ * draws the board's own capstone, without the cheering face.
  */
 export function capstoneSprite(setId: string, pxPerUnit: number): CapstoneSprite | null {
   const px = quantizePx(pxPerUnit * CAPSTONE_RASTER_SCALE);
@@ -193,13 +197,18 @@ export function capstoneSprite(setId: string, pxPerUnit: number): CapstoneSprite
   }
   const set = artSet(setId);
   const tier = CAPSTONE_TIER;
-  const base = drawTier(set, tier, px);
   let sprite: CapstoneSprite | null = null;
+  // Guarded as `drawTier` is: a throw here would otherwise reach the board's render at the win.
+  const base = drawTier(set, tier, px);
   if (base) {
-    const art = set.pieces[tier]!;
-    const cheer = rasterise(set, tier, "cheer", art.box, tierDrawnRadius(tier), px);
-    if (cheer) sprite = { ...base, cheer: cheer.image };
-    else for (const image of [base.body, base.light, base.top]) image.dispose();
+    try {
+      const art = set.pieces[tier]!;
+      const cheer = rasterise(set, tier, "cheer", art.box, tierDrawnRadius(tier), px);
+      if (cheer) sprite = { ...base, cheer: cheer.image };
+    } catch {
+      sprite = null;
+    }
+    if (!sprite) for (const image of [base.body, base.light, base.top]) image.dispose();
   }
   capstoneCache.set(key, sprite);
   for (const [k, old] of capstoneCache) {

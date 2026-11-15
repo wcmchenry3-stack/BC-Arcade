@@ -531,6 +531,54 @@ describe("the capstone's cheering face and celebration raster (#3699)", () => {
     }
   });
 
+  // Review on #3924: the cheer layer is the fourth raster; a throw there must not reach the
+  // board's render, leak the three bitmaps already made, or be retried on every render.
+  it("a throw drawing the cheering face: null, the other bitmaps disposed, not retried", () => {
+    const real = adapter.skia;
+    const disposed: jest.Mock[] = [];
+    let calls = 0;
+    adapter.skia = {
+      ...Skia,
+      Surface: {
+        Make: (w: number, h: number) => {
+          calls++;
+          const surface = Skia.Surface.Make(w, h);
+          if (calls === 4) {
+            // The cheer layer: its canvas throws as soon as it is drawn on.
+            surface.getCanvas = () => {
+              throw new Error("cheer");
+            };
+          }
+          const snap = surface.makeImageSnapshot.bind(surface);
+          surface.makeImageSnapshot = () => {
+            const img = snap();
+            const dispose = jest.fn(img.dispose.bind(img));
+            img.dispose = dispose;
+            disposed.push(dispose);
+            return img;
+          };
+          return surface;
+        },
+      },
+    };
+    try {
+      let sprite: unknown = "unset";
+      expect(() => {
+        sprite = capstoneSprite("fruits", 2);
+      }).not.toThrow();
+      expect(sprite).toBeNull();
+      expect(calls).toBe(4);
+      // Body, light and top were made, then released.
+      expect(disposed).toHaveLength(3);
+      disposed.forEach((d) => expect(d).toHaveBeenCalledTimes(1));
+      // Remembered: the next render does not try again.
+      expect(capstoneSprite("fruits", 2)).toBeNull();
+      expect(calls).toBe(4);
+    } finally {
+      adapter.skia = real;
+    }
+  });
+
   it.each(["fruits", "cosmos"] as const)(
     "%s: the celebration builds and draws a frame on real Skia",
     (setId) => {

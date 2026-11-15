@@ -762,11 +762,11 @@ explicitly as `summary.result` to `useGameSync.complete()`; the analytics
 
 **Outcome (#2519 decision 11).** `games.outcome` carries the result, not
 only the lifecycle. Games that can record a winner (`GameModule.has_winner`:
-Yacht, Hearts, Daily Word, Blackjack, Mahjong, Twenty48) record `win` /
-`loss` / `push` (a tie); a `completed` row from such a game (solo Yacht) is a
-finish with no winner, not a win. Score-only games (Solitaire, FreeCell,
-Sudoku, Cascade, Sort, Star Swarm) record `completed` — a finished game with
-no win concept. `kept_playing` means the same; only Twenty48 builds from
+Yacht, Hearts, Daily Word, Blackjack, Mahjong, Twenty48, Cascade) record `win` /
+`loss` / `push` (a tie); a `completed` row from such a game (solo Yacht, or a
+Cascade build before #3699) is a finish with no winner, not a win. Score-only
+games (Solitaire, FreeCell, Sudoku, Sort, Star Swarm) record `completed` — a
+finished game with no win concept. `kept_playing` means the same; only Twenty48 builds from
 before #2631 send it. `abandoned` is a quit, excluded from boards, stats and XP
 by `games.filters.not_abandoned()`. The per-game rules live in one place, the
 `GameOutcome` docstring in `backend/vocab.py`; `won` inside a result block is
