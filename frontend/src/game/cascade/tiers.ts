@@ -51,6 +51,8 @@
  * read `radius`.
  */
 
+import { VARIANT } from "./variant";
+
 export type TierSetId = "fruits" | "cosmos";
 
 export interface TierDef {
@@ -74,8 +76,8 @@ export const TIER_COUNT = 12;
 export const CAPSTONE_TIER = TIER_COUNT - 1;
 
 /** The ladder's ends (see "Radii" above): tier 0's and the capstone's radius, world px. */
-const R0 = 5;
-const R11 = 98;
+const R0 = VARIANT ? VARIANT.r0 : 5;
+const R11 = VARIANT ? VARIANT.r11 : 98;
 /** The one tier-to-tier ratio: R0 * K ^ 11 = R11. */
 const K = (R11 / R0) ** (1 / CAPSTONE_TIER);
 /** Exponent of the density rule `(r0 / r) ^ DENSITY_EXPONENT` (see "Density" above). */
@@ -83,7 +85,7 @@ const DENSITY_EXPONENT = 0.5;
 /** How much smaller a piece is drawn than its collider (#3904: see "Drawn radius" above). */
 export const DRAW_INSET = 0.015;
 /** Highest droppable tier (0-7 drop, #3904). */
-const MAX_DROPPABLE_TIER = 7;
+const MAX_DROPPABLE_TIER = VARIANT ? VARIANT.maxDrop : 7;
 
 type Names = readonly [nameKeyFruits: string, nameKeyCosmos: string];
 

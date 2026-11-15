@@ -74,6 +74,9 @@ export interface GameMetrics {
   timeToWinMs: number | null;
   /** Simulated ms at which each tier first existed (dropped or merged), null if never. */
   tierFirstMs: (number | null)[];
+  /** #3920 proposals: most pieces on the board in any frame, and the mean over frames. */
+  maxPieces: number;
+  meanPieces: number;
   feel: {
     /** Mean packing density over calm samples with 3+ pieces; null if none. */
     packingDensity: number | null;
@@ -112,6 +115,8 @@ export interface GameMetrics {
     meanStepMsGe20: number | null;
     p95StepMs: number;
     maxStepMs: number;
+    /** #3920 proposals: p95 over frames with 20+ pieces; null if there never were. */
+    p95StepMsGe20: number | null;
   };
 }
 
@@ -183,6 +188,9 @@ export function runGame(opts: RunOptions): GameMetrics {
   const frameState: GameState = createGameState();
   let wallDepthMax = 0;
   let wallPenetrations = 0;
+  let maxPieces = 0;
+  let piecesSum = 0;
+  let piecesN = 0;
   // Chain latency: watched merge product id -> simulated ms it was made.
   const chainWatch = new Map<number, number>();
   const chainLatencyMs: number[] = [];
@@ -192,7 +200,11 @@ export function runGame(opts: RunOptions): GameMetrics {
     const minX = c.wallThickness;
     const maxX = c.worldWidth - c.wallThickness;
     const floorTop = c.worldHeight - c.floorThickness;
-    for (const p of engine.getState(frameState).pieces) {
+    const all = engine.getState(frameState).pieces;
+    if (all.length > maxPieces) maxPieces = all.length;
+    piecesSum += all.length;
+    piecesN++;
+    for (const p of all) {
       const r = c.physicsRadius(p.tier) * (p.scale ?? 1);
       const depth = Math.max(0, minX + r - p.x, p.x + r - maxX, p.y + r - floorTop);
       if (depth > wallDepthMax) wallDepthMax = depth;
@@ -221,6 +233,7 @@ export function runGame(opts: RunOptions): GameMetrics {
   let costSum = 0;
   let costGe20Sum = 0;
   let costGe20N = 0;
+  const costsGe20: number[] = [];
 
   let t = 0;
   let nextTapAt = 0;
@@ -320,6 +333,7 @@ export function runGame(opts: RunOptions): GameMetrics {
     if (drops - merges >= 20) {
       costGe20Sum += cost;
       costGe20N++;
+      costsGe20.push(cost);
     }
 
     let over = false;
@@ -391,6 +405,7 @@ export function runGame(opts: RunOptions): GameMetrics {
   }
 
   costs.sort((a, b) => a - b);
+  costsGe20.sort((a, b) => a - b);
   const simS = t / 1000;
   return {
     seed,
@@ -409,6 +424,8 @@ export function runGame(opts: RunOptions): GameMetrics {
     won,
     timeToWinMs,
     tierFirstMs,
+    maxPieces,
+    meanPieces: piecesN ? piecesSum / piecesN : 0,
     feel: {
       packingDensity: mean(densitySum, densityN),
       gapMeanPx: mean(gapSum, gapN),
@@ -436,6 +453,9 @@ export function runGame(opts: RunOptions): GameMetrics {
         ? costs[Math.min(costs.length - 1, Math.floor(costs.length * 0.95))]!
         : 0,
       maxStepMs: costs.length ? costs[costs.length - 1]! : 0,
+      p95StepMsGe20: costsGe20.length
+        ? costsGe20[Math.min(costsGe20.length - 1, Math.floor(costsGe20.length * 0.95))]!
+        : null,
     },
   };
 }

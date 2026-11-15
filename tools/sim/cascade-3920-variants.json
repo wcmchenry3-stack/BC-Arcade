@@ -1,0 +1,7 @@
+{
+  "_comment": "#3920 proposals: CASCADE_VARIANT values for tools/sim/cascade-3920-worker.ts. V1 = unset (dev as shipped). Ladder r_n = r0 * (r11/r0)^(n/11), unrounded.",
+  "V1": null,
+  "A": { "name": "A", "r0": 11.5, "r11": 98, "maxDrop": 4, "weights": [3, 3, 3, 2, 1], "dangerFrom": 2, "dangerPenalty": 0.2, "dangerTop": 0.35 },
+  "B": { "name": "B", "r0": 11.5, "r11": 98, "maxDrop": 5, "weights": [2, 3, 3, 3, 2, 1], "dangerFrom": 2, "dangerPenalty": 0.2, "dangerTop": 0.35 },
+  "C": { "name": "C", "r0": 11.5, "r11": 98, "maxDrop": 6, "weights": [2, 3, 3, 3, 3, 2, 1], "dangerFrom": 3, "dangerPenalty": 0.2, "dangerTop": 0.35 }
+}

@@ -7,17 +7,11 @@
  * away. See docs/games/cascade.md.
  */
 import { DROPPABLE_PIECE_TIERS } from "./pieceDefs";
+import { VARIANT } from "./variant";
 
-const BASE_WEIGHTS: Record<number, number> = {
-  0: 2,
-  1: 3,
-  2: 3,
-  3: 3,
-  4: 3,
-  5: 3,
-  6: 2,
-  7: 1,
-};
+const BASE_WEIGHTS: Record<number, number> = VARIANT
+  ? Object.fromEntries(VARIANT.weights.map((w, t) => [t, w]))
+  : { 0: 2, 1: 3, 2: 3, 3: 3, 4: 3, 5: 3, 6: 2, 7: 1 };
 
 export const DROUGHT_WINDOW = 10;
 const DROUGHT_BOOST = 3;
@@ -31,8 +25,8 @@ const STREAK_WINDOW = 4;
  * (the spam bot outlived the 120 s lid bound), while a careful player is in danger for about
  * 10 % of its drops and only at the end of a lost game. See docs/games/cascade.md.
  */
-const DANGER_TIER_THRESHOLD = 3;
-const DANGER_PENALTY = 0.2;
+const DANGER_TIER_THRESHOLD = VARIANT ? VARIANT.dangerFrom : 3;
+const DANGER_PENALTY = VARIANT ? VARIANT.dangerPenalty : 0.2;
 /**
  * The top droppable tier (the Coconut / Uranus, weight 1) gets a milder danger factor (owner
  * decision on PR #3919). At x0.2, with tiers 3-6 at x0.2 too, a mashing player's pile hovered
@@ -42,7 +36,7 @@ const DANGER_PENALTY = 0.2;
  * calm share in danger (6.4 % against 8.0 %; x0.5 leaves it at 7.8 %, a hair under) and the
  * skilled bot at 50 %.
  */
-const DANGER_PENALTY_TOP = 0.35;
+const DANGER_PENALTY_TOP = VARIANT ? VARIANT.dangerTop : 0.35;
 /** The top droppable tier. */
 const TOP_TIER = DROPPABLE_PIECE_TIERS[DROPPABLE_PIECE_TIERS.length - 1] ?? 0;
 
