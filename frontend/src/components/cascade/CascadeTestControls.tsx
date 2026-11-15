@@ -16,9 +16,10 @@
  * | `cascade-test-chain`       | chain pile + queue of cherries (3 merges from 1 tap)   |
  * | `cascade-test-near-lid`    | pile over the lid, clock ring draining                 |
  * | `cascade-test-fill-bin`    | bin filled above the lid; the lid ends the game        |
+ * | `cascade-test-win`         | two capstones about to touch: the win (#3904)          |
  * | `cascade-test-game-over`   | forces game over (an extra; the loss demo uses fill)   |
  *
- * TODO(#3699): a `cascade-test-win` button goes here when Cascade has a win state.
+ * The win's result card is #3699: today the win stops play (no more drops) and shows nothing.
  */
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -30,6 +31,7 @@ export interface CascadeTestControlsProps {
   onChain: () => void;
   onNearLid: () => void;
   onFillBin: () => void;
+  onWin: () => void;
   onForceGameOver: () => void;
 }
 
@@ -37,6 +39,7 @@ export default function CascadeTestControls({
   onChain,
   onNearLid,
   onFillBin,
+  onWin,
   onForceGameOver,
 }: CascadeTestControlsProps) {
   const { colors } = useTheme();
@@ -61,6 +64,7 @@ export default function CascadeTestControls({
         onPress={onFillBin}
         color={colors.textMuted}
       />
+      <TestButton id="cascade-test-win" label="win" onPress={onWin} color={colors.textMuted} />
       <TestButton
         id="cascade-test-game-over"
         label="end"

@@ -41,6 +41,6 @@ export const PIECE_DEFS: PieceDef[] = TIERS.map((t) => ({
   shape: { kind: "circle", radius: t.radius },
 }));
 
-/** The capstone tier: two pieces of this tier never merge. */
+/** The capstone tier: two pieces of this tier touching are the win (#3904). */
 export const MAX_TIER = CAPSTONE_TIER;
 export const DROPPABLE_PIECE_TIERS: readonly number[] = DROPPABLE_TIERS;

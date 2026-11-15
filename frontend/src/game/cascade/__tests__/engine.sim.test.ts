@@ -10,14 +10,15 @@
  * Simulated seconds to game over as this test runs them (the sim harness's `spamBot` via
  * `runGame`, #2893), all by overflow:
  *   seed      1     2     3     4     5
- *   60 Hz   70.1  39.9  48.6  44.4  65.4   (16.67 ms frames)
- *   120 Hz  76.2  61.3 105.2  61.2  62.9   (8.33 ms frames)
- * That is planck.js with the lively tuning and ladder (#3697). History: the 12-tier ladder on
- * Matter.js (#3695) read 39-68 s here, the 10-tier ladder 34-46 s. Lively's pieces shuffle into
- * gaps, so a mindless pile lasts longer: seed 3 at 120 Hz (105.2 s) is also the longest of the
- * 100-seed full suite (spam@60 93.8 s), so the bound below has about 14 % headroom, not the
- * 1.6x it had. Headless and deterministic: the seeded RNG drives the queue, the tap times and the
- * tap x. The bot and the game loop live in `../sim/` (`runGame`, `spamBot`).
+ *   60 Hz   93.8  82.0  80.9  85.9  83.8   (16.67 ms frames)
+ *   120 Hz  91.7  73.4  82.5  80.7  71.6   (8.33 ms frames)
+ * That is the #3904 ladder (radii 5-98, drops 0-7) and overlap tuning, with danger mode scaling
+ * tiers 3-6 by 0.2 and tier 7 by 0.35, and no longer boosting the small tiers (#3904). History:
+ * #3697's lively ladder read 40-105 s here, the 12-tier ladder on Matter.js (#3695) 39-68 s, the
+ * 10-tier ladder 34-46 s. The longest spam game of the 100-seed full suite is about 100 s, so the
+ * bound below has about 20 % headroom. Headless and deterministic: the seeded RNG drives the
+ * queue, the tap times and the tap x. The bot and the game loop live in `../sim/` (`runGame`,
+ * `spamBot`).
  */
 import { spamBot } from "../sim/bots";
 import { runGame } from "../sim/runGame";

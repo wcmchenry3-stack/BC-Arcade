@@ -37,8 +37,9 @@ describe("selectNextTier — distribution over 1000 samples", () => {
     }
   });
 
-  it("lower tiers appear more often than higher tiers (no danger)", () => {
-    // Use a fixed seed for determinism; 20% tolerance accommodates weighting variance
+  // #3904: the base weights over tiers 0-7 are 2 3 3 3 3 3 2 1 (owner pick V1), so tier 0 is not
+  // the most common any more: tiers 1-5 are, then tiers 0 and 6, and tier 7 is the rarest.
+  it("follows the base weights 2 3 3 3 3 3 2 1 (no danger)", () => {
     const rng = seededRng(42);
     const results: number[] = [];
     const running: number[] = [];
@@ -48,9 +49,10 @@ describe("selectNextTier — distribution over 1000 samples", () => {
       running.push(t);
     }
     const counts = DROPPABLE_PIECE_TIERS.map((t) => results.filter((r) => r === t).length);
-    for (let i = 0; i < counts.length - 1; i++) {
-      expect(counts[i]!).toBeGreaterThan(counts[i + 1]! * 0.8);
-    }
+    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    const weight3 = counts.slice(1, 6);
+    expect(Math.max(counts[0]!, counts[6]!)).toBeLessThan(Math.min(...weight3));
+    expect(counts[7]!).toBeLessThan(Math.min(counts[0]!, counts[6]!));
   });
 });
 

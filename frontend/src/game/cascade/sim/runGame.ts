@@ -69,7 +69,7 @@ export interface GameMetrics {
   scoreByTier: number[];
   /** Longest run of consecutive drops without each tier (0 for non-droppable tiers). */
   maxDroughtByTier: number[];
-  /** The engine's win event (#3697: emitted when the capstone is made; #3699 builds on it). */
+  /** The engine's win event (#3904: two capstones touching; #3699 builds on it). */
   won: boolean;
   timeToWinMs: number | null;
   /** Simulated ms at which each tier first existed (dropped or merged), null if never. */

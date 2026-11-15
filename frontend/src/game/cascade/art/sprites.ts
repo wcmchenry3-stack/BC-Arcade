@@ -7,8 +7,9 @@
  *   UI-thread renderer (`render/drawFrame.ts`) draws each piece as three `drawImageRect`s, the
  *   body and top rotated with the physics and the light upright. The bitmap's scale is
  *   `pxPerUnit` = board scale x device pixel ratio: one bitmap pixel per screen pixel at the
- *   tier's ladder radius, so a piece is never drawn from a bitmap scaled up (only down, for the
- *   133 ms grow-in and the spawner's smaller copy). The key is the set and `pxPerUnit`; the
+ *   tier's drawn radius (#3904: 1.5 % inside the ladder radius, `tierDrawnRadius`), so a piece is
+ *   never drawn from a bitmap scaled up (only down, for the
+ *   grow-in and the spawner's smaller copy). The key is the set and `pxPerUnit`; the
  *   last `MAX_SPRITE_SETS` keys are kept and an evicted key's bitmaps are disposed. `pxPerUnit`
  *   is rounded up to `PX_STEP` first, so a resize by a pixel or two reuses the set instead of
  *   churning through new ones. The board (`CascadeBoard`) is the only holder of a set: its
@@ -24,7 +25,7 @@
  */
 import { Skia } from "@shopify/react-native-skia";
 import type { SkImage, SkPicture } from "@shopify/react-native-skia";
-import { TIER_COUNT, tierRadius, type TierSetId } from "../tiers";
+import { TIER_COUNT, tierDrawnRadius, type TierSetId } from "../tiers";
 import { COSMOS_ART } from "./cosmos";
 import { FRUIT_ART } from "./fruits";
 import { UNIT_BOX, drawLayer, drawPiece, type ArtSet, type Layer } from "./pen";
@@ -101,7 +102,7 @@ function rasterise(
 
 function drawTier(set: ArtSet, tier: number, px: number): PieceSprite | null {
   const art = set.pieces[tier];
-  const r = tierRadius(tier);
+  const r = tierDrawnRadius(tier);
   if (!art || r <= 0 || !(px > 0)) return null;
   const made: SkImage[] = [];
   try {

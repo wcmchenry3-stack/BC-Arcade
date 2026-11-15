@@ -18,6 +18,8 @@ export interface CascadeState {
   fruitCount: number;
   dangerRatio: number;
   gameOver: boolean;
+  /** Two capstones touched (#3904): play has ended in a win. */
+  won: boolean;
   nextFruitTier: number;
   comboCount: number;
   fruits: Array<{
@@ -79,6 +81,7 @@ export async function getState(page: Page): Promise<CascadeState> {
         fruitCount: 0,
         dangerRatio: 0,
         gameOver: false,
+        won: false,
         nextFruitTier: 0,
         comboCount: 0,
         fruits: [] as CascadeState["fruits"],

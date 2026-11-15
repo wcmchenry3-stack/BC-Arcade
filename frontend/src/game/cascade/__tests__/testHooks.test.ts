@@ -1,5 +1,5 @@
 /**
- * Cascade's E2E hooks (#3693): the same eleven `__cascade_*` names in a test build, nothing in a
+ * Cascade's E2E hooks (#3693): the same twelve (#3904: `setupWin`) `__cascade_*` names in a test build, nothing in a
  * store build.
  */
 import { registerCascadeTestHooks, type CascadeHookDeps } from "../testHooks";
@@ -17,6 +17,7 @@ const NAMES = [
   "setupChain",
   "setupNearLid",
   "fillBin",
+  "setupWin",
 ] as const;
 const g = globalThis as unknown as Record<string, unknown>;
 
@@ -25,6 +26,7 @@ function deps(): CascadeHookDeps {
     getState: jest.fn(() => ({
       score: 0,
       gameOver: false,
+      won: false,
       nextFruitTier: 0,
       comboCount: 0,
       fruitCount: 0,
@@ -41,6 +43,7 @@ function deps(): CascadeHookDeps {
     setupChain: jest.fn(),
     setupNearLid: jest.fn(),
     fillBin: jest.fn(),
+    setupWin: jest.fn(),
   };
 }
 
@@ -71,6 +74,8 @@ describe("registerCascadeTestHooks", () => {
     (g.__cascade_setupChain as () => void)();
     (g.__cascade_setupNearLid as () => void)();
     (g.__cascade_fillBin as () => void)();
+    (g.__cascade_setupWin as () => void)();
+    expect(d.setupWin).toHaveBeenCalledTimes(1);
     expect(d.seedQueue).toHaveBeenCalledWith([0, 0, 1]);
     expect(d.setupChain).toHaveBeenCalledTimes(1);
     expect(d.setupNearLid).toHaveBeenCalledTimes(1);

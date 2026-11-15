@@ -233,6 +233,9 @@ function CascadeGame() {
   // Refs used by test hooks and RAF to read latest state without closure staleness
   const scoreRef = useRef(0);
   const gameOverRef = useRef(false);
+  // #3904 (interim until #3699's result card): once the engine reports the win (`hasWon`), the
+  // loop stops stepping, nothing is saved any more and the saved game is cleared on the event.
+  const hasWon = () => engineRef.current?.hasWon() === true;
   const activeFruitSetRef = useRef(activeFruitSet);
 
   const {
@@ -396,7 +399,7 @@ function CascadeGame() {
     const now = Date.now();
     if (now - lastSaveTimeRef.current < SAVE_THROTTLE_MS) return;
     lastSaveTimeRef.current = now;
-    if (gameOverRef.current) return;
+    if (gameOverRef.current || hasWon()) return;
     saveCascadeGame(buildSnapshot()).catch(() => {});
   }, [buildSnapshot]);
 
@@ -497,18 +500,24 @@ function CascadeGame() {
     [lookupRank]
   );
 
-  const handleGameOver = useCallback(() => {
-    gameOverRef.current = true;
-    setGameOver(true);
-    const gameId = endInstrumentedSession("completed");
-    clearCascadeGame().catch(() => {});
-    showResult(gameId);
-  }, [endInstrumentedSession, showResult]);
+  // `won`: the capstone pair won (#3904). The engine reports no game over after a win, so the win
+  // ends the game here too (session, best, save, result) but does not show the card: #3699 adds
+  // the win card, which reads the result this records.
+  const handleGameOver = useCallback(
+    (won = false) => {
+      gameOverRef.current = true;
+      const gameId = endInstrumentedSession("completed");
+      clearCascadeGame().catch(() => {});
+      if (!won) setGameOver(true);
+      showResult(gameId);
+    },
+    [endInstrumentedSession, showResult]
+  );
 
   // Always-fresh refs for the RAF loop — updated every render so the loop
   // never captures stale closures for merge/gameOver handling.
   const onMergeRef = useRef<(tier: FruitTier, x: number, y: number) => void>(() => {});
-  const onGameOverRef = useRef<() => void>(() => {});
+  const onGameOverRef = useRef<(won?: boolean) => void>(() => {});
 
   onMergeRef.current = (tier, x, y) => {
     handleMerge({ tier, x, y });
@@ -528,10 +537,8 @@ function CascadeGame() {
     }
   };
 
-  onGameOverRef.current = () => {
-    playGameOver();
-    handleGameOver();
-  };
+  onGameOverRef.current = (won = false) =>
+    won ? handleGameOver(true) : (playGameOver(), handleGameOver());
   // Lets the (mount-once) e2e test hook reach the latest showResult.
   const showResultRef = useRef(showResult);
   showResultRef.current = showResult;
@@ -552,7 +559,7 @@ function CascadeGame() {
     navigation,
     () => {
       clockRef.current = pauseClock(clockRef.current);
-      if (!gameOverRef.current && piecesRef.current.length > 0) {
+      if (!gameOverRef.current && !hasWon() && piecesRef.current.length > 0) {
         saveCascadeGame(buildSnapshot()).catch(() => {});
       }
     },
@@ -608,6 +615,8 @@ function CascadeGame() {
           onMergeRef.current(ev.result as FruitTier, ev.x, ev.y);
         } else if (ev.type === "gameOver") {
           onGameOverRef.current();
+        } else if (ev.type === "win") {
+          onGameOverRef.current(true);
         } else if (ev.type === "guardRailFired") {
           if (__DEV__) console.log(`[Cascade] guard rail: ${ev.reason} body=${ev.bodyId}`);
         }
@@ -620,11 +629,11 @@ function CascadeGame() {
       piecesRef.current = state.pieces;
       publishBoard(state);
 
-      if (!gameOverRef.current) schedule();
+      if (!gameOverRef.current && !engine.hasWon()) schedule();
     }
 
     resumeLoopRef.current = () => {
-      if (gameOverRef.current) return;
+      if (gameOverRef.current || engine.hasWon()) return;
       if (rafId !== null) cancelAnimationFrame(rafId);
       generation++;
       last = performance.now();
@@ -759,6 +768,7 @@ function CascadeGame() {
       if (!engine || gameOverRef.current) return;
       const setup = cascadeSetup(id);
       engine.restore(setup.pieces, scoreRef.current);
+      resumeLoopRef.current(); // after a win the loop had stopped: the restore starts play again
       settlingTicksLeftRef.current = 0;
       droppingRef.current = false;
       if (setup.queue) seedQueue(setup.queue);
@@ -785,6 +795,7 @@ function CascadeGame() {
         return {
           score: scoreRef.current,
           gameOver: gameOverRef.current,
+          won: hasWon(),
           nextFruitTier: queueRef.current.current,
           comboCount: 0,
           fruitCount: state?.pieces.length ?? 0,
@@ -819,6 +830,7 @@ function CascadeGame() {
       setupChain: () => applySetup("chain"),
       setupNearLid: () => applySetup("nearLid"),
       fillBin: () => applySetup("fillBin"),
+      setupWin: () => applySetup("win"),
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -936,6 +948,7 @@ function CascadeGame() {
             onChain={() => applySetup("chain")}
             onNearLid={() => applySetup("nearLid")}
             onFillBin={() => applySetup("fillBin")}
+            onWin={() => applySetup("win")}
             onForceGameOver={forceGameOver}
           />
         )}

@@ -92,16 +92,17 @@ Visual and audio stories must show the owner the change running on iOS and Andro
 
 #### Test controls (#3719)
 
-Maestro cannot call the app's `__cascade_*` hooks (`game/cascade/testHooks.ts`): they live on the app's JavaScript `globalThis`, and Maestro's `runScript`/`evalScript` run in Maestro's own engine on the host. So the Cascade screen shows a small, faint row of buttons under the board (`components/cascade/CascadeTestControls.tsx`) **only when `EXPO_PUBLIC_TEST_HOOKS=1`**. One row of four buttons, not a menu: each is one `tapOn`, and an open menu would need a second tap and a wait. Each runs a set-up that restores a pile into the real engine (`cascadeSetup` in `testHooks.ts`), so the engine's rules play out; the same set-ups are hooks too (`__cascade_setupChain`, `__cascade_setupNearLid`, `__cascade_fillBin`, `__cascade_seedQueue(tiers)`) for Playwright.
+Maestro cannot call the app's `__cascade_*` hooks (`game/cascade/testHooks.ts`): they live on the app's JavaScript `globalThis`, and Maestro's `runScript`/`evalScript` run in Maestro's own engine on the host. So the Cascade screen shows a small, faint row of buttons under the board (`components/cascade/CascadeTestControls.tsx`) **only when `EXPO_PUBLIC_TEST_HOOKS=1`**. One row of five buttons, not a menu: each is one `tapOn`, and an open menu would need a second tap and a wait. Each runs a set-up that restores a pile into the real engine (`cascadeSetup` in `testHooks.ts`), so the engine's rules play out; the same set-ups are hooks too (`__cascade_setupChain`, `__cascade_setupNearLid`, `__cascade_fillBin`, `__cascade_setupWin`, `__cascade_seedQueue(tiers)`) for Playwright. #3904 rebuilt the piles for the 5-98 ladder: the towers lean on a wall (a centred column of the new sizes topples).
 
-| testID                   | Set-up                                                                                                  | What follows                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `cascade-test-chain`     | a column of tiers 2, 1 and 0 (a cherry on top) under the middle; queue scripted as cherries             | one tap on the board makes 3 merges, 14 points (holds for a drop within 3 px of the middle) |
-| `cascade-test-near-lid`  | a capstone and tiers 10, 9, 8 and 7 stacked over the lid, then 1.5 s simulated (past the restore grace) | the ring drains and the lid ends the game about 2.5 s later                                 |
-| `cascade-test-fill-bin`  | that tower plus a second tower, both over the lid                                                       | the lid ends the game about 4 s after (overflow rule; nothing is forced)                    |
-| `cascade-test-game-over` | none: forces the result card                                                                            | an extra, not used by the demos                                                             |
+| testID                   | Set-up                                                                                                                                                      | What follows                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `cascade-test-chain`     | a column of tiers 2, 1 and 0 (a cherry on top) under the middle; queue scripted as cherries                                                                 | one tap on the board makes 3 merges, 14 points (holds for a drop within 3 px of the middle)      |
+| `cascade-test-near-lid`  | a capstone and tiers 10, 9 and 8 against the left wall, over the lid, wedged by a tier 10 and 9 on the right; then 1.5 s simulated (past the restore grace) | the ring drains and the lid ends the game about 2.5 s later                                      |
+| `cascade-test-fill-bin`  | that left tower plus tiers 10 to 4 against the right wall, both over the lid                                                                                | the lid ends the game about 4 s after (overflow rule; nothing is forced)                         |
+| `cascade-test-win`       | two capstones (#3904): one on the floor at the left wall, one at the right wall 43 px above where it would touch the first                                  | it falls into the first within 0.2 s: the win (both burst, play stops; the result card is #3699) |
+| `cascade-test-game-over` | none: forces the result card                                                                                                                                | an extra, not used by the demos                                                                  |
 
-Win set-up is blocked on #3699: `testHooks.ts` has a marked TODO for `setupWin` and the component for a `cascade-test-win` button; there is no UI yet.
+The win set-up exists (#3904), but there is no `demo-win.yaml` yet: the win shows nothing but the burst until #3699 builds the celebration and the result card.
 
 Store builds: the Cascade screen resolves to an empty stub in a store bundle (`metro/storeBundle.js`, #2830), so the controls and set-ups are not in it. The control also checks the flag itself. `storeBundle.test.ts` pins both the stub and that only `CascadeScreen` imports them; `CascadeScreen.hooks.test.tsx` pins that the buttons are absent without the flag.
 
@@ -111,7 +112,7 @@ Both smoke workflows run `e2e/maestro/cap_media.py` before the uploads: any `.mp
 
 Not covered yet, and why:
 
-- **Win**: Cascade has no win state yet (#3699). Add `demo-win.yaml` and the `cascade-test-win` control with it.
+- **Win**: the engine has the win and the `cascade-test-win` control exists (#3904); add `demo-win.yaml` with the result card (#3699).
 - **Chain sensitivity**: the chain depends on the first cherry landing within about 3 px of the middle; a tap lands there give or take 1 px. If the layout changes, re-check `testSetups.test.ts`.
 - **Not run on a device yet**: the three flows and the controls were written without Maestro; the first dispatch of `flows: cascade-demo` after #3719 merges is their first run.
 

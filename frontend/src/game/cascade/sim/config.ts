@@ -21,7 +21,7 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
 } from "../constants";
-import { CAPSTONE_TIER, DROPPABLE_TIERS, TIERS, tierRadius } from "../tiers";
+import { CAPSTONE_TIER, DROPPABLE_TIERS, TIERS, tierDrawnRadius, tierRadius } from "../tiers";
 import { createSeededRng, type RandomSource } from "../../_shared/seededRng";
 
 /** The slice of the engine the sim uses. `CascadeEngine` satisfies it. */
@@ -45,7 +45,7 @@ export interface SimConstants {
   droppableTiers: readonly number[];
   /** Radius the physics uses (contact test). */
   physicsRadius: (tier: number) => number;
-  /** Radius the player sees (visible gap, packing density). Equal to physics today. */
+  /** Radius the player sees (visible gap, packing density): 1.5 % inside physics (#3904). */
   drawnRadius: (tier: number) => number;
   scoreValue: (tier: number) => number;
 }
@@ -59,12 +59,12 @@ export const DEFAULT_CONSTANTS: SimConstants = {
   dangerMargin: DANGER_STACK_MARGIN,
   fixedStepMs: FIXED_STEP_MS,
   // Every per-tier number comes from the ladder (`../tiers.ts`, #3695): the sim restates none.
-  // maxTier is the capstone: it is never dropped and never merges.
+  // maxTier is the capstone: it is never dropped; two touching are the win (#3904).
   maxTier: CAPSTONE_TIER,
   droppableTiers: DROPPABLE_TIERS,
   physicsRadius: tierRadius,
-  // The drawn radius is the ladder radius (the collider's); #3697 may separate them.
-  drawnRadius: tierRadius,
+  // The drawn radius is 1.5 % inside the collider's (#3904, `DRAW_INSET` in tiers.ts).
+  drawnRadius: tierDrawnRadius,
   scoreValue: (tier) => TIERS[tier]!.score,
 };
 
