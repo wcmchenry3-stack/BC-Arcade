@@ -40,5 +40,7 @@ let pre: Snap | undefined;
 for (let i = frames.length - 1; i >= 0; i--) if (frames[i]!.t < winT && caps(frames[i]!) >= 2) { pre = frames[i]; break; }
 const midT = winT * Number(midS ?? 0.6);
 const mid = frames.find((f) => f.t >= midT);
-writeFileSync(out!, JSON.stringify({ seed: Number(seedS), won: m.won, winT, wall: WALL_THICKNESS, radii: TIERS.map((x) => x.radius), mid, pre }));
+// A game with no win: the last frame half a second before it ended (game over or the 10 min cap).
+const last = [...frames].reverse().find((f) => f.t <= m.simMs - 500);
+writeFileSync(out!, JSON.stringify({ seed: Number(seedS), won: m.won, winT, endedBy: m.endedBy, capT: m.tierFirstMs[CAPSTONE_TIER], wall: WALL_THICKNESS, radii: TIERS.map((x) => x.radius), mid, pre, last }));
 console.log(out, m.won, Math.round(winT / 1000), "pre caps", pre ? caps(pre) : 0);
