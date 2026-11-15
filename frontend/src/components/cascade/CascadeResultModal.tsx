@@ -40,6 +40,8 @@ export interface CascadeResultModalProps {
   readonly leaderboard: ReturnType<typeof useGameRank>;
   /** The celebration's clock, drawn by the board. */
   readonly celebrationClock: SharedValue<number>;
+  /** The board can draw the celebration: its clock may start. */
+  readonly celebrationReady: boolean;
   readonly reduceMotion: boolean;
   readonly onViewLeaderboard?: (options?: { pendingSync?: boolean }) => void;
   readonly onPlayAgain: () => void;
@@ -53,6 +55,7 @@ export default function CascadeResultModal({
   liveScore,
   leaderboard,
   celebrationClock,
+  celebrationReady,
   reduceMotion,
   onViewLeaderboard,
   onPlayAgain,
@@ -62,9 +65,14 @@ export default function CascadeResultModal({
   const { t: tResult } = useTranslation("result");
   const celebrate = useCallback(
     (done: () => void) => (
-      <CascadeCelebration clock={celebrationClock} reduceMotion={reduceMotion} onDone={done} />
+      <CascadeCelebration
+        clock={celebrationClock}
+        reduceMotion={reduceMotion}
+        ready={celebrationReady}
+        onDone={done}
+      />
     ),
-    [celebrationClock, reduceMotion]
+    [celebrationClock, celebrationReady, reduceMotion]
   );
   const stats = result
     ? [

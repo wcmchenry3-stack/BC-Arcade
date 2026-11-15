@@ -5,6 +5,12 @@
  * Motion). `GameResultModal` mounts it as its `celebration` and shows the card on `onDone`, so the
  * card never covers the animation (#2201).
  *
+ * The clock starts only once the board can draw the celebration (`ready`, from
+ * `useCelebrationStyle`): started at the win while its style was still being built, it ran on
+ * unseen and the celebration appeared already finished (iOS demo on #3924). Until then the clock
+ * stays at -1 (the board draws the capstone where it was made); if it never becomes ready,
+ * `GameResultModal`'s safety net (`CELEBRATION_MAX_MS`, 4 s) still shows the card.
+ *
  * `onDone` runs from a JS timer, not the animation's callback, so the card arrives even where the
  * animation does not run (tests, a frame callback held back). Reduce Motion switched mid-way
  * carries on at the same time on the other timeline: if that one is already over the card comes at
@@ -24,6 +30,8 @@ export interface CascadeCelebrationProps {
   /** Ms since the win, read by the board (a Reanimated shared value). */
   readonly clock: SharedValue<number>;
   readonly reduceMotion: boolean;
+  /** The board can draw the celebration: the clock starts now (never before). */
+  readonly ready: boolean;
   /** The celebration is over: show the card. */
   readonly onDone: () => void;
 }
@@ -31,6 +39,7 @@ export interface CascadeCelebrationProps {
 export default function CascadeCelebration({
   clock,
   reduceMotion,
+  ready,
   onDone,
 }: CascadeCelebrationProps) {
   // The modal hands a new `done` each render; only the latest is called, and a new one never
@@ -42,6 +51,7 @@ export default function CascadeCelebration({
   const startedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!ready) return;
     const now = Date.now();
     const first = startedAtRef.current === null;
     if (first) startedAtRef.current = now;
@@ -66,7 +76,7 @@ export default function CascadeCelebration({
     );
     const timer = setTimeout(() => onDoneRef.current(), remaining);
     return () => clearTimeout(timer);
-  }, [clock, reduceMotion]);
+  }, [clock, reduceMotion, ready]);
 
   return null;
 }

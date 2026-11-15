@@ -18,6 +18,10 @@ import { CELEBRATION_CARD_MS, CELEBRATION_CARD_MS_REDUCED } from "../../game/cas
 import { formatMs } from "../../game/_shared/formatMs";
 import * as pen from "../../game/cascade/art/pen";
 import { __resetArtCachesForTests } from "../../game/cascade/art/sprites";
+import * as celebrationStyles from "../../game/cascade/render/celebrationStyle";
+import { __resetCelebrationStylesForTests } from "../../game/cascade/render/celebrationStyle";
+import * as celebrationHook from "../../components/cascade/useCelebrationStyle";
+import { CELEBRATION_MAX_MS } from "../../components/shared/GameResultModal";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
 import { GROW_IN_STEPS } from "../../game/cascade/constants";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
@@ -1417,6 +1421,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
           },
         };
         __resetArtCachesForTests();
+        __resetCelebrationStylesForTests();
         const drawLayer = jest.spyOn(pen, "drawLayer").mockImplementation((_c, _s, _t, layer) => {
           if (layer === "cheer") throw new Error("cheer");
         });
@@ -1436,7 +1441,42 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
           drawLayer.mockRestore();
           mockSkiaApi = undefined;
           __resetArtCachesForTests();
+          __resetCelebrationStylesForTests();
         }
+      });
+
+      // iOS demo on #3924: the style is built ahead, once the board holds a tier-9 piece.
+      it("pre-warms the celebration on the first tier-9 piece, not before, off the render", async () => {
+        __resetCelebrationStylesForTests();
+        const build = jest.spyOn(celebrationStyles, "celebrationStyleFor");
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const renderer = await renderScreen();
+        await injectMerge(CAPSTONE_TIER - 2, 120, 400);
+        await advance(3_000);
+        expect(build).not.toHaveBeenCalled();
+        expect(board(renderer).props.prepareCelebration).toBe(false);
+        await injectMerge(CAPSTONE_TIER - 1, 120, 400);
+        expect(board(renderer).props.prepareCelebration).toBe(true);
+        expect(build).not.toHaveBeenCalled(); // idle time, not the merge's frame or render
+        await advance(2_000);
+        expect(build).toHaveBeenCalledTimes(1);
+        // The win then needs no build.
+        await win(renderer);
+        expect(build).toHaveBeenCalledTimes(1);
+        __resetCelebrationStylesForTests();
+      });
+
+      it("holds the clock until the board is ready; the card still comes at 4 s if it never is", async () => {
+        jest.spyOn(celebrationHook, "useCelebrationStyle").mockReturnValue(null);
+        const renderer = await renderScreen();
+        await win(renderer);
+        expect(celebrating(renderer)).toBe(true);
+        expect(board(renderer).props.celebration.value).toBe(-1);
+        await advance(CELEBRATION_CARD_MS);
+        expect(cardShown(renderer)).toBe(false);
+        await advance(CELEBRATION_MAX_MS - CELEBRATION_CARD_MS);
+        expect(cardShown(renderer)).toBe(true);
+        expect(resultModal(renderer).props.outcome).toBe("win");
       });
 
       it("Play Again after a win starts a fresh game", async () => {

@@ -1,6 +1,6 @@
 /**
- * #3699: builds what the win celebration draws with (`drawCelebration.ts`), once, on the JS
- * thread, when the board learns of the win: the capstone's bitmaps (rasterised bigger,
+ * #3699: builds what the win celebration draws with (`drawCelebration.ts`), once per board key, on
+ * the JS thread, ahead of the win when it can (`celebrationStyleFor`): the capstone's bitmaps (rasterised bigger,
  * `art/sprites.ts`'s `capstoneSprite`), the paths, the gradients and the twinkle and star tables.
  * The UI thread only reads it.
  */
@@ -9,6 +9,7 @@ import type { SkImage, SkShader } from "@shopify/react-native-skia";
 import { CASCADE_CELEBRATION, CASCADE_PIECE_COLORS } from "../../../theme/theme.cascade";
 import { BIN_FLOOR_TOP, BIN_INNER_LEFT, BIN_INNER_RIGHT } from "../art/bin";
 import { rgba } from "../art/pen";
+import { capstoneSprite, quantizePx } from "../art/sprites";
 import type { CapstoneSprite, PieceSprite, SpriteRect } from "../art/sprites";
 import { RAY_WIDTH, swirlTable, twinkleTable } from "../celebration";
 import { CAPSTONE_TIER, tierDrawnRadius } from "../tiers";
@@ -98,4 +99,67 @@ function build({ setId, theme, reduceMotion, sprite }: CelebrationStyleInput): C
     twinkles: twinkleTable(),
     swirl: swirlTable(),
   };
+}
+
+/** Built styles kept (set x theme x pixel scale), least recently used dropped first. */
+export const MAX_CELEBRATION_STYLES = 2;
+/** Per key: the style, or null where it could not be built (remembered, not retried). */
+const styleCache = new Map<string, CelebrationStyle | null>();
+let lastBuildMs: number | null = null;
+
+export interface CelebrationStyleKey {
+  readonly setId: string;
+  readonly theme: "light" | "dark";
+  /** The board's bitmap pixels per world unit (`CascadeBoard`'s `pxPerUnit`). */
+  readonly pxPerUnit: number;
+}
+
+/** The cache key of a style: its set, theme and (rounded) pixel scale. */
+export function celebrationStyleKey({ setId, theme, pxPerUnit }: CelebrationStyleKey): string {
+  return `${setId}|${theme}|${quantizePx(pxPerUnit)}`;
+}
+
+/**
+ * The celebration's style for a board (#3699), built on the first call for its key and cached:
+ * the capstone's 1.4x raster with its cheering face (or `fallback`, the board's own capstone, if
+ * that could not be made), then the paths, gradients and tables. Its `reduceMotion` is false: the
+ * board sets its own. `useCelebrationStyle` asks for it in idle time once the board holds a tier-9
+ * piece, so the win itself normally does no raster work.
+ */
+export function celebrationStyleFor(
+  key: CelebrationStyleKey,
+  fallback: PieceSprite | null
+): CelebrationStyle | null {
+  const k = celebrationStyleKey(key);
+  if (styleCache.has(k)) {
+    const hit = styleCache.get(k) ?? null;
+    styleCache.delete(k);
+    styleCache.set(k, hit);
+    return hit;
+  }
+  const t0 = Date.now();
+  const style = buildCelebrationStyle({
+    setId: key.setId,
+    theme: key.theme,
+    reduceMotion: false,
+    sprite: capstoneSprite(key.setId, key.pxPerUnit) ?? fallback,
+  });
+  lastBuildMs = Date.now() - t0;
+  styleCache.set(k, style);
+  for (const old of styleCache.keys()) {
+    if (styleCache.size <= MAX_CELEBRATION_STYLES) break;
+    styleCache.delete(old);
+  }
+  return style;
+}
+
+/** How long the last style build took (ms), for the dev log and tests; null before the first. */
+export function lastCelebrationBuildMs(): number | null {
+  return lastBuildMs;
+}
+
+/** @internal Test seam: forget the built styles. */
+export function __resetCelebrationStylesForTests(): void {
+  styleCache.clear();
+  lastBuildMs = null;
 }

@@ -11,8 +11,10 @@
  *
  * The win celebration (#3699) is drawn into the same Picture, over the board: `celebration` is a
  * shared value the screen animates (ms since the win, -1 for none), so the celebration plays on
- * the UI thread with no JS loop. At the win (`won`) the board builds what it draws once
- * (`render/celebrationStyle.ts`), including the capstone rasterised bigger, with its cheering face.
+ * the UI thread with no JS loop. What it draws with (`render/celebrationStyle.ts`, including the
+ * capstone rasterised bigger, with its cheering face) is built ahead, in idle time, once the board
+ * holds a tier-9 piece (`prepareCelebration`), or at the win if that has not run yet; the board
+ * says when it is ready (`onCelebrationReady`) so the clock starts then (`useCelebrationStyle`).
  */
 import React, { useMemo } from "react";
 import { PixelRatio, View } from "react-native";
@@ -23,13 +25,13 @@ import * as Sentry from "@sentry/react-native";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../../game/cascade/constants";
 import { drawFrame } from "../../game/cascade/render/drawFrame";
 import { drawCelebration } from "../../game/cascade/render/drawCelebration";
-import { buildCelebrationStyle } from "../../game/cascade/render/celebrationStyle";
 import { CELEBRATION_START_MS } from "../../game/cascade/celebration";
 import { buildBoardStyle } from "../../game/cascade/render/boardStyle";
-import { capstoneSprite, pieceSprites } from "../../game/cascade/art/sprites";
+import { pieceSprites } from "../../game/cascade/art/sprites";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import { binPicture } from "../../game/cascade/art/bin";
 import type { CascadeLidPalette } from "../../theme/theme.cascade";
+import { useCelebrationStyle } from "./useCelebrationStyle";
 
 /** A throw inside the UI-thread renderer is reported once per board, on the JS thread. */
 function reportDrawError(message: string): void {
@@ -52,8 +54,12 @@ export interface CascadeBoardProps {
   readonly lidPalette: CascadeLidPalette;
   /** The active theme: the bin's colours. */
   readonly theme: "light" | "dark";
-  /** The game was won (#3699): build the celebration. */
+  /** The board holds a tier-9 piece (#3699): build the celebration ahead, in idle time. */
+  readonly prepareCelebration?: boolean;
+  /** The game was won (#3699): draw the celebration. */
   readonly won?: boolean;
+  /** The game is won and the celebration can be drawn (or cannot be at all): start its clock. */
+  readonly onCelebrationReady?: () => void;
   /** The celebration's calm version (no rise, rotation, pulse, rays or twinkles). */
   readonly reduceMotion?: boolean;
   /** Ms since the win, animated by the screen (-1: no celebration). */
@@ -69,7 +75,9 @@ function CascadeBoard({
   setId,
   lidPalette,
   theme,
+  prepareCelebration = false,
   won = false,
+  onCelebrationReady,
   reduceMotion = false,
   celebration = NO_CELEBRATION,
 }: CascadeBoardProps) {
@@ -78,20 +86,18 @@ function CascadeBoard({
   // One bitmap pixel per screen pixel at each tier's ladder radius (never scaled up).
   const pxPerUnit = scale * PixelRatio.get();
   const sprites = useMemo(() => pieceSprites(setId, pxPerUnit), [setId, pxPerUnit]);
-  // The win (#3699): the capstone rasterised once at the celebration's size, and the rest of what
-  // the celebration draws. Made when the win happens, never during play.
-  const celebrationStyle = useMemo(
-    () =>
-      won
-        ? buildCelebrationStyle({
-            setId,
-            theme,
-            reduceMotion,
-            sprite: capstoneSprite(setId, pxPerUnit) ?? sprites[CAPSTONE_TIER] ?? null,
-          })
-        : null,
-    [won, setId, theme, reduceMotion, pxPerUnit, sprites]
-  );
+  // The win (#3699): the capstone rasterised at the celebration's size and the rest of what the
+  // celebration draws, built ahead in idle time (never in a render or on the frame path).
+  const celebrationStyle = useCelebrationStyle({
+    setId,
+    theme,
+    pxPerUnit,
+    fallback: sprites[CAPSTONE_TIER] ?? null,
+    prepare: prepareCelebration,
+    won,
+    reduceMotion,
+    onReady: onCelebrationReady,
+  });
   // The bin (#3698): a static Picture per theme, recorded once and drawn under the pieces.
   const bin = useMemo(() => binPicture(theme), [theme]);
   const canvasStyle = useMemo(

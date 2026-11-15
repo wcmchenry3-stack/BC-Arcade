@@ -64,7 +64,7 @@ import {
 import { areTestHooksEnabled } from "../game/_shared/envFlags";
 import CascadeTestControls from "../components/cascade/CascadeTestControls";
 import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector";
-import { PieceQueue, createPieceQueue, advanceQueue } from "../game/cascade/pieceQueue";
+import { PieceQueue, advanceQueue, createSeededRng, makeQueue } from "../game/cascade/pieceQueue";
 import {
   createFramePacker,
   createGameState,
@@ -116,19 +116,6 @@ const FRAME_STATS_ENABLED = __DEV__;
 /** A board with no pieces, for a reset (the lid and spawner still draw). */
 const NO_PIECES: FrameState = { pieces: [] };
 
-function createSeededRng(seed: number): () => number {
-  let s = seed | 0;
-  return () => {
-    s = (Math.imul(48271, s) + (s >>> 16)) | 0;
-    return (s >>> 0) / 0x100000000;
-  };
-}
-
-function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] } {
-  const queue = createPieceQueue([], rng);
-  return { queue, history: [queue.current, queue.next] };
-}
-
 // ---------------------------------------------------------------------------
 // Main game component
 // ---------------------------------------------------------------------------
@@ -149,6 +136,14 @@ function CascadeGame() {
   // The celebration's clock (ms since the win, -1: none), animated by CascadeCelebration and
   // drawn by the board on the UI thread.
   const celebrationClock = useSharedValue(-1);
+  // A tier-9 piece is on the board: the board builds the celebration ahead, in idle time. Ready:
+  // the game is won and the board can draw it, so its clock may start (#3699, iOS demo on #3924).
+  const [nearWin, setNearWin] = useState(false);
+  const [celebrationReady, setCelebrationReady] = useState(false);
+  const noteTier = useCallback((tier: number) => {
+    if (tier === CAPSTONE_TIER - 1) setNearWin(true);
+  }, []);
+  const markCelebrationReady = useCallback(() => setCelebrationReady(true), []);
   // What the result card shows, captured at game over (#2515).
   const [result, setResult] = useState<CascadeResult | null>(null);
   const leaderboard = useGameRank("cascade");
@@ -379,11 +374,12 @@ function CascadeGame() {
       queueHistoryRef.current = [snapshot.queue.current, snapshot.queue.next];
       queueChanged();
       settlingTicksLeftRef.current = SETTLE_TICKS;
+      for (const p of snapshot.pieces) noteTier(p.tier);
     });
     return () => {
       active = false;
     };
-  }, [syncResume, restartClock, scoreStore, queueChanged]);
+  }, [syncResume, restartClock, scoreStore, queueChanged, noteTier]);
 
   const buildSnapshot = useCallback((): SavedState => {
     return {
@@ -423,6 +419,8 @@ function CascadeGame() {
       scoreStore.set(0);
       setGameOver(false);
       setWon(false);
+      setNearWin(false);
+      setCelebrationReady(false);
       celebrationClock.set(-1);
       // A new game: the next game over must be able to submit again.
       setResult(null);
@@ -528,6 +526,7 @@ function CascadeGame() {
 
   onMergeRef.current = (tier, x, y) => {
     handleMerge({ tier, x, y });
+    noteTier(tier);
     playFruitMerge(tier);
     // The winning merge has no burst: the celebration replaces it (#3699).
     if (!reduceMotion && tier !== CAPSTONE_TIER) {
@@ -777,6 +776,7 @@ function CascadeGame() {
       if (!engine || gameOverRef.current) return;
       const setup = cascadeSetup(id);
       engine.restore(setup.pieces, scoreRef.current);
+      for (const p of setup.pieces) noteTier(p.tier);
       resumeLoopRef.current(); // after a win the loop had stopped: the restore starts play again
       settlingTicksLeftRef.current = 0;
       droppingRef.current = false;
@@ -784,7 +784,7 @@ function CascadeGame() {
       fastForward(setup.settleMs);
       publishBoard(engine.getState());
     },
-    [fastForward, seedQueue, publishBoard]
+    [fastForward, seedQueue, publishBoard, noteTier]
   );
 
   const forceGameOver = useCallback(() => {
@@ -833,6 +833,7 @@ function CascadeGame() {
       isReady: () => engineRef.current !== null,
       spawnTierAt: (tier: number, x: number) => {
         if (gameOverRef.current) return;
+        noteTier(tier);
         engineRef.current?.drop(tier, x);
       },
       seedQueue,
@@ -857,6 +858,8 @@ function CascadeGame() {
     scoreStore.set(0);
     setGameOver(false);
     setWon(false);
+    setNearWin(false);
+    setCelebrationReady(false);
     celebrationClock.set(-1);
     setQueueVersion((v) => v + 1);
     publishBoard(NO_PIECES);
@@ -915,9 +918,13 @@ function CascadeGame() {
   );
   const openDevPanel = useCallback(() => setDevPanelOpen(true), []);
   const closeDevPanel = useCallback(() => setDevPanelOpen(false), []);
-  const devSpawn = useCallback((tier: number) => {
-    engineRef.current?.drop(tier, WORLD_WIDTH / 2);
-  }, []);
+  const devSpawn = useCallback(
+    (tier: number) => {
+      noteTier(tier);
+      engineRef.current?.drop(tier, WORLD_WIDTH / 2);
+    },
+    [noteTier]
+  );
 
   const body = (
     <GameShell
@@ -943,7 +950,9 @@ function CascadeGame() {
                 lidPalette={CASCADE_LID_PALETTE[theme]}
                 theme={theme}
                 setId={activeFruitSet.id}
+                prepareCelebration={nearWin}
                 won={won}
+                onCelebrationReady={markCelebrationReady}
                 reduceMotion={reduceMotion}
                 celebration={celebrationClock}
               />
@@ -974,6 +983,7 @@ function CascadeGame() {
           liveScore={scoreStore.get()}
           leaderboard={leaderboard}
           celebrationClock={celebrationClock}
+          celebrationReady={celebrationReady}
           reduceMotion={reduceMotion}
           onViewLeaderboard={openLeaderboard}
           onPlayAgain={handleRestart}
