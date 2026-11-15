@@ -3,7 +3,7 @@
  * board's Picture (`components/cascade/CascadeBoard`). Owner pick: proposal A "Spotlight" with
  * proposal C's cheering face; the timeline is `../celebration.ts`.
  *
- * Back to front: the dim over the pile, the twinkles, then around the capstone the sun rays
+ * Clipped to the bin's cavity. Back to front: the dim over the pile, the twinkles, then around the capstone the sun rays
  * (Fruits) or the galaxy swirl (Cosmos), the glow and the gold ring, and the capstone itself,
  * risen to the centre, with its cheering face. The board draws every piece but the capstone
  * underneath (`drawFrame`'s `hideTier`), so the capstone is above the dim.
@@ -15,7 +15,7 @@
  * pose are reused (a per-runtime cache on `globalThis`, as `drawFrame`'s). No blur: the glow is
  * a radial gradient (#3641).
  */
-import { FilterMode, MipmapMode, PaintStyle, Skia } from "@shopify/react-native-skia";
+import { ClipOp, FilterMode, MipmapMode, PaintStyle, Skia } from "@shopify/react-native-skia";
 import type {
   SkCanvas,
   SkColor,
@@ -251,21 +251,16 @@ function drawSwirl(
   }
 }
 
-/**
- * The celebration at `t` ms after the win, over a board drawn by `drawFrame` with the capstone
- * hidden. Draws nothing before the celebration starts (`celebrationPose`).
- */
-export function drawCelebration(
+/** The celebration, inside the bin's cavity (see `drawCelebration`). */
+function drawSpotlight(
   canvas: SkCanvas,
+  cache: CelebrationCache,
+  pose: CelebrationPose,
   frame: Float64Array,
   style: CelebrationStyle,
   t: number
 ): void {
   "worklet";
-  const cache = celebrationCache();
-  const pose = cache.pose;
-  if (!celebrationPose(t, style.reduceMotion, pose)) return;
-
   canvas.drawRect(style.dimRect, paintOf(cache, style.dim, pose.dim));
   if (pose.twinkle > 0) drawTwinkles(canvas, cache, style, t, pose.twinkle);
 
@@ -310,4 +305,25 @@ export function drawCelebration(
     canvas.drawCircle(x, y, ring, stroke);
   }
   drawCapstone(canvas, cache, style, x, y, size, angle * (1 - pose.upright), pose.cheer);
+}
+
+/**
+ * The celebration at `t` ms after the win, over a board drawn by `drawFrame` with the capstone
+ * hidden, clipped to the bin's cavity (the rays and the swirl reach past the capstone). Draws
+ * nothing before the celebration starts (`celebrationPose`).
+ */
+export function drawCelebration(
+  canvas: SkCanvas,
+  frame: Float64Array,
+  style: CelebrationStyle,
+  t: number
+): void {
+  "worklet";
+  const cache = celebrationCache();
+  const pose = cache.pose;
+  if (!celebrationPose(t, style.reduceMotion, pose)) return;
+  canvas.save();
+  canvas.clipRect(style.dimRect, ClipOp.Intersect, true);
+  drawSpotlight(canvas, cache, pose, frame, style, t);
+  canvas.restore();
 }

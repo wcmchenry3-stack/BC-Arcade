@@ -51,6 +51,7 @@ jest.mock("@shopify/react-native-skia", () => {
       Path: { MakeFromSVGString: () => null },
     },
     PaintStyle: { Fill: 0, Stroke: 1 },
+    ClipOp: { Difference: 0, Intersect: 1 },
     StrokeCap: { Butt: 0, Round: 1 },
     BlurStyle: { Solid: 1 },
     FilterMode: { Linear: 1 },
@@ -64,7 +65,7 @@ type Op =
   | { k: "path"; path: unknown; p: PaintState }
   | { k: "image"; img: unknown; p: PaintState }
   | { k: "line" }
-  | { k: "save" | "restore" }
+  | { k: "save" | "restore" | "clip" }
   | { k: "translate"; x: number; y: number }
   | { k: "scale"; x: number; y: number }
   | { k: "rotate"; deg: number };
@@ -88,6 +89,7 @@ function recorder() {
       paint: { st: PaintState }
     ) => ops.push({ k: "image", img, p: snap(paint) }),
     save: () => ops.push({ k: "save" }),
+    clipRect: () => ops.push({ k: "clip" }),
     restore: () => ops.push({ k: "restore" }),
     saveLayer: () => ops.push({ k: "save" }),
     translate: (x: number, y: number) => ops.push({ k: "translate", x, y }),
@@ -162,10 +164,12 @@ describe("drawCelebration", () => {
     expect(draw(-1, styleOf("rays"))).toEqual([]);
   });
 
-  it("dims the pile first, in the theme's page colour", () => {
+  it("clips to the bin's cavity, then dims the pile first, in the theme's page colour", () => {
     const ops = draw(1000, styleOf("rays"));
-    expect(ops[0]).toMatchObject({ k: "rect", p: { color: "#f5ecd7" } });
-    expect((ops[0] as { p: PaintState }).p.alpha).toBeCloseTo(0.68);
+    expect(ops.slice(0, 2)).toEqual([{ k: "save" }, { k: "clip" }]);
+    expect(ops.at(-1)).toEqual({ k: "restore" });
+    expect(ops[2]).toMatchObject({ k: "rect", p: { color: "#f5ecd7" } });
+    expect((ops[2] as { p: PaintState }).p.alpha).toBeCloseTo(0.68);
   });
 
   it("raises the capstone to the board centre at 1.32x, upright, with the cheering face", () => {
@@ -258,7 +262,7 @@ describe("drawCelebration", () => {
 
   it("a capstone that could not be drawn is a placeholder circle", () => {
     const ops = draw(1000, styleOf("rays", false, false));
-    expect(ops.at(-1)).toMatchObject({ k: "circle", p: { color: "#e76f00" } });
+    expect(ops.at(-2)).toMatchObject({ k: "circle", p: { color: "#e76f00" } });
   });
 
   it("draws only the dim and twinkles when the frame has no capstone", () => {
