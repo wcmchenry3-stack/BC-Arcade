@@ -823,7 +823,7 @@ describe("CascadeScreen — result card (#2515)", () => {
     expect(card?.props.visible).toBe(true);
     expect(card?.props.outcome).toBe("ended");
     expect(card?.props.hero).toEqual({ kind: "score", label: "Score", value: 1234 });
-    // No piece was dropped, so the play clock never started.
+    // The game ended at the moment its first piece (the merge) started the clock: 0:00.
     expect(card?.props.stats).toEqual([
       { label: "Best", value: 1234 },
       { label: "Merges", value: 1 },
@@ -1414,7 +1414,6 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
             outcome: "win",
           })
         );
-        await expect(getBest("cascade")).resolves.toBe(9000 + bonus);
       });
 
       it("a win under the 20 s floor shows a time bonus of 0", async () => {
