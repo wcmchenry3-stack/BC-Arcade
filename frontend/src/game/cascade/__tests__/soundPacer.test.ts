@@ -256,4 +256,33 @@ describe("the danger tick", () => {
     advance(0);
     expect(played).toHaveLength(n + 1);
   });
+
+  it("is silent while the screen is away, and picks the count back up on return", () => {
+    // The board's blink keeps running under a covering screen: its onsets must not tick.
+    const { pacer, played, advance } = pacerOnClock();
+    pacer.danger(0.5, false);
+    pacer.setAway(true);
+    pacer.dangerOnset();
+    advance(2000);
+    expect(played).toEqual([]);
+    pacer.setAway(false);
+    pacer.dangerOnset();
+    advance(0);
+    expect(played.map(([, n]) => n)).toEqual(["danger"]);
+  });
+
+  it("under Reduce Motion the calm ticker stops while away and restarts on return", () => {
+    const { pacer, played, advance } = pacerOnClock();
+    pacer.setCalm(true);
+    pacer.danger(1, false);
+    advance(1000);
+    const before = played.length;
+    expect(before).toBeGreaterThan(0);
+    pacer.setAway(true);
+    advance(10_000);
+    expect(played).toHaveLength(before);
+    pacer.setAway(false);
+    advance(dangerPeriodMs(1) * MOTION.danger.duty);
+    expect(played).toHaveLength(before + 1);
+  });
 });

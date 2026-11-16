@@ -457,10 +457,12 @@ function CascadeGame() {
     navigation,
     () => {
       clock.pause();
+      sounds.setAway(true); // no danger ticks over a covered board (#3702)
       saveNow();
     },
     () => {
       clock.resume();
+      sounds.setAway(false);
       resumeLoopRef.current();
     }
   );

@@ -19,6 +19,7 @@ const mockSounds = {
   danger: jest.fn(),
   dangerOnset: jest.fn(),
   setCalm: jest.fn(),
+  setAway: jest.fn(),
   win: jest.fn(),
   gameOver: jest.fn(),
   reset: jest.fn(),
@@ -33,12 +34,17 @@ jest.mock("expo-haptics", () => ({
   ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
   NotificationFeedbackType: { Success: "success", Warning: "warning", Error: "error" },
 }));
+// Captured so a test can fire "blur"/"focus" (a pushed Stats screen covers the board).
+const mockNavListeners = new Map<string, (() => void)[]>();
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
     navigate: jest.fn(),
-    addListener: jest.fn(() => jest.fn()),
+    addListener: jest.fn((event: string, handler: () => void) => {
+      mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
+      return jest.fn();
+    }),
   }))
 );
 jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: jest.fn() }));
@@ -119,6 +125,7 @@ beforeEach(async () => {
   Platform.OS = "ios";
   mockPendingEvents = [];
   mockEngineState = { pieces: [], score: 0, gameOver: false };
+  mockNavListeners.clear();
   await AsyncStorage.clear();
 });
 
@@ -281,4 +288,17 @@ it("a New Game resets the pacer (sounds still waiting are dropped)", async () =>
   await fireEvent.press(view.getByText("New Game"));
   await fireEvent.press(view.getByText("Start New")); // the abandon confirmation
   expect(mockSounds.reset).toHaveBeenCalled();
+});
+
+it("a covered board (Stats, the menu) stops the danger tick until the board is back", async () => {
+  await mount();
+  mockSounds.setAway.mockClear();
+  await act(async () => {
+    mockNavListeners.get("blur")?.forEach((h) => h());
+  });
+  expect(calls(mockSounds.setAway)).toEqual([[true]]);
+  await act(async () => {
+    mockNavListeners.get("focus")?.forEach((h) => h());
+  });
+  expect(calls(mockSounds.setAway)).toEqual([[true], [false]]);
 });

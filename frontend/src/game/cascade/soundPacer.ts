@@ -53,6 +53,8 @@ export interface SoundPacer {
   dangerOnset(): void;
   /** Reduce Motion: no blink, so the danger tick keeps its own time; the win starts later in. */
   setCalm(calm: boolean): void;
+  /** The screen is covered or backgrounded (`usePauseWhileAway`): no danger ticks until back. */
+  setAway(away: boolean): void;
   win(): void;
   gameOver(): void;
   /** A new game: drop what is waiting, stop the end sounds, forget the chain and the gaps. */
@@ -65,10 +67,41 @@ export const DANGER_TICK_MIN_GAP_MS = 1000 / MOTION.danger.maxHz;
 /** How far into the win file to start under Reduce Motion, s: its card comes that much sooner. */
 export const CALM_WIN_OFFSET_S = (CELEBRATION_CARD_MS - CELEBRATION_CARD_MS_REDUCED) / 1000;
 
-export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
-  const S = MOTION.sound;
+/**
+ * Plays sounds from timers. `run` is dropped if `drop()` came before it was due; `counted` sounds
+ * (merges and chain steps) take a slot, and at most `MOTION.sound.maxQueued` wait.
+ */
+function createLaterQueue(schedule: SoundPacerDeps["schedule"]) {
   let generation = 0;
   let queued = 0;
+  return {
+    later(run: () => void, delayMs: number, counted: boolean): void {
+      if (counted) {
+        if (queued >= MOTION.sound.maxQueued) return;
+        queued++;
+      }
+      const gen = generation;
+      schedule(
+        () => {
+          if (gen !== generation) return;
+          if (counted) queued--;
+          run();
+        },
+        Math.max(0, delayMs)
+      );
+    },
+    /** Drops everything still waiting. */
+    drop(): void {
+      generation++;
+      queued = 0;
+    },
+  };
+}
+
+export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
+  const S = MOTION.sound;
+  const queue = createLaterQueue(deps.schedule);
+  const later = queue.later;
   let lastLand = -Infinity;
   let lastLandTier = -1;
   let pendingLand: { tier: number } | null = null;
@@ -77,30 +110,14 @@ export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
   let ratio = 0;
   let quiet = false;
   let calm = false;
+  let away = false;
   let warmed = false;
   let lastTick = -Infinity;
   let calmSeq = 0;
   let calmTimer = 0; // the running calm ticker's token: 0 (or a newer one) stops the old chain
 
-  /** Runs `run` from a timer, `delayMs` from now; dropped by a reset before it is due. */
-  function later(run: () => void, delayMs: number, counted: boolean): void {
-    if (counted) {
-      if (queued >= S.maxQueued) return;
-      queued++;
-    }
-    const gen = generation;
-    deps.schedule(
-      () => {
-        if (gen !== generation) return;
-        if (counted) queued--;
-        run();
-      },
-      Math.max(0, delayMs)
-    );
-  }
-
   function tick(): void {
-    if (!(ratio > 0) || quiet) return;
+    if (!(ratio > 0) || quiet || away) return;
     const now = deps.now();
     if (now - lastTick < DANGER_TICK_MIN_GAP_MS) return;
     lastTick = now;
@@ -108,14 +125,20 @@ export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
     later(() => deps.play("danger", volume, 0), 0, false);
   }
 
+  /** Stops the calm ticker's chain, then starts a fresh one if it should run. */
+  function restartCalmTicker(): void {
+    calmTimer = 0;
+    runCalmTicker();
+  }
+
   /** Under Reduce Motion: a tick every blink period while the count runs. */
   function runCalmTicker(): void {
-    if (!calm || !(ratio > 0) || calmTimer !== 0) return;
+    if (!calm || away || !(ratio > 0) || calmTimer !== 0) return;
     const token = ++calmSeq;
     calmTimer = token;
     const step = () => {
       if (calmTimer !== token) return;
-      if (!calm || !(ratio > 0)) {
+      if (!calm || away || !(ratio > 0)) {
         calmTimer = 0;
         return;
       }
@@ -193,22 +216,24 @@ export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
     setCalm(c) {
       if (c === calm) return;
       calm = c;
-      if (!calm) calmTimer = 0;
-      runCalmTicker();
+      restartCalmTicker();
+    },
+    setAway(a) {
+      if (a === away) return;
+      away = a; // away: the calm ticker stops; back: the count picks up where it was
+      restartCalmTicker();
     },
     win() {
       const from = calm ? CALM_WIN_OFFSET_S : 0;
       later(() => deps.play("win", 1, from), 0, false);
     },
     gameOver() {
-      generation++;
-      queued = 0;
+      queue.drop();
       pendingLand = null;
       later(() => deps.play("game-over", 1, 0), 0, false);
     },
     reset() {
-      generation++;
-      queued = 0;
+      queue.drop();
       pendingLand = null;
       lastLand = -Infinity;
       lastLandTier = -1;
