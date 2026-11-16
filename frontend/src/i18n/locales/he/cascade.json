@@ -38,5 +38,7 @@
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "טוען את Cascade…",
   "web.loadError": "Cascade לא הצליח להתחיל. נסו שוב.",
-  "web.retry": "לנסות שוב"
+  "web.retry": "לנסות שוב",
+  "result.mergeScore": "ניקוד מיזוגים",
+  "result.timeBonus": "בונוס זמן"
 }

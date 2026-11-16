@@ -112,7 +112,7 @@ This table summarizes the generated board configuration on `dev`. Per-game docs 
 | Yacht | Yes | final score | Higher | Max 1575 |
 | 2048 | Yes | final score | Higher | No natural cap declared |
 | Blackjack | **No** | chips / final score for Stats | Higher | Public board disabled |
-| Cascade | Yes | final score | Higher | No natural cap declared |
+| Cascade | Yes | final score (merge score + a win's time bonus, server-computed, #3700) | Higher | No natural cap declared; no tie-break; rows from before #3700 rank by their score |
 | Solitaire | Yes | final score | Higher | Max 1245 |
 | Hearts | Yes | final score | Higher | Max 100 |
 | Sudoku | Yes | final score (base − 10 × illegal moves) | Higher | difficulty + variant; effective caps 100/200/300 by difficulty |

@@ -129,6 +129,10 @@
     {
       "path": "frontend/src/game/_shared/__tests__/__fixtures__/storageCompat.json",
       "reason": "Local storage compatibility, not a replay log"
+    },
+    {
+      "path": "backend/tests/fixtures/cascade_time_bonus.json",
+      "reason": "Cascade time-bonus formula parity (#3700), versioned by bonus_rule in the payload; not a replay log"
     }
   ],
   "accepted_changes": []

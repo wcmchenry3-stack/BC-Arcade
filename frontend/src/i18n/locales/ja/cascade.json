@@ -38,5 +38,7 @@
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "Cascade を読み込み中…",
   "web.loadError": "Cascade を開始できませんでした。もう一度お試しください。",
-  "web.retry": "再試行"
+  "web.retry": "再試行",
+  "result.mergeScore": "合体スコア",
+  "result.timeBonus": "タイムボーナス"
 }

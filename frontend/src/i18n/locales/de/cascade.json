@@ -38,5 +38,7 @@
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "Cascade wird geladen…",
   "web.loadError": "Cascade konnte nicht starten. Versuche es erneut.",
-  "web.retry": "Erneut versuchen"
+  "web.retry": "Erneut versuchen",
+  "result.mergeScore": "Kombi-Punkte",
+  "result.timeBonus": "Zeitbonus"
 }

@@ -24,7 +24,7 @@ Adding a new game
    (#2617).
 6. Override a hook only when the game needs it:
    ``stats_shape`` (Blackjack's chips), ``derive_final_score`` (Blackjack's
-   closing chips, #2745) or ``reconcile_result`` (Daily Word's guess record,
+   closing chips, #2745; Cascade's time bonus, #3700) or ``reconcile_result`` (Daily Word's guess record,
    #2541) or ``validate_event`` (Star Swarm's ``wave_completed``, #3250).
 """
 
