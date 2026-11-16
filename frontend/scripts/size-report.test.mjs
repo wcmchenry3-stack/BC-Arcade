@@ -151,8 +151,10 @@ test("hiddenOnlySoundNames: premium-only sounds, not ones a free game shares", (
   assert.ok(names.has("assets_sounds_heartsbrokenheartbeat.ogg"));
   assert.ok(names.has("assets_sounds_starswarmbombblast.ogg"));
   assert.ok(names.has("assets_sounds_mahjongmatch1.ogg"));
-  // Cascade's own: Sort, the last free game to borrow it, has its own pour since #3661.
-  assert.ok(names.has("assets_sounds_cascadefruitmerge.ogg"));
+  // Cascade's own synthesized sets (#3702); the old Kenney files are gone.
+  assert.ok(names.has("assets_sounds_cascadefruitsmerget0.ogg"));
+  assert.ok(names.has("assets_sounds_cascadecosmoswin.ogg"));
+  assert.ok(!names.has("assets_sounds_cascadefruitmerge.ogg"));
   // Hidden games share these with free games (solitaire, yacht, 2048...).
   assert.ok(!names.has("assets_sounds_heartsmoonshot.mp3"));
   assert.ok(!names.has("assets_sounds_cardplace1.ogg"));
