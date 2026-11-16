@@ -46,11 +46,13 @@ const mockNavigate = jest.fn();
 // Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/
 // Scoreboard screen, #2735).
 const mockNavListeners = new Map<string, Array<() => void>>();
+const mockSetOptions = jest.fn();
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
+    setOptions: (o: unknown) => mockSetOptions(o),
     addListener: jest.fn((event: string, handler: () => void) => {
       mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
       return () => {
@@ -308,9 +310,11 @@ function findGameArea(renderer: ReturnType<typeof create>) {
 async function triggerTap(_renderer: ReturnType<typeof create>, worldX = 150) {
   const pan = detectedGesture(mockDetected, "pan", { testID: "cascade-game-area" });
   await act(() => {
+    // RNGH's order for a still tap (manual activation on touch down, #3928 review B1).
     pan?.onBegin?.({ x: worldX * 0.75, y: 100 });
-    pan?.onEnd?.({ x: worldX * 0.75, y: 100 });
-    pan?.onFinalize?.({ x: worldX * 0.75, y: 100 });
+    pan?.onTouchesDown?.({ numberOfTouches: 1 }, { activate: () => {}, fail: () => {} });
+    pan?.onEnd?.({ x: worldX * 0.75, y: 100 }, true);
+    pan?.onFinalize?.({ x: worldX * 0.75, y: 100 }, true);
   });
 }
 
@@ -370,14 +374,48 @@ describe("CascadeGame", () => {
     expect(mockEngineDrop.mock.calls[0]?.[1]).toBeCloseTo(90);
   });
 
+  // #3928 review S3: a screen reader's double-tap ("activate") drops in the middle.
+  it("the board's accessibility action drops the next piece in the middle", async () => {
+    const renderer = await renderScreen();
+    const board = renderer.root.findAll(
+      (n) =>
+        Array.isArray(n.props.accessibilityActions) &&
+        n.props.accessibilityLabel === "Cascade game board"
+    )[0]!;
+    expect(board.props.accessibilityActions).toEqual([{ name: "activate", label: "Drop piece" }]);
+    expect(board.props.accessibilityHint).toMatch(/Double-tap/);
+    await act(() => {
+      board.props.onAccessibilityAction({ nativeEvent: { actionName: "activate" } });
+    });
+    expect(mockEngineDrop).toHaveBeenCalledTimes(1);
+    expect(mockEngineDrop.mock.calls[0]?.[1]).toBe(200);
+  });
+
+  // #3928 review B2: no swipe-back over the board (a left drag aims), restored on leaving.
+  it("turns the stack's swipe-back off while the game is open", async () => {
+    mockSetOptions.mockClear();
+    await renderScreen();
+    expect(mockSetOptions).toHaveBeenCalledWith({ gestureEnabled: false });
+  });
+
+  // #3928 review B2 backstop: a gesture that ends as another screen covers the board drops nothing.
+  it("drops nothing while another screen covers the board", async () => {
+    const renderer = await renderScreen();
+    await act(() => {
+      for (const h of mockNavListeners.get("blur") ?? []) h();
+    });
+    await triggerTap(renderer, 120);
+    expect(mockEngineDrop).not.toHaveBeenCalled();
+  });
+
   // #3922: a non-finite x never becomes a drop.
   it("a press with no usable x drops nothing", async () => {
     await renderScreen();
     const pan = detectedGesture(mockDetected, "pan", { testID: "cascade-game-area" });
     await act(() => {
       pan?.onBegin?.({ x: Number.NaN, y: 100 });
-      pan?.onEnd?.({ x: Number.NaN, y: 100 });
-      pan?.onFinalize?.({});
+      pan?.onEnd?.({ x: Number.NaN, y: 100 }, true);
+      pan?.onFinalize?.({}, true);
     });
     expect(mockEngineDrop).not.toHaveBeenCalled();
   });

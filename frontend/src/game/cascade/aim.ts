@@ -69,30 +69,40 @@ export function aimReleaseDrops(state: number, x: number): boolean {
 export function aimLive(state: number, msInState: number, reduceMotion: boolean): boolean {
   "worklet";
   const A = MOTION.aim;
-  if (state === AIM_STATE.pressed || state === AIM_STATE.aiming) return true;
+  // A press needs the clock to become aiming after the tap window.
+  if (state === AIM_STATE.pressed) return true;
+  // Aiming: the glide and the fade in, and the dash march; under Reduce Motion nothing moves
+  // with time, so the clock may stop (moving the finger still re-records the board: review N2).
+  if (state === AIM_STATE.aiming) return !reduceMotion;
   if (state === AIM_STATE.cancelled)
     return !reduceMotion && msInState < Math.max(A.returnMs, A.outMs);
   if (state === AIM_STATE.released) return !reduceMotion && msInState < A.outMs;
   return false;
 }
 
-/** Where the spawner piece is drawn (world x): at the ring, gliding to the finger, or back. */
+/**
+ * Where the spawner piece is drawn (world x): at the ring, gliding to the finger, or back. The
+ * finger's x is clamped as the drop clamps it (`aimDropX`, radius `r`), so the piece, the guide
+ * and the drop agree at the walls (review S4). A glide back with no start (a cancelled tap,
+ * `fromX` not finite) stays in the ring.
+ */
 export function aimPieceX(
   state: number,
   aimX: number,
   fromX: number,
   msInState: number,
-  reduceMotion: boolean
+  reduceMotion: boolean,
+  r: number
 ): number {
   "worklet";
   const A = MOTION.aim;
   if (state === AIM_STATE.aiming) {
-    return reduceMotion
-      ? aimX
-      : lerp(SPAWNER.cx, aimX, easeOutCubic(progress(msInState, 0, A.pickUpMs)));
+    const x = aimDropX(aimX, r);
+    return reduceMotion ? x : lerp(SPAWNER.cx, x, easeOutCubic(progress(msInState, 0, A.pickUpMs)));
   }
-  if (state === AIM_STATE.cancelled && !reduceMotion) {
-    return lerp(fromX, SPAWNER.cx, easeOutCubic(progress(msInState, 0, A.returnMs)));
+  if (state === AIM_STATE.cancelled && !reduceMotion && Number.isFinite(fromX)) {
+    const from = aimDropX(fromX, r);
+    return lerp(from, SPAWNER.cx, easeOutCubic(progress(msInState, 0, A.returnMs)));
   }
   return SPAWNER.cx;
 }

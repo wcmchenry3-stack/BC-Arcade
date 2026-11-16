@@ -14,6 +14,8 @@
   "event.merged": "합쳐졌어요! {{fruit}} 생성.",
   "score.high": "최고",
   "a11y.board": "Cascade 게임 보드",
+  "a11y.boardHint": "두 번 탭하면 다음 조각을 가운데에 떨어뜨립니다. 누른 채 드래그해 조준하세요.",
+  "a11y.dropPiece": "조각 떨어뜨리기",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

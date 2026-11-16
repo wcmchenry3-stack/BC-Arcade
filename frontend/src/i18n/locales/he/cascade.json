@@ -14,6 +14,8 @@
   "event.merged": "התמזגו! נוצר {{fruit}}.",
   "score.high": "שיא",
   "a11y.board": "לוח המשחק Cascade",
+  "a11y.boardHint": "הקישו פעמיים כדי להפיל את החלק הבא באמצע. לחצו וגררו כדי לכוון.",
+  "a11y.dropPiece": "הפלת החלק",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

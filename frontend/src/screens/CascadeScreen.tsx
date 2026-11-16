@@ -35,7 +35,7 @@
  *  10. Test and dev seams: `useCascadeTestSeams` (the `__cascade_*` hooks and demo set-ups) for
  *      E2E builds, `CascadeDevPanel` (frame readout, #2960) for dev builds; `useCascadeSession`.
  */
-import React, { Profiler, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { Profiler, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, StyleSheet, View, LayoutChangeEvent } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -73,7 +73,8 @@ import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import CascadeDevPanel from "../components/cascade/CascadeDevPanel";
 import CascadeBoard from "../components/cascade/CascadeBoard";
-import MergeBurst, { type MergeBurstData } from "../components/cascade/MergeBurst";
+import MergeBurst from "../components/cascade/MergeBurst";
+import { useMergeBursts } from "../components/cascade/useMergeBursts";
 import CascadeResultModal, {
   cardResult,
   type CascadeResult,
@@ -139,9 +140,8 @@ function CascadeGame() {
   const [gameKey, setGameKey] = useState(0);
 
   // Animation state
-  const [mergeBursts, setMergeBursts] = useState<MergeBurstData[]>([]);
+  const mergeBursts = useMergeBursts();
   const reduceMotion = useReduceMotion();
-  const nextBurstId = useId();
   // #3701: the board's motion (UI thread) and the paced haptics, fed from the engine's events.
   const sounds = useCascadeSounds(activeFruitSet.id, reduceMotion, nearWin); // #3702, paced
   const motion = useBoardMotion(reduceMotion, sounds.dangerOnset); // its blink times the tick
@@ -402,11 +402,7 @@ function CascadeGame() {
     const fruit = activeFruitSet.fruits[tier];
     if (!reduceMotion && fruit) {
       const { scale: s, offsetX, offsetY } = layoutRef.current;
-      const burstId = `${nextBurstId}-${Date.now()}-${x.toFixed(0)}`;
-      setMergeBursts((prev) => [
-        ...prev,
-        { id: burstId, x: offsetX + x * s, y: offsetY + y * s, color: fruit.color },
-      ]);
+      mergeBursts.add(offsetX + x * s, offsetY + y * s, fruit.color);
     }
   };
 
@@ -550,20 +546,21 @@ function CascadeGame() {
   ]);
 
   const handleTap = useCallback(
-    (x: number | null) => {
-      if (x === null || !Number.isFinite(x)) return; // no usable x (#3922; `boardPxToWorldX`)
+    (x: number | null): boolean => {
+      if (x === null || !Number.isFinite(x)) return false; // no usable x (#3922)
       const now = Date.now();
       const interval = now - lastDropTimeRef.current;
-
-      // The lid (#3694): no drop until the last piece has fallen below the lid.
+      // The lid (#3694): no drop until the last piece has fallen below the lid. Nor while away
+      // (#3928 review B2: a backstop for a gesture that ends as another screen covers the board).
       const lidOpen = engineRef.current?.canDrop() ?? false;
-      if (gameOver || droppingRef.current || settlingTicksLeftRef.current > 0 || !lidOpen) {
+      const away = awayRef.current;
+      if (gameOver || away || droppingRef.current || settlingTicksLeftRef.current > 0 || !lidOpen) {
         if (__DEV__) {
           console.log(
-            `[Cascade] drop BLOCKED — gameOver=${gameOver} cooling=${droppingRef.current} settling=${settlingTicksLeftRef.current} lidOpen=${lidOpen} intervalMs=${interval}`
+            `[Cascade] drop BLOCKED — gameOver=${gameOver} away=${away} cooling=${droppingRef.current} settling=${settlingTicksLeftRef.current} lidOpen=${lidOpen} intervalMs=${interval}`
           );
         }
-        return;
+        return false;
       }
       droppingRef.current = true;
       lastDropTimeRef.current = now;
@@ -597,7 +594,9 @@ function CascadeGame() {
       setTimeout(() => {
         droppingRef.current = false;
       }, 200);
+      return true;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- awayRef: a stable ref
     [consumeFromQueue, gameOver, saveGameThrottled, syncEnqueue, syncMarkStarted, queueChanged]
   );
 
@@ -661,6 +660,13 @@ function CascadeGame() {
     [currentDef, nextDef, drops]
   );
   const onDragStart = useCallback(() => haptics.dragStart(), [haptics]);
+  // A screen reader's double-tap drops in the middle, as the old centre tap did (#3928 S3).
+  const dropMiddle = useCallback(() => void handleTap(WORLD_WIDTH / 2), [handleTap]);
+  // No iOS swipe-back over the board: a left drag aims, it must not leave (#3928 B2).
+  useEffect(() => {
+    navigation.setOptions?.({ gestureEnabled: false });
+    return () => navigation.setOptions?.({ gestureEnabled: true });
+  }, [navigation]);
   // The bin is the card: the board rect, bottom-anchored in the measured area.
   const boardAreaStyle = useMemo(
     () => ({
@@ -671,10 +677,6 @@ function CascadeGame() {
       height: boardHeight,
     }),
     [offsetX, offsetY, boardWidth, boardHeight]
-  );
-  const removeBurst = useCallback(
-    (id: string) => setMergeBursts((prev) => prev.filter((b) => b.id !== id)),
-    []
   );
   const openDevPanel = useCallback(() => setDevPanelOpen(true), []);
   const closeDevPanel = useCallback(() => setDevPanelOpen(false), []);
@@ -723,19 +725,21 @@ function CascadeGame() {
                 reduceMotion={reduceMotion}
                 celebration={celebrationClock}
                 motion={motion.values}
+                onAccessibleDrop={dropMiddle}
               />
             </CascadeAimArea>
           )}
 
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {mergeBursts.map((burst) => (
-              <MergeBurst key={burst.id} {...burst} onDone={removeBurst} />
+            {mergeBursts.bursts.map((burst) => (
+              <MergeBurst key={burst.id} {...burst} onDone={mergeBursts.remove} />
             ))}
           </View>
         </View>
 
         {areTestHooksEnabled() && (
           <CascadeTestControls
+            drops={drops}
             onChain={() => applySetup("chain")}
             onNearLid={() => applySetup("nearLid")}
             onFillBin={() => applySetup("fillBin")}

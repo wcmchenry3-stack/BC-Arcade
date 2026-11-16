@@ -140,7 +140,9 @@ export function useBoardMotion(reduceMotion: boolean, onDangerOnset?: () => void
       // The phase wrapped into an on-beat: the blink (and the danger tick, #3702) starts one.
       if (!reduce && ratio > 0 && phase < before) runOnJS(fireOnset)();
       clock.set(now);
-      // #3928: a held press becomes aiming after the tap window.
+      // #3928: a state the JS thread set (a refused release gliding back) is stamped now.
+      if (!Number.isFinite(aimAt.get())) aimAt.set(now);
+      // A held press becomes aiming after the tap window.
       const aim = aimState.get();
       const aimed = aimAfterTime(aim, now - aimAt.get());
       if (aimed !== aim) {

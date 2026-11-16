@@ -14,6 +14,8 @@
   "event.merged": "मर्ज हो गया! {{fruit}} बना।",
   "score.high": "सर्वोच्च",
   "a11y.board": "Cascade गेम बोर्ड",
+  "a11y.boardHint": "अगला टुकड़ा बीच में गिराने के लिए दो बार टैप करें। निशाना लगाने के लिए दबाकर खींचें।",
+  "a11y.dropPiece": "टुकड़ा गिराएँ",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

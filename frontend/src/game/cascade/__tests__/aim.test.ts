@@ -143,13 +143,13 @@ describe("landing cast (first contact, straight down)", () => {
 
 describe("the piece and the guide over time", () => {
   it("the piece glides from the ring to the finger in pickUpMs, and back on a cancel in returnMs", () => {
-    expect(aimPieceX(aiming, 320, 0, 0, false)).toBe(SPAWNER.cx);
-    expect(aimPieceX(aiming, 320, 0, A.pickUpMs, false)).toBe(320);
-    expect(aimPieceX(cancelled, 0, 320, 0, false)).toBe(320);
-    expect(aimPieceX(cancelled, 0, 320, A.returnMs, false)).toBe(SPAWNER.cx);
+    expect(aimPieceX(aiming, 320, 0, 0, false, 15)).toBe(SPAWNER.cx);
+    expect(aimPieceX(aiming, 320, 0, A.pickUpMs, false, 15)).toBe(320);
+    expect(aimPieceX(cancelled, 0, 320, 0, false, 15)).toBe(320);
+    expect(aimPieceX(cancelled, 0, 320, A.returnMs, false, 15)).toBe(SPAWNER.cx);
     // a tap never moves it
-    expect(aimPieceX(pressed, 320, 0, 50, false)).toBe(SPAWNER.cx);
-    expect(aimPieceX(idle, 320, 0, 0, false)).toBe(SPAWNER.cx);
+    expect(aimPieceX(pressed, 320, 0, 50, false, 15)).toBe(SPAWNER.cx);
+    expect(aimPieceX(idle, 320, 0, 0, false, 15)).toBe(SPAWNER.cx);
   });
 
   it("the guide fades in, and out after a release or a cancel", () => {
@@ -160,9 +160,18 @@ describe("the piece and the guide over time", () => {
     expect(aimGuideAlpha(pressed, 500, false)).toBe(0);
   });
 
+  // Review S4: the piece goes where the drop and the guide go, clamped by its radius.
+  it("the piece glides to the wall-clamped drop x, and back from it", () => {
+    expect(aimPieceX(aiming, 0, 0, A.pickUpMs, false, 15)).toBe(aimDropX(0, 15));
+    expect(aimPieceX(aiming, 999, 0, 0, true, 15)).toBe(aimDropX(999, 15));
+    expect(aimPieceX(cancelled, 0, 999, 0, false, 15)).toBe(aimDropX(999, 15));
+    // A cancelled tap (no start) stays in the ring.
+    expect(aimPieceX(cancelled, 0, Number.NaN, 0, false, 15)).toBe(SPAWNER.cx);
+  });
+
   it("Reduce Motion: the piece is at the finger at once, back in the ring at once; the guide shows and hides at once", () => {
-    expect(aimPieceX(aiming, 320, 0, 0, true)).toBe(320);
-    expect(aimPieceX(cancelled, 0, 320, 0, true)).toBe(SPAWNER.cx);
+    expect(aimPieceX(aiming, 320, 0, 0, true, 15)).toBe(320);
+    expect(aimPieceX(cancelled, 0, 320, 0, true, 15)).toBe(SPAWNER.cx);
     expect(aimGuideAlpha(aiming, 0, true)).toBe(1);
     expect(aimGuideAlpha(released, 0, true)).toBe(0);
     expect(aimGuideAlpha(cancelled, 0, true)).toBe(0);
@@ -170,7 +179,10 @@ describe("the piece and the guide over time", () => {
 
   it("keeps the motion clock running only while there is something to animate", () => {
     expect(aimLive(pressed, 0, false)).toBe(true);
-    expect(aimLive(aiming, 9999, true)).toBe(true);
+    expect(aimLive(aiming, 9999, false)).toBe(true); // the dash march
+    // Reduce Motion: nothing moves with time while aiming, so the clock may stop (review N2).
+    expect(aimLive(aiming, 0, true)).toBe(false);
+    expect(aimLive(pressed, 0, true)).toBe(true); // it still has to become aiming
     expect(aimLive(released, A.outMs - 1, false)).toBe(true);
     expect(aimLive(released, A.outMs, false)).toBe(false);
     expect(aimLive(cancelled, A.returnMs + A.outMs, false)).toBe(false);

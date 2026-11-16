@@ -68,6 +68,8 @@ export interface CascadeBoardProps {
   readonly celebration?: { readonly value: number };
   /** #3701: the motion's shared values (`useBoardMotion`); absent: no motion. */
   readonly motion?: BoardMotionValues;
+  /** #3928: a screen reader's double-tap (its "activate" action) drops the next piece. */
+  readonly onAccessibleDrop?: () => void;
 }
 
 /** No celebration (a board without the prop). */
@@ -98,6 +100,7 @@ function CascadeBoard({
   reduceMotion = false,
   celebration = NO_CELEBRATION,
   motion,
+  onAccessibleDrop,
 }: CascadeBoardProps) {
   const { t } = useTranslation("cascade");
   const style = useMemo(() => buildBoardStyle(lidPalette), [lidPalette]);
@@ -202,6 +205,13 @@ function CascadeBoard({
       accessible
       accessibilityRole="image"
       accessibilityLabel={t("a11y.board")}
+      accessibilityHint={onAccessibleDrop ? t("a11y.boardHint") : undefined}
+      accessibilityActions={
+        onAccessibleDrop ? [{ name: "activate", label: t("a11y.dropPiece") }] : undefined
+      }
+      onAccessibilityAction={(e) => {
+        if (e.nativeEvent.actionName === "activate") onAccessibleDrop?.();
+      }}
     >
       <Canvas style={canvasStyle}>
         <Group transform={transform}>

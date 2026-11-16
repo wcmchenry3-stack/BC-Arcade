@@ -279,7 +279,7 @@ function drawSpawner(
   // #3928: while aiming the piece leaves the ring for the finger (the ring stays centred).
   const aim = motion?.aim ?? null;
   const px = aim
-    ? aimPieceX(aim.state, aim.x, aim.fromX, aim.ms, motion?.reduceMotion === true)
+    ? aimPieceX(aim.state, aim.x, aim.fromX, aim.ms, motion?.reduceMotion === true, radius)
     : cx;
   if (hasPiece) {
     // #3701: the new piece drops into the spawner after each drop (a fade under Reduce Motion).

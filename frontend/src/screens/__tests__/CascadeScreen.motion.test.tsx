@@ -226,6 +226,7 @@ it("a restart before the loss card is due shows no card", async () => {
 describe("aiming haptic", () => {
   const pan = () => detectedGesture(mockDetected, "pan", { testID: "cascade-game-area" })!;
   const selections = () => (Haptics.selectionAsync as jest.Mock).mock.calls.length;
+  const mgr = { activate: () => {}, fail: () => {} };
   /** Mounts with a measured board area (300 x 600: scale 0.75), so the board gesture exists. */
   async function mountBoard() {
     let renderer!: ReturnType<typeof create>;
@@ -248,9 +249,10 @@ describe("aiming haptic", () => {
     await mountBoard();
     await act(async () => {
       pan().onBegin!({ x: 50, y: 100 });
+      pan().onTouchesDown!({ numberOfTouches: 1 }, mgr);
       for (const x of [55, 70, 100, 140, 180]) pan().onUpdate!({ x, y: 100 });
-      pan().onEnd!({});
-      pan().onFinalize!({});
+      pan().onEnd!({}, true);
+      pan().onFinalize!({}, true);
     });
     await frames(300);
     expect(selections()).toBe(1);
@@ -258,8 +260,9 @@ describe("aiming haptic", () => {
     await frames(500);
     await act(async () => {
       pan().onBegin!({ x: 120, y: 100 });
-      pan().onEnd!({});
-      pan().onFinalize!({});
+      pan().onTouchesDown!({ numberOfTouches: 1 }, mgr);
+      pan().onEnd!({}, true);
+      pan().onFinalize!({}, true);
     });
     await frames(300);
     expect(selections()).toBe(1);
@@ -271,9 +274,10 @@ describe("aiming haptic", () => {
     await mountBoard();
     await act(async () => {
       pan().onBegin!({ x: 50, y: 100 });
+      pan().onTouchesDown!({ numberOfTouches: 1 }, mgr);
       pan().onUpdate!({ x: 150, y: 100 });
-      pan().onEnd!({});
-      pan().onFinalize!({});
+      pan().onEnd!({}, true);
+      pan().onFinalize!({}, true);
     });
     await frames(300);
     expect(selections()).toBe(0);
