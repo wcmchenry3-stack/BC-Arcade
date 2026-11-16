@@ -28,9 +28,10 @@ tags:
     timeout: 3000
 - takeScreenshot: cascade-demo-aim-dropped
 # The test row's drop count (`cascade-test-drops`, test builds only) shows the aimed drop landed.
+# Android matches the Text's "1"; iOS matches its accessibility label "drops 1".
 - assertVisible:
     id: "cascade-test-drops"
-    text: "1"
+    text: "(drops )?1"
 - swipe:
     start: "50%, 55%"
     end: "50%, 98%"
@@ -41,7 +42,7 @@ tags:
 # …and that the cancel dropped nothing.
 - assertVisible:
     id: "cascade-test-drops"
-    text: "1"
+    text: "(drops )?1"
 - assertNotVisible:
     id: "cascade-result-title"
 - stopRecording
