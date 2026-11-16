@@ -30,8 +30,11 @@ interface PoolEntry {
 const pool = new Map<number, PoolEntry>();
 
 export interface SoundHold {
-  /** Starts playback; false when dropped by the in-flight guard or the hold is released. */
-  play: (volume: number) => boolean;
+  /**
+   * Starts playback, from `fromSeconds` into the file (default 0); false when dropped by the
+   * in-flight guard or the hold is released.
+   */
+  play: (volume: number, fromSeconds?: number) => boolean;
   stop: () => void;
   setVolume: (volume: number) => void;
   /** Idempotent. The last hold of an asset removes its player and releases the audio session. */
@@ -73,7 +76,7 @@ export function acquireSound(source: number, volume: number, lazy: boolean): Sou
 
   return {
     setVolume,
-    play: (volume) => {
+    play: (volume, fromSeconds = 0) => {
       if (released || e.removed) return false;
       const startedAt = Date.now();
       // Guards against a burst of rapid play() calls (e.g. Star Swarm's 4x lightning fire rate,
@@ -90,7 +93,7 @@ export function acquireSound(source: number, volume: number, lazy: boolean): Sou
       };
       try {
         setVolume(volume);
-        const rewind = e.fresh ? undefined : e.player.seekTo(0);
+        const rewind = e.fresh && !(fromSeconds > 0) ? undefined : e.player.seekTo(fromSeconds);
         e.fresh = false;
         // Await the seek before playing — on web seekTo is async and calling play() while
         // the element is still seeking causes an AbortError that silently drops the sound.

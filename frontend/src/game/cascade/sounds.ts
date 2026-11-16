@@ -87,18 +87,24 @@ export const CASCADE_SOUNDS: Readonly<
 };
 
 /**
- * Sounds heard about once a game or less (big merges, long chains, the win and the game over):
- * their players are created on the first play (docs/PERFORMANCE.md, "SFX players"). The rest are
- * created when the screen mounts, so a drop, a landing or a small merge has no creation latency.
+ * The rarer sounds (merges from tier 4 up, chain steps from ×3 up, danger, the win and the game
+ * over): their players are created on the first play, or pre-warmed when they become likely
+ * (`useCascadeSounds`; docs/PERFORMANCE.md, "SFX players"). The other 8 (drop, the landings,
+ * merges t0-t3, the first chain step) are created when the screen mounts, so the sounds of every
+ * turn have no creation latency.
  */
 export const LAZY_CASCADE_SOUNDS: ReadonlySet<CascadeSoundName> = new Set<CascadeSoundName>([
+  "merge-t4",
+  "merge-t5",
   "merge-t6",
   "merge-t7",
   "merge-t8",
   "merge-t9",
   "merge-t10",
+  "chain-2",
   "chain-3",
   "chain-4",
+  "danger",
   "win",
   "game-over",
 ]);

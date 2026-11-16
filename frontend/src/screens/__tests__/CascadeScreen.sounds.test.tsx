@@ -1,8 +1,8 @@
 /**
  * #3702: the screen feeds the engine's drop / land / merge / chain / danger moments, the win and
  * the game over to the sound pacer (`soundPacer.ts`, tested on its own), with the same quiet flag
- * as the haptics: nothing for a test fast-forward or while a restored game settles, and the
- * danger phase stepped every frame so the ticks stay locked to the blink.
+ * as the haptics: nothing for a test fast-forward or while a restored game settles. The danger
+ * tick's clock is the board's blink: its onsets reach the pacer's `dangerOnset`.
  */
 import React from "react";
 import { Platform } from "react-native";
@@ -17,6 +17,8 @@ const mockSounds = {
   land: jest.fn(),
   merge: jest.fn(),
   danger: jest.fn(),
+  dangerOnset: jest.fn(),
+  setCalm: jest.fn(),
   win: jest.fn(),
   gameOver: jest.fn(),
   reset: jest.fn(),
@@ -46,7 +48,6 @@ jest.mock("../../api/players", () => ({
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
-jest.mock("../../components/cascade/ThemeSelector", () => () => null);
 jest.mock("@shopify/react-native-skia", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
@@ -128,11 +129,21 @@ afterEach(() => {
 
 const calls = (fn: jest.Mock) => fn.mock.calls;
 /** The quiet flags the loop passed with each danger step. */
-const dangerQuiet = () => calls(mockSounds.danger).map(([, , quiet]) => quiet as boolean);
+const dangerQuiet = () => calls(mockSounds.danger).map(([, quiet]) => quiet as boolean);
+const withTestHooks = async (run: () => Promise<void>) => {
+  const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
+  process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+  try {
+    await run();
+  } finally {
+    if (original === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    else process.env.EXPO_PUBLIC_TEST_HOOKS = original;
+  }
+};
 
 it("plays the Fruits set by default", async () => {
   await mount();
-  expect(useCascadeSounds).toHaveBeenLastCalledWith("fruits");
+  expect(useCascadeSounds).toHaveBeenLastCalledWith("fruits", false, false);
 });
 
 it("a landing and a chain go to the pacer with their tier and chain link", async () => {
@@ -149,16 +160,36 @@ it("a landing and a chain go to the pacer with their tier and chain link", async
   ]);
 });
 
-it("every frame steps the danger phase with the lid count and the frame time", async () => {
+it("every frame passes the lid count; the tick comes from the board's blink onsets", async () => {
   await mount();
   mockEngineState = { pieces: [], score: 0, gameOver: false, dangerRatio: 0.7 } as never;
   await frames(200);
   const steps = calls(mockSounds.danger);
   expect(steps.length).toBeGreaterThan(3);
-  const [ratio, frameMs, quiet] = steps.at(-1)!;
-  expect(ratio).toBe(0.7);
-  expect(frameMs).toBeGreaterThan(0);
-  expect(quiet).toBe(false);
+  expect(steps.at(-1)).toEqual([0.7, false]);
+  // The blink at 0.7 has a period of about 540 ms and starts on an off-beat.
+  await frames(2000);
+  expect(mockSounds.dangerOnset.mock.calls.length).toBeGreaterThanOrEqual(2);
+  expect(mockSounds.dangerOnset.mock.calls.length).toBeLessThanOrEqual(7);
+});
+
+it("a drop plays the drop sound", async () => {
+  await withTestHooks(async () => {
+    await mount();
+    await act(async () => {
+      (globalThis as { __cascade_dropAt?: (x: number) => void }).__cascade_dropAt?.(200);
+    });
+    expect(mockSounds.drop).toHaveBeenCalledTimes(1);
+  });
+});
+
+it("a switch to the Cosmos pieces plays the Cosmos set and resets the pacer", async () => {
+  const view = await mount();
+  mockSounds.reset.mockClear();
+  await fireEvent.press(view.getByRole("radio", { name: "Cosmos theme" }));
+  await frames(50);
+  expect(useCascadeSounds).toHaveBeenLastCalledWith("cosmos", false, false);
+  expect(mockSounds.reset).toHaveBeenCalled();
 });
 
 it("the winning merge plays the win (no merge sound); a loss plays the game over", async () => {

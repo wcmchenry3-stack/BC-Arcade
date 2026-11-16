@@ -1338,7 +1338,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 
 ## Cascade: synthesized sounds, one set per piece set (#3702)
 
-Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/assets/synth_cascade_sfx.py` (no samples, no third-party audio): one set of 20 per piece set, switched with the Fruits / Cosmos toggle. Fruits plays "Juicy pops", Cosmos "Starlight glass" (owner picks, 2026-11-16). They replaced the three Kenney Digital Audio files (`cascade-fruit-merge.ogg`, `cascade-combo.ogg`, `cascade-game-over.ogg`), deleted in #3702. The reasoning behind each sound is in `docs/games/cascade-sound-design.md`.
+Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/assets/synth_cascade_sfx.py` (no samples, no third-party audio): one set of 21 per piece set, switched with the Fruits / Cosmos toggle. Fruits plays "Juicy pops", Cosmos "Starlight glass" (owner picks, 2026-11-16). They replaced the three Kenney Digital Audio files (`cascade-fruit-merge.ogg`, `cascade-combo.ogg`, `cascade-game-over.ogg`), deleted in #3702. The reasoning behind each sound is in `docs/games/cascade-sound-design.md`.
 
 ### cascade-fruits-drop.ogg
 

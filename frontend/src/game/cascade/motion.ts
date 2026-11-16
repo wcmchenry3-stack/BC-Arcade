@@ -155,7 +155,7 @@ export const MOTION = {
    * the celebration's card (`CELEBRATION_CARD_MS`).
    */
   sound: {
-    /** Landings closer than this are dropped, as the landing haptic is. */
+    /** Landings within this of the last one are one sound: the highest tier among them. */
     landGapMs: 60,
     /** Landing volume: `landVolume0` at tier 0, rising to 1 at the capstone. */
     landVolume0: 0.6,
@@ -163,8 +163,10 @@ export const MOTION = {
     heavyLandTier: 5,
     /** Danger tick volume: `dangerVolume0` as the count starts, rising to 1 at its end. */
     dangerVolume0: 0.45,
-    /** At most this many merge and chain sounds wait for their paced step; more are dropped. */
+    /** At most this many merges (a chain link's merge and step are one) wait; more are dropped. */
     maxQueued: 6,
+    /** A merge of the same tier due within this of the last one is skipped (one sound, no flam). */
+    sameMergeMs: 30,
   },
   /** The motion clock never moves more than this per frame (a stalled frame only delays it). */
   maxFrameStepMs: 34,

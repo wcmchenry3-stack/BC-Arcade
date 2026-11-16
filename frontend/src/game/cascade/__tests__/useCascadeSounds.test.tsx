@@ -1,11 +1,13 @@
 /**
- * #3702: Cascade's sound players. The active piece set's files on the shared pool (frequent ones
- * at mount, rare ones on first play), switched with the piece set, released on unmount, and
- * silent while muted.
+ * #3702: Cascade's sound players. The active piece set's files on the shared pool (8 at mount, the
+ * rest on first play or pre-warmed when likely), switched with the piece set, released on
+ * unmount, silent while muted (sounds already waiting included), the end sounds stopped by a new
+ * game, and the win started later in under Reduce Motion.
  */
 import { act, renderHook } from "@testing-library/react-native";
 import { useCascadeSounds } from "../useCascadeSounds";
 import { CASCADE_SOUND_NAMES, LAZY_CASCADE_SOUNDS } from "../sounds";
+import { CALM_WIN_OFFSET_S } from "../soundPacer";
 
 // Jest maps every .ogg to one stub, so give each set's files distinct ids: fruits 100+, cosmos 200+.
 jest.mock("../sounds", () => {
@@ -18,20 +20,23 @@ jest.mock("../sounds", () => {
 interface FakeHold {
   source: number;
   lazy: boolean;
-  plays: number[];
+  plays: [number, number][];
+  stops: number;
   released: boolean;
 }
 const mockHolds: FakeHold[] = [];
 jest.mock("../../_shared/soundPool", () => ({
   acquireSound: (source: number, _volume: number, lazy: boolean) => {
-    const h = { source, lazy, plays: [] as number[], released: false };
+    const h: FakeHold = { source, lazy, plays: [], stops: 0, released: false };
     mockHolds.push(h);
     return {
-      play: (v: number) => {
-        h.plays.push(v);
+      play: (v: number, from = 0) => {
+        h.plays.push([v, from]);
         return true;
       },
-      stop: () => {},
+      stop: () => {
+        h.stops++;
+      },
       setVolume: () => {},
       release: () => {
         h.released = true;
@@ -45,9 +50,17 @@ jest.mock("../../_shared/SoundContext", () => ({
   useSoundSettings: () => ({ muted: mockMuted }),
 }));
 
+const idOf = (name: string, base = 100) => base + CASCADE_SOUND_NAMES.indexOf(name as never);
 const nameOf = (source: number) => CASCADE_SOUND_NAMES[source % 100]!;
 const live = () => mockHolds.filter((h) => !h.released);
-const played = () => mockHolds.flatMap((h) => h.plays.map(() => [h.source, nameOf(h.source)]));
+const played = () => mockHolds.flatMap((h) => h.plays.map(() => nameOf(h.source)));
+const holdOf = (name: string, base = 100) => live().find((h) => h.source === idOf(name, base));
+
+type Props = { id: string; rm: boolean; nearWin: boolean };
+const mount = (props: Partial<Props> = {}) =>
+  renderHook((p: Props) => useCascadeSounds(p.id, p.rm, p.nearWin), {
+    initialProps: { id: "fruits", rm: false, nearWin: false, ...props },
+  });
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -56,60 +69,99 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
-it("takes the frequent sounds' players at mount and the rare ones on their first play", async () => {
-  const { result } = await renderHook(() => useCascadeSounds("fruits"));
-  const eager = CASCADE_SOUND_NAMES.length - LAZY_CASCADE_SOUNDS.size;
-  expect(live()).toHaveLength(eager);
+it("takes 8 players at mount (the sounds of every turn) and the rest on their first play", async () => {
+  const { result } = await mount();
+  expect(CASCADE_SOUND_NAMES.length - LAZY_CASCADE_SOUNDS.size).toBe(8);
+  expect(live()).toHaveLength(8);
   expect(live().every((h) => h.source < 200 && !h.lazy)).toBe(true);
-  await act(() => {
-    result.current.win();
+  await act(async () => {
+    result.current.merge(7, 1);
     jest.advanceTimersByTime(0);
   });
-  expect(live()).toHaveLength(eager + 1);
-  expect(played()).toEqual([[100 + CASCADE_SOUND_NAMES.indexOf("win"), "win"]]);
+  expect(live()).toHaveLength(9);
+  expect(played()).toEqual(["merge-t7"]);
   expect(mockHolds.at(-1)!.lazy).toBe(true);
 });
 
-it("plays the Cosmos set for the Cosmos pieces, and a set switch swaps the players", async () => {
-  const { result, rerender } = await renderHook(({ id }) => useCascadeSounds(id), {
-    initialProps: { id: "fruits" },
+it("pre-warms the win once a tier-9 piece is on the board, and danger and game over when the count runs", async () => {
+  const { result, rerender } = await mount();
+  expect(holdOf("win")).toBeUndefined();
+  await rerender({ id: "fruits", rm: false, nearWin: true });
+  expect(holdOf("win")).toBeDefined();
+  expect(holdOf("game-over")).toBeUndefined();
+  await act(async () => {
+    result.current.danger(0.2, false);
+    jest.advanceTimersByTime(0);
   });
-  await rerender({ id: "cosmos" });
+  expect(holdOf("game-over")).toBeDefined();
+  expect(holdOf("danger")).toBeDefined();
+  expect(played()).toEqual([]); // warmed, not played
+});
+
+it("plays the Cosmos set for the Cosmos pieces, and a set switch swaps the players", async () => {
+  const { result, rerender } = await mount();
+  await rerender({ id: "cosmos", rm: false, nearWin: false });
   expect(live().every((h) => h.source >= 200)).toBe(true);
   expect(mockHolds.filter((h) => h.source < 200).every((h) => h.released)).toBe(true);
-  await act(() => {
+  await act(async () => {
     result.current.merge(3, 1);
     jest.advanceTimersByTime(0);
   });
-  expect(played()).toEqual([[200 + CASCADE_SOUND_NAMES.indexOf("merge-t3"), "merge-t3"]]);
+  expect(live().find((h) => h.plays.length)?.source).toBe(idOf("merge-t3", 200));
 });
 
-it("is silent while the game sound is muted", async () => {
-  mockMuted = true;
-  const { result } = await renderHook(() => useCascadeSounds("fruits"));
-  await act(() => {
-    result.current.drop();
-    result.current.land(7);
-    result.current.gameOver();
-    jest.advanceTimersByTime(1000);
+it("is silent while muted, including sounds already waiting when mute goes on", async () => {
+  const { result, rerender } = await mount();
+  await act(async () => {
+    result.current.merge(1, 1);
+    result.current.merge(2, 2);
+    result.current.merge(3, 3); // waits 80 ms for its chain step
+    jest.advanceTimersByTime(0);
   });
-  expect(played()).toEqual([]);
+  mockMuted = true;
+  await rerender({ id: "fruits", rm: false, nearWin: false });
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+    result.current.drop();
+    result.current.gameOver();
+    jest.advanceTimersByTime(500);
+  });
+  expect(played()).toEqual(["merge-t1", "merge-t2", "chain-1"]);
+});
+
+it("a new game stops the end sounds; under Reduce Motion the win starts 0.5 s in", async () => {
+  const { result, rerender } = await mount();
+  await act(async () => {
+    result.current.win();
+    jest.advanceTimersByTime(0);
+  });
+  await act(async () => result.current.reset());
+  expect(holdOf("win")!.stops).toBe(1);
+  await rerender({ id: "fruits", rm: true, nearWin: false });
+  await act(async () => {
+    result.current.win();
+    jest.advanceTimersByTime(0);
+  });
+  expect(holdOf("win")!.plays).toEqual([
+    [1, 0],
+    [1, CALM_WIN_OFFSET_S],
+  ]);
 });
 
 it("releases every player on unmount, and a sound still waiting never plays or creates one", async () => {
-  const { result, unmount } = await renderHook(() => useCascadeSounds("fruits"));
-  await act(() => {
+  const { result, unmount } = await mount();
+  await act(async () => {
     result.current.merge(1, 1);
     result.current.merge(2, 2);
-    result.current.merge(3, 3); // waits for its 80 ms step
+    result.current.merge(5, 3); // waits for its 80 ms step; merge-t5 is lazy
     jest.advanceTimersByTime(0);
   });
   const before = mockHolds.length;
   await unmount();
-  await act(() => {
+  await act(async () => {
     jest.advanceTimersByTime(1000);
   });
   expect(live()).toEqual([]);
   expect(mockHolds.length).toBe(before);
-  expect(played().map(([, n]) => n)).toEqual(["merge-t1", "merge-t2", "chain-1"]);
+  expect(played()).toEqual(["merge-t1", "merge-t2", "chain-1"]);
 });

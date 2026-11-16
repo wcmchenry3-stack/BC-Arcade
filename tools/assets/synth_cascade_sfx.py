@@ -1,6 +1,6 @@
 """Synthesize Cascade's sound effects, one full set per piece set (no samples, no third-party audio). #3702
 
-Two sets of 20 files, switched with the Fruits / Cosmos toggle. Each recipe is the one the owner
+Two sets of 21 files, switched with the Fruits / Cosmos toggle. Each recipe is the one the owner
 approved from the spectrogram proposals on #3702 (2026-11-16): Fruits plays "Juicy pops" and
 Cosmos plays "Starlight glass". The reasoning, the options and the picks are in
 docs/games/cascade-sound-design.md. The building blocks are in synth_common.py, plus the glass
@@ -15,7 +15,7 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
 
 With no sound names, every sound is written. A name is the file stem, e.g. cascade-fruits-drop.
 
-Every set has the same 20 sounds, timed to game/cascade/motion.ts and celebration.ts:
+Every set has the same 21 sounds, timed to game/cascade/motion.ts and celebration.ts:
 - drop: the piece leaves the spawner (every turn: the quietest sound).
 - land-light / land-heavy: a piece's first contact; light for tiers 0-4, heavy for 5-10 (the
   player also scales the volume by tier).

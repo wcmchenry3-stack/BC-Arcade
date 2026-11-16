@@ -151,14 +151,13 @@ function CascadeGame() {
   const reduceMotion = useReduceMotion();
   const nextBurstId = useId();
   // #3701: the board's motion (UI thread) and the paced haptics, fed from the engine's events.
-  const motion = useBoardMotion(reduceMotion);
+  const sounds = useCascadeSounds(activeFruitSet.id, reduceMotion, nearWin); // #3702, paced
+  const motion = useBoardMotion(reduceMotion, sounds.dangerOnset); // its blink times the tick
   const haptics = useCascadeHaptics();
   // The current drop's chain: merges since the last drop (1 = a plain merge); a quiet merge (a
   // restore settling, a test fast-forward) ends it. `drops` drives the chips' hop (one per drop).
   const chainLinkRef = useRef(0);
   const [drops, setDrops] = useState(0);
-
-  const sounds = useCascadeSounds(activeFruitSet.id); // #3702: paced and quiet like the haptics
 
   const engineRef = useRef<CascadeEngine | null>(null);
   // Initialized lazily so queue and history come from the same makeQueue() call.
@@ -515,7 +514,7 @@ function CascadeGame() {
       const danger = gameOverRef.current ? 0 : state.dangerRatio;
       motion.setDanger(danger);
       if (!quiet) haptics.danger(danger);
-      sounds.danger(danger, delta, quiet); // ticks locked to the blink's phase (#3702)
+      sounds.danger(danger, quiet); // the tick itself comes from the board's blink (#3702)
 
       // No React state per frame (#2960): the score store notifies only on a new integer, and
       // the board is published to the shared value only when it draws something new.

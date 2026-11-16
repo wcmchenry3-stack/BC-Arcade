@@ -72,13 +72,18 @@ describe("Cascade sound registry (#3702)", () => {
     expect(bytes).toBeLessThanOrEqual(SOUND_BUDGET_BYTES);
   });
 
-  it("frequent sounds are eager; the rare ones (big merges, long chains, win, game over) lazy", () => {
-    for (const name of ["drop", "land-light", "land-heavy", "merge-t0", "chain-1", "danger"]) {
-      expect(LAZY_CASCADE_SOUNDS.has(name as never)).toBe(false);
-    }
-    for (const name of ["merge-t10", "chain-4", "win", "game-over"]) {
-      expect(LAZY_CASCADE_SOUNDS.has(name as never)).toBe(true);
-    }
+  it("the sounds of every turn are eager (8); the rarer ones lazy or pre-warmed", () => {
+    const eager = CASCADE_SOUND_NAMES.filter((n) => !LAZY_CASCADE_SOUNDS.has(n));
+    expect(eager).toEqual([
+      "drop",
+      "land-light",
+      "land-heavy",
+      "merge-t0",
+      "merge-t1",
+      "merge-t2",
+      "merge-t3",
+      "chain-1",
+    ]);
   });
 });
 

@@ -1,23 +1,29 @@
 /**
  * #3702: Cascade's sound pacing. Every sound plays from a timer (never inside the frame), chain
  * steps on the counter's 80 ms steps, landings and queues capped like the haptics, the danger
- * tick locked to the blink and never above 3 Hz, and nothing while quiet.
+ * tick on the board's blink onsets (its own timer only under Reduce Motion) and never above 3 Hz,
+ * and nothing but the end sounds while quiet.
  */
-import { createSoundPacer, DANGER_TICK_MIN_GAP_MS } from "../soundPacer";
-import { DANGER_IDLE_PHASE, MOTION, dangerBlinkOn, stepDangerPhase } from "../motion";
+import { CALM_WIN_OFFSET_S, createSoundPacer, DANGER_TICK_MIN_GAP_MS } from "../soundPacer";
+import { MOTION, dangerPeriodMs } from "../motion";
+import { CELEBRATION_CARD_MS, CELEBRATION_CARD_MS_REDUCED } from "../celebration";
 import type { CascadeSoundName } from "../sounds";
 
-/** A pacer on a fake clock: `played` lists [time, name, volume]. */
+/** A pacer on a fake clock: `played` lists [time, name, volume, fromSeconds]. */
 function pacerOnClock() {
   let now = 0;
   const timers: { at: number; run: () => void }[] = [];
-  const played: [number, CascadeSoundName, number][] = [];
+  const played: [number, CascadeSoundName, number, number][] = [];
+  const warmed: CascadeSoundName[] = [];
+  const stopped: CascadeSoundName[] = [];
   const pacer = createSoundPacer({
     now: () => now,
     schedule: (run, delay) => {
       timers.push({ at: now + delay, run });
     },
-    play: (name, volume) => played.push([now, name, volume]),
+    play: (name, volume, from) => played.push([now, name, volume, from]),
+    prewarm: (name) => warmed.push(name),
+    stop: (name) => stopped.push(name),
   });
   const advance = (ms: number) => {
     const end = now + ms;
@@ -31,28 +37,20 @@ function pacerOnClock() {
     }
     now = end;
   };
-  /** `ms` of 60 Hz frames at the lid count `ratio`, as the loop steps the pacer. */
-  const frames = (ms: number, ratio: number, quiet = false) => {
-    for (let t = 0; t < ms; t += 16) {
-      advance(16);
-      pacer.danger(ratio, 16, quiet);
-    }
-    advance(0);
-  };
   const names = () => played.map(([, n]) => n);
-  return { pacer, played, advance, frames, names, timers };
+  return { pacer, played, warmed, stopped, advance, names, timers };
 }
 
 describe("one-shot sounds", () => {
   it("play from a timer, never inside the call that found the event", () => {
-    const { pacer, played, advance } = pacerOnClock();
+    const { pacer, played, names, advance } = pacerOnClock();
     pacer.drop();
     pacer.land(3);
     pacer.merge(2, 1);
     pacer.win();
     expect(played).toEqual([]);
     advance(0);
-    expect(played.map(([, n]) => n)).toEqual(["drop", "land-light", "merge-t2", "win"]);
+    expect(names()).toEqual(["drop", "land-light", "merge-t2", "win"]);
   });
 
   it("a landing plays the light or heavy file at the tier's volume", () => {
@@ -66,15 +64,29 @@ describe("one-shot sounds", () => {
     expect(played[1]![2]).toBeGreaterThan(played[0]![2]);
   });
 
-  it("landings closer than landGapMs are dropped, not queued", () => {
-    const { pacer, names, advance } = pacerOnClock();
+  it("landings within landGapMs are one sound: the highest tier among them", () => {
+    const { pacer, played, advance } = pacerOnClock();
+    // Three in one step: one sound, the heaviest.
     pacer.land(2);
-    advance(MOTION.sound.landGapMs - 10);
-    pacer.land(2);
-    advance(20);
-    pacer.land(2);
+    pacer.land(7);
+    pacer.land(4);
     advance(0);
-    expect(names()).toEqual(["land-light", "land-light"]);
+    expect(played.map(([, n, v]) => [n, v])).toEqual([["land-heavy", expect.any(Number)]]);
+    expect(played[0]![2]).toBeCloseTo(0.6 + 0.4 * 0.7);
+    // A lighter one inside the gap is dropped; a heavier one still plays.
+    advance(MOTION.sound.landGapMs - 20);
+    pacer.land(3);
+    advance(0);
+    expect(played).toHaveLength(1);
+    pacer.land(9);
+    advance(0);
+    expect(played).toHaveLength(2);
+    expect(played[1]![2]).toBeCloseTo(0.6 + 0.4 * 0.9);
+    // After the gap anything plays again.
+    advance(MOTION.sound.landGapMs + 1);
+    pacer.land(0);
+    advance(0);
+    expect(played).toHaveLength(3);
   });
 });
 
@@ -88,28 +100,38 @@ describe("merges and chains", () => {
     pacer.merge(3, 3);
     pacer.merge(4, 4);
     advance(1000);
-    expect(played).toEqual([
-      [0, "merge-t1", 1],
-      [0, "merge-t2", 1],
-      [0, "chain-1", 1],
-      [80, "merge-t3", 1],
-      [80, "chain-2", 1],
-      [160, "merge-t4", 1],
-      [160, "chain-3", 1],
+    expect(played.map(([t, n]) => [t, n])).toEqual([
+      [0, "merge-t1"],
+      [0, "merge-t2"],
+      [0, "chain-1"],
+      [80, "merge-t3"],
+      [80, "chain-2"],
+      [160, "merge-t4"],
+      [160, "chain-3"],
     ]);
     expect(MOTION.chain.stepMs).toBe(80);
   });
 
-  it("long chains replay chain-4, and at most maxQueued wait (rate limit)", () => {
+  it("long chains replay chain-4, and at most maxQueued links wait (a merge and its step are one)", () => {
     const { pacer, names, advance } = pacerOnClock();
     for (let link = 2; link <= 12; link++) pacer.merge(link % 11, link);
     advance(2000);
-    expect(names().length).toBe(MOTION.sound.maxQueued);
-    expect(names().filter((n) => n.startsWith("chain-"))).toEqual([
-      "chain-1",
-      "chain-2",
-      "chain-3",
-    ]);
+    const steps = names().filter((n) => n.startsWith("chain-"));
+    expect(steps).toHaveLength(MOTION.sound.maxQueued);
+    expect(names().filter((n) => n.startsWith("merge-"))).toHaveLength(MOTION.sound.maxQueued);
+    expect(steps.slice(0, 4)).toEqual(["chain-1", "chain-2", "chain-3", "chain-4"]);
+  });
+
+  it("a merge of the same tier at the same time as the last is skipped (one sound, no flam)", () => {
+    const { pacer, names, advance } = pacerOnClock();
+    pacer.merge(3, 1);
+    pacer.merge(3, 1);
+    advance(0);
+    expect(names()).toEqual(["merge-t3"]);
+    advance(MOTION.sound.sameMergeMs + 1);
+    pacer.merge(3, 1);
+    advance(0);
+    expect(names()).toEqual(["merge-t3", "merge-t3"]);
   });
 
   it("the game over drops merges and chain steps still waiting, then plays its sound", () => {
@@ -124,92 +146,114 @@ describe("merges and chains", () => {
     expect(names()).toEqual(["merge-t1", "merge-t2", "chain-1", "game-over"]);
   });
 
-  it("a reset (a new game) drops what is waiting", () => {
-    const { pacer, played, advance } = pacerOnClock();
+  it("a reset (a new game) drops what is waiting and stops the end sounds", () => {
+    const { pacer, played, stopped, advance } = pacerOnClock();
     pacer.merge(1, 1);
     pacer.reset();
     advance(100);
     expect(played).toEqual([]);
+    expect(stopped.sort()).toEqual(["game-over", "win"]);
+  });
+});
+
+describe("the end sounds", () => {
+  it("under Reduce Motion the win starts 0.5 s in, so its chord lands with the earlier card", () => {
+    expect(CALM_WIN_OFFSET_S * 1000).toBe(CELEBRATION_CARD_MS - CELEBRATION_CARD_MS_REDUCED);
+    expect(CALM_WIN_OFFSET_S).toBeCloseTo(0.5);
+    const { pacer, played, advance } = pacerOnClock();
+    pacer.win();
+    advance(0);
+    pacer.setCalm(true);
+    pacer.win();
+    advance(0);
+    expect(played.map(([, n, , from]) => [n, from])).toEqual([
+      ["win", 0],
+      ["win", CALM_WIN_OFFSET_S],
+    ]);
+  });
+
+  it("the end sounds play while quiet", () => {
+    const { pacer, names, advance } = pacerOnClock();
+    pacer.danger(0, true);
+    pacer.gameOver();
+    advance(0);
+    expect(names()).toEqual(["game-over"]);
   });
 });
 
 describe("the danger tick", () => {
-  it.each([0.05, 0.3, 0.7, 1])(
-    "at ratio %s ticks on the blink's on-beats, never more than 3 a second",
-    (ratio) => {
-      const { played, frames } = pacerOnClock();
-      // The board's blink, stepped the same way: its on-beat onsets.
-      let phase: number = DANGER_IDLE_PHASE;
-      const onsets: number[] = [];
-      for (let t = 16; t <= 10_000; t += 16) {
-        const next = stepDangerPhase(phase, 16, ratio);
-        if (!dangerBlinkOn(phase) && dangerBlinkOn(next)) onsets.push(t);
-        phase = next;
-      }
-      frames(10_000, ratio);
-      const ticks = played.map(([t]) => t);
-      expect(ticks).toEqual(onsets);
-      expect(ticks.length).toBeGreaterThan(0);
-      for (let i = 1; i < ticks.length; i++) {
-        expect(ticks[i]! - ticks[i - 1]!).toBeGreaterThanOrEqual(MOTION.danger.fastMs - 16);
-        expect(ticks[i]! - ticks[i - 1]!).toBeGreaterThanOrEqual(DANGER_TICK_MIN_GAP_MS - 16);
-      }
-      // No window of one second ever holds more than maxHz ticks.
-      for (const t0 of ticks) {
-        expect(ticks.filter((t) => t >= t0 && t < t0 + 1000).length).toBeLessThanOrEqual(
-          MOTION.danger.maxHz
-        );
-      }
-    }
-  );
-
-  it("ticks faster and louder as the count runs out", () => {
-    const slow = pacerOnClock();
-    slow.frames(6000, 0.2);
-    const fast = pacerOnClock();
-    fast.frames(6000, 1);
-    expect(fast.played.length).toBeGreaterThan(slow.played.length);
-    expect(fast.played[0]![2]).toBeGreaterThan(slow.played[0]![2]);
-    expect(fast.played.every(([, n]) => n === "danger")).toBe(true);
+  it("plays on each board onset while the count runs, louder with the ratio", () => {
+    const { pacer, played, advance } = pacerOnClock();
+    pacer.danger(0.3, false);
+    pacer.dangerOnset();
+    advance(800);
+    pacer.danger(0.9, false);
+    pacer.dangerOnset();
+    advance(0);
+    expect(played.map(([t, n]) => [t, n])).toEqual([
+      [0, "danger"],
+      [800, "danger"],
+    ]);
+    expect(played[1]![2]).toBeGreaterThan(played[0]![2]);
   });
 
-  it("a ratio toggling every frame still never ticks above 3 Hz", () => {
+  it("never more than 3 a second, however often onsets come", () => {
     const { pacer, played, advance } = pacerOnClock();
-    for (let i = 0; i < 1000; i++) {
-      advance(16);
-      pacer.danger(i % 2 ? 1 : 0, 16, false);
+    pacer.danger(1, false);
+    for (let i = 0; i < 100; i++) {
+      pacer.dangerOnset();
+      advance(50);
     }
-    advance(0);
     const ticks = played.map(([t]) => t);
     for (let i = 1; i < ticks.length; i++) {
       expect(ticks[i]! - ticks[i - 1]!).toBeGreaterThanOrEqual(DANGER_TICK_MIN_GAP_MS);
     }
   });
 
-  it("a stalled frame moves the phase at most maxFrameStepMs", () => {
+  it("is silent at rest and while quiet", () => {
     const { pacer, played, advance } = pacerOnClock();
-    advance(5000);
-    pacer.danger(1, 5000, false); // one 5 s frame: no burst of ticks
-    advance(0);
-    expect(played.length).toBeLessThanOrEqual(1);
+    pacer.dangerOnset();
+    pacer.danger(0.8, true);
+    pacer.dangerOnset();
+    advance(500);
+    expect(played).toEqual([]);
   });
 
-  it("is silent at rest and while quiet, yet keeps its phase locked to the board's", () => {
-    const { played, frames } = pacerOnClock();
-    frames(3000, 0);
-    expect(played).toEqual([]);
-    frames(3000, 0.8, true);
-    expect(played).toEqual([]);
-    // After a quiet stretch the ticks resume on the blink's beat, not from a fresh phase: the
-    // board's phase, stepped over the same 3 x 188 frames, has its first loud onset there.
-    let phase: number = DANGER_IDLE_PHASE;
-    let firstOnset = -1;
-    for (let k = 1; k <= 3 * 188 && firstOnset < 0; k++) {
-      const next = stepDangerPhase(phase, 16, k <= 188 ? 0 : 0.8);
-      if (k > 2 * 188 && !dangerBlinkOn(phase) && dangerBlinkOn(next)) firstOnset = 16 * k;
-      phase = next;
-    }
-    frames(3000, 0.8);
-    expect(played[0]![0]).toBe(firstOnset);
+  it("pre-warms the danger and game-over players when the count first runs, once", () => {
+    const { pacer, warmed, advance } = pacerOnClock();
+    pacer.danger(0, false);
+    advance(0);
+    expect(warmed).toEqual([]);
+    pacer.danger(0.1, false);
+    pacer.danger(0.2, false);
+    pacer.danger(0, false);
+    pacer.danger(0.3, false);
+    advance(0);
+    expect(warmed).toEqual(["danger", "game-over"]);
+  });
+
+  it("under Reduce Motion (no blink) ticks on its own timer at the blink's period", () => {
+    const { pacer, played, advance } = pacerOnClock();
+    pacer.setCalm(true);
+    pacer.danger(1, false);
+    pacer.dangerOnset(); // there is no blink under Reduce Motion: an onset would be ignored
+    advance(3000);
+    const ticks = played.map(([t]) => t);
+    const period = dangerPeriodMs(1);
+    expect(ticks[0]).toBeCloseTo(period * MOTION.danger.duty);
+    for (let i = 1; i < ticks.length; i++) expect(ticks[i]! - ticks[i - 1]!).toBeCloseTo(period);
+    // The count stops: so does the ticker.
+    pacer.danger(0, false);
+    const n = ticks.length;
+    advance(3000);
+    expect(played).toHaveLength(n);
+    // Reduce Motion off: the board's onsets take over again.
+    pacer.setCalm(false);
+    pacer.danger(0.5, false);
+    advance(3000);
+    expect(played).toHaveLength(n);
+    pacer.dangerOnset();
+    advance(0);
+    expect(played).toHaveLength(n + 1);
   });
 });
