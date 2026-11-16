@@ -8,6 +8,10 @@
  * blink's phase, and switches itself off when nothing plays: no frame callback runs on an idle
  * board. The board's Picture closes over these shared values, so it re-records on each step.
  *
+ * The blink's on-beats are the danger sound's clock too (#3702): when the phase wraps into an
+ * on-beat, the frame callback calls `onDangerOnset` on the JS thread (at most 3 times a second, so
+ * no per-frame JS work), and the tick plays then: one phase for the blink and the tick.
+ *
  * Nothing here touches the physics step. Reduce Motion comes in as a prop (the screen reads it
  * once, through the shared `useReduceMotion`); it only shortens lifetimes here, the calm drawing is
  * `drawMotion.ts`.
@@ -67,8 +71,14 @@ function logOf(ref: { current: MotionLog | null }): MotionLog {
   return (ref.current ??= createMotionLog());
 }
 
-export function useBoardMotion(reduceMotion: boolean): BoardMotion {
+export function useBoardMotion(reduceMotion: boolean, onDangerOnset?: () => void): BoardMotion {
   const logRef = useRef<MotionLog | null>(null);
+  // The latest onset handler, called through one stable function the worklet can hold.
+  const onsetRef = useRef(onDangerOnset);
+  useEffect(() => {
+    onsetRef.current = onDangerOnset;
+  }, [onDangerOnset]);
+  const fireOnset = useCallback(() => onsetRef.current?.(), []);
   // An empty ring: what an unwritten log publishes.
   const events = useSharedValue<Float64Array>(new Float64Array(MOTION_SLOTS * MOTION_STRIDE));
   const stamps = useSharedValue<Float64Array>(emptyStamps());
@@ -108,8 +118,11 @@ export function useBoardMotion(reduceMotion: boolean): BoardMotion {
       if (fresh) stamps.set(fresh);
       const ratio = danger.get();
       const reduce = calm.get();
-      const phase = reduce ? DANGER_IDLE_PHASE : stepDangerPhase(dangerPhase.get(), dt, ratio);
+      const before = dangerPhase.get();
+      const phase = reduce ? DANGER_IDLE_PHASE : stepDangerPhase(before, dt, ratio);
       dangerPhase.set(phase);
+      // The phase wrapped into an on-beat: the blink (and the danger tick, #3702) starts one.
+      if (!reduce && ratio > 0 && phase < before) runOnJS(fireOnset)();
       clock.set(now);
       // The danger blink keeps the clock running while the count runs and while an on-beat it
       // latched finishes.
@@ -118,7 +131,7 @@ export function useBoardMotion(reduceMotion: boolean): BoardMotion {
         runOnJS(onIdle)(lastSeq(ev));
       }
     },
-    [calm, clock, danger, dangerPhase, events, onIdle, stamps]
+    [calm, clock, danger, dangerPhase, events, fireOnset, onIdle, stamps]
   );
   const frame = useFrameCallback(step, false);
   useEffect(() => {

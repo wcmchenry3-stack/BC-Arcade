@@ -90,11 +90,23 @@ describe("Star Swarm asset credits (#2492)", () => {
     expect(unsourced).toEqual([]);
   });
 
-  it("every Cascade sound has an entry in SOUND_CREDITS.md, cascade-combo.ogg included (#3526)", () => {
+  it("every Cascade sound has an entry in SOUND_CREDITS.md naming its generator (#3702)", () => {
     const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
     const cascade = fs.readdirSync(SOUNDS).filter((f) => f.startsWith("cascade-"));
-    expect(cascade).toContain("cascade-combo.ogg");
-    expect(cascade.filter((f) => !credits.includes(`### ${f}`))).toEqual([]);
+    expect(cascade).toHaveLength(42); // 21 per piece set
+    // The Kenney files are gone, with their entries (#3702).
+    for (const old of ["cascade-combo.ogg", "cascade-fruit-merge.ogg", "cascade-game-over.ogg"]) {
+      expect(cascade).not.toContain(old);
+      expect(credits).not.toContain(`### ${old}`);
+    }
+    for (const f of cascade) {
+      const at = credits.indexOf(`### ${f}\n`);
+      expect(at).toBeGreaterThanOrEqual(0);
+      const end = credits.indexOf("\n### ", at + 1);
+      const section = credits.slice(at, end === -1 ? undefined : end);
+      expect(section).toMatch(/Original sound, synthesized in-house/);
+      expect(section).toContain("tools/assets/synth_cascade_sfx.py");
+    }
   });
 
   it("no sound is left marked as unconfirmed provenance", () => {

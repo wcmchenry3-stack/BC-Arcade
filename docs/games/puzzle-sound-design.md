@@ -1,6 +1,6 @@
 # Puzzle, tile and dice games sound design log (#3578)
 
-This log explains why each sound effect in Sort, 2048, Yacht, Daily Word, Sudoku and Mahjong sounds the way it does: the owner's brief, the options auditioned, what was picked and why, and the feedback that shaped it. The card games (Blackjack, Solitaire, FreeCell, Hearts) have their own log, [`arcade-sound-design.md`](arcade-sound-design.md) (#3563), and Star Swarm has [`starswarm-sound-design.md`](starswarm-sound-design.md) (#3560). Cascade and Mahjong's background music are out of scope.
+This log explains why each sound effect in Sort, 2048, Yacht, Daily Word, Sudoku and Mahjong sounds the way it does: the owner's brief, the options auditioned, what was picked and why, and the feedback that shaped it. The card games (Blackjack, Solitaire, FreeCell, Hearts) have their own log, [`arcade-sound-design.md`](arcade-sound-design.md) (#3563), and Star Swarm has [`starswarm-sound-design.md`](starswarm-sound-design.md) (#3560). Cascade has its own log, [`cascade-sound-design.md`](cascade-sound-design.md) (#3702). Mahjong's background music is out of scope.
 
 The **recipes** live in `tools/assets/synth_puzzle_sfx.py`, with the shared building blocks in `tools/assets/synth_common.py`. Each file's credit and one-line recipe is in `frontend/assets/sounds/SOUND_CREDITS.md`. This log keeps the **reasoning**. Add an entry for every sound you change.
 
@@ -246,13 +246,13 @@ Six files where there were two: 18,437 B more, for variations on the two sounds 
 - **Found in the audition: a reopen bug (fixed).** Reopening a saved game replayed its last swipe's merge and spawn, on `dev` too: a save keeps the tiles' `isMerge`/`isNew` flags (only the events are cleared), and the tile-sound effect also ran when the screen opened. The screen now remembers the tiles a restored game opens with and skips them; a fresh deal still plays its spawn. Owner-approved; `Twenty48Screen.sound.test.tsx` covers both cases.
 - **Cleanup.** Deleted the stale `twenty48-win.mp3` and `twenty48-game-over.ogg` credit entries (files that never shipped).
 
-| File                                 | Old                      | New size           | Length               |
-| ------------------------------------ | ------------------------ | ------------------ | -------------------- |
-| `hearts-moon-shot.mp3` (2048's use)  | 313.5 KB, shared, stays  | —                  | 10.0 s               |
-| `cascade-game-over.ogg` (2048's use) | 6.0 KB, Cascade's, stays | —                  | 0.31 s               |
-| `win-2048.ogg`                       | —                        | 26.4 KB            | 3.1 s (rings ~2.7 s) |
-| `game-over-2048.ogg`                 | —                        | 17.3 KB            | 2.0 s (rings ~1.5 s) |
-| **Total**                            | —                        | 43.7 KB (44,757 B) |                      |
+| File                                 | Old                                  | New size           | Length               |
+| ------------------------------------ | ------------------------------------ | ------------------ | -------------------- |
+| `hearts-moon-shot.mp3` (2048's use)  | 313.5 KB, shared, stays              | —                  | 10.0 s               |
+| `cascade-game-over.ogg` (2048's use) | 6.0 KB, Cascade's (deleted in #3702) | —                  | 0.31 s               |
+| `win-2048.ogg`                       | —                                    | 26.4 KB            | 3.1 s (rings ~2.7 s) |
+| `game-over-2048.ogg`                 | —                                    | 17.3 KB            | 2.0 s (rings ~1.5 s) |
+| **Total**                            | —                                    | 43.7 KB (44,757 B) |                      |
 
 Sizes and lengths as first shipped; #3690 below re-timed both (win 2.6 s, 22.0 KB; game over 2.1 s, 17.1 KB). Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
 
@@ -344,13 +344,13 @@ Six files where there were two: 19,910 B more, for variations on the two sounds 
 - **Gameplay audition.** A four-tile board cleared in two matches (bells over the sparks, the stroke at 1.45 s as the "You Win!" card appears), then a board with no shuffles left where the last match leaves no free pair (the muted gong with the shake, the bell as "You Lose" appears at 0.5 s). Approved.
 - **Why it works.** The "real tiles" set gets one ceremonial voice for its two endings: the same gong, bright and with bells for a win, muted with a single falling bell when stuck. Mahjong now sounds like itself rather than borrowing the card games' fanfare.
 
-| File                                    | Old                      | New size           | Length |
-| --------------------------------------- | ------------------------ | ------------------ | ------ |
-| `hearts-moon-shot.mp3` (Mahjong's use)  | 313.5 KB, shared, stays  | —                  | 10.0 s |
-| `cascade-game-over.ogg` (Mahjong's use) | 6.0 KB, Cascade's, stays | —                  | 0.31 s |
-| `mahjong-win.ogg`                       | —                        | 27.0 KB            | 3.4 s  |
-| `mahjong-deadlock.ogg`                  | —                        | 16.2 KB            | 1.9 s  |
-| **Total**                               | —                        | 43.2 KB (44,222 B) |        |
+| File                                    | Old                                  | New size           | Length |
+| --------------------------------------- | ------------------------------------ | ------------------ | ------ |
+| `hearts-moon-shot.mp3` (Mahjong's use)  | 313.5 KB, shared, stays              | —                  | 10.0 s |
+| `cascade-game-over.ogg` (Mahjong's use) | 6.0 KB, Cascade's (deleted in #3702) | —                  | 0.31 s |
+| `mahjong-win.ogg`                       | —                                    | 27.0 KB            | 3.4 s  |
+| `mahjong-deadlock.ogg`                  | —                                    | 16.2 KB            | 1.9 s  |
+| **Total**                               | —                                    | 43.2 KB (44,222 B) |        |
 
 Adds 44,222 B now; nothing is deleted, since both old files are shared. Mahjong no longer uses the fanfare; it goes once Sudoku, Daily Word and the card games stop using it.
 
@@ -520,7 +520,7 @@ Adds 57,389 B now; nothing is deleted.
 
 | File                            | Old size                   | New size             | Old length | New length |
 | ------------------------------- | -------------------------- | -------------------- | ---------- | ---------- |
-| `cascade-fruit-merge.ogg`       | 5,910 B, Cascade's, stays  | — (Sort's use only)  | 0.55 s     | —          |
+| `cascade-fruit-merge.ogg`       | 5,910 B, deleted in #3702  | — (Sort's use only)  | 0.55 s     | —          |
 | `freecell-game-win.mp3`         | 87,960 B, deleted in #3871 | — (Sort's use only)  | 10.56 s    | —          |
 | `sort-select-1/2/3.ogg`         | —                          | 14.5 KB (14,882 B)   | —          | 0.12 s     |
 | `sort-pour-lift-1/2/3.ogg`      | —                          | 17.3 KB (17,708 B)   | —          | 0.2 s      |
@@ -535,7 +535,7 @@ Adds 57,389 B now; nothing is deleted.
 | `sort-win.ogg`                  | —                          | 16.3 KB (16,676 B)   | —          | 2.0 s      |
 | **Sort's total**                | 91.7 KB (93,870 B)         | 249.5 KB (255,508 B) |            |            |
 
-Twenty-three files added, none removed: Sort's sound files grow by 161,638 B (the twelve streams are 179,126 B; the three glug files this replaced, 23,921 B, never shipped), and its two borrowed files (one of them the 10.56 s fanfare) are no longer played. No single file is over 50 KB (the largest is the 4-unit stream, variation 2, at 20,927 B; a 4-unit set of three is 59.3 KB). `cascade-fruit-merge.ogg` stays for Cascade. `freecell-game-win.mp3` is no longer used by any game (FreeCell moved to synthesized sounds in #3563), so it is no longer bundled; the owner had it deleted in #3871, together with its CC BY credit (see the rights audit).
+Twenty-three files added, none removed: Sort's sound files grow by 161,638 B (the twelve streams are 179,126 B; the three glug files this replaced, 23,921 B, never shipped), and its two borrowed files (one of them the 10.56 s fanfare) are no longer played. No single file is over 50 KB (the largest is the 4-unit stream, variation 2, at 20,927 B; a 4-unit set of three is 59.3 KB). `cascade-fruit-merge.ogg` stayed for Cascade until #3702 replaced it. `freecell-game-win.mp3` is no longer used by any game (FreeCell moved to synthesized sounds in #3563), so it is no longer bundled; the owner had it deleted in #3871, together with its CC BY credit (see the rights audit).
 
 ### Sudoku sounds (#3775)
 

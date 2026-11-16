@@ -148,6 +148,26 @@ export const MOTION = {
     /** The danger warning fires once when the count passes this ratio. */
     dangerAt: 0.5,
   },
+  /**
+   * Sound pacing (#3702, `soundPacer.ts`). The files are cut to the moments above: the merge and
+   * chain sounds to `merge` and `chain.stepMs`, the danger tick to the blink (one per on-beat,
+   * shorter than `danger.fastMs`), the game over's chord to `gameOver.cardAtMs` and the win's to
+   * the celebration's card (`CELEBRATION_CARD_MS`).
+   */
+  sound: {
+    /** Landings within this of the last one are one sound: the highest tier among them. */
+    landGapMs: 60,
+    /** Landing volume: `landVolume0` at tier 0, rising to 1 at the capstone. */
+    landVolume0: 0.6,
+    /** Tiers from here up land with the heavy file. */
+    heavyLandTier: 5,
+    /** Danger tick volume: `dangerVolume0` as the count starts, rising to 1 at its end. */
+    dangerVolume0: 0.45,
+    /** At most this many merges (a chain link's merge and step are one) wait; more are dropped. */
+    maxQueued: 6,
+    /** A merge of the same tier due within this of the last one is skipped (one sound, no flam). */
+    sameMergeMs: 30,
+  },
   /** The motion clock never moves more than this per frame (a stalled frame only delays it). */
   maxFrameStepMs: 34,
 } as const;

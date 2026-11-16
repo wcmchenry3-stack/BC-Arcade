@@ -6,7 +6,7 @@
 import { act, renderHook } from "@testing-library/react-native";
 import { useBoardMotion } from "../useBoardMotion";
 import * as Reanimated from "react-native-reanimated";
-import { DANGER_IDLE_PHASE, MOTION } from "../../../game/cascade/motion";
+import { DANGER_IDLE_PHASE, MOTION, dangerBlinkOn } from "../../../game/cascade/motion";
 import { MOTION_KIND, slotAge } from "../../../game/cascade/motionLog";
 
 beforeEach(() => jest.useFakeTimers());
@@ -113,4 +113,70 @@ it("a new game clears every moment", async () => {
   await act(async () => result.current.clear());
   expect(Array.from(result.current.values.events.value).every((v) => v === 0)).toBe(true);
   expect(result.current.values.danger.value).toBe(0);
+});
+
+// #3702 review S1: the danger tick takes its time from this callback, so the tick and the blink
+// share one phase. Driven frame by frame with uneven frames, a stall and a pause.
+describe("danger onsets (the tick's clock, #3702)", () => {
+  /** Mounts with the frame callback captured, so the test runs each frame itself. */
+  async function mountCaptured(reduceMotion = false) {
+    let step: ((info: { timeSincePreviousFrame: number | null }) => void) | null = null;
+    const spy = jest.spyOn(Reanimated, "useFrameCallback").mockImplementation((cb) => {
+      step = cb as never;
+      return { setActive: jest.fn(), isActive: true, callbackId: 1 };
+    });
+    const onset = jest.fn();
+    const view = await renderHook((p: { rm: boolean }) => useBoardMotion(p.rm, onset), {
+      initialProps: { rm: reduceMotion },
+    });
+    const frame = (dt: number | null) => step!({ timeSincePreviousFrame: dt });
+    return { view, onset, frame, spy };
+  }
+
+  it("fire exactly when the board's blink starts an on-beat, with uneven frames and a stall", async () => {
+    const { view, onset, frame, spy } = await mountCaptured();
+    await act(async () => view.result.current.setDanger(0.6));
+    const { dangerPhase } = view.result.current.values;
+    // Uneven frames, a 600 ms stall (clamped by the board, as the blink is) and a null dt.
+    const dts = [16, 8, 33, 16, 600, 16, 50, null, 16, 12, 16, 400, 16];
+    let onBeats = 0;
+    for (let i = 0; i < 400; i++) {
+      const before = dangerPhase.value;
+      onset.mockClear();
+      frame(dts[i % dts.length]!);
+      const startedOnBeat = !dangerBlinkOn(before) && dangerBlinkOn(dangerPhase.value);
+      expect(onset.mock.calls.length).toBe(startedOnBeat ? 1 : 0);
+      if (startedOnBeat) onBeats++;
+    }
+    expect(onBeats).toBeGreaterThan(5);
+    spy.mockRestore();
+  });
+
+  it("a paused count finishes its beat silently, and the next onset follows the blink", async () => {
+    const { view, onset, frame, spy } = await mountCaptured();
+    await act(async () => view.result.current.setDanger(1));
+    for (let i = 0; i < 30; i++) frame(16);
+    const before = onset.mock.calls.length;
+    await act(async () => view.result.current.setDanger(0));
+    for (let i = 0; i < 100; i++) frame(16);
+    expect(onset.mock.calls.length).toBe(before);
+    await act(async () => view.result.current.setDanger(1));
+    const { dangerPhase } = view.result.current.values;
+    let fired = false;
+    for (let i = 0; i < 40 && !fired; i++) {
+      frame(16);
+      fired = onset.mock.calls.length > before;
+      if (fired) expect(dangerBlinkOn(dangerPhase.value)).toBe(true);
+    }
+    expect(fired).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("never fire under Reduce Motion (there is no blink)", async () => {
+    const { view, onset, frame, spy } = await mountCaptured(true);
+    await act(async () => view.result.current.setDanger(1));
+    for (let i = 0; i < 200; i++) frame(16);
+    expect(onset).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
 });

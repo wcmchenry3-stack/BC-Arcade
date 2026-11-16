@@ -956,7 +956,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds game-over-2048`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 2.1 s (rings ~2.0 s): a last wooden tile clack at 100 ms as the move lands, a gentle falling mallet line (G5 E5 D5 C5, 100 ms apart from 200 ms) over the board's dim and shake, settling on a soft low A minor chord (A4 C5 E5) at 0.6 s as the result card shows (#3690); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
+- **Recipe:** 2.1 s (rings ~2.0 s): a last wooden tile clack at 100 ms as the move lands, a gentle falling mallet line (G5 E5 D5 C5, 100 ms apart from 200 ms) over the board's dim and shake, settling on a soft low A minor chord (A4 C5 E5) at 0.6 s as the result card shows (#3690); gentle, not a punishment. Replaced 2048's use of `cascade-game-over.ogg` (Kenney Digital Audio); the file was deleted with Cascade's own sounds (#3702).
 
 ### mahjong-select-1.ogg
 
@@ -1028,7 +1028,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3578). No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds mahjong-deadlock`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 1.9 s "gong and bells": a muted gong (F4) with the board shake, then one soft falling bell (E5, then C5) as the result card shows at 0.5 s; gentle, not a punishment. Replaced Mahjong's use of `cascade-game-over.ogg` (Kenney Digital Audio), which Cascade keeps.
+- **Recipe:** 1.9 s "gong and bells": a muted gong (F4) with the board shake, then one soft falling bell (E5, then C5) as the result card shows at 0.5 s; gentle, not a punishment. Replaced Mahjong's use of `cascade-game-over.ogg` (Kenney Digital Audio); the file was deleted with Cascade's own sounds (#3702).
 
 ### daily-word-miss-1.ogg
 
@@ -1180,7 +1180,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-1`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-lift-2.ogg
 
@@ -1188,7 +1188,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-2`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-lift-3.ogg
 
@@ -1196,7 +1196,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from noise, inharmonic sine partials, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-lift-3`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.2 s "glass and water": a faint glass touch (1.9 kHz ping and a soft tick), then a soft rising puff of air (0.5-2.4 kHz) as the bottle leaves the shelf; the quietest sound of the set. Three variations as the select. Replaces the start of `cascade-fruit-merge.ogg` as Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-1u-1.ogg
 
@@ -1204,7 +1204,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-1u-2.ogg
 
@@ -1212,7 +1212,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-1u-3.ogg
 
@@ -1220,7 +1220,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-1u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.48 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-2u-1.ogg
 
@@ -1228,7 +1228,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-2u-2.ogg
 
@@ -1236,7 +1236,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-2u-3.ogg
 
@@ -1244,7 +1244,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-2u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 0.78 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-3u-1.ogg
 
@@ -1252,7 +1252,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-3u-2.ogg
 
@@ -1260,7 +1260,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-3u-3.ogg
 
@@ -1268,7 +1268,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-3u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 1.08 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-4u-1.ogg
 
@@ -1276,7 +1276,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-1`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-4u-2.ogg
 
@@ -1284,7 +1284,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-2`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-pour-stream-4u-3.ogg
 
@@ -1292,7 +1292,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3661, under #3578). No samples or third-party audio: built from damped sinusoids (a physical bubble model), noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_puzzle_sfx.py` (`python tools/assets/synth_puzzle_sfx.py frontend/assets/sounds sort-pour-stream-4u-3`), fixed seeds (1000 + 100 x units + variation), so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
-- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (Cascade keeps the file).
+- **Recipe:** 1.38 s "glass and water", "stream4 A": liquid poured into a glass bottle, after van den Doel's bubble model. A Poisson stream of about 1,400 bubbles a second, each a damped sinusoid at the Minnaert frequency with a rising chirp, radii 0.5-4 mm (power law r^-2.5, about 0.8-6.5 kHz), shrinking 0.20 octave per unit as the destination fills (the pitch rises), over a light impact tap (-26 dB). The stream runs 0.3 s per unit plus a 0.18 s tail. No slow amplitude or formant modulation. Replaces the part of `cascade-fruit-merge.ogg` that was Sort's pour sound (the file was deleted with Cascade's own sounds, #3702).
 
 ### sort-refused.ogg
 
@@ -1336,47 +1336,345 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 
 ---
 
-## Cascade (#834)
+## Cascade: synthesized sounds, one set per piece set (#3702)
 
-### cascade-fruit-merge.ogg
+Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/assets/synth_cascade_sfx.py` (no samples, no third-party audio): one set of 21 per piece set, switched with the Fruits / Cosmos toggle. Fruits plays "Juicy pops", Cosmos "Starlight glass" (owner picks, 2026-11-16). They replaced the three Kenney Digital Audio files (`cascade-fruit-merge.ogg`, `cascade-combo.ogg`, `cascade-game-over.ogg`), deleted in #3702. The reasoning behind each sound is in `docs/games/cascade-sound-design.md`.
 
-- **Event:** Two same-tier fruits merge (tier-scaled playback volume: louder at higher tiers)
-- **Original filename:** `tile-move.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Satisfying merge thud. Volume scales from 0.35 (tier 0) to 1.0 (tier 10) to reward higher-tier merges.
-- **Status (#3661):** Cascade only: Bottle Sort moved to its own synthesized pour sounds.
+### cascade-fruits-drop.ogg
 
-### cascade-combo.ogg
+- **Event:** Cascade, Fruits pieces: a piece dropped from the spawner (every turn) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-drop`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.1 s: one bubble "plip" (a Minnaert bubble, a damped sine whose pitch rises as it closes, after van den Doel; 520 Hz, 22 ms).
 
-- **Event:** Chain of 3+ consecutive merge steps (cascadeCombo event)
-- **Original filename:** Kenney Digital Audio, embedded `TITLE=twotone` — likely `twoTone1.ogg` or `twoTone2.ogg`, exact pack filename unconfirmed. Byte-identical to the audio Star Swarm shipped as `starswarm-waveclear.ogg` (and `starswarm-powerup-lightning.ogg`) before #3526
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** not recorded — in the repo since the original Star Swarm audio (#803/#863, on or before 2026-04-26); the shallow clone can't recover more. CC0 terms don't change retroactively.
-- **Notes:** Escalating whoosh/clear sting fired once when a combo chain crosses the 3-merge threshold. Split off as Cascade's own file in #3526 (it used to share `starswarm-waveclear.ogg`, which Star Swarm replaced).
+### cascade-fruits-land-light.ogg
 
-### cascade-game-over.ogg
+- **Event:** Cascade, Fruits pieces: a piece's first contact, tiers 0-4 (volume rises with the tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-land-light`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.18 s squish: a 170 Hz sine bending down 40 % (35 ms) and a short low-passed noise splat (1.8 kHz, 12 ms).
 
-- **Event:** Game over (fruit crosses the danger line after grace period)
-- **Original filename:** `phaserDown2.ogg` from Kenney Digital Audio
-- **Source URL:** https://kenney.nl/assets/digital-audio
-- **Creator:** Kenney Vleugels (Kenney.nl)
-- **License:** Creative Commons Zero (CC0)
-- **License URL:** https://creativecommons.org/publicdomain/zero/1.0/
-- **Attribution required:** No
-- **Commercial use:** Yes
-- **Download date:** 2026-04-26
-- **Notes:** Descending game-over tone.
+### cascade-fruits-land-heavy.ogg
+
+- **Event:** Cascade, Fruits pieces: a piece's first contact, tiers 5-10 (volume rises with the tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-land-heavy`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.28 s squish: a 90 Hz sine bending down 40 % (75 ms), a short low-passed noise splat (0.9 kHz, 12 ms) and five tiny bubbles.
+
+### cascade-fruits-merge-t0.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-0 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t0`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.35 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at G4 (a G4 pentatonic ladder).
+
+### cascade-fruits-merge-t1.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-1 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.38 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at A4 (a G4 pentatonic ladder).
+
+### cascade-fruits-merge-t2.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-2 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.40 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at B4 (a G4 pentatonic ladder).
+
+### cascade-fruits-merge-t3.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-3 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.43 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at D5 (a G4 pentatonic ladder).
+
+### cascade-fruits-merge-t4.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-4 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t4`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.45 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at E5 (a G4 pentatonic ladder).
+
+### cascade-fruits-merge-t5.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-5 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t5`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.47 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at G5 (a G4 pentatonic ladder); a fizz of 9 tiny bubbles (1.5-3.2 kHz).
+
+### cascade-fruits-merge-t6.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-6 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t6`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.50 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at A5 (a G4 pentatonic ladder); a fizz of 10 tiny bubbles (1.5-3.2 kHz).
+
+### cascade-fruits-merge-t7.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-7 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t7`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.53 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at B5 (a G4 pentatonic ladder); a fizz of 11 tiny bubbles (1.5-3.2 kHz).
+
+### cascade-fruits-merge-t8.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-8 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t8`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.55 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at D6 (a G4 pentatonic ladder); a fizz of 12 tiny bubbles (1.5-3.2 kHz); an octave pluck.
+
+### cascade-fruits-merge-t9.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-9 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t9`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.58 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at E6 (a G4 pentatonic ladder); a fizz of 13 tiny bubbles (1.5-3.2 kHz); an octave pluck.
+
+### cascade-fruits-merge-t10.ogg
+
+- **Event:** Cascade, Fruits pieces: two pieces merge into a tier-10 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t10`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.60 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at G6 (a G4 pentatonic ladder); a fizz of 14 tiny bubbles (1.5-3.2 kHz); an octave pluck.
+
+### cascade-fruits-chain-1.ogg
+
+- **Event:** Cascade, Fruits pieces: chain step 1 of a drop's chain (steps paced 80 ms apart) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-chain-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.14 s rising double blip: two bubbles a fourth apart, 35 ms apart, from 786 Hz.
+
+### cascade-fruits-chain-2.ogg
+
+- **Event:** Cascade, Fruits pieces: chain step 2 of a drop's chain (steps paced 80 ms apart) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-chain-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.14 s rising double blip: two bubbles a fourth apart, 35 ms apart, from 882 Hz.
+
+### cascade-fruits-chain-3.ogg
+
+- **Event:** Cascade, Fruits pieces: chain step 3 of a drop's chain (steps paced 80 ms apart) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-chain-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.14 s rising double blip: two bubbles a fourth apart, 35 ms apart, from 1049 Hz.
+
+### cascade-fruits-chain-4.ogg
+
+- **Event:** Cascade, Fruits pieces: chain step 4 of a drop's chain (steps paced 80 ms apart; later steps replay it) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-chain-4`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.14 s rising double blip: two bubbles a fourth apart, 35 ms apart, from 1177 Hz.
+
+### cascade-fruits-danger.ogg
+
+- **Event:** Cascade, Fruits pieces: one tick per on-beat of the lid's danger blink (at most 3 a second; louder as the count runs out) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-danger`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.26 s low "bloop-bloop" heartbeat: two 125 Hz sines bending down, 110 ms apart, the second at 70 %.
+
+### cascade-fruits-win.ogg
+
+- **Event:** Cascade, Fruits pieces: the winning merge (the capstone): plays with the celebration, its chord as the win card shows at 2.1 s (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.7 s: a bubble at 0, a 9-note plucked run G4-B5 over the capstone's rise (0.40-0.85 s), a fizz of 70 bubbles rising in pitch and level over the twinkles (0.70-1.90 s), then a big pop and a strummed G4 B4 D5 G5 C6 pluck chord at 2.1 s as the card shows.
+
+### cascade-fruits-game-over.ogg
+
+- **Event:** Cascade, Fruits pieces: game over at the lid: plays with the dim and the lid's flashes, its chord as the loss card shows at 1.0 s (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-game-over`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 1.9 s: a deflating balloon (a sine sliding 520-130 Hz over 0.8 s with a 7 Hz wobble), falling D5 B4 G4 plucks, then a soft low A minor pluck chord (A3 C4 E4) at 1.0 s as the card shows.
+
+### cascade-cosmos-drop.ogg
+
+- **Event:** Cascade, Cosmos pieces: a piece dropped from the spawner (every turn) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-drop`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.12 s two-note glass twinkle: G7, then C8 25 ms later (glass bells: a sine plus inharmonic x2.76 and x5.4 partials).
+
+### cascade-cosmos-land-light.ogg
+
+- **Event:** Cascade, Cosmos pieces: a piece's first contact, tiers 0-4 (volume rises with the tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-land-light`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.22 s: a sub "whumf" (a 100 Hz sine dropping an octave, 50 ms), a short noise thud and a faint muffled G6 glass ring.
+
+### cascade-cosmos-land-heavy.ogg
+
+- **Event:** Cascade, Cosmos pieces: a piece's first contact, tiers 5-10 (volume rises with the tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-land-heavy`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.32 s: a sub "whumf" (a 65 Hz sine dropping an octave, 90 ms), a short dark noise thud and a faint muffled G5 glass ring.
+
+### cascade-cosmos-merge-t0.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-0 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t0`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.37 s: a soft glass tick and a glass bell at C5 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight).
+
+### cascade-cosmos-merge-t1.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-1 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.40 s: a soft glass tick and a glass bell at D5 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight).
+
+### cascade-cosmos-merge-t2.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-2 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.43 s: a soft glass tick and a glass bell at E5 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight).
+
+### cascade-cosmos-merge-t3.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-3 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.46 s: a soft glass tick and a glass bell at G5 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight).
+
+### cascade-cosmos-merge-t4.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-4 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t4`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.49 s: a soft glass tick and a glass bell at A5 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight).
+
+### cascade-cosmos-merge-t5.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-5 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t5`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.52 s: a soft glass tick and a glass bell at C6 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight).
+
+### cascade-cosmos-merge-t6.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-6 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t6`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.55 s: a soft glass tick and a glass bell at D6 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight).
+
+### cascade-cosmos-merge-t7.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-7 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t7`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.58 s: a soft glass tick and a glass bell at E6 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight).
+
+### cascade-cosmos-merge-t8.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-8 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t8`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.61 s: a soft glass tick and a glass bell at G6 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight); a slow-beating shimmer an octave up (two sines 4 Hz apart).
+
+### cascade-cosmos-merge-t9.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-9 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t9`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.64 s: a soft glass tick and a glass bell at A6 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight); a slow-beating shimmer an octave up (two sines 4 Hz apart).
+
+### cascade-cosmos-merge-t10.ogg
+
+- **Event:** Cascade, Cosmos pieces: two pieces merge into a tier-10 piece (one pre-pitched file per tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t10`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.67 s: a soft glass tick and a glass bell at C7 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight); a slow-beating shimmer an octave up (two sines 4 Hz apart).
+
+### cascade-cosmos-chain-1.ogg
+
+- **Event:** Cascade, Cosmos pieces: chain step 1 of a drop's chain (steps paced 80 ms apart) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-chain-1`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s crystal ping at C7 with a 50 ms echo.
+
+### cascade-cosmos-chain-2.ogg
+
+- **Event:** Cascade, Cosmos pieces: chain step 2 of a drop's chain (steps paced 80 ms apart) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-chain-2`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s crystal ping at D7 with a 50 ms echo.
+
+### cascade-cosmos-chain-3.ogg
+
+- **Event:** Cascade, Cosmos pieces: chain step 3 of a drop's chain (steps paced 80 ms apart) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-chain-3`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s crystal ping at E7 with a 50 ms echo.
+
+### cascade-cosmos-chain-4.ogg
+
+- **Event:** Cascade, Cosmos pieces: chain step 4 of a drop's chain (steps paced 80 ms apart; later steps replay it) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-chain-4`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.2 s crystal ping at G7 with a 50 ms echo.
+
+### cascade-cosmos-danger.ogg
+
+- **Event:** Cascade, Cosmos pieces: one tick per on-beat of the lid's danger blink (at most 3 a second; louder as the count runs out) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-danger`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.3 s: a low A4 glass bell beating against Bb4, over a 110 Hz sub pulse: quiet and uneasy.
+
+### cascade-cosmos-win.ogg
+
+- **Event:** Cascade, Cosmos pieces: the winning merge (the capstone): plays with the celebration, its chord as the win card shows at 2.1 s (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-win`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.8 s: a deep detuned pad (C3 G3 E4) from 0.2 s, a 9-note glass run C6-G7 over the capstone's rise (0.40-0.85 s), 16 random pentatonic glints over the twinkles, a held C6 shimmer, then a bright C6 E6 G6 C7 glass chord with a low C4 bell and a sub thump at 2.1 s as the card shows.
+
+### cascade-cosmos-game-over.ogg
+
+- **Event:** Cascade, Cosmos pieces: game over at the lid: plays with the dim and the lid's flashes, its chord as the loss card shows at 1.0 s (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-game-over`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 2.0 s: a dark low drone (A2 E3), falling glass G6 E6 D6 C6 (from 0.18 s, 170 ms apart), then a dim A minor glass chord (A4 C5 E5, 3 kHz low-pass) and a sub thump at 1.0 s as the card shows.
 
 ---
 
