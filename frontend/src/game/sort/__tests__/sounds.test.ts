@@ -58,10 +58,10 @@ describe("Sort sound registry", () => {
     );
   });
 
-  it("no longer borrows Cascade's file (it stays for Cascade)", () => {
+  it("no longer borrows Cascade's old file (deleted with Cascade's own sounds, #3702)", () => {
     expect(SOURCE).not.toContain("cascade-fruit-merge");
     expect(SOURCE).not.toContain("freecell-game-win");
-    expect(fs.existsSync(path.join(SOUNDS_DIR, "cascade-fruit-merge.ogg"))).toBe(true);
+    expect(fs.existsSync(path.join(SOUNDS_DIR, "cascade-fruit-merge.ogg"))).toBe(false);
   });
 
   it("has one stream per unit count 1 to 4, three variations each", () => {

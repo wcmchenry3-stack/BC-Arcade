@@ -24,11 +24,11 @@
  *      first: `CascadeCelebration` animates `celebrationClock`, the board draws it, then the card.
  *      The score is the merge score plus a win's time bonus (`game/cascade/timeBonus.ts`, #3700),
  *      sent in the result block (`game/cascade/resultBlock.ts`); the server recomputes it.
- *   8. Audio, motion and haptics: tier-scaled merge sound (`useTieredMergeSound`), game-over
- *      sound, merge bursts (`components/cascade/MergeBurst`; skipped under reduce motion, and for
- *      the winning merge, which the celebration replaces). #3701: the engine's land / merge /
- *      drop moments and the game over go to the board's motion (`useBoardMotion`, drawn on the
- *      UI thread) and to the paced haptics (`game/cascade/haptics.ts`); the loss card waits for
+ *   8. Audio, motion and haptics: merge bursts (`components/cascade/MergeBurst`; skipped under
+ *      reduce motion, and for the winning merge, which the celebration replaces). #3701: the
+ *      engine's land / merge / drop moments and the game over go to the board's motion
+ *      (`useBoardMotion`, drawn on the UI thread), the paced haptics (`game/cascade/haptics.ts`)
+ *      and the piece set's paced sounds (`useCascadeSounds`, #3702); the loss card waits for
  *      the game-over sequence (`useLossCard`). All timings: `game/cascade/motion.ts`.
  *   9. The lid (#3694): the engine decides game over; the board draws the lid line, the
  *      spawner's clock ring from `dangerRatio`, the red wash on pieces over the lid, and the
@@ -72,7 +72,7 @@ import { PieceQueue, advanceQueue, makeQueue } from "../game/cascade/pieceQueue"
 import { NO_PIECES, useBoardFrame } from "../game/cascade/useBoardFrame";
 import { useCascadeSave } from "../game/cascade/useCascadeSave";
 import { createScoreStore } from "../game/cascade/scoreStore";
-import { useTieredMergeSound } from "../game/cascade/useTieredMergeSound";
+import { useCascadeSounds } from "../game/cascade/useCascadeSounds";
 import { createLoopGate } from "../game/cascade/winTail";
 import { recordLoopFrame } from "../game/starswarm/render/frameStats";
 import { FRAME_STATS_ENABLED, useFrameReadout } from "../game/cascade/useFrameReadout";
@@ -89,8 +89,6 @@ import CascadeResultModal, {
 import { CASCADE_LID_PALETTE } from "../theme/theme.cascade";
 import { useGameRank } from "../game/_shared/useGameRank";
 import { clearGame as clearCascadeGame } from "../game/cascade/storage";
-import { useSound } from "../game/_shared/useSound";
-import { CASCADE_SOUNDS } from "../game/cascade/sounds";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 import { useBoardMotion } from "../components/cascade/useBoardMotion";
 import { useLossCard } from "../components/cascade/useLossCard";
@@ -160,9 +158,7 @@ function CascadeGame() {
   const chainLinkRef = useRef(0);
   const [drops, setDrops] = useState(0);
 
-  // Sounds
-  const playFruitMerge = useTieredMergeSound();
-  const { play: playGameOver } = useSound("cascade.gameOver", CASCADE_SOUNDS);
+  const sounds = useCascadeSounds(activeFruitSet.id); // #3702: paced and quiet like the haptics
 
   const engineRef = useRef<CascadeEngine | null>(null);
   // Initialized lazily so queue and history come from the same makeQueue() call.
@@ -233,10 +229,11 @@ function CascadeGame() {
       setDrops((n) => n + 1);
       motion.push(MOTION_KIND.drop, 0, 0, tier, 0, 0);
       motion.publish();
+      sounds.drop();
       noteTier(tier); // the piece dropped: the first one starts the play clock (#3700)
       return tier;
     },
-    [motion, noteTier]
+    [motion, noteTier, sounds]
   );
 
   useEffect(() => {
@@ -293,6 +290,7 @@ function CascadeGame() {
       chainLinkRef.current = 0;
       motion.clear();
       haptics.reset();
+      sounds.reset();
       setGameKey((k) => k + 1);
       startInstrumentedSession(themeId);
     },
@@ -305,6 +303,7 @@ function CascadeGame() {
       celebrationClock,
       motion,
       haptics,
+      sounds,
       lastSaveTimeRef,
     ]
   );
@@ -363,24 +362,22 @@ function CascadeGame() {
     [lookupRank, judgeEnd]
   );
 
-  // `isWin`: the capstone was made (#3920). The engine reports no game over after a win, so the
-  // win ends the game here too: the session completes as a `win` (a `loss` at the lid, #3699),
-  // the best and the result are recorded and the save is cleared. The card waits for the
-  // celebration (`CascadeResultModal`).
-  /**
-   * The game ends: the clock stops first, so the session, the card and its 1 s delay (#3701,
-   * `useLossCard`) all read the same time and bonus; a loss dims the pile and flashes the lid.
-   */
+  // `isWin`: the capstone was made (#3920). The engine reports no game over after a win, so the win
+  // ends the game here too: the session completes as a `win` (a `loss` at the lid, #3699), the best
+  // and the result are recorded, the save is cleared, and the card waits for the celebration. The
+  // clock stops first, so the session, the card and its 1 s delay (#3701, `useLossCard`) all read
+  // the same time and bonus; a loss dims the pile and flashes the lid.
   const endPlay = useCallback(
     (isWin: boolean) => {
       gameOverRef.current = true;
       clock.stop();
       if (!isWin) haptics.reset(); // pulses still queued stop at a loss
+      (isWin ? sounds.win : sounds.gameOver)(); // a loss drops the merge sounds still waiting
       if (!isWin) motion.push(MOTION_KIND.gameOver, 0, 0, 0, 0, 0);
       motion.setDanger(0);
       motion.publish();
     },
-    [clock, motion, haptics]
+    [clock, motion, haptics, sounds]
   );
   const handleGameOver = useCallback(
     (isWin = false) => {
@@ -405,12 +402,12 @@ function CascadeGame() {
   const onMerge = (tier: FruitTier, x: number, y: number, id: number, quiet: boolean) => {
     handleMerge({ tier, x, y });
     noteTier(tier);
-    playFruitMerge(tier);
     // The winning merge has no burst, pop or pulse: the celebration replaces them (#3699).
     if (tier === CAPSTONE_TIER) return;
     const link = quiet ? (chainLinkRef.current = 0) + 1 : ++chainLinkRef.current;
     motion.push(MOTION_KIND.merge, x, y, tier, id, link);
     if (!quiet) haptics.merge(tier, link);
+    if (!quiet) sounds.merge(tier, link);
     const fruit = activeFruitSet.fruits[tier];
     if (!reduceMotion && fruit) {
       const { scale: s, offsetX, offsetY } = layoutRef.current;
@@ -433,6 +430,7 @@ function CascadeGame() {
       } else if (ev.type === "land") {
         motion.push(MOTION_KIND.land, ev.x, ev.y, ev.tier, ev.id, ev.speed);
         if (!quiet) haptics.land(ev.tier);
+        if (!quiet) sounds.land(ev.tier);
       } else if (ev.type === "gameOver" || ev.type === "win") {
         onGameOverRef.current(ev.type === "win"); // the win ends the game too (#3904, #3920)
       } else if (ev.type === "guardRailFired" && __DEV__) {
@@ -443,23 +441,18 @@ function CascadeGame() {
     motion.publish();
   };
 
-  onGameOverRef.current = (isWin = false) =>
-    isWin ? handleGameOver(true) : (playGameOver(), handleGameOver());
+  onGameOverRef.current = (isWin = false) => handleGameOver(isWin);
   // Lets the (mount-once) e2e test hook reach the latest showResult.
   const showResultRef = useRef(showResult);
   showResultRef.current = showResult;
 
-  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
-  // #2735) or the app going to the background (#2750) stops the loop below,
-  // so the physics and the reported duration count only play. The pause saves
-  // the board, so a kill while backgrounded keeps the play so far. Refs, not
-  // state: the loop effect below reads them every frame and must not be
-  // recreated when `navigation` re-renders (it isn't guaranteed to be a
-  // stable reference), only when `gameKey` changes.
-  //
-  // Set by the loop effect below to its own "start scheduling frames again";
-  // called on resume, which otherwise has no way to reach a `tick`/`rafId`
-  // recreated on every gameKey change.
+  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard, #2735) or the app going
+  // to the background (#2750) stops the loop below, so the physics and the reported duration count
+  // only play. The pause saves the board, so a kill while backgrounded keeps the play so far. Refs,
+  // not state: the loop effect reads them every frame and must not be recreated when `navigation`
+  // re-renders (not a guaranteed-stable reference), only when `gameKey` changes.
+  // `resumeLoopRef`: set by the loop effect to its own "start scheduling frames again"; called on
+  // resume, which otherwise cannot reach a `tick`/`rafId` recreated on every gameKey change.
   const resumeLoopRef = useRef<() => void>(() => {});
   const awayRef = usePauseWhileAway(
     navigation,
@@ -522,6 +515,7 @@ function CascadeGame() {
       const danger = gameOverRef.current ? 0 : state.dangerRatio;
       motion.setDanger(danger);
       if (!quiet) haptics.danger(danger);
+      sounds.danger(danger, delta, quiet); // ticks locked to the blink's phase (#3702)
 
       // No React state per frame (#2960): the score store notifies only on a new integer, and
       // the board is published to the shared value only when it draws something new.
@@ -550,7 +544,17 @@ function CascadeGame() {
       publishBoard(NO_PIECES);
       resumeLoopRef.current = () => {};
     };
-  }, [gameKey, awayRef, scoreStore, publishBoard, motion, haptics, engineStateRef, frameStatsRef]);
+  }, [
+    gameKey,
+    awayRef,
+    scoreStore,
+    publishBoard,
+    motion,
+    haptics,
+    sounds,
+    engineStateRef,
+    frameStatsRef,
+  ]);
 
   const handleTap = useCallback(
     (x: number | null) => {

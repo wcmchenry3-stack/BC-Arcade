@@ -1,6 +1,5 @@
 /** #2960: the score store notifies only when the integer score changes. */
 import { createScoreStore } from "../scoreStore";
-import { mergeVolume } from "../useTieredMergeSound";
 
 describe("createScoreStore", () => {
   it("notifies subscribers once per new integer, never for the same value", () => {
@@ -24,13 +23,5 @@ describe("createScoreStore", () => {
     store.set(6);
     expect(listener).not.toHaveBeenCalled();
     expect(store.get()).toBe(6);
-  });
-});
-
-describe("mergeVolume (moved with useTieredMergeSound, #2960)", () => {
-  it("is 0.35 at tier 0, rising evenly to 1 at the capstone (#3695; tier 10 since #3920)", () => {
-    expect(mergeVolume(0)).toBeCloseTo(0.35);
-    expect(mergeVolume(4)).toBeCloseTo(0.35 + (4 * 0.65) / 10);
-    expect(mergeVolume(10)).toBeCloseTo(1);
   });
 });

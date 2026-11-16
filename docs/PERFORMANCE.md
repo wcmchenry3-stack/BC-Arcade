@@ -369,7 +369,7 @@ Measured 2026-11-11 on `dev`, before the dead files were deleted. Part of epic #
 | `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Deleted in #3698                                                    |
 | `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Deleted in #3698                                                    |
 | `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Deleted in #3698                                                    |
-| `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Used; replaced by the sound story                                   |
+| `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Deleted in #3702 (42 synthesized files, 345,258 B, replace them)    |
 | **Cascade assets that shipped before #3698 (44 images + 3 sounds = 47 files)**                                           |                                          **1,322,143** | Now: 0 image bytes (#3698); sounds <= 120 KB budget                 |
 | Cascade JS, minified (`CascadeScreen` 14,945, `engine2` 5,650, `constants` 2,131, other modules and locale JSON ~11,464) |                                                 34,190 | Stays                                                               |
 | `matter-js` (`matter.js`, minified in the bundle)                                                                        |                                                 83,492 | Removed in #3697 (replaced by `planck`)                             |
@@ -389,10 +389,12 @@ Whole-bundle context (Android, `npx expo export --platform android`): store Herm
 | Part                                                              |                                      Budget |
 | ----------------------------------------------------------------- | ------------------------------------------: |
 | Piece art                                                         | <= 20 KB, drawing code only, no image files |
-| Sounds                                                            |                             <= 120 KB total |
+| Sounds                                                            |       <= 350 KB total (120 KB before #3702) |
 | Cascade total (assets + Cascade JS, excluding the physics engine) |                                   <= 200 KB |
 
 Before #3698: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 KB budget. After #3698 the art is code (17.4 KB minified, see [Cascade code-drawn art](#cascade-code-drawn-art-3698)) and the image bytes are zero; the sounds are what remains over budget until the sound story lands.
+
+**#3702: the owner raised the sound budget.** Cascade plays one full set of 21 synthesized sounds per piece set (Fruits and Cosmos), at the house encoding (44.1 kHz mono Vorbis q5): 182,373 B + 162,885 B = **345,258 B** for 42 files, against a 120 KB budget that one set at a lower encoding would have fitted. The owner chose two full sets at the house setting and raised the sound budget to about 345 KB (#3702, 2026-11-16), so the Cascade total is now about 380 KB with its JS, over the 200 KB line above by that decision. Every Ogg carries about 3.7 KB of fixed Vorbis header, so the 42 files cost about 155 KB before any audio. `src/game/cascade/__tests__/sounds.test.ts` fails if the Cascade sounds pass 350 KiB. Only the active set's players exist (frequent sounds at mount, rare ones on first play), so a game holds at most 21 players, 12 of them eager.
 
 **Guard.** `frontend/src/game/cascade/__tests__/assetBudget.test.ts` fails if `frontend/assets/` gains any Cascade image file or folder (the pinned list is empty since #3698), or if any of the files deleted in #3692 reappear. `scripts/check_large_files.py` (#2967) no longer grandfathers the two deleted source-art folders.
 

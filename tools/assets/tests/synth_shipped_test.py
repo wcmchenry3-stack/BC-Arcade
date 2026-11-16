@@ -1,7 +1,7 @@
 """The shipped sounds are what their generator recipes render now (#3672).
 
 Every in-house sound in `frontend/assets/sounds/` is made by `synth_starswarm_sfx.py`,
-`synth_arcade_sfx.py` or `synth_puzzle_sfx.py`. These tests fail when a recipe changes without the
+`synth_arcade_sfx.py`, `synth_puzzle_sfx.py` or `synth_cascade_sfx.py`. These tests fail when a recipe changes without the
 `.ogg` being regenerated, or an `.ogg` is replaced by hand.
 
 The comparison is on decoded samples, not encoded bytes: each recipe is rendered, encoded the way
@@ -31,6 +31,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import synth_arcade_sfx
+import synth_cascade_sfx
 import synth_puzzle_sfx
 import synth_starswarm_sfx
 from synth_common import SHIPPED_SOUNDS_DIR, write_ogg
@@ -69,6 +70,11 @@ GENERATORS = {
         synth_puzzle_sfx.SOUNDS,
         lambda name: f"{name}.ogg",
         _two_part(synth_puzzle_sfx),
+    ),
+    "synth_cascade_sfx.py": (
+        synth_cascade_sfx.SOUNDS,
+        lambda name: f"{name}.ogg",
+        _two_part(synth_cascade_sfx),
     ),
 }
 
