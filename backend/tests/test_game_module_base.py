@@ -106,7 +106,7 @@ def test_every_registered_module_subclasses_the_base(name: str) -> None:
 # Only these modules override a hook; everyone else inherits the defaults.
 _OVERRIDES = {
     "stats_shape": {"blackjack"},
-    "derive_final_score": {"blackjack"},
+    "derive_final_score": {"blackjack", "cascade"},  # cascade: the time bonus, #3700
     "reconcile_result": {"daily_word", "starswarm"},  # starswarm: #3510
 }
 

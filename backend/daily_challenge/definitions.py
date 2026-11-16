@@ -39,6 +39,8 @@ Fields the evaluators read, per game (the result each game must send):
                 — premium since 2026-09-23, so not in the free pool (see below)
     mahjong     won, pairs, duration_ms (column)       (MahjongResult)
                 — premium since 2026-09-24, so not in the free pool (see below)
+    cascade     won, max_tier, duration_ms (column)    (CascadeResult, #3700)
+                — no goals yet (#3703); "won within" applies its 20 s win floor
 
 Slates
 ------
@@ -70,6 +72,7 @@ from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from typing import Any, Literal
 
+from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from entitlements.service import DISABLED_GAMES
 from games.boards.editions import edition_switch_on
 from settings import Settings
@@ -182,12 +185,26 @@ def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
     return Goal(game_type, f"{measure}_at_least", target, tier, False, check, measure)
 
 
+# The lowest plausible value of a "won within" measure, per (game, measure): a
+# win under it is a broken clock or a forged result and never meets the goal.
+# Cascade's 20 s win floor (#3700), so a forged 1 s win can't pass #3703's
+# "win in under N minutes". Read when the goal is built, by every path that
+# builds one (the pools and ``goal_from_spec``), so a frozen day keeps it.
+_WON_WITHIN_FLOORS: dict[tuple[str, str], int] = {
+    ("cascade", "duration_ms"): CASCADE_MIN_WIN_MS,
+}
+
+
 def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
-    """Win while keeping a measure (moves, guesses, time) at or under ``limit``."""
+    """Win while keeping a measure (moves, guesses, time) at or under ``limit``
+    (and at or over its floor, where ``_WON_WITHIN_FLOORS`` names one)."""
+    floor = _WON_WITHIN_FLOORS.get((game_type, measure))
 
     def check(f: Facts) -> bool:
         value = _number(f, measure)
-        return f.get("won") is True and value is not None and value <= limit
+        if f.get("won") is not True or value is None or value > limit:
+            return False
+        return floor is None or value >= floor
 
     return Goal(game_type, f"won_{measure}_at_most", limit, tier, True, check)
 

@@ -1,0 +1,135 @@
+{
+  "_comment": "Cascade time-bonus parity fixtures (#3700): round(20000 x max(0, 1 - t / 360000)) for a win of at least 20 s, rounding half up (a duration is first rounded to whole ms, half up, as the app sends it); 0 otherwise. backend/tests/test_cascade_result.py checks the server's cascade.time_bonus.time_bonus against them; frontend/src/game/cascade/__tests__/timeBonus.test.ts checks the app's display copy (game/cascade/timeBonus.ts). Add cases by hand; do not regenerate them from the code.",
+  "rule": {
+    "bonus_rule": 1,
+    "bonus_max": 20000,
+    "par_time_ms": 360000,
+    "min_win_ms": 20000
+  },
+  "cases": [
+    { "id": "win_at_zero", "outcome": "win", "duration_ms": 0, "bonus": 0 },
+    {
+      "id": "win_one_second",
+      "outcome": "win",
+      "duration_ms": 1000,
+      "bonus": 0
+    },
+    {
+      "id": "win_just_under_floor",
+      "outcome": "win",
+      "duration_ms": 19999,
+      "bonus": 0
+    },
+    {
+      "id": "win_at_floor",
+      "outcome": "win",
+      "duration_ms": 20000,
+      "bonus": 18889
+    },
+    {
+      "id": "win_half_up_near_floor",
+      "outcome": "win",
+      "duration_ms": 20007,
+      "bonus": 18889
+    },
+    {
+      "id": "win_fast_sim_bot",
+      "outcome": "win",
+      "duration_ms": 72000,
+      "bonus": 16000
+    },
+    {
+      "id": "win_fastest_skilled_bot",
+      "outcome": "win",
+      "duration_ms": 130000,
+      "bonus": 12778
+    },
+    {
+      "id": "win_half_par",
+      "outcome": "win",
+      "duration_ms": 180000,
+      "bonus": 10000
+    },
+    {
+      "id": "win_sim_median",
+      "outcome": "win",
+      "duration_ms": 211000,
+      "bonus": 8278
+    },
+    {
+      "id": "win_slowest_sim_bot",
+      "outcome": "win",
+      "duration_ms": 327000,
+      "bonus": 1833
+    },
+    {
+      "id": "win_half_up_last_point",
+      "outcome": "win",
+      "duration_ms": 359991,
+      "bonus": 1
+    },
+    {
+      "id": "win_just_under_par",
+      "outcome": "win",
+      "duration_ms": 359999,
+      "bonus": 0
+    },
+    { "id": "win_at_par", "outcome": "win", "duration_ms": 360000, "bonus": 0 },
+    {
+      "id": "win_after_par",
+      "outcome": "win",
+      "duration_ms": 600000,
+      "bonus": 0
+    },
+    {
+      "id": "win_no_duration",
+      "outcome": "win",
+      "duration_ms": null,
+      "bonus": 0
+    },
+    { "id": "loss_fast", "outcome": "loss", "duration_ms": 60000, "bonus": 0 },
+    {
+      "id": "loss_no_duration",
+      "outcome": "loss",
+      "duration_ms": null,
+      "bonus": 0
+    },
+    {
+      "id": "abandoned",
+      "outcome": "abandoned",
+      "duration_ms": 60000,
+      "bonus": 0
+    },
+    {
+      "id": "legacy_completed",
+      "outcome": "completed",
+      "duration_ms": 60000,
+      "bonus": 0
+    },
+    { "id": "no_outcome", "outcome": null, "duration_ms": 60000, "bonus": 0 },
+    {
+      "id": "win_negative_duration",
+      "outcome": "win",
+      "duration_ms": -5000,
+      "bonus": 0
+    },
+    {
+      "id": "win_float_rounds_up_to_the_floor",
+      "outcome": "win",
+      "duration_ms": 19999.6,
+      "bonus": 18889
+    },
+    {
+      "id": "win_float_rounds_down_under_the_floor",
+      "outcome": "win",
+      "duration_ms": 19999.4,
+      "bonus": 0
+    },
+    {
+      "id": "win_float_half_ms_rounds_up",
+      "outcome": "win",
+      "duration_ms": 211000.5,
+      "bonus": 8278
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
+from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from daily_challenge import service
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
@@ -26,6 +27,7 @@ from daily_challenge.definitions import (
     TIERS,
     Template,
     _at_least,
+    _won_within,
     game_facts,
     goal_from_spec,
     goal_to_spec,
@@ -1225,3 +1227,32 @@ def test_a_day_frozen_with_the_old_goals_keeps_them_after_the_flip(sort_edition)
     assert sort_goal.evaluate({"final_score": old_target - 1}) is False
     # The same day computed fresh now differs: it is a new, unfrozen day.
     assert [g.target for g in template_for(day).goals if g.game_type == "sort"] != [old_target]
+
+
+# ---------------------------------------------------------------------------
+# Cascade's 20 s win floor in "win within N" (#3700, for #3703's goals)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "duration_ms,expected",
+    [
+        (1_000, False),  # a forged 1 s win
+        (CASCADE_MIN_WIN_MS - 1, False),
+        (CASCADE_MIN_WIN_MS, True),
+        (300_000, True),
+        (300_001, False),
+    ],
+)
+def test_cascade_won_within_applies_the_win_floor(duration_ms: int, expected: bool) -> None:
+    goal = _won_within("cascade", "duration_ms", 300_000, "hard")
+    facts = game_facts({"won": True}, final_score=10_000, duration_ms=duration_ms)
+    assert goal.evaluate(facts) is expected
+    # A frozen day's goal, rebuilt from its spec, keeps the floor.
+    assert goal_from_spec(goal_to_spec(goal)).evaluate(facts) is expected
+
+
+def test_the_win_floor_is_cascades_only() -> None:
+    fast = {"won": True, "duration_ms": 1_000}
+    assert _won_within("mahjong", "duration_ms", 480_000, "hard").evaluate(fast) is True
+    assert _won_within("cascade", "moves", 480_000, "hard").evaluate({"won": True, "moves": 1})

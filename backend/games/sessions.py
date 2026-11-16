@@ -475,7 +475,9 @@ async def complete_game(  # noqa: PLR0913 - keyword-only fields of one completio
     mod = get_module(name)
     # The server flags are server-written only: a result must not set them (#2621, #3292).
     validated_result = without_server_flags(
-        await _validate_result(session, game, result, name, mod, final_score)
+        await _validate_result(
+            session, game, result, name, mod, final_score, outcome=outcome, duration_ms=duration_ms
+        )
     )
     # Optional per-game hook: a game whose score is part of its result block
     # fills in a missing ``final_score`` from it, or rejects one that doesn't
@@ -524,13 +526,16 @@ async def complete_game(  # noqa: PLR0913 - keyword-only fields of one completio
     return game
 
 
-async def _validate_result(
+async def _validate_result(  # noqa: PLR0913 - the completion's fields, keyword-only
     session: AsyncSession,
     game: Game,
     result: dict[str, Any] | None,
     name: str,
     mod: GameModule | None,
     final_score: int | None = None,
+    *,
+    outcome: str | None = None,
+    duration_ms: int | None = None,
 ) -> dict:
     """Validate *result* against the game module's ``result_model`` (#2449).
 
@@ -540,7 +545,9 @@ async def _validate_result(
     actually sent are returned. The request body's ``final_score`` (what becomes
     ``games.final_score``) is handed to the model as ``context={"final_score": ...}``
     so a model can reconcile its block against it; models that don't read it
-    are unaffected. Results over ``MAX_RESULT_BYTES`` are
+    are unaffected. The body's ``outcome`` and ``duration_ms`` (the columns) are
+    in the context too, so a model can derive server fields from them (Cascade's
+    time bonus, #3700). Results over ``MAX_RESULT_BYTES`` are
     rejected — unvalidated games have no other bound.
     """
     if not result:
@@ -553,7 +560,8 @@ async def _validate_result(
         return dict(result)
     try:
         validated = result_model.model_validate(
-            result, context={"final_score": final_score}
+            result,
+            context={"final_score": final_score, "outcome": outcome, "duration_ms": duration_ms},
         ).model_dump(exclude_unset=True)
     except ValidationError as e:
         errors = e.errors()

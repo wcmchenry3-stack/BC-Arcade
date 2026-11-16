@@ -38,5 +38,7 @@
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "Cascade 불러오는 중…",
   "web.loadError": "Cascade를 시작하지 못했습니다. 다시 시도하세요.",
-  "web.retry": "다시 시도"
+  "web.retry": "다시 시도",
+  "result.mergeScore": "합치기 점수",
+  "result.timeBonus": "시간 보너스"
 }

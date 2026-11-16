@@ -207,7 +207,10 @@ test.describe("Cascade on web (CanvasKit)", () => {
     await expect(title).toHaveText("You Win!");
     const card = page.getByTestId("cascade-result");
     await expect(card.getByText("Time", { exact: true })).toBeVisible();
-    await expect(card.getByText("Merges", { exact: true })).toBeVisible();
+    // #3700: a win shows the merge score and the time bonus; the four-stat card leaves out Merges.
+    await expect(card.getByText("Merge score", { exact: true })).toBeVisible();
+    await expect(card.getByText("Time bonus", { exact: true })).toBeVisible();
+    await expect(card.getByText("Merges", { exact: true })).toHaveCount(0);
 
     // Play Again starts a fresh game.
     await card.getByRole("button", { name: "Play Again" }).click();

@@ -16,11 +16,14 @@
  *   5. Session: `useGameSync("cascade")`; drops and merges are enqueued as events, the session
  *      completes at the end (outcome `win` for the capstone, `loss` at the lid, #3699) and
  *      abandons on a theme switch, restart or unmount (#2450, #2619).
- *   6. Clock: a `PlayClock` stopped while another screen covers the board or the app is in
- *      the background, through `usePauseWhileAway` (#2735, #2750).
+ *   6. Clock: a `PlayClock` started by the first piece (#3700), stopped while another screen
+ *      covers the board or the app is in the background, through `usePauseWhileAway` (#2735,
+ *      #2750), and for good at the game's end.
  *   7. Result (#2515, #2632): the shared `GameResultModal` (`CascadeResultModal`); the card shows
  *      the rank from `useGameRank` through `toSubmission`. A win (#3699) plays the celebration
  *      first: `CascadeCelebration` animates `celebrationClock`, the board draws it, then the card.
+ *      The score is the merge score plus a win's time bonus (`game/cascade/timeBonus.ts`, #3700),
+ *      sent in the result block (`game/cascade/resultBlock.ts`); the server recomputes it.
  *   8. Audio and animation: tier-scaled merge sound (`useTieredMergeSound`), game-over sound,
  *      merge bursts (`components/cascade/MergeBurst`; skipped under reduce motion, and for the
  *      winning merge, which the celebration replaces).
@@ -49,7 +52,8 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
-import { clockElapsedMs, pauseClock, resumeClock, type PlayClock } from "../game/_shared/playClock";
+import { useCascadeClock } from "../game/cascade/useCascadeClock";
+import { cascadeCompletion, cascadeResultBlock } from "../game/cascade/resultBlock";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitTier } from "../theme/fruitSets";
 import { CascadeEngine, type PieceSnapshot } from "../game/cascade/engine";
@@ -88,7 +92,10 @@ import ThemeSelector from "../components/cascade/ThemeSelector";
 import CascadeDevPanel from "../components/cascade/CascadeDevPanel";
 import CascadeBoard from "../components/cascade/CascadeBoard";
 import MergeBurst, { type MergeBurstData } from "../components/cascade/MergeBurst";
-import CascadeResultModal, { type CascadeResult } from "../components/cascade/CascadeResultModal";
+import CascadeResultModal, {
+  cardResult,
+  type CascadeResult,
+} from "../components/cascade/CascadeResultModal";
 import { CASCADE_LID_PALETTE } from "../theme/theme.cascade";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameRank } from "../game/_shared/useGameRank";
@@ -140,9 +147,21 @@ function CascadeGame() {
   // the game is won and the board can draw it, so its clock may start (#3699, iOS demo on #3924).
   const [nearWin, setNearWin] = useState(false);
   const [celebrationReady, setCelebrationReady] = useState(false);
-  const noteTier = useCallback((tier: number) => {
-    if (tier === CAPSTONE_TIER - 1) setNearWin(true);
-  }, []);
+  // The game's play clock (#2750, `useCascadeClock`): paused while the player is away
+  // (usePauseWhileAway below), stopped at the game's end.
+  const clock = useCascadeClock();
+  // The highest tier on the board this game (the result's `max_tier`, #3700).
+  const maxTierRef = useRef(0);
+  // A piece of `tier` is on the board (a drop, a merge, a restore, a test or dev placement). A new
+  // game's first piece starts the play clock (#3700): idle time before it costs no time bonus.
+  const noteTier = useCallback(
+    (tier: number) => {
+      clock.start();
+      if (tier > maxTierRef.current) maxTierRef.current = tier;
+      if (tier === CAPSTONE_TIER - 1) setNearWin(true);
+    },
+    [clock]
+  );
   const markCelebrationReady = useCallback(() => setCelebrationReady(true), []);
   // What the result card shows, captured at game over (#2515).
   const [result, setResult] = useState<CascadeResult | null>(null);
@@ -259,43 +278,29 @@ function CascadeGame() {
       active = false;
     };
   }, []);
-  // The game's play clock (#2750), on the shared PlayClock model: it runs from
-  // the session's start and stops while the player is away (another screen
-  // covers the board, #2735, or the app is in the background), through
-  // usePauseWhileAway below. A ref, not state: the loop and the session
-  // callbacks read it outside a render.
-  const clockRef = useRef<PlayClock>({ startedAt: Date.now(), accumulatedMs: 0 });
-  /**
-   * Start the clock over with `accumulatedMs` banked, keeping it paused if
-   * the player is away: a session can open, or a save load land, while the
-   * app is in the background or another screen covers the board.
-   */
-  const restartClock = useCallback((accumulatedMs: number) => {
-    clockRef.current =
-      clockRef.current.paused === true
-        ? { accumulatedMs, startedAt: null, paused: true }
-        : { accumulatedMs, startedAt: Date.now() };
-  }, []);
-  /** Play time so far. */
-  const playedMs = useCallback(() => clockElapsedMs(clockRef.current), []);
   const mergeCountRef = useRef(0);
 
-  // #2450 / #2619 — the result block. The hook's own abandon (unmount) and
-  // endInstrumentedSession build it here, so completed and abandoned rows
-  // store the same metadata keys. `outcome` is left out: it is its own column.
-  const progressResult = useCallback(
-    () => ({
-      final_score: scoreRef.current,
-      duration_ms: playedMs(),
-      theme: activeFruitSetRef.current.id,
-      total_drops: dropCountRef.current,
-      total_merges: mergeCountRef.current,
-    }),
-    [playedMs]
+  // #2450 / #2619 / #3700 — the result block (`game/cascade/resultBlock.ts`). The hook's own
+  // abandon (unmount) and endInstrumentedSession build it here, so completed and abandoned rows
+  // store the same metadata keys.
+  const resultFor = useCallback(
+    (end: "win" | "loss" | "completed" | "abandoned" | null) =>
+      cascadeResultBlock(
+        {
+          mergeScore: scoreRef.current,
+          durationMs: clock.elapsed(),
+          theme: activeFruitSetRef.current.id,
+          drops: dropCountRef.current,
+          merges: mergeCountRef.current,
+          maxTier: maxTierRef.current,
+        },
+        end
+      ),
+    [clock]
   );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: progressResult() }));
-  }, [syncSetProgressSnapshot, progressResult]);
+    syncSetProgressSnapshot(() => ({ result: resultFor(null) }));
+  }, [syncSetProgressSnapshot, resultFor]);
 
   const lastSaveTimeRef = useRef<number>(0);
   const settlingTicksLeftRef = useRef<number>(0);
@@ -307,48 +312,42 @@ function CascadeGame() {
 
   const startInstrumentedSession = useCallback(
     (themeId: string) => {
-      restartClock(0);
+      clock.reset(); // not started: the first piece starts it (#3700)
       mergeCountRef.current = 0;
+      maxTierRef.current = 0;
       syncStart({ fruit_set: themeId, theme: themeId, seed: null });
     },
-    [syncStart, restartClock]
+    [syncStart, clock]
   );
 
   const endInstrumentedSession = useCallback(
     (outcome: "win" | "loss" | "completed" | "abandoned") => {
-      // Built once: the analytics payload is the result plus its outcome. An
-      // abandon's result is the same block as the unmount snapshot; a
-      // completion's keeps `outcome`, as it always has.
-      const result = progressResult();
-      const payload = { ...result, outcome };
-      return syncComplete(
-        {
-          finalScore: scoreRef.current,
-          outcome,
-          durationMs: result.duration_ms,
-          result: outcome === "abandoned" ? result : payload,
-        },
-        payload
-      );
+      // Built once (`cascadeCompletion`): the summary, and the analytics payload.
+      const { summary, payload } = cascadeCompletion(resultFor(outcome), outcome);
+      return syncComplete(summary, payload);
     },
-    [syncComplete, progressResult]
+    [syncComplete, resultFor]
   );
 
   // Pops queue.current, advances the queue, updates history. Returns the dropped tier.
-  const consumeFromQueue = useCallback((isInDanger: boolean): FruitTier => {
-    const tier = queueRef.current.current as FruitTier;
-    const newQueue = advanceQueue(
-      queueRef.current,
-      queueHistoryRef.current,
-      isInDanger,
-      queueRngRef.current
-    );
-    const scripted = queueScriptRef.current.shift();
-    if (scripted !== undefined) newQueue.next = scripted;
-    queueHistoryRef.current = [...queueHistoryRef.current, newQueue.next].slice(-DROUGHT_WINDOW);
-    queueRef.current = newQueue;
-    return tier;
-  }, []); // reads/writes refs only — no reactive deps
+  const consumeFromQueue = useCallback(
+    (isInDanger: boolean): FruitTier => {
+      const tier = queueRef.current.current as FruitTier;
+      const newQueue = advanceQueue(
+        queueRef.current,
+        queueHistoryRef.current,
+        isInDanger,
+        queueRngRef.current
+      );
+      const scripted = queueScriptRef.current.shift();
+      if (scripted !== undefined) newQueue.next = scripted;
+      queueHistoryRef.current = [...queueHistoryRef.current, newQueue.next].slice(-DROUGHT_WINDOW);
+      queueRef.current = newQueue;
+      noteTier(tier); // the piece dropped: the first one starts the play clock (#3700)
+      return tier;
+    },
+    [noteTier]
+  );
 
   useEffect(() => {
     startInstrumentedSession(activeFruitSetRef.current.id);
@@ -364,7 +363,7 @@ function CascadeGame() {
       // The play before the app was closed carries on (#2750); the time it
       // was closed doesn't count. A save from an older build has no
       // playedMs: its earlier play is unknown, so the clock starts at the load.
-      restartClock(snapshot.playedMs ?? 0);
+      clock.restore(snapshot.playedMs ?? 0);
       // The restored game continues the session a killed app left open (#2654),
       // in place of the untouched one opened at mount.
       syncResume();
@@ -379,7 +378,7 @@ function CascadeGame() {
     return () => {
       active = false;
     };
-  }, [syncResume, restartClock, scoreStore, queueChanged, noteTier]);
+  }, [syncResume, clock, scoreStore, queueChanged, noteTier]);
 
   const buildSnapshot = useCallback((): SavedState => {
     return {
@@ -388,9 +387,9 @@ function CascadeGame() {
       score: scoreRef.current,
       savedAt: Date.now(),
       queue: queueRef.current,
-      playedMs: playedMs(),
+      playedMs: clock.elapsed(),
     };
-  }, [playedMs]);
+  }, [clock]);
 
   const saveGameThrottled = useCallback(() => {
     const now = Date.now();
@@ -481,8 +480,10 @@ function CascadeGame() {
    * separate screen-reader announcement here.
    */
   const showResult = useCallback(
-    (gameId: string | null) => {
-      const finalScore = scoreRef.current;
+    (gameId: string | null, end: "win" | "loss") => {
+      // The score the server stores: merge score plus the time bonus of a win (#3700).
+      const block = resultFor(end);
+      const finalScore = block.final_score;
       const previousBest = bestScoreRef.current;
       // A 0 score never sets a best (the game's rule in `personalBestGames.ts`).
       const { improved, isNewBest } = judgeResult("cascade", previousBest, finalScore);
@@ -490,17 +491,10 @@ function CascadeGame() {
         bestScoreRef.current = finalScore;
         void recordResult("cascade", finalScore);
       }
-      setResult({
-        score: finalScore,
-        bestScore: bestScoreRef.current,
-        isNewBest,
-        merges: mergeCountRef.current,
-        timeMs: playedMs(),
-        submittable: gameId !== null,
-      });
+      setResult(cardResult(block, { bestScore: bestScoreRef.current, isNewBest }, gameId !== null));
       if (gameId) void lookupRank(gameId);
     },
-    [lookupRank, playedMs]
+    [lookupRank, resultFor]
   );
 
   // `isWin`: the capstone was made (#3920). The engine reports no game over after a win, so the
@@ -510,13 +504,16 @@ function CascadeGame() {
   const handleGameOver = useCallback(
     (isWin = false) => {
       gameOverRef.current = true;
-      const gameId = endInstrumentedSession(isWin ? "win" : "loss");
+      // Stopped first, so the session and the card read the same time (and bonus).
+      clock.stop();
+      const end = isWin ? "win" : "loss";
+      const gameId = endInstrumentedSession(end);
       clearCascadeGame().catch(() => {});
       setWon(isWin);
       setGameOver(true);
-      showResult(gameId);
+      showResult(gameId, end);
     },
-    [endInstrumentedSession, showResult]
+    [endInstrumentedSession, showResult, clock]
   );
 
   // Always-fresh refs for the RAF loop — updated every render so the loop
@@ -565,13 +562,13 @@ function CascadeGame() {
   const awayRef = usePauseWhileAway(
     navigation,
     () => {
-      clockRef.current = pauseClock(clockRef.current);
+      clock.pause();
       if (!gameOverRef.current && !hasWon() && piecesRef.current.length > 0) {
         saveCascadeGame(buildSnapshot()).catch(() => {});
       }
     },
     () => {
-      clockRef.current = resumeClock(clockRef.current);
+      clock.resume();
       resumeLoopRef.current();
     }
   );
@@ -791,7 +788,7 @@ function CascadeGame() {
     completedGameIdRef.current = getGameId();
     gameOverRef.current = true;
     setGameOver(true);
-    showResultRef.current(completedGameIdRef.current);
+    showResultRef.current(completedGameIdRef.current, "loss");
   }, [getGameId]);
 
   // -------------------------------------------------------------------------

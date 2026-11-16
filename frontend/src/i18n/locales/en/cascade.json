@@ -38,5 +38,7 @@
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "Loading Cascade…",
   "web.loadError": "Cascade couldn't start. Try again.",
-  "web.retry": "Try again"
+  "web.retry": "Try again",
+  "result.mergeScore": "Merge score",
+  "result.timeBonus": "Time bonus"
 }

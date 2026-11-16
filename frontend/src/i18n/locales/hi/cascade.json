@@ -38,5 +38,7 @@
   "pieces.cosmos.milkyWay": "Milky Way",
   "web.loading": "Cascade लोड हो रहा है…",
   "web.loadError": "Cascade शुरू नहीं हो सका। फिर से कोशिश करें।",
-  "web.retry": "फिर से कोशिश करें"
+  "web.retry": "फिर से कोशिश करें",
+  "result.mergeScore": "मर्ज स्कोर",
+  "result.timeBonus": "समय बोनस"
 }

@@ -29,6 +29,7 @@ import { CELEBRATION_MAX_MS } from "../../components/shared/GameResultModal";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
 import { GROW_IN_STEPS } from "../../game/cascade/constants";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
+import { timeBonus } from "../../game/cascade/timeBonus";
 import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getBest, storageKey } from "../../game/_shared/personalBest";
@@ -618,13 +619,18 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
     expect(summary.outcome).toBe("abandoned");
     expect(summary).not.toHaveProperty("finalScore");
-    // #2619 review: same keys as a completed row's result, minus `outcome`.
+    // #2619 review: same keys as a completed row's result, minus `outcome` (#3700 keys too).
     expect(summary.result).toEqual({
       final_score: expect.any(Number),
+      merge_score: expect.any(Number),
+      time_bonus: 0,
+      bonus_rule: 1,
       duration_ms: expect.any(Number),
       theme: "fruits",
       total_drops: 1,
       total_merges: 1,
+      max_tier: expect.any(Number),
+      won: false,
     });
     expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
   });
@@ -666,6 +672,56 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     expect(summary.result.duration_ms).toBeLessThan(10_000);
   });
 
+  // #3700: idle time before the first drop costs no time bonus.
+  it("starts the play clock at the first drop, not at mount", async () => {
+    const renderer = await renderScreen();
+    await act(() => {
+      jest.advanceTimersByTime(60_000); // a minute looking at the empty board
+    });
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(5_000);
+    });
+    await triggerTap(renderer, 200); // a later drop doesn't restart it
+    await act(() => {
+      jest.advanceTimersByTime(2_000);
+    });
+    mockCompleteGame.mockClear();
+    await act(() => {
+      renderer.unmount();
+    });
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result.duration_ms).toBe(7_000);
+  });
+
+  it("a New Game's clock waits for its own first drop", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(30_000);
+    });
+    const shell = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onNewGame === "function"
+    )[0];
+    await act(() => {
+      shell?.props.onNewGame();
+    });
+    await act(() => {
+      jest.advanceTimersByTime(45_000); // idle on the new game's empty board
+    });
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(3_000);
+    });
+    mockCompleteGame.mockClear();
+    await act(() => {
+      renderer.unmount();
+    });
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result.duration_ms).toBe(3_000);
+  });
+
   it("a mid-game New Game abandon keeps theme and final_score, but no outcome, in its result", async () => {
     const renderer = await renderScreen();
     await triggerTap(renderer, 100);
@@ -686,10 +742,15 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     expect(summary.outcome).toBe("abandoned");
     expect(summary.result).toEqual({
       final_score: expect.any(Number),
+      merge_score: expect.any(Number),
+      time_bonus: 0,
+      bonus_rule: 1,
       duration_ms: expect.any(Number),
       theme: "fruits",
       total_drops: 1,
       total_merges: 0,
+      max_tier: expect.any(Number),
+      won: false,
     });
     expect(summary.result).not.toHaveProperty("outcome");
     expect(summary.durationMs).toBe(summary.result.duration_ms);
@@ -756,15 +817,17 @@ describe("CascadeScreen — result card (#2515)", () => {
     return renderer;
   }
 
-  it("shows the Game Over card with the score, best and merges", async () => {
+  it("shows the Game Over card with the score, best, merges and time, and no bonus (#3700)", async () => {
     const renderer = await playToGameOver(1234);
     const card = findCard(renderer);
     expect(card?.props.visible).toBe(true);
     expect(card?.props.outcome).toBe("ended");
     expect(card?.props.hero).toEqual({ kind: "score", label: "Score", value: 1234 });
+    // The game ended at the moment its first piece (the merge) started the clock: 0:00.
     expect(card?.props.stats).toEqual([
       { label: "Best", value: 1234 },
       { label: "Merges", value: 1 },
+      { label: "Time", value: formatMs(0) },
     ]);
     // A first game is not a "new best".
     expect(card?.props.isNewBest).toBe(false);
@@ -1148,10 +1211,11 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       mockEnginePieces = [];
     });
 
-    async function win(renderer: ReturnType<typeof create>) {
+    /** Drops a piece, plays `playMs` (under the 20 s bonus floor by default), then wins. */
+    async function win(renderer: ReturnType<typeof create>, playMs = 5_000) {
       await triggerTap(renderer, 100);
       await act(() => {
-        jest.advanceTimersByTime(5_000);
+        jest.advanceTimersByTime(playMs);
       });
       await setAppState("background"); // a save, before the win
       await setAppState("active");
@@ -1313,25 +1377,53 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         expect(board(renderer).props.celebration.value).toBe(CELEBRATION_CARD_MS);
       });
 
-      it("the win card shows the score, Best, Merges and the play time", async () => {
+      it("the win card shows the score, the merge score, the time bonus, the play time and Best (#3700)", async () => {
         await AsyncStorage.setItem("cascade_best_score", "1000");
         const renderer = await renderScreen();
         mockEngineScore = 9000;
         mockCompleteGame.mockClear();
+        await win(renderer, 200_000);
+        await advance(CELEBRATION_CARD_MS);
+        const card = resultModal(renderer).props;
+        // The time is the play clock at the win: the session's own duration.
+        const [, summary] = mockCompleteGame.mock.calls[0]!;
+        const playedMs = summary.result.duration_ms as number;
+        expect(playedMs).toBe(200_000);
+        const bonus = timeBonus("win", playedMs);
+        expect(bonus).toBe(8_889);
+        expect(card.outcome).toBe("win");
+        // The score shown is the server's formula: merge score + time bonus.
+        expect(card.hero).toEqual({ kind: "score", label: "Score", value: 9000 + bonus });
+        expect(card.isNewBest).toBe(true);
+        expect(card.stats).toEqual([
+          { label: "Merge score", value: 9000 },
+          { label: "Time bonus", value: bonus },
+          { label: "Time", value: formatMs(playedMs) },
+          { label: "Best", value: 9000 + bonus },
+        ]);
+        // The session sends the same total, and the result block's new keys (#3700).
+        expect(summary.finalScore).toBe(9000 + bonus);
+        expect(summary.result).toEqual(
+          expect.objectContaining({
+            final_score: 9000 + bonus,
+            merge_score: 9000,
+            time_bonus: bonus,
+            bonus_rule: 1,
+            max_tier: CAPSTONE_TIER,
+            won: true,
+            outcome: "win",
+          })
+        );
+      });
+
+      it("a win under the 20 s floor shows a time bonus of 0", async () => {
+        const renderer = await renderScreen();
+        mockEngineScore = 9000;
         await win(renderer);
         await advance(CELEBRATION_CARD_MS);
         const card = resultModal(renderer).props;
-        expect(card.outcome).toBe("win");
-        expect(card.hero).toEqual({ kind: "score", label: "Score", value: 9000 });
-        expect(card.isNewBest).toBe(true);
-        // The time is the play clock at the win: the session's own duration.
-        const playedMs = mockCompleteGame.mock.calls[0]![1].result.duration_ms as number;
-        expect(playedMs).toBeGreaterThanOrEqual(5_000);
-        expect(card.stats).toEqual([
-          { label: "Best", value: 9000 },
-          { label: "Merges", value: 0 },
-          { label: "Time", value: formatMs(playedMs) },
-        ]);
+        expect(card.hero.value).toBe(9000);
+        expect(card.stats[1]).toEqual({ label: "Time bonus", value: 0 });
       });
 
       it("drops the merge burst for the winning merge only", async () => {

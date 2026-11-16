@@ -358,5 +358,23 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Web only."
+  },
+  "result.mergeScore": {
+    "component": "CascadeResultModal",
+    "description": "Stat label on Cascade's win card: the points scored by merging pieces, before the time bonus is added. The card's big number is this plus the time bonus.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown in a row of four short stat labels under a number; keep it short (it may wrap to two lines)."
+  },
+  "result.timeBonus": {
+    "component": "CascadeResultModal",
+    "description": "Stat label on Cascade's win card: the extra points for winning quickly (the faster the win, the bigger the bonus).",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown in a row of four short stat labels under a number; keep it short (it may wrap to two lines)."
   }
 }
