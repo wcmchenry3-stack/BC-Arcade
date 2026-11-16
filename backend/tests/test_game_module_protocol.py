@@ -51,7 +51,7 @@ def test_module_satisfies_protocol(mod) -> None:
         (mahjong_module, True),
         (solitaire_module, True),
         (sudoku_module, True),
-        (cascade_module, False),
+        (cascade_module, True),  # CascadeResult, #3700
         (daily_word_module, True),
         (hearts_module, True),
     ],

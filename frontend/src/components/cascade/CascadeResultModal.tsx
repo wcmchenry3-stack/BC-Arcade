@@ -1,10 +1,12 @@
 /**
  * Cascade's result card (#2515, #2632): the shared `GameResultModal`.
  *
- * - A loss (the lid) keeps the "Game Over" card (outcome `ended`): score, Best and Merges.
+ * - A loss (the lid) keeps the "Game Over" card (outcome `ended`): the score (the merge score),
+ *   Best, Merges and the play Time. No bonus line: a loss earns none.
  * - A win (#3699, making the capstone) plays the celebration first (`CascadeCelebration`; the
  *   board draws it), then shows outcome `win`, "You Win!", as Blackjack's goal-reached result
- *   does: score, New best, Best, Merges and the play Time.
+ *   does: the score (merge score + time bonus, #3700), New best, then the Merge score, the Time
+ *   bonus, the play Time and Best. The card holds four stats, so a win leaves out Merges.
  *
  * The card mounts only once the celebration has called `done` (or `GameResultModal`'s safety
  * timeout), so it never covers the animation (#2201).
@@ -16,11 +18,17 @@ import GameResultModal from "../shared/GameResultModal";
 import { toSubmission } from "../shared/toSubmission";
 import type { useGameRank } from "../../game/_shared/useGameRank";
 import { formatMs } from "../../game/_shared/formatMs";
+import type { CascadeResultBlock } from "../../game/cascade/resultBlock";
 import CascadeCelebration from "./CascadeCelebration";
 
 /** What the card shows, captured when the game ends. */
 export interface CascadeResult {
+  /** The score stored: `mergeScore + timeBonus` (#3700). */
   readonly score: number;
+  /** The merge points. */
+  readonly mergeScore: number;
+  /** A win's time bonus (`game/cascade/timeBonus.ts`); 0 for a loss. */
+  readonly timeBonus: number;
   readonly bestScore: number;
   readonly isNewBest: boolean;
   readonly merges: number;
@@ -28,6 +36,23 @@ export interface CascadeResult {
   readonly timeMs: number;
   /** False when the game had no sync id, so nothing could be submitted. */
   readonly submittable: boolean;
+}
+
+/** What the card shows for a game that ended with this result block (#3700). */
+export function cardResult(
+  block: CascadeResultBlock,
+  best: { readonly bestScore: number; readonly isNewBest: boolean },
+  submittable: boolean
+): CascadeResult {
+  return {
+    score: block.final_score,
+    mergeScore: block.merge_score,
+    timeBonus: block.time_bonus,
+    merges: block.total_merges,
+    timeMs: block.duration_ms,
+    ...best,
+    submittable,
+  };
 }
 
 export interface CascadeResultModalProps {
@@ -74,13 +99,19 @@ export default function CascadeResultModal({
     ),
     [celebrationClock, celebrationReady, reduceMotion]
   );
-  const stats = result
-    ? [
-        { label: tResult("stat.best"), value: result.bestScore },
-        { label: tResult("stat.merges"), value: result.merges },
-        ...(won ? [{ label: tResult("stat.time"), value: formatMs(result.timeMs) }] : []),
-      ]
-    : [];
+  let stats: { label: string; value: number | string }[] = [];
+  if (result) {
+    const time = { label: tResult("stat.time"), value: formatMs(result.timeMs) };
+    const best = { label: tResult("stat.best"), value: result.bestScore };
+    stats = won
+      ? [
+          { label: t("result.mergeScore"), value: result.mergeScore },
+          { label: t("result.timeBonus"), value: result.timeBonus },
+          time,
+          best,
+        ]
+      : [best, { label: tResult("stat.merges"), value: result.merges }, time];
+  }
   return (
     <GameResultModal
       visible={visible}
