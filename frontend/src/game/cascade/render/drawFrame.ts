@@ -47,6 +47,18 @@ import {
   spawnerPieceRadius,
 } from "../lidVisuals";
 import { FRAME_HEADER, FRAME_STRIDE, HEADER_FIELD, PIECE_FIELD } from "./frame";
+import {
+  collectLands,
+  drawChainCounter,
+  drawGameOverDim,
+  drawLidMotion,
+  drawMergeMotion,
+  drawSpawnerBlink,
+  pieceSquash,
+  spawnerMotion,
+  type BoardMotion,
+} from "./drawMotion";
+import { MOTION } from "../motion";
 
 /**
  * What the board draws with that is not per frame: per-tier sizes and placeholder colours, and
@@ -148,13 +160,22 @@ function drawSprite(
   cy: number,
   size: number,
   angle: number,
-  opacity: number
+  opacity: number,
+  squash = 0,
+  radius = 0
 ): void {
   "worklet";
   canvas.save();
   if (opacity < 1) canvas.saveLayer(elementPaint(cache, null, opacity));
-  canvas.translate(cx, cy);
-  if (size !== 1) canvas.scale(size, size);
+  if (squash !== 0) {
+    // #3701: the landing squash, about the piece's bottom (the contact).
+    const sy = 1 - squash;
+    canvas.translate(cx, cy + radius * squash);
+    canvas.scale(size * (1 + MOTION.land.stretchRatio * squash), size * sy);
+  } else {
+    canvas.translate(cx, cy);
+    if (size !== 1) canvas.scale(size, size);
+  }
   const deg = (angle * 180) / Math.PI;
   const paint = elementPaint(cache, null, 1);
   canvas.rotate(deg, 0, 0);
@@ -175,10 +196,12 @@ function drawPieces(
   style: BoardStyle,
   sprites: BoardSprites,
   dangerRatio: number,
-  hideTier: number
+  hideTier: number,
+  motion: BoardMotion | null
 ): void {
   "worklet";
   const n = frame[HEADER_FIELD.count] ?? 0;
+  collectLands(motion);
   for (let i = 0; i < n; i++) {
     const o = FRAME_HEADER + i * FRAME_STRIDE;
     const tier = frame[o + PIECE_FIELD.tier] ?? -1;
@@ -191,7 +214,19 @@ function drawPieces(
     const y = frame[o + PIECE_FIELD.y] ?? 0;
     const sprite = sprites[tier];
     if (sprite) {
-      drawSprite(canvas, cache, sprite, x, y, scale, frame[o + PIECE_FIELD.angle] ?? 0, 1);
+      const squash = pieceSquash(motion, frame[o + PIECE_FIELD.id] ?? -1);
+      drawSprite(
+        canvas,
+        cache,
+        sprite,
+        x,
+        y,
+        scale,
+        frame[o + PIECE_FIELD.angle] ?? 0,
+        1,
+        squash,
+        r
+      );
     } else {
       canvas.drawCircle(x, y, r, elementPaint(cache, style.color[tier] ?? null, 1));
     }
@@ -227,7 +262,8 @@ function drawSpawner(
   sprites: BoardSprites,
   dangerRatio: number,
   canDrop: boolean,
-  tier: number
+  tier: number,
+  motion: BoardMotion | null
 ): void {
   "worklet";
   const { cx, cy, ringRadius, ringWidth } = SPAWNER;
@@ -239,11 +275,22 @@ function drawSpawner(
   const pieceOpacity = canDrop ? 1 : GHOST_FILL_OPACITY;
 
   if (hasPiece) {
+    // #3701: the new piece drops into the spawner after each drop (a fade under Reduce Motion).
+    const arrival = spawnerMotion(motion);
+    const opacity = pieceOpacity * arrival.alpha;
+    const y = cy + arrival.dy;
     const sprite = sprites[tier];
-    if (sprite) {
-      drawSprite(canvas, cache, sprite, cx, cy, r / radius, 0, pieceOpacity);
-    } else {
-      canvas.drawCircle(cx, cy, r, elementPaint(cache, style.color[tier] ?? null, pieceOpacity));
+    if (opacity > 0.001) {
+      if (sprite) {
+        drawSprite(canvas, cache, sprite, cx, y, (r / radius) * arrival.scale, 0, opacity);
+      } else {
+        canvas.drawCircle(
+          cx,
+          y,
+          r * arrival.scale,
+          elementPaint(cache, style.color[tier] ?? null, opacity)
+        );
+      }
     }
   }
   if (!canDrop) {
@@ -287,6 +334,9 @@ function drawSpawner(
 
 /**
  * Draw the whole board, back to front: pieces (with their wash), the lid line, the spawner.
+ * `motion` (#3701, `drawMotion.ts`): the landing squash, the game-over dim and lid flash, the danger
+ * blink, the spawner piece's arrival, the merge pops, the dust and the chain counter; null draws
+ * the board without motion, exactly as before.
  * `hideTier` (#3699): pieces of this tier are left out, for the win celebration, which draws the
  * capstone itself above its dim (`drawCelebration.ts`); -1 draws every piece.
  */
@@ -295,14 +345,20 @@ export function drawFrame(
   frame: Float64Array,
   style: BoardStyle,
   sprites: BoardSprites,
-  hideTier = -1
+  hideTier = -1,
+  motion: BoardMotion | null = null
 ): void {
   "worklet";
   const cache = drawCache();
   const dangerRatio = frame[HEADER_FIELD.dangerRatio] ?? 0;
   const canDrop = (frame[HEADER_FIELD.canDrop] ?? 1) !== 0;
   const spawnerTier = frame[HEADER_FIELD.spawnerTier] ?? -1;
-  drawPieces(canvas, cache, frame, style, sprites, dangerRatio, hideTier);
+  drawPieces(canvas, cache, frame, style, sprites, dangerRatio, hideTier, motion);
+  drawGameOverDim(canvas, motion);
   drawLidLine(canvas, cache, style, dangerRatio);
-  drawSpawner(canvas, cache, style, sprites, dangerRatio, canDrop, spawnerTier);
+  drawLidMotion(canvas, motion, style.palette);
+  drawSpawner(canvas, cache, style, sprites, dangerRatio, canDrop, spawnerTier, motion);
+  drawSpawnerBlink(canvas, motion);
+  drawMergeMotion(canvas, motion, style.radius);
+  drawChainCounter(canvas, motion);
 }

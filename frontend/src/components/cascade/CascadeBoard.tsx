@@ -30,7 +30,9 @@ import { buildBoardStyle } from "../../game/cascade/render/boardStyle";
 import { pieceSprites } from "../../game/cascade/art/sprites";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import { binPicture } from "../../game/cascade/art/bin";
-import type { CascadeLidPalette } from "../../theme/theme.cascade";
+import { CASCADE_MOTION, type CascadeLidPalette } from "../../theme/theme.cascade";
+import { buildChainGlyphs } from "../../game/cascade/render/chainGlyphs";
+import type { BoardMotionValues } from "./useBoardMotion";
 import { useCelebrationStyle } from "./useCelebrationStyle";
 
 /** A throw inside the UI-thread renderer is reported once per board, on the JS thread. */
@@ -64,10 +66,13 @@ export interface CascadeBoardProps {
   readonly reduceMotion?: boolean;
   /** Ms since the win, animated by the screen (-1: no celebration). */
   readonly celebration?: { readonly value: number };
+  /** #3701: the motion's shared values (`useBoardMotion`); absent: no motion. */
+  readonly motion?: BoardMotionValues;
 }
 
 /** No celebration (a board without the prop). */
 const NO_CELEBRATION = { value: -1 };
+const NO_MOTION_EVENTS = { value: new Float64Array(0) };
 
 function CascadeBoard({
   frame,
@@ -80,6 +85,7 @@ function CascadeBoard({
   onCelebrationReady,
   reduceMotion = false,
   celebration = NO_CELEBRATION,
+  motion,
 }: CascadeBoardProps) {
   const { t } = useTranslation("cascade");
   const style = useMemo(() => buildBoardStyle(lidPalette), [lidPalette]);
@@ -100,6 +106,17 @@ function CascadeBoard({
   });
   // The bin (#3698): a static Picture per theme, recorded once and drawn under the pieces.
   const bin = useMemo(() => binPicture(theme), [theme]);
+  // #3701: what the motion draws with, fixed until the set, theme or scale change.
+  // Retried with each set of sprites while it is null (Skia not ready yet); cached once built.
+  const glyphs = useMemo(() => (sprites ? buildChainGlyphs() : null), [sprites]);
+  const tones = CASCADE_MOTION.tones[setId === "cosmos" ? "cosmos" : "fruits"];
+  const motionPalette = CASCADE_MOTION.themes[theme];
+  const events = motion?.events ?? NO_MOTION_EVENTS;
+  const stamps = motion?.stamps ?? NO_MOTION_EVENTS;
+  const motionClock = motion?.clock ?? NO_CELEBRATION;
+  const dangerPhase = motion?.dangerPhase ?? NO_CELEBRATION;
+  const danger = motion?.danger ?? NO_CELEBRATION;
+  const hasMotion = motion !== undefined;
   const canvasStyle = useMemo(
     () => ({ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }),
     [scale]
@@ -112,9 +129,23 @@ function CascadeBoard({
     // The celebration once its clock is past the grow-in; before that, from the pre-warm on, its
     // invisible warm-up, so its first real frame does not stall on the GPU (#3924).
     const celeb = won && t >= CELEBRATION_START_MS ? celebrationStyle : null;
+    const boardMotion = hasMotion
+      ? {
+          events: events.value,
+          stamps: stamps.value,
+          clock: motionClock.value,
+          dangerPhase: dangerPhase.value,
+          danger: danger.value,
+          reduceMotion,
+          tones,
+          palette: motionPalette,
+          ptPerUnit: scale,
+          glyphs,
+        }
+      : null;
     return createPicture((canvas) => {
       try {
-        drawFrame(canvas, buf, style, sprites, celeb ? CAPSTONE_TIER : -1);
+        drawFrame(canvas, buf, style, sprites, celeb ? CAPSTONE_TIER : -1, boardMotion);
         if (celeb) drawCelebration(canvas, buf, celeb, t);
         else if (celebrationStyle) warmCelebration(canvas, celebrationStyle);
       } catch (e) {
@@ -125,7 +156,18 @@ function CascadeBoard({
         }
       }
     }, WORLD_BOUNDS);
-  }, [style, sprites, celebrationStyle, won]);
+  }, [
+    style,
+    sprites,
+    celebrationStyle,
+    won,
+    hasMotion,
+    reduceMotion,
+    tones,
+    motionPalette,
+    scale,
+    glyphs,
+  ]);
 
   // The board's role and label sit on a wrapping View: on web Skia's Canvas drops accessibility
   // props, and the board must still read as an image there (#2960, CanvasKit on web).

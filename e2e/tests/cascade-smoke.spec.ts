@@ -190,7 +190,13 @@ test.describe("Cascade on web (CanvasKit)", () => {
 
     await triggerGameOver(page);
     await expect.poll(async () => (await getState(page)).gameOver).toBe(true);
-    await expect(page.getByTestId("cascade-result")).toBeVisible();
+    // #3701: a loss dims the pile and flashes the lid first; the card comes 1 s after the game
+    // over. Wait for it (not just its first render) and check it is the loss card.
+    const card = page.getByTestId("cascade-result");
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("cascade-result-title")).toHaveText(
+      "Game Over",
+    );
   });
 
   // #3699: the win via the test hook: the celebration plays, and only then the win card.

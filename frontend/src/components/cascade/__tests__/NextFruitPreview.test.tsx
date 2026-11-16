@@ -7,6 +7,7 @@ import { StyleSheet } from "react-native";
 import { render, screen, within } from "@testing-library/react-native";
 import type { TestInstance } from "test-renderer";
 
+import * as Reanimated from "react-native-reanimated";
 import NextFruitPreview from "../NextFruitPreview";
 import { FRUIT_SETS } from "../../../theme/fruitSets";
 import { dark } from "../../../theme/ThemeContext";
@@ -78,5 +79,25 @@ describe("Cascade NextFruitPreview", () => {
     await render(<NextFruitPreview current={pumpkin} next={milkyWay} />);
     expect(screen.getByLabelText("Dropping next: Pumpkin")).toBeTruthy();
     expect(screen.getByLabelText("Coming up: Milky Way")).toBeTruthy();
+  });
+
+  // #3701 (review N5): the hop follows the drop count, so a drop of the same tier as the next one
+  // still hops, and a reset or restore (no new drop) does not.
+  it("hops on each drop, also when the tiers stay the same, and not without a drop", async () => {
+    const spy = jest.spyOn(Reanimated, "withTiming");
+    const view = await render(<NextFruitPreview current={cherry} next={cherry} drops={3} />);
+    expect(spy).not.toHaveBeenCalled(); // mounting is not a drop
+    await view.rerender(<NextFruitPreview current={cherry} next={cherry} drops={4} />);
+    expect(spy).toHaveBeenCalledTimes(1);
+    await view.rerender(<NextFruitPreview current={grape} next={cherry} drops={4} />);
+    expect(spy).toHaveBeenCalledTimes(1); // the queue changed without a drop: a restore
+    spy.mockRestore();
+  });
+
+  it("re-renders the next piece after a drop, keeping the chips' accessible names", async () => {
+    const view = await render(<NextFruitPreview current={cherry} next={grape} drops={0} />);
+    await view.rerender(<NextFruitPreview current={grape} next={cherry} drops={1} />);
+    expect(screen.getByLabelText(`Dropping next: ${grape.name}`)).toBeTruthy();
+    expect(screen.getByLabelText(`Coming up: ${cherry.name}`)).toBeTruthy();
   });
 });

@@ -71,6 +71,11 @@
  *     ordinary piece, so if it rests over the lid the overflow rule ends the game.
  *   - `dangerRatio` (state) = overflow count / threshold, 0..1, for the screen's countdown.
  *
+ * Landing (#3701): a falling piece's first contact with another piece or the floor emits
+ * `{ type: "land", id, tier, x, y, speed }` after that step, for the screen's squash and haptic.
+ * The contact callback only records the piece (no physics work), so replays and the sim are
+ * unchanged.
+ *
  * Guard rail: none in normal play. The thick walls keep every piece in the bin, so nothing is
  * ever teleported. The one safety left is for a piece that has escaped the bin outright (its
  * centre past a wall's or the floor's inner face by more than its radius, or a non-finite
@@ -170,6 +175,13 @@ export type EngineEvent =
   | { type: "gameOver"; reason: GameOverReason }
   | { type: "guardRailFired"; reason: string; bodyId: number }
   | { type: "cascadeCombo"; count: number }
+  /**
+   * #3701: a dropped (or restored airborne) piece touched another piece or the floor for the first
+   * time. `speed` is its speed just before the contact (px per fixed step, read at the previous
+   * step's end), for the landing squash and haptic. Events only: recorded in the contact callback
+   * (one push) and emitted after the step, so the physics is unchanged.
+   */
+  | { type: "land"; id: number; tier: number; x: number; y: number; speed: number }
   /**
    * The capstone was made (#3920): where it was made and its id (the `merge` event's `x`, `y`,
    * `id`). Emitted once per game, after that merge's `score`; play ends with it (#3699 builds the
@@ -273,6 +285,9 @@ export class CascadeEngine {
   private readonly _nextA: PieceEntry[] = [];
   private readonly _nextB: PieceEntry[] = [];
   private _fallingCount = 0;
+  /** #3701: pieces that touched down in this fixed step, and their speed just before. */
+  private readonly _landed: PieceEntry[] = [];
+  private readonly _landedSpeed: number[] = [];
   private _nextId = 1;
   private _score = 0;
   private _gameOver = false;
@@ -304,12 +319,37 @@ export class CascadeEngine {
   private readonly _onBegin = (a: FixtureTag<PieceEntry>, b: FixtureTag<PieceEntry>): void => {
     if (this._fallingCount > 0) {
       // A piece has landed once it touches another piece or the floor (not a wall).
-      if (typeof a === "object" && b !== "wall") this._land(a);
-      if (typeof b === "object" && a !== "wall") this._land(b);
+      if (typeof a === "object" && b !== "wall") this._touchDown(a);
+      if (typeof b === "object" && a !== "wall") this._touchDown(b);
     }
     if (typeof a !== "object" || typeof b !== "object") return;
     if (a.tier === b.tier) this._queueMerge(a, b);
   };
+
+  /** First contact of a falling piece: it lands, and a `land` event follows after the step. */
+  private _touchDown(e: PieceEntry): void {
+    if (!e.falling) return;
+    this._landed.push(e);
+    this._landedSpeed.push(e.speed);
+    this._land(e);
+  }
+
+  /** #3701: the step's `land` events, at the pieces' positions after the step. */
+  private _emitLands(events: EngineEvent[]): void {
+    for (let i = 0; i < this._landed.length; i++) {
+      const e = this._landed[i]!;
+      events.push({
+        type: "land",
+        id: e.id,
+        tier: e.tier,
+        x: e.x,
+        y: e.y,
+        speed: this._landedSpeed[i]!,
+      });
+    }
+    this._landed.length = 0;
+    this._landedSpeed.length = 0;
+  }
 
   private _land(e: PieceEntry): void {
     if (!e.falling) return;
@@ -361,6 +401,7 @@ export class CascadeEngine {
   private _fixedStep(events: EngineEvent[]): void {
     if (this._growing.length > 0) this._growIn();
     this._readBodies(events);
+    if (this._landed.length > 0) this._emitLands(events);
     if (!this._bench.noMerges && !this._won) {
       this._scanMergeGaps();
       if (this._growing.length > 0) this._chainReach();
@@ -726,11 +767,15 @@ export class CascadeEngine {
     this._nextA.length = 0;
     this._nextB.length = 0;
     this._fallingCount = 0;
+    this._landed.length = 0;
+    this._landedSpeed.length = 0;
     this._drop = null;
   }
 
   restore(pieces: ReadonlyArray<{ tier: number; x: number; y: number }>, score: number): void {
     for (const e of Array.from(this._pieces.values())) this._removePiece(e);
+    this._landed.length = 0;
+    this._landedSpeed.length = 0;
     this._pendA.length = 0;
     this._pendB.length = 0;
     this._nextA.length = 0;
