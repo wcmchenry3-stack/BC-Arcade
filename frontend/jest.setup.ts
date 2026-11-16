@@ -138,7 +138,44 @@ jest.mock("react-native-reanimated", () => {
     useAnimatedRef: () => React.useRef(null),
     measure: () => null,
     useAnimatedReaction: () => {},
-    useFrameCallback: () => {},
+    // Inert, as before, unless the component turns it on with `setActive(true)` (#3699: Cascade's
+    // celebration clock): then it calls back every MOCK_FRAME_MS of (fake) time, with the time
+    // since the previous frame, until it is turned off or the component unmounts.
+    useFrameCallback: (callback: (info: Record<string, number | null>) => void) => {
+      const MOCK_FRAME_MS = 10;
+      const ref = React.useRef(callback);
+      ref.current = callback;
+      const [handle] = React.useState(() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let first = 0;
+        let last = 0;
+        const h = {
+          isActive: false,
+          callbackId: -1,
+          setActive(active: boolean) {
+            if (timer !== null) clearTimeout(timer);
+            timer = null;
+            h.isActive = active;
+            if (!active) return;
+            first = last = Date.now();
+            const tick = () => {
+              const now = Date.now();
+              ref.current({
+                timestamp: now,
+                timeSincePreviousFrame: now - last,
+                timeSinceFirstFrame: now - first,
+              });
+              last = now;
+              if (h.isActive) timer = setTimeout(tick, MOCK_FRAME_MS);
+            };
+            timer = setTimeout(tick, MOCK_FRAME_MS);
+          },
+        };
+        return h;
+      });
+      React.useEffect(() => () => handle.setActive(false), [handle]);
+      return handle;
+    },
     useDerivedValue: (fn: () => unknown) => ({ value: fn() }),
     // A shared value made outside a hook (Mahjong's motion clocks, #3613).
     makeMutable: (init: unknown) => ({

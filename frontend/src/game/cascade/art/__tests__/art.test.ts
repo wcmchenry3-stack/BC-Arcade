@@ -605,6 +605,17 @@ describe("the capstone's cheering face and celebration raster (#3699)", () => {
       expect(px[at + 3]).toBe(255);
       // And the dim is over the pile (bottom-left of the cavity).
       expect(px[(560 * WORLD_WIDTH + 40) * 4 + 3]).toBeGreaterThan(0);
+
+      // The GPU warm-up (#3924) draws all of it, and leaves nothing a player could see.
+      let warmCelebration!: typeof import("../../render/drawCelebration").warmCelebration;
+      jest.isolateModules(() => {
+        warmCelebration = require("../../render/drawCelebration").warmCelebration; // eslint-disable-line @typescript-eslint/no-require-imports
+      });
+      const warm = render(WORLD_WIDTH, WORLD_HEIGHT, (c) => warmCelebration(c, style)).px;
+      let maxAlpha = 0;
+      for (let i = 3; i < warm.length; i += 4) maxAlpha = Math.max(maxAlpha, warm[i]!);
+      // Each part at 1/255; where its parts overlap, at most 4/255 (about 1.5 %), in a few pixels.
+      expect(maxAlpha).toBeLessThanOrEqual(4);
     }
   );
 });

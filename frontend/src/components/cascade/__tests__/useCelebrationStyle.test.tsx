@@ -76,7 +76,8 @@ describe("useCelebrationStyle", () => {
     await idle();
     expect(mockBuild).toHaveBeenCalledTimes(1);
     expect(mockBuild.mock.calls[0]![0]).toEqual({ setId: "fruits", theme: "light", pxPerUnit: 3 });
-    expect(latest).toBeNull();
+    // Handed to the board for its GPU warm-up (#3924), but not ready: the clock waits for the win.
+    expect(latest).toMatchObject({ kind: "rays" });
     expect(onReady).not.toHaveBeenCalled();
     // The win: ready at once, no second build.
     await render({ prepare: true, won: true });
@@ -114,7 +115,7 @@ describe("useCelebrationStyle", () => {
   it("a new game is not ready until its own win", async () => {
     await render({ won: true });
     await render({ won: false });
-    expect(latest).toBeNull();
+    expect(onReady).toHaveBeenCalledTimes(1);
     await render({ won: true });
     expect(onReady).toHaveBeenCalledTimes(2);
     expect(mockBuild).toHaveBeenCalledTimes(1);

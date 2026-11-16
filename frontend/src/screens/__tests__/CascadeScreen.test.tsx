@@ -14,7 +14,11 @@ import CascadeScreen from "../CascadeScreen";
 import { Modal } from "react-native";
 import CascadeCelebration from "../../components/cascade/CascadeCelebration";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
-import { CELEBRATION_CARD_MS, CELEBRATION_CARD_MS_REDUCED } from "../../game/cascade/celebration";
+import {
+  CELEBRATION_CARD_MS,
+  CELEBRATION_CARD_MS_REDUCED,
+  MAX_FRAME_STEP_MS,
+} from "../../game/cascade/celebration";
 import { formatMs } from "../../game/_shared/formatMs";
 import * as pen from "../../game/cascade/art/pen";
 import { __resetArtCachesForTests } from "../../game/cascade/art/sprites";
@@ -1291,18 +1295,22 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         const renderer = await renderScreen();
         mockEngineScore = 4321;
         await win(renderer);
-        // The board celebrates: it knows of the win and its clock runs to the card's time.
+        // The board celebrates: it knows of the win, and its clock starts at 0 and is stepped
+        // frame by frame to the card's time (#3924: never by the wall clock).
         expect(board(renderer).props.won).toBe(true);
-        expect(board(renderer).props.celebration.value).toBe(CELEBRATION_CARD_MS);
+        expect(board(renderer).props.celebration.value).toBe(0);
+        await advance(1000);
+        expect(board(renderer).props.celebration.value).toBe(1000);
         expect(celebrating(renderer)).toBe(true);
         expect(resultModal(renderer).props).toMatchObject({ visible: true, outcome: "win" });
         // No card, not even one render early.
         expect(cardShown(renderer)).toBe(false);
-        await advance(CELEBRATION_CARD_MS - 1);
+        await advance(CELEBRATION_CARD_MS - 1000 - 1);
         expect(cardShown(renderer)).toBe(false);
         await advance(1);
         expect(cardShown(renderer)).toBe(true);
         expect(celebrating(renderer)).toBe(false);
+        expect(board(renderer).props.celebration.value).toBe(CELEBRATION_CARD_MS);
       });
 
       it("the win card shows the score, Best, Merges and the play time", async () => {
@@ -1343,7 +1351,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         });
         await win(renderer);
         expect(board(renderer).props.reduceMotion).toBe(true);
-        expect(board(renderer).props.celebration.value).toBe(CELEBRATION_CARD_MS_REDUCED);
+        expect(board(renderer).props.celebration.value).toBe(0);
         await advance(CELEBRATION_CARD_MS_REDUCED - 1);
         expect(cardShown(renderer)).toBe(false);
         await advance(1);
@@ -1356,7 +1364,8 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         await advance(1_800); // past the calm version's 1.6 s
         expect(cardShown(renderer)).toBe(false);
         await setReduceMotion(true);
-        await advance(0);
+        // The next frame ends it (the clock comes back to the calm version's end).
+        await advance(MAX_FRAME_STEP_MS);
         expect(cardShown(renderer)).toBe(true);
       });
 

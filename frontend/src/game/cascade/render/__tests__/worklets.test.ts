@@ -97,6 +97,29 @@ describe("UI-thread board renderer: every reachable function is a worklet", () =
     expect(missing).toEqual([]);
   });
 
+  // #3699 / #3924: Reanimated's useDerivedValue re-runs its updater when a shared value in the
+  // worklet's closure changes (`startMapper(fun, Object.values(updater.__closure))`). The board's
+  // Picture must therefore close over the frame AND the celebration clock, or the celebration is
+  // only re-recorded when the board's frame changes, which it no longer does after the win.
+  it("the board's Picture worklet closes over the frame and the celebration clock", () => {
+    const board = path.resolve(RENDER, "../../../components/cascade/CascadeBoard.tsx");
+    const out = transformSync(source(board), {
+      filename: board,
+      babelrc: false,
+      configFile: false,
+      parserOpts: { plugins: ["typescript", "jsx"] },
+      plugins: [require.resolve("react-native-worklets/plugin")],
+    })!.code!;
+    const closures = [...out.matchAll(/__closure\s*=\s*\{([^}]*)\}/g)].map((m) =>
+      m[1]!.split(",").map((s) => s.trim())
+    );
+    const picture = closures.find((c) => c.includes("createPicture"));
+    expect(picture).toEqual(
+      expect.arrayContaining(["frame", "celebration", "won", "celebrationStyle", "drawCelebration"])
+    );
+    expect(picture).toEqual(expect.arrayContaining(["warmCelebration"]));
+  });
+
   // #3699: the win celebration is recorded into the same Picture.
   it("every function in drawCelebration.ts, and the celebration timeline it calls", () => {
     const file = path.join(RENDER, "drawCelebration.ts");

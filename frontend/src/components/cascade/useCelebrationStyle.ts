@@ -59,7 +59,11 @@ export interface UseCelebrationStyleArgs {
   readonly onReady?: () => void;
 }
 
-/** The style to draw the celebration with: null until the game is won and it is ready. */
+/**
+ * The style to draw the celebration with: null until it is built. Built before the win (the
+ * pre-warm), the board draws it only as its invisible GPU warm-up (`warmCelebration`) until the
+ * celebration's clock starts.
+ */
 export function useCelebrationStyle({
   setId,
   theme,
@@ -102,6 +106,6 @@ export function useCelebrationStyle({
     if (ready) onReadyRef.current?.();
   }, [ready]);
 
-  const base = have && won ? built.style : null;
+  const base = have ? built.style : null;
   return useMemo(() => (base ? { ...base, reduceMotion } : null), [base, reduceMotion]);
 }

@@ -65,6 +65,35 @@ export function celebrationRemainingMs(elapsedMs: number, reduceMotion: boolean)
   return Math.max(0, celebrationCardMs(reduceMotion) - Math.max(0, elapsedMs));
 }
 
+/**
+ * The most the celebration clock moves in one frame (ms): two 60 Hz frames. A frame that comes
+ * late (the first draw of the celebration's textures and shaders stalled the UI thread for about
+ * 0.3-0.5 s on the iOS simulator, #3924) moves the clock only this far, so the rise, which is
+ * front-loaded (easeOutBack is 98 % there 160 ms in), is never skipped.
+ */
+export const MAX_FRAME_STEP_MS = 1000 / 30;
+
+/**
+ * The celebration clock after one frame (a worklet, on the UI thread): `t` plus the frame's time,
+ * clamped to `MAX_FRAME_STEP_MS`, and never past `endMs`. A first frame (no previous one) does not
+ * move it. Past `endMs` (Reduce Motion switched on late) it comes back to `endMs`.
+ */
+export function stepCelebrationClock(t: number, frameMs: number | null, endMs: number): number {
+  "worklet";
+  const dt = frameMs === null || !(frameMs > 0) ? 0 : Math.min(frameMs, MAX_FRAME_STEP_MS);
+  const next = t + dt;
+  return next < endMs ? next : endMs;
+}
+
+/**
+ * Where the clock starts, `sinceWinMs` after the win: at that time, but never past
+ * `CELEBRATION_START_MS`. A celebration that became ready late (its style built on demand) starts
+ * at once, with nothing skipped; the capstone's grow-in it would wait for has already happened.
+ */
+export function celebrationStartMs(sinceWinMs: number): number {
+  return Math.min(Math.max(0, sinceWinMs), CELEBRATION_START_MS);
+}
+
 /** What one frame of the celebration draws (filled in place, see `celebrationPose`). */
 export interface CelebrationPose {
   /** The dim's opacity over the pile (0..DIM_MAX). */

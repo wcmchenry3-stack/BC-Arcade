@@ -24,7 +24,7 @@ import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../../game/cascade/constants";
 import { drawFrame } from "../../game/cascade/render/drawFrame";
-import { drawCelebration } from "../../game/cascade/render/drawCelebration";
+import { drawCelebration, warmCelebration } from "../../game/cascade/render/drawCelebration";
 import { CELEBRATION_START_MS } from "../../game/cascade/celebration";
 import { buildBoardStyle } from "../../game/cascade/render/boardStyle";
 import { pieceSprites } from "../../game/cascade/art/sprites";
@@ -109,11 +109,14 @@ function CascadeBoard({
   const picture = useDerivedValue(() => {
     const buf = frame.value;
     const t = celebration.value;
-    const celeb = t >= CELEBRATION_START_MS ? celebrationStyle : null;
+    // The celebration once its clock is past the grow-in; before that, from the pre-warm on, its
+    // invisible warm-up, so its first real frame does not stall on the GPU (#3924).
+    const celeb = won && t >= CELEBRATION_START_MS ? celebrationStyle : null;
     return createPicture((canvas) => {
       try {
         drawFrame(canvas, buf, style, sprites, celeb ? CAPSTONE_TIER : -1);
         if (celeb) drawCelebration(canvas, buf, celeb, t);
+        else if (celebrationStyle) warmCelebration(canvas, celebrationStyle);
       } catch (e) {
         // Whatever drew before the throw stays; report once, never take down the UI thread.
         if (!drawErrorReported.value) {
@@ -122,7 +125,7 @@ function CascadeBoard({
         }
       }
     }, WORLD_BOUNDS);
-  }, [style, sprites, celebrationStyle]);
+  }, [style, sprites, celebrationStyle, won]);
 
   // The board's role and label sit on a wrapping View: on web Skia's Canvas drops accessibility
   // props, and the board must still read as an image there (#2960, CanvasKit on web).

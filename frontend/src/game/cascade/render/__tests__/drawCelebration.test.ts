@@ -3,7 +3,7 @@
  * Pins what is drawn, where, and how much: the per-frame draw budget (about 40 extra draws on
  * Fruits, about 120 on Cosmos), and the calm Reduce Motion version.
  */
-import { drawCelebration, type CelebrationStyle } from "../drawCelebration";
+import { drawCelebration, warmCelebration, type CelebrationStyle } from "../drawCelebration";
 import { drawFrame } from "../drawFrame";
 import { buildBoardStyle } from "../boardStyle";
 import { createFramePacker, packFrame, type FramePiece } from "../frame";
@@ -127,7 +127,7 @@ function styleOf(
     rays: set.rays,
     glow: set.glow,
     sparkle: set.sparkle,
-    dimRect: {} as never,
+    dimRect: { x: 20, y: 0, width: 360, height: 580 } as never,
     glowShader: GLOW as never,
     rayShader: RAYS as never,
     rayPath: RAY_PATH as never,
@@ -268,6 +268,34 @@ describe("drawCelebration", () => {
   it("draws only the dim and twinkles when the frame has no capstone", () => {
     const ops = draw(1000, styleOf("rays"), frameOf([OTHER]));
     expect(ops.filter((o) => o.k === "image")).toHaveLength(0);
+  });
+});
+
+// #3924: the celebration's first real frame stalled on the GPU on iOS; the board draws this
+// before it, from the pre-warm on.
+describe("warmCelebration", () => {
+  it("draws every bitmap, gradient, path and stroke the celebration uses, invisibly", () => {
+    const { ops, canvas } = recorder();
+    warmCelebration(canvas, styleOf("rays"));
+    expect(ops.slice(0, 2)).toEqual([{ k: "save" }, { k: "clip" }]);
+    expect(ops.at(-1)).toEqual({ k: "restore" });
+    expect(imagesOf(ops).map((o) => (o.img as { name: string }).name)).toEqual([
+      "body",
+      "light",
+      "top",
+      "cheer",
+    ]);
+    const shaders = ops
+      .filter((o): o is Extract<Op, { k: "circle" | "path" }> => o.k === "circle" || o.k === "path")
+      .map((o) => o.p.shader);
+    expect(shaders).toEqual(expect.arrayContaining([GLOW, RAYS]));
+    expect(ops.some((o) => o.k === "path" && o.path === SPARKLE_PATH)).toBe(true);
+    expect(ops.some((o) => o.k === "circle" && o.p.style === "stroke")).toBe(true);
+    // All but transparent, and a speck: nothing a player can see.
+    for (const o of draws(ops)) expect((o as { p: PaintState }).p.alpha).toBeCloseTo(1 / 255);
+    const scale = ops.find((o) => o.k === "scale") as { x: number };
+    expect(scale.x).toBeLessThanOrEqual(0.02);
+    expect(draws(ops)).toHaveLength(8);
   });
 });
 

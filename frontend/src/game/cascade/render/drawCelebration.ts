@@ -327,3 +327,47 @@ export function drawCelebration(
   drawSpotlight(canvas, cache, pose, frame, style, t);
   canvas.restore();
 }
+
+/**
+ * The warm-up: a speck (the capstone at 2 %, about 4 world units) this far inside the cavity's
+ * bottom-left corner, each part at 1/255 alpha (at most 4/255 where they overlap).
+ */
+const WARM_INSET = 4;
+const WARM_SCALE = 0.02;
+const WARM_ALPHA = 1 / 255;
+
+/**
+ * Draws everything the celebration will (its four capstone bitmaps, the glow and ray gradients,
+ * the twinkle path, the ring's stroke, the cavity clip) as an invisible speck, so the GPU has the
+ * textures uploaded and the pipelines built before the celebration's first real frame. That first
+ * frame stalled the UI thread on the iOS simulator (#3924). The board draws it from the moment the
+ * style is built (the pre-warm, during play) until the celebration starts: 8 tiny draws a frame
+ * (the four bitmaps, glow, ray, twinkle and ring), only in a game one merge from the win.
+ */
+export function warmCelebration(canvas: SkCanvas, style: CelebrationStyle): void {
+  "worklet";
+  const cache = celebrationCache();
+  const r = style.dimRect;
+  canvas.save();
+  canvas.clipRect(r, ClipOp.Intersect, true);
+  canvas.translate(r.x + WARM_INSET, r.y + r.height - WARM_INSET);
+  canvas.scale(WARM_SCALE, WARM_SCALE);
+  const faint = paintOf(cache, null, WARM_ALPHA);
+  if (style.body) drawLayerImage(canvas, style.body, faint);
+  if (style.light) drawLayerImage(canvas, style.light, faint);
+  if (style.top) drawLayerImage(canvas, style.top, faint);
+  if (style.cheer) drawLayerImage(canvas, style.cheer, faint);
+  canvas.scale(style.radius, style.radius);
+  const glow = paintOf(cache, null, WARM_ALPHA);
+  glow.setShader(style.glowShader);
+  canvas.drawCircle(0, 0, 1, glow);
+  const rays = paintOf(cache, null, WARM_ALPHA);
+  rays.setShader(style.rayShader);
+  canvas.drawPath(style.rayPath, rays);
+  canvas.drawPath(style.sparklePath, paintOf(cache, style.sparkle, WARM_ALPHA));
+  const stroke = paintOf(cache, style.ring, WARM_ALPHA);
+  stroke.setStyle(PaintStyle.Stroke);
+  stroke.setStrokeWidth(RING_WIDTH / style.radius);
+  canvas.drawCircle(0, 0, 1, stroke);
+  canvas.restore();
+}
