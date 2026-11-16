@@ -51,7 +51,6 @@ from synth_common import (
     SR,
     echo,
     fade,
-    highpass,
     level_rms,
     lowpass,
     lp2,
@@ -112,13 +111,13 @@ def thud(seed: int, dur: float, lp: float, decay: float) -> np.ndarray:
 def ks_pluck(f: float, dur: float, seed: int, bright: float = 0.5, decay: float = 0.996):
     """Karplus-Strong plucked string: a filtered noise burst in a damped, averaging delay loop."""
     n = int(dur * SR)
-    p = max(2, int(round(SR / f)))
+    p = max(2, round(SR / f))
     buf = lowpass(noise(p, seed), 1500 + 9000 * bright)
     buf /= np.abs(buf).max() + 1e-12
     y = np.zeros(n)
     y[:p] = buf
     for i in range(p, n):
-        y[i] = decay * 0.5 * (y[i - p] + y[i - p - 1 if i - p - 1 >= 0 else 0])
+        y[i] = decay * 0.5 * (y[i - p] + y[max(i - p - 1, 0)])
     return y
 
 
@@ -227,7 +226,7 @@ def fruits_win() -> np.ndarray:
     """2.7 s: plucks over the rise, a swelling fizz over the twinkles, a pop chord at the card."""
     x = blank(2.7)
     place(x, bubble(500, 0.12, 0.03, rise=2) * 0.6, 0.0)
-    run = [penta(n) - 5 for n in range(0, 9)]  # G4 -> B5
+    run = [penta(n) - 5 for n in range(9)]  # G4 -> B5
     gap = (WIN_RISE[1] - WIN_RISE[0]) / len(run)
     for k, s in enumerate(run):
         place(x, ks_pluck(f_of(s), 0.5, 8500 + k, 0.5, 0.993) * 0.6, WIN_RISE[0] + k * gap)
@@ -323,7 +322,9 @@ def cosmos_win() -> np.ndarray:
         place(x, glass(s, 0.6, 0.2) * 0.45, WIN_RISE[0] + k * gap)
     rng = np.random.default_rng(11502)
     for _ in range(16):
-        place(x, glass(penta(int(rng.integers(8, 16))), 0.5, 0.12) * 0.15, rng.uniform(*WIN_TWINKLE))
+        place(
+            x, glass(penta(int(rng.integers(8, 16))), 0.5, 0.12) * 0.15, rng.uniform(*WIN_TWINKLE)
+        )
     place(x, shimmer(f_of(12), 1.4, 0.7, 3.0) * 0.25, 0.85)
     for s in (12, 16, 19, 24):
         place(x, glass(s, 0.9, 0.4) * 0.45, WIN_CARD_AT)
@@ -369,24 +370,24 @@ LEVELS: dict[str, Level] = {
 }
 
 VOICES = {
-    "fruits": dict(
-        drop=fruits_drop,
-        land=fruits_land,
-        merge=fruits_merge,
-        chain=fruits_chain,
-        danger=fruits_danger,
-        win=fruits_win,
-        game_over=fruits_game_over,
-    ),
-    "cosmos": dict(
-        drop=cosmos_drop,
-        land=cosmos_land,
-        merge=cosmos_merge,
-        chain=cosmos_chain,
-        danger=cosmos_danger,
-        win=cosmos_win,
-        game_over=cosmos_game_over,
-    ),
+    "fruits": {
+        "drop": fruits_drop,
+        "land": fruits_land,
+        "merge": fruits_merge,
+        "chain": fruits_chain,
+        "danger": fruits_danger,
+        "win": fruits_win,
+        "game_over": fruits_game_over,
+    },
+    "cosmos": {
+        "drop": cosmos_drop,
+        "land": cosmos_land,
+        "merge": cosmos_merge,
+        "chain": cosmos_chain,
+        "danger": cosmos_danger,
+        "win": cosmos_win,
+        "game_over": cosmos_game_over,
+    },
 }
 
 

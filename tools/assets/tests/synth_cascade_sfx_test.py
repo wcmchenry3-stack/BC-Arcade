@@ -95,12 +95,12 @@ def test_the_merge_ladder_rises_a_step_per_tier_and_gets_louder(s):
 
 
 def test_timings_match_the_motion():
-    assert cascade.CHAIN_STEP * 1000 == _ms("chain", "stepMs")
-    assert cascade.GAME_OVER_CARD_AT * 1000 == _ms("gameOver", "cardAtMs")
-    assert cascade.DANGER_FASTEST * 1000 == _ms("danger", "fastMs")
+    assert _ms("chain", "stepMs") == cascade.CHAIN_STEP * 1000
+    assert _ms("gameOver", "cardAtMs") == cascade.GAME_OVER_CARD_AT * 1000
+    assert _ms("danger", "fastMs") == cascade.DANGER_FASTEST * 1000
     card = float(re.search(r"CELEBRATION_CARD_MS = (\d+)", CELEBRATION_TS).group(1))
     start = float(re.search(r"CELEBRATION_START_MS = (\d+)", CELEBRATION_TS).group(1))
-    assert cascade.WIN_CARD_AT * 1000 == card
+    assert card == cascade.WIN_CARD_AT * 1000
     assert cascade.WIN_RISE[0] * 1000 == start
 
 
