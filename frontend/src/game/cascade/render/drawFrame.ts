@@ -174,13 +174,15 @@ function drawPieces(
   frame: Float64Array,
   style: BoardStyle,
   sprites: BoardSprites,
-  dangerRatio: number
+  dangerRatio: number,
+  hideTier: number
 ): void {
   "worklet";
   const n = frame[HEADER_FIELD.count] ?? 0;
   for (let i = 0; i < n; i++) {
     const o = FRAME_HEADER + i * FRAME_STRIDE;
     const tier = frame[o + PIECE_FIELD.tier] ?? -1;
+    if (tier === hideTier) continue;
     // A merged piece grows in (#3697): drawn at the collider's size, its scale of the tier's.
     const scale = frame[o + PIECE_FIELD.scale] ?? 1;
     const r = (style.radius[tier] ?? 0) * scale;
@@ -283,19 +285,24 @@ function drawSpawner(
   }
 }
 
-/** Draw the whole board, back to front: pieces (with their wash), the lid line, the spawner. */
+/**
+ * Draw the whole board, back to front: pieces (with their wash), the lid line, the spawner.
+ * `hideTier` (#3699): pieces of this tier are left out, for the win celebration, which draws the
+ * capstone itself above its dim (`drawCelebration.ts`); -1 draws every piece.
+ */
 export function drawFrame(
   canvas: SkCanvas,
   frame: Float64Array,
   style: BoardStyle,
-  sprites: BoardSprites
+  sprites: BoardSprites,
+  hideTier = -1
 ): void {
   "worklet";
   const cache = drawCache();
   const dangerRatio = frame[HEADER_FIELD.dangerRatio] ?? 0;
   const canDrop = (frame[HEADER_FIELD.canDrop] ?? 1) !== 0;
   const spawnerTier = frame[HEADER_FIELD.spawnerTier] ?? -1;
-  drawPieces(canvas, cache, frame, style, sprites, dangerRatio);
+  drawPieces(canvas, cache, frame, style, sprites, dangerRatio, hideTier);
   drawLidLine(canvas, cache, style, dangerRatio);
   drawSpawner(canvas, cache, style, sprites, dangerRatio, canDrop, spawnerTier);
 }

@@ -434,7 +434,51 @@ function drawFace(canvas: SkCanvas, face: Face, ink: string, closed: boolean): v
   }
 }
 
-export type Layer = "body" | "light" | "top";
+/**
+ * The cheering face (#3699, from the owner's pick on the win celebration: proposal C's face on
+ * proposal A): happy arc eyes, an open smile with a tongue and rosy cheeks. Both sets wake up for
+ * it, so it ignores `closedEyes`. Sits where the piece's own face does, at its size.
+ */
+function drawCheerFace(canvas: SkCanvas, face: Face, ink: string): void {
+  const fx = face.x ?? 0;
+  const fy = face.y ?? 0.05;
+  const s = (face.s ?? 1) * 1.15;
+  const eye = strokePaint(rgba(ink), 0.06 * s);
+  const blush = fillPaint(rgba(face.blush ?? CASCADE_ART.blushOpen, 0.4));
+  for (const sx of [-1, 1]) {
+    const x = fx + sx * 0.36 * s;
+    const y = fy - 0.1 * s;
+    canvas.drawOval(
+      Skia.XYWHRect(x - 0.15 * s + sx * 0.04 * s, y + 0.1 * s, 0.3 * s, 0.13 * s),
+      blush
+    );
+    canvas.drawPath(
+      P((b) => b.M(x - 0.12 * s, y + 0.04 * s).Q(x, y - 0.13 * s, x + 0.12 * s, y + 0.04 * s)),
+      eye
+    );
+  }
+  const mouth = P((b) =>
+    b
+      .M(fx - 0.17 * s, fy + 0.03 * s)
+      .Q(fx, fy + 0.34 * s, fx + 0.17 * s, fy + 0.03 * s)
+      .Z()
+  );
+  canvas.drawPath(mouth, fillPaint(rgba(ink)));
+  canvas.save();
+  canvas.clipPath(mouth, ClipOp.Intersect, true);
+  canvas.drawOval(
+    Skia.XYWHRect(fx - 0.09 * s, fy + 0.13 * s, 0.18 * s, 0.14 * s),
+    fillPaint(rgba(CASCADE_ART.blushClosed))
+  );
+  canvas.restore();
+}
+
+/**
+ * A piece's layers. `cheer` (#3699) is the `top` layer with the cheering face in place of the
+ * piece's own: only the win celebration draws it, for the capstone (`sprites.ts`'s
+ * `capstoneSprite`), so it is not in `LAYERS`.
+ */
+export type Layer = "body" | "light" | "top" | "cheer";
 export const LAYERS: readonly Layer[] = ["body", "light", "top"];
 
 /** One layer of tier `tier` of `set`, in unit space, unrotated. */
@@ -447,9 +491,10 @@ export function drawLayer(canvas: SkCanvas, set: ArtSet, tier: number, layer: La
   clipUnit(canvas);
   if (layer === "body") art.body(pen);
   else if (layer === "light") drawLight(canvas, art);
+  else if (layer === "cheer") drawCheerFace(canvas, art.face, set.ink[tier]!);
   else drawFace(canvas, art.face, set.ink[tier]!, set.closedEyes);
   canvas.restore();
-  if (layer === "top") art.front?.(pen);
+  if (layer === "top" || layer === "cheer") art.front?.(pen);
 }
 
 /** The whole piece, upright, in unit space (icons, the piece sheet). */

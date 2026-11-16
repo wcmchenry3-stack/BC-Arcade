@@ -16,7 +16,9 @@ import * as path from "path";
 import type { CanvasKit } from "canvaskit-wasm";
 import type { SkImage, SkSurface } from "@shopify/react-native-skia";
 
-import { TIER_COUNT, tierDrawnRadius, tierRadius } from "../../tiers";
+import { CAPSTONE_TIER, TIER_COUNT, tierDrawnRadius, tierRadius } from "../../tiers";
+import { CELEBRATION_TARGET } from "../../celebration";
+import { buildCelebrationStyle } from "../../render/celebrationStyle";
 import { FLOOR_THICKNESS, WALL_THICKNESS, WORLD_HEIGHT, WORLD_WIDTH } from "../../constants";
 import { CASCADE_BIN_PALETTE } from "../../../../theme/theme.cascade";
 import {
@@ -30,7 +32,10 @@ import {
 import { LAYERS, drawLayer, drawPiece, type ArtSet } from "../pen";
 import {
   ART_SETS,
+  CAPSTONE_RASTER_SCALE,
+  MAX_CAPSTONE_SPRITES,
   MAX_SPRITE_SETS,
+  capstoneSprite,
   __resetArtCachesForTests,
   artSet,
   pieceSprites,
@@ -460,6 +465,159 @@ describe("caches", () => {
       adapter.skia = real;
     }
   });
+});
+
+// #3699: the win celebration's capstone: its cheering face, and its bigger raster.
+describe("the capstone's cheering face and celebration raster (#3699)", () => {
+  const R = 100;
+  const S = R * 4;
+  function capstone(set: ArtSet, face: "top" | "cheer"): Uint8Array {
+    return render(S, S, (c) => {
+      c.translate(S / 2, S / 2);
+      c.scale(R, R);
+      for (const layer of ["body", "light", face] as const) drawLayer(c, set, CAPSTONE_TIER, layer);
+    }).px;
+  }
+
+  it.each(SETS)("%s: a face of its own, inside the capstone's box", (_id, set) => {
+    const own = capstone(set, "top");
+    const cheer = capstone(set, "cheer");
+    let changed = 0;
+    for (let i = 0; i < own.length; i += 4) if (own[i] !== cheer[i]) changed++;
+    // The face changed (arc eyes, open smile), and nothing else did: the same silhouette.
+    expect(changed).toBeGreaterThan(R * R * 0.02);
+    const [l, t, r, b] = set.pieces[CAPSTONE_TIER]!.box;
+    for (let y = 0; y < S; y++)
+      for (let x = 0; x < S; x++) {
+        const inBox =
+          x >= S / 2 + l * R - 1 &&
+          x <= S / 2 + r * R + 1 &&
+          y >= S / 2 + t * R - 1 &&
+          y <= S / 2 + b * R + 1;
+        if (!inBox) expect(cheer[(y * S + x) * 4 + 3]).toBe(0);
+        expect(cheer[(y * S + x) * 4 + 3]! > 0).toBe(own[(y * S + x) * 4 + 3]! > 0);
+      }
+  });
+
+  it("rasterises the capstone once at 1.4x the board's pixel scale, with the cheering face", () => {
+    const sprite = capstoneSprite("fruits", 3)!;
+    expect(sprite).not.toBeNull();
+    expect(capstoneSprite("fruits", 3)).toBe(sprite);
+    const q = quantizePx(3 * CAPSTONE_RASTER_SCALE);
+    const r = tierDrawnRadius(CAPSTONE_TIER);
+    expect(sprite.light.width()).toBe(Math.ceil(2 * r * q));
+    expect(sprite.cheer.width()).toBe(sprite.top.width());
+    // Sharper than the board's own capstone, which it is drawn up from (never scaled up past it).
+    const board = pieceSprites("fruits", 3)[CAPSTONE_TIER]!;
+    expect(sprite.body.width()).toBeGreaterThan(board.body.width() * 1.37);
+  });
+
+  it(`keeps ${MAX_CAPSTONE_SPRITES} capstone rasters and disposes the least recently used`, () => {
+    const first = capstoneSprite("fruits", 1)!;
+    const evicted = jest.spyOn(first.cheer, "dispose");
+    capstoneSprite("cosmos", 1);
+    expect(evicted).not.toHaveBeenCalled();
+    capstoneSprite("fruits", 2);
+    expect(evicted).toHaveBeenCalled();
+  });
+
+  it("is null, not a throw, when Skia cannot draw it", () => {
+    const real = adapter.skia;
+    adapter.skia = { ...Skia, Surface: { Make: () => null } };
+    try {
+      expect(capstoneSprite("cosmos", 5)).toBeNull();
+    } finally {
+      adapter.skia = real;
+    }
+  });
+
+  // Review on #3924: the cheer layer is the fourth raster; a throw there must not reach the
+  // board's render, leak the three bitmaps already made, or be retried on every render.
+  it("a throw drawing the cheering face: null, the other bitmaps disposed, not retried", () => {
+    const real = adapter.skia;
+    const disposed: jest.Mock[] = [];
+    let calls = 0;
+    adapter.skia = {
+      ...Skia,
+      Surface: {
+        Make: (w: number, h: number) => {
+          calls++;
+          const surface = Skia.Surface.Make(w, h);
+          if (calls === 4) {
+            // The cheer layer: its canvas throws as soon as it is drawn on.
+            surface.getCanvas = () => {
+              throw new Error("cheer");
+            };
+          }
+          const snap = surface.makeImageSnapshot.bind(surface);
+          surface.makeImageSnapshot = () => {
+            const img = snap();
+            const dispose = jest.fn(img.dispose.bind(img));
+            img.dispose = dispose;
+            disposed.push(dispose);
+            return img;
+          };
+          return surface;
+        },
+      },
+    };
+    try {
+      let sprite: unknown = "unset";
+      expect(() => {
+        sprite = capstoneSprite("fruits", 2);
+      }).not.toThrow();
+      expect(sprite).toBeNull();
+      expect(calls).toBe(4);
+      // Body, light and top were made, then released.
+      expect(disposed).toHaveLength(3);
+      disposed.forEach((d) => expect(d).toHaveBeenCalledTimes(1));
+      // Remembered: the next render does not try again.
+      expect(capstoneSprite("fruits", 2)).toBeNull();
+      expect(calls).toBe(4);
+    } finally {
+      adapter.skia = real;
+    }
+  });
+
+  it.each(["fruits", "cosmos"] as const)(
+    "%s: the celebration builds and draws a frame on real Skia",
+    (setId) => {
+      const style = buildCelebrationStyle({
+        setId,
+        theme: setId === "fruits" ? "light" : "dark",
+        reduceMotion: false,
+        sprite: capstoneSprite(setId, 1),
+      })!;
+      expect(style).not.toBeNull();
+      expect(style.cheer).not.toBeNull();
+      const frame = new Float64Array([1, 0, 0, -1, 9, CAPSTONE_TIER, 120, 470, 0.4, 1, 1]);
+      // Loaded now, not at the top: the worklets transform captures `Skia` when the module loads,
+      // and the real Skia is only installed in `beforeAll`.
+      let drawCelebration!: typeof import("../../render/drawCelebration").drawCelebration;
+      jest.isolateModules(() => {
+        drawCelebration = require("../../render/drawCelebration").drawCelebration; // eslint-disable-line @typescript-eslint/no-require-imports
+      });
+      const { px } = render(WORLD_WIDTH, WORLD_HEIGHT, (c) =>
+        drawCelebration(c, frame, style, 1200)
+      );
+      // The capstone is drawn at the board centre (its middle pixel is opaque).
+      const at = (Math.round(CELEBRATION_TARGET.y) * WORLD_WIDTH + CELEBRATION_TARGET.x) * 4;
+      expect(px[at + 3]).toBe(255);
+      // And the dim is over the pile (bottom-left of the cavity).
+      expect(px[(560 * WORLD_WIDTH + 40) * 4 + 3]).toBeGreaterThan(0);
+
+      // The GPU warm-up (#3924) draws all of it, and leaves nothing a player could see.
+      let warmCelebration!: typeof import("../../render/drawCelebration").warmCelebration;
+      jest.isolateModules(() => {
+        warmCelebration = require("../../render/drawCelebration").warmCelebration; // eslint-disable-line @typescript-eslint/no-require-imports
+      });
+      const warm = render(WORLD_WIDTH, WORLD_HEIGHT, (c) => warmCelebration(c, style)).px;
+      let maxAlpha = 0;
+      for (let i = 3; i < warm.length; i += 4) maxAlpha = Math.max(maxAlpha, warm[i]!);
+      // Each part at 1/255; where its parts overlap, at most 4/255 (about 1.5 %), in a few pixels.
+      expect(maxAlpha).toBeLessThanOrEqual(4);
+    }
+  );
 });
 
 describe("the bin (soft outline)", () => {

@@ -95,13 +95,16 @@ LIFECYCLE_OUTCOMES = tuple(o for o in GameOutcome if o not in RESULT_OUTCOMES)
 winner record `win` / `loss` / `push` — Yacht vs the computer, Hearts, Daily
 Word, Blackjack (a run that reached its goal / ran out of chips, #2628),
 Mahjong (a cleared board is a `win` since #2627, a deadlock the player leaves
-a `loss`) and Twenty48 (the 2048 tile / a game over before it, #2631).
+a `loss`), Twenty48 (the 2048 tile / a game over before it, #2631) and
+Cascade (the capstone / the lid's game over, #3699; builds before it send
+`completed`).
 `GameModule.has_winner` means "this game can record win / loss / push" and is
 set only once the client really writes them, a win included: true for Yacht,
-Hearts, Daily Word, Blackjack, Mahjong and Twenty48. It is a
+Hearts, Daily Word, Blackjack, Mahjong, Twenty48 and Cascade (#3699). It is a
 per-game flag, not a per-row fact — a `completed` row from a `has_winner` game
-(solo Yacht) is a finish with no winner, not a win. Score-only games
-(Solitaire, FreeCell, Sudoku, Cascade, Sort, Star Swarm) record `completed`,
+(solo Yacht, or a Cascade build before #3699) is a finish with no winner, not
+a win. Score-only games (Solitaire, FreeCell, Sudoku, Sort, Star Swarm) record
+`completed`,
 which means "no win concept" (win rate shows "—"); so does a `kept_playing`
 from a Twenty48 build before #2631 that isn't stored as a win (below). `abandoned` is a quit and is excluded from leaderboards, stats and
 XP by `games.filters.not_abandoned()`. There is no separate `won` field. The

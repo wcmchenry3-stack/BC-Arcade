@@ -280,6 +280,34 @@ describe("Cascade bin palette (#3698)", () => {
   });
 });
 
+describe("Cascade win celebration palette (#3699)", () => {
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s equals the theme's background / celebration tokens", (name, colors) => {
+    expect(cascade.CASCADE_CELEBRATION.themes[name]).toEqual({
+      dim: colors.background,
+      ring: colors.celebration,
+    });
+  });
+
+  it("every set colour is an existing #rrggbb art or bin colour", () => {
+    const known = new Set<string>();
+    const collect = (v: unknown): void => {
+      if (typeof v === "string") known.add(v);
+      else if (v && typeof v === "object") Object.values(v).forEach(collect);
+    };
+    collect(cascade.CASCADE_ART);
+    collect(cascade.CASCADE_BIN_PALETTE);
+    for (const set of Object.values(cascade.CASCADE_CELEBRATION.sets)) {
+      for (const c of Object.values(set)) {
+        expect(c).toMatch(/^#[0-9a-f]{6}$/);
+        expect(known.has(c)).toBe(true);
+      }
+    }
+  });
+});
+
 describe("Cascade lid palette (#3694)", () => {
   it.each([
     ["light", light],

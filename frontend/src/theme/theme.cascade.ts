@@ -200,3 +200,52 @@ export const CASCADE_BIN_PALETTE: Readonly<Record<"light" | "dark", CascadeBinPa
   light: { surface: "#fbf4e2", accent: "#1bc5d4", border: "#d8c9a6" },
   dark: { surface: "#19191f", accent: "#8ff5ff", border: "#2e2e38" },
 };
+
+/** The win celebration's colours for one piece set (#3699). */
+export interface CascadeCelebrationSetPalette {
+  /** The halo behind the capstone: its outer colour and its core. */
+  readonly glow: string;
+  readonly glowCore: string;
+  /** Fruits: the turning sun rays. Cosmos: the swirl's inner stars (then `glow`, then `sparkle`). */
+  readonly rays: string;
+  /** The twinkles over the dimmed pile (four-point stars); the swirl's outer stars. */
+  readonly sparkle: string;
+}
+
+/** The win celebration's colours for one theme (#3699). */
+export interface CascadeCelebrationThemePalette {
+  /** The scrim over the pile: the theme's page background, drawn at most 68 % opaque. */
+  readonly dim: string;
+  /** The ring around the capstone: the theme's `celebration` gold. */
+  readonly ring: string;
+}
+
+/**
+ * The win celebration (#3699, owner pick: A "Spotlight" with C's cheering face). Every colour is
+ * one the game already has: the art's (`CASCADE_ART`) or the theme's background and celebration
+ * tokens (`ThemeContext.tsx`, checked in gamePalettes.test.ts). Kept as hex because
+ * `render/drawCelebration.ts` sets their alpha itself on the UI thread.
+ */
+export const CASCADE_CELEBRATION: {
+  readonly sets: Readonly<Record<"fruits" | "cosmos", CascadeCelebrationSetPalette>>;
+  readonly themes: Readonly<Record<"light" | "dark", CascadeCelebrationThemePalette>>;
+} = {
+  sets: {
+    fruits: {
+      glow: CASCADE_ART.fruits.lemon.l,
+      glowCore: CASCADE_BIN_PALETTE.light.surface,
+      rays: CASCADE_ART.fruits.lemon.b,
+      sparkle: CASCADE_ART.fruits.lemon.l,
+    },
+    cosmos: {
+      glow: CASCADE_ART.cosmos.galaxyArm,
+      glowCore: CASCADE_ART.cosmos.galaxyCore[0],
+      rays: CASCADE_ART.cosmos.galaxyArmCore,
+      sparkle: CASCADE_ART.white,
+    },
+  },
+  themes: {
+    light: { dim: "#f5ecd7", ring: "#8a6100" },
+    dark: { dim: "#0e0e13", ring: "#ffd700" },
+  },
+};

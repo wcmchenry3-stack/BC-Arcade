@@ -57,7 +57,7 @@ export const HAS_WINNER: Readonly<Record<GameType, boolean>> = {
   yacht: true,
   twenty48: true,
   blackjack: true,
-  cascade: false,
+  cascade: true,
   solitaire: false,
   hearts: true,
   sudoku: false,

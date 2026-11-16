@@ -25,7 +25,7 @@
  */
 import { Skia } from "@shopify/react-native-skia";
 import type { SkImage, SkPicture } from "@shopify/react-native-skia";
-import { TIER_COUNT, tierDrawnRadius, type TierSetId } from "../tiers";
+import { CAPSTONE_TIER, TIER_COUNT, tierDrawnRadius, type TierSetId } from "../tiers";
 import { COSMOS_ART } from "./cosmos";
 import { FRUIT_ART } from "./fruits";
 import { UNIT_BOX, drawLayer, drawPiece, type ArtSet, type Layer } from "./pen";
@@ -160,6 +160,65 @@ export function pieceSprites(setId: string, pxPerUnit: number): PieceSprites {
   return sprites;
 }
 
+/**
+ * The capstone for the win celebration (#3699): its three layers plus `cheer` (the top layer with
+ * the cheering face, `pen.ts`), rasterised at `CAPSTONE_RASTER_SCALE` times the board's pixel
+ * scale. The celebration lifts the capstone to 1.32x and pulses it by 5 %, so the board's own
+ * bitmap would be scaled up (soft); this one is drawn only down.
+ */
+export interface CapstoneSprite extends PieceSprite {
+  readonly cheer: SkImage;
+}
+
+/** Above the celebration's largest draw (1.32 lift + 0.05 pulse = 1.37 x the tier's size). */
+export const CAPSTONE_RASTER_SCALE = 1.4;
+/** Capstone rasters kept (set x pixel scale), least recently used disposed first. */
+export const MAX_CAPSTONE_SPRITES = 2;
+
+/** Per key: the raster, or null where it could not be drawn (remembered, never retried). */
+const capstoneCache = new Map<string, CapstoneSprite | null>();
+
+/**
+ * The capstone of `setId` at `CAPSTONE_RASTER_SCALE` x `pxPerUnit`, made once per key, at the
+ * first win that needs it (about 4 x 275² px at a 3x phone).
+ * The last `MAX_CAPSTONE_SPRITES` keys are kept, celebrating or not (up to about 2 MB), and are
+ * not disposed on a restart: the board may still be drawing one. Null if it could not be drawn,
+ * whatever the reason (a throw included, its partial bitmaps disposed): the celebration then
+ * draws the board's own capstone, without the cheering face.
+ */
+export function capstoneSprite(setId: string, pxPerUnit: number): CapstoneSprite | null {
+  const px = quantizePx(pxPerUnit * CAPSTONE_RASTER_SCALE);
+  const key = `${setId}@${px}`;
+  if (capstoneCache.has(key)) {
+    const hit = capstoneCache.get(key) ?? null;
+    capstoneCache.delete(key);
+    capstoneCache.set(key, hit);
+    return hit;
+  }
+  const set = artSet(setId);
+  const tier = CAPSTONE_TIER;
+  let sprite: CapstoneSprite | null = null;
+  // Guarded as `drawTier` is: a throw here would otherwise reach the board's render at the win.
+  const base = drawTier(set, tier, px);
+  if (base) {
+    try {
+      const art = set.pieces[tier]!;
+      const cheer = rasterise(set, tier, "cheer", art.box, tierDrawnRadius(tier), px);
+      if (cheer) sprite = { ...base, cheer: cheer.image };
+    } catch {
+      sprite = null;
+    }
+    if (!sprite) for (const image of [base.body, base.light, base.top]) image.dispose();
+  }
+  capstoneCache.set(key, sprite);
+  for (const [k, old] of capstoneCache) {
+    if (capstoneCache.size <= MAX_CAPSTONE_SPRITES) break;
+    capstoneCache.delete(k);
+    if (old) for (const image of [old.body, old.light, old.top, old.cheer]) image.dispose();
+  }
+  return sprite;
+}
+
 function clearPictures(): void {
   for (const p of pictureCache.values()) p?.dispose();
   pictureCache.clear();
@@ -201,5 +260,6 @@ export function piecePicture(setId: string, tier: number, size: number): SkPictu
 /** @internal Test seam: forget every cached sprite set and picture (without disposing). */
 export function __resetArtCachesForTests(): void {
   spriteCache.clear();
+  capstoneCache.clear();
   pictureCache.clear();
 }

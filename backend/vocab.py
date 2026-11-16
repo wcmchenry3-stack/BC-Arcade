@@ -74,6 +74,9 @@ class GameOutcome(str, Enum):  # noqa: UP042  # StrEnum would change str(); kept
       Out (``metadata.final_chips`` > 0) is stored as ``win``. A bust after
       Keep Playing can't be told from a plain bust, so it stays
       ``completed`` (#2703).
+    * Cascade — ``win`` when the capstone (Pumpkin / Milky Way) is made,
+      ``loss`` when the lid ends the game (#3699). Builds before #3699 send
+      ``completed``, which stays "no winner".
     * Twenty48 — ``win`` when the 2048 tile appears (the row keeps the score
       at that moment; Keep Playing after it is untracked), ``loss`` on a game
       over without it (#2631). Older builds send ``completed`` /
@@ -91,7 +94,8 @@ class GameOutcome(str, Enum):  # noqa: UP042  # StrEnum would change str(); kept
     Lifecycle vocabulary:
 
     * ``completed`` — a finished game with no win concept (score-only games:
-      Solitaire, FreeCell, Sudoku, Cascade, Sort, Star Swarm, solo Yacht).
+      Solitaire, FreeCell, Sudoku, Sort, Star Swarm, solo Yacht; Cascade
+      before #3699).
       Win rate for these games is "—", never 0 %.
     * ``kept_playing`` — legacy: Twenty48 builds before #2631 closed the
       session this way when the player kept going past 2048. New builds record

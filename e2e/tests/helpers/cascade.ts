@@ -160,3 +160,13 @@ export async function spawnTierAt(
     [tier, x] as const,
   );
 }
+
+/**
+ * Restore two tier-9 pieces about to merge into the capstone (#3920): the win follows within
+ * about 0.2 s, then the celebration and the win card (#3699).
+ */
+export async function setupWin(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    (window as { __cascade_setupWin?: () => void }).__cascade_setupWin?.(),
+  );
+}
