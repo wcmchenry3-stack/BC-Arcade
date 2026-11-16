@@ -73,6 +73,18 @@ export interface CascadeBoardProps {
 /** No celebration (a board without the prop). */
 const NO_CELEBRATION = { value: -1 };
 const NO_MOTION_EVENTS = { value: new Float64Array(0) };
+/** What the Picture reads when the board has no motion (it is then not drawn). */
+const NO_MOTION = {
+  events: NO_MOTION_EVENTS,
+  stamps: NO_MOTION_EVENTS,
+  clock: NO_CELEBRATION,
+  dangerPhase: NO_CELEBRATION,
+  danger: NO_CELEBRATION,
+  aimState: NO_CELEBRATION,
+  aimX: NO_CELEBRATION,
+  aimAt: NO_CELEBRATION,
+  aimFromX: NO_CELEBRATION,
+};
 
 function CascadeBoard({
   frame,
@@ -111,11 +123,17 @@ function CascadeBoard({
   const glyphs = useMemo(() => (sprites ? buildChainGlyphs() : null), [sprites]);
   const tones = CASCADE_MOTION.tones[setId === "cosmos" ? "cosmos" : "fruits"];
   const motionPalette = CASCADE_MOTION.themes[theme];
-  const events = motion?.events ?? NO_MOTION_EVENTS;
-  const stamps = motion?.stamps ?? NO_MOTION_EVENTS;
-  const motionClock = motion?.clock ?? NO_CELEBRATION;
-  const dangerPhase = motion?.dangerPhase ?? NO_CELEBRATION;
-  const danger = motion?.danger ?? NO_CELEBRATION;
+  const {
+    events,
+    stamps,
+    clock: motionClock,
+    dangerPhase,
+    danger,
+    aimState,
+    aimX,
+    aimAt,
+    aimFromX,
+  } = motion ?? NO_MOTION;
   const hasMotion = motion !== undefined;
   const canvasStyle = useMemo(
     () => ({ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }),
@@ -141,6 +159,13 @@ function CascadeBoard({
           palette: motionPalette,
           ptPerUnit: scale,
           glyphs,
+          // #3928: the aim, written by the board gesture on the UI thread.
+          aim: {
+            state: aimState.value,
+            x: aimX.value,
+            ms: motionClock.value - aimAt.value,
+            fromX: aimFromX.value,
+          },
         }
       : null;
     return createPicture((canvas) => {

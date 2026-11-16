@@ -9,8 +9,8 @@
  *      snapshot, packs it into a `Float64Array` (`game/cascade/render/frame.ts`) and publishes it
  *      to a shared value only when it changed; `CascadeBoard` records a Skia Picture from it on
  *      the UI thread. The score lives in a `ScoreStore` that `ScoreDisplay` subscribes to.
- *   3. Layout: `calculateCascadeLayout` (`game/cascade/layout.ts`) scales the fixed world into
- *      the measured board area (#3693).
+ *   3. Layout and input: `calculateCascadeLayout` scales the world into the board area (#3693);
+ *      `CascadeAimArea` turns press, drag and release into a drop (#3928, UI thread).
  *   4. Persistence (`useCascadeSave`): the board, queue, score and play time are throttle-saved
  *      (`game/cascade/storage.ts`), restored on mount and saved on pause.
  *   5. Session: `useGameSync("cascade")`; drops and merges are enqueued as events, the session
@@ -30,22 +30,13 @@
  *      (`useBoardMotion`, drawn on the UI thread), the paced haptics (`game/cascade/haptics.ts`)
  *      and the piece set's paced sounds (`useCascadeSounds`, #3702); the loss card waits for
  *      the game-over sequence (`useLossCard`). All timings: `game/cascade/motion.ts`.
- *   9. The lid (#3694): the engine decides game over; the board draws the lid line, the
- *      spawner's clock ring from `dangerRatio`, the red wash on pieces over the lid, and the
- *      waiting ghost while `canDrop()` is false. A tap drops only when the engine allows it.
+ *   9. The lid (#3694): the board draws the lid, the clock ring from `dangerRatio`, the red wash
+ *      and the waiting ghost. A drop happens only when the engine allows it (`canDrop()`).
  *  10. Test and dev seams: `useCascadeTestSeams` (the `__cascade_*` hooks and demo set-ups) for
- *      E2E builds, `CascadeDevPanel` (with the frame readout, #2960) for dev builds (#3693).
- *      Session, clock and best: `useCascadeSession`.
+ *      E2E builds, `CascadeDevPanel` (frame readout, #2960) for dev builds; `useCascadeSession`.
  */
 import React, { Profiler, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  StyleSheet,
-  View,
-  LayoutChangeEvent,
-  Pressable,
-  type GestureResponderEvent,
-} from "react-native";
+import { AccessibilityInfo, StyleSheet, View, LayoutChangeEvent } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -62,7 +53,8 @@ import type { FruitTier } from "../theme/fruitSets";
 import { CascadeEngine, type EngineEvent, type PieceSnapshot } from "../game/cascade/engine";
 import { WORLD_WIDTH } from "../game/cascade/constants";
 import { CAPSTONE_TIER } from "../game/cascade/tiers";
-import { calculateCascadeLayout, tapToWorldX, type BoardPressPoint } from "../game/cascade/layout";
+import { calculateCascadeLayout } from "../game/cascade/layout";
+import CascadeAimArea from "../components/cascade/CascadeAimArea";
 import { isInDanger, useCascadeTestSeams } from "../game/cascade/useCascadeTestSeams";
 import { useCascadeSession } from "../game/cascade/useCascadeSession";
 import { areTestHooksEnabled } from "../game/_shared/envFlags";
@@ -559,7 +551,7 @@ function CascadeGame() {
 
   const handleTap = useCallback(
     (x: number | null) => {
-      if (x === null) return; // a press with no usable x (`tapToWorldX`)
+      if (x === null || !Number.isFinite(x)) return; // no usable x (#3922; `boardPxToWorldX`)
       const now = Date.now();
       const interval = now - lastDropTimeRef.current;
 
@@ -668,10 +660,7 @@ function CascadeGame() {
       ) : null,
     [currentDef, nextDef, drops]
   );
-  const onBoardPress = useCallback(
-    (e: GestureResponderEvent) => handleTap(tapToWorldX(e.nativeEvent as BoardPressPoint, scale)),
-    [handleTap, scale]
-  );
+  const onDragStart = useCallback(() => haptics.dragStart(), [haptics]);
   // The bin is the card: the board rect, bottom-anchored in the measured area.
   const boardAreaStyle = useMemo(
     () => ({
@@ -714,7 +703,14 @@ function CascadeGame() {
 
         <View style={styles.canvasWrapper} onLayout={onLayout}>
           {scale > 0 && (
-            <Pressable testID="cascade-game-area" onPress={onBoardPress} style={boardAreaStyle}>
+            <CascadeAimArea
+              style={boardAreaStyle}
+              motion={motion}
+              scale={scale}
+              enabled={!gameOver}
+              onDrop={handleTap}
+              onDragStart={onDragStart}
+            >
               <CascadeBoard
                 frame={frameSV}
                 scale={scale}
@@ -728,7 +724,7 @@ function CascadeGame() {
                 celebration={celebrationClock}
                 motion={motion.values}
               />
-            </Pressable>
+            </CascadeAimArea>
           )}
 
           <View style={StyleSheet.absoluteFill} pointerEvents="none">

@@ -1,4 +1,4 @@
-import { calculateCascadeLayout, tapToWorldX } from "../layout";
+import { boardPxToWorldX, calculateCascadeLayout } from "../layout";
 import { WALL_THICKNESS, WORLD_HEIGHT, WORLD_WIDTH } from "../constants";
 
 describe("calculateCascadeLayout (#3693)", () => {
@@ -64,26 +64,21 @@ describe("calculateCascadeLayout (#3693)", () => {
   });
 });
 
-describe("tapToWorldX", () => {
+describe("boardPxToWorldX (#3922, #3928)", () => {
   it("converts px to world units", () => {
-    expect(tapToWorldX({ locationX: 100 }, 0.5)).toBe(200);
+    expect(boardPxToWorldX(100, 0.5)).toBe(200);
   });
   it("clamps between the walls", () => {
-    expect(tapToWorldX({ locationX: 0 }, 1)).toBe(WALL_THICKNESS);
-    expect(tapToWorldX({ locationX: 10_000 }, 1)).toBe(WORLD_WIDTH - WALL_THICKNESS);
+    expect(boardPxToWorldX(0, 1)).toBe(WALL_THICKNESS);
+    expect(boardPxToWorldX(-50, 1)).toBe(WALL_THICKNESS);
+    expect(boardPxToWorldX(10_000, 1)).toBe(WORLD_WIDTH - WALL_THICKNESS);
   });
-  // react-native-web's mouse and touch presses carry no locationX: the drop x was NaN and no
-  // piece ever fell on the web.
-  it("reads the DOM offsetX when there is no locationX (web)", () => {
-    expect(tapToWorldX({ offsetX: 103 }, 0.5)).toBe(206);
-    expect(tapToWorldX({ locationX: undefined, offsetX: 103 }, 0.5)).toBe(206);
-  });
-  it("prefers locationX when both are present (native)", () => {
-    expect(tapToWorldX({ locationX: 100, offsetX: 7 }, 0.5)).toBe(200);
-  });
-  it("is null when the press has no usable x or the board has no size", () => {
-    expect(tapToWorldX({}, 1)).toBeNull();
-    expect(tapToWorldX({ locationX: Number.NaN, offsetX: Number.NaN }, 1)).toBeNull();
-    expect(tapToWorldX({ locationX: 100 }, 0)).toBeNull();
+  // #3922: a NaN x broke the physics world and no piece ever fell on the web.
+  it("is null when the point has no usable x or the board has no size", () => {
+    expect(boardPxToWorldX(undefined, 1)).toBeNull();
+    expect(boardPxToWorldX(Number.NaN, 1)).toBeNull();
+    expect(boardPxToWorldX(Number.POSITIVE_INFINITY, 1)).toBeNull();
+    expect(boardPxToWorldX(100, 0)).toBeNull();
+    expect(boardPxToWorldX(100, Number.NaN)).toBeNull();
   });
 });

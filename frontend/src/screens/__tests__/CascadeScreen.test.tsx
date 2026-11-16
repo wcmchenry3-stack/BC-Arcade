@@ -8,6 +8,7 @@
  *   - handleRestart resets score and recreates the engine
  */
 
+import { detectedGesture, type DetectorRender } from "../../test-utils/mockScreenDeps";
 import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
@@ -71,6 +72,11 @@ jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+// #3928: the board's press-drag-release gesture, recorded so a test can fire it.
+const mockDetected: DetectorRender[] = [];
+jest.mock("react-native-gesture-handler", () =>
+  mockScreenDeps().mockGestureHandler(() => mockDetected)
+);
 
 jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
@@ -289,20 +295,22 @@ async function renderScreen() {
   return renderer;
 }
 
-/** Find the tappable game area Pressable. */
+/** Find the board's touch area (`CascadeAimArea`). */
 function findGameArea(renderer: ReturnType<typeof create>) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return renderer.root.findAll((node: any) => node.props.testID === "cascade-game-area")[0];
 }
 
 /**
- * Simulate a tap on the game area at the given world x-coordinate.
- * scale = 0.75 with the mock layout (width=300, height=600).
+ * Simulate a tap on the game area at the given world x-coordinate: the board gesture's press and
+ * release (#3928: a quick tap drops at once). scale = 0.75 with the mock layout (300 x 600).
  */
-async function triggerTap(renderer: ReturnType<typeof create>, worldX = 150) {
-  const area = findGameArea(renderer);
+async function triggerTap(_renderer: ReturnType<typeof create>, worldX = 150) {
+  const pan = detectedGesture(mockDetected, "pan", { testID: "cascade-game-area" });
   await act(() => {
-    area?.props.onPress({ nativeEvent: { locationX: worldX * 0.75 } });
+    pan?.onBegin?.({ x: worldX * 0.75, y: 100 });
+    pan?.onEnd?.({ x: worldX * 0.75, y: 100 });
+    pan?.onFinalize?.({ x: worldX * 0.75, y: 100 });
   });
 }
 
@@ -354,21 +362,22 @@ describe("CascadeGame", () => {
     expect(mockEngineDrop).toHaveBeenCalledTimes(1);
   });
 
-  it("a web press (offsetX, no locationX) drops at that x", async () => {
+  // #3928: the gesture reports x on every platform; a press elsewhere drops at that x.
+  it("a press drops at its own x", async () => {
     const renderer = await renderScreen();
-    const area = findGameArea(renderer);
-    await act(() => {
-      area?.props.onPress({ nativeEvent: { offsetX: 150 * 0.75 } });
-    });
+    await triggerTap(renderer, 90);
     expect(mockEngineDrop).toHaveBeenCalledTimes(1);
-    expect(mockEngineDrop.mock.calls[0]?.[1]).toBeCloseTo(150);
+    expect(mockEngineDrop.mock.calls[0]?.[1]).toBeCloseTo(90);
   });
 
+  // #3922: a non-finite x never becomes a drop.
   it("a press with no usable x drops nothing", async () => {
-    const renderer = await renderScreen();
-    const area = findGameArea(renderer);
+    await renderScreen();
+    const pan = detectedGesture(mockDetected, "pan", { testID: "cascade-game-area" });
     await act(() => {
-      area?.props.onPress({ nativeEvent: {} });
+      pan?.onBegin?.({ x: Number.NaN, y: 100 });
+      pan?.onEnd?.({ x: Number.NaN, y: 100 });
+      pan?.onFinalize?.({});
     });
     expect(mockEngineDrop).not.toHaveBeenCalled();
   });

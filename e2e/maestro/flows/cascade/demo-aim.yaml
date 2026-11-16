@@ -1,0 +1,37 @@
+appId: com.buffingchi.games
+# Cascade demo flow (#3928): press, drag and release aiming. Tagged `demo`, so only the
+# `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
+#
+# A slow swipe across the board is a press-drag-release: while the finger is down, the next piece
+# follows it above the lid and the guide (a dashed plumb line and a dashed ghost where it will
+# land) shows; the release drops it there. A second swipe ends below the board: leaving the board
+# cancels, so nothing drops. The recording shows the guide; the screenshots the before and after.
+# A plain `tapOn` still drops at once (demo-drop.yaml, smoke.yaml).
+#
+# Screen percentages: the board fills roughly x 6-94 %, y 25-86 % on the CI phones. On the Android
+# emulator animations are off, so it takes the Reduce Motion path (the guide shows at once and the
+# dashes stand still).
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: cascade-demo-aim
+- runFlow: ../_shared/open-cascade.yaml
+- takeScreenshot: cascade-demo-aim-before
+- swipe:
+    start: "25%, 55%"
+    end: "75%, 55%"
+    duration: 2500
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: cascade-demo-aim-dropped
+- swipe:
+    start: "50%, 55%"
+    end: "50%, 98%"
+    duration: 2000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: cascade-demo-aim-cancelled
+- assertNotVisible:
+    id: "cascade-result-title"
+- stopRecording

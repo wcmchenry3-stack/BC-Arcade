@@ -3,6 +3,8 @@
  * motion and to the paced haptics (B's map plus C's danger warning): fired from timers, never on
  * web, never for a test fast-forward.
  */
+import { detectedGesture, type DetectorRender } from "../../test-utils/mockScreenDeps";
+import { create } from "react-test-renderer";
 import React from "react";
 import { Platform } from "react-native";
 import { act, fireEvent, render } from "@testing-library/react-native";
@@ -15,6 +17,7 @@ import { MOTION } from "../../game/cascade/motion";
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
   notificationAsync: jest.fn(() => Promise.resolve()),
+  selectionAsync: jest.fn(() => Promise.resolve()),
   ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
   NotificationFeedbackType: { Success: "success", Warning: "warning", Error: "error" },
 }));
@@ -32,6 +35,11 @@ jest.mock("../../api/players", () => ({
 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
+// #3928: the board gesture, recorded so a test can press, drag and release.
+const mockDetected: DetectorRender[] = [];
+jest.mock("react-native-gesture-handler", () =>
+  mockScreenDeps().mockGestureHandler(() => mockDetected)
+);
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
 jest.mock("../../components/cascade/ThemeSelector", () => () => null);
 jest.mock("@shopify/react-native-skia", () => {
@@ -212,4 +220,62 @@ it("a restart before the loss card is due shows no card", async () => {
   expect(mockEngine.destroy).toHaveBeenCalled(); // the old game's loop is gone: a new game
   await frames(3000);
   expect(view.queryByTestId("cascade-result")).toBeNull();
+});
+
+// #3928: one selection tick when a press becomes a drag; none for a tap; none on web.
+describe("aiming haptic", () => {
+  const pan = () => detectedGesture(mockDetected, "pan", { testID: "cascade-game-area" })!;
+  const selections = () => (Haptics.selectionAsync as jest.Mock).mock.calls.length;
+  /** Mounts with a measured board area (300 x 600: scale 0.75), so the board gesture exists. */
+  async function mountBoard() {
+    let renderer!: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<CascadeScreen />);
+    });
+    await act(async () => {
+      const outer = renderer.root.findAll(
+        (node: { props: Record<string, unknown> }) => node.props.onLayout !== undefined
+      )[0];
+      (outer?.props.onLayout as (e: unknown) => void)({
+        nativeEvent: { layout: { width: 300, height: 600 } },
+      });
+    });
+    await frames(50);
+    return renderer;
+  }
+
+  it("a drag ticks once and drops; a tap does not tick", async () => {
+    await mountBoard();
+    await act(async () => {
+      pan().onBegin!({ x: 50, y: 100 });
+      for (const x of [55, 70, 100, 140, 180]) pan().onUpdate!({ x, y: 100 });
+      pan().onEnd!({});
+      pan().onFinalize!({});
+    });
+    await frames(300);
+    expect(selections()).toBe(1);
+    expect(mockEngine.drop).toHaveBeenCalledTimes(1);
+    await frames(500);
+    await act(async () => {
+      pan().onBegin!({ x: 120, y: 100 });
+      pan().onEnd!({});
+      pan().onFinalize!({});
+    });
+    await frames(300);
+    expect(selections()).toBe(1);
+    expect(mockEngine.drop).toHaveBeenCalledTimes(2);
+  });
+
+  it("no tick on web", async () => {
+    Platform.OS = "web";
+    await mountBoard();
+    await act(async () => {
+      pan().onBegin!({ x: 50, y: 100 });
+      pan().onUpdate!({ x: 150, y: 100 });
+      pan().onEnd!({});
+      pan().onFinalize!({});
+    });
+    await frames(300);
+    expect(selections()).toBe(0);
+  });
 });
