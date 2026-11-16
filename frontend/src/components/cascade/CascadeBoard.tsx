@@ -107,7 +107,8 @@ function CascadeBoard({
   // The bin (#3698): a static Picture per theme, recorded once and drawn under the pieces.
   const bin = useMemo(() => binPicture(theme), [theme]);
   // #3701: what the motion draws with, fixed until the set, theme or scale change.
-  const glyphs = useMemo(() => buildChainGlyphs(), []);
+  // Retried with each set of sprites while it is null (Skia not ready yet); cached once built.
+  const glyphs = useMemo(() => (sprites ? buildChainGlyphs() : null), [sprites]);
   const tones = CASCADE_MOTION.tones[setId === "cosmos" ? "cosmos" : "fruits"];
   const motionPalette = CASCADE_MOTION.themes[theme];
   const events = motion?.events ?? NO_MOTION_EVENTS;

@@ -83,4 +83,31 @@ describe("land event", () => {
     expect(a.state.pieces.map((p) => [p.x, p.y])).toEqual(b.state.pieces.map((p) => [p.x, p.y]));
     expect(lands(a.out).length).toBeGreaterThanOrEqual(1);
   });
+
+  // Review S3: a saved piece restored over the lid, touching nothing, is falling again (#3694).
+  it("a restored piece still in the air lands once when it comes down", () => {
+    const engine = new CascadeEngine({ seed: 1 });
+    engine.restore(
+      [
+        { tier: 4, x: 100, y: 580 - tierRadius(4) - 1 },
+        { tier: 2, x: 300, y: 40 },
+      ],
+      0
+    );
+    const ids = engine.getState().pieces.map((p) => p.id);
+    const l = lands(run(engine, 120));
+    expect(l).toHaveLength(1);
+    expect(l[0]).toMatchObject({ tier: 2, id: ids[1] });
+    engine.destroy();
+  });
+
+  it("a piece that touches a wall first still lands once, on the floor", () => {
+    const engine = new CascadeEngine({ seed: 1, bench: { noDropNudge: true } });
+    engine.drop(3, 0); // clamped against the left wall: it slides down the wall
+    const l = lands(run(engine, 150));
+    expect(l).toHaveLength(1);
+    expect(l[0]!.tier).toBe(3);
+    expect(l[0]!.y).toBeGreaterThan(580 - tierRadius(3) * 2);
+    engine.destroy();
+  });
 });

@@ -16,27 +16,20 @@ import FruitGlyph from "./FruitGlyph";
 interface Props {
   current: FruitDefinition;
   next: FruitDefinition;
+  /** Drops so far (the screen's count): each new drop plays the hop, nothing else does. */
+  drops?: number;
 }
 
 const DROP_SIZE = 22;
 const NEXT_SIZE = 16;
 
-/** The queue moved on by one drop: what was NEXT is now the piece to drop. */
-export function queueAdvanced(
-  before: { current: number; next: number },
-  now: { current: number; next: number }
-): boolean {
-  return (
-    (before.current !== now.current || before.next !== now.next) && before.next === now.current
-  );
-}
-
 /**
  * The DROP / NEXT chips. #3701 (owner pick B): after each drop the piece that was NEXT hops over
  * into DROP in an arc with an overshoot, and the new NEXT pops in; under Reduce Motion both fade in
- * (`motion.ts`). Runs on the UI thread (Reanimated); nothing animates on a reset or a restore.
+ * (`motion.ts`). Runs on the UI thread (Reanimated). Driven by the drop count, not by comparing
+ * tiers: a drop of the same tier as the next one still plays, a reset or a restore does not.
  */
-function NextFruitPreview({ current, next }: Props) {
+function NextFruitPreview({ current, next, drops = 0 }: Props) {
   const { t } = useTranslation("cascade");
   const pieceName = (f: FruitDefinition) => t(`pieces.${f.i18nKey}`, { defaultValue: f.name });
   const { colors } = useTheme();
@@ -45,7 +38,7 @@ function NextFruitPreview({ current, next }: Props) {
   const ms = useSharedValue(chipAnimationMs(false));
   const hopFrom = useSharedValue(0);
   const calm = useSharedValue(reduceMotion);
-  const before = useRef({ current: current.tier, next: next.tier });
+  const seenDrops = useRef(drops);
   const dropX = useRef(0);
 
   useEffect(() => {
@@ -53,14 +46,12 @@ function NextFruitPreview({ current, next }: Props) {
   }, [calm, reduceMotion]);
 
   useEffect(() => {
-    const now = { current: current.tier, next: next.tier };
-    if (queueAdvanced(before.current, now)) {
-      const total = chipAnimationMs(reduceMotion);
-      ms.set(0);
-      ms.set(withTiming(total, { duration: total, easing: Easing.linear }));
-    }
-    before.current = now;
-  }, [current.tier, next.tier, ms, reduceMotion]);
+    if (drops === seenDrops.current) return;
+    seenDrops.current = drops;
+    const total = chipAnimationMs(reduceMotion);
+    ms.set(0);
+    ms.set(withTiming(total, { duration: total, easing: Easing.linear }));
+  }, [drops, ms, reduceMotion]);
 
   const dropStyle = useAnimatedStyle(() => {
     const p = dropChipPose(ms.get(), hopFrom.get(), NEXT_SIZE / DROP_SIZE, calm.get());

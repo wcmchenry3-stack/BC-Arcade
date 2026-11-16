@@ -28,17 +28,25 @@ export const CHAIN_GLYPH_SVG = {
   ],
 } as const;
 
-/** The glyphs as Skia paths, or null when Skia cannot parse them (the counter is then skipped). */
+let built: ChainGlyphs | null = null;
+
+/**
+ * The glyphs as Skia paths, or null when Skia cannot make them yet (the counter is then skipped).
+ * Built once and cached; a failed build is not cached, so a later call (the board's next set of
+ * sprites, e.g. once CanvasKit is ready on web) tries again.
+ */
 export function buildChainGlyphs(): ChainGlyphs | null {
+  if (built) return built;
   try {
     const times = Skia.Path.MakeFromSVGString(CHAIN_GLYPH_SVG.times);
     const digits = CHAIN_GLYPH_SVG.digits.map((d) => Skia.Path.MakeFromSVGString(d));
     if (!times || digits.some((d) => !d)) return null;
-    return {
+    built = {
       times,
       digits: digits as NonNullable<(typeof digits)[number]>[],
       advance: CHAIN_GLYPH_ADVANCE,
     };
+    return built;
   } catch {
     return null;
   }

@@ -3,6 +3,7 @@
  * over) and the pure functions every motion reads them through.
  */
 import {
+  DANGER_IDLE_PHASE,
   MOTION,
   chainPt,
   chainStep,
@@ -103,14 +104,48 @@ describe("danger blink (C: square wave, at most 3 Hz)", () => {
     expect(1000 / dangerPeriodMs(5)).toBeLessThanOrEqual(3);
   });
 
-  it("integrates its phase frame by frame (no jump when the ratio rises) and stops at 0", () => {
+  it("integrates its phase frame by frame (no jump when the ratio rises)", () => {
     let phase = 0;
     for (let i = 0; i < 30; i++) phase = stepDangerPhase(phase, 1000 / 60, 0.5);
     expect(phase).toBeCloseTo(((30 * 1000) / 60 / dangerPeriodMs(0.5)) % 1, 6);
     const before = phase;
     const after = stepDangerPhase(before, 1000 / 60, 1);
     expect(after - before).toBeCloseTo(1000 / 60 / 340, 6);
-    expect(stepDangerPhase(0.7, 16, 0)).toBe(0);
+  });
+
+  it("never resets: an off-beat waits when the count stops, a latched on-beat finishes", () => {
+    expect(DANGER_IDLE_PHASE).toBe(MOTION.danger.duty);
+    expect(dangerBlinkOn(DANGER_IDLE_PHASE)).toBe(false);
+    expect(stepDangerPhase(0.7, 16, 0)).toBe(0.7);
+    expect(stepDangerPhase(0.1, 17, 0)).toBeCloseTo(0.15, 6); // at the fastest rate
+    expect(stepDangerPhase(0.49, 100, 0)).toBe(MOTION.danger.duty);
+  });
+
+  // Review S2: toggling the count on and off (a merge in the danger band pauses it) must not
+  // restart the blink each time.
+  it("keeps onsets at most 3 in any 1 s window when the ratio toggles at 5 Hz, 10 Hz or 30 Hz", () => {
+    for (const toggleHz of [5, 10, 30]) {
+      for (const ratio of [0.2, 1]) {
+        let phase = DANGER_IDLE_PHASE;
+        let wasOn = false;
+        const onsets: number[] = [];
+        const dt = 1000 / 60;
+        for (let t = 0; t < 5000; t += dt) {
+          const counting = Math.floor((t * toggleHz * 2) / 1000) % 2 === 0;
+          phase = stepDangerPhase(phase, dt, counting ? ratio : 0);
+          const on = dangerBlinkOn(phase);
+          if (on && !wasOn) onsets.push(t);
+          wasOn = on;
+        }
+        expect(onsets.length).toBeGreaterThan(1);
+        for (let i = 0; i + 3 < onsets.length; i++) {
+          expect(onsets[i + 3]! - onsets[i]!).toBeGreaterThan(1000);
+        }
+        for (let i = 1; i < onsets.length; i++) {
+          expect(onsets[i]! - onsets[i - 1]!).toBeGreaterThanOrEqual(MOTION.danger.fastMs - dt);
+        }
+      }
+    }
   });
 
   it("a full period at the fastest ratio has one on-beat and one off-beat", () => {

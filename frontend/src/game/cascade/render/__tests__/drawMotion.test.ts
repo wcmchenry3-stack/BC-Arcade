@@ -8,7 +8,7 @@ import { createFramePacker, packFrame, type FramePiece } from "../frame";
 import type { BoardMotion, ChainGlyphs } from "../drawMotion";
 import { CASCADE_LID_PALETTE, CASCADE_MOTION } from "../../../../theme/theme.cascade";
 import { LID_LINE, SPAWNER } from "../../lidVisuals";
-import { MOTION } from "../../motion";
+import { DANGER_IDLE_PHASE, MOTION } from "../../motion";
 import {
   MOTION_KIND,
   createMotionLog,
@@ -132,7 +132,7 @@ function motionAt(events: Ev[], clock: number, over: Partial<BoardMotion> = {}):
     events: log.buf,
     stamps,
     clock,
-    dangerPhase: 0,
+    dangerPhase: DANGER_IDLE_PHASE,
     danger: 0,
     reduceMotion: false,
     tones,
@@ -255,6 +255,27 @@ describe("chain counter", () => {
     expect(shown(motionAt([...chain, [MOTION_KIND.drop, 0, 0, 0, 0, 0]], 100))).toEqual([]);
   });
 
+  // Review S1: a 6-chain's steps (80 ms) are shorter than any fade: the number must not flicker.
+  it("Reduce Motion: fades in once, then never dims while the steps swap the number", () => {
+    const six: Ev[] = [
+      [MOTION_KIND.drop, 0, 0, 0, 0, 0],
+      ...[1, 2, 3, 4, 5, 6].map((link): Ev => [MOTION_KIND.merge, 200, 450, link, 10 + link, link]),
+    ];
+    const alphaAt = (clock: number) => {
+      const paths = draw(frame, motionAt(six, clock, { reduceMotion: true })).filter(
+        (o): o is Extract<Op, { k: "path" }> => o.k === "path"
+      );
+      return paths.length ? paths[paths.length - 1]!.p.alpha : 0;
+    };
+    let peak = 0;
+    for (let t = 0; t <= 4 * MOTION.chain.stepMs + MOTION.chain.holdMs - 1; t += 5) {
+      const a = alphaAt(t);
+      if (t >= MOTION.calm.chainFadeMs) expect(a).toBe(1);
+      expect(a).toBeGreaterThanOrEqual(peak);
+      peak = Math.max(peak, a);
+    }
+  });
+
   it("Reduce Motion: no pop scale, it fades in place", () => {
     const m = motionAt(chain, 0, { reduceMotion: true });
     const paths = draw(frame, m).filter((o): o is Extract<Op, { k: "path" }> => o.k === "path");
@@ -284,7 +305,7 @@ describe("danger blink (C)", () => {
   it("off-beat, with no count, and under Reduce Motion: neither", () => {
     for (const m of [
       motionAt([], 0, { danger: 0.5, dangerPhase: 0.6 }),
-      motionAt([], 0, { danger: 0, dangerPhase: 0.1 }),
+      motionAt([], 0, { danger: 0, dangerPhase: DANGER_IDLE_PHASE }),
       motionAt([], 0, { danger: 0.5, dangerPhase: 0.1, reduceMotion: true }),
     ]) {
       const ops = draw(frame, m);

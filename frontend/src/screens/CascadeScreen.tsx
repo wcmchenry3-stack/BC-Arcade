@@ -155,8 +155,10 @@ function CascadeGame() {
   // #3701: the board's motion (UI thread) and the paced haptics, fed from the engine's events.
   const motion = useBoardMotion(reduceMotion);
   const haptics = useCascadeHaptics();
-  // The current drop's chain: merges since the last drop (1 = a plain merge).
+  // The current drop's chain: merges since the last drop (1 = a plain merge); a quiet merge (a
+  // restore settling, a test fast-forward) ends it. `drops` drives the chips' hop (one per drop).
   const chainLinkRef = useRef(0);
+  const [drops, setDrops] = useState(0);
 
   // Sounds
   const playFruitMerge = useTieredMergeSound();
@@ -228,6 +230,7 @@ function CascadeGame() {
       queueRef.current = newQueue;
       // #3701: a new chain starts, and the next piece drops into the spawner.
       chainLinkRef.current = 0;
+      setDrops((n) => n + 1);
       motion.push(MOTION_KIND.drop, 0, 0, tier, 0, 0);
       motion.publish();
       noteTier(tier); // the piece dropped: the first one starts the play clock (#3700)
@@ -372,11 +375,12 @@ function CascadeGame() {
     (isWin: boolean) => {
       gameOverRef.current = true;
       clock.stop();
+      if (!isWin) haptics.reset(); // pulses still queued stop at a loss
       if (!isWin) motion.push(MOTION_KIND.gameOver, 0, 0, 0, 0, 0);
       motion.setDanger(0);
       motion.publish();
     },
-    [clock, motion]
+    [clock, motion, haptics]
   );
   const handleGameOver = useCallback(
     (isWin = false) => {
@@ -404,7 +408,7 @@ function CascadeGame() {
     playFruitMerge(tier);
     // The winning merge has no burst, pop or pulse: the celebration replaces them (#3699).
     if (tier === CAPSTONE_TIER) return;
-    const link = ++chainLinkRef.current;
+    const link = quiet ? (chainLinkRef.current = 0) + 1 : ++chainLinkRef.current;
     motion.push(MOTION_KIND.merge, x, y, tier, id, link);
     if (!quiet) haptics.merge(tier, link);
     const fruit = activeFruitSet.fruits[tier];
@@ -655,9 +659,9 @@ function CascadeGame() {
   const preview = useMemo(
     () =>
       currentDef !== undefined && nextDef !== undefined ? (
-        <NextFruitPreview current={currentDef} next={nextDef} />
+        <NextFruitPreview current={currentDef} next={nextDef} drops={drops} />
       ) : null,
-    [currentDef, nextDef]
+    [currentDef, nextDef, drops]
   );
   const onBoardPress = useCallback(
     (e: GestureResponderEvent) => handleTap(tapToWorldX(e.nativeEvent as BoardPressPoint, scale)),

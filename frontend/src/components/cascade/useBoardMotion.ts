@@ -21,7 +21,12 @@ import {
   type FrameInfo,
   type SharedValue,
 } from "react-native-reanimated";
-import { MOTION, stepDangerPhase } from "../../game/cascade/motion";
+import {
+  DANGER_IDLE_PHASE,
+  MOTION,
+  dangerBlinkOn,
+  stepDangerPhase,
+} from "../../game/cascade/motion";
 import {
   clearMotion,
   createMotionLog,
@@ -68,22 +73,26 @@ export function useBoardMotion(reduceMotion: boolean): BoardMotion {
   const events = useSharedValue<Float64Array>(new Float64Array(MOTION_SLOTS * MOTION_STRIDE));
   const stamps = useSharedValue<Float64Array>(emptyStamps());
   const clock = useSharedValue(0);
-  const dangerPhase = useSharedValue(0);
+  const dangerPhase = useSharedValue<number>(DANGER_IDLE_PHASE);
   const danger = useSharedValue(0);
   const calm = useSharedValue(reduceMotion);
   const activeRef = useRef(false);
   const dangerRef = useRef(0);
   const reduceRef = useRef(reduceMotion);
+  // The last sequence number handed to the UI thread (0 for an empty ring, e.g. after `clear`).
+  const publishedSeqRef = useRef(0);
 
   useEffect(() => {
     reduceRef.current = reduceMotion;
     calm.set(reduceMotion);
   }, [calm, reduceMotion]);
 
-  // The UI thread found nothing playing: stop, unless the JS side has pushed since or danger runs.
+  // The UI thread found nothing playing: stop, unless a newer ring was published since (the UI
+  // thread has not seen it yet) or danger runs. Compared with what was published, not with the
+  // log's own counter: a cleared ring publishes 0 while the log keeps counting (#3701 review B1).
   const frameRef = useRef<FrameCallback | null>(null);
   const onIdle = useCallback((seenSeq: number) => {
-    if (seenSeq !== logOf(logRef).seq) return;
+    if (seenSeq !== publishedSeqRef.current) return;
     if (dangerRef.current > 0 && !reduceRef.current) return;
     activeRef.current = false;
     frameRef.current?.setActive(false);
@@ -99,9 +108,13 @@ export function useBoardMotion(reduceMotion: boolean): BoardMotion {
       if (fresh) stamps.set(fresh);
       const ratio = danger.get();
       const reduce = calm.get();
-      dangerPhase.set(stepDangerPhase(dangerPhase.get(), dt, reduce ? 0 : ratio));
+      const phase = reduce ? DANGER_IDLE_PHASE : stepDangerPhase(dangerPhase.get(), dt, ratio);
+      dangerPhase.set(phase);
       clock.set(now);
-      if (!motionLive(ev, fresh ?? stamps.get(), now, reduce) && (reduce || !(ratio > 0))) {
+      // The danger blink keeps the clock running while the count runs and while an on-beat it
+      // latched finishes.
+      const blinking = !reduce && (ratio > 0 || dangerBlinkOn(phase));
+      if (!motionLive(ev, fresh ?? stamps.get(), now, reduce) && !blinking) {
         runOnJS(onIdle)(lastSeq(ev));
       }
     },
@@ -118,7 +131,13 @@ export function useBoardMotion(reduceMotion: boolean): BoardMotion {
     frame.setActive(true);
   }, [frame]);
 
-  useEffect(() => () => frame.setActive(false), [frame]);
+  useEffect(
+    () => () => {
+      activeRef.current = false;
+      frame.setActive(false);
+    },
+    [frame]
+  );
 
   const push = useCallback(
     (kind: MotionKind, x: number, y: number, tier: number, id: number, aux: number) =>
@@ -129,7 +148,9 @@ export function useBoardMotion(reduceMotion: boolean): BoardMotion {
     const l = logOf(logRef);
     if (!l.dirty) return;
     l.dirty = false;
-    events.set(l.buf.slice());
+    const buf = l.buf.slice();
+    publishedSeqRef.current = lastSeq(buf);
+    events.set(buf);
     wake();
   }, [events, wake]);
   const setDanger = useCallback(
@@ -146,8 +167,9 @@ export function useBoardMotion(reduceMotion: boolean): BoardMotion {
     clearMotion(logOf(logRef));
     dangerRef.current = 0;
     danger.set(0);
+    dangerPhase.set(DANGER_IDLE_PHASE);
     publish();
-  }, [danger, publish]);
+  }, [danger, dangerPhase, publish]);
 
   const values = useMemo(
     () => ({ events, stamps, clock, dangerPhase, danger }),

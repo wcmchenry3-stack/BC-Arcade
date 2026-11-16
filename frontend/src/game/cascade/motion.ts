@@ -132,7 +132,6 @@ export const MOTION = {
     mergeFlashAlpha: 0.45,
     mergeFlashScale: 1.08,
     chainFadeMs: 150,
-    chainSwapMs: 120,
     nextFadeMs: 150,
     gameOverDimMs: 300,
   },
@@ -249,15 +248,30 @@ export function dangerPeriodMs(ratio: number): number {
   return lerp(MOTION.danger.slowMs, MOTION.danger.fastMs, clamp01(ratio));
 }
 
+/** The blink's phase at rest: the start of an off-beat, so the first count starts off. */
+export const DANGER_IDLE_PHASE = MOTION.danger.duty;
+
 /**
  * Moves the blink's phase (0..1) on by one frame. Integrated, not computed from the clock, so a
- * rising ratio speeds the blink up without a jump. 0 while there is no count.
+ * rising ratio speeds the blink up without a jump. It never jumps or resets:
+ *   - while the count runs it advances at 1 / `dangerPeriodMs(ratio)`;
+ *   - when the count stops during an on-beat, that beat is latched: it finishes at the fastest
+ *     rate (`fastMs`), then the phase stays where the off-beat began;
+ *   - when the count stops during an off-beat, the phase waits there.
+ * So an on-beat only ever starts when the phase wraps, after a whole period of advance at no more
+ * than 1 / `fastMs` per ms: onsets are at least `fastMs` (340 ms) apart however the ratio toggles,
+ * never more than 3 a second (WCAG 2.3.1).
  */
 export function stepDangerPhase(phase: number, dtMs: number, ratio: number): number {
   "worklet";
-  if (!(ratio > 0)) return 0;
-  const next = phase + Math.max(0, dtMs) / dangerPeriodMs(ratio);
-  return next - Math.floor(next);
+  const D = MOTION.danger;
+  const dt = Math.max(0, dtMs);
+  if (ratio > 0) {
+    const next = phase + dt / dangerPeriodMs(ratio);
+    return next - Math.floor(next);
+  }
+  if (phase < D.duty) return Math.min(D.duty, phase + dt / D.fastMs);
+  return phase;
 }
 
 /** The blink is on for the first `duty` of each period. */

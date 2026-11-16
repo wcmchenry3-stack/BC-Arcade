@@ -5,7 +5,7 @@
  */
 import React from "react";
 import { Platform } from "react-native";
-import { act, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 
@@ -154,4 +154,62 @@ it("the winning merge fires no merge pulse (the win card's Success covers it)", 
   mockPendingEvents.push(merge(10, 9));
   await frames(300);
   expect(impacts()).toEqual([]);
+});
+
+// Review S3: a test fast-forward and a restored game settling fire no haptics.
+it("a test fast-forward fires no haptics", async () => {
+  const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
+  process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+  try {
+    await mount();
+    mockPendingEvents.push(land(3, 5), merge(5, 6), merge(6, 7));
+    await act(async () => {
+      (globalThis as { __cascade_fastForward?: (ms: number) => void }).__cascade_fastForward?.(50);
+    });
+    await frames(500);
+    expect(impacts()).toEqual([]);
+  } finally {
+    if (original === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    else process.env.EXPO_PUBLIC_TEST_HOOKS = original;
+  }
+});
+
+it("a restored game settling fires no haptics; play after it does", async () => {
+  await AsyncStorage.setItem(
+    "cascade_game_v7",
+    JSON.stringify({
+      version: 7,
+      pieces: [{ tier: 4, x: 120, y: 500 }],
+      score: 40,
+      savedAt: Date.now(),
+      queue: { current: 0, next: 1 },
+      playedMs: 10_000,
+    })
+  );
+  await mount();
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(mockEngine.restore).toHaveBeenCalledTimes(1);
+  mockPendingEvents.push(land(4, 1), merge(5, 2));
+  await frames(300); // inside the restore's settle
+  expect(impacts()).toEqual([]);
+  await frames(2000);
+  mockPendingEvents.push(merge(2, 3));
+  await frames(200);
+  expect(impacts()).toEqual(["medium"]);
+});
+
+// Review S3: a New Game within the loss card's 1 s shows no stale card for the old game.
+it("a restart before the loss card is due shows no card", async () => {
+  const view = await mount();
+  mockPendingEvents.push({ type: "gameOver" });
+  await frames(400);
+  expect(view.queryByTestId("cascade-result")).toBeNull();
+  await fireEvent.press(view.getByRole("button", { name: "More options" }));
+  await fireEvent.press(view.getByText("New Game"));
+  await fireEvent.press(view.getByText("Start New")); // the abandon confirmation
+  expect(mockEngine.destroy).toHaveBeenCalled(); // the old game's loop is gone: a new game
+  await frames(3000);
+  expect(view.queryByTestId("cascade-result")).toBeNull();
 });

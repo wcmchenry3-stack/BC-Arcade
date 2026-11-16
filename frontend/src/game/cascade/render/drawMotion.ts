@@ -242,7 +242,8 @@ export function drawLidMotion(
     }
     return;
   }
-  if (motion.reduceMotion || !(motion.danger > 0) || !dangerBlinkOn(motion.dangerPhase)) return;
+  // The phase alone says when it is on (a latched on-beat finishes after the count stops).
+  if (motion.reduceMotion || !dangerBlinkOn(motion.dangerPhase)) return;
   const D = MOTION.danger;
   const offset = Math.floor(dangerDashOffset(motion.clock, motion.danger));
   let dash = cache.dashes[offset] ?? null;
@@ -259,7 +260,7 @@ export function drawLidMotion(
 /** The danger blink on the spawner: an outline ring just outside the clock ring, on-beats only. */
 export function drawSpawnerBlink(canvas: SkCanvas, motion: BoardMotion | null): void {
   "worklet";
-  if (!motion || motion.reduceMotion || !(motion.danger > 0)) return;
+  if (!motion || motion.reduceMotion) return;
   if (gameOverAge(motion) >= 0 || !dangerBlinkOn(motion.dangerPhase)) return;
   const D = MOTION.danger;
   canvas.drawCircle(
@@ -517,10 +518,8 @@ export function drawChainCounter(canvas: SkCanvas, motion: BoardMotion | null): 
   canvas.translate(x, y);
   if (motion.reduceMotion) {
     const calm = MOTION.calm;
-    const alpha =
-      progress(view.sinceFirst, 0, calm.chainFadeMs) *
-      progress(view.sinceStep, 0, calm.chainSwapMs) *
-      (1 - out);
+    // Fades in once, then each step swaps the number at full opacity (no flicker per step).
+    const alpha = progress(view.sinceFirst, 0, calm.chainFadeMs) * (1 - out);
     canvas.scale(em, em);
     drawGlyphs(canvas, cache, motion.glyphs, view.n, outline, motion.palette.flash, alpha);
     canvas.restore();
