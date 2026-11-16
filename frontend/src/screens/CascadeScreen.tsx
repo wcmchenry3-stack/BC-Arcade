@@ -369,10 +369,10 @@ function CascadeGame() {
   // the same time and bonus; a loss dims the pile and flashes the lid.
   const endPlay = useCallback(
     (isWin: boolean) => {
+      if (!gameOverRef.current) (isWin ? sounds.win : sounds.gameOver)(); // once a game
       gameOverRef.current = true;
       clock.stop();
       if (!isWin) haptics.reset(); // pulses still queued stop at a loss
-      (isWin ? sounds.win : sounds.gameOver)(); // a loss drops the merge sounds still waiting
       if (!isWin) motion.push(MOTION_KIND.gameOver, 0, 0, 0, 0, 0);
       motion.setDanger(0);
       motion.publish();

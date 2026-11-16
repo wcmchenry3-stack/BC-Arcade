@@ -178,6 +178,24 @@ it("a game over at the lid plays the game-over sound once", async () => {
   expect(mockSounds.win).not.toHaveBeenCalled();
 });
 
+it("the game-over sound plays once a game, even when the test hook ends an ended game", async () => {
+  const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
+  process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+  try {
+    await mount();
+    mockPendingEvents.push({ type: "gameOver" });
+    await frames(100);
+    await act(async () => {
+      (globalThis as { __cascade_triggerGameOver?: () => void }).__cascade_triggerGameOver?.();
+    });
+    await frames(100);
+    expect(mockSounds.gameOver).toHaveBeenCalledTimes(1);
+  } finally {
+    if (original === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    else process.env.EXPO_PUBLIC_TEST_HOOKS = original;
+  }
+});
+
 it("a test fast-forward plays no landing or merge", async () => {
   const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
   process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
