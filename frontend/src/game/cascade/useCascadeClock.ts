@@ -25,7 +25,7 @@ interface CascadeClock {
   reset(): void;
   /** A restored game: runs from now with `accumulatedMs` banked (paused if away). */
   restore(accumulatedMs: number): void;
-  /** A piece went in: the first one starts the clock. */
+  /** A piece went in: the first one starts the clock (never after `stop`, until `reset`/`restore`). */
   start(): void;
   /** The game ended. */
   stop(): void;
@@ -43,20 +43,25 @@ const NOT_STARTED: PlayClock = { startedAt: null, accumulatedMs: 0 };
 function createCascadeClock(now: () => number = () => Date.now()): CascadeClock {
   let clock = NOT_STARTED;
   let away = false;
+  // The game ended: no piece starts the clock again until a new or restored game.
+  let stopped = false;
   return {
     reset: () => {
       clock = NOT_STARTED;
+      stopped = false;
     },
     restore: (accumulatedMs) => {
+      stopped = false;
       clock =
         clock.paused === true || away
           ? { accumulatedMs, startedAt: null, paused: true }
           : { accumulatedMs, startedAt: now() };
     },
     start: () => {
-      clock = startClockOnMove(clock, now());
+      if (!stopped) clock = startClockOnMove(clock, now());
     },
     stop: () => {
+      stopped = true;
       clock = stopClock(clock, now());
     },
     pause: () => {

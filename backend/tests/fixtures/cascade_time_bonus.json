@@ -1,5 +1,5 @@
 {
-  "_comment": "Cascade time-bonus parity fixtures (#3700): round(20000 x max(0, 1 - t / 360000)) for a win of at least 20 s, rounding half up; 0 otherwise. backend/tests/test_cascade_result.py checks the server's cascade.time_bonus.time_bonus against them; frontend/src/game/cascade/__tests__/timeBonus.test.ts checks the app's display copy (game/cascade/timeBonus.ts). Add cases by hand; do not regenerate them from the code.",
+  "_comment": "Cascade time-bonus parity fixtures (#3700): round(20000 x max(0, 1 - t / 360000)) for a win of at least 20 s, rounding half up (a duration is first rounded to whole ms, half up, as the app sends it); 0 otherwise. backend/tests/test_cascade_result.py checks the server's cascade.time_bonus.time_bonus against them; frontend/src/game/cascade/__tests__/timeBonus.test.ts checks the app's display copy (game/cascade/timeBonus.ts). Add cases by hand; do not regenerate them from the code.",
   "rule": {
     "bonus_rule": 1,
     "bonus_max": 20000,
@@ -106,6 +106,30 @@
       "duration_ms": 60000,
       "bonus": 0
     },
-    { "id": "no_outcome", "outcome": null, "duration_ms": 60000, "bonus": 0 }
+    { "id": "no_outcome", "outcome": null, "duration_ms": 60000, "bonus": 0 },
+    {
+      "id": "win_negative_duration",
+      "outcome": "win",
+      "duration_ms": -5000,
+      "bonus": 0
+    },
+    {
+      "id": "win_float_rounds_up_to_the_floor",
+      "outcome": "win",
+      "duration_ms": 19999.6,
+      "bonus": 18889
+    },
+    {
+      "id": "win_float_rounds_down_under_the_floor",
+      "outcome": "win",
+      "duration_ms": 19999.4,
+      "bonus": 0
+    },
+    {
+      "id": "win_float_half_ms_rounds_up",
+      "outcome": "win",
+      "duration_ms": 211000.5,
+      "bonus": 8278
+    }
   ]
 }

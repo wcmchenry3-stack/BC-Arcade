@@ -17,6 +17,8 @@ Daily Challenge goals (``daily_challenge/definitions.py``) can both use it.
 
 from __future__ import annotations
 
+import math
+
 BONUS_MAX = 20_000
 """``B``: the bonus of a win at ``t`` = 0 (the floor zeroes it in practice)."""
 
@@ -37,7 +39,7 @@ under an older rule can be told apart without a migration."""
 WIN = "win"
 
 
-def time_bonus(outcome: str | None, duration_ms: int | None) -> int:
+def time_bonus(outcome: str | None, duration_ms: float | None) -> int:
     """The time bonus for a completion with this ``outcome`` and ``duration_ms``.
 
     0 unless ``outcome`` is ``win`` and ``duration_ms`` is at least ``MIN_WIN_MS``.
@@ -45,8 +47,12 @@ def time_bonus(outcome: str | None, duration_ms: int | None) -> int:
     the two sides agree on every whole-millisecond ``duration_ms``; Python's
     ``round`` would round half to even and differ on a .5.
     """
-    if outcome != WIN or duration_ms is None or duration_ms < MIN_WIN_MS:
+    if outcome != WIN or duration_ms is None:
         return 0
-    remaining = max(0, PAR_TIME_MS - duration_ms)
+    # Whole ms, half up, as the app rounds (the column is already an int).
+    t = math.floor(duration_ms + 0.5)
+    if t < MIN_WIN_MS:
+        return 0
+    remaining = max(0, PAR_TIME_MS - t)
     # round(BONUS_MAX × remaining / PAR_TIME_MS), half up: floor((2n + d) / 2d).
     return (2 * BONUS_MAX * remaining + PAR_TIME_MS) // (2 * PAR_TIME_MS)

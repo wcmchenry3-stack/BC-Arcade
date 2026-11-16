@@ -47,6 +47,29 @@ describe("useCascadeClock (#2750, #3700)", () => {
     expect(clock.elapsed()).toBe(14_000);
   });
 
+  // Review on #3926: a dev spawn after the end has no game-over guard.
+  it("a piece after the end doesn't start it again, until a new or restored game", async () => {
+    const clock = (await renderHook(() => useCascadeClock())).result.current;
+    clock.start();
+    wait(30_000);
+    clock.stop();
+    clock.start();
+    wait(10_000);
+    expect(clock.elapsed()).toBe(30_000);
+
+    clock.reset();
+    clock.start();
+    wait(2_000);
+    expect(clock.elapsed()).toBe(2_000);
+
+    clock.stop();
+    clock.restore(5_000);
+    wait(1_000);
+    clock.start(); // a restored game runs; a piece doesn't restart it
+    wait(1_000);
+    expect(clock.elapsed()).toBe(7_000);
+  });
+
   it("reset: a new game waits for its own first piece", async () => {
     const clock = (await renderHook(() => useCascadeClock())).result.current;
     clock.start();

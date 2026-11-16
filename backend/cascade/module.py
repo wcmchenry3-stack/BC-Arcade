@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from cascade.models import CascadeMetadata, CascadeResult
+from cascade.models import CascadeMetadata, CascadeResult, cascade_score
 from games.board import SCORE_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
 from vocab import GameOutcome, GameType
@@ -41,7 +41,7 @@ class CascadeModule(GameModuleBase):
         """The ``final_score`` to store for a completion (#3700).
 
         A finished game (any outcome but ``abandoned``) whose block carries
-        ``merge_score`` scores ``merge_score + time_bonus`` (the bonus the
+        ``merge_score`` scores ``merge_score + time_bonus``, at most 2³¹−1 (the bonus the
         result model computed), whatever ``final_score`` the app sent: a
         mismatch is overwritten, never rejected (a 400 dead-letters the game).
         An abandon, and a block from a build before #3700 (no ``merge_score``),
@@ -52,7 +52,7 @@ class CascadeModule(GameModuleBase):
         merge = _int(result.get("merge_score"))
         if merge is None:
             return final_score
-        return merge + (_int(result.get("time_bonus")) or 0)
+        return cascade_score(merge, _int(result.get("time_bonus")) or 0)
 
 
 module = CascadeModule()

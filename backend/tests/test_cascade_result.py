@@ -205,6 +205,45 @@ def test_a_malformed_server_field_from_the_app_is_dropped_not_rejected() -> None
     assert (stored["time_bonus"], stored["bonus_rule"]) == (8_278, BONUS_RULE)
 
 
+@pytest.mark.parametrize("merge", ["5000", True], ids=["string", "bool"])
+def test_a_coerced_merge_score_scores_the_block_and_the_column_alike(merge: Any) -> None:
+    # Review on #3926: the bonus is worked out from the typed merge score, after validation.
+    stored = _validate({**APP_BLOCK, "merge_score": merge}, "win", 211_000)
+    column = cascade_module.derive_final_score(999, "win", stored)
+    assert stored["merge_score"] == int(merge)
+    assert stored["final_score"] == column == int(merge) + 8_278
+
+
+def test_a_null_merge_score_writes_no_bonus_and_keeps_the_sent_score() -> None:
+    big = 2_000_000_000
+    stored = _validate({**APP_BLOCK, "merge_score": None, "final_score": big}, "win", 211_000)
+    assert "time_bonus" not in stored
+    assert "bonus_rule" not in stored
+    assert stored["final_score"] == cascade_module.derive_final_score(big, "win", stored) == big
+
+
+@pytest.mark.parametrize("duration_ms", [-5_000, 12.5, "soon", True, 2**31])
+def test_a_bad_block_duration_is_dropped_not_rejected(duration_ms: Any) -> None:
+    # Builds before #3738 could send a negative play time after the device clock was set back.
+    old = {"final_score": 4_321, "duration_ms": duration_ms, "theme": "fruits"}
+    stored = _validate(old, "completed", 90_000)
+    assert "duration_ms" not in stored
+    assert stored["final_score"] == 4_321
+    assert cascade_module.derive_final_score(4_321, "completed", stored) == 4_321
+
+
+def test_a_whole_float_block_duration_is_kept() -> None:
+    stored = _validate({**APP_BLOCK, "duration_ms": 211_000.0}, "win", 211_000)
+    assert stored["duration_ms"] == 211_000
+
+
+def test_the_score_is_clamped_to_the_int32_column() -> None:
+    top = 2**31 - 1
+    stored = _validate({**APP_BLOCK, "merge_score": top - 5}, "win", 211_000)
+    assert stored["final_score"] == top
+    assert cascade_module.derive_final_score(None, "win", stored) == top
+
+
 # ---------------------------------------------------------------------------
 # derive_final_score
 # ---------------------------------------------------------------------------
@@ -224,6 +263,8 @@ def test_a_malformed_server_field_from_the_app_is_dropped_not_rejected() -> None
         (None, "loss", {}, None),
         # An abandon is stored as sent.
         (2_500, "abandoned", {"merge_score": 8_000, "time_bonus": 0}, 2_500),
+        # Never over the column's top (2³¹−1).
+        (None, "win", {"merge_score": 2**31 - 1, "time_bonus": 20_000}, 2**31 - 1),
     ],
 )
 def test_derive_final_score(
@@ -312,6 +353,38 @@ async def test_a_one_second_win_is_stored_not_rejected(client: TestClient) -> No
     assert r.status_code == 200, r.text
     row = await _stored(gid)
     assert (row.final_score, row.game_metadata["time_bonus"]) == (8_000, 0)
+
+
+@_live
+async def test_a_negative_block_duration_from_an_old_build_is_accepted(client: TestClient) -> None:
+    """Builds before #3738 could send a negative play time (device clock set back): a 400
+    would dead-letter the game, so the bad block value is dropped and the score kept."""
+    sid = str(uuid.uuid4())
+    await _grant(sid)
+    gid = _create(client, sid)
+    old = {"final_score": 4_321, "duration_ms": -12_000, "theme": "fruits", "outcome": "completed"}
+    body = {"outcome": "completed", "final_score": 4_321, "result": old}
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 200, r.text
+    row = await _stored(gid)
+    assert row.final_score == 4_321
+    assert "duration_ms" not in row.game_metadata
+
+
+@_live
+async def test_a_null_merge_score_stores_the_sent_score_with_no_bonus(client: TestClient) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid)
+    gid = _create(client, sid)
+    big = 2_000_000_000
+    block = {**APP_BLOCK, "merge_score": None, "final_score": big}
+    body = {"outcome": "win", "final_score": big, "duration_ms": 211_000, "result": block}
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 200, r.text
+    row = await _stored(gid)
+    assert row.final_score == row.game_metadata["final_score"] == big
+    assert "bonus_rule" not in row.game_metadata
+    assert "time_bonus" not in row.game_metadata
 
 
 @_live
