@@ -14,6 +14,7 @@ import CascadeScreen from "../CascadeScreen";
 import { WORLD_WIDTH } from "../../game/cascade/constants";
 import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
 import { cascadeSetup } from "../../game/cascade/testHooks";
+import { MOTION } from "../../game/cascade/motion";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -144,6 +145,22 @@ afterEach(() => {
   else process.env.EXPO_PUBLIC_TEST_HOOKS = original;
 });
 
+/**
+ * #3701: a loss shows its card `MOTION.gameOver.cardAtMs` after the game over (the pile dims and
+ * the lid flashes first), never a render before.
+ */
+async function lossCardDue() {
+  expect(screen.queryByTestId("cascade-result")).toBeNull();
+  await act(async () => {
+    jest.advanceTimersByTime(MOTION.gameOver.cardAtMs - 1);
+  });
+  expect(screen.queryByTestId("cascade-result")).toBeNull();
+  await act(async () => {
+    jest.advanceTimersByTime(1);
+  });
+  expect(screen.getByTestId("cascade-result")).toBeTruthy();
+}
+
 describe("E2E test hooks", () => {
   beforeEach(() => {
     process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
@@ -244,7 +261,7 @@ describe("E2E test hooks", () => {
       hooks.__cascade_fastForward!(20);
     });
     expect(hooks.__cascade_getState!().gameOver).toBe(true);
-    expect(screen.getByTestId("cascade-result")).toBeTruthy();
+    await lossCardDue();
   });
 
   it("fastForward does nothing before the engine exists", async () => {
@@ -259,7 +276,7 @@ describe("E2E test hooks", () => {
     await act(async () => {
       hooks.__cascade_triggerGameOver!();
     });
-    expect(screen.getByTestId("cascade-result")).toBeTruthy();
+    await lossCardDue();
     expect(hooks.__cascade_getState!().gameOver).toBe(true);
 
     await run(() => hooks.__cascade_dropAt!(100));
@@ -361,7 +378,7 @@ describe("test controls (#3719)", () => {
       await act(async () => {
         fireEvent.press(screen.getByTestId("cascade-test-game-over"));
       });
-      expect(screen.getByTestId("cascade-result")).toBeTruthy();
+      await lossCardDue();
     });
 
     it("the hooks run the same set-ups", async () => {

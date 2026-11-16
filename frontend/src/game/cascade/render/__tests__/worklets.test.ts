@@ -120,6 +120,40 @@ describe("UI-thread board renderer: every reachable function is a worklet", () =
     expect(picture).toEqual(expect.arrayContaining(["warmCelebration"]));
   });
 
+  // #3701: the motion is recorded into the same Picture, so it must close over its clock too.
+  it("the board's Picture worklet closes over the motion's shared values", () => {
+    const board = path.resolve(RENDER, "../../../components/cascade/CascadeBoard.tsx");
+    const out = transformSync(source(board), {
+      filename: board,
+      babelrc: false,
+      configFile: false,
+      parserOpts: { plugins: ["typescript", "jsx"] },
+      plugins: [require.resolve("react-native-worklets/plugin")],
+    })!.code!;
+    const closures = [...out.matchAll(/__closure\s*=\s*\{([^}]*)\}/g)].map((m) =>
+      m[1]!.split(",").map((s) => s.trim())
+    );
+    const picture = closures.find((c) => c.includes("createPicture"));
+    expect(picture).toEqual(
+      expect.arrayContaining(["events", "stamps", "motionClock", "dangerPhase", "danger"])
+    );
+  });
+
+  // #3701: every function the board's motion reaches, and the motion clock's frame callback.
+  it("every function in drawMotion.ts and motion.ts, and the motion log's UI-thread readers", () => {
+    for (const file of [
+      path.join(RENDER, "drawMotion.ts"),
+      path.resolve(RENDER, "..", "motion.ts"),
+    ]) {
+      const worklets = workletsOf(file);
+      expect([...functionsOf(file)].filter((n) => !worklets.has(n))).toEqual([]);
+    }
+    const log = path.resolve(RENDER, "..", "motionLog.ts");
+    const need = ["slotAge", "slotLifetimeMs", "stampSlots", "motionLive", "lastSeq"];
+    const logWorklets = workletsOf(log);
+    expect(need.filter((n) => !logWorklets.has(n))).toEqual([]);
+  });
+
   // #3699: the win celebration is recorded into the same Picture.
   it("every function in drawCelebration.ts, and the celebration timeline it calls", () => {
     const file = path.join(RENDER, "drawCelebration.ts");

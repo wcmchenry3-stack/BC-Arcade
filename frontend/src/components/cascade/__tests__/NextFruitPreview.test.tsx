@@ -7,7 +7,7 @@ import { StyleSheet } from "react-native";
 import { render, screen, within } from "@testing-library/react-native";
 import type { TestInstance } from "test-renderer";
 
-import NextFruitPreview from "../NextFruitPreview";
+import NextFruitPreview, { queueAdvanced } from "../NextFruitPreview";
 import { FRUIT_SETS } from "../../../theme/fruitSets";
 import { dark } from "../../../theme/ThemeContext";
 import { piecePicture } from "../../../game/cascade/art/sprites";
@@ -78,5 +78,19 @@ describe("Cascade NextFruitPreview", () => {
     await render(<NextFruitPreview current={pumpkin} next={milkyWay} />);
     expect(screen.getByLabelText("Dropping next: Pumpkin")).toBeTruthy();
     expect(screen.getByLabelText("Coming up: Milky Way")).toBeTruthy();
+  });
+
+  // #3701: the chips animate only when the queue moved on by one drop.
+  it("animates only when the queue moved on by a drop, not on a reset or restore", () => {
+    expect(queueAdvanced({ current: 1, next: 3 }, { current: 3, next: 0 })).toBe(true);
+    expect(queueAdvanced({ current: 1, next: 3 }, { current: 1, next: 3 })).toBe(false);
+    expect(queueAdvanced({ current: 1, next: 3 }, { current: 2, next: 4 })).toBe(false);
+  });
+
+  it("re-renders the next piece after a drop, keeping the chips' accessible names", async () => {
+    const view = await render(<NextFruitPreview current={cherry} next={grape} />);
+    await view.rerender(<NextFruitPreview current={grape} next={cherry} />);
+    expect(screen.getByLabelText(`Dropping next: ${grape.name}`)).toBeTruthy();
+    expect(screen.getByLabelText(`Coming up: ${cherry.name}`)).toBeTruthy();
   });
 });

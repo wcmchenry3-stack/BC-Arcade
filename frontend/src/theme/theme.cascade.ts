@@ -249,3 +249,79 @@ export const CASCADE_CELEBRATION: {
     dark: { dim: "#0e0e13", ring: "#ffd700" },
   },
 };
+
+/** One piece's motion colours (#3701): its art's base, light and dark tones. */
+export interface CascadeMotionTone {
+  readonly b: string;
+  readonly l: string;
+  readonly d: string;
+}
+
+/** The motion colours that follow the theme (#3701). */
+export interface CascadeMotionThemePalette {
+  /** The flash over a merge and the chain counter's fill. */
+  readonly flash: string;
+  /** The landing dust puffs. */
+  readonly dust: string;
+  /** The pile's dim at game over: the page background. */
+  readonly dim: string;
+  /** The danger blink and the game-over lid flash: the theme's text ink (the lid palette's). */
+  readonly blink: string;
+}
+
+const F = CASCADE_ART.fruits;
+const C = CASCADE_ART.cosmos;
+
+/**
+ * Cascade's motion (#3701, owner pick B with C's danger and game over). Every colour is one the game
+ * already has: the art's tones per tier (`CASCADE_ART`), the white the art's glints use, and the
+ * theme's page, muted and text colours (`CASCADE_LID_PALETTE`, `CASCADE_CELEBRATION`). Kept as hex
+ * because `render/drawMotion.ts` sets their alpha itself on the UI thread.
+ */
+export const CASCADE_MOTION: {
+  readonly tones: Readonly<Record<"fruits" | "cosmos", readonly CascadeMotionTone[]>>;
+  readonly themes: Readonly<Record<"light" | "dark", CascadeMotionThemePalette>>;
+} = {
+  tones: {
+    fruits: [
+      { b: F.cherry.b, l: F.cherry.l, d: F.cherry.d },
+      { b: F.blue.b, l: F.blue.l, d: F.blue.d },
+      { b: F.lemon.b, l: F.lemon.l, d: F.lemon.d },
+      { b: F.grape.b, l: F.grape.l, d: F.grape.d },
+      { b: F.orange.b, l: F.orange.l, d: F.orange.d },
+      { b: F.apple.b, l: F.apple.l, d: F.apple.d },
+      { b: F.coconut.b, l: F.coconut.l, d: F.coconut.d },
+      { b: F.dragonfruit.b, l: F.dragonfruit.l, d: F.dragonfruit.d },
+      { b: F.pine.b, l: F.pine.l, d: F.pine.d },
+      { b: F.melon.b, l: F.melon.l, d: F.melon.d },
+      { b: F.pumpkin.b, l: F.pumpkin.l, d: F.pumpkin.d },
+    ],
+    cosmos: [
+      { b: C.pluto.b, l: C.pluto.l, d: C.pluto.d },
+      { b: C.mercury.b, l: C.mercury.l, d: C.mercury.d },
+      { b: C.mars.b, l: C.mars.l, d: C.mars.d },
+      { b: C.venus.b, l: C.venus.l, d: C.venus.d },
+      { b: C.earth.b, l: C.earth.l, d: C.earth.d },
+      { b: C.neptune.b, l: C.neptune.l, d: C.neptune.d },
+      { b: C.uranus.b, l: C.uranus.l, d: C.uranus.d },
+      { b: C.saturn.b, l: C.saturn.l, d: C.saturn.d },
+      { b: C.jupiter.b, l: C.jupiter.l, d: C.jupiter.d },
+      { b: C.sun.b, l: C.sun.l, d: C.sun.d },
+      { b: C.galaxyArm, l: C.galaxyArmCore, d: C.galaxy.d },
+    ],
+  },
+  themes: {
+    light: {
+      flash: CASCADE_ART.white,
+      dust: CASCADE_LID_PALETTE.light.lid,
+      dim: CASCADE_CELEBRATION.themes.light.dim,
+      blink: CASCADE_LID_PALETTE.light.ink,
+    },
+    dark: {
+      flash: CASCADE_ART.white,
+      dust: CASCADE_ART.white,
+      dim: CASCADE_CELEBRATION.themes.dark.dim,
+      blink: CASCADE_LID_PALETTE.dark.ink,
+    },
+  },
+};
