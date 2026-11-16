@@ -30,7 +30,8 @@ interface CascadeProgress {
 /** How a game ended; `null` while it is still being played (the abandon snapshot). */
 type CascadeEnd = CascadeOutcome | null;
 
-export interface CascadeResultBlock {
+// A type, not an interface: `useGameSync`'s result is a `Record<string, unknown>`.
+export type CascadeResultBlock = {
   readonly final_score: number;
   readonly merge_score: number;
   readonly time_bonus: number;
@@ -42,7 +43,7 @@ export interface CascadeResultBlock {
   readonly max_tier: number;
   readonly won: boolean;
   readonly outcome?: "win" | "loss";
-}
+};
 
 /** How a session closes: `useGameSync.complete`'s outcome. */
 type CascadeOutcome = "win" | "loss" | "completed" | "abandoned";

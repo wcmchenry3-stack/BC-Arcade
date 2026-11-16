@@ -339,7 +339,9 @@ async def test_the_board_ranks_by_score_with_old_rows_alongside(client: TestClie
     await _seed(fast_win, 16_278, {"merge_score": 8_000, "time_bonus": 8_278}, minutes=2)
     await _seed(old_row, 12_000, {"duration_ms": 90_000}, minutes=3)  # before #3700
     await _seed(loss, 8_500, {"merge_score": 8_500, "outcome": "loss"}, minutes=4)
-    r = client.get("/games/leaderboard/cascade")
+    viewer = str(uuid.uuid4())
+    await _grant(viewer)  # Cascade is premium: its board needs an entitled session
+    r = client.get("/games/leaderboard/cascade", headers=_headers(viewer))
     assert r.status_code == 200, r.text
     ours = [
         (e["player_name"], e["value"])
