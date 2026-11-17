@@ -43,6 +43,7 @@ SS = 4  # supersampling for the circle mask
 # 66 % (72 dp of 108 dp); the splash also has to survive the Android 12 circular mask (192 of 288 dp).
 ADAPTIVE_SHARE = 0.64  # no glow on the launcher, so the ring can sit near the 66 % edge
 SPLASH_SHARE = 0.56
+PALETTE_COLORS = 256
 RING_WIDTH = 0.035  # of the medallion diameter
 MONO_CROP = (150, 60, 874, 784)  # head and ears of the mascot master, for the themed layer
 
@@ -175,14 +176,30 @@ def build() -> dict[Path, Image.Image]:
         )
     for name in ("image.png", "image@2x.png", "image@3x.png"):
         out[IOS_SPLASH / name] = splash
-    return out
+    return {path: shrink(image) for path, image in out.items()}
+
+
+def shrink(image: Image.Image) -> Image.Image:
+    """Palette-quantize (alpha kept). The glow and the painted mascot make truecolour PNGs 5-9x
+    larger than the placeholders; 256 colours is visually the same at launcher and splash size."""
+    return image.quantize(
+        colors=PALETTE_COLORS, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG
+    )
+
+
+def flat(image: Image.Image) -> Image.Image:
+    """Pixels as the user sees them: over the app background, so transparent-pixel RGB (which
+    `npm run prebuild` or an encoder may change) is ignored by --check."""
+    base = Image.new("RGBA", image.size, (*BACKGROUND, 255))
+    base.alpha_composite(image.convert("RGBA"))
+    return base.convert("RGB")
 
 
 def save(path: Path, image: Image.Image) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # The existing launcher files are PNG data with a .webp name; Android sniffs content, so keep
     # PNG for every file and the diff stays a pure content change.
-    image.save(path, format="PNG", optimize=True)
+    image.save(path, format="PNG", optimize=True)  # palette PNG (see shrink)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -197,11 +214,11 @@ def main(argv: list[str] | None = None) -> int:
     stale = []
     for path, image in files.items():
         if args.check:
-            have = Image.open(path).convert("RGBA") if path.exists() else None
+            have = Image.open(path) if path.exists() else None
             if (
                 have is None
                 or have.size != image.size
-                or ImageChops.difference(have, image).getbbox()
+                or ImageChops.difference(flat(have), flat(image)).getbbox()
             ):
                 stale.append(path)
         else:

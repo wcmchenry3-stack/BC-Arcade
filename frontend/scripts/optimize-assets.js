@@ -13,7 +13,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = join(__dirname, "..", "assets");
-const ICONS = ["icon.png", "splash-icon.png", "adaptive-icon.png", "favicon.png"];
+const ICONS = ["icon.png", "favicon.png"];
 async function crushPng(filePath) {
   const before = statSync(filePath).size;
   const tmp = filePath + ".tmp";

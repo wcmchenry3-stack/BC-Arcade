@@ -35,3 +35,20 @@ def test_sizes_match_the_android_densities():
         assert Image.open(g.RES / f"mipmap-{density}/ic_launcher_foreground.webp").size == (px, px)
     for density, px in g.MIPMAP_LEGACY.items():
         assert Image.open(g.RES / f"mipmap-{density}/ic_launcher_round.webp").size == (px, px)
+
+
+def test_splash_survives_the_android_12_circular_mask():
+    # Android 12 shows only the central 192 of 288 dp (66.7 %) of the splash icon.
+    art = g.splash_master()
+    left, top, right, bottom = art.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+    margin = round(g.MASTER * (1 - 192 / 288) / 2)
+    assert left >= margin and top >= margin
+    assert right <= g.MASTER - margin and bottom <= g.MASTER - margin
+
+
+def test_shipped_files_are_palette_png_so_they_stay_small():
+    # Truecolour output was 4.6 MiB larger than the placeholders it replaced (#3935 review).
+    budget = 200 * 1024
+    for path in g.build():
+        assert path.stat().st_size <= budget, path
+        assert Image.open(path).mode == "P", path
