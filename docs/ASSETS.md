@@ -151,7 +151,7 @@ The script is idempotent.
 
 ## Tweaking a generated asset
 
-The in-house sounds (`synth_starswarm_sfx.py`, `synth_arcade_sfx.py`, `synth_puzzle_sfx.py`) and the Star Swarm sprites (`draw_starswarm_art.py`) are the output of their scripts in `tools/assets/`. Tests fail when a shipped file stops matching its generator (#3672), so a change always goes through the script:
+The in-house sounds (`synth_starswarm_sfx.py`, `synth_arcade_sfx.py`, `synth_puzzle_sfx.py`) and the Star Swarm sprites (`draw_starswarm_art.py`) are the output of their scripts in `tools/assets/`. The splash and Android launcher art (`gen_app_icons.py`, #3935) is generated the same way from the mascot; `python tools/assets/gen_app_icons.py --check` lists stale files. Tests fail when a shipped file stops matching its generator (#3672), so a change always goes through the script:
 
 1. Edit the recipe in the generator script.
 2. Rerun the generator for that name into a scratch folder, e.g. `python tools/assets/synth_puzzle_sfx.py /tmp/out daily-word-win` (sprites: `python tools/assets/draw_starswarm_art.py --out /tmp/out <name>`).
