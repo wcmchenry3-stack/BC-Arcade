@@ -52,3 +52,9 @@ def test_shipped_files_are_palette_png_so_they_stay_small():
     for path in g.build():
         assert path.stat().st_size <= budget, path
         assert Image.open(path).mode == "P", path
+
+
+def test_check_notices_a_colour_change_that_keeps_the_alpha(monkeypatch):
+    # Codex review on #3938: getbbox() on RGBA looks only at alpha, so a recolour went unnoticed.
+    monkeypatch.setattr(g, "RING", (255, 0, 0))
+    assert g.main(["--check"]) == 1
