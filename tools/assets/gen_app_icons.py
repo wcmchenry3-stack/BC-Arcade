@@ -41,9 +41,10 @@ SS = 4  # supersampling for the circle mask
 
 # Medallion diameter as a share of the canvas. Android keeps the launcher subject inside the central
 # 66 % (72 dp of 108 dp); the splash also has to survive the Android 12 circular mask (192 of 288 dp).
-ADAPTIVE_SHARE = 0.57
+ADAPTIVE_SHARE = 0.64  # no glow on the launcher, so the ring can sit near the 66 % edge
 SPLASH_SHARE = 0.56
 RING_WIDTH = 0.035  # of the medallion diameter
+MONO_CROP = (150, 60, 874, 784)  # head and ears of the mascot master, for the themed layer
 
 MIPMAP_FOREGROUND = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
 MIPMAP_LEGACY = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
@@ -84,19 +85,32 @@ def medallion(diameter: int, canvas: int, *, glow: bool = True) -> Image.Image:
 
 
 def monochrome(canvas: int) -> Image.Image:
-    """Themed-icon layer: a white ring and the mascot's bright line work, alpha only matters."""
+    """Themed-icon layer (Android 13 tints it, only alpha matters): ring plus the mascot's head.
+
+    Zoomed on the head and ears, the bright line work thickened so it survives the tint and small
+    sizes. Strokes are dilated at master size, then the layer is downscaled with the rest.
+    """
     d = round(canvas * ADAPTIVE_SHARE)
-    art = Image.open(SOURCE).convert("L").resize((d, d), Image.LANCZOS)
-    # Keep only the brightest strokes (outline, visor stripes, muzzle); the dark body drops out.
-    lines = art.point(lambda v: 255 if v > 150 else (v - 110) * 255 // 40 if v > 110 else 0)
-    lines = ImageChops.multiply(lines, _circle_mask(d))
+    ring_w = max(2, round(d * RING_WIDTH * 1.4))
+    inner = d - 2 * ring_w - round(d * 0.04)
+    src = Image.open(SOURCE).convert("L").crop(MONO_CROP).resize((inner * 2, inner * 2), Image.LANCZOS)
+    lines = src.point(lambda v: 255 if v > 150 else (v - 120) * 255 // 30 if v > 120 else 0)
+    # Opening drops the hairline circuit traces behind the dog; the dog's own outline is thicker.
+    lines = lines.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
+    lines = lines.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(0.8))
+    # Fade the busy side circuitry; the subject sits in the middle.
+    fade = Image.new("L", (inner * 2, inner * 2), 0)
+    ImageDraw.Draw(fade).ellipse((inner * 0.08, 0, inner * 1.92, inner * 2), fill=255)
+    lines = ImageChops.multiply(lines, fade.filter(ImageFilter.GaussianBlur(inner * 0.05)))
+    lines = lines.resize((inner, inner), Image.LANCZOS)
+    lines = ImageChops.multiply(lines, _circle_mask(inner))
+
     layer = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
     off = (canvas - d) // 2
-    white = Image.new("RGBA", (d, d), (255, 255, 255, 255))
+    white = Image.new("RGBA", (inner, inner), (255, 255, 255, 255))
     white.putalpha(lines)
-    layer.alpha_composite(white, (off, off))
+    layer.alpha_composite(white, ((canvas - inner) // 2, (canvas - inner) // 2))
 
-    ring_w = max(2, round(d * RING_WIDTH))
     m = Image.new("L", (canvas * SS, canvas * SS), 0)
     ImageDraw.Draw(m).ellipse(
         (off * SS, off * SS, (off + d) * SS - 1, (off + d) * SS - 1), outline=255, width=ring_w * SS
@@ -124,7 +138,7 @@ def legacy_round(size: int) -> Image.Image:
 
 
 def adaptive_master() -> Image.Image:
-    return medallion(round(MASTER * ADAPTIVE_SHARE), MASTER)
+    return medallion(round(MASTER * ADAPTIVE_SHARE), MASTER, glow=False)
 
 
 def splash_master() -> Image.Image:
