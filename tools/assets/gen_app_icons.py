@@ -76,7 +76,9 @@ def medallion(diameter: int, canvas: int, *, glow: bool = True) -> Image.Image:
     if glow:
         halo = ring_mask.filter(ImageFilter.GaussianBlur(diameter * 0.03))
         halo = halo.point(lambda v: min(255, v * 2) * 0.55)
-        out.alpha_composite(Image.merge("RGBA", (*[Image.new("L", out.size, c) for c in GLOW], halo)))
+        out.alpha_composite(
+            Image.merge("RGBA", (*[Image.new("L", out.size, c) for c in GLOW], halo))
+        )
 
     out.alpha_composite(disc, (off, off))
     ring = Image.merge("RGBA", (*[Image.new("L", out.size, c) for c in RING], ring_mask))
@@ -93,7 +95,12 @@ def monochrome(canvas: int) -> Image.Image:
     d = round(canvas * ADAPTIVE_SHARE)
     ring_w = max(2, round(d * RING_WIDTH * 1.4))
     inner = d - 2 * ring_w - round(d * 0.04)
-    src = Image.open(SOURCE).convert("L").crop(MONO_CROP).resize((inner * 2, inner * 2), Image.LANCZOS)
+    src = (
+        Image.open(SOURCE)
+        .convert("L")
+        .crop(MONO_CROP)
+        .resize((inner * 2, inner * 2), Image.LANCZOS)
+    )
     lines = src.point(lambda v: 255 if v > 150 else (v - 120) * 255 // 30 if v > 120 else 0)
     # Opening drops the hairline circuit traces behind the dog; the dog's own outline is thicker.
     lines = lines.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
@@ -125,7 +132,9 @@ def legacy_square(size: int) -> Image.Image:
     """Pre-API-26 launcher icon: the mascot on its own, rounded square (~22 % radius)."""
     art = Image.open(SOURCE).convert("RGB").resize((size * SS, size * SS), Image.LANCZOS)
     mask = Image.new("L", art.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, art.width - 1, art.height - 1), radius=int(art.width * 0.22), fill=255)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, art.width - 1, art.height - 1), radius=int(art.width * 0.22), fill=255
+    )
     art = art.convert("RGBA")
     art.putalpha(mask)
     return art.resize((size, size), Image.LANCZOS)
@@ -151,13 +160,19 @@ def build() -> dict[Path, Image.Image]:
     out[ASSETS / "adaptive-icon.png"] = adaptive
     out[ASSETS / "splash-icon.png"] = splash
     for density, px in MIPMAP_FOREGROUND.items():
-        out[RES / f"mipmap-{density}/ic_launcher_foreground.webp"] = adaptive.resize((px, px), Image.LANCZOS)
-        out[RES / f"mipmap-{density}/ic_launcher_monochrome.webp"] = mono.resize((px, px), Image.LANCZOS)
+        out[RES / f"mipmap-{density}/ic_launcher_foreground.webp"] = adaptive.resize(
+            (px, px), Image.LANCZOS
+        )
+        out[RES / f"mipmap-{density}/ic_launcher_monochrome.webp"] = mono.resize(
+            (px, px), Image.LANCZOS
+        )
     for density, px in MIPMAP_LEGACY.items():
         out[RES / f"mipmap-{density}/ic_launcher.webp"] = legacy_square(px)
         out[RES / f"mipmap-{density}/ic_launcher_round.webp"] = legacy_round(px)
     for density, px in SPLASH_LOGO.items():
-        out[RES / f"drawable-{density}/splashscreen_logo.png"] = splash.resize((px, px), Image.LANCZOS)
+        out[RES / f"drawable-{density}/splashscreen_logo.png"] = splash.resize(
+            (px, px), Image.LANCZOS
+        )
     for name in ("image.png", "image@2x.png", "image@3x.png"):
         out[IOS_SPLASH / name] = splash
     return out
@@ -172,14 +187,22 @@ def save(path: Path, image: Image.Image) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--check", action="store_true", help="exit 1 if a shipped file is not what this script writes")
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="exit 1 if a shipped file is not what this script writes",
+    )
     args = ap.parse_args(argv)
     files = build()
     stale = []
     for path, image in files.items():
         if args.check:
             have = Image.open(path).convert("RGBA") if path.exists() else None
-            if have is None or have.size != image.size or ImageChops.difference(have, image).getbbox():
+            if (
+                have is None
+                or have.size != image.size
+                or ImageChops.difference(have, image).getbbox()
+            ):
                 stale.append(path)
         else:
             save(path, image)
