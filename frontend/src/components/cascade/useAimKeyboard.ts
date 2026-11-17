@@ -59,7 +59,7 @@ export function aimKeyStepX(x: number, direction: -1 | 1, big: boolean): number 
 const HANDLED = new Set(["ArrowLeft", "ArrowRight", " ", "Enter"]);
 
 export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOptions) {
-  const { aimState, aimX, aimAt, aimFromX } = values;
+  const { aimState, aimX, aimAt, aimFromX, pointerDown } = values;
   // True while the keyboard owns the aim (a drag's aim is never moved by keys).
   const keyAiming = useRef(false);
   // The x the keyboard last wrote: a pointer that aimed since has moved `aimX` or the state.
@@ -87,18 +87,31 @@ export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOpt
     return true;
   }, [aimAt, aimFromX, aimState, aimX, owns, wake]);
 
+  const step = useCallback(
+    (e: AimKeyEvent, mine: boolean) => {
+      const from = mine ? aimX.get() : SPAWNER.cx;
+      const next = aimKeyStepX(from, e.key === "ArrowLeft" ? -1 : 1, e.shiftKey);
+      lastKeyX.current = next;
+      aimX.set(next);
+      if (!mine) {
+        keyAiming.current = true;
+        aimState.set(AIM_STATE.aiming);
+        aimAt.set(Number.NaN);
+      }
+    },
+    [aimAt, aimState, aimX]
+  );
+
   const handleKey = useCallback(
     (e: AimKeyEvent): void => {
       if (e.ctrlKey || e.altKey || e.metaKey) return;
-      if (!enabled) {
-        // Game over: no aim, but the page must not scroll under Space or the arrows.
-        if (HANDLED.has(e.key)) e.preventDefault();
-        return;
-      }
+      // Game over, or a finger / mouse owns the aim (down, or aiming): the page must not scroll
+      // under Space or the arrows, but nothing else happens.
       const mine = owns();
       const state = aimState.get();
-      // A finger or mouse is aiming: its gesture owns the aim.
-      if (state === AIM_STATE.pressed || (state === AIM_STATE.aiming && !mine)) {
+      const pointer =
+        pointerDown.get() || state === AIM_STATE.pressed || (state === AIM_STATE.aiming && !mine);
+      if (!enabled || pointer) {
         if (HANDLED.has(e.key)) e.preventDefault();
         return;
       }
@@ -107,15 +120,7 @@ export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOpt
         case "ArrowLeft":
         case "ArrowRight": {
           e.preventDefault();
-          const from = mine ? aimX.get() : SPAWNER.cx;
-          const next = aimKeyStepX(from, e.key === "ArrowLeft" ? -1 : 1, e.shiftKey);
-          lastKeyX.current = next;
-          aimX.set(next);
-          if (!mine) {
-            keyAiming.current = true;
-            aimState.set(AIM_STATE.aiming);
-            aimAt.set(Number.NaN);
-          }
+          step(e, mine);
           wake();
           return;
         }
@@ -143,7 +148,7 @@ export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOpt
           return;
       }
     },
-    [aimAt, aimState, aimX, cancel, enabled, onDrop, owns, wake]
+    [aimAt, aimState, aimX, cancel, enabled, onDrop, owns, pointerDown, step, wake]
   );
 
   // The latest handler, so the DOM listener never goes stale.

@@ -350,6 +350,34 @@ describe("keyboard through the area (#3934)", () => {
     expect(Object.keys(node.l)).toHaveLength(0);
   });
 
+  it("a key during a mouse press that left the board is ignored, and the release drops nothing", async () => {
+    const { m, node } = await mountWeb();
+    await m.press(150);
+    await m.move(200);
+    await m.move(200, H + 30); // off the board: cancelled
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    const e = k("ArrowLeft");
+    await act(async () => node.l.keydown!(e as never));
+    expect(e.preventDefault).toHaveBeenCalled(); // the page still does not scroll
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    await m.release();
+    expect(m.onDrop).not.toHaveBeenCalled();
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+  });
+
+  it("once the pointer is up the keys work again, and after Escape too", async () => {
+    const { m, node } = await mountWeb();
+    await m.press(150);
+    await m.release(); // a tap: it drops (accepted) and ends
+    expect(m.motion.values.pointerDown.value).toBe(false);
+    await act(async () => node.l.keydown!(k("ArrowRight") as never));
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.aiming);
+    await act(async () => node.l.keydown!(k("Escape") as never));
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    await act(async () => node.l.keydown!(k("ArrowLeft") as never));
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.aiming);
+  });
+
   it("names the web tab stop", async () => {
     jest.replaceProperty(Platform, "OS", "web");
     await mount();

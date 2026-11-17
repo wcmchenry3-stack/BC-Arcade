@@ -63,6 +63,8 @@ export interface BoardMotionValues {
   readonly aimX: SharedValue<number>;
   readonly aimAt: SharedValue<number>;
   readonly aimFromX: SharedValue<number>;
+  /** A finger or mouse is down on the board (#3934): the keyboard leaves the aim alone. */
+  readonly pointerDown: SharedValue<boolean>;
 }
 
 export interface BoardMotion {
@@ -89,6 +91,7 @@ export function useBoardMotion(reduceMotion: boolean, onDangerOnset?: () => void
   const aimX = useSharedValue(0);
   const aimAt = useSharedValue(0);
   const aimFromX = useSharedValue(0);
+  const pointerDown = useSharedValue(false);
   // The latest onset handler, called through one stable function the worklet can hold.
   const onsetRef = useRef(onDangerOnset);
   useEffect(() => {
@@ -211,8 +214,19 @@ export function useBoardMotion(reduceMotion: boolean, onDangerOnset?: () => void
   }, [danger, dangerPhase, publish]);
 
   const values = useMemo(
-    () => ({ events, stamps, clock, dangerPhase, danger, aimState, aimX, aimAt, aimFromX }),
-    [events, stamps, clock, dangerPhase, danger, aimState, aimX, aimAt, aimFromX]
+    () => ({
+      events,
+      stamps,
+      clock,
+      dangerPhase,
+      danger,
+      aimState,
+      aimX,
+      aimAt,
+      aimFromX,
+      pointerDown,
+    }),
+    [events, stamps, clock, dangerPhase, danger, aimState, aimX, aimAt, aimFromX, pointerDown]
   );
   return useMemo(
     () => ({ values, push, publish, setDanger, clear, wake }),
