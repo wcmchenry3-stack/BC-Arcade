@@ -98,6 +98,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "tile.fastestWin": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: the player's fastest winning time in this game, shown as m:ss.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "tile.timePlayed": {
     "component": "GameStatsScreen",
     "description": "Tile label: total reported play time in this game.",

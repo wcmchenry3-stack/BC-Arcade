@@ -17,6 +17,7 @@
  *   6. Audio — engine events play the 2048 and game-over sounds.
  */
 import React, { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import {
   View,
   StyleSheet,
@@ -85,7 +86,7 @@ function highestTile(board: number[][]): number {
 }
 
 /** The play time to report: never negative or non-finite, whatever the device clock did (#3738). */
-export function computeDurationMs(s: Twenty48State, now: number = Date.now()): number {
+export function computeDurationMs(s: Twenty48State, now: number = monotonicNow()): number {
   const ms = clockElapsedMs(s, now);
   return Number.isFinite(ms) ? Math.max(0, ms) : 0;
 }

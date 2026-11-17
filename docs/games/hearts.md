@@ -347,7 +347,7 @@ Hearts state persists locally, including:
 - known voids/pass memory;
 - active game state.
 
-Hearts uses its own active-play clock.
+Hearts uses its own active-play clock. It reads the monotonic `monotonicNow()` (#3925), so the device clock does not affect it.
 
 The clock pauses when:
 

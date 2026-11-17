@@ -135,13 +135,13 @@ describe("mahjong engine events", () => {
     const game = createGame(TURTLE_LAYOUT, 1);
     const free = game.tiles.find((t) => isFreeTile(t, game.tiles))!;
     const selected = selectTile(game, free.id);
-    const paused = pauseGame(selected, Date.now() + 1000);
+    const paused = pauseGame(selected, performance.now() + 1000);
     expect(paused.events).toBe(selected.events);
     expect(resumeGame(paused).events).toBe(selected.events);
   });
 
   it("never feed back: the same play with events stripped each step ends identically", () => {
-    jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+    jest.spyOn(performance, "now").mockReturnValue(1_700_000_000_000);
     const play = (strip: boolean) => {
       setRng(createSeededRng(7));
       let s = createGame(TURTLE_LAYOUT, 7);

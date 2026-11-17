@@ -449,7 +449,7 @@ describe("selectTile", () => {
       startedAt: 1_000,
       accumulatedMs: 500,
     };
-    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    jest.spyOn(performance, "now").mockReturnValue(61_000);
     try {
       const done = selectTile(selectTile(state, a.id), b.id);
       expect(done.isComplete).toBe(true);
@@ -475,7 +475,7 @@ describe("selectTile", () => {
       startedAt: 1_000,
       accumulatedMs: 500,
     };
-    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    jest.spyOn(performance, "now").mockReturnValue(61_000);
     try {
       const dead = selectTile(selectTile(state, a.id), b.id);
       expect(dead.isComplete).toBe(false);
@@ -965,7 +965,7 @@ describe("shuffleBoard", () => {
       startedAt: 1_000,
       accumulatedMs: 500,
     };
-    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    jest.spyOn(performance, "now").mockReturnValue(61_000);
     try {
       const dead = shuffleBoard(state);
       expect(dead.isDeadlocked).toBe(true);

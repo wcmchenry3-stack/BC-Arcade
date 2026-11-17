@@ -9,6 +9,7 @@
  * active-play window; this clock is what the player sees.
  */
 
+import { monotonicNow } from "../_shared/monotonicNow";
 import {
   clockForSave,
   clockOnLoad,
@@ -36,7 +37,7 @@ export function clockOf(state: FreeCellState): PlayClock {
 export function withMoveClock(
   prev: FreeCellState,
   next: FreeCellState,
-  now: number = Date.now()
+  now: number = monotonicNow()
 ): FreeCellState {
   const clock = startClockOnMove(clockOf(prev), now);
   return {
@@ -56,14 +57,14 @@ export function withClockOf(prev: FreeCellState, next: FreeCellState): FreeCellS
 }
 
 /** Pause a running clock (the player left). */
-export function pauseGame(state: FreeCellState, now: number = Date.now()): FreeCellState {
+export function pauseGame(state: FreeCellState, now: number = monotonicNow()): FreeCellState {
   const clock = clockOf(state);
   const paused = pauseClock(clock, now);
   return paused === clock ? state : { ...state, clock: paused };
 }
 
 /** Run a paused clock again (the player is back). A finished game stays frozen. */
-export function resumeGame(state: FreeCellState, now: number = Date.now()): FreeCellState {
+export function resumeGame(state: FreeCellState, now: number = monotonicNow()): FreeCellState {
   if (state.isComplete) return state;
   const clock = clockOf(state);
   const resumed = resumeClock(clock, now);
@@ -71,13 +72,13 @@ export function resumeGame(state: FreeCellState, now: number = Date.now()): Free
 }
 
 /** The game as it is saved: the running segment banked (`clockForSave`). */
-export function forSave(state: FreeCellState, now: number = Date.now()): FreeCellState {
+export function forSave(state: FreeCellState, now: number = monotonicNow()): FreeCellState {
   if (state.clock === undefined) return state;
   return { ...state, clock: clockForSave(state.clock, now) };
 }
 
 /** The game as it is loaded: none of the time the app was closed counts (`clockOnLoad`). */
-export function onLoad(state: FreeCellState, now: number = Date.now()): FreeCellState {
+export function onLoad(state: FreeCellState, now: number = monotonicNow()): FreeCellState {
   if (state.clock === undefined) return state;
   return { ...state, clock: clockOnLoad(state.clock, state.isComplete, now) };
 }

@@ -17,15 +17,11 @@
 import { AppState, type AppStateStatus } from "react-native";
 
 import { isAppInterrupted } from "./appInterrupted";
+import { monotonicNow } from "./monotonicNow";
 
 /** Only `background` and `inactive` stop the counter; anything else is foreground. */
 function isForeground(state: unknown): boolean {
   return !isAppInterrupted(state);
-}
-
-function monotonicNow(): number {
-  const perf = (globalThis as { performance?: { now?: () => number } }).performance;
-  return typeof perf?.now === "function" ? perf.now() : Date.now();
 }
 
 let subscribed = false;

@@ -10,6 +10,7 @@
   "tile.currentStreak": "连胜",
   "tile.bestStreak": "最高连胜",
   "tile.best": "最佳",
+  "tile.fastestWin": "最快获胜",
   "tile.timePlayed": "游戏时长",
   "tile.lastPlayed": "上次游玩",
   "empty": "还没有已完成的游戏。完成一局游戏后即可在此查看统计。",

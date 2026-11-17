@@ -10,6 +10,7 @@
  * without tracking state itself.
  */
 
+import { monotonicNow } from "../_shared/monotonicNow";
 import { createRngSlot, createSeededRng } from "../_shared/seededRng";
 import { Twenty48State, TileData, GameEvent, MergeSource } from "./types";
 import {
@@ -469,12 +470,12 @@ export function newGame(): Twenty48State {
  * no-op once the game has no running timer to freeze (not yet started, or
  * already over).
  */
-export function pauseGame(state: Twenty48State, now: number = Date.now()): Twenty48State {
+export function pauseGame(state: Twenty48State, now: number = monotonicNow()): Twenty48State {
   return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
-export function resumeGame(state: Twenty48State, now: number = Date.now()): Twenty48State {
+export function resumeGame(state: Twenty48State, now: number = monotonicNow()): Twenty48State {
   return state.game_over ? state : resumeClock(state, now);
 }
 
@@ -552,7 +553,7 @@ export function move(state: Twenty48State, direction: Direction): Twenty48State 
   // --- Timer tracking ---
   // The first move starts the clock (a move while it is paused leaves it
   // so), and the game ending freezes it.
-  const now = Date.now();
+  const now = monotonicNow();
   const clock = startClockOnMove(state, now);
 
   return withClock(

@@ -39,7 +39,7 @@ export interface Twenty48State {
   scoreDelta: number;
   game_over: boolean;
   has_won: boolean;
-  /** Timestamp (Date.now()) when the current play session started; null if not yet started or game is over. */
+  /** Reading of `monotonicNow()` when the current play session started; null if not yet started or game is over. */
   startedAt: number | null;
   /** Total elapsed milliseconds accumulated across all sessions before the current one. */
   accumulatedMs: number;

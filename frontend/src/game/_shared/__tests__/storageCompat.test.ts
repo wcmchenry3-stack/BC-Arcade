@@ -549,7 +549,7 @@ async function observe(s: Scenario): Promise<Observation> {
 
 beforeEach(() => {
   jest.restoreAllMocks();
-  jest.spyOn(Date, "now").mockImplementation(() => now);
+  jest.spyOn(performance, "now").mockImplementation(() => now);
 });
 
 const recorded = fixture as Record<string, Observation>;

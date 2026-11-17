@@ -64,6 +64,7 @@ class GameTypeStats:
     time_played_ms: int = 0
     best_value: int | float | None = None
     best_label_key: str | None = None
+    best_win_ms: int | None = None
     # Game-specific figures from stats_shape()'s "extras" (Blackjack's chips).
     extras: dict[str, Any] = field(default_factory=dict)
 

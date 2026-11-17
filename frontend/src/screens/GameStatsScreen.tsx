@@ -15,6 +15,7 @@ import {
 } from "../api/statsDisplay";
 import type { GameTypeStats } from "../api/types";
 import type { GameType } from "../api/vocab";
+import { formatMs } from "../game/_shared/formatMs";
 import { AppHeader } from "../components/shared/AppHeader";
 import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { EmptyState } from "../components/shared/EmptyState";
@@ -70,12 +71,20 @@ export function statsTiles(t: TFunction, s: GameTypeStats): StatTile[] {
       value: count(t, s.best_win_streak),
     });
   }
+  tiles.push({
+    key: "best",
+    label: t("stats:tile.best"),
+    value: formatMetric(t, s.best_label_key, s.best_value),
+  });
+  // Only for a game that reports a winning time (#3927); left out, not "—", otherwise.
+  if (s.best_win_ms != null) {
+    tiles.push({
+      key: "fastestWin",
+      label: t("stats:tile.fastestWin"),
+      value: formatMs(s.best_win_ms),
+    });
+  }
   tiles.push(
-    {
-      key: "best",
-      label: t("stats:tile.best"),
-      value: formatMetric(t, s.best_label_key, s.best_value),
-    },
     {
       key: "timePlayed",
       label: t("stats:tile.timePlayed"),

@@ -12,6 +12,7 @@
  * Cascade and Blackjack (so any seed reproduces its deal deterministically).
  */
 
+import { monotonicNow } from "../_shared/monotonicNow";
 import { createRngSlot, createSeededRng } from "../_shared/seededRng";
 import seedsJson from "./seeds.json";
 // True only in E2E test builds (Playwright web + Maestro native, both build
@@ -313,7 +314,7 @@ function withUndo(
 
 /** Start, advance, or freeze the timer. Called after every state mutation. */
 function applyTimer(prev: SolitaireState, next: SolitaireState): SolitaireState {
-  const now = Date.now();
+  const now = monotonicNow();
   // The first move starts the clock; a move while it is paused leaves it so.
   const clock = startClockOnMove(prev, now);
   return withClock(next, next.isComplete && !prev.isComplete ? stopClock(clock, now) : clock);
@@ -325,12 +326,12 @@ function applyTimer(prev: SolitaireState, next: SolitaireState): SolitaireState 
  * no-op once the game has no running timer to freeze (not yet started, or
  * already complete).
  */
-export function pauseGame(state: SolitaireState, now: number = Date.now()): SolitaireState {
+export function pauseGame(state: SolitaireState, now: number = monotonicNow()): SolitaireState {
   return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
-export function resumeGame(state: SolitaireState, now: number = Date.now()): SolitaireState {
+export function resumeGame(state: SolitaireState, now: number = monotonicNow()): SolitaireState {
   return state.isComplete ? state : resumeClock(state, now);
 }
 

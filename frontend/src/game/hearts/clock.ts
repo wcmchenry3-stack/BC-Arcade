@@ -16,12 +16,13 @@
  * continues that session, and starts from 0 otherwise.
  */
 
+import { monotonicNow } from "../_shared/monotonicNow";
 import type { HeartsState, SavedHeartsState } from "./types";
 
 export interface PlayClock {
   /** Play time of the finished spans. */
   readonly accumulatedMs: number;
-  /** `Date.now()` when the current span began; null while paused. */
+  /** `monotonicNow()` when the current span began; null while paused. */
   readonly runningSince: number | null;
 }
 
@@ -31,18 +32,18 @@ export function pausedClock(accumulatedMs = 0): PlayClock {
 }
 
 /** Total play time, including the running span. */
-export function clockMs(clock: PlayClock, now: number = Date.now()): number {
+export function clockMs(clock: PlayClock, now: number = monotonicNow()): number {
   if (clock.runningSince === null) return clock.accumulatedMs;
   return clock.accumulatedMs + Math.max(0, now - clock.runningSince);
 }
 
 /** Starts a span, unless one is running. */
-export function runClock(clock: PlayClock, now: number = Date.now()): PlayClock {
+export function runClock(clock: PlayClock, now: number = monotonicNow()): PlayClock {
   return clock.runningSince === null ? { ...clock, runningSince: now } : clock;
 }
 
 /** Ends the running span, folding it into the total. */
-export function pauseClock(clock: PlayClock, now: number = Date.now()): PlayClock {
+export function pauseClock(clock: PlayClock, now: number = monotonicNow()): PlayClock {
   return clock.runningSince === null ? clock : pausedClock(clockMs(clock, now));
 }
 
@@ -50,7 +51,7 @@ export function pauseClock(clock: PlayClock, now: number = Date.now()): PlayCloc
 export function withPlayTime(
   state: HeartsState,
   clock: PlayClock,
-  now: number = Date.now()
+  now: number = monotonicNow()
 ): SavedHeartsState {
   return { ...state, accumulatedMs: Math.round(clockMs(clock, now)) };
 }
