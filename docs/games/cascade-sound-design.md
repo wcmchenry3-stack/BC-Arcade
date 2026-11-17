@@ -1,4 +1,4 @@
-> **Design record, not canonical.** This log keeps the reasoning behind Cascade's sounds. What plays when, and every rule, is in the canonical specification: [Sound in `cascade.md`](cascade-decisions.md#sound-3702) and [Audio and accessibility](cascade.md#12-audio-and-accessibility).
+> **Design record, not canonical.** This log keeps the reasoning behind Cascade's sounds. What plays when, and every rule, is in the canonical specification: [Sound in the decision log](cascade-decisions.md#sound-3702) and [Audio and accessibility](cascade.md#12-audio-and-accessibility).
 
 # Cascade sound design log (#3702)
 
