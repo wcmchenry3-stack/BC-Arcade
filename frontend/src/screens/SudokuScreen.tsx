@@ -74,6 +74,7 @@ import {
   type EntryTuple,
 } from "../game/sudoku/replay";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 
@@ -347,7 +348,7 @@ export default function SudokuScreen() {
     if (startMsRef.current === null) return null;
     // Raw, so a wall clock that stepped back after a resume shows as a negative
     // time: a completion then records no duration (below). The HUD clamps it.
-    return (pausedAtRef.current ?? Date.now()) - startMsRef.current;
+    return (pausedAtRef.current ?? monotonicNow()) - startMsRef.current;
   }, []);
   const syncClockActivity = useCallback(() => {
     clockActivity.set(startMsRef.current !== null && pausedAtRef.current === null);
@@ -362,12 +363,12 @@ export default function SudokuScreen() {
   // actually resumes once both have cleared: usePauseWhileAway tracks both.
   const pauseTimer = useCallback(() => {
     if (startMsRef.current === null || isComplete || pausedAtRef.current !== null) return;
-    pausedAtRef.current = Date.now();
+    pausedAtRef.current = monotonicNow();
     syncClockActivity();
   }, [isComplete, syncClockActivity]);
   const resumeTimer = useCallback(() => {
     if (pausedAtRef.current === null || startMsRef.current === null) return;
-    startMsRef.current += Date.now() - pausedAtRef.current;
+    startMsRef.current += monotonicNow() - pausedAtRef.current;
     pausedAtRef.current = null;
     syncClockActivity();
   }, [syncClockActivity]);
@@ -393,7 +394,7 @@ export default function SudokuScreen() {
   // the HUD afterwards.
   const startClockRef = useCallback(() => {
     if (startMsRef.current !== null) return;
-    startMsRef.current = Date.now();
+    startMsRef.current = monotonicNow();
     if (awayRef.current) pausedAtRef.current = startMsRef.current;
   }, [awayRef]);
 
@@ -424,7 +425,7 @@ export default function SudokuScreen() {
     // Already solved: its card shows at once, with no beat (#3774).
     if (saved.isComplete) skipSolveBeat();
     if (anyMoves) {
-      startMsRef.current = Date.now();
+      startMsRef.current = monotonicNow();
       // A load that lands while the player is away (#2750) starts
       // paused, and resumes with everything else on return.
       if (awayRef.current) pausedAtRef.current = startMsRef.current;

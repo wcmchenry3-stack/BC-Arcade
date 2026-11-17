@@ -17,7 +17,7 @@
  *   (`getMatchingFreeTileIds`) are folded with the canonical state into a running SHA-256;
  *   checkpoints keep exact integer fields.
  *
- * `Date.now` is pinned, so the clock fields are constant and the record tracks the game only.
+ * `performance.now` is pinned, so the clock fields are constant and the record tracks the game only.
  *
  * Re-record (a deliberate gameplay change only; say why in the PR):
  * `UPDATE_GOLDEN=1 npx jest src/game/mahjong/__tests__/goldenReplay.test.ts`.
@@ -163,7 +163,7 @@ describe("Mahjong golden seeded replay", () => {
   });
 
   beforeEach(() => {
-    jest.spyOn(Date, "now").mockReturnValue(NOW);
+    jest.spyOn(performance, "now").mockReturnValue(NOW);
   });
 
   afterEach(() => {

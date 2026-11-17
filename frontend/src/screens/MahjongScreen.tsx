@@ -25,6 +25,7 @@
  *      (useTransientToast, #2981).
  */
 
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
@@ -613,7 +614,7 @@ export default function MahjongScreen() {
   const goToLevelSelect = useCallback(() => {
     const s = stateRef.current;
     setHasSavedGame(s !== null && !s.isComplete);
-    const now = Date.now();
+    const now = monotonicNow();
     // The game stays open while the player is away: save what is waiting.
     replay.flush();
     setState((prev) => (prev ? pauseGame(prev, now) : prev));
@@ -659,7 +660,7 @@ export default function MahjongScreen() {
       // clock stopped: carry on from it (#2750). Reloading the save would drop
       // the play since the last save, and a resume would reopen the session.
       setHasSavedGame(false);
-      const now = Date.now();
+      const now = monotonicNow();
       setState((prev) => (prev ? resumeGame(prev, now) : prev));
       setView("play");
       return;

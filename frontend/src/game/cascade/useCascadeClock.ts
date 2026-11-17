@@ -10,6 +10,7 @@
  * - A restored game runs on from the load with its saved play banked (`restore`), paused if the
  *   load lands while the player is away.
  */
+import { monotonicNow } from "../_shared/monotonicNow";
 import { useState } from "react";
 import {
   clockElapsedMs,
@@ -40,7 +41,7 @@ interface CascadeClock {
 const NOT_STARTED: PlayClock = { startedAt: null, accumulatedMs: 0 };
 
 /** One clock for the screen's lifetime; the returned object is stable. */
-function createCascadeClock(now: () => number = () => Date.now()): CascadeClock {
+function createCascadeClock(now: () => number = monotonicNow): CascadeClock {
   let clock = NOT_STARTED;
   let away = false;
   // The game ended: no piece starts the clock again until a new or restored game.

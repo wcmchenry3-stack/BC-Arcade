@@ -399,8 +399,8 @@ describe("MahjongScreen — win result card (#2510)", () => {
       JSON.stringify({ ...makeLastPairState(), accumulatedMs: 0, startedAt: null })
     );
     const api = await mount();
-    const start = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(start);
+    const start = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockReturnValue(start);
     try {
       await act(async () => {
         await fireEvent.press(api.getByLabelText("mock-tile-0")); // starts the clock
@@ -574,7 +574,9 @@ describe("MahjongScreen — win result card (#2510)", () => {
   it("doesn't grow the time on a won board restored from storage", async () => {
     await AsyncStorage.setItem(
       "mahjong_game",
-      JSON.stringify(makeWinState({ accumulatedMs: 90_000, startedAt: Date.now() - 600_000 }))
+      JSON.stringify(
+        makeWinState({ accumulatedMs: 90_000, startedAt: performance.now() - 600_000 })
+      )
     );
     const api = await mount();
     const card = within(await api.findByTestId("mahjong-result"));
@@ -1072,7 +1074,7 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
   const PLAY_MS = 60_000;
   let dateNow: jest.SpyInstance;
   beforeEach(() => {
-    dateNow = jest.spyOn(Date, "now").mockReturnValue(NOW);
+    dateNow = jest.spyOn(performance, "now").mockReturnValue(NOW);
   });
   afterEach(() => {
     dateNow.mockRestore();
@@ -1457,7 +1459,7 @@ describe("MahjongScreen — app background and relaunch (#2750)", () => {
     appStateSpy = jest.spyOn(AppState, "addEventListener");
     appStateBase = appStateSpy.mock.calls.length;
     now = 1_800_000_000_000;
-    nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
   });
   afterEach(() => {
     nowSpy.mockRestore();

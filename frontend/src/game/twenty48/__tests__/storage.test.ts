@@ -166,7 +166,7 @@ describe("twenty48 storage — play clock across a relaunch (#2750)", () => {
   afterEach(() => jest.restoreAllMocks());
 
   it("keeps the play before the save and drops the time until the load", async () => {
-    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(40_000);
+    const nowSpy = jest.spyOn(performance, "now").mockReturnValue(40_000);
     await saveGame({ ...sample, startedAt: 10_000, accumulatedMs: 5_000 });
     nowSpy.mockReturnValue(40_000 + 2 * 86_400_000);
     const loaded = await loadGame();
@@ -176,7 +176,7 @@ describe("twenty48 storage — play clock across a relaunch (#2750)", () => {
 
   it("loads an older build's running startedAt without counting the gap", async () => {
     await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...sample, startedAt: 1_000 }));
-    jest.spyOn(Date, "now").mockReturnValue(172_800_000);
+    jest.spyOn(performance, "now").mockReturnValue(172_800_000);
     const loaded = await loadGame();
     expect(loaded!.accumulatedMs).toBe(0);
     expect(loaded!.startedAt).toBe(172_800_000);

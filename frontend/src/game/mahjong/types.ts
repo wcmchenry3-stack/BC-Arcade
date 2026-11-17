@@ -139,7 +139,7 @@ export interface MahjongState {
   readonly isComplete: boolean;
   /** True when no free matching pairs remain and no shuffles are left. */
   readonly isDeadlocked: boolean;
-  /** Timestamp (Date.now()) when the current play session started; null if
+  /** Reading of `monotonicNow()` when the current play session started; null if
    * no move has been made yet. */
   readonly startedAt: number | null;
   /** Accumulated elapsed milliseconds from all sessions before the current. */

@@ -9,6 +9,7 @@
  * valid. Tests can pin the shuffle via `setRng(createSeededRng(seed))`.
  */
 
+import { monotonicNow } from "../_shared/monotonicNow";
 import {
   createRngSlot,
   createSeededRng,
@@ -268,7 +269,7 @@ export function getAnyFreePair(
 // Elapsed time helper
 // ---------------------------------------------------------------------------
 
-export function elapsedMs(state: MahjongState, now: number = Date.now()): number {
+export function elapsedMs(state: MahjongState, now: number = monotonicNow()): number {
   return clockElapsedMs(state, now);
 }
 
@@ -617,7 +618,7 @@ export function selectTile(
   const tile = state.tiles.find((t) => t.id === tileId);
   if (!tile || !(freeIds ? freeIds.has(tile.id) : isFreeTile(tile, state.tiles))) return state;
 
-  const now = Date.now();
+  const now = monotonicNow();
   // The first tap starts the clock; a tap while it is paused leaves it so.
   const clock = startClockOnMove(state, now);
 
@@ -854,7 +855,7 @@ export function shuffleBoard(state: MahjongState): MahjongState {
         undoStack,
         events: [{ type: "shuffle" }, { type: "deadlock" }],
       },
-      Date.now()
+      monotonicNow()
     );
   }
 
@@ -912,7 +913,7 @@ export function tilesBeforeUndo(
 }
 
 /** Undo the last pair removal or shuffle. */
-export function undoMove(state: MahjongState, now: number = Date.now()): MahjongState {
+export function undoMove(state: MahjongState, now: number = monotonicNow()): MahjongState {
   if (state.undoStack.length === 0) return state;
   const entry = state.undoStack[state.undoStack.length - 1]!;
   // The live clock stays (#2750): the clock as it was before the move
@@ -948,11 +949,11 @@ export function undoMove(state: MahjongState, now: number = Date.now()): Mahjong
  * drives both through `usePauseWhileAway`. A no-op once the game has no
  * running timer to freeze (not yet started, or already finished).
  */
-export function pauseGame(state: MahjongState, now: number = Date.now()): MahjongState {
+export function pauseGame(state: MahjongState, now: number = monotonicNow()): MahjongState {
   return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
-export function resumeGame(state: MahjongState, now: number = Date.now()): MahjongState {
+export function resumeGame(state: MahjongState, now: number = monotonicNow()): MahjongState {
   return state.isComplete || state.isDeadlocked ? state : resumeClock(state, now);
 }

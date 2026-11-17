@@ -28,7 +28,7 @@ describe("usePausableClock (#2750)", () => {
       return { remove: () => appStateListeners.delete(cb) };
     }) as unknown as typeof AppState.addEventListener);
     now = 1_000_000;
-    nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
   });
   afterEach(() => {
     nowSpy.mockRestore();

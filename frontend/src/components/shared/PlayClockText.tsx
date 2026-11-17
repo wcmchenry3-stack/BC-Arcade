@@ -1,3 +1,4 @@
+import { monotonicNow } from "../../game/_shared/monotonicNow";
 import React, { useEffect, useState } from "react";
 import { Text, type StyleProp, type TextStyle } from "react-native";
 import { formatMs, msToNextSecond } from "../../game/_shared/formatMs";
@@ -42,20 +43,20 @@ function PlayClockTextImpl({
   style,
   testID,
 }: PlayClockTextProps) {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => monotonicNow());
 
   useEffect(() => {
     if (startedAt === null) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
-      const elapsed = accumulatedMs + (Date.now() - startedAt);
+      const elapsed = accumulatedMs + (monotonicNow() - startedAt);
       timer = setTimeout(() => {
-        setNow(Date.now());
+        setNow(monotonicNow());
         schedule();
       }, msToNextSecond(elapsed));
     };
     // Catch up at once: `now` may predate this running segment.
-    setNow(Date.now());
+    setNow(monotonicNow());
     schedule();
     return () => {
       if (timer !== undefined) clearTimeout(timer);

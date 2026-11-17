@@ -893,8 +893,8 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
   it("stops the play clock while another screen covers the board", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
     const { unmount } = await mountAndSettle();
-    let now = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       await act(() => {
         dispatchKey("ArrowRight"); // starts the board's timer
@@ -1713,7 +1713,7 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
     appStateSpy = jest.spyOn(AppState, "addEventListener");
     appStateBase = appStateSpy.mock.calls.length;
     now = 1_700_000_000_000;
-    nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
   });
   afterEach(async () => {
     nowSpy.mockRestore();
