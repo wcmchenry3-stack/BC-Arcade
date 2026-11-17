@@ -12,8 +12,9 @@ from __future__ import annotations
 import functools
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, case, func, or_
+from sqlalchemy import ColumnElement, and_, case, func, literal, or_
 
+from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from db.jsonx import json_number
 from db.models import Game, GameType
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
@@ -126,6 +127,25 @@ _REPORTED_TIME_MS = case(
 )
 
 
+# Games that report ``best_win_ms`` (#3927), each with the lowest plausible win
+# time: a faster win is a broken clock or a forged result and is ignored. Opt-in
+# per game, like ``daily_challenge.definitions._WON_WITHIN_FLOORS``.
+_BEST_WIN_FLOORS_MS: dict[str, int] = {
+    VocabGameType.CASCADE.value: CASCADE_MIN_WIN_MS,
+}
+
+
+def _best_win_ms() -> ColumnElement:
+    """The fastest plausible ``win`` time, NULL for other rows and other games."""
+    whens = [
+        (and_(GameType.name == name, Game.duration_ms >= floor), Game.duration_ms)
+        for name, floor in _BEST_WIN_FLOORS_MS.items()
+    ]
+    if not whens:  # no game opted in: ``case()`` needs at least one WHEN
+        return literal(None)
+    return func.min(case((Game.outcome == _WIN, case(*whens))))
+
+
 def _comparable_columns() -> list[ColumnElement]:
     """Conditional aggregates for the comparable fields, added to the stats query."""
     candidate = _best_candidate()
@@ -136,6 +156,7 @@ def _comparable_columns() -> list[ColumnElement]:
         func.sum(_REPORTED_TIME_MS).label("time_played_ms"),
         func.max(candidate).label("metric_max"),
         func.min(candidate).label("metric_min"),
+        _best_win_ms().label("best_win_ms"),
     ]
 
 
@@ -164,4 +185,5 @@ def _comparable_fields(
         "time_played_ms": round(float(row.time_played_ms or 0)),
         "best_value": _as_number(best_value),
         "best_label_key": board.label_key,
+        "best_win_ms": _as_number(row.best_win_ms),
     }

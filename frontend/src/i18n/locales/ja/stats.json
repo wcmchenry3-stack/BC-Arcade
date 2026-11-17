@@ -10,6 +10,7 @@
   "tile.currentStreak": "連勝",
   "tile.bestStreak": "最多連勝",
   "tile.best": "ベスト",
+  "tile.fastestWin": "最速勝利",
   "tile.timePlayed": "プレイ時間",
   "tile.lastPlayed": "最終プレイ",
   "empty": "完了したゲームはまだありません。ゲームを終えると、ここに統計が表示されます。",

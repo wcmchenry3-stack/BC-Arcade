@@ -208,6 +208,7 @@ Stats answer: **how have I done in this game over time?**
 - play time;
 - last played;
 - the game's own Best value and label;
+- `best_win_ms`, the fastest plausible win time, for games that opt in (Cascade, #3927);
 - game-specific extras where defined by the module.
 
 The backend uses the game's `BoardDefinition` for the meaning/direction of Best; a game does not need a public board to have a Stats Best.
