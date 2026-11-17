@@ -271,6 +271,7 @@ describe("determinism and the engine seam", () => {
       y: 500,
       id: 5,
       parentIds: [1, 2],
+      step: 10,
     };
     const win: EngineEvent = { type: "win", x: 300, y: 480, id: 9 };
     const engine = fakeEngine((f) => (f === 10 ? [made] : f === winFrame ? [win] : []));

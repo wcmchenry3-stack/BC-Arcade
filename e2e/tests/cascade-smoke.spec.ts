@@ -15,6 +15,7 @@
 
 import { test, expect } from "./fixtures";
 import type { Page, Request } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import {
   dropAt,
   fastForward,
@@ -242,6 +243,82 @@ test.describe("Cascade on web (CanvasKit)", () => {
     await page.mouse.up();
     await page.waitForTimeout(1000);
     expect((await getState(page)).fruitCount).toBe(2);
+  });
+
+  // #3934: keyboard aiming (web). Focus the board, Left / Right (Shift: bigger) move the aim, Space
+  // drops at the moved x, Escape cancels. World x: the board is 400 wide, steps 16 and 64.
+  test("keyboard: arrows aim, Space drops at the moved x, Escape cancels", async ({
+    page,
+  }) => {
+    await gotoCascade(page);
+    await setSeed(page, 3934);
+    const board = page.getByTestId("cascade-game-area");
+    const newest = async () => {
+      const s = await getState(page);
+      return s.fruits.reduce((a, b) => (b.id > a.id ? b : a), s.fruits[0]!);
+    };
+
+    // A keyboard focus (Tab) shows the ring; the page stays axe-clean with it.
+    await board.focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(board).toBeFocused();
+    await expect(page.getByTestId("cascade-focus-ring")).toBeVisible();
+    const scan = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+      .analyze();
+    expect(
+      scan.violations.filter(
+        (v) => v.impact === "critical" || v.impact === "serious",
+      ),
+    ).toEqual([]);
+
+    // Escape cancels the aim: nothing drops.
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+    expect((await getState(page)).fruitCount).toBe(0);
+
+    // Left x2 (16 each) and Shift+Left (64) from the centre (200): 104. Space drops there.
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Shift+ArrowLeft");
+    await page.keyboard.press("Space");
+    await expect.poll(async () => (await getState(page)).fruitCount).toBe(1);
+    expect(Math.abs((await newest()).x - 104)).toBeLessThan(25);
+    await page.waitForTimeout(1200);
+
+    // Right x2 and Enter: 232.
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await getState(page)).fruitCount).toBe(2);
+    expect(Math.abs((await newest()).x - 232)).toBeLessThan(25);
+  });
+
+  // #3934: a mouse focus shows no ring, a key press then does; the page never scrolls under keys.
+  test("keyboard: a click then an arrow shows the ring, and the page does not scroll", async ({
+    page,
+  }) => {
+    await gotoCascade(page);
+    await setSeed(page, 3935);
+    const board = page.getByTestId("cascade-game-area");
+    const box = (await board.boundingBox())!;
+    // A press and release off the aim, so nothing drops: click the board's top edge region.
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height + 60);
+    await page.mouse.up();
+    await expect(board).toBeFocused();
+    await expect(page.getByTestId("cascade-focus-ring")).toHaveCount(0);
+    const scrollY = () => page.evaluate(() => window.scrollY);
+    const before = await scrollY();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.getByTestId("cascade-focus-ring")).toBeVisible();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Space");
+    expect(await scrollY()).toBe(before);
   });
 
   // #3699: the win via the test hook: the celebration plays, and only then the win card.

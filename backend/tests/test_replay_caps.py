@@ -88,7 +88,7 @@ def test_cap_for_uses_the_override_or_the_default() -> None:
     assert cap_for("starswarm") == STARSWARM_CAP
     assert cap_for("twenty48") == TWENTY48_CAP == ReplayCap(2_000, 690_000)
     assert cap_for("blackjack") == BLACKJACK_CAP == ReplayCap(2_000, 560_000)
-    assert cap_for("cascade") == CASCADE_CAP == ReplayCap(3_000, 900_000)
+    assert cap_for("cascade") == CASCADE_CAP == ReplayCap(128, 80 * 1024)  # measured, #3858
     assert cap_for("yacht") == DEFAULT_CAP
     assert cap_for(None) == DEFAULT_CAP
 

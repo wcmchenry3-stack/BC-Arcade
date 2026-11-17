@@ -6,9 +6,10 @@
  * worklets; under Jest they run directly, so a test sees what the UI thread does.
  */
 import React from "react";
-import { Text } from "react-native";
-import { act, render, renderHook } from "@testing-library/react-native";
+import { Platform, Text } from "react-native";
+import { act, render, renderHook, screen } from "@testing-library/react-native";
 import CascadeAimArea from "../CascadeAimArea";
+import * as keyboardModule from "../useAimKeyboard";
 import { useBoardMotion } from "../useBoardMotion";
 import { AIM_STATE } from "../../../game/cascade/aim";
 import { MOTION } from "../../../game/cascade/motion";
@@ -264,4 +265,122 @@ it("a refused tap just ends (the piece never left the ring)", async () => {
   await m.press(150);
   await m.release();
   expect(m.motion.values.aimState.value).toBe(AIM_STATE.idle);
+});
+
+// #3934: keyboard aiming is web only; the board is a tab stop there and nowhere else.
+describe("keyboard focus (#3934)", () => {
+  afterEach(() => jest.restoreAllMocks());
+  const board = () => screen.getByTestId("cascade-game-area");
+
+  it("is a tab stop on web", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    await mount();
+    expect(board().props.tabIndex).toBe(0);
+  });
+
+  it("is not focusable on iOS or Android", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    await mount();
+    expect(board().props.tabIndex).toBeUndefined();
+  });
+});
+
+// S3: the area wired to the real keyboard hook, through the ref callback the View receives.
+describe("keyboard through the area (#3934)", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  function fakeNode() {
+    const l: Record<string, (e: never) => void> = {};
+    return {
+      l,
+      addEventListener: (t: string, f: (e: never) => void) => void (l[t] = f),
+      removeEventListener: jest.fn((t: string) => void delete l[t]),
+      setAttribute: jest.fn(),
+      matches: () => true,
+    };
+  }
+  const k = (key: string) => ({
+    key,
+    shiftKey: false,
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    preventDefault: jest.fn(),
+  });
+
+  async function mountWeb() {
+    jest.replaceProperty(Platform, "OS", "web");
+    const spy = jest.spyOn(keyboardModule, "useAimKeyboard");
+    const m = await mount();
+    const node = fakeNode();
+    const attach = spy.mock.results.at(-1)!.value.attach as (n: unknown) => void;
+    await act(async () => attach(node));
+    return { m, node, attach };
+  }
+
+  it("a refused drop leaves the aim cancelled (the piece glides back)", async () => {
+    const { m, node } = await mountWeb();
+    accept = false;
+    await act(async () => node.l.keydown!(k("ArrowRight") as never));
+    await act(async () => node.l.keydown!(k("Enter") as never));
+    expect(m.onDrop).toHaveBeenCalled();
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+  });
+
+  it("an accepted drop releases the aim at the moved x", async () => {
+    const { m, node } = await mountWeb();
+    await act(async () => node.l.keydown!(k("ArrowRight") as never));
+    await act(async () => node.l.keydown!(k(" ") as never));
+    expect(m.onDrop).toHaveBeenCalledWith(WORLD_WIDTH / 2 + MOTION.aim.keyStep);
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.released);
+  });
+
+  it("blur cancels the aim", async () => {
+    const { m, node } = await mountWeb();
+    await act(async () => node.l.keydown!(k("ArrowLeft") as never));
+    await act(async () => node.l.blur!(undefined as never));
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    expect(m.onDrop).not.toHaveBeenCalled();
+  });
+
+  it("the listener is removed when the ref is released on unmount", async () => {
+    const { node, attach } = await mountWeb();
+    await act(async () => attach(null)); // React calls the ref with null on unmount
+    expect(node.removeEventListener).toHaveBeenCalledWith("keydown", expect.any(Function));
+    expect(Object.keys(node.l)).toHaveLength(0);
+  });
+
+  it("a key during a mouse press that left the board is ignored, and the release drops nothing", async () => {
+    const { m, node } = await mountWeb();
+    await m.press(150);
+    await m.move(200);
+    await m.move(200, H + 30); // off the board: cancelled
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    const e = k("ArrowLeft");
+    await act(async () => node.l.keydown!(e as never));
+    expect(e.preventDefault).toHaveBeenCalled(); // the page still does not scroll
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    await m.release();
+    expect(m.onDrop).not.toHaveBeenCalled();
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+  });
+
+  it("once the pointer is up the keys work again, and after Escape too", async () => {
+    const { m, node } = await mountWeb();
+    await m.press(150);
+    await m.release(); // a tap: it drops (accepted) and ends
+    expect(m.motion.values.pointerDown.value).toBe(false);
+    await act(async () => node.l.keydown!(k("ArrowRight") as never));
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.aiming);
+    await act(async () => node.l.keydown!(k("Escape") as never));
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    await act(async () => node.l.keydown!(k("ArrowLeft") as never));
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.aiming);
+  });
+
+  it("names the web tab stop", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    await mount();
+    expect(screen.getByTestId("cascade-game-area").props["aria-label"]).toBeTruthy();
+  });
 });

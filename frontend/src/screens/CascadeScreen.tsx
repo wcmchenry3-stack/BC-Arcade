@@ -13,9 +13,10 @@
  *      `CascadeAimArea` turns press, drag and release into a drop (#3928, UI thread).
  *   4. Persistence (`useCascadeSave`): the board, queue, score and play time are throttle-saved
  *      (`game/cascade/storage.ts`), restored on mount and saved on pause.
- *   5. Session: `useGameSync("cascade")`; drops and merges are enqueued as events, the session
- *      completes at the end (outcome `win` for the capstone, `loss` at the lid, #3699) and
- *      abandons on a theme switch, restart or unmount (#2450, #2619).
+ *   5. Session: `useCascadeSession` (`useGameRecorder("cascade")`); the session completes at the
+ *      end (outcome `win` for the capstone, `loss` at the lid, #3699) and abandons on a theme
+ *      switch, restart or unmount (#2450, #2619). Its `rec` records the drops, merges and danger
+ *      moments for replays (#3858, `game/cascade/replay.ts`); the queue is seeded per game.
  *   6. Clock: a `PlayClock` started by the first piece (#3700), stopped while another screen
  *      covers the board or the app is in the background, through `usePauseWhileAway` (#2735,
  *      #2750), and for good at the game's end.
@@ -60,7 +61,8 @@ import { useCascadeSession } from "../game/cascade/useCascadeSession";
 import { areTestHooksEnabled } from "../game/_shared/envFlags";
 import CascadeTestControls from "../components/cascade/CascadeTestControls";
 import { DROUGHT_WINDOW } from "../game/cascade/spawnSelector";
-import { PieceQueue, advanceQueue, makeQueue } from "../game/cascade/pieceQueue";
+import { advanceQueue } from "../game/cascade/pieceQueue";
+import { useCascadeQueue } from "../game/cascade/useCascadeQueue";
 import { NO_PIECES, useBoardFrame } from "../game/cascade/useBoardFrame";
 import { useCascadeSave } from "../game/cascade/useCascadeSave";
 import { createScoreStore } from "../game/cascade/scoreStore";
@@ -152,17 +154,9 @@ function CascadeGame() {
   const [drops, setDrops] = useState(0);
 
   const engineRef = useRef<CascadeEngine | null>(null);
-  // Initialized lazily so queue and history come from the same makeQueue() call.
-  const queueRef = useRef<PieceQueue>(null as unknown as PieceQueue);
-  const queueHistoryRef = useRef<number[]>([]);
-  const queueRngRef = useRef<(() => number) | undefined>(undefined);
-  // Test builds only (#3719): tiers the queue still has to offer, after `next`, before it goes random.
-  const queueScriptRef = useRef<number[]>([]);
-  if (queueRef.current == null) {
-    const init = makeQueue();
-    queueRef.current = init.queue;
-    queueHistoryRef.current = init.history;
-  }
+  // The piece queue and the game's seeds (#3858): seeded per game, scriptable in test builds.
+  const { queueRef, queueHistoryRef, queueRngRef, queueScriptRef, seedsRef, reseed } =
+    useCascadeQueue();
 
   // The board's frame (#2960, `useBoardFrame`): published by the loop, drawn on the UI thread.
   const { frameSV, publishBoard, engineStateRef, lastBoardRef } = useBoardFrame(queueRef);
@@ -187,12 +181,21 @@ function CascadeGame() {
 
   const themeIdRef = useRef(activeFruitSet.id);
   const {
-    sync: { resume: syncResume, markStarted: syncMarkStarted, enqueue: syncEnqueue, getGameId },
+    sync: { markStarted: syncMarkStarted, getGameId },
     mergeCountRef,
     judgeEnd,
     startSession: startInstrumentedSession,
     endSession: endInstrumentedSession,
-  } = useCascadeSession({ scoreRef, dropCountRef, maxTierRef, themeIdRef, clock });
+    rec,
+  } = useCascadeSession({
+    scoreRef,
+    dropCountRef,
+    maxTierRef,
+    themeIdRef,
+    clock,
+    engineRef,
+    seedsRef,
+  });
 
   const completedGameIdRef = useRef<string | null>(null);
   const settlingTicksLeftRef = useRef<number>(0);
@@ -224,7 +227,7 @@ function CascadeGame() {
       noteTier(tier); // the piece dropped: the first one starts the play clock (#3700)
       return tier;
     },
-    [motion, noteTier, sounds]
+    [motion, noteTier, sounds, queueRef, queueHistoryRef, queueRngRef, queueScriptRef]
   );
 
   useEffect(() => {
@@ -242,7 +245,8 @@ function CascadeGame() {
     settlingTicksLeftRef,
     playedMs: clock.elapsed,
     restartClock: clock.restore,
-    resumeSession: syncResume,
+    resumeSession: rec.resume,
+    replayState: rec.saveState,
     setScore: scoreStore.set,
     queueChanged,
     noteTier,
@@ -260,10 +264,7 @@ function CascadeGame() {
       // A new game: the next game over must be able to submit again.
       setResult(null);
       resetScore();
-      queueRngRef.current = undefined;
-      const fresh = makeQueue();
-      queueRef.current = fresh.queue;
-      queueHistoryRef.current = fresh.history;
+      reseed(); // new seeds and a fresh queue (#3858)
       scoreRef.current = 0;
       gameOverRef.current = false;
       dropCountRef.current = 0;
@@ -289,6 +290,7 @@ function CascadeGame() {
       endInstrumentedSession,
       startInstrumentedSession,
       resetScore,
+      reseed,
       scoreStore,
       publishBoard,
       celebrationClock,
@@ -316,16 +318,6 @@ function CascadeGame() {
     (event: { tier: FruitTier; x: number; y: number }) => {
       // Score is tracked by engine; scoreRef.current is kept current by the RAF loop.
       mergeCountRef.current += 1;
-      syncEnqueue({
-        type: "merge",
-        data: {
-          from_tier: event.tier - 1,
-          to_tier: event.tier,
-          x: event.x,
-          y: event.y,
-          score_after: scoreRef.current,
-        },
-      });
       const merged = activeFruitSet.fruits[event.tier];
       if (merged) {
         AccessibilityInfo.announceForAccessibility(
@@ -336,7 +328,7 @@ function CascadeGame() {
       }
       saveGameThrottled();
     },
-    [activeFruitSet, t, saveGameThrottled, syncEnqueue, mergeCountRef]
+    [activeFruitSet, t, saveGameThrottled, mergeCountRef]
   );
 
   /**
@@ -411,6 +403,7 @@ function CascadeGame() {
    * restored game settles). Motion is pushed here and drawn on the UI thread (#3701).
    */
   handleEventsRef.current = (events, quiet) => {
+    rec.events(events); // merges and danger moments, for replays (#3858)
     for (const ev of events) {
       if (ev.type === "merge") {
         onMerge(ev.result as FruitTier, ev.x, ev.y, ev.id, quiet);
@@ -457,8 +450,8 @@ function CascadeGame() {
 
   // RAF game loop — recreated on gameKey change (restart / theme switch)
   useEffect(() => {
-    // Live play seeds the drop nudge from the clock; a test seed replaces it (`handleSetSeed`).
-    const engine = new CascadeEngine({ seed: (Math.random() * 0x100000000) >>> 0 });
+    // The drop nudge's seed is the game's (#3858, recorded); a test seed replaces it (`handleSetSeed`).
+    const engine = new CascadeEngine({ seed: seedsRef.current.engine });
     engineRef.current = engine;
     engine.start();
 
@@ -543,6 +536,7 @@ function CascadeGame() {
     sounds,
     engineStateRef,
     frameStatsRef,
+    seedsRef,
   ]);
 
   const handleTap = useCallback(
@@ -577,17 +571,8 @@ function CascadeGame() {
         );
       }
 
-      syncEnqueue({
-        type: "drop",
-        data: {
-          drop_index: dropCountRef.current,
-          fruit_tier: tier,
-          x,
-          score_before: scoreRef.current,
-        },
-      });
-
-      engineRef.current?.drop(tier, x);
+      // Dropped at a tenth of a pixel, the x the replay records (#3858).
+      engineRef.current?.drop(tier, rec.drop(tier, x));
 
       saveGameThrottled();
 
@@ -597,7 +582,7 @@ function CascadeGame() {
       return true;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- awayRef: a stable ref
-    [consumeFromQueue, gameOver, saveGameThrottled, syncEnqueue, syncMarkStarted, queueChanged]
+    [consumeFromQueue, gameOver, saveGameThrottled, rec, syncMarkStarted, queueChanged]
   );
 
   const forceGameOver = useCallback(() => {
@@ -627,6 +612,9 @@ function CascadeGame() {
     noteTier,
     consumeFromQueue,
     forceGameOver,
+    recordDrop: rec.drop,
+    seedsRef,
+    reseeded: rec.reseeded,
   });
 
   const handleRestart = () => startNewGame(activeFruitSetRef.current.id);

@@ -288,7 +288,7 @@ def test_cap_reports_to_sentry_are_throttled(
 
 def test_every_games_cap_is_finite_and_bounded() -> None:
     """No game, listed or not, may store without a ceiling (Free plan: 500 MB for everything)."""
-    ceiling_bytes = 1 * MB  # the largest per-game byte cap today is Cascade's 900 KB
+    ceiling_bytes = 1 * MB  # the largest per-game byte cap today is 2048's 690,000 B
     ceiling_events = 3_000
     caps = [DEFAULT_CAP, *CAPS_BY_GAME_TYPE.values()]
     for cap in caps:

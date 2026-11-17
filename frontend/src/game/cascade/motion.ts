@@ -199,6 +199,9 @@ export const MOTION = {
     ghostDashOff: 3,
     ghostAlpha: 0.55,
     ghostFill: 0.14,
+    /** Keyboard aiming on web (#3934): Left / Right step, Shift + arrow big step (world px). */
+    keyStep: 16,
+    keyStepBig: 64,
   },
 } as const;
 

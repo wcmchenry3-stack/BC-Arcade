@@ -1,16 +1,16 @@
 {
   "_comment": "Replay budget for one heavy player's day (#3398, part 1 of #3294, epic #3273). Test: frontend/src/game/_shared/__tests__/replay.budget.test.ts. Each metric has a 'max' (what CI enforces) and a '_measured' (what the test measured when the budget was set; documentation only). max = measured + ~15% headroom (0 stays 0). Raising any max is an owner decision tied to revenue (CLAUDE.md: cost, then performance, then data): edit this file in a reviewed PR. See docs/PERFORMANCE.md, 'Replay budget'.",
-  "_day": "29 games (3 Hearts, 5 Yacht vs CPU, 5 Solitaire, 3 Star Swarm, 10 x 2048, Daily Word, Sudoku, Mahjong), a trip to the background in 3 of them, and an hour with the API down.",
+  "_day": "32 games (3 Hearts, 5 Yacht vs CPU, 5 Solitaire, 3 Star Swarm, 10 x 2048, Daily Word, Sudoku, Mahjong, 3 Cascade with one of 10 minutes), a trip to the background in 4 of them, and an hour with the API down. #3858 added the 3 Cascade games at the end of the day: the day totals below were re-measured with them (httpRequests 139 -> 152, uploadedBytes 137,405 -> 158,703, storageWrites 1,029 -> 1,121); only uploadedBytes needed a higher max. The three Cascade games store 34,341 B (about 11 KB a game, lifecycle rows included).",
   "day": {
     "_httpRequests": "Every request the day sends to the API, failed ones included (POST /games, POST /games/:id/events, PATCH /games/:id/complete).",
     "httpRequests": {
       "max": 160,
-      "_measured": 139
+      "_measured": 152
     },
     "_uploadedBytes": "JSON bytes of every request body, failed ones included.",
     "uploadedBytes": {
-      "max": 158016,
-      "_measured": 137405
+      "max": 182508,
+      "_measured": 158703
     },
     "_requestsDuringOfflineHour": "Requests sent while the API is down: the worker's backoff (1 s doubling to 30 min) bounds them.",
     "requestsDuringOfflineHour": {
@@ -20,7 +20,7 @@
     "_storageWrites": "AsyncStorage setItem calls over the whole day, uploads' deletes included.",
     "storageWrites": {
       "max": 1184,
-      "_measured": 1029
+      "_measured": 1121
     },
     "_sentryEventsHealthy": "captureException + captureMessage + captureFeedback outside the offline hour and the 30 min backoff tail after it. 0 on a healthy day.",
     "sentryEventsHealthy": {
@@ -78,6 +78,10 @@
     "starswarm": {
       "max": 19257,
       "_measured": 16745
+    },
+    "cascade": {
+      "max": 39492,
+      "_measured": 34341
     }
   },
   "_storageWritesPerGame": "The most AsyncStorage writes any one game of the type cost while it was played (its saves, the pending-games counter, the lifecycle uploads and a background release inside it).",
@@ -113,6 +117,10 @@
     "starswarm": {
       "max": 12,
       "_measured": 10
+    },
+    "cascade": {
+      "max": 39,
+      "_measured": 34
     }
   }
 }

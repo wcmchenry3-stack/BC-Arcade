@@ -114,20 +114,20 @@ Run this before shipping any new game or screen.
 
 ## 8. Per-Game Notes
 
-| Game        | Canvas?            | Known accessibility work                                              |
-| ----------- | ------------------ | --------------------------------------------------------------------- |
-| Yacht       | No                 | Done (#3748): dice say face and held; rows say score or potential     |
-| Hearts      | No                 | Card labels must include suit + rank (e.g. "Queen of Spades")         |
-| Blackjack   | No                 | Card labels must include suit + rank; chip count must use live region |
-| Solitaire   | No                 | Pile positions and card labels required                               |
-| Sudoku      | No                 | Done (#3773, #3774): labels, keys; Reduce Motion stills all motion    |
-| Cascade     | Yes (Skia)         | Score + game state must have native text overlay; keyboard alt TBD    |
-| 2048        | No                 | Done (#2222): merge announced on iOS/Android only (web pending)       |
-| FreeCell    | No                 | Same card label convention as Solitaire; Large cards setting (#3347)  |
-| Mahjong     | Yes (Skia, native) | Same overlay requirement as Cascade                                   |
-| Bottle Sort | No                 | Bottle contents must be labeled by color sequence                     |
-| Daily Word  | No                 | Done (#2222): tile labels give row, column, letter and result (i18n)  |
-| Starswarm   | Yes (Skia)         | Score + state overlay required; no keyboard equivalent yet            |
+| Game        | Canvas?            | Known accessibility work                                                         |
+| ----------- | ------------------ | -------------------------------------------------------------------------------- |
+| Yacht       | No                 | Done (#3748): dice say face and held; rows say score or potential                |
+| Hearts      | No                 | Card labels must include suit + rank (e.g. "Queen of Spades")                    |
+| Blackjack   | No                 | Card labels must include suit + rank; chip count must use live region            |
+| Solitaire   | No                 | Pile positions and card labels required                                          |
+| Sudoku      | No                 | Done (#3773, #3774): labels, keys; Reduce Motion stills all motion               |
+| Cascade     | Yes (Skia)         | Native score overlay; keyboard aim and drop on web done (#3934)                  |
+| 2048        | No                 | Done (#2222): merge announced on iOS/Android only (web pending)                  |
+| FreeCell    | No                 | Same card label convention as Solitaire; Large cards setting (#3347)             |
+| Mahjong     | Yes (Skia, native) | Same overlay requirement as Cascade                                              |
+| Bottle Sort | No                 | Bottle contents must be labeled by color sequence                                |
+| Daily Word  | No                 | Done (#2222): tile labels give row, column, letter and result (i18n)             |
+| Starswarm   | Yes (Skia)         | Score + state overlay required; no keyboard equivalent yet                       |
 
 ---
 

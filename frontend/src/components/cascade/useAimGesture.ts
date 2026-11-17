@@ -58,7 +58,7 @@ export function useAimGesture({
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
   const dragged = useSharedValue(false);
-  const { aimState, aimX, aimAt, aimFromX, clock } = values;
+  const { aimState, aimX, aimAt, aimFromX, clock, pointerDown } = values;
 
   return useMemo(
     () =>
@@ -75,6 +75,7 @@ export function useAimGesture({
         })
         .onBegin((e) => {
           "worklet";
+          pointerDown.set(true); // until onFinalize: the keyboard stays out (#3934)
           startX.set(e.x);
           startY.set(e.y);
           dragged.set(false);
@@ -120,6 +121,7 @@ export function useAimGesture({
         })
         .onFinalize((_e, success) => {
           "worklet";
+          pointerDown.set(false);
           const state = aimState.get();
           if (!success && (state === AIM_STATE.pressed || state === AIM_STATE.aiming)) {
             // Cancelled by the system: glide back like a drag off the board.
@@ -152,6 +154,7 @@ export function useAimGesture({
       aimAt,
       aimFromX,
       clock,
+      pointerDown,
     ]
   );
 }

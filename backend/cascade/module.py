@@ -2,7 +2,9 @@
 
 A ``GameModuleBase`` subclass (``games/module_base.py``) that overrides
 ``derive_final_score``: a finished game scores its merge points plus the
-server's time bonus (#3700).
+server's time bonus (#3700), and ``validate_event``: the replay events,
+``drop`` and ``merge``, are checked against their schema and byte caps
+(#3858, ``cascade/events.py``).
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from cascade.events import DROP, MERGE, validate_replay_event
 from cascade.models import CascadeMetadata, CascadeResult, cascade_score
 from games.board import SCORE_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
@@ -53,6 +56,13 @@ class CascadeModule(GameModuleBase):
         if merge is None:
             return final_score
         return cascade_score(merge, _int(result.get("time_bonus")) or 0)
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``drop`` and ``merge`` are checked against the v1 schema and their byte caps
+        (#3858); ``game_started`` / ``game_ended`` are stored as sent."""
+        if name in (DROP, MERGE):
+            return validate_replay_event(name, data)
+        return data
 
 
 module = CascadeModule()
