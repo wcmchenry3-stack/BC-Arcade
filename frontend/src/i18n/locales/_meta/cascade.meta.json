@@ -134,6 +134,24 @@
     "doNotTranslate": ["Cascade"],
     "notes": "Do not translate the game name."
   },
+  "a11y.boardHint": {
+    "component": "CascadeBoard (accessibility, #3928)",
+    "description": "Screen-reader hint on the Cascade board: what double-tapping does, and that sighted players press and drag to aim.",
+    "tone": "functional",
+    "characterLimit": 120,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A double-tap (the screen reader's activate) drops the next piece in the middle of the bin."
+  },
+  "a11y.dropPiece": {
+    "component": "CascadeBoard (accessibility action, #3928)",
+    "description": "Name of the screen-reader action on the Cascade board that drops the next piece in the middle.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A short verb phrase."
+  },
   "pieces.fruits.cherry": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",

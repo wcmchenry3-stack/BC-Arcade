@@ -14,6 +14,8 @@
   "event.merged": "Combinado! {{fruit}} criado.",
   "score.high": "Recorde",
   "a11y.board": "Tabuleiro do Cascade",
+  "a11y.boardHint": "Toque duas vezes para soltar a próxima peça no meio. Pressione e arraste para mirar.",
+  "a11y.dropPiece": "Soltar peça",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

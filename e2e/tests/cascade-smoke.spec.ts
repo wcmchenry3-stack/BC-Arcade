@@ -199,6 +199,51 @@ test.describe("Cascade on web (CanvasKit)", () => {
     );
   });
 
+  // #3928: press, drag and release. A click is a tap and drops at once; a drag drops where it
+  // was released; a drag that leaves the board drops nothing. Real mouse input, no test hook.
+  test("aiming: a tap drops, a drag drops at the moved x, a drag off the board cancels", async ({
+    page,
+  }) => {
+    await gotoCascade(page);
+    await setSeed(page, 3928);
+    const box = (await page.getByTestId("cascade-game-area").boundingBox())!;
+    const at = (fx: number, fy = 0.45) => ({
+      x: box.x + box.width * fx,
+      y: box.y + box.height * fy,
+    });
+    const newest = async () => {
+      const s = await getState(page);
+      return s.fruits.reduce((a, b) => (b.id > a.id ? b : a), s.fruits[0]!);
+    };
+
+    // A tap at 30 % of the board: world x 120.
+    await page.mouse.click(at(0.3).x, at(0.3).y);
+    await expect.poll(async () => (await getState(page)).fruitCount).toBe(1);
+    expect(Math.abs((await newest()).x - 120)).toBeLessThan(25);
+    await page.waitForTimeout(1200); // the piece falls below the lid; the drop cooldown ends
+
+    // A drag from 20 % to 80 %: it drops at world x 320, not where it was pressed.
+    await page.mouse.move(at(0.2).x, at(0.2).y);
+    await page.mouse.down();
+    for (let i = 1; i <= 15; i++) {
+      await page.mouse.move(at(0.2 + (0.6 * i) / 15).x, at(0.2).y);
+    }
+    await page.mouse.up();
+    await expect.poll(async () => (await getState(page)).fruitCount).toBe(2);
+    expect(Math.abs((await newest()).x - 320)).toBeLessThan(25);
+    await page.waitForTimeout(1200);
+
+    // A drag off the bottom of the board, released there: nothing drops.
+    await page.mouse.move(at(0.5).x, at(0.5).y);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) {
+      await page.mouse.move(at(0.5).x, at(0.5, 0.5 + (0.7 * i) / 12).y);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(1000);
+    expect((await getState(page)).fruitCount).toBe(2);
+  });
+
   // #3699: the win via the test hook: the celebration plays, and only then the win card.
   test("win via test hook: the celebration, then the win card", async ({
     page,

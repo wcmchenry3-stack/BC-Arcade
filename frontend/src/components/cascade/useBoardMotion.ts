@@ -44,6 +44,7 @@ import {
   type MotionKind,
   type MotionLog,
 } from "../../game/cascade/motionLog";
+import { AIM_STATE, aimAfterTime, aimLive } from "../../game/cascade/aim";
 
 /** The shared values the board draws from. */
 export interface BoardMotionValues {
@@ -53,6 +54,15 @@ export interface BoardMotionValues {
   readonly dangerPhase: SharedValue<number>;
   /** The lid count (0..1) while play goes on; 0 once the game is over. */
   readonly danger: SharedValue<number>;
+  /**
+   * #3928 aiming, written by the board gesture on the UI thread (`useAimGesture`): the state
+   * (`AIM_STATE`), the finger's world x, the motion-clock time the state began, and where a
+   * cancel's glide back starts.
+   */
+  readonly aimState: SharedValue<number>;
+  readonly aimX: SharedValue<number>;
+  readonly aimAt: SharedValue<number>;
+  readonly aimFromX: SharedValue<number>;
 }
 
 export interface BoardMotion {
@@ -64,6 +74,8 @@ export interface BoardMotion {
   setDanger(ratio: number): void;
   /** A new game: forget every moment. */
   clear(): void;
+  /** Starts the motion clock (the aim gesture calls it once per press). */
+  wake(): void;
 }
 
 /** The screen's motion log, made on first use (never read during a render). */
@@ -73,6 +85,10 @@ function logOf(ref: { current: MotionLog | null }): MotionLog {
 
 export function useBoardMotion(reduceMotion: boolean, onDangerOnset?: () => void): BoardMotion {
   const logRef = useRef<MotionLog | null>(null);
+  const aimState = useSharedValue<number>(AIM_STATE.idle);
+  const aimX = useSharedValue(0);
+  const aimAt = useSharedValue(0);
+  const aimFromX = useSharedValue(0);
   // The latest onset handler, called through one stable function the worklet can hold.
   const onsetRef = useRef(onDangerOnset);
   useEffect(() => {
@@ -124,14 +140,24 @@ export function useBoardMotion(reduceMotion: boolean, onDangerOnset?: () => void
       // The phase wrapped into an on-beat: the blink (and the danger tick, #3702) starts one.
       if (!reduce && ratio > 0 && phase < before) runOnJS(fireOnset)();
       clock.set(now);
+      // #3928: a state the JS thread set (a refused release gliding back) is stamped now.
+      if (!Number.isFinite(aimAt.get())) aimAt.set(now);
+      // A held press becomes aiming after the tap window.
+      const aim = aimState.get();
+      const aimed = aimAfterTime(aim, now - aimAt.get());
+      if (aimed !== aim) {
+        aimState.set(aimed);
+        aimAt.set(now);
+      }
+      const aiming = aimLive(aimed, now - aimAt.get(), reduce);
       // The danger blink keeps the clock running while the count runs and while an on-beat it
       // latched finishes.
       const blinking = !reduce && (ratio > 0 || dangerBlinkOn(phase));
-      if (!motionLive(ev, fresh ?? stamps.get(), now, reduce) && !blinking) {
+      if (!motionLive(ev, fresh ?? stamps.get(), now, reduce) && !blinking && !aiming) {
         runOnJS(onIdle)(lastSeq(ev));
       }
     },
-    [calm, clock, danger, dangerPhase, events, fireOnset, onIdle, stamps]
+    [aimAt, aimState, calm, clock, danger, dangerPhase, events, fireOnset, onIdle, stamps]
   );
   const frame = useFrameCallback(step, false);
   useEffect(() => {
@@ -185,11 +211,11 @@ export function useBoardMotion(reduceMotion: boolean, onDangerOnset?: () => void
   }, [danger, dangerPhase, publish]);
 
   const values = useMemo(
-    () => ({ events, stamps, clock, dangerPhase, danger }),
-    [events, stamps, clock, dangerPhase, danger]
+    () => ({ events, stamps, clock, dangerPhase, danger, aimState, aimX, aimAt, aimFromX }),
+    [events, stamps, clock, dangerPhase, danger, aimState, aimX, aimAt, aimFromX]
   );
   return useMemo(
-    () => ({ values, push, publish, setDanger, clear }),
-    [values, push, publish, setDanger, clear]
+    () => ({ values, push, publish, setDanger, clear, wake }),
+    [values, push, publish, setDanger, clear, wake]
   );
 }

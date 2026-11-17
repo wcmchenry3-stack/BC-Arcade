@@ -14,6 +14,8 @@
   "event.merged": "Объединено! Создан {{fruit}}.",
   "score.high": "Рекорд",
   "a11y.board": "Игровое поле Cascade",
+  "a11y.boardHint": "Коснитесь дважды, чтобы бросить следующую фигуру в центр. Нажмите и тяните, чтобы прицелиться.",
+  "a11y.dropPiece": "Бросить фигуру",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

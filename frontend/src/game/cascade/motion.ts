@@ -12,7 +12,9 @@
  *   - `components/cascade/NextFruitPreview.tsx`: the DROP / NEXT chips;
  *   - `components/cascade/MergeBurst.tsx`: its spring and fade (as built, now named here);
  *   - `game/cascade/haptics.ts`: the haptic pacing;
- *   - `components/cascade/useLossCard.ts`: when the loss card comes.
+ *   - `components/cascade/useLossCard.ts`: when the loss card comes;
+ *   - `game/cascade/aim.ts`, `render/drawAim.ts`, `components/cascade/useAimGesture.ts`: aiming
+ *     (#3928).
  * Not here: the grow-in (#3697) is physics (`GROW_IN_STEPS`, constants.ts) and the win
  * celebration's timeline is `celebration.ts` (#3924, owner-approved, unchanged).
  *
@@ -170,6 +172,34 @@ export const MOTION = {
   },
   /** The motion clock never moves more than this per frame (a stalled frame only delays it). */
   maxFrameStepMs: 34,
+  /**
+   * Aiming (#3928, owner pick A "Dashed line + ghost"): press, drag, release. A press shorter than
+   * `guideDelayMs` that moves less than `tapSlopPt` is a tap: it drops at once, no guide.
+   */
+  aim: {
+    guideDelayMs: 90,
+    tapSlopPt: 10,
+    /** The piece glides from the ring to the finger, and back to the ring on a cancel. */
+    pickUpMs: 120,
+    returnMs: 180,
+    /** The guide fades in when aiming starts, out on a release or a cancel. */
+    inMs: 120,
+    outMs: 150,
+    /** The plumb line: width, dash on/off (world px), opacity of the ink, march (px per s). */
+    lineWidth: 2,
+    dashOn: 6,
+    dashOff: 6,
+    lineAlpha: 0.45,
+    marchPxPerS: 30,
+    /** The gap between the spawner piece and the line's start. */
+    lineGap: 3,
+    /** The ghost: a dashed outline in the ink and a faint fill in the piece's light tone. */
+    ghostWidth: 1.6,
+    ghostDashOn: 4,
+    ghostDashOff: 3,
+    ghostAlpha: 0.55,
+    ghostFill: 0.14,
+  },
 } as const;
 
 // ---- easing ---------------------------------------------------------------------------------

@@ -33,6 +33,8 @@ export interface CascadeTestControlsProps {
   onFillBin: () => void;
   onWin: () => void;
   onForceGameOver: () => void;
+  /** Drops so far (#3928): Maestro reads it to see an aimed drop land and a cancel not. */
+  drops?: number;
 }
 
 export default function CascadeTestControls({
@@ -41,6 +43,7 @@ export default function CascadeTestControls({
   onFillBin,
   onWin,
   onForceGameOver,
+  drops = 0,
 }: CascadeTestControlsProps) {
   const { colors } = useTheme();
   if (!areTestHooksEnabled()) return null;
@@ -71,6 +74,13 @@ export default function CascadeTestControls({
         onPress={onForceGameOver}
         color={colors.textMuted}
       />
+      <Text
+        testID="cascade-test-drops"
+        accessibilityLabel={`drops ${drops}`}
+        style={[styles.label, styles.count, { color: colors.textMuted }]}
+      >
+        {drops}
+      </Text>
     </View>
   );
 }
@@ -100,6 +110,11 @@ function TestButton({
 }
 
 const styles = StyleSheet.create({
+  count: {
+    alignSelf: "center",
+    minWidth: 20,
+    textAlign: "center",
+  },
   row: {
     flexDirection: "row",
     justifyContent: "center",
