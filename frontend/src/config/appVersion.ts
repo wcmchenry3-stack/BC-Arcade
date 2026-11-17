@@ -1,10 +1,21 @@
 /**
- * The app's release version (#3858), for data that says which build made it (Cascade's
- * `game_started`). `package.json`'s `version`, which the release workflow
- * (`.github/workflows/version-sync.yml`) sets on every release together with `app.json`, the
- * Gradle `versionName` and the Xcode `MARKETING_VERSION`; `__tests__/appVersion.test.ts` holds it
- * equal to `app.json`. A dev build between releases reports the last release's version.
+ * The app's version (#3858), for data that says which build made it (Cascade's `game_started`).
+ *
+ * Read from the native app (`expo-constants` `nativeAppVersion`: iOS `CFBundleShortVersionString`,
+ * Android `versionName`), the same version the stores show and Sentry's release carries, so it
+ * cannot drift from what was shipped. On web, where there is no native app, it falls back to the
+ * embedded app config's `version` (`app.json`), and to `"unknown"` when neither is there.
+ * `expo-constants` ships with Expo (`expo` depends on it, and autolinking already builds it into
+ * both apps); it is listed in `package.json` so the import is a declared dependency.
  */
-import { version } from "../../package.json";
+import Constants from "expo-constants";
 
-export const APP_VERSION: string = version;
+function readAppVersion(): string {
+  try {
+    return Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? "unknown";
+  } catch {
+    return "unknown"; // isolation: a version is never worth breaking a game for
+  }
+}
+
+export const APP_VERSION: string = readAppVersion();

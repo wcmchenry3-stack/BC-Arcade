@@ -14,6 +14,7 @@ import * as Sentry from "@sentry/react-native";
 import { act, renderHook } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
 
+import { APP_VERSION } from "../../../config/appVersion";
 import { gameEventClient } from "../../_shared/gameEventClient";
 import { NO_GAME, taggedSessionGameId, clearSessionTags } from "../../_shared/sessionTags";
 import { CASCADE_TUNING_ID } from "../constants";
@@ -103,7 +104,7 @@ describe("Cascade session recording (#3858)", () => {
         engine_seed: 22,
         tuning: CASCADE_TUNING_ID,
         engine_version: 1,
-        app_version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+        app_version: APP_VERSION,
       }
     );
   });
