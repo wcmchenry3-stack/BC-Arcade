@@ -1,3 +1,5 @@
+> **Design record, not canonical.** This log keeps the reasoning behind Cascade's sounds. What plays when, and every rule, is in the canonical specification: [Sound in `cascade.md`](cascade.md#sound-3702) and [Audio and accessibility](cascade.md#12-audio-and-accessibility).
+
 # Cascade sound design log (#3702)
 
 This log explains why Cascade's sound effects sound the way they do: the owner's brief, the options auditioned, what was picked and why, and the feedback that shaped it. The other games have their own logs: [`arcade-sound-design.md`](arcade-sound-design.md) (card games, #3563), [`puzzle-sound-design.md`](puzzle-sound-design.md) (puzzle, tile and dice games, #3578) and [`starswarm-sound-design.md`](starswarm-sound-design.md) (#3560).

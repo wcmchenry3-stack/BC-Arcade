@@ -1,3 +1,5 @@
+> **Research record, not canonical.** This file is a research or design record kept for its reasoning. It does not define Cascade's rules and parts of it describe designs that no longer exist. The canonical, current specification is [`docs/games/cascade.md`](../games/cascade.md).
+
 > **Historical research, not the current contract.** It describes the old Matter.js engine; since #3697 Cascade runs on planck.js. Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the rework is tracked in epic #3033.
 
 # Cascade Physics — Architecture & Developer Reference

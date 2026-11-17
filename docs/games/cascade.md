@@ -1,12 +1,203 @@
 # Cascade
 
 **Category:** Arcade
-**Tier:** TBD
-**Status:** Disabled pending rework (#3033); hidden in store builds by #3001
+**Tier:** Premium (`PREMIUM_GAMES`; the backend marks it premium)
+**Status:** Disabled in store builds pending rework (#3033, `DISABLED_GAMES` in `frontend/src/entitlements/gameVisibility.ts`, #3001); shown in dev, test and pre-launch builds. Its ship story (#3703) removes it from that list.
 
-## How to Play
+This is the canonical specification of Cascade's gameplay, written against the engine as it stands on `dev` after the v2 rework (epic #3033). It is in two parts.
 
-Cascade is a physics-based piece-drop game. Pieces fall from the top of the screen into a bin. When two pieces of the same tier collide they merge into a higher-tier piece, scoring points. You win by making the capstone (Pumpkin / Milky Way, #3920); you lose when the bin overflows.
+- **Part 1 (sections 1 to 14 and Recording): the specification.** What a player sees and what the rules are, with the exact numbers, each tied to the code that owns it. Everything a player can observe is here.
+- **Part 2: [implementation reference and decision record](#implementation-reference-and-decision-record).** The module map, the physics tuning, the renderer, the art, the sim harness, the measurements and the owner decisions behind the rules. Words in parentheses there that compare a rule with an earlier design are history, not rules: Part 1 is the contract.
+
+Where this document and the code disagree, the code is right and this document is a bug. Shared rules are linked, not copied: the session and result envelope in [GAME-CONTRACT.md](../GAME-CONTRACT.md), boards in [LEADERBOARDS.md](../LEADERBOARDS.md), screen structure and input in [GAMEPLAY_STANDARDS.md](../GAMEPLAY_STANDARDS.md), screen readers and Reduce Motion in [ACCESSIBILITY.md](../ACCESSIBILITY.md). Research and design records that led here (not canonical): [`CASCADE_PHYSICS_SPIKE.md`](../research/CASCADE_PHYSICS_SPIKE.md), [`CASCADE_FEEL_PROPOSALS.md`](../research/CASCADE_FEEL_PROPOSALS.md), [`CASCADE_PHYSICS.md`](../research/CASCADE_PHYSICS.md) (the earlier physics engine), [`CASCADE_ASSET_SPIKE.md`](../research/CASCADE_ASSET_SPIKE.md), [`CASCADE-THEMING.md`](../research/CASCADE-THEMING.md) (both superseded by [Art](#art-3698)) and the [sound design log](cascade-sound-design.md).
+
+## Part 1: The specification
+
+### 1. Objective, win and game over
+
+Cascade is a physics piece-drop game in the Suika family. Pieces fall into a bin. Two pieces of the same tier that touch merge into one piece of the next tier, and the merge scores points. The game has one winning condition and two losing ones.
+
+- **Win.** Merge two tier-9 pieces (Watermelon / Sun) into the **capstone**, tier 10 (Pumpkin / Milky Way). By any merge path (contact, the 1.5 px merge-gap scan or chain reach). Play ends at that step: no more drops, the score is final, a celebration plays and the "You Win!" card follows. The capstone is never dropped, never merges, and two on the board (only the dev panel or a test restore can put them there) are not a win. See [The win](#the-win-3920) and [The celebration and the win card](#the-celebration-and-the-win-card-3699).
+- **Loss: the lid (overflow).** A settled piece whose top edge is above the lid line (y = 80 of the 600-unit world) for 180 consecutive physics steps (3 s) ends the game (`gameOver`, reason `overflow`). A merge in the danger band pauses the count for 1 s. See [section 6](#6-danger-and-the-lid).
+- **Loss: the hard stop.** A settled piece whose top edge reaches the top of the board (y <= 0) ends the game at once (reason `hardStop`). The last dropped piece gets a 0.5 s grace.
+- **Nothing else ends a game.** There is no move limit, no timer and no lives. Leaving the screen, restarting or switching the piece set ends the _session_ as an abandon, never as a loss (see [section 9](#9-save-resume-and-abandon)).
+
+### 2. The ladder and the merge rules
+
+There are **11 fixed tiers** (0-10) and two piece sets, **Fruits** and **Cosmos**, with the same rules and different art, names and sounds. The player picks the set with the toggle under the score; it can be switched mid-game, which abandons the game and starts a new one.
+
+| Tier | Fruits        | Cosmos    | Radius | Drawn | Density | Score | Droppable |
+| ---- | ------------- | --------- | ------ | ----- | ------- | ----- | --------- |
+| 0    | Cherry        | Pluto     | 11.5   | 11.3  | 1.00    | 1     | yes       |
+| 1    | Blueberry     | Mercury   | 14.2   | 14.0  | 0.90    | 2     | yes       |
+| 2    | Lemon         | Mars      | 17.6   | 17.4  | 0.81    | 4     | yes       |
+| 3    | Grape         | Venus     | 21.9   | 21.5  | 0.73    | 8     | yes       |
+| 4    | Orange        | Earth     | 27.1   | 26.7  | 0.65    | 16    | yes       |
+| 5    | Apple (green) | Neptune   | 33.6   | 33.1  | 0.59    | 32    | yes       |
+| 6    | Coconut       | Uranus    | 41.6   | 41.0  | 0.53    | 64    | no        |
+| 7    | Dragonfruit   | Saturn    | 51.5   | 50.8  | 0.47    | 128   | no        |
+| 8    | Pineapple     | Jupiter   | 63.8   | 62.9  | 0.42    | 256   | no        |
+| 9    | Watermelon    | Sun       | 79.1   | 77.9  | 0.38    | 512   | no        |
+| 10   | Pumpkin       | Milky Way | 98.0   | 96.5  | 0.34    | 1024  | no        |
+
+Radii are world units (the bin is 400 x 600; its inner width is 360). This table is a copy of `frontend/src/game/cascade/tiers.ts`, the only place a tier's radius, score, density, droppable flag and name keys are defined; `tiers.test.ts` fails if another module defines one. How the radii, densities and drawn radii were chosen: [Piece progression](#piece-progression).
+
+- **Droppable tiers are 0-5.** Tiers 6-10 exist only by merging.
+- **Merge rule.** Two same-tier pieces merge (tier n < 10 into n + 1; two tier-9 pieces into the capstone) when a physics contact begins between them, or when their circles are within **1.5 px** (`MERGE_GAP_PX`) at the end of a step (resting pieces sit a fraction of a pixel apart, which looks like touching).
+- **The new piece** appears at the midpoint of its parents, clamped so its full circle is inside the walls and above the floor, with their mean velocity (capped at 3 px per step) and a small upward pop (0.4 px per step). It starts at its parents' size and **grows to its own over 16 steps (267 ms)**, easing its neighbours aside; the lid, the merge grace and the drop gate use the full size throughout.
+- **Chains.** A merge product that touches a third piece of its own tier merges again without waiting for its grow-in (**chain reach**, 2 px at full size, checked in the step it is made and every step it grows), so a chain runs one link per step. The screen's "chain" is the count of merges since the last drop; see [section 8](#8-motion-and-celebration-states).
+- **Pieces never leave the bin.** Merges only remove bodies; nothing is teleported; a safety net puts a piece that somehow escaped back and reports it in dev builds (the sim requires zero).
+
+### 3. Scoring and the time bonus
+
+- **Merge score.** Each merge adds the score of the piece it makes: `2^n` for a merge into tier n (1 for a Cherry up to 1024 for the capstone; the winning merge scores its normal 1024, with no extra, and there is no jackpot). The per-tier values are still labelled provisional in `tiers.ts`; the time bonus (#3700) was tuned against them without changing them.
+- **Time bonus (win only).** `time_bonus = round(20000 x max(0, 1 - t / 360000))`, `t` being the game's `duration_ms` (active play time). A loss gets 0. A win under **20 s** (`MIN_WIN_MS`), or with no duration, gets 0 and is stored anyway; it is never rejected.
+- **Final score** = merge score + time bonus, **computed by the server**; the app mirrors the formula for display only. Rounding is half up in integer arithmetic on both sides. Rule version `BONUS_RULE` = 1.
+- **The play clock** starts at the game's first piece (a drop, or a test or dev placement), so time looking at an empty board costs nothing; it stops while another screen covers the board or the app is in the background, and for good at the win or the lid. It uses the monotonic clock (`monotonicNow()`), so changing the device time cannot change it (#3925). See [Scoring (Persistence)](#scoring-persistence) for why these numbers.
+
+### 4. Spawn, drop and input
+
+- **What drops.** The piece to drop (DROP) and the next one (NEXT) come from a queue. Each draw picks a droppable tier (0-5) by weight: base `2 3 3 3 2 1`; **drought boost** (+3 to any tier absent from the last 10 drops); **danger mode** (when the pile is near the lid: tiers 2-4 scaled to 20 % and the top droppable tier, 5, to 35 %, fractional); **streak ban** (a tier that filled the last 4 picks is banned for one draw). Details and rationale: [Piece Queue & Spawn Selection](#piece-queue--spawn-selection-piecequeuets-spawnselectorts).
+- **Where it spawns.** At the aim x, with its top edge above the lid (centre at `lid - radius - 5`); x is clamped so the whole piece is between the walls, after a seeded nudge of at most +-0.4 px so a column of same-x drops still topples. A tier-5 piece spawns with its top edge at y = 7.9, on the canvas.
+- **When a drop is allowed.** Every gate must pass: the game is not over or won; the engine's `canDrop()` (the last piece has fallen with its top edge at or under the lid, or merged into one that has); the 200 ms drop cooldown; the board is not settling after a restore (60 steps, 1 s); the player is not away (another screen covers the board, or the app is in the background). A refused drop does nothing. While a drop is not allowed the spawner shows a dashed, faded "waiting" ghost.
+- **Input: press, drag, release** (`CascadeAimArea`, owner pick #3928 "Dashed line + ghost"). A finger on the board does nothing yet. **Tap** (released within 90 ms and 10 pt): drops at once at the press x, no guide. **Drag** (moving past the slop or holding past 90 ms): the spawner piece glides to the finger and follows it, clamped by its radius; a dashed plumb line and a ghost show where it would first touch (first contact, not where it then rolls); one light selection haptic at the start of a drag. **Release** drops at the aim x through the same gates. **Cancel** (leaving the board's rect, a second finger, or the system taking the gesture): the piece glides back and **nothing drops**; coming back onto the board before release aims again. Swipe-back is off on this screen. The full table, the gesture's activation rules and the thread model: [Aiming](#aiming-3928).
+- **Screen readers.** The board has a label and hint and an "activate" action; a double-tap drops the next piece in the middle of the bin.
+- **Web.** The same gesture works with a mouse and with touch; a non-finite x never drops.
+
+### 5. Player-visible physics
+
+Pieces are true circles in a planck.js (Box2D) world: gravity 2,500 px/s^2, restitution 0.2, friction 0.12, light air friction, free rolling (spin clamped), 60 fixed steps a second (up to 3 per frame; slower than 20 fps the game runs slower than the wall clock instead of queueing). What a player sees as a result:
+
+- Pieces roll and settle; heavier (bigger) pieces sink into lighter ones, mass growing as radius^1.5 (the capstone is 24.9 times a Cherry).
+- Resting pieces overlap by under 1 px on average and under 5 px in the worst moments (gated in the sim); each piece is drawn 1.5 % inside its collider so neighbours show a hair of gap.
+- Walls are solid, 200 px thick, and reach 600 px above the canvas; nothing tunnels out and there is no teleporting guard rail.
+- The same fixed steps run at 60 and 120 Hz, so the rules (lid, merge grace, chain timing) take the same simulated time at either rate.
+- The same frame deltas and seed replay the same board, bit for bit, on one JS engine; not across engines. Do not build anything that needs the same board on two engines on it.
+- The tuning and why each number is what it is: [Physics](#physics) and [Overlap](#overlap-3904).
+
+### 6. Danger and the lid
+
+The lid is the line at `OVERFLOW_LINE_Y` = 80. All counts are in fixed steps, never frames or wall-clock time.
+
+- A piece **counts** when it is settled (speed at most 8 px per step) and its top edge is above the lid. A dropped piece still falling from the spawner does not count until it first touches a piece or the floor. While at least one piece counts, a counter rises by one a step and a step with none resets it. At **180 steps (3 s)** the game ends (overflow).
+- **Merge grace.** A merge involving a piece whose top edge is at or above y = 160 (the danger band, `OVERFLOW_LINE_Y + DANGER_STACK_MARGIN`) resets the counter and pauses it for **60 steps (1 s)**. A merge lower in the bin does nothing. There is no other grace.
+- **Hard stop.** Top edge at y <= 0 while settled ends the game at once; the piece just dropped must stay settled there for 30 steps (0.5 s) first.
+- **What the player sees.** The lid line reddens as the counter runs; a clock ring around the spawner piece drains clockwise from cyan to red (glow from 70 %); pieces over the lid get a red wash while the counter runs; a danger blink (period 1,000 down to 340 ms as the ratio rises, never more than 3 flashes a second) and, with sound on, one tick on each on-beat. A game over dims the pile, flashes the lid twice and shows the card after 1 s.
+- **Danger mode of the spawner** is the same band: it is what lowers the weights of the big droppable tiers (section 4).
+- **Restore.** A restored game gets the merge grace once while the pieces settle; the hard stop applies at once; a saved piece over the lid that touches nothing is treated as falling again.
+- Every number's reasoning, and the regression gate (the spam bot loses within 120 s, never wins): [Game over: the lid](#game-over-the-lid).
+
+### 7. The next-piece preview
+
+Two chips above the board, left of the score: **DROP** (the piece the spawner holds, drawn 22 pt) and **NEXT** (the one after it, 16 pt), each with the piece's drawn glyph (`NextFruitPreview`, `FruitGlyph`, the same art as the board). After each drop NEXT hops into DROP in an arc and the new NEXT pops in (Reduce Motion: both fade in). The queue is the engine-independent `{ current, next }` pair of `pieceQueue.ts`; the piece after NEXT is drawn at the moment of the drop, so danger mode shapes it two drops ahead. The queue is saved and restored with the game. Both chips are screen-reader elements ("Dropping a Cherry", "Coming up: a Lemon").
+
+### 8. Motion and celebration states
+
+Everything is drawn in code on the board's Skia Picture on the UI thread; nothing per frame goes through React. Every duration, easing, size and count is in `game/cascade/motion.ts` (`MOTION`) and `celebration.ts`.
+
+| State           | What the player sees (with motion)                                                                                        | Reduce Motion                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Aiming          | Piece glides to the finger; dashed guide and ghost                                                                        | At the finger at once; guide shows and hides at once; dashes stand still |
+| Drop            | Next piece drops into the spawner (320 ms)                                                                                | Fades in                                                                 |
+| Land            | Damped squash (7 % to 18 % by tier) and 6 dust puffs                                                                      | None (sound and haptic still play)                                       |
+| Merge           | Grow-in, `MergeBurst`, white flash, ring to 2x radius, 12 confetti dots                                                   | A short flash in place (200 ms); no burst, ring or confetti              |
+| Chain           | "xN" counter from the second link, paced 80 ms a link, pops and sparkles                                                  | Fades in once, then the number swaps                                     |
+| Danger          | Ring, red wash, lid line, square-wave blink                                                                               | No blink; a tick sound keeps the warning                                 |
+| Game over       | Pile dims, lid flashes twice, card at 1,000 ms                                                                            | Dim fades in 300 ms, steady red lid, card at 1,000 ms                    |
+| Win celebration | Capstone grows in, pile dims, capstone rises and turns, glow, ring, rays or swirl, cheering face, twinkles, card at 2.1 s | Dim, glow, ring and face fade in where it lies; card at 1.6 s            |
+
+- **Chain** means merges since the last drop; the first is a plain merge, the second shows x2. A merge while a restored game settles, or in a test fast-forward, does not count.
+- **The win celebration** is owner pick "A Spotlight with C's cheering face" (#3699); the timeline table, the clock and why it is stepped are in [The celebration and the win card](#the-celebration-and-the-win-card-3699). **The win card** is the shared `GameResultModal` with outcome `win` ("You Win!", the score, New best, Merge score, Time bonus, Time, Best, View leaderboard, Play Again, Home). A loss card is outcome `ended` ("Game Over": the score, Best, Merges, Time; no bonus line). The card never covers the animation.
+- **Haptics** (iOS and Android only, no setting): land Light or Medium by tier; merge Medium, Heavy or double Heavy by tier; chain steps Light, Medium, Heavy; one Warning when the lid count passes 0.5; the win's Success is the card's. Paced and best-effort. Table in [Motion and haptics](#motion-and-haptics-3701).
+- The danger blink never exceeds 3 flashes a second (WCAG 2.3.1).
+
+### 9. Save, resume and abandon
+
+- **Autosave.** The board (each piece's tier and position), score, queue and `playedMs` are saved to AsyncStorage (`cascade_game_v7`, `SavedState` v7) at most every 2 s after drops and merges, and in full when another screen covers the board or the app goes to the background. Velocities are not saved.
+- **Resume.** On open, a saved game with at least one piece is restored at rest, the play clock continues from `playedMs` (the time the app was closed does not count), the session a killed app left open is continued (#2654), and drops are refused for 60 steps (1 s) while the pile settles; the lid's merge grace applies once. Nothing is saved or restored for a game that has been won or lost: the save is cleared at the win and at the game over, so a relaunch starts a new game.
+- **Old saves.** A present but invalid or older-version save is discarded, never migrated and never falls back to an older one; its key is removed. History: [Persistence](#persistence-storagets).
+- **New game / abandon.** Restart (the shell's New Game, Play Again) and switching Fruits / Cosmos start a fresh game and clear the save; they end the session as `abandoned` with the score so far. Leaving the screen records `abandoned` once a piece has been dropped (an unplayed game is discarded without a row). Abandoned rows never rank or count toward Best.
+- A game that was never started (no piece dropped) posts nothing; the session row is created at the first drop (`markStarted`).
+
+### 10. Backend session and result contract
+
+Cascade has no endpoints of its own: it uses the generic `/games` routes (the legacy `/cascade/score` and `/cascade/scores` were removed in #2644). Shared rules: [GAME-CONTRACT.md](../GAME-CONTRACT.md) (session lifecycle, `result_model` merge, leaderboard routes).
+
+- **Module.** `backend/cascade/module.py`: `GameType.CASCADE`, `CascadeMetadata` (`player_name`, max 64; current builds send none), result model `CascadeResult` (`backend/cascade/models.py`, `extra="ignore"`), `has_winner = True`, board `final_score` descending, label `score`. `derive_final_score` stores merge score + the server's time bonus, overwriting whatever the app sent (never a 400: a 400 on `/complete` dead-letters the game).
+- **Session.** `useGameSync("cascade")`: `POST /games` at the first drop, then drop and merge events (`drop {drop_index, fruit_tier, x, score_before}`, `merge {from_tier, to_tier, x, y, score_after}`, and the opening `game_started {fruit_set, theme, seed: null}`), then `PATCH /games/{id}/complete`. The events are bounded by `CASCADE_CAP` in `backend/games/replay_caps.py` (provisional: 3,000 events, 900 KB).
+- **Outcomes.** `win` (the capstone), `loss` (the lid or hard stop), `abandoned`. Builds before #3699 sent `completed` for both end states, which stays a finish with no winner.
+- **Result block** (`cascadeResultBlock`): `merge_score` and `max_tier` (app), `won`, `outcome`, `time_bonus`, `bonus_rule` and `final_score` (server, recomputed), plus `duration_ms`, `theme`, `total_drops`, `total_merges`. Table and rules: [The result block](#the-result-block-3700). About 100 bytes more per game, on the existing row, uploaded once at game end.
+- **Daily Challenge** goals read `won` and `max_tier` (#3703).
+- **Time bonus source of truth:** `backend/cascade/time_bonus.py`, mirrored in `frontend/src/game/cascade/timeBonus.ts`, both checked against `backend/tests/fixtures/cascade_time_bonus.json`.
+
+### 11. Stats and leaderboard
+
+- **Board.** One board, `final_score` descending, no partitions, no declared maximum, no tie-break (equal scores go to the entry the server received first). Only finished, non-abandoned games rank. A player with a display name ranks with no further step; the board shows each named player's best game once. See [LEADERBOARDS.md](../LEADERBOARDS.md).
+- **Result card.** Shows the rank (`lookupGameRank`) or asks once for a display name; "View leaderboard" opens the shared Leaderboard screen.
+- **Stats** (the ⋯ menu, shared Stats screen): wins, losses, win rate, win streaks (from `has_winner`), Best (highest score, bonus included) and a **Fastest Win** tile (m:ss) from `best_win_ms`: the minimum `duration_ms` over `win` rows, ignoring wins under 20 s; hidden when null. `best_win_ms` is client-reported and private to `/stats/me`; it needs a server-side bound before it is shown to other players or used on a board (#3927).
+- **Store builds** hide Cascade, so there it has neither entry point.
+
+### 12. Audio and accessibility
+
+**Audio** (owner picks, #3702). Fruits plays "Juicy pops", Cosmos plays "Starlight glass"; each set has 21 original, in-house synthesized sounds (42 files, about 345 KB; `tools/assets/synth_cascade_sfx.py`, credits in `SOUND_CREDITS.md`, reasoning in the [sound design log](cascade-sound-design.md)).
+
+- Events: drop, land (light or heavy by tier, volume rising with tier), merge (one pre-pitched file per tier, C-major pentatonic, louder up the ladder), chain (steps 1-4 with the link's merge sound, paced like the chain counter), danger (a tick on each on-beat of the blink), win (a run, a fizz and a chord timed to the card), game over (a falling line and a chord timed to the card). Table: [Sound](#sound-3702).
+- Mute is the app-wide sound setting; there is no Cascade-only setting. Reduce Motion keeps every sound (the danger tick keeps its own timer). Nothing plays while a restored game settles or for a test fast-forward, except the win and game-over sounds. A covered board or a backgrounded app is silent.
+
+**Accessibility.** Cascade's board is a Skia canvas, outside the native accessibility tree, so the game states are carried by native elements beside it.
+
+- **Score:** `ScoreDisplay` is a native `Text` with a polite live region and the label "Score N", outside the canvas.
+- **Board:** a wrapping `View` with role `image`, the label `a11y.board`, a hint and an "activate" action that drops in the middle (a double-tap). The pieces are not individually exposed.
+- **Announcements:** each merge is announced with the new piece's name (`cascade:event.merged`); the result card announces a win or a game over (it is the shared accessible modal).
+- **Preview chips and the piece-set toggle** are labelled accessible elements.
+- **Reduce Motion** (the shared `useReduceMotion`) selects the calm path listed in section 8; the physics itself still runs (see [section 14](#14-deviations-from-shared-standards)).
+- **Flashing:** at most 3 flashes a second.
+- **Colour:** all colours are theme tokens (`CASCADE_ART`, `CASCADE_LID_PALETTE`, `CASCADE_BIN_PALETTE`, `CASCADE_CELEBRATION` in `theme/theme.cascade.ts`); pieces that share a hue also differ by marks (open or closed eyes, blush, stripes).
+- **Text:** every user-facing string, including labels and announcements, goes through i18next (`cascade` namespace, `a11y.*` keys). The English copies in other locales are still to be translated (`scripts/i18n-english-copies.json`).
+- Shared contract: [ACCESSIBILITY.md](../ACCESSIBILITY.md#4-screen-readers).
+
+### 13. Tests and sim references
+
+| Concern                                | Where                                                                                                                                                                                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tier table is the only one             | `frontend/src/game/cascade/__tests__/tiers.test.ts`                                                                                                                                                                                                                                        |
+| Engine rules, merges, chains, win      | `engine.test.ts`, `engine.physics.test.ts`, `engine.land.test.ts`, `engine.frame.test.ts`                                                                                                                                                                                                  |
+| Lid and danger                         | `engine.lid.test.ts`, `lidVisuals.test.ts`, `engine.sim.test.ts` (spam bot loses within 120 s at 60 and 120 Hz)                                                                                                                                                                            |
+| Spawn and queue                        | `spawnSelector.test.ts`, `pieceQueue.test.ts`                                                                                                                                                                                                                                              |
+| Aiming                                 | `aim.test.ts`, `components/cascade/__tests__/CascadeAimArea.test.tsx`, `render/__tests__/drawMotion.test.ts`                                                                                                                                                                               |
+| Motion, haptics, celebration, win tail | `motion.test.ts`, `motionLog.test.ts`, `haptics.test.ts`, `celebration.test.ts`, `winTail.test.ts`, `render/__tests__/drawCelebration.test.ts`, `components/cascade/__tests__/`                                                                                                            |
+| Sound                                  | `sounds.test.ts` (size budget), `soundPacer.test.ts`, `useCascadeSounds*.test.tsx`, `tools/assets/tests/synth_cascade_sfx_test.py`                                                                                                                                                         |
+| Renderer                               | `render/__tests__/` (`frame`, `drawFrame`, `worklets`, `canvasKitWeb`, `loadCanvasKit`, `skiaWebImportGraph`), `art/__tests__/art.test.ts`                                                                                                                                                 |
+| Save and restore                       | `storage.test.ts`, `screens/__tests__/CascadeScreen*.test.tsx`                                                                                                                                                                                                                             |
+| Score, time bonus, result block, clock | `timeBonus.test.ts`, `resultBlock.test.ts`, `useCascadeClock.test.ts`, `scoreStore.test.ts`; backend `backend/tests/test_cascade_result.py` and `backend/tests/fixtures/cascade_time_bonus.json`; stats `backend/tests/test_stats_counts.py`, `screens/__tests__/GameStatsScreen.test.tsx` |
+| Sim harness and baseline               | `frontend/src/game/cascade/sim/` (`baseline.json`, `sim/__tests__/sim.test.ts`), `npm run sim:cascade`, `.github/workflows/cascade-sim-gate.yml`; see [Sim harness](#sim-harness-sim-2893) and [TESTING.md](../TESTING.md)                                                                 |
+| End to end                             | Playwright `e2e/tests/cascade-smoke.spec.ts` (project `cascade`); Maestro `e2e/maestro/flows/cascade/` (`smoke`, `demo-open`, `demo-aim`, `demo-drop`, `demo-merge`, `demo-chain`, `demo-danger`, `demo-loss`, `demo-win`); test hooks `__cascade_*` (`testHooks.ts`, test builds only)    |
+
+The sim's headline numbers on `dev` (`sim/baseline.json`, 100 seeds): the skilled bot wins 66 % of games, in a median 215 s; the spam bot loses at the lid in under 120 s (longest 84.9 s) and never wins; no guard rail fires.
+
+### 14. Deviations from shared standards
+
+Cascade departs from the shared gameplay standards in these places. Each is intentional unless marked as an open question.
+
+| Standard                                                                                            | Cascade                                                                                                 | Why                                                                                                             |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [GAMEPLAY_STANDARDS.md](../GAMEPLAY_STANDARDS.md) board games are tap-only, prefer a native control | Press, drag and release on an RNGH `Pan` with manual activation, plus a screen-reader "activate" action | The aim is a continuous position (#3928); a tap still drops at once                                             |
+| Restore and completion go through `usePersistedGameState` and `useCompletionTransition`             | Own hooks: `useCascadeSave` (throttled saves), the screen's end-of-game path (`useCascadeSession`)      | The board is a physics world saved by position, not a state object; the win delays the card for the celebration |
+| [ACCESSIBILITY.md](../ACCESSIBILITY.md): canvas marked `accessible={false}`                         | A wrapping `View` with role `image`, label, hint and action around the canvas                           | Skia's web `Canvas` drops accessibility props, and the board needs an activate action                           |
+| ACCESSIBILITY.md: physics under Reduce Motion "must resolve immediately to final state"             | Physics still runs; only decoration (squash, bursts, chain pops, rise, blink) takes the calm path       | The pile is the game: dropping, rolling and merging are its rules, not decoration. Open question to the owner   |
+| ACCESSIBILITY.md: web canvas games provide keyboard alternatives for primary actions                | None: web is pointer and touch only                                                                     | Web is a secondary platform for Cascade; not yet built                                                          |
+| One result envelope, no per-game board code                                                         | Server-computed score (`derive_final_score`), a result block merged into `games.metadata`               | The time bonus must be a rule, not a client claim                                                               |
+| Web uses Canvas 2D for canvas games (Mahjong, Star Swarm)                                           | Skia through CanvasKit (WebAssembly) on web                                                             | One drawing path on every platform (owner, #2960)                                                               |
+
+### Recording and replay (#3858)
+
+Pending #3858.
+
+---
+
+## Implementation reference and decision record
+
+The sections below are the working detail behind Part 1: the numbers, the module map, the renderer, the art, the sim, and the owner decisions and measurements that produced them. Where a parenthesis compares a rule with an earlier design, it is the record of why the rule is what it is, not a current rule.
 
 ### Piece Progression
 
@@ -31,19 +222,10 @@ Pieces evolve through **11 fixed tiers** (0-10, #3920; 12 before). The lowest-ti
 - **Radii** (#3920, owner decision after playing #3904's V1, which felt too small): one constant ratio for the whole ladder, `radius(n) = 11.5 * k^n` with k = (98 / 11.5)^(1/10) = 1.23895, **unrounded**, so every tier-to-tier ratio is exactly k and the capstone is exactly 98. The Cherry is about 6.4 % of the bin's 360 px inner width across (the share in the owner's reference game), about 22 pt on a 390 pt phone (the board is about 0.97 pt per world unit); the Pumpkin stays about half the bin. (#3904's V1 was `5 * (98 / 5)^(n / 11)` on 12 tiers; #3697's ladder was `round(18 * (56 / 18)^(n / 10))`, 18 to 56, with the capstone at 63 off the curve.) Why 11 tiers and a single capstone: on 12 tiers the bigger cherry could not be won (0 of 100 skilled games; two capstones take 4,096 cherries' worth of material, each now about 5 times the area), and two-capstone wins on 10 or 11 tiers stayed at 4-24 %; issue #3920 has the measured variants.
 - **Drawn radius** is 1.5 % inside the collider (`DRAW_INSET`, `tierDrawnRadius`, #3904): the last of the owner's overlap levers, see [Overlap](#overlap-3904). The board, the art bitmaps and the spawner draw at it; physics, the lid, spawning and merges use the radius.
 - **Droppable tiers** are 0-5 (#3920). The largest (Apple / Neptune, r = 33.6) spawns with its top edge at y = 7.9, on the canvas.
-- **Scores** double per tier: a merge into tier n scores `2^n`; the winning merge into the capstone scores its normal 1024, with no extra (#3920). These values are provisional: the final ones are set with the time-bonus story (#3700), so a win dominates a long losing run. There is no jackpot bonus.
+- **Scores** double per tier: a merge into tier n scores `2^n`; the winning merge into the capstone scores its normal 1024, with no extra (#3920). The merge-score values are still labelled provisional in `tiers.ts`; the time bonus (#3700, see [Scoring (Persistence)](#scoring-persistence)) was set against them, so a win dominates a long losing run, and they were not changed. There is no jackpot bonus.
 - **Density** is planck.js's fixture density, `(r0 / r)^0.5` (#3697): mass grows as r^1.5 instead of r^2. On this ladder the capstone is 24.9 times a cherry (87 on #3904's, 6.5 on #3697's). #3904 tried flattening it (exponents 0.75 to 1.37, down to today's 6.5 : 1) as the owner's first overlap lever; see [Overlap](#overlap-3904) for why it stayed. Only the ratios matter.
 - **Art.** All 22 pieces (11 fruits, 11 cosmos) are drawn in code, in `game/cascade/art/`; see [Art (#3698)](#art-3698). A tier whose art cannot be rasterised is drawn as a plain circle in its placeholder colour.
 - **Names** are `cascade:pieces.<set>.<key>` in every locale (22 keys; #3920 removed `fruits.peach` and `cosmos.moon`; English copy in locales still to be translated, tracked in `scripts/i18n-english-copies.json`).
-
-### Gameplay
-
-- The current piece and the next queued piece are shown at the top of the screen
-- The player presses and drags to aim (the piece and a drop guide follow the finger), then releases to drop; a quick tap drops at once (#3928)
-- Pieces roll and stack after landing — physics are fully simulated at 60 Hz
-- Merges can chain: a merge may cause the new piece to immediately contact another of the same tier, triggering another merge
-- Game over when the pile stays over the bin's lid for 3 seconds, or reaches the top of the board: see [Game over: the lid](#game-over-the-lid)
-- The win: making the capstone (#3920). The merge scores as usual and play ends: no more drops. A short celebration plays, then the "You Win!" result card (#3699): see [The celebration and the win card](#the-celebration-and-the-win-card-3699).
 
 ### The win (#3920)
 
@@ -101,14 +283,14 @@ Owner pick (2026-11-16, from three proposal clips): **A, "Dashed line + ghost"**
 
 Owner pick (2026-11-16, from three proposal clips): **B "Juicy bounce"** for the landing, the merge, the chain counter and the next piece; **C "Crisp graphic"** for the danger blink and the game over. Reduce Motion follows the same split. Every duration, easing, size and count is in `game/cascade/motion.ts` (`MOTION`); components and the board read only that. Everything is drawn in code: no Lottie, sprite sheet or art file (owner rule). The grow-in (#3697), `MergeBurst` (its numbers now `MOTION.burst`, unchanged), the danger ring and red lid (#3694) and the win celebration (#3924, its own timeline in `celebration.ts`) are kept as built.
 
-| Moment     | With motion                                                                                                                                                                                                                                                                                                                                                                                                                  | Reduce Motion                                                                                                                                                                                                                                                                                                           |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Land       | A damped-spring squash about the contact: 7 % (Cherry) to 18 % (Watermelon) × the impact speed (≥ 40 %), then a small stretch, settled by 380 ms; 6 dust puffs (300 ms)                                                                                                                                                                                                                                                      | at the engine's `land` event; volume 0.6 at tier 0 rising to 1 at the capstone; landings within 60 ms of the last are one sound, the highest tier among them                                                                                                                                                            |
-| Merge      | On top of the grow-in and `MergeBurst`: a white flash (120 ms), a ring in the piece's colour growing to 2× its radius (320 ms, easeOutQuart) and 12 confetti dots in its tones (620 ms, with gravity)                                                                                                                                                                                                                        | at a plain merge: one pre-pitched file per tier made (C-major pentatonic, rising with the tier; no playback-rate pitch shift), louder up the ladder. A merge of the same tier due within 30 ms of the last is skipped (two pairs merging in one step are one sound)                                                     |
-| Chain      | ×N above the chain's first link, drawn as code paths (`render/chainGlyphs.ts`) outlined in the newest link's dark tone: 24 pt + 7 pt a link (max 52), pops 0.5 → 1.3 → 1 (280 ms easeOutBack) with a decaying ±8° wobble, sparkles from ×3, holds 800 ms, leaves in 200 ms. **Paced:** one step per `chainStepMs` = 80 ms from the first counted link, catching up with the engine (a 4-chain's links arrive 17-50 ms apart) | fades in once (150 ms), then each step swaps the number at full opacity, same pacing                                                                                                                                                                                                                                    |
-| Next piece | The DROP chip's glyph hops over from NEXT in a 16 pt arc (320 ms, easeOutBack 2), the new NEXT pops in after 80 ms (280 ms); the spawner piece drops in from 70 px above at 0.8× (320 ms, easeOutBack 2.2)                                                                                                                                                                                                                   | both fade in (150 ms)                                                                                                                                                                                                                                                                                                   |
-| Danger     | A square-wave blink on top of the #3694 ring and lid: on the on-beats an outline ring just outside the clock ring and marching dashes (12/9, 40 → 120 px/s) on the lid. Period 1000 → 340 ms as `dangerRatio` goes 0 → 1, so never more than 3 flashes a second (WCAG 2.3.1)                                                                                                                                                 | one tick on each on-beat of the danger blink: the board's UI-thread frame callback steps the blink and calls `onDangerOnset` on the JS thread when an on-beat starts (`useBoardMotion`), so the tick and the blink share one phase; at least 333 ms apart, never above 3 Hz; volume 0.45 rising to 1 with `dangerRatio` |
-| Game over  | The pile dims at once (page colour, 60 %), the lid flashes twice in the text ink (140 on / 120 off), and the card comes at 1000 ms (`useLossCard`)                                                                                                                                                                                                                                                                           | the dim fades in over 300 ms, the lid is a steady red line, the card at the same 1000 ms                                                                                                                                                                                                                                |
+| Moment     | With motion                                                                                                                                                                                                                                                                                                                                                                                                                  | Reduce Motion                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Land       | A damped-spring squash about the contact: 7 % (Cherry) to 18 % (Watermelon) × the impact speed (≥ 40 %), then a small stretch, settled by 380 ms; 6 dust puffs (300 ms)                                                                                                                                                                                                                                                      | No squash and no dust (`collectLands` skips it); the sound and haptic still play. The sound: at the engine's `land` event; volume 0.6 at tier 0 rising to 1 at the capstone; landings within 60 ms of the last are one sound, the highest tier among them                                                                                                                                               |
+| Merge      | On top of the grow-in and `MergeBurst`: a white flash (120 ms), a ring in the piece's colour growing to 2× its radius (320 ms, easeOutQuart) and 12 confetti dots in its tones (620 ms, with gravity)                                                                                                                                                                                                                        | A short flash in place (`MOTION.calm`: 200 ms, 45 % alpha, 1.08x) instead of the ring and confetti, and no `MergeBurst`. The sound: at a plain merge: one pre-pitched file per tier made (C-major pentatonic, rising with the tier; no playback-rate pitch shift), louder up the ladder. A merge of the same tier due within 30 ms of the last is skipped (two pairs merging in one step are one sound) |
+| Chain      | ×N above the chain's first link, drawn as code paths (`render/chainGlyphs.ts`) outlined in the newest link's dark tone: 24 pt + 7 pt a link (max 52), pops 0.5 → 1.3 → 1 (280 ms easeOutBack) with a decaying ±8° wobble, sparkles from ×3, holds 800 ms, leaves in 200 ms. **Paced:** one step per `chainStepMs` = 80 ms from the first counted link, catching up with the engine (a 4-chain's links arrive 17-50 ms apart) | fades in once (150 ms), then each step swaps the number at full opacity, same pacing                                                                                                                                                                                                                                                                                                                    |
+| Next piece | The DROP chip's glyph hops over from NEXT in a 16 pt arc (320 ms, easeOutBack 2), the new NEXT pops in after 80 ms (280 ms); the spawner piece drops in from 70 px above at 0.8× (320 ms, easeOutBack 2.2)                                                                                                                                                                                                                   | both fade in (150 ms)                                                                                                                                                                                                                                                                                                                                                                                   |
+| Danger     | A square-wave blink on top of the #3694 ring and lid: on the on-beats an outline ring just outside the clock ring and marching dashes (12/9, 40 → 120 px/s) on the lid. Period 1000 → 340 ms as `dangerRatio` goes 0 → 1, so never more than 3 flashes a second (WCAG 2.3.1)                                                                                                                                                 | No blink. The sound: one tick on each on-beat of the danger blink: the board's UI-thread frame callback steps the blink and calls `onDangerOnset` on the JS thread when an on-beat starts (`useBoardMotion`), so the tick and the blink share one phase; at least 333 ms apart, never above 3 Hz; volume 0.45 rising to 1 with `dangerRatio`                                                            |
+| Game over  | The pile dims at once (page colour, 60 %), the lid flashes twice in the text ink (140 on / 120 off), and the card comes at 1000 ms (`useLossCard`)                                                                                                                                                                                                                                                                           | the dim fades in over 300 ms, the lid is a steady red line, the card at the same 1000 ms                                                                                                                                                                                                                                                                                                                |
 
 - **Engine.** `land` is the one engine change: a falling piece's first contact records the piece in the contact callback (one push) and `step()` emits `{ type: "land", id, tier, x, y, speed }` after that step, `speed` being its speed before the contact. Nothing else changes: same merges, score and positions, and the sim smoke baseline is unchanged.
 - **Thread.** The JS loop pushes the step's moments into a 32-slot ring (`motionLog.ts`) and publishes one copy per frame when something was pushed (`useBoardMotion`). A UI-thread frame callback stamps new slots with its own motion clock (at most 34 ms a frame, so a stall only delays motion), integrates the danger phase, and switches itself off when nothing plays: no frame callback runs on an idle board. The board's Picture closes over these shared values (`worklets.test.ts`) and draws them in `render/drawMotion.ts` (worklets, no blur or gradient, no path built per frame, one reused paint). Peak cost is a 4-chain: about 56 extra draws for the pops plus the counter.
@@ -154,7 +336,7 @@ The lid is the line at `OVERFLOW_LINE_Y` (y = 80 of the 600-unit world). The rul
 - **Regression.** `__tests__/engine.sim.test.ts` runs a bot tapping every 200–250 ms at random x on fixed seeds; it must lose within 120 simulated seconds at 60 and 120 Hz. On #3920's ladder, physics and danger rules it loses in 48–72 s (seeds 1–5: 65.4, 55.3, 60.6, 68.5, 72.0 s at 60 Hz; 57.3, 48.2, 71.8, 51.8, 54.6 s at 120 Hz) and never wins. The longest of the 100-seed suite is 84.9 s at 60 Hz and 84.4 s at 120 Hz, so the bound has about 40 % headroom (#3904: 20 %, longest 99.3 / 100.0 s; #3697: 14 %; Matter.js: 1.6x).
 - **Danger rules and mashing (#3904).** The lid's countdown (3 s) and merge grace (1 s) are unchanged; the spawner's danger mode changed twice. Shortening the countdown or the grace could not end a mashing game sooner: in the one spam game that outlived the bound on the first #3904 tuning (seed 72 at 60 Hz) the pile first reaches the lid at about 113 s and keeps dipping back under it, so even a 1.5 s countdown with no merge grace left it alive at 120 s. What kept it alive was danger mode's boost of the small tiers (x1.5 for tiers 0-2), which fed a near-lid pile a stream of easy merges; #3904 removed it. Review then found that the penalty on the big tiers rounded and floored at weight 1, which left tier 7 (weight 1) unpenalised; a plain x0.2 on tiers 3-7 fixed that but left the spam bot's longest game at 116.4 s. So tiers 3-6 are scaled by `DANGER_PENALTY` (0.2) and the top tier, the Coconut / Uranus, by its own milder `DANGER_PENALTY_TOP` (0.35, owner decision on PR #3919). Sweep on the 100-seed spam suite, longest game at 60 / 120 Hz (no spam game won in any): x0.2 110.0 / 116.4 s; **x0.35 99.3 / 100.0 s**; x0.5 100.7 / 96.8 s; x0.7 90.5 / 85.0 s. The skilled bot won 50 % at both 0.35 and 0.5 (heuristic 30 % / 29 %). 0.35 keeps the top tier clearly rarer in danger than calm (6.4 % of draws against 8.0 %; at 0.5 it is 7.8 %, a hair under, and at 0.7 it would come more often in danger); `sim.test.ts` asserts it is under 90 % of its calm share. A careful player barely sees danger: the skilled bot drops in danger mode for 9.6 % of its drops, and the lid's countdown runs in 50 of 100 games, all of them lost, 1.3 times a game, 0.7 % of the time; the heuristic bot never reached the danger band in 100 games of 180 s. The win rates moved within sampling error (skilled 52 % before the danger changes, 50 % after; heuristic 26 % to 30 %). The danger ring is unchanged (it shows the same 3 s count). **#3920** kept the same intent on its 0-5 drops: tiers 2-4 x0.2 and the top tier (5, Apple / Neptune) x0.35, unrounded. With the single-capstone win and drops 0-5 the spam bot loses by 84.9 / 84.4 s and never wins (drops 0-6 let it win 3 games of 100, one reason the owner chose 0-5); the top tier comes 8.4 % of draws in danger against 10.2 % calm.
 
-## Client-Side Engine
+### Client-Side Engine
 
 All game logic is client-side and offline-capable. Each game reaches the backend as a session row with its events; see [Scoring](#scoring-persistence).
 
@@ -189,6 +371,11 @@ All game logic is client-side and offline-capable. Each game reaches the backend
 | `sounds.ts`                                                                                                     | The sound registry, one set of 21 per piece set, and which file an event plays (#3702)                                                                                       |
 | `soundPacer.ts`                                                                                                 | The sound pacing: timers, chain steps, the danger tick locked to the blink (#3702)                                                                                           |
 | `useCascadeSounds.ts`                                                                                           | The active set's sound players on the shared pool, mute (#3702)                                                                                                              |
+| `aim.ts`, `render/drawAim.ts`                                                                                   | The aim state machine (tap, drag, cancel) and the landing-point cast; the UI-thread worklet that draws the dashed guide and ghost (#3928)                                    |
+| `lidVisuals.ts`                                                                                                 | Worklet mappings from `dangerRatio` and `canDrop` to the lid line, clock ring, wash and waiting ghost (#3694)                                                                |
+| `winTail.ts`                                                                                                    | How long the frame loop runs on after the `win` event so the capstone finishes growing (#3699)                                                                               |
+| `timeBonus.ts`, `resultBlock.ts`, `useCascadeClock.ts`                                                          | The display-only mirror of the server's time bonus; the result block of a completion, an abandon and the unmount snapshot; the monotonic play clock (#3700, #3925)           |
+| `sim/`                                                                                                          | The headless sim harness and its baseline; see Sim harness                                                                                                                   |
 
 ### Physics
 
@@ -314,6 +501,8 @@ All 22 pieces are drawn in code (and three retired ones are kept as recipes, see
 
 A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TICKS` (120 ticks, ~2 s). The combo counter resets on each drop. The window is counted in fixed physics steps, so it is 2 s of simulated time at any frame rate (it used to be counted per frame: 2 s at 60 Hz, 1 s at 120 Hz).
 
+The screen does not consume `cascadeCombo`: nothing in `CascadeScreen` or the components listens for it. What the player sees as a combo is the chain counter (merges since the last drop, [Motion and haptics](#motion-and-haptics-3701)), which the screen counts itself. The event is engine API and test surface only.
+
 ### Sim harness (`sim/`, #2893)
 
 A seeded, headless sim in `frontend/src/game/cascade/sim/` plays the real `CascadeEngine`, spawn selector and queue (`createPieceQueue` / `advanceQueue`, fed by the shared seeded RNG) the way `CascadeScreen` does: taps are gated by `canDrop()`, `isInDanger` comes from the pile height. It is the measuring tool for the physics spike (#3696), the physics story (#3697), the lid (#3694) and the tier ladder (#3695). Same seed, bot, frame rate and engine give the same metrics (step cost aside).
@@ -359,7 +548,7 @@ Baseline today (#3920: the 11-tier 11.5-98 ladder, drops 0-5, making the capston
 - `looksValid()` type guard runs strict validation on load; corrupt saves are wiped cleanly
 - Sentry is notified on any storage error
 
-## Backend
+### Backend module (reference)
 
 - Module: `backend/cascade/module.py`
 - Endpoints: none of its own — the generic `/games` routes. The legacy `PATCH /cascade/score/{game_id}` and `GET /cascade/scores` were removed in #2644.
@@ -368,7 +557,7 @@ Baseline today (#3920: the 11-tier 11.5-98 ladder, drops 0-5, making the capston
 - Time bonus: `backend/cascade/time_bonus.py`, the one source of truth; `CascadeModule.derive_final_score` stores merge score + bonus.
 - Scoring: see [Scoring](#scoring-persistence)
 
-## Scoring (Persistence)
+### Scoring (Persistence)
 
 - **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/cascade/module.py`; `BOARDS.cascade` in `frontend/src/api/vocab.ts`). Since #3700 it is the **merge score plus a win's time bonus**, computed by the server. The merge score is the points at game over: for each merge the engine (`engine.ts`) adds the new piece's `score` from `tiers.ts`.
 - **Time bonus (#3700, owner decision 2026-11-16, "Balanced").** `time_bonus = round(20000 × max(0, 1 − t / 360000))` for a win, 0 for a loss, where `t` is the completion's `duration_ms` (active play, see Duration). `B` = 20,000, `T` = 6 min. Rounding is half up in integer arithmetic on both sides, so the app and the server agree to the point.
@@ -404,20 +593,12 @@ Built by `cascadeResultBlock` (`frontend/src/game/cascade/resultBlock.ts`) for t
 - **How it reaches the server:** the `useGameSync("cascade")` session row. `SyncWorker` sends `POST /games` after the first drop (`markStarted`) and `PATCH /games/{id}/complete` at game over. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best game once. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the result card shows the rank through `lookupGameRank` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu: the shared Stats screen shows Cascade's wins, losses, win rate and win streaks (`has_winner`) and Best (the highest score, bonus included). A "Fastest Win" tile (m:ss) shows `best_win_ms` (#3927): the minimum `duration_ms` over `win` rows, ignoring wins under `MIN_WIN_MS` (20 s); the tile is hidden when it is null. `best_win_ms` is client-reported (`duration_ms`) and protected only by the per-game floor; it is private to `/stats/me`, and needs a server-side bound before it is ever shown to other players or used on a board. The time of each win is also in `duration_ms` and on the win card. Store builds hide Cascade (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
 
-## Accessibility
+### Known limitations and open items
 
-Cascade uses a Skia canvas for rendering. The native accessibility tree does not include canvas content. Requirements:
-
-- Current score must be displayed in a native `Text` element outside the canvas
-- Game-over state must be announced via an accessible modal or live region
-- Canvas element marked `accessible={false}`
-
-See [`docs/ACCESSIBILITY.md §4`](../ACCESSIBILITY.md#4-screen-readers) for the full canvas accessibility contract.
-
-## Entitlement
-
-Tier TBD. If premium: requires a valid entitlement JWT; see [`docs/ARCHITECTURE.md §10`](../ARCHITECTURE.md#10-premium-entitlements).
-
-## Known Issues / Limitations
-
-- None tracked at this time
+- **Device checks pending (owner's Manual QA).** Frame time with a full bin, the step bench (`Step bench` in the dev panel), bitmap build time on open, tablet sharpness, the Picture recorded on the UI thread against the headless comparison, and the celebration's frame readout (#2960, #3924).
+- **Replays across engines.** Bit-exact replay holds on one JS engine only (see [Physics](#physics)).
+- **`best_win_ms`** is client-reported and private to `/stats/me` until it has a server-side bound (#3927).
+- **Per-tier merge scores** are still labelled provisional in `tiers.ts`.
+- **Translations.** The English copies in other locales await translation (`scripts/i18n-english-copies.json`).
+- **Web keyboard play and Reduce Motion physics** are deviations from the shared accessibility rules, listed in section 14.
+- **Shipping.** The game stays disabled in store builds until #3703.
