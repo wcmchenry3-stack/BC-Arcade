@@ -252,7 +252,7 @@ describe("density per tier", () => {
     expect(ratio).toBeCloseTo((tierRadius(CAPSTONE_TIER) / tierRadius(0)) ** 1.5, 6);
     // #3920: 24.9 : 1 on the 11.5-98 ladder (87 : 1 on #3904's 5-98; 73 : 1 at one density for
     // every tier). Flattening it cost the win rate more than it helped the overlap (#3904):
-    // docs/games/cascade.md#physics.
+    // docs/games/cascade-decisions.md#physics.
     expect(ratio).toBeCloseTo(24.9, 1);
     engine.destroy();
   });

@@ -25,7 +25,7 @@ export const PX_PER_M = 50;
  * steps of FIXED_STEP_MS / PLANCK_STEPS_PER_FIXED_STEP, each with these solver iterations, and
  * planck's position correction (Baumgarte) removes POSITION_BAUMGARTE of an overlap per pass
  * instead of 0.2. The deepest overlap of a skilled game fell from 9.4 px (median) to 2.5. The
- * levers, what each did and what it cost: docs/games/cascade.md#physics.
+ * levers, what each did and what it cost: docs/games/cascade-decisions.md#physics.
  *
  * Not MAX_SUBSTEPS: that caps how many fixed steps one frame may run; this is how many planck
  * world steps make up one fixed step.

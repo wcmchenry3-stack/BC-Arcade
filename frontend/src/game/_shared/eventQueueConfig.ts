@@ -431,7 +431,7 @@ export const CASCADE_MERGE_MAX_BYTES = 1024;
 
 /**
  * Cascade (#3858): the most one recorder session's events add up to (JSON length). A typical
- * 3-4 minute game is 4-6 KB, a 10-minute one about 11 KB (docs/games/cascade.md#replay-recording),
+ * 3-4 minute game is 4-6 KB, a 10-minute one about 11 KB (docs/games/cascade-decisions.md#replay-recording-3858),
  * so this is about half an hour of play; past it the rest of the session is dropped (a clean
  * prefix), reported once, and counted in the game_ended replay summary (`x`).
  */

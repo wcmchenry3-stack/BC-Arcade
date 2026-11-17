@@ -1,3 +1,5 @@
+> **Research record, not canonical.** This file is a research or design record kept for its reasoning. It does not define Cascade's rules and parts of it describe designs that no longer exist. The canonical, current specification is [`docs/games/cascade.md`](../games/cascade.md).
+
 > **Historical research, not the current contract.** It describes the old Matter.js engine; since #3697 Cascade runs on planck.js. Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the rework is tracked in epic #3033.
 
 # Cascade Physics — Architecture & Developer Reference
@@ -222,7 +224,7 @@ Seeds the seeded RNG used by `FruitQueue` to produce the next-fruit sequence. Mu
 
 ### Checklist: what the sim harness covers (#2893)
 
-The UC1-UC6 scenarios as a checklist for the Cascade sim harness (`frontend/src/game/cascade/sim/`, see [`docs/games/cascade.md`](../games/cascade.md#sim-harness-sim-2893)). This research doc is historical; the harness measures today's engine.
+The UC1-UC6 scenarios as a checklist for the Cascade sim harness (`frontend/src/game/cascade/sim/`, see [`docs/games/cascade.md`](../games/cascade-decisions.md#sim-harness-sim-2893)). This research doc is historical; the harness measures today's engine.
 
 - [x] **UC1** settling, air friction, sleeping: settle time after a drop, jitter of settled pieces (px/s), packing density.
 - [x] **UC2** merge correctness and spawn pop: `contactPair` (1 px contact) merge test at 60 and 120 Hz; deepest overlap and visible gap per game; guard-rail events (the NaN / out-of-bounds guards of S11) counted, never acted on.

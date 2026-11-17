@@ -2,7 +2,7 @@
  * Cascade's replay recording (#3858, epic #3273): what a game records on the shared
  * `GameRecorder`, and how a recorded game is rebuilt.
  *
- * What is recorded (docs/games/cascade.md#replay-recording):
+ * What is recorded (docs/games/cascade-decisions.md#replay-recording-3858):
  *  - `game_started` (`startedData`): the piece set, the queue seed, the engine seed (the drop
  *    nudge's RNG), the physics tuning id and `engine_version`. The app version is not recorded
  *    yet (#3942, for every game); the golden fixture, recorded before, still carries one.

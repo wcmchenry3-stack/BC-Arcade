@@ -400,7 +400,7 @@ Before #3698: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against t
 
 ### Cascade code-drawn art (#3698)
 
-The pieces (24 then, 22 since #3920) are drawn in code (`frontend/src/game/cascade/art/`); the sprite folders, `cascade_icon_masters/`, `images.ts` and the bake scripts are deleted. How the art works: [Cascade, Art (#3698)](games/cascade.md#art-3698).
+The pieces (24 then, 22 since #3920) are drawn in code (`frontend/src/game/cascade/art/`); the sprite folders, `cascade_icon_masters/`, `images.ts` and the bake scripts are deleted. How the art works: [Cascade, Art (#3698)](games/cascade-decisions.md#art-3698).
 
 | Measure                                                                |             Value |
 | ---------------------------------------------------------------------- | ----------------: |
@@ -1188,7 +1188,7 @@ pass count unchanged (179 vs 179–180); on the idle container `dev` measured 63
 
 ## Cascade renderer (#2960)
 
-Before #2960 Cascade's RAF loop called `setScore`, `setPieces`, `setDangerRatio` and `setCanDrop` every frame, and the engine built a new pieces array per `getState()`, so the whole screen committed 60 times a second even with every piece asleep. Now the loop reads the engine into a reused state, publishes a packed frame to a shared value only when something drawn changed, and the board's Skia Picture records on the UI thread (see [games/cascade.md](games/cascade.md#rendering-2960)). A headless CanvasKit comparison of the old and new renderers on real engine states was pixel-identical; it ran on one thread, so device rendering is still unverified (owner follow-up, with the device numbers below).
+Before #2960 Cascade's RAF loop called `setScore`, `setPieces`, `setDangerRatio` and `setCanDrop` every frame, and the engine built a new pieces array per `getState()`, so the whole screen committed 60 times a second even with every piece asleep. Now the loop reads the engine into a reused state, publishes a packed frame to a shared value only when something drawn changed, and the board's Skia Picture records on the UI thread (see [games/cascade.md](games/cascade-decisions.md#rendering-2960)). A headless CanvasKit comparison of the old and new renderers on real engine states was pixel-identical; it ran on one thread, so device rendering is still unverified (owner follow-up, with the device numbers below).
 
 React commits of the Cascade screen, counted with React's `Profiler` in `src/screens/__tests__/CascadeScreen.frames.test.tsx` (engine stand-in, one `act()` per frame, so each frame commits as it would on a device):
 
@@ -1211,7 +1211,7 @@ Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`)
 
 ## Cascade on web (CanvasKit, #2960)
 
-On web Cascade draws with Skia's web runtime, CanvasKit (how and why: [games/cascade.md](games/cascade.md#rendering-2960)). Measured on the web export (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`, 2026-11-12, `canvaskit-wasm` 0.41.0 for `@shopify/react-native-skia` 2.14.0):
+On web Cascade draws with Skia's web runtime, CanvasKit (how and why: [games/cascade.md](games/cascade-decisions.md#rendering-2960)). Measured on the web export (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`, 2026-11-12, `canvaskit-wasm` 0.41.0 for `@shopify/react-native-skia` 2.14.0):
 
 | What                                                                                           |         Raw |     gzip -9 | When it downloads                                                                                          |
 | ---------------------------------------------------------------------------------------------- | ----------: | ----------: | ---------------------------------------------------------------------------------------------------------- |
@@ -1228,7 +1228,7 @@ On web Cascade draws with Skia's web runtime, CanvasKit (how and why: [games/cas
 
 ## Cascade physics step cost (#3697)
 
-Cascade's physics moved from Matter.js to planck.js 1.4.2 (#3697, the owner's "3 lively" tuning; [games/cascade.md](games/cascade.md#physics)). Box2D's solver costs more per piece than Matter's, and the smaller ladder lets a board hold more pieces (lively's random and spam games reach 70-90 against 45-50 before), so the step is the number to watch on a phone. Nothing new runs on the frame path for measurement: the sim measures from outside the engine, and the bench below runs only when pressed.
+Cascade's physics moved from Matter.js to planck.js 1.4.2 (#3697, the owner's "3 lively" tuning; [games/cascade.md](games/cascade-decisions.md#physics)). Box2D's solver costs more per piece than Matter's, and the smaller ladder lets a board hold more pieces (lively's random and spam games reach 70-90 against 45-50 before), so the step is the number to watch on a phone. Nothing new runs on the frame path for measurement: the sim measures from outside the engine, and the bench below runs only when pressed.
 
 **Bench protocol** (`frontend/src/game/cascade/stepBench.ts`, the #3696 spike's): merges and the lid off, tier-0 and tier-1 pieces dropped every 250 ms across the bin, one `step(1000 / 60)` per frame, timed from the (n - 4)th piece to 3 s after the last; best of 5 runs here. `node --jitless` (V8's interpreter) is a rough stand-in for Hermes; a shared 4-core container, so compare ratios, not absolutes.
 

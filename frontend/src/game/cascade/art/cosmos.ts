@@ -391,7 +391,7 @@ export const COSMOS_ART: ArtSet = {
   pieces: [pluto, mercury, mars, venus, earth, neptune, uranus, saturn, jupiter, sun, milkyWay],
   ink: T.ink,
   closedEyes: true,
-  // #3920: kept as a recipe, never drawn in play (docs/games/cascade.md#retired-pieces-3920).
+  // #3920: kept as a recipe, never drawn in play (docs/games/cascade-decisions.md#retired-pieces-3920).
   retired: {
     moon: { art: moon, ink: T.retiredInk.moon, was: "tier 0; removed from the ladder by #3920" },
   },

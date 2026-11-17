@@ -436,7 +436,7 @@ export const FRUIT_ART: ArtSet = {
   ],
   ink: T.ink,
   closedEyes: false,
-  // #3920: kept as recipes, never drawn in play (docs/games/cascade.md#retired-pieces-3920).
+  // #3920: kept as recipes, never drawn in play (docs/games/cascade-decisions.md#retired-pieces-3920).
   retired: {
     peach: { art: peach, ink: T.retiredInk.peach, was: "tier 6; removed from the ladder by #3920" },
     appleRed: {

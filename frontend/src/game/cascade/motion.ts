@@ -24,7 +24,7 @@
 export const MOTION = {
   /** Landing squash: a damped spring, squash then a little stretch, scaled by tier and speed. */
   land: {
-    /** Squash at tier 0 and per tier: 7 % for a Cherry, 18 % for a Watermelon. */
+    /** Squash at tier 0 and per tier: 7 % for a Cherry, 13 % for the largest droppable piece (tier 5). */
     squash0: 0.07,
     squashPerTier: 0.012,
     /** Width grows by this much of the height's squash (area roughly kept). */

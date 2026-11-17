@@ -1,8 +1,10 @@
+> **Design record, not canonical.** This log keeps the reasoning behind Cascade's sounds. What plays when, and every rule, is in the canonical specification: [Sound in the decision log](cascade-decisions.md#sound-3702) and [Audio and accessibility](cascade.md#12-audio-and-accessibility).
+
 # Cascade sound design log (#3702)
 
 This log explains why Cascade's sound effects sound the way they do: the owner's brief, the options auditioned, what was picked and why, and the feedback that shaped it. The other games have their own logs: [`arcade-sound-design.md`](arcade-sound-design.md) (card games, #3563), [`puzzle-sound-design.md`](puzzle-sound-design.md) (puzzle, tile and dice games, #3578) and [`starswarm-sound-design.md`](starswarm-sound-design.md) (#3560).
 
-The **recipes** live in `tools/assets/synth_cascade_sfx.py`, with the shared building blocks in `tools/assets/synth_common.py` (and the glass bell and die tick of `synth_puzzle_sfx.py`). Each file's credit and one-line recipe is in `frontend/assets/sounds/SOUND_CREDITS.md`. What plays when is in [Cascade's Sound section](cascade.md#sound-3702). This log keeps the **reasoning**. Add an entry for every sound you change.
+The **recipes** live in `tools/assets/synth_cascade_sfx.py`, with the shared building blocks in `tools/assets/synth_common.py` (and the glass bell and die tick of `synth_puzzle_sfx.py`). Each file's credit and one-line recipe is in `frontend/assets/sounds/SOUND_CREDITS.md`. What plays when is in [Cascade's Sound section](cascade-decisions.md#sound-3702). This log keeps the **reasoning**. Add an entry for every sound you change.
 
 ## Brief
 

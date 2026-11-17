@@ -620,7 +620,7 @@ Every game screen starts with a block comment of roughly 10–18 lines. It names
  */
 ```
 
-Keep it a list of what the screen wires, not a description of the game (that is [`docs/games/<game>.md`](games/), which links back to the screen). Update the header when a concern moves into or out of the file. Cascade's screen has none: it is pending its rework in epic #3033.
+Keep it a list of what the screen wires, not a description of the game (that is [`docs/games/<game>.md`](games/), which links back to the screen). Update the header when a concern moves into or out of the file. Cascade's screen header (`CascadeScreen.tsx`) lists its ten concerns.
 
 ---
 

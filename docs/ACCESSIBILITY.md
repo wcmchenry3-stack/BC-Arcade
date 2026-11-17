@@ -37,7 +37,7 @@ BC Arcade uses React Native Reanimated and Matter.js physics. Both must respect 
   - **Event overlays and long-running sequences** (celebrations, Hearts/FreeCell event overlays, win cascades, Sort's pour) must react mid-sequence: cancel the running sequence (including its timers), clear any frame it left behind, and take the reduced path. Overlays do this by starting their timers with `playTimedPhases` (`components/shared/timedPhases.ts`) from the same effect that starts the animation, keyed on `reduceMotion`.
   - **Short animations started by one action** (a score pop, a die roll, a merge burst, a tile-match flight, a board shake or zoom-to-fit) read the setting when the action happens, so a change applies from the next action. They need no cancellation code.
 - An animation that starts the moment it mounts (a win celebration) must not start on a stale value: `useReduceMotion()` starts from the value another mounted consumer is tracking, else from the launch-time value, which can be out of date. Gate such a mount on `useReduceMotionStatus().known`, as `SolitaireWinCascade` does.
-- Physics simulations (Cascade) must resolve immediately to final state when reduce motion is active — no dropping, bouncing, or sliding.
+- Cascade: falling and settling pieces are gameplay, not decoration, so the physics always runs, whatever the setting. All decorative motion (squash, dust, merge bursts, chain pops, the win rise, the danger blink) takes the calm path. See [Cascade, section 14](games/cascade.md#14-deviations-from-shared-standards).
 - Do not auto-play looping animations that cannot be paused.
 - Avoid content that flashes more than 3 times per second (seizure risk).
 
@@ -114,20 +114,20 @@ Run this before shipping any new game or screen.
 
 ## 8. Per-Game Notes
 
-| Game        | Canvas?            | Known accessibility work                                                         |
-| ----------- | ------------------ | -------------------------------------------------------------------------------- |
-| Yacht       | No                 | Done (#3748): dice say face and held; rows say score or potential                |
-| Hearts      | No                 | Card labels must include suit + rank (e.g. "Queen of Spades")                    |
-| Blackjack   | No                 | Card labels must include suit + rank; chip count must use live region            |
-| Solitaire   | No                 | Pile positions and card labels required                                          |
-| Sudoku      | No                 | Done (#3773, #3774): labels, keys; Reduce Motion stills all motion               |
-| Cascade     | Yes (Skia)         | Score + game state must have native text overlay; Keyboard aiming on web (#3934) |
-| 2048        | No                 | Done (#2222): merge announced on iOS/Android only (web pending)                  |
-| FreeCell    | No                 | Same card label convention as Solitaire; Large cards setting (#3347)             |
-| Mahjong     | Yes (Skia, native) | Same overlay requirement as Cascade                                              |
-| Bottle Sort | No                 | Bottle contents must be labeled by color sequence                                |
-| Daily Word  | No                 | Done (#2222): tile labels give row, column, letter and result (i18n)             |
-| Starswarm   | Yes (Skia)         | Score + state overlay required; no keyboard equivalent yet                       |
+| Game        | Canvas?            | Known accessibility work                                              |
+| ----------- | ------------------ | --------------------------------------------------------------------- |
+| Yacht       | No                 | Done (#3748): dice say face and held; rows say score or potential     |
+| Hearts      | No                 | Card labels must include suit + rank (e.g. "Queen of Spades")         |
+| Blackjack   | No                 | Card labels must include suit + rank; chip count must use live region |
+| Solitaire   | No                 | Pile positions and card labels required                               |
+| Sudoku      | No                 | Done (#3773, #3774): labels, keys; Reduce Motion stills all motion    |
+| Cascade     | Yes (Skia)         | Native score overlay; keyboard aim and drop on web done (#3934)       |
+| 2048        | No                 | Done (#2222): merge announced on iOS/Android only (web pending)       |
+| FreeCell    | No                 | Same card label convention as Solitaire; Large cards setting (#3347)  |
+| Mahjong     | Yes (Skia, native) | Same overlay requirement as Cascade                                   |
+| Bottle Sort | No                 | Bottle contents must be labeled by color sequence                     |
+| Daily Word  | No                 | Done (#2222): tile labels give row, column, letter and result (i18n)  |
+| Starswarm   | Yes (Skia)         | Score + state overlay required; no keyboard equivalent yet            |
 
 ---
 
