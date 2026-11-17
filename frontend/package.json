@@ -136,7 +136,6 @@
     "expo": "~57.0.32",
     "expo-audio": "~57.0.5",
     "expo-blur": "~57.0.3",
-    "expo-constants": "~57.0.24",
     "expo-dev-client": "~57.0.21",
     "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",

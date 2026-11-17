@@ -4,7 +4,8 @@
  *
  * What is recorded (docs/games/cascade.md#replay-recording):
  *  - `game_started` (`startedData`): the piece set, the queue seed, the engine seed (the drop
- *    nudge's RNG), the physics tuning id, `engine_version` and the app version.
+ *    nudge's RNG), the physics tuning id and `engine_version`. The app version is not recorded
+ *    yet (#3942, for every game); the golden fixture, recorded before, still carries one.
  *  - One unit per `CASCADE_DROPS_PER_UNIT` drops (or fewer, when the game ends or the app goes
  *    to the background): a `drop` event, `{ d: [[step, x_tenths, tier], ...], z?: [[start,
  *    peak], ...], rs?: 1 }`, and a `merge` event, `{ m: [[step, tierFrom, chain], ...] }`.
@@ -76,14 +77,9 @@ export type CascadeStarted = {
   readonly engine_seed: number;
   readonly tuning: string;
   readonly engine_version: number;
-  readonly app_version: string;
 };
 
-export function startedData(
-  pieceSet: string,
-  seeds: CascadeSeeds,
-  appVersion: string
-): CascadeStarted {
+export function startedData(pieceSet: string, seeds: CascadeSeeds): CascadeStarted {
   return {
     fruit_set: pieceSet,
     theme: pieceSet,
@@ -91,7 +87,6 @@ export function startedData(
     engine_seed: seeds.engine,
     tuning: CASCADE_TUNING_ID,
     engine_version: ENGINE_VERSION,
-    app_version: appVersion,
   };
 }
 

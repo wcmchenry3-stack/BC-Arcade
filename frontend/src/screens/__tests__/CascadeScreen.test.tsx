@@ -29,7 +29,6 @@ import * as celebrationHook from "../../components/cascade/useCelebrationStyle";
 import { CELEBRATION_MAX_MS } from "../../components/shared/GameResultModal";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
 import { CASCADE_TUNING_ID, GROW_IN_STEPS } from "../../game/cascade/constants";
-import { APP_VERSION } from "../../config/appVersion";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import { timeBonus } from "../../game/cascade/timeBonus";
 import i18n from "i18next";
@@ -501,7 +500,6 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
       engine_seed: expect.any(Number),
       tuning: CASCADE_TUNING_ID,
       engine_version: 1,
-      app_version: APP_VERSION,
     });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);

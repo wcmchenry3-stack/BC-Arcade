@@ -63,7 +63,7 @@ const speedPxS = (p: PieceSnapshot) =>
 /** Plays the game into `sink`. The caller closes nothing: the last unit is handed over here. */
 export function playRecordedGame(sink: CascadeRecordSink, opts: RecordedGameOptions): RecordedGame {
   const { seeds, bot } = opts;
-  const started = startedData(opts.pieceSet ?? "fruits", seeds, "1.0.0");
+  const started = startedData(opts.pieceSet ?? "fruits", seeds);
   const log = createCascadeLog(sink);
   log.start();
   const engine = new CascadeEngine({ seed: seeds.engine });

@@ -89,15 +89,18 @@ def test_every_event_the_app_builds_validates_and_is_stored_as_sent(sent: list) 
 
 def test_game_started_carries_the_seeds_tuning_and_engine_version() -> None:
     data = _game()["game_started"]
-    assert set(data) == {
+    # `app_version` is optional: the fixture was recorded with one, and the app records none
+    # until #3942 (lifecycle data is stored as sent either way).
+    assert set(data) - {"app_version"} == {
         "fruit_set",
         "theme",
         "seed",
         "engine_seed",
         "tuning",
         "engine_version",
-        "app_version",
     }
+    without = {k: v for k, v in data.items() if k != "app_version"}
+    assert cascade_module.validate_event("game_started", copy.deepcopy(without)) == without
     assert data["engine_version"] == CURRENT_ENGINE_VERSIONS["cascade"] == 1
     assert cascade_module.validate_event("game_started", copy.deepcopy(data)) == data
 

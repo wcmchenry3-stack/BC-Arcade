@@ -101,8 +101,9 @@ def render(events: Iterable[tuple[str, Any]]) -> list[str]:
         lines.append(
             "  started    "
             f"pieces {printable(s.get('fruit_set'))}, queue seed {printable(s.get('seed'))}, "
-            f"engine seed {printable(s.get('engine_seed'))}, tuning {printable(s.get('tuning'))}, "
-            f"app {printable(s.get('app_version'))}"
+            f"engine seed {printable(s.get('engine_seed'))}, tuning {printable(s.get('tuning'))}"
+            # builds before #3942 record no app version (the golden fixture has one)
+            + (f", app {printable(s['app_version'])}" if "app_version" in s else "")
         )
     else:
         lines.append("  started    no game_started")

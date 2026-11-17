@@ -67,15 +67,14 @@ describe("quantizeX and the seeds", () => {
     expect(Number.isInteger(live.engine) && live.engine > 0).toBe(true);
   });
 
-  it("game_started carries the piece set, both seeds, the tuning, engine_version and the app version", () => {
-    expect(startedData("cosmos", { queue: 5, engine: 9 }, "1.2.3")).toEqual({
+  it("game_started carries the piece set, both seeds, the tuning and engine_version (no app version yet, #3942)", () => {
+    expect(startedData("cosmos", { queue: 5, engine: 9 })).toEqual({
       fruit_set: "cosmos",
       theme: "cosmos",
       seed: 5,
       engine_seed: 9,
       tuning: CASCADE_TUNING_ID,
       engine_version: 1,
-      app_version: "1.2.3",
     });
     expect(ENGINE_VERSION).toBe(1);
   });
@@ -396,7 +395,7 @@ describe("the engine's step counter and danger events", () => {
 });
 
 describe("rebuild refuses what it cannot replay", () => {
-  const started = startedData("fruits", { queue: 3, engine: 4 }, "1.0.0");
+  const started = startedData("fruits", { queue: 3, engine: 4 });
   const drop = (d: unknown, extra: Record<string, unknown> = {}) => ({
     type: "drop",
     data: { d, ...extra, v: 1, unit: 1, t_ms: 0 },

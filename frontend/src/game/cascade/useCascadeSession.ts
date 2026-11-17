@@ -17,7 +17,6 @@
  *     dial off for the session (`isRecording`), none of it runs.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { APP_VERSION } from "../../config/appVersion";
 import { useFlushOnBackground } from "../_shared/useFlushOnBackground";
 import { useGameRecorder } from "../_shared/useGameRecorder";
 import { getBest, judgeResult, recordResult } from "../_shared/personalBest";
@@ -121,7 +120,7 @@ export function useCascadeSession(inputs: CascadeSessionInputs) {
       mergeCountRef.current = 0;
       maxTierRef.current = 0;
       log.close(); // normally nothing: the last game's end handed its unit over
-      start(startedData(themeId, seedsRef.current, APP_VERSION));
+      start(startedData(themeId, seedsRef.current));
       log.start();
     },
     [start, clock, maxTierRef, log, seedsRef]

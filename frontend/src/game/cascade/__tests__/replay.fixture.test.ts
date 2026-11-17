@@ -116,7 +116,11 @@ describe("cascade_replay_v1.json", () => {
           .join(",\n")}\n ],\n "game_ended": ${JSON.stringify(fresh.game_ended)}\n}\n`
       );
     }
-    expect(read()).toEqual(JSON.parse(JSON.stringify(fresh)));
+    // The fixture's game_started has an `app_version` the app no longer records (dropped until
+    // #3942): an optional key that no replay reads, so it is left out of the comparison.
+    const pinned = read();
+    const { app_version: _appVersion, ...pinnedStart } = pinned.game_started;
+    expect({ ...pinned, game_started: pinnedStart }).toEqual(JSON.parse(JSON.stringify(fresh)));
   });
 
   it("rebuilds from its events alone to the hard-coded score, merges and outcome", () => {
