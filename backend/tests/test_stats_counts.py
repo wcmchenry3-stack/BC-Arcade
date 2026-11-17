@@ -17,6 +17,7 @@ from sqlalchemy import event, select
 from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from db.base import get_session_factory
 from db.models import Game, GameType
+from games import stats_columns
 from games.progression import compute_progression
 from games.stats import get_stats_for_session, win_streaks
 from games.stats_columns import MAX_TIME_PLAYED_PER_GAME_MS
@@ -645,3 +646,72 @@ async def test_best_win_ms_is_null_for_other_games() -> None:
     stats = await _stats(sid)
     assert stats.by_game["mahjong"].best_win_ms is None
     assert stats.by_game["cascade"].best_win_ms == 100_000
+
+
+async def test_best_win_ms_ignores_abandoned_rows() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="abandoned", duration_ms=_FLOOR + 1)
+    await _add(sid, "cascade", at=1, outcome="win", duration_ms=100_000)
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_ignores_an_unfinished_row() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=100_000)
+    factory = get_session_factory()
+    async with factory() as db:
+        gt_id = (
+            await db.execute(select(GameType.id).where(GameType.name == "cascade"))
+        ).scalar_one()
+        db.add(
+            Game(
+                session_id=sid,
+                game_type_id=gt_id,
+                started_at=_T0,
+                completed_at=None,
+                outcome="win",
+                duration_ms=_FLOOR + 1,
+                game_metadata={},
+            )
+        )
+        await db.commit()
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_ignores_a_dev_affected_run() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=100_000)
+    await _add(
+        sid,
+        "cascade",
+        at=1,
+        outcome="win",
+        duration_ms=_FLOOR + 1,
+        metadata={"dev_affected": True},
+    )
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_ignores_another_sessions_win() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=100_000)
+    await _add(_sid(), "cascade", at=1, outcome="win", duration_ms=_FLOOR + 1)
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_with_no_opted_in_games_is_null(monkeypatch) -> None:
+    monkeypatch.setattr(stats_columns, "_BEST_WIN_FLOORS_MS", {})
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=100_000)
+    assert (await _game(sid, "cascade")).best_win_ms is None
+
+
+async def test_stats_me_returns_best_win_ms(client: TestClient) -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=150_000)
+    await _add(sid, "cascade", at=1, outcome="win", duration_ms=80_000)
+    await _add(sid, "cascade", at=2, outcome="win", duration_ms=1_000)
+    await _add(sid, "mahjong", at=3, outcome="win", duration_ms=100_000)
+    by_game = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]
+    assert by_game["cascade"]["best_win_ms"] == 80_000
+    assert by_game["mahjong"]["best_win_ms"] is None

@@ -12,7 +12,7 @@ from __future__ import annotations
 import functools
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, case, func, or_
+from sqlalchemy import ColumnElement, and_, case, func, literal, or_
 
 from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from db.jsonx import json_number
@@ -141,6 +141,8 @@ def _best_win_ms() -> ColumnElement:
         (and_(GameType.name == name, Game.duration_ms >= floor), Game.duration_ms)
         for name, floor in _BEST_WIN_FLOORS_MS.items()
     ]
+    if not whens:  # no game opted in: ``case()`` needs at least one WHEN
+        return literal(None)
     return func.min(case((Game.outcome == _WIN, case(*whens))))
 
 
