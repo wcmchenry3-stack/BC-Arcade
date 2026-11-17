@@ -682,7 +682,10 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
       max_tier: expect.any(Number),
       won: false,
     });
-    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+    // #3858 (review S1): the unmount abandon's game_ended carries the end step too (the stand-in
+    // engine reports none: 0), never in the PATCH result.
+    expect(eventData).toEqual({ ...summary.result, end_step: 0, outcome: "abandoned" });
+    expect(summary.result).not.toHaveProperty("end_step");
   });
 
   // #2735: ⋯ → Stats/Leaderboard/Scoreboard covers the board; the loop and

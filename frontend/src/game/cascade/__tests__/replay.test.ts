@@ -162,15 +162,20 @@ describe("the replay log", () => {
     expect(units).toHaveLength(CASCADE_MAX_UNITS);
     expect(units.at(-1)!.n).toBe(CASCADE_MAX_UNITS);
     expect(log.endData(9)).toEqual({ end_step: 9, rec_cut: 3 });
-    expect(log.unitForSave()).toBe(CASCADE_MAX_UNITS);
+    expect(log.saveState()).toEqual({
+      unit: CASCADE_MAX_UNITS,
+      danger: 0,
+      unitsCut: 3,
+      dangerCut: 0,
+    });
   });
 
   it("a restored game numbers its units after the save's and marks the first one", () => {
     const { units, sink } = unitsSink();
     const log = createCascadeLog(sink);
     log.start();
-    log.restored(6);
-    expect(log.unitForSave()).toBe(7); // the restored mark waits as unit 7
+    log.restored({ unit: 6 });
+    expect(log.saveState().unit).toBe(7); // the restored mark waits as unit 7
     log.drop(12, 150, 1);
     log.close();
     expect(units[0]).toEqual({
@@ -182,10 +187,55 @@ describe("the replay log", () => {
     expect(units[1]!.n).toBe(8);
     expect(units[1]!.events[0]!.data).not.toHaveProperty("rs");
     // A save from an older build (no unit) or a lower one never moves the numbering back.
-    log.restored(Number.NaN);
-    log.restored(2);
+    log.restored(undefined);
+    log.restored({ unit: Number.NaN });
+    log.restored({ unit: 2 });
     log.close();
     expect(units[2]!.n).toBe(9);
+  });
+
+  it("a restored game keeps its per-game cap counts: they are not reset by the relaunch", () => {
+    const { units, sink } = unitsSink();
+    const before = createCascadeLog(sink);
+    before.start();
+    for (let i = 0; i < CASCADE_MAX_DANGER - 2; i += 1) before.danger(i, 50);
+    const saved = before.saveState();
+    expect(saved).toEqual({ unit: 1, danger: CASCADE_MAX_DANGER - 2, unitsCut: 0, dangerCut: 0 });
+    // The relaunch: a new log, started, then restored from the save.
+    const after = createCascadeLog(sink);
+    after.start();
+    after.restored(saved);
+    for (let i = 0; i < 5; i += 1) after.danger(1000 + i, 50);
+    after.close();
+    expect(units.at(-1)!.events[0]!.data.z).toHaveLength(2);
+    expect(after.endData(2000)).toMatchObject({ z_cut: 3 });
+  });
+
+  it("a test seam's reseed marks the next unit as not re-simulable", () => {
+    const { units, sink } = unitsSink();
+    const log = createCascadeLog(sink);
+    log.start();
+    log.drop(5, 100, 0);
+    log.markUnreplayable();
+    log.close();
+    expect(units[0]!.events[0]!.data).toEqual({ d: [[5, 1000, 0]], rs: 1 });
+  });
+
+  it("the engine's open danger moment is flushed when a game ends without the engine ending it", () => {
+    const engine = new CascadeEngine({ seed: 1 });
+    expect(engine.flushDanger()).toEqual([]);
+    const pieces: { tier: number; x: number; y: number }[] = [];
+    let bottom = WORLD_HEIGHT - FLOOR_THICKNESS;
+    for (const tier of [10, 9, 7, 4]) {
+      pieces.push({ tier, x: 121, y: bottom - tierRadius(tier) });
+      bottom -= 2 * tierRadius(tier);
+    }
+    engine.restore(pieces, 0);
+    for (let i = 0; i < 150; i += 1) engine.step(FIXED_STEP_MS);
+    const start = OVERFLOW_IGNORE_MERGE_TICKS + 1;
+    expect(engine.flushDanger()).toEqual([{ type: "danger", start, peak: 150 - start + 1 }]);
+    expect(engine.flushDanger()).toEqual([]); // closed: flushed once
+    engine.destroy();
   });
 
   it("start() clears the last game", () => {

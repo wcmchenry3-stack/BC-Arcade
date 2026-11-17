@@ -153,6 +153,11 @@ def _outcome_lines(story: CascadeStory) -> list[str]:
     outcome = printable(e.get("outcome"))
     when = f" at step {end_step} ({_seconds(end_step)} of play)" if end_step is not None else ""
     out.append(f"  outcome    {outcome}{when}")
+    if story.restored_units:
+        out.append(
+            f"  note       the board was restored before unit {story.restored_units[-1]}: steps "
+            "count from that restore, so the steps here are not the game's from its start"
+        )
     if capstone is not None:
         out.append(f"  capstone   made at step {capstone} ({_seconds(capstone)})")
     if lid is not None:

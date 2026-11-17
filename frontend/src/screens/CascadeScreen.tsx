@@ -227,7 +227,7 @@ function CascadeGame() {
       noteTier(tier); // the piece dropped: the first one starts the play clock (#3700)
       return tier;
     },
-    [motion, noteTier, sounds]
+    [motion, noteTier, sounds, queueRef, queueHistoryRef, queueRngRef, queueScriptRef]
   );
 
   useEffect(() => {
@@ -246,7 +246,7 @@ function CascadeGame() {
     playedMs: clock.elapsed,
     restartClock: clock.restore,
     resumeSession: rec.resume,
-    replayUnit: rec.unitForSave,
+    replayState: rec.saveState,
     setScore: scoreStore.set,
     queueChanged,
     noteTier,
@@ -612,6 +612,9 @@ function CascadeGame() {
     noteTier,
     consumeFromQueue,
     forceGameOver,
+    recordDrop: rec.drop,
+    seedsRef,
+    reseeded: rec.reseeded,
   });
 
   const handleRestart = () => startNewGame(activeFruitSetRef.current.id);

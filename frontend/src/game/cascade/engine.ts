@@ -788,6 +788,18 @@ export class CascadeEngine {
     this._dangerPeak = 0;
   }
 
+  /**
+   * The danger episode still running, if any, as a `danger` event with its peak so far, and the
+   * episode is closed (#3858): for a game that ends without the engine ending it (an abandon, a
+   * New Game), so its last danger moment is recorded. No physics changes; an empty list when no
+   * count is running.
+   */
+  flushDanger(): EngineEvent[] {
+    const events: EngineEvent[] = [];
+    this._endDanger(events);
+    return events;
+  }
+
   /** Fixed steps run since the engine was made (#3858): the step index a recorded drop carries. */
   get steps(): number {
     return this._steps;

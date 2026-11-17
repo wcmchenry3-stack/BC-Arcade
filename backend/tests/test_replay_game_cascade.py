@@ -75,3 +75,13 @@ def test_client_strings_are_printed_safely() -> None:
     report = _report(events)
     assert "\x1b" not in report
     assert 'tuning "\\u001b[31mred' in report
+
+
+def test_a_restored_game_says_its_steps_restart() -> None:
+    events = _events()
+    name, data = events[5]
+    assert name == "drop"
+    events[5] = (name, {**data, "rs": 1})
+    report = _report(events)
+    assert "restored   a relaunch restored the board before unit" in report
+    assert "note       the board was restored before unit" in report

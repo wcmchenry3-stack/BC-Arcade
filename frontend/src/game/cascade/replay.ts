@@ -11,7 +11,8 @@
  *    `step` is the engine's fixed-step index (`CascadeEngine.steps`), never wall time; `x` is in
  *    tenths of a pixel (the screen drops at exactly that x, `quantizeX`); `chain` counts the
  *    merges since the last drop, from 1; `z` holds the danger moments (the lid's overflow count
- *    ran from `start` to `peak` steps); `rs` marks the first unit after a restored game.
+ *    ran from `start` to `peak` steps); `rs` marks the first unit whose steps cannot be
+ *    re-simulated from `game_started`: after a restored game, or a test seam's reseed.
  *  - `game_ended` (`CascadeLog.endData`, beside #3700's result block): the step the game ended
  *    on, the step the capstone was made (a win), the first step the lid's count ran.
  *  - Rebuilding a recorded game: `rebuild.ts`.
@@ -115,17 +116,36 @@ export type CascadeEndData = {
   readonly z_cut?: number;
 };
 
+/**
+ * What a save carries of the log (#3858), so a relaunched game keeps its per-game counts: its
+ * unit number and the caps' counts (`SavedState.replay`, storage.ts).
+ */
+export interface CascadeLogSave {
+  /** The unit number: the last unit, plus the one waiting, if any. */
+  readonly unit: number;
+  /** Danger moments kept, of `CASCADE_MAX_DANGER`. */
+  readonly danger: number;
+  readonly unitsCut: number;
+  readonly dangerCut: number;
+}
+
 export interface CascadeLog {
   /** Where units go from now on (the recorder); returns the detach. Until then they are dropped. */
   attach(sink: CascadeRecordSink): () => void;
   /** A new game: everything is cleared and units number from 1. */
   start(): void;
   /**
-   * The game was restored from a save (#2654): its units continue after `savedUnit` (the units
-   * the earlier process may have saved), and the next unit is marked `rs` (its steps restart on
-   * a restored board, so it cannot be re-simulated).
+   * The game was restored from a save (#2654): its units continue after the save's (the units
+   * the earlier process may have saved), its cap counts carry on, and the next unit is marked
+   * `rs` (its steps restart on a restored board, so it cannot be re-simulated). A save from an
+   * older build has none of it: counted from where the log stands.
    */
-  restored(savedUnit: number): void;
+  restored(saved?: Partial<CascadeLogSave>): void;
+  /**
+   * The game's steps no longer follow from `game_started` (a test seam reseeded the queue and the
+   * engine mid-game): the next unit is marked `rs`, like a restore.
+   */
+  markUnreplayable(): void;
   drop(step: number, x: number, tier: number): void;
   /** A merge of two `tierFrom` pieces, in fixed step `step`. */
   merge(step: number, tierFrom: number): void;
@@ -133,8 +153,8 @@ export interface CascadeLog {
   danger(start: number, peak: number): void;
   /** Hands what is waiting to the recorder as one unit (nothing when nothing waits). */
   close(): void;
-  /** The unit number the save should carry: the last unit, plus the one waiting, if any. */
-  unitForSave(): number;
+  /** What a save carries (`CascadeLogSave`). */
+  saveState(): CascadeLogSave;
   endData(endStep: number): CascadeEndData;
 }
 
@@ -148,6 +168,7 @@ export function createCascadeLog(initialSink: CascadeRecordSink | null = null): 
   let dangerKept = 0;
   let dangerCut = 0;
   let unitsCut = 0;
+  /** The next unit is marked `rs` (a restore or a reseed). */
   let resumed = false;
   let capstoneStep: number | null = null;
   let lidStep: number | null = null;
@@ -198,8 +219,16 @@ export function createCascadeLog(initialSink: CascadeRecordSink | null = null): 
       capstoneStep = null;
       lidStep = null;
     },
-    restored(savedUnit) {
-      if (Number.isInteger(savedUnit) && savedUnit > unit) unit = savedUnit;
+    restored(saved) {
+      const count = (v: number | undefined, now: number) =>
+        Number.isInteger(v) && (v as number) > now ? (v as number) : now;
+      unit = count(saved?.unit, unit);
+      dangerKept = count(saved?.danger, dangerKept);
+      unitsCut = count(saved?.unitsCut, unitsCut);
+      dangerCut = count(saved?.dangerCut, dangerCut);
+      resumed = true;
+    },
+    markUnreplayable() {
       resumed = true;
     },
     drop(step, x, tier) {
@@ -223,7 +252,12 @@ export function createCascadeLog(initialSink: CascadeRecordSink | null = null): 
       danger.push([start, peak]);
     },
     close,
-    unitForSave: () => Math.min(unit + (pending() ? 1 : 0), CASCADE_MAX_UNITS),
+    saveState: () => ({
+      unit: Math.min(unit + (pending() ? 1 : 0), CASCADE_MAX_UNITS),
+      danger: dangerKept,
+      unitsCut,
+      dangerCut,
+    }),
     endData(endStep) {
       return {
         end_step: endStep,

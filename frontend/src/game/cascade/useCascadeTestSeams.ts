@@ -4,12 +4,18 @@
  * (`registerCascadeTestHooks`, #3693) and the demo set-ups the test controls run (#3719).
  *
  * Every hook goes through the screen's own refs and callbacks, so it runs the path the screen does.
+ * Replays (#3858): `dropAt` and `spawnTierAt` drop through the screen's recording (`recordDrop`,
+ * the same tenth-of-a-pixel x), and `setSeed` replaces the game's seeds, so `game_started` names
+ * the real ones (`reseeded`: before the first drop the game restarts with them; after it the next
+ * unit is marked as not re-simulable). The demo set-ups restore a pile, which the recording does
+ * not see: a game played from one is not re-simulable either.
  */
 import { useCallback, useEffect, type MutableRefObject } from "react";
 import type { CascadeEngine, EngineEvent, GameState } from "./engine";
 import { DANGER_STACK_MARGIN, OVERFLOW_LINE_Y } from "./constants";
 import { DROUGHT_WINDOW } from "./spawnSelector";
 import { createSeededRng, makeQueue, type PieceQueue } from "./pieceQueue";
+import type { CascadeSeeds } from "./replay";
 import { cascadeSetup, registerCascadeTestHooks, type CascadeSetupId } from "./testHooks";
 import type { FrameState } from "./render/frame";
 
@@ -38,6 +44,12 @@ export interface CascadeTestSeamDeps {
   readonly consumeFromQueue: (isInDanger: boolean) => number;
   /** Ends the game now, without the engine (the `triggerGameOver` hook and its button). */
   readonly forceGameOver: () => void;
+  /** The screen's recorded drop (#3858): logs it and returns the x to drop at. */
+  readonly recordDrop: (tier: number, x: number) => number;
+  /** The game's seeds (#3858), replaced by `setSeed`. */
+  readonly seedsRef: MutableRefObject<CascadeSeeds>;
+  /** Called after `setSeed` replaced the seeds (#3858). */
+  readonly reseeded: () => void;
 }
 
 /** True when a piece is close to the lid: the queue then favours small pieces. */
@@ -58,6 +70,8 @@ export function useCascadeTestSeams(d: CascadeTestSeamDeps) {
     queueChanged,
     publishBoard,
     setScore,
+    seedsRef,
+    reseeded,
   } = d;
 
   const handleSetSeed = useCallback(
@@ -68,9 +82,12 @@ export function useCascadeTestSeams(d: CascadeTestSeamDeps) {
       const seeded = makeQueue(rng);
       queueRef.current = seeded.queue;
       queueHistoryRef.current = seeded.history;
+      // The game's recorded seeds are these now (#3858): one value seeds both, as above.
+      seedsRef.current = { queue: seed, engine: seed };
+      reseeded();
       queueChanged();
     },
-    [queueChanged, engineRef, queueRef, queueHistoryRef, queueRngRef]
+    [queueChanged, engineRef, queueRef, queueHistoryRef, queueRngRef, seedsRef, reseeded]
   );
 
   /** Steps the physics by `ms` without waiting for frames (the `fastForward` hook). */
@@ -156,7 +173,7 @@ export function useCascadeTestSeams(d: CascadeTestSeamDeps) {
         if (gameOverRef.current) return;
         const tier = d.consumeFromQueue(isInDanger(engineRef.current?.getState()));
         queueChanged();
-        engineRef.current?.drop(tier, x);
+        engineRef.current?.drop(tier, d.recordDrop(tier, x));
       },
       fastForward,
       triggerGameOver: d.forceGameOver,
@@ -164,7 +181,7 @@ export function useCascadeTestSeams(d: CascadeTestSeamDeps) {
       spawnTierAt: (tier: number, x: number) => {
         if (gameOverRef.current) return;
         d.noteTier(tier);
-        engineRef.current?.drop(tier, x);
+        engineRef.current?.drop(tier, d.recordDrop(tier, x));
       },
       seedQueue,
       setupChain: () => applySetup("chain"),

@@ -50,6 +50,11 @@ export interface ProgressSnapshot {
    */
   durationMs?: number | null;
   /**
+   * Extra `game_ended` data for the hook's own abandon (#3858: Cascade's end and lid steps),
+   * next to the result block. Analytics only: never sent as the PATCH `result`.
+   */
+  payload?: Record<string, unknown>;
+  /**
    * Outcome override for the killed-process sweep (#2682): "win" once the
    * game has locked in a win that survives however the session ends (e.g.
    * Blackjack's run goal). The hook mirrors this to the device's persisted
@@ -288,7 +293,11 @@ export function useGameSync<G extends GameType>(gameType: G): UseGameSyncReturn<
       const durationMs = isKnownDuration(snapshot.durationMs) ? snapshot.durationMs : readWindow();
       if (isKnownDuration(durationMs)) summary.durationMs = durationMs;
       try {
-        gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome });
+        gameEventClient.completeGame(gid, summary, {
+          ...snapshot.result,
+          ...snapshot.payload,
+          outcome,
+        });
       } catch {
         // Isolation.
       }

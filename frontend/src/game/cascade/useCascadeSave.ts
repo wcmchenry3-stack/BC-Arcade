@@ -26,17 +26,17 @@ export interface CascadeSaveDeps {
   readonly settlingTicksLeftRef: MutableRefObject<number>;
   readonly playedMs: () => number;
   readonly restartClock: (accumulatedMs: number) => void;
-  /** Continues the session a killed app left open (#2654), its replay units after the save's. */
-  readonly resumeSession: (replayUnit?: number) => void;
-  /** The replay unit number the save carries (#3858). */
-  readonly replayUnit: () => number;
+  /** Continues the session a killed app left open (#2654), its replay log where the save left it. */
+  readonly resumeSession: (replay?: SavedState["replay"]) => void;
+  /** The replay log's place the save carries (#3858). */
+  readonly replayState: () => NonNullable<SavedState["replay"]>;
   readonly setScore: (score: number) => void;
   readonly queueChanged: () => void;
   readonly noteTier: (tier: number) => void;
 }
 
 export function useCascadeSave(d: CascadeSaveDeps) {
-  const { engineRef, piecesRef, scoreRef, queueRef, gameOverRef, playedMs, replayUnit } = d;
+  const { engineRef, piecesRef, scoreRef, queueRef, gameOverRef, playedMs, replayState } = d;
   const { restartClock, resumeSession, setScore, queueChanged, noteTier } = d;
   const lastSaveTimeRef = useRef(0);
 
@@ -51,7 +51,7 @@ export function useCascadeSave(d: CascadeSaveDeps) {
       restartClock(snapshot.playedMs ?? 0);
       // The restored game continues the session a killed app left open (#2654), in place of
       // the untouched one opened at mount.
-      resumeSession(snapshot.replayUnit);
+      resumeSession(snapshot.replay);
       scoreRef.current = snapshot.score;
       setScore(snapshot.score);
       queueRef.current = snapshot.queue;
@@ -74,9 +74,9 @@ export function useCascadeSave(d: CascadeSaveDeps) {
       savedAt: Date.now(),
       queue: queueRef.current,
       playedMs: playedMs(),
-      replayUnit: replayUnit(),
+      replay: replayState(),
     }),
-    [playedMs, piecesRef, scoreRef, queueRef, replayUnit]
+    [playedMs, piecesRef, scoreRef, queueRef, replayState]
   );
 
   /** Once the engine reports the win (#3904) nothing is saved any more. */
