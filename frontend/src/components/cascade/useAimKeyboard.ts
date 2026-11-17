@@ -56,38 +56,62 @@ export function aimKeyStepX(x: number, direction: -1 | 1, big: boolean): number 
   return Math.max(WALL_THICKNESS, Math.min(WORLD_WIDTH - WALL_THICKNESS, x + direction * step));
 }
 
+const HANDLED = new Set(["ArrowLeft", "ArrowRight", " ", "Enter"]);
+
 export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOptions) {
   const { aimState, aimX, aimAt, aimFromX } = values;
   // True while the keyboard owns the aim (a drag's aim is never moved by keys).
   const keyAiming = useRef(false);
+  // The x the keyboard last wrote: a pointer that aimed since has moved `aimX` or the state.
+  const lastKeyX = useRef(Number.NaN);
   const [focusVisible, setFocusVisible] = useState(false);
   const cleanup = useRef<(() => void) | null>(null);
 
+  /** True while the keyboard still owns the aim: nothing else wrote it since the last key. */
+  const owns = useCallback(() => {
+    if (
+      keyAiming.current &&
+      (aimState.get() !== AIM_STATE.aiming || aimX.get() !== lastKeyX.current)
+    )
+      keyAiming.current = false; // a pointer took over (B1)
+    return keyAiming.current;
+  }, [aimState, aimX]);
+
   const cancel = useCallback(() => {
-    if (!keyAiming.current) return false;
+    if (!owns()) return false;
     keyAiming.current = false;
     aimFromX.set(aimX.get());
     aimState.set(AIM_STATE.cancelled);
     aimAt.set(Number.NaN); // the UI thread stamps "now" (useBoardMotion)
     wake();
     return true;
-  }, [aimAt, aimFromX, aimState, aimX, wake]);
+  }, [aimAt, aimFromX, aimState, aimX, owns, wake]);
 
   const handleKey = useCallback(
     (e: AimKeyEvent): void => {
-      if (!enabled || e.ctrlKey || e.altKey || e.metaKey) return;
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      if (!enabled) {
+        // Game over: no aim, but the page must not scroll under Space or the arrows.
+        if (HANDLED.has(e.key)) e.preventDefault();
+        return;
+      }
+      const mine = owns();
       const state = aimState.get();
       // A finger or mouse is aiming: its gesture owns the aim.
-      const pointerOwns =
-        state === AIM_STATE.pressed || (state === AIM_STATE.aiming && !keyAiming.current);
-      if (pointerOwns) return;
+      if (state === AIM_STATE.pressed || (state === AIM_STATE.aiming && !mine)) {
+        if (HANDLED.has(e.key)) e.preventDefault();
+        return;
+      }
+      setFocusVisible(true); // a key press is keyboard use, whatever focused the board (S1)
       switch (e.key) {
         case "ArrowLeft":
         case "ArrowRight": {
           e.preventDefault();
-          const from = keyAiming.current ? aimX.get() : SPAWNER.cx;
-          aimX.set(aimKeyStepX(from, e.key === "ArrowLeft" ? -1 : 1, e.shiftKey));
-          if (!keyAiming.current) {
+          const from = mine ? aimX.get() : SPAWNER.cx;
+          const next = aimKeyStepX(from, e.key === "ArrowLeft" ? -1 : 1, e.shiftKey);
+          lastKeyX.current = next;
+          aimX.set(next);
+          if (!mine) {
             keyAiming.current = true;
             aimState.set(AIM_STATE.aiming);
             aimAt.set(Number.NaN);
@@ -99,7 +123,7 @@ export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOpt
         case "Enter": {
           e.preventDefault();
           if (e.repeat) return;
-          if (keyAiming.current) {
+          if (mine) {
             keyAiming.current = false;
             const x = aimX.get();
             // The release fades the guide; a refused drop glides back (the area's `drop`).
@@ -119,7 +143,7 @@ export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOpt
           return;
       }
     },
-    [aimAt, aimState, aimX, cancel, enabled, onDrop, wake]
+    [aimAt, aimState, aimX, cancel, enabled, onDrop, owns, wake]
   );
 
   // The latest handler, so the DOM listener never goes stale.
@@ -164,7 +188,6 @@ export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOpt
     };
   }, []);
 
-  useEffect(() => () => cleanup.current?.(), []);
   // Game over while the keyboard aims: drop the aim.
   useEffect(() => {
     if (!enabled) cancel();

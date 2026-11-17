@@ -297,6 +297,30 @@ test.describe("Cascade on web (CanvasKit)", () => {
     expect(Math.abs((await newest()).x - 232)).toBeLessThan(25);
   });
 
+  // #3934: a mouse focus shows no ring, a key press then does; the page never scrolls under keys.
+  test("keyboard: a click then an arrow shows the ring, and the page does not scroll", async ({
+    page,
+  }) => {
+    await gotoCascade(page);
+    await setSeed(page, 3935);
+    const board = page.getByTestId("cascade-game-area");
+    const box = (await board.boundingBox())!;
+    // A press and release off the aim, so nothing drops: click the board's top edge region.
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height + 60);
+    await page.mouse.up();
+    await expect(board).toBeFocused();
+    await expect(page.getByTestId("cascade-focus-ring")).toHaveCount(0);
+    const scrollY = () => page.evaluate(() => window.scrollY);
+    const before = await scrollY();
+    await page.keyboard.press("ArrowLeft");
+    await expect(page.getByTestId("cascade-focus-ring")).toBeVisible();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Space");
+    expect(await scrollY()).toBe(before);
+  });
+
   // #3699: the win via the test hook: the celebration plays, and only then the win card.
   test("win via test hook: the celebration, then the win card", async ({
     page,

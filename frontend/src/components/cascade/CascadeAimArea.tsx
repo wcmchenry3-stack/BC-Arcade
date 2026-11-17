@@ -12,6 +12,7 @@ import { GestureDetector } from "react-native-gesture-handler";
 import type { BoardMotion } from "./useBoardMotion";
 import { useAimGesture } from "./useAimGesture";
 import { useAimKeyboard } from "./useAimKeyboard";
+import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { AIM_STATE } from "../../game/cascade/aim";
 
@@ -59,6 +60,7 @@ export default function CascadeAimArea({
     onDragStart,
   });
   const { colors } = useTheme();
+  const { t } = useTranslation("cascade");
   const { attach, focusVisible, webKeyboard } = useAimKeyboard({
     values,
     wake,
@@ -73,6 +75,9 @@ export default function CascadeAimArea({
         collapsable={false}
         ref={attach}
         tabIndex={webKeyboard ? 0 : undefined}
+        // The web tab stop is named for screen readers (#3934); native is unchanged.
+        role={webKeyboard ? "group" : undefined}
+        aria-label={webKeyboard ? t("a11y.board") : undefined}
       >
         {children}
         {focusVisible && (

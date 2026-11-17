@@ -155,6 +155,68 @@ describe("useAimKeyboard", () => {
     expect(m.v.aimState.value).toBe(AIM_STATE.aiming);
   });
 
+  // B1: the keyboard's aim goes stale when a pointer takes over.
+  describe("a pointer takes over from the keyboard", () => {
+    it("A: key aim, then a mouse drag and release: the next arrow starts again from the centre", async () => {
+      const m = await mount();
+      await m.press(key("ArrowRight"));
+      m.v.aimState.set(AIM_STATE.aiming); // the drag
+      m.v.aimX.set(320);
+      m.v.aimState.set(AIM_STATE.released); // the release
+      await m.press(key("ArrowLeft"));
+      expect(m.v.aimState.value).toBe(AIM_STATE.aiming);
+      expect(m.v.aimX.value).toBe(SPAWNER.cx - A.keyStep);
+    });
+
+    it("B: key aim, then a drag in progress: arrows leave the pointer's aim alone", async () => {
+      const m = await mount();
+      await m.press(key("ArrowRight"));
+      m.v.aimX.set(320); // the drag moved the aim
+      const e = key("ArrowRight");
+      await m.press(e);
+      expect(m.v.aimX.value).toBe(320);
+      expect(e.prevented).toBe(true);
+      await m.press(key("Escape"));
+      expect(m.v.aimState.value).toBe(AIM_STATE.aiming);
+    });
+
+    it("C: key aim, then a mouse tap: Space drops in the middle, not at the mouse x", async () => {
+      const m = await mount();
+      await m.press(key("ArrowRight"));
+      m.v.aimX.set(320);
+      m.v.aimState.set(AIM_STATE.pressed);
+      m.v.aimState.set(AIM_STATE.idle); // the tap ended
+      await m.press(key(" "));
+      expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx, false);
+    });
+
+    it("Escape after a pointer aim does nothing", async () => {
+      const m = await mount();
+      await m.press(key("ArrowRight"));
+      m.v.aimX.set(320);
+      m.v.aimState.set(AIM_STATE.released);
+      const e = key("Escape");
+      await m.press(e);
+      expect(e.prevented).toBe(false);
+      expect(m.v.aimState.value).toBe(AIM_STATE.released);
+    });
+  });
+
+  it("N1: Space and the arrows are still kept from scrolling the page when disabled", async () => {
+    const m = await mount({ enabled: false });
+    const e = key(" ");
+    await m.press(e);
+    expect(e.prevented).toBe(true);
+    expect(m.onDrop).not.toHaveBeenCalled();
+  });
+
+  it("S1: a handled key shows the focus ring after a mouse focus", async () => {
+    const m = await mount();
+    expect(m.hook.result.current.focusVisible).toBe(false);
+    await m.press(key("ArrowLeft"));
+    expect(m.hook.result.current.focusVisible).toBe(true);
+  });
+
   it("a refused drop is the drop path's call (the area glides the piece back)", async () => {
     const m = await mount();
     m.onDrop.mockReturnValue(false);
