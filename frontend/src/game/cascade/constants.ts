@@ -5,6 +5,14 @@ export const WALL_THICKNESS = 20;
 export const FLOOR_THICKNESS = 20;
 export const OVERFLOW_LINE_Y = 80; // y from top: the lid (game-over line, #3694)
 
+/**
+ * The physics tuning a game was played on (#3858), recorded in `game_started` as `tuning`: the
+ * owner's "3 lively" tuning (#3697), the overlap tuning (#3904) and the 11-tier ladder (#3920).
+ * Change it with any constant below, in `physicsWorld.ts` or in `tiers.ts` that moves a pile (and
+ * bump `ENGINE_VERSION`, engine.ts): a replay rebuilds only the tuning it was recorded on.
+ */
+export const CASCADE_TUNING_ID = "lively3.overlap1.ladder11";
+
 // Physics (#3697: planck.js 1.4.2, the owner's "3 lively" tuning). The engine works in world
 // pixels and fixed steps; `physicsWorld.ts` converts to planck's metres and seconds.
 /** Gravity, px/s^2 (Matter's old 2.5 x 0.001 per ms^2 = 2500 px/s^2: lively keeps today's). */

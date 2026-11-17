@@ -48,6 +48,7 @@ Kind = Literal["current", "legacy", "incompatible"]
 
 CURRENT_ENGINE_VERSIONS: dict[str, int] = {
     "blackjack": 1,
+    "cascade": 1,
     "daily_word": 1,
     "freecell": 1,
     "hearts": 1,

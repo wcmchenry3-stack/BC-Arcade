@@ -25,6 +25,18 @@ export interface SavedState {
    * Absent in saves from older builds.
    */
   playedMs?: number;
+  /**
+   * The replay log's place (#3858): its unit number and its per-game cap counts, so a relaunched
+   * game numbers its next unit after the saved ones and keeps its caps. Absent in saves from
+   * older builds (and then counted from 0).
+   */
+  replay?: { unit: number; danger: number; unitsCut: number; dangerCut: number };
+}
+
+function looksLikeReplay(r: unknown): boolean {
+  if (typeof r !== "object" || r === null) return false;
+  const o = r as Record<string, unknown>;
+  return ["unit", "danger", "unitsCut", "dangerCut"].every((k) => typeof o[k] === "number");
 }
 
 export function looksValid(data: unknown): data is SavedState {
@@ -43,7 +55,8 @@ export function looksValid(data: unknown): data is SavedState {
     ) ||
     typeof d.score !== "number" ||
     typeof d.savedAt !== "number" ||
-    (d.playedMs !== undefined && typeof d.playedMs !== "number")
+    (d.playedMs !== undefined && typeof d.playedMs !== "number") ||
+    (d.replay !== undefined && !looksLikeReplay(d.replay))
   ) {
     return false;
   }

@@ -204,8 +204,20 @@ SORT_CAP = ReplayCap(
     max_bytes=SORT_MAX_UNITS * (1_024 + ROW_OVERHEAD_BYTES),
 )
 
-# Cascade: provisional until the Cascade refactor (not measured; owner, #3318).
-CASCADE_CAP = ReplayCap(max_events=3_000, max_bytes=1_000 * 900)
+# Cascade (#3858, cascade/events.py; frontend/src/game/cascade/replay.ts): one ``drop`` and
+# one ``merge`` row per unit of 20 drops, and the app records at most 48 units a game
+# (``CASCADE_MAX_UNITS``, about 30 minutes; a background flush cuts a unit short, so this also
+# bounds a player who backgrounds after every drop). Measured on the app's seeded games, as
+# ``jsonb::text`` plus ROW_OVERHEAD_BYTES a row: the golden 143-drop win
+# (tests/fixtures/cascade_replay_v1.json) is 16 rows and 8,192 B, about 1 KB a unit; a
+# 10-minute game is about 26 rows and 13 KB (frontend/perf/replay-budget.json). 48 units of
+# the widest honest rows (20 drops at 6-digit steps, 30 merges, the 32 danger moments a game
+# may keep on one of them) are 96 rows and 66,901 B (tests/test_cascade_replay_events.py):
+# 128 events and 80 KB leave room for merge parts. Lifecycle rows are not counted (their own
+# cap). This replaces the provisional 3,000 events / 900 KB (#3318), set before Cascade
+# recorded anything.
+CASCADE_MAX_UNITS = 48
+CASCADE_CAP = ReplayCap(max_events=128, max_bytes=80 * 1024)
 
 CAPS_BY_GAME_TYPE: dict[str, ReplayCap] = {
     "blackjack": BLACKJACK_CAP,

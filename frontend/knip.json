@@ -38,6 +38,9 @@
     // The Cascade sim harness (#2893): used by its tests, tools/sim/simulate-cascade.ts and the
     // cascade-sim-gate workflow, never by the app.
     "!src/game/cascade/sim/**!",
+    // Cascade's replay rebuild (#3858): a best-effort re-simulation read by its tests (the golden
+    // replay) and by tooling, never by the app.
+    "!src/game/cascade/rebuild.ts!",
     "scripts/*.{js,mjs}",
     "tooling/**/*.ts",
     "../tools/sim/*.ts",
