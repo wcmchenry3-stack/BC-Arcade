@@ -19,6 +19,8 @@
  * restarts the clock from the moment of loading.
  */
 
+import { monotonicNow } from "./monotonicNow";
+
 /** The clock fields the games share. */
 export interface PlayClock {
   /** When the running segment began; null while not running. */
@@ -54,11 +56,10 @@ export function withClock<T extends PlayClock>(target: T, clock: PlayClock): T {
 }
 
 /** Play time so far: what is banked plus the running segment, if any. */
-export function clockElapsedMs(clock: PlayClock, now: number = Date.now()): number {
-  // A device clock set back mid-segment makes `now - startedAt` negative: a
-  // segment banks 0 at the least, never a negative play time (#3738). A
-  // startedAt in the future banks 0 until now catches up, so time played during
-  // a backwards jump is intentionally not credited.
+export function clockElapsedMs(clock: PlayClock, now: number = monotonicNow()): number {
+  // `now` is monotonic (#3925), so a device clock change cannot move it. The clamp stays as a
+  // defence (#3738): a segment banks 0 at the least, never a negative play time, e.g. a
+  // `startedAt` read from another run's origin or from an old wall-time save.
   return clock.accumulatedMs + (clock.startedAt !== null ? Math.max(0, now - clock.startedAt) : 0);
 }
 
@@ -67,13 +68,13 @@ export function clockElapsedMs(clock: PlayClock, now: number = Date.now()): numb
  * isn't running: one not started yet waits for its first move, and a stopped
  * one stays stopped.
  */
-export function pauseClock<T extends PlayClock>(clock: T, now: number = Date.now()): T {
+export function pauseClock<T extends PlayClock>(clock: T, now: number = monotonicNow()): T {
   if (clock.startedAt === null) return clock;
   return setClock(clock, null, clockElapsedMs(clock, now), true);
 }
 
 /** Run a paused clock again from `now`. A no-op on a clock that isn't paused. */
-export function resumeClock<T extends PlayClock>(clock: T, now: number = Date.now()): T {
+export function resumeClock<T extends PlayClock>(clock: T, now: number = monotonicNow()): T {
   if (clock.paused !== true) return clock;
   return setClock(clock, now, clock.accumulatedMs, false);
 }
@@ -83,13 +84,13 @@ export function resumeClock<T extends PlayClock>(clock: T, now: number = Date.no
  * runs on, and a paused one stays paused (the move landed while the player was
  * away).
  */
-export function startClockOnMove<T extends PlayClock>(clock: T, now: number = Date.now()): T {
+export function startClockOnMove<T extends PlayClock>(clock: T, now: number = monotonicNow()): T {
   if (clock.startedAt !== null || clock.paused === true) return clock;
   return setClock(clock, now, clock.accumulatedMs, false);
 }
 
 /** Stop the clock for good (the game ended), banking any running segment. */
-export function stopClock<T extends PlayClock>(clock: T, now: number = Date.now()): T {
+export function stopClock<T extends PlayClock>(clock: T, now: number = monotonicNow()): T {
   return setClock(clock, null, clockElapsedMs(clock, now), false);
 }
 
@@ -99,7 +100,7 @@ export function stopClock<T extends PlayClock>(clock: T, now: number = Date.now(
  * marker, so the load knows it was running even when nothing is banked yet;
  * `clockOnLoad` never reads the value. A paused clock is saved as it is.
  */
-export function clockForSave<T extends PlayClock>(state: T, now: number = Date.now()): T {
+export function clockForSave<T extends PlayClock>(state: T, now: number = monotonicNow()): T {
   if (state.startedAt === null) return state;
   return {
     ...state,
@@ -124,7 +125,7 @@ export function clockForSave<T extends PlayClock>(state: T, now: number = Date.n
 export function clockOnLoad<T extends PlayClock>(
   state: T,
   finished: boolean,
-  now: number = Date.now()
+  now: number = monotonicNow()
 ): T {
   const underWay = state.startedAt !== null || state.paused === true || state.accumulatedMs > 0;
   return setClock(state, underWay && !finished ? now : null, state.accumulatedMs, false);

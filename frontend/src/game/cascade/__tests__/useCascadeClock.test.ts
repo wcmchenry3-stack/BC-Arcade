@@ -94,4 +94,27 @@ describe("useCascadeClock (#2750, #3700)", () => {
     wait(1_000);
     expect(away.elapsed()).toBe(21_000);
   });
+
+  it("a wall-clock jump back or forward mid-game doesn't change the elapsed time (#3925)", async () => {
+    const clock = (await renderHook(() => useCascadeClock())).result.current;
+    clock.start();
+    wait(60_000);
+    const wallNow = Date.now();
+    const spy = jest.spyOn(Date, "now").mockReturnValue(wallNow - 3_600_000);
+    expect(clock.elapsed()).toBe(60_000);
+    spy.mockReturnValue(wallNow + 3_600_000);
+    wait(30_000);
+    expect(clock.elapsed()).toBe(90_000);
+    spy.mockRestore();
+  });
+
+  it("reports a whole number of milliseconds for a fractional performance.now (#3925)", async () => {
+    const clock = (await renderHook(() => useCascadeClock())).result.current;
+    const mono = jest.spyOn(performance, "now").mockReturnValue(1000.4);
+    clock.start();
+    mono.mockReturnValue(4234.567);
+    expect(Number.isInteger(clock.elapsed())).toBe(true);
+    expect(clock.elapsed()).toBe(3234);
+    mono.mockRestore();
+  });
 });

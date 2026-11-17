@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { monotonicNow } from "../../game/_shared/monotonicNow";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
@@ -26,12 +27,12 @@ export default function StatsBento({ state }: Props) {
   const { colors } = useTheme();
 
   // Tick every second while game is active to keep elapsed time current.
-  const [now, setNow] = useState(Date.now);
+  const [now, setNow] = useState(monotonicNow);
   useEffect(() => {
     if (state.game_over || state.startedAt === null) return;
     // Catch up at once: `now` may predate this running segment (#3735, as PlayClockText does).
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    setNow(monotonicNow());
+    const id = setInterval(() => setNow(monotonicNow()), 1000);
     return () => clearInterval(id);
   }, [state.game_over, state.startedAt]);
 

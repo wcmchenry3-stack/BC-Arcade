@@ -24,6 +24,7 @@
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import {
   Platform,
   StyleSheet,
@@ -158,7 +159,7 @@ const ORIGIN: Point = { x: 0, y: 0 };
 const AUTO_STEP_MS = 120;
 
 /** The game's play timer so far: time banked plus the running segment. */
-function activeMs(state: SolitaireState, now: number = Date.now()): number {
+function activeMs(state: SolitaireState, now: number = monotonicNow()): number {
   return state.accumulatedMs + (state.startedAt !== null ? now - state.startedAt : 0);
 }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import type { Dispatch, SetStateAction } from "react";
 import type { PlayClock } from "../game/_shared/playClock";
 import { usePauseWhileAway, type FocusEventSource } from "./usePauseWhileAway";
@@ -96,7 +97,7 @@ export function usePausableClock<T extends PlayClock>(
   const awayRef = usePauseWhileAway(
     options.navigation,
     () => {
-      const now = Date.now();
+      const now = monotonicNow();
       const o = optionsRef.current;
       o.setState((s) => (s === null ? s : o.pauseGame(s, now)));
       const latest = latestRef.current;
@@ -106,7 +107,7 @@ export function usePausableClock<T extends PlayClock>(
       if (o.saveOnLeave && paused !== latest) o.saveOnLeave(paused);
     },
     () => {
-      const now = Date.now();
+      const now = monotonicNow();
       const o = optionsRef.current;
       o.setState((s) => {
         const current = optionsRef.current;
@@ -127,7 +128,7 @@ export function usePausableClock<T extends PlayClock>(
   const matchPresence = useCallback(
     (next: T): T => {
       const o = optionsRef.current;
-      const now = Date.now();
+      const now = monotonicNow();
       let settled = next;
       if (awayRef.current) settled = o.pauseGame(next, now);
       else if (!o.hold) settled = o.resumeGame(next, now);

@@ -414,8 +414,8 @@ describe("SudokuScreen — in-game input", () => {
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
     // The clock starts at the cell selection (#2942), so freeze Date.now first.
-    let now = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       await act(async () => {
         await fireEvent.press(emptyCells[0]!);
@@ -450,8 +450,8 @@ describe("SudokuScreen — in-game input", () => {
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
     // The clock starts at the cell selection (#2942), so freeze Date.now first.
-    let now = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       await act(async () => {
         await fireEvent.press(emptyCells[0]!);
@@ -588,8 +588,8 @@ describe("SudokuScreen — sessions across puzzles (#2690)", () => {
     const hard = almostSolved("hard"); // built before the spy replaces loadPuzzle
     const r = await renderAndAwaitLoad();
     await fireEvent.press(r.getByLabelText(/start/i)); // Easy: game-1
-    let now = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       await enterFirstEnabledDigit(r);
       await waitFor(() => expect(mockMarkStarted).toHaveBeenCalledWith("game-1"));
@@ -767,9 +767,9 @@ describe("SudokuScreen — result card (#2511)", () => {
     // took from mount to that press: under load that crossed a second and the
     // card read 01:06 instead of 01:05. (waitFor runs on setTimeout, not
     // Date.now, so a frozen clock doesn't stall it.)
-    const mountedAt = Date.now();
+    const mountedAt = performance.now();
     let now = mountedAt;
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       const rendered = await renderScreen();
       await waitFor(() => expect(rendered.queryByLabelText(/start/i)).toBeNull());
@@ -1031,8 +1031,8 @@ describe("SudokuScreen — load while away (#2750)", () => {
     Object.defineProperty(AppState, "currentState", { value: "background", configurable: true });
     const appStateSpy = jest.spyOn(AppState, "addEventListener");
     const appStateBase = appStateSpy.mock.calls.length;
-    let now = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       const r = await renderScreen();
       await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());

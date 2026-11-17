@@ -496,6 +496,8 @@ needs no code for a duration: `useGameSync` fills in `durationMs` with the
 foreground time its active-play window has counted, with each idle gap capped
 at 10 minutes; a game's own measured duration wins.
 
+**Durations use a monotonic clock (#3925).** The shared play clock (`frontend/src/game/_shared/playClock.ts`, #2684) and every clock that feeds a `duration_ms` (Hearts' `clock.ts`, Sudoku's timer, `foregroundClock`) read `monotonicNow()` (`frontend/src/game/_shared/monotonicNow.ts`: `performance.now()`, `Date.now()` only where `performance` is missing), so changing the device clock mid-game cannot shorten or stretch a duration. A reading has an arbitrary origin that resets on app restart: persist banked milliseconds (`accumulatedMs`, `playedMs`), never a reading (`clockOnLoad` restarts a restored clock from the load), and keep `Date.now()` for real timestamps such as `savedAt`. Every clock function takes `now` as an argument, so tests drive time by passing it or by mocking `performance.now`.
+
 - Foreground time comes from `foregroundClock.foregroundNow()`, one app-wide
   counter that stops while `AppState` is `background` or `inactive`.
 - Screen focus (#2735, PR #2743): the window also stops counting while a screen is

@@ -542,8 +542,8 @@ describe("SolitaireScreen — useGameSync lifecycle", () => {
   it("back-navigation mid-game abandons via the hook with the snapshot, its play time and no score", async () => {
     const api = await mount();
     await chooseDraw1(api);
-    let now = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       await act(async () => {
         await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
@@ -651,8 +651,8 @@ describe("SolitaireScreen — sessions across games (#2690)", () => {
   it("New Game mid-game abandons the old session; the next win completes a new one with its own draw mode", async () => {
     const api = await mount();
     await chooseDraw1(api); // game-1, draw 1
-    let now = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       await act(async () => {
         await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
@@ -1497,7 +1497,7 @@ describe("SolitaireScreen — app background and relaunch (#2750)", () => {
     reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
     mockGetGameRank.mockResolvedValue({ ranked: true, rank: 1, is_best: true, reason: null });
     now = 1_700_000_000_000;
-    nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
   });
   afterEach(() => {
     nowSpy.mockRestore();
