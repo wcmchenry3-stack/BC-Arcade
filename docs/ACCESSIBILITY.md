@@ -37,7 +37,7 @@ BC Arcade uses React Native Reanimated and Matter.js physics. Both must respect 
   - **Event overlays and long-running sequences** (celebrations, Hearts/FreeCell event overlays, win cascades, Sort's pour) must react mid-sequence: cancel the running sequence (including its timers), clear any frame it left behind, and take the reduced path. Overlays do this by starting their timers with `playTimedPhases` (`components/shared/timedPhases.ts`) from the same effect that starts the animation, keyed on `reduceMotion`.
   - **Short animations started by one action** (a score pop, a die roll, a merge burst, a tile-match flight, a board shake or zoom-to-fit) read the setting when the action happens, so a change applies from the next action. They need no cancellation code.
 - An animation that starts the moment it mounts (a win celebration) must not start on a stale value: `useReduceMotion()` starts from the value another mounted consumer is tracking, else from the launch-time value, which can be out of date. Gate such a mount on `useReduceMotionStatus().known`, as `SolitaireWinCascade` does.
-- Physics simulations (Cascade) must resolve immediately to final state when reduce motion is active — no dropping, bouncing, or sliding.
+- Cascade: falling and settling pieces are gameplay, not decoration, so the physics always runs, whatever the setting. All decorative motion (squash, dust, merge bursts, chain pops, the win rise, the danger blink) takes the calm path. See [Cascade, section 14](games/cascade.md#14-deviations-from-shared-standards).
 - Do not auto-play looping animations that cannot be paused.
 - Avoid content that flashes more than 3 times per second (seizure risk).
 

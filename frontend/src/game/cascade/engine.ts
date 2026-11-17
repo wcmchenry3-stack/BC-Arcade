@@ -27,7 +27,7 @@
  *   - A restored game (`restore(pieces, score)`) re-creates bodies from saved tier and position,
  *     at rest: velocities are not saved.
  *
- * Merges (#3697, the owner's "3 lively" tuning; docs/games/cascade.md#physics):
+ * Merges (#3697, the owner's "3 lively" tuning; docs/games/cascade-decisions.md#physics):
  *   - Two same-tier pieces merge when they touch (a planck contact begins) or when their circles
  *     are within `MERGE_GAP_PX` of touching at the end of a fixed step (Box2D can rest two pieces a
  *     fraction of a pixel apart). Capstones never merge: making one is the win (below).
@@ -56,7 +56,7 @@
  * Combo window: `COMBO_WINDOW_TICKS` (120) is counted in fixed steps like the lid, so it is 2 s
  * of simulated time at any frame rate.
  *
- * Game over, "the lid" (#3694; docs/games/cascade.md#game-over-the-lid). Everything below is
+ * Game over, "the lid" (#3694; docs/games/cascade-decisions.md#game-over-the-lid). Everything below is
  * counted in fixed physics steps, inside the substep loop, so 60 and 120 Hz play equivalently:
  *   - Overflow: a SETTLED piece (speed <= `OVERFLOW_SETTLED_SPEED` px per step, and not a piece
  *     still falling from the spawner) whose TOP edge is above `OVERFLOW_LINE_Y` counts. When one

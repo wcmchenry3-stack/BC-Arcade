@@ -325,7 +325,7 @@ export interface PieceArt {
 
 /**
  * A piece taken out of the ladder (#3920), kept as a recipe so it can come back: its drawing and
- * its face ink. Not a tier: nothing in play draws it (docs/games/cascade.md#retired-pieces-3920).
+ * its face ink. Not a tier: nothing in play draws it (docs/games/cascade-decisions.md#retired-pieces-3920).
  */
 export interface RetiredPiece {
   readonly art: PieceArt;

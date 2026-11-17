@@ -2,7 +2,7 @@
 
 > **Proposals record (#3697, phase 1), not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md). The owner picked **3 lively**; #3697 phase 2 carried it into `engine.ts`.
 
-> **Where the code is.** The sim code these numbers come from (`frontend/src/game/cascade/sim/candidates/`, `sim/proposals/`, `tools/sim/cascade-physics-spike.ts`, `tools/sim/cascade-feel-proposals.ts`) lives on the branches `spike/3696-cascade-physics-engines` and `proposals/3697-cascade-feel` and was not merged. The owner chose **3 lively** on planck.js 1.4.2; #3697 phase 2 ported it into the production engine (`engine.ts`, `physicsWorld.ts`, `tiers.ts`, `spawnSelector.ts`) and the sim harness now plays that engine. Its baseline: [`docs/games/cascade.md`](../games/cascade.md#physics).
+> **Where the code is.** The sim code these numbers come from (`frontend/src/game/cascade/sim/candidates/`, `sim/proposals/`, `tools/sim/cascade-physics-spike.ts`, `tools/sim/cascade-feel-proposals.ts`) lives on the branches `spike/3696-cascade-physics-engines` and `proposals/3697-cascade-feel` and was not merged. The owner chose **3 lively** on planck.js 1.4.2; #3697 phase 2 ported it into the production engine (`engine.ts`, `physicsWorld.ts`, `tiers.ts`, `spawnSelector.ts`) and the sim harness now plays that engine. Its baseline: [`docs/games/cascade.md`](../games/cascade-decisions.md#physics).
 
 # Cascade physics feel: three planck.js proposals
 

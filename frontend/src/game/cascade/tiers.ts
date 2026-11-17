@@ -29,7 +29,7 @@
  *
  * Doubling: `score(n) = 2 ^ n`, awarded for the piece a merge makes (a merge into tier n scores
  * `2^n`). The winning merge into the capstone scores like any other merge, no extra (#3920).
- * PROVISIONAL: the final values are set with the time-bonus story (#3700) so a win dominates a
+ * Final (owner, #2823): the time bonus (#3700) was set against these values, so a win dominates a
  * long losing run.
  *
  * ## Density

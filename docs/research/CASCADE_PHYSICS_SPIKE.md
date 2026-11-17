@@ -2,7 +2,7 @@
 
 > **Spike record (#3696), not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the physics change is carried out in #3697. Follow-up: [`CASCADE_FEEL_PROPOSALS.md`](CASCADE_FEEL_PROPOSALS.md) (#3697 phase 1) pins planck at 1.4.2 (bit-identical to 1.5.1 here) and shows that most of B's wall penetration below was measured at a growing piece's full radius rather than its collider's.
 
-> **Where the code is.** The sim code these numbers come from (`frontend/src/game/cascade/sim/candidates/`, `sim/proposals/`, `tools/sim/cascade-physics-spike.ts`, `tools/sim/cascade-feel-proposals.ts`) lives on the branches `spike/3696-cascade-physics-engines` and `proposals/3697-cascade-feel` and was not merged. The owner chose **3 lively** on planck.js 1.4.2; #3697 phase 2 ported it into the production engine (`engine.ts`, `physicsWorld.ts`, `tiers.ts`, `spawnSelector.ts`) and the sim harness now plays that engine. Its baseline: [`docs/games/cascade.md`](../games/cascade.md#physics).
+> **Where the code is.** The sim code these numbers come from (`frontend/src/game/cascade/sim/candidates/`, `sim/proposals/`, `tools/sim/cascade-physics-spike.ts`, `tools/sim/cascade-feel-proposals.ts`) lives on the branches `spike/3696-cascade-physics-engines` and `proposals/3697-cascade-feel` and was not merged. The owner chose **3 lively** on planck.js 1.4.2; #3697 phase 2 ported it into the production engine (`engine.ts`, `physicsWorld.ts`, `tiers.ts`, `spawnSelector.ts`) and the sim harness now plays that engine. Its baseline: [`docs/games/cascade.md`](../games/cascade-decisions.md#physics).
 
 # Cascade physics spike: tuned Matter.js vs planck.js
 

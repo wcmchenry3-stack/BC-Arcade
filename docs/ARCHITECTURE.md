@@ -306,7 +306,7 @@ instead runs the same Skia code on web through Skia's web runtime, CanvasKit (We
 so web demos show what the phones show (owner decision on #2960). Its route,
 `screens/CascadeRoute.web.tsx`, loads CanvasKit from our own origin when Cascade opens and
 only then imports the screen; nothing else loads it, and native bundles do not contain it.
-Details and cost: [games/cascade.md](games/cascade.md#rendering-2960),
+Details and cost: [games/cascade.md](games/cascade-decisions.md#rendering-2960),
 [PERFORMANCE.md](PERFORMANCE.md#cascade-on-web-canvaskit-2960). Any other web path that
 imports `@shopify/react-native-skia` before CanvasKit has loaded breaks Skia on web, so keep
 Skia imports behind a native file or the Cascade route.
