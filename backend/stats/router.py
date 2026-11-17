@@ -66,6 +66,7 @@ async def get_my_stats(
                 time_played_ms=s.time_played_ms,
                 best_value=s.best_value,
                 best_label_key=s.best_label_key,
+                best_win_ms=s.best_win_ms,
                 extras=s.extras,
             )
             for name, s in summary.by_game.items()

@@ -10,6 +10,7 @@
   "tile.currentStreak": "Win Streak",
   "tile.bestStreak": "Best Streak",
   "tile.best": "Best",
+  "tile.fastestWin": "Fastest Win",
   "tile.timePlayed": "Time Played",
   "tile.lastPlayed": "Last Played",
   "empty": "No finished games yet. Finish a game to see your stats here.",
