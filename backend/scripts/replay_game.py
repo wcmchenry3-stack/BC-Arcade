@@ -50,6 +50,12 @@ board and a verdict: ``complete``, ``incomplete`` (a clean prefix: a cap, a drop
 ``game_ended``) or ``invalid`` (an illegal pour, a malformed action, repeated units, a result that
 disagrees, an incompatible catalog or engine).
 
+A Cascade game is read from its events, not re-simulated (#3858, ``cascade/replay.py``): its
+seeds and tuning, its drops and merges by tier, its longest chain, its danger moments, and the
+outcome, end and capstone steps and the score with its time bonus from ``game_ended``, with a
+check that the recorded merges add up to the merge score. Cascade's physics replays bit for bit
+only on the JS engine that recorded it, so nothing here re-runs it.
+
 Every game that records its play (``games/engine_version.py``, #3912) also gets an ``engine``
 line in the summary: its ``game_started`` ``engine_version`` (none is version 1) and whether it
 is today's version, an older one still replayed with its frozen rules, or incompatible. An
@@ -285,12 +291,16 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
 
 
 def _rebuilt_state(game: GameRow, events: Sequence[EventRow]) -> list[str]:
-    """The game's state rebuilt from its events, for a game that records enough to (Yacht: #3282, Daily Word: #3287, Star Swarm: #3395, Sort: #3388)."""
+    """The game's state rebuilt from its events, for a game that records enough to (Yacht: #3282, Daily Word: #3287, Star Swarm: #3395, Sort: #3388; Cascade's story, read, not rebuilt: #3858)."""
     if game.game_type == "daily_word":
         from daily_word.replay import rebuild as rebuild_daily_word
         from daily_word.replay import render_board
 
         return ["", *render_board(rebuild_daily_word((e.event_type, e.data) for e in events))]
+    if game.game_type == "cascade":
+        from cascade.replay import render as render_cascade
+
+        return ["", *render_cascade((e.event_type, e.data) for e in events)]
     if game.game_type == "starswarm":
         from starswarm.replay import render as render_starswarm
 

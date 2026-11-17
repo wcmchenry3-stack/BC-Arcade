@@ -1416,10 +1416,11 @@ Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT 
 
 ### Benchmarks and CI budgets
 
-`replay.bench.test.ts` plays three games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
+`replay.bench.test.ts` plays four games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
 
 - **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events). This is a stand-in shape (per-card events) from before #3283; the events Hearts really records, and their measured cost, are in [games/hearts.md](games/hearts.md#replay-recording).
 - **Solitaire:** 300 moves, one unit per move.
+- **Cascade** (#3858): a 10-minute game on the real engine (the skilled bot dropping every 2.4 s; 249 drops, 216 merges), one unit per 20 drops as the screen records them: 13 units, 26 events, 7,003 B recorded, 375,884 B written to storage, ≤ 13.4 KB a plain save and ≤ 46.9 KB an evicting one, 2 event POSTs, none while open. It has only 26 rows, so its queue is seeded at 4,990 rows for its saves to evict.
 - **Yacht:** 13 rounds against the CPU, one unit per round (13 units, 104 events). This is a stress fixture for the pipeline, not Yacht's real recording: since #3282 the app sends 26 units of one `turn_completed` event each (both players), measured in [games/yacht.md](games/yacht.md#replay-recording).
 
 The count budgets are hard, because the fixture is deterministic. Time has only a generous ceiling, a mean of 40 ms per save, because CI runners are shared and run jest with coverage.
@@ -1509,7 +1510,7 @@ Epic #3273 records far more of each game, so the cost of a heavy player's day is
 
 ### What is measured
 
-`frontend/src/game/_shared/__tests__/replay.budget.test.ts` plays one virtual day on fake timers: a Daily Word, 10 games of 2048, 3 of Hearts, 5 of Yacht against the computer, 5 of Solitaire, 3 Star Swarm runs, a Sudoku and a Mahjong (29 games, about 6 hours). Each game's events come from its own replay path: the real engine and the game's replay module, recorded through a real `GameRecorder`. They are saved into the real `GameEventClient` → `eventStore` → in-memory AsyncStorage, and the real `SyncWorker` (its 30 s interval and its AppState handling) drains them to a mock API. The day includes a trip to the background in three games (Hearts, Yacht, Solitaire: `inactive`, then `background` for 5 min, then `active`), and one hour with the API down, which starts at the Sudoku game. The worker backs off during that hour, then recovers. At the end, the test also checks that the queue is empty and that every row and completion reached the server.
+`frontend/src/game/_shared/__tests__/replay.budget.test.ts` plays one virtual day on fake timers: a Daily Word, 10 games of 2048, 3 of Hearts, 5 of Yacht against the computer, 5 of Solitaire, 3 Star Swarm runs, a Sudoku, a Mahjong and, at the end of the day, 3 of Cascade (#3858: two of about 4 minutes and one of 10, backgrounded after its 120th drop; 32 games, about 6.7 hours). Each game's events come from its own replay path: the real engine and the game's replay module, recorded through a real `GameRecorder`. They are saved into the real `GameEventClient` → `eventStore` → in-memory AsyncStorage, and the real `SyncWorker` (its 30 s interval and its AppState handling) drains them to a mock API. The day includes a trip to the background in three games (Hearts, Yacht, Solitaire: `inactive`, then `background` for 5 min, then `active`), and one hour with the API down, which starts at the Sudoku game. The worker backs off during that hour, then recovers. At the end, the test also checks that the queue is empty and that every row and completion reached the server.
 
 | Metric (per day unless noted)                | How it is measured                                                                                                                                                      |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1535,6 +1536,7 @@ How each game is driven:
 | Daily Word   | `createGuessReplay` with the real engine and scoring, `on_session_end`                                                                                          |
 | Sudoku       | The heavy hard game of the Sudoku bench: `applyRecorded` and `createEntryLog` through a `GameRecorder`                                                          |
 | Mahjong      | `playScripted`: the Turtle layout with matches, hints, undos and shuffles, through `MahjongReplay`                                                              |
+| Cascade      | `playRecordedGame`: the real engine and queue on seeded games, the skilled sim bot, the replay log through a `GameRecorder`; the 10-minute game is backgrounded |
 
 No game's screen is mounted: they are too heavy to drive in jest, so each game's replay module is fed realistic inputs, as its own bench does. The recorder's own `flush()` on backgrounding is exercised for Hearts and Solitaire only; the Yacht trip only exercises `SyncWorker`'s release.
 
@@ -1548,10 +1550,10 @@ Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbe
 
 | Metric                                            |  Measured | Budget (`max`) |
 | ------------------------------------------------- | --------: | -------------: |
-| HTTP requests                                     |       139 |            160 |
-| Bytes uploaded                                    |   137,405 |        158,016 |
+| HTTP requests                                     |       152 |            160 |
+| Bytes uploaded                                    |   158,703 |        182,508 |
 | Requests during the offline hour                  |        12 |             14 |
-| Storage writes (day)                              |     1,029 |          1,184 |
+| Storage writes (day)                              |     1,121 |          1,184 |
 | Sentry events, healthy / offline hour / recording | 0 / 0 / 0 |      0 / 0 / 0 |
 | Gameplay requests, open in foreground             |         0 |              0 |
 | Hold-fallback requests                            |        14 |             17 |
@@ -1566,6 +1568,9 @@ Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbe
 | Sudoku (1)     |                        6,649 |  7,647 |                                  27 |     32 |
 | Mahjong (1)    |                        4,957 |  5,701 |                                  15 |     18 |
 | Daily Word (1) |                          834 |    960 |                                  11 |     13 |
+| Cascade (3)    |                       34,341 | 39,492 |                                  34 |     39 |
+
+#3858 added the three Cascade games and re-measured the day totals with them (HTTP requests 139 → 152, bytes uploaded 137,405 → 158,703, storage writes 1,029 → 1,121); only the bytes uploaded needed a higher `max`. The other games' rows are unchanged: Cascade plays last, so nothing before it moves.
 
 ### Raising a budget
 

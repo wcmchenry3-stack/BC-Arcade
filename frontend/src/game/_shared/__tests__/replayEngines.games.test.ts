@@ -1,5 +1,5 @@
 /**
- * Every game's replay rules are chosen by `engine_version` (#3912). For each game
+ * Every game's replay rules are chosen by `engine_version` (#3912; Cascade #3858). For each game
  * with a replay: its `REPLAY_ENGINES` replays the version it records today with
  * today's engine, a `game_started` without the field replays as version 1, an
  * older version registered with `withLegacy` (a test-only fake: no game has a
@@ -9,6 +9,8 @@
 
 import * as blackjackEngine from "../../blackjack/engine";
 import * as blackjack from "../../blackjack/replay";
+import * as cascadeEngine from "../../cascade/engine";
+import * as cascade from "../../cascade/rebuild";
 import * as dailyWordEngine from "../../daily_word/engine";
 import * as dailyWord from "../../daily_word/replay";
 import * as freecellEngine from "../../freecell/engine";
@@ -121,6 +123,13 @@ const CASES: readonly Case[] = [
     version: blackjackEngine.ENGINE_VERSION,
     rules: { handValue: blackjackEngine.handValue },
     started: { starting_chips: 1000 },
+  },
+  {
+    game: "cascade",
+    engines: cascade.REPLAY_ENGINES,
+    version: cascadeEngine.ENGINE_VERSION,
+    rules: {}, // a fresh engine on the seed: cascade/__tests__/replay.fixture.test.ts replays it
+    started: { fruit_set: "fruits", seed: 3, engine_seed: 4, tuning: "lively3.overlap1.ladder11" },
   },
   {
     game: "daily_word",

@@ -3,6 +3,7 @@
  * derived from it. The cross-language half (every type seeded and validated
  * on the backend) is backend/tests/test_event_registry_contract.py.
  */
+import type { GameType } from "../types";
 import { GAME_TYPES } from "../../../api/vocab";
 import {
   DEFAULT_RECORDING_CONFIG,
@@ -167,6 +168,7 @@ describe("recording caps derived from the registry", () => {
       "yacht",
       "twenty48",
       "blackjack",
+      "cascade", // #3858: its drop / merge caps and session cap
       "solitaire",
       "hearts",
       "sudoku",
@@ -177,6 +179,8 @@ describe("recording caps derived from the registry", () => {
       "daily_word",
     ]);
     expect(recordingConfigFor("sort")).toBe(gameRecordingConfigs.sort);
-    expect(recordingConfigFor("cascade")).toBe(DEFAULT_RECORDING_CONFIG);
+    expect(recordingConfigFor("cascade")).toBe(gameRecordingConfigs.cascade);
+    // Every game overrides something since #3858: a type with no entry gets the defaults.
+    expect(recordingConfigFor("not_a_game" as GameType)).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });

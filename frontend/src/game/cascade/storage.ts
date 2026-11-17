@@ -25,6 +25,11 @@ export interface SavedState {
    * Absent in saves from older builds.
    */
   playedMs?: number;
+  /**
+   * The replay units the game has recorded so far (#3858), so a relaunched game numbers its next
+   * unit after them. Absent in saves from older builds (and then counted from 0).
+   */
+  replayUnit?: number;
 }
 
 export function looksValid(data: unknown): data is SavedState {
@@ -43,7 +48,8 @@ export function looksValid(data: unknown): data is SavedState {
     ) ||
     typeof d.score !== "number" ||
     typeof d.savedAt !== "number" ||
-    (d.playedMs !== undefined && typeof d.playedMs !== "number")
+    (d.playedMs !== undefined && typeof d.playedMs !== "number") ||
+    (d.replayUnit !== undefined && typeof d.replayUnit !== "number")
   ) {
     return false;
   }

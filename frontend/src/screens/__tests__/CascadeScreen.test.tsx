@@ -28,7 +28,8 @@ import { __resetCelebrationStylesForTests } from "../../game/cascade/render/cele
 import * as celebrationHook from "../../components/cascade/useCelebrationStyle";
 import { CELEBRATION_MAX_MS } from "../../components/shared/GameResultModal";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
-import { GROW_IN_STEPS } from "../../game/cascade/constants";
+import { CASCADE_TUNING_ID, GROW_IN_STEPS } from "../../game/cascade/constants";
+import { APP_VERSION } from "../../config/appVersion";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import { timeBonus } from "../../game/cascade/timeBonus";
 import i18n from "i18next";
@@ -136,11 +137,15 @@ type StartArgs = [string, Record<string, unknown>?, Record<string, unknown>?];
 const mockStartGame = jest.fn() as unknown as jest.Mock<string, StartArgs>;
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
+// The replay recorder's saves (#3858): one call per unit (or per idle save).
+type EnqueueManyArgs = [string, { type: string; data: Record<string, unknown> }[]];
+const mockEnqueueEvents = jest.fn() as unknown as jest.Mock<undefined, EnqueueManyArgs>;
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({
     startGame: lazy(() => mockStartGame),
     enqueueEvent: lazy(() => mockEnqueueEvent),
+    enqueueEvents: lazy(() => mockEnqueueEvents),
     completeGame: lazy(() => mockCompleteGame),
   });
 });
@@ -150,7 +155,7 @@ jest.mock("../../game/_shared/gameEventClient", () => {
 // ---------------------------------------------------------------------------
 
 type MockEngineEvent =
-  | { type: "merge"; result: number; x: number; y: number }
+  | { type: "merge"; result: number; x: number; y: number; tierA: number; step: number }
   | { type: "score"; delta: number; total: number }
   | { type: "gameOver" }
   | { type: "win"; x: number; y: number; id: number }
@@ -188,6 +193,7 @@ const mockEngineGetState = jest.fn().mockImplementation(() => ({
 
 let mockEngineInstanceCount = 0;
 jest.mock("../../game/cascade/engine", () => ({
+  ENGINE_VERSION: 1, // #3858: game_started records it
   CascadeEngine: jest.fn().mockImplementation(() => {
     mockEngineInstanceCount++;
     return {
@@ -228,9 +234,9 @@ function advanceOneFrame() {
   cbs.forEach((cb) => cb(performance.now()));
 }
 
-/** Inject an engine merge event and drive one tick. */
+/** Inject an engine merge event (in fixed step 7) and drive one tick. */
 async function injectMerge(tier: number, x: number, y: number) {
-  pendingEngineEvents.push({ type: "merge", result: tier, x, y });
+  pendingEngineEvents.push({ type: "merge", result: tier, x, y, tierA: tier - 1, step: 7 });
   await act(() => {
     advanceOneFrame();
   });
@@ -262,6 +268,7 @@ beforeEach(() => {
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
+  mockEnqueueEvents.mockReset();
   mockCompleteGame.mockReset();
 });
 
@@ -486,74 +493,69 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     const [gameType, meta, eventData] = startCall;
     expect(gameType).toBe("cascade");
     expect(meta).toEqual({});
-    expect(eventData).toEqual(
-      expect.objectContaining({
-        fruit_set: expect.any(String),
-        theme: expect.any(String),
-        seed: null,
-      })
-    );
+    // #3858: the game's seeds, physics tuning and engine version, for replays.
+    expect(eventData).toEqual({
+      fruit_set: expect.any(String),
+      theme: expect.any(String),
+      seed: expect.any(Number),
+      engine_seed: expect.any(Number),
+      tuning: CASCADE_TUNING_ID,
+      engine_version: 1,
+      app_version: APP_VERSION,
+    });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
     }
   });
 
-  it("emits a 'drop' event with expected payload shape on each tap", async () => {
+  /** The replay events the recorder saved for the game (#3858), in order. */
+  const saved = () => mockEnqueueEvents.mock.calls.flatMap(([, events]) => events);
+
+  it("records each drop in memory and saves it with its unit, at a tenth of a pixel (#3858)", async () => {
     const renderer = await renderScreen();
     mockEnqueueEvent.mockClear();
-    await triggerTap(renderer, 123);
-    const dropCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "drop");
-    expect(dropCall).toBeDefined();
-    const [gameId, event] = dropCall!;
-    expect(gameId).toBe("game-uuid-test");
-    expect(event.data).toEqual(
-      expect.objectContaining({
-        drop_index: 1,
-        fruit_tier: expect.any(Number),
-        x: 123,
-        score_before: 0,
-      })
-    );
-    for (const key of RESERVED_KEYS) {
-      expect(event.data).not.toHaveProperty(key);
-    }
+    await triggerTap(renderer, 123.456);
+    // Nothing is queued per drop, and the engine drops at the recorded x.
+    expect(mockEnqueueEvent.mock.calls.some((c) => c[1]?.type === "drop")).toBe(false);
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    expect(mockEngineDrop).toHaveBeenLastCalledWith(expect.any(Number), 123.5);
+    const tier = mockEngineDrop.mock.calls.at(-1)![0] as number;
+    await injectGameOver();
+    // The unit goes out before game_ended: step (the stand-in engine reports none: 0), x in tenths, tier.
+    const drop = saved().find((e) => e.type === "drop");
+    expect(drop?.data).toEqual({ d: [[0, 1235, tier]], v: 1, unit: 1, t_ms: expect.any(Number) });
+    for (const key of RESERVED_KEYS) expect(drop?.data).not.toHaveProperty(key);
   });
 
-  it("emits a 'merge' event with from_tier/to_tier and x/y", async () => {
-    const _renderer = await renderScreen();
-    // Make sure game area is rendered (it is after renderScreen)
-    mockEnqueueEvent.mockClear();
+  it("records a merge as [step, tierFrom, chain] with its unit (#3858)", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 200);
     await injectMerge(4, 200, 300);
-    const mergeCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "merge");
-    expect(mergeCall).toBeDefined();
-    expect(mergeCall![1].data).toEqual(
-      expect.objectContaining({
-        from_tier: 3,
-        to_tier: 4,
-        x: 200,
-        y: 300,
-        score_after: expect.any(Number),
-      })
-    );
-    for (const key of RESERVED_KEYS) {
-      expect(mergeCall![1].data).not.toHaveProperty(key);
-    }
+    await injectMerge(5, 200, 300);
+    expect(mockEnqueueEvent.mock.calls.some((c) => c[1]?.type === "merge")).toBe(false);
+    await injectGameOver();
+    const merge = saved().find((e) => e.type === "merge");
+    expect(merge?.data).toEqual({
+      m: [
+        [7, 3, 1],
+        [7, 4, 2],
+      ],
+      v: 1,
+      unit: 1,
+      t_ms: expect.any(Number),
+    });
   });
 
-  it("capture ordering: drops emit in tap order", async () => {
+  it("capture ordering: drops are recorded in tap order", async () => {
     const renderer = await renderScreen();
-    mockEnqueueEvent.mockClear();
     await triggerTap(renderer, 50);
     await act(() => {
       jest.advanceTimersByTime(201);
     });
     await triggerTap(renderer, 250);
-    const drops = mockEnqueueEvent.mock.calls.map((c) => c[1]).filter((e) => e?.type === "drop");
-    expect(drops.length).toBe(2);
-    expect(drops[0]?.data.drop_index).toBe(1);
-    expect(drops[1]?.data.drop_index).toBe(2);
-    expect(drops[0]?.data.x).toBe(50);
-    expect(drops[1]?.data.x).toBe(250);
+    await injectGameOver();
+    const drop = saved().find((e) => e.type === "drop");
+    expect((drop?.data.d as number[][]).map((t) => t[1])).toEqual([500, 2500]);
   });
 
   it("fires completeGame with snake_case payload on handleGameOver", async () => {
@@ -579,6 +581,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
         total_drops: 1,
         total_merges: 1,
         outcome: "loss",
+        end_step: 0, // #3858: the step the game ended on (the stand-in engine reports none)
       })
     );
     for (const key of RESERVED_KEYS) {
@@ -801,7 +804,13 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     });
     expect(summary.result).not.toHaveProperty("outcome");
     expect(summary.durationMs).toBe(summary.result.duration_ms);
-    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+    // #3858: a New Game's abandon adds the end step and the recorder's replay summary.
+    expect(eventData).toEqual({
+      ...summary.result,
+      outcome: "abandoned",
+      end_step: 0,
+      replay: expect.any(Object),
+    });
   });
 
   it("game over still sends the full result block (#2619: explicit, unchanged)", async () => {
@@ -811,7 +820,8 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     await injectGameOver();
 
     const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
-    expect(summary.result).toEqual(eventData);
+    // #3858: game_ended is the result block plus the end step and the replay summary.
+    expect(eventData).toEqual({ ...summary.result, end_step: 0, replay: expect.any(Object) });
     expect(summary.result).toEqual(expect.objectContaining({ total_drops: 1, outcome: "loss" }));
   });
 

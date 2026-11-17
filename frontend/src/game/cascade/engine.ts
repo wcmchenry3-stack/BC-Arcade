@@ -26,6 +26,11 @@
  *     (`storage.ts` keeps tier and position only).
  *   - A restored game (`restore(pieces, score)`) re-creates bodies from saved tier and position,
  *     at rest: velocities are not saved.
+ *   - Replays (#3858): `steps` counts the fixed steps run since the engine was made, and each
+ *     `merge` event carries the step it happened in, so a recorded game is its seed plus each
+ *     drop's `[step, x, tier]` (`replay.ts`). Rebuilding one steps a fresh engine one fixed step
+ *     at a time to each drop's step. The counter is one integer per fixed step; the recording
+ *     itself never runs here.
  *
  * Merges (#3697, the owner's "3 lively" tuning; docs/games/cascade.md#physics):
  *   - Two same-tier pieces merge when they touch (a planck contact begins) or when their circles
@@ -128,6 +133,15 @@ const DROP_SPAWN_INSET = 5;
 // and stack into a column that never topples.
 const DROP_NUDGE_PX = 0.4;
 const DEFAULT_SEED = 0x2545f491;
+
+/**
+ * Version of the rules this engine plays by (#3909, #3858). Sent in `game_started` as
+ * `engine_version` so a stored game says which rules made it. Bump it when a change to this
+ * engine, its physics (`constants.ts`, `physicsWorld.ts`) or the ladder (`tiers.ts`) would make
+ * an older recorded game replay differently, and keep the old fixture (#3908). A `game_started`
+ * without the field is version 1.
+ */
+export const ENGINE_VERSION = 1;
 const FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;
 
 export interface EngineConfig {
@@ -170,6 +184,8 @@ export type EngineEvent =
       /** The merged piece's id, and its two parents' (for the sim's chain timing and replays). */
       id: number;
       parentIds: readonly [number, number];
+      /** The fixed step it happened in (`CascadeEngine.steps` after that step, #3858). */
+      step: number;
     }
   | { type: "score"; delta: number; total: number }
   | { type: "gameOver"; reason: GameOverReason }
@@ -187,7 +203,14 @@ export type EngineEvent =
    * `id`). Emitted once per game, after that merge's `score`; play ends with it (#3699 builds the
    * celebration and result on it).
    */
-  | { type: "win"; x: number; y: number; id: number };
+  | { type: "win"; x: number; y: number; id: number }
+  /**
+   * A danger episode ended (#3858, for replays): the lid's overflow count ran from fixed step
+   * `start` and reached `peak` steps (of `OVERFLOW_TICKS_THRESHOLD`) before it reset, or before
+   * the game ended (by the lid, `peak` is then the threshold, or by the win). One event per
+   * episode, emitted when it ends; the screen's countdown reads `dangerRatio` as before.
+   */
+  | { type: "danger"; start: number; peak: number };
 
 /** Why the game ended: the pile stayed over the lid, or a piece reached the canvas top. */
 export type GameOverReason = "overflow" | "hardStop";
@@ -294,6 +317,10 @@ export class CascadeEngine {
   /** The capstone was made (#3920): no more drops, merges or lid. */
   private _won = false;
   private _overflowTicksCount = 0;
+  /** #3858: fixed steps run so far, and the danger episode running (start step, -1: none). */
+  private _steps = 0;
+  private _dangerStart = -1;
+  private _dangerPeak = 0;
   // Fixed steps since the last merge in the danger band. Starts past the grace so a new game
   // counts overflow from its first step.
   private _ticksSinceNearLidMerge = OVERFLOW_IGNORE_MERGE_TICKS + 1;
@@ -388,6 +415,7 @@ export class CascadeEngine {
       this._physics.step();
       this._accumulator -= FIXED_STEP_MS;
       substeps++;
+      this._steps++;
       this._fixedStep(events);
     }
     // Below 1000 / (MAX_SUBSTEPS * FIXED_STEP_MS) = 20 fps the loop cannot keep up: drop the
@@ -671,6 +699,7 @@ export class CascadeEngine {
       y: my,
       id: e.id,
       parentIds: [a.id, b.id],
+      step: this._steps,
     });
     events.push({ type: "score", delta: scoreValue, total: this._score });
     if (nearLid) this._ticksSinceNearLidMerge = 0;
@@ -679,6 +708,7 @@ export class CascadeEngine {
     if (newTier === MAX_TIER) {
       this._won = true;
       this._drop = null;
+      this._endDanger(events);
       this._overflowTicksCount = 0;
       events.push({ type: "win", x: mx, y: my, id: e.id });
     }
@@ -721,6 +751,7 @@ export class CascadeEngine {
     if (this._dropHardStopRun >= HARD_STOP_SETTLE_TICKS) hardStop = true;
 
     if (hardStop) {
+      this._endDanger(events);
       this._overflowTicksCount = OVERFLOW_TICKS_THRESHOLD;
       this._endGame(events, "hardStop");
       return;
@@ -728,8 +759,13 @@ export class CascadeEngine {
 
     if (overLid && this._ticksSinceNearLidMerge > OVERFLOW_IGNORE_MERGE_TICKS) {
       this._overflowTicksCount++;
+      if (this._dangerStart < 0) this._dangerStart = this._steps;
+      if (this._overflowTicksCount > this._dangerPeak) {
+        this._dangerPeak = this._overflowTicksCount;
+      }
     } else {
       this._overflowTicksCount = 0;
+      if (this._dangerStart >= 0) this._endDanger(events);
     }
 
     if (this._overflowTicksCount >= OVERFLOW_TICKS_THRESHOLD) {
@@ -738,9 +774,23 @@ export class CascadeEngine {
   }
 
   private _endGame(events: EngineEvent[], reason: GameOverReason): void {
+    this._endDanger(events);
     this._gameOver = true;
     this._drop = null;
     events.push({ type: "gameOver", reason });
+  }
+
+  /** #3858: the danger episode running, if any, ends: one `danger` event. */
+  private _endDanger(events: EngineEvent[]): void {
+    if (this._dangerStart < 0) return;
+    events.push({ type: "danger", start: this._dangerStart, peak: this._dangerPeak });
+    this._dangerStart = -1;
+    this._dangerPeak = 0;
+  }
+
+  /** Fixed steps run since the engine was made (#3858): the step index a recorded drop carries. */
+  get steps(): number {
+    return this._steps;
   }
 
   /**
@@ -784,6 +834,8 @@ export class CascadeEngine {
     this._gameOver = false;
     this._won = false;
     this._overflowTicksCount = 0;
+    this._dangerStart = -1;
+    this._dangerPeak = 0;
     // Treat restore like a near-lid merge just fired, once, so OVERFLOW_IGNORE_MERGE_TICKS of
     // grace applies while pieces settle into their saved positions. It is one grace per restore,
     // the hard stop still applies, and the count starts when it ends.

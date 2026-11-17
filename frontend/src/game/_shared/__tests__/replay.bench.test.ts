@@ -6,7 +6,9 @@
  *
  *   - a full Hearts game: 7 hands, a unit per trick plus one for the pass;
  *   - a 300-move Solitaire game: a unit per move;
- *   - a 13-round Yacht game against the CPU: a unit per round (both turns).
+ *   - a 13-round Yacht game against the CPU: a unit per round (both turns);
+ *   - a 10-minute Cascade game (#3858) on the real engine: a unit per 20 drops, a `drop` and a
+ *     `merge` event each, as the screen records them (`cascade/replay.ts`).
  *
  * The payloads are compact ASCII codes, the shapes #3280's adoptions record.
  * After every unit the recorder's idle task runs and a foreground SyncWorker
@@ -42,6 +44,8 @@ import { PendingGamesStore } from "../pendingGamesStore";
 import { SyncWorker } from "../syncWorker";
 import type { GameType } from "../types";
 import { MockSyncApi, asSyncApi, ok } from "./helpers/syncWorkerFixtures";
+import { playRecordedGame as playCascade } from "../../cascade/__tests__/helpers/recordedGame";
+import { skilledBot } from "../../cascade/sim/bots";
 import { clearStorageReads, storageReads } from "./helpers/storageReads";
 
 /**
@@ -121,6 +125,18 @@ const BUDGETS: Readonly<Record<string, Budget>> = {
     queueBytesPerEvictingSave: 41_000,
     eventPosts: 3,
   },
+  // #3858, measured on the 10-minute game: recorded 7,003 B in 13 units (26 rows), 375,884 B
+  // written against the queue at its cap, ≤ 13,352 B a plain save, ≤ 46,873 B an evicting one.
+  cascade: {
+    queueWritesPerSave: 1,
+    queueWritesPerEvictingSave: 5,
+    pendingWritesPerSave: 1,
+    recordedBytes: 8_100,
+    storageBytesWritten: 432_000,
+    queueBytesPerSave: 15_400,
+    queueBytesPerEvictingSave: 54_000,
+    eventPosts: 2,
+  },
   yacht: {
     queueWritesPerSave: 2,
     queueWritesPerEvictingSave: 6,
@@ -143,6 +159,8 @@ interface Script {
   readonly name: keyof typeof BUDGETS;
   readonly gameType: GameType;
   readonly units: readonly (readonly Recorded[])[];
+  /** Rows seeded before the game (default `SEED_ROWS`): enough that its saves evict. */
+  readonly seedRows?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +265,37 @@ function yachtGame(): Script {
     units.push(unit);
   }
   return { name: "yacht", gameType: "yacht", units };
+}
+
+/**
+ * Cascade (#3858): a 10-minute game on the real engine, the skilled bot dropping every 2.4 s
+ * (seed 3 is still alive at 600 s, so the game stops there), its units as the replay log hands
+ * them over. Played once; every run below records the same units.
+ */
+let cascadeUnits: Recorded[][] | null = null;
+function cascadeGame(): Script {
+  if (cascadeUnits === null) {
+    const units: Recorded[][] = [];
+    playCascade(
+      {
+        beginUnit: (n) => {
+          units.push([]);
+          return n ?? units.length;
+        },
+        record: (type, data) => units[units.length - 1]!.push({ type, data }),
+        closeUnit: () => undefined,
+      },
+      {
+        seeds: { queue: 1003, engine: 2003 },
+        bot: { ...skilledBot, nextDelayMs: () => 2400 },
+        botSeed: 3,
+        maxSimMs: 600_000,
+      }
+    );
+    cascadeUnits = units;
+  }
+  // 26 rows: seeded nearer the cap than the others, so its saves evict too.
+  return { name: "cascade", gameType: "cascade", units: cascadeUnits, seedRows: 4_990 };
 }
 
 // ---------------------------------------------------------------------------
@@ -476,16 +525,16 @@ async function play(script: Script, seedRows: number = SEED_ROWS): Promise<Measu
   };
 }
 
-describe(`Replay recording benchmark (#3275): three games against a ${SEED_ROWS}-row queue`, () => {
+describe(`Replay recording benchmark (#3275): four games against a ${SEED_ROWS}-row queue`, () => {
   afterEach(() => {
     jest.restoreAllMocks();
     resetLogConfig();
   });
 
-  it.each([heartsGame(), solitaireGame(), yachtGame()])(
+  it.each([heartsGame(), solitaireGame(), yachtGame(), cascadeGame()])(
     "$name stays inside its budgets",
     async (script) => {
-      const m = await play(script);
+      const m = await play(script, script.seedRows);
       const budget = BUDGETS[script.name]!;
       process.stdout.write(
         `[bench #3275] ${script.name}: ${m.units} units, ${m.events} events, ${m.saves} saves; ` +
@@ -553,7 +602,7 @@ describe("Bytes written per save do not grow with the queue (#3333)", () => {
     resetLogConfig();
   });
 
-  it.each([heartsGame(), solitaireGame(), yachtGame()])(
+  it.each([heartsGame(), solitaireGame(), yachtGame(), cascadeGame()])(
     "$name: a 90%-full queue costs a save what a near-empty one does",
     async (script) => {
       const empty = await play(script, NEAR_EMPTY_ROWS);

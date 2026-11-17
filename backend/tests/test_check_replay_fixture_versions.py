@@ -960,6 +960,7 @@ def test_the_real_manifest_covers_every_game_that_records_an_engine_version() ->
         "twenty48",
         "blackjack",
         "daily_word",
+        "cascade",  # #3858
     }
 
 

@@ -3,7 +3,8 @@
  *
  * One virtual day of a heavy player, on fake timers: a Daily Word, 10 games of
  * 2048, 3 of Hearts, 5 of Yacht against the computer, 5 of Solitaire, 3 Star
- * Swarm runs, a Sudoku and a Mahjong. Each game's events come from its own
+ * Swarm runs, a Sudoku, a Mahjong and 3 games of Cascade (#3858: two of a few
+ * minutes, and a 10-minute one with a trip to the background). Each game's events come from its own
  * replay path (the real engine, the game's replay module and a real
  * GameRecorder; see the `build*` functions below); they are then saved into the
  * real GameEventClient → EventStore → AsyncStorage mock over the day, and the
@@ -65,6 +66,8 @@ import {
 } from "../../twenty48/engine";
 import { createMoveLog as createTwenty48Log, moveTuple } from "../../twenty48/replay";
 import { asTurnSink, playGame as playYacht } from "../../yacht/__tests__/helpers/replayGame";
+import { playRecordedGame as playCascade } from "../../cascade/__tests__/helpers/recordedGame";
+import { skilledBot } from "../../cascade/sim/bots";
 import { BugReportLimiter } from "../bugReportLimiter";
 import { createMoveLog, recordChunk } from "../cards/moveLog";
 import { GAMEPLAY_HOLD_MAX_MS, Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
@@ -381,6 +384,39 @@ function buildMahjong(): Played {
   return { type: "mahjong", minutes: 12, saves };
 }
 
+/**
+ * Cascade (#3858): a seeded game on the real engine, recorded as the screen records it (a unit
+ * per 20 drops through the replay log). `gapMs` is the bot's pace; the 10-minute game is the
+ * skilled bot dropping every 2.4 s (seed 3 is still alive at 600 s, so it is abandoned there),
+ * with a trip to the background after its 120th drop.
+ */
+function buildCascade(seed: number, gapMs: number, withBackground: boolean): Played {
+  const saves: EnqueueEventInput[][] = [];
+  const recorder = recorderInto("cascade", saves);
+  let backgroundAfterSave: number | undefined;
+  const game = playCascade(
+    {
+      beginUnit: (n) => recorder.beginUnit(n),
+      record: (type, data) => recorder.record(type, data),
+      closeUnit: () => recorder.closeUnit(),
+    },
+    {
+      seeds: { queue: 1000 + seed, engine: 2000 + seed },
+      bot: { ...skilledBot, nextDelayMs: () => gapMs },
+      botSeed: seed,
+      maxSimMs: 600_000,
+      backgroundAfterDrops: withBackground ? 120 : undefined,
+      onBackground: () => {
+        recorder.flush();
+        backgroundAfterSave = saves.length;
+      },
+    }
+  );
+  recorder.endSession();
+  const minutes = Math.max(1, Math.round(game.simMs / MINUTE));
+  return { type: "cascade", minutes, saves, backgroundAfterSave };
+}
+
 /** The day, in the order it is played. Sudoku starts the offline hour. */
 function buildDay(): { games: Played[]; offlineStartsAt: number } {
   const hearts = [buildHearts(1, true), buildHearts(18, false), buildHearts(5, false)];
@@ -389,6 +425,11 @@ function buildDay(): { games: Played[]; offlineStartsAt: number } {
   const starswarm = [buildStarSwarm(1, 3), buildStarSwarm(2, 5), buildStarSwarm(3, 8)];
   const twenty48 = Array.from({ length: 10 }, (_, i) => buildTwenty48(i + 1));
   const sudoku = buildSudoku();
+  const cascade = [
+    buildCascade(1, 1200, false),
+    buildCascade(3, 2400, true), // the 10-minute game
+    buildCascade(2, 1200, false),
+  ];
   const games: Played[] = [
     buildDailyWord(),
     ...twenty48.slice(0, 4),
@@ -412,6 +453,8 @@ function buildDay(): { games: Played[]; offlineStartsAt: number } {
     starswarm[2]!,
     ...twenty48.slice(7),
     hearts[2]!,
+    // #3858: Cascade closes the day, so the games before it measure as they did before it.
+    ...cascade,
   ];
   return { games, offlineStartsAt: games.indexOf(sudoku) };
 }
@@ -678,7 +721,7 @@ describe("Replay budget: a heavy player's day (#3398)", () => {
     }
     day = buildDay();
     recordingSentryEvents = calls.length;
-  });
+  }, 120_000); // the Cascade games run the real physics: ~15 s of the day's set-up
 
   beforeEach(() => {
     jest.useFakeTimers({
@@ -710,7 +753,10 @@ describe("Replay budget: a heavy player's day (#3398)", () => {
       count("daily_word"),
       count("sudoku"),
       count("mahjong"),
-    ]).toEqual([3, 5, 5, 3, 10, 1, 1, 1]);
+      count("cascade"),
+    ]).toEqual([3, 5, 5, 3, 10, 1, 1, 1, 3]);
+    // #3858: one of the Cascade games is 10 minutes long.
+    expect(day.games.filter((g) => g.type === "cascade").map((g) => g.minutes)).toContain(10);
     expect(info.failedRequests).toBeGreaterThan(0); // the API really was down for an hour
 
     expect(violations(measured, loadBudget())).toEqual([]);

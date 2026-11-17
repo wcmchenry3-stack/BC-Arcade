@@ -503,9 +503,15 @@ between them (#3395, `backend/starswarm/replay.py`; a sampled diagnostic, not a
 frame-by-frame replay). A Sort level is rebuilt step by step from its
 `moves` events with a verdict (`complete`, `incomplete` or `invalid`; #3388,
 `backend/sort/rebuild.py`, [docs/games/sort.md](games/sort.md#replay-recording)).
+A Cascade game is read from its events, not re-simulated (#3858,
+`backend/cascade/replay.py`): its seeds and tuning, drops and merges by tier, the
+longest chain, its danger moments, the outcome with its end and capstone steps,
+the score with its time bonus, and whether the recorded merges add up to the
+merge score ([docs/games/cascade.md](games/cascade.md#replay-recording-3858)).
 Tests: `backend/tests/test_replay_game.py`,
 `backend/tests/test_replay_game_starswarm_timeline.py`,
-`backend/tests/test_replay_game_sort.py`, `backend/tests/test_sort_rebuild.py`.
+`backend/tests/test_replay_game_sort.py`, `backend/tests/test_sort_rebuild.py`,
+`backend/tests/test_replay_game_cascade.py`.
 
 ### Privacy notes
 
