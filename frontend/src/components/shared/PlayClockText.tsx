@@ -1,5 +1,5 @@
-import { monotonicNow } from "../../game/_shared/monotonicNow";
 import React, { useEffect, useState } from "react";
+import { monotonicNow } from "../../game/_shared/monotonicNow";
 import { Text, type StyleProp, type TextStyle } from "react-native";
 import { formatMs, msToNextSecond } from "../../game/_shared/formatMs";
 import type { PlayClock } from "../../game/_shared/playClock";

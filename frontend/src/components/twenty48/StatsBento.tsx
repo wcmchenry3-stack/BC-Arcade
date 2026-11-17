@@ -1,5 +1,5 @@
-import { monotonicNow } from "../../game/_shared/monotonicNow";
 import React, { useEffect, useState } from "react";
+import { monotonicNow } from "../../game/_shared/monotonicNow";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";

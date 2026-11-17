@@ -16,8 +16,8 @@
  *      shared personal best (#3757); ranked via `useGameLeaderboard`.
  *   6. Audio — engine events play the 2048 and game-over sounds.
  */
-import { monotonicNow } from "../game/_shared/monotonicNow";
 import React, { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import {
   View,
   StyleSheet,

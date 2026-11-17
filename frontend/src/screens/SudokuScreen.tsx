@@ -215,7 +215,7 @@ export default function SudokuScreen() {
   const [hudH, setHudH] = useState(0);
   // What the result card shows, captured when the puzzle is solved.
   const [result, setResult] = useState<{
-    /** Null when the clock gave no usable time (the device clock stepped back). */
+    /** Null when the clock gave no usable time (a negative or zero elapsed time). */
     elapsedS: number | null;
     bestTimeS: number;
     isNewBest: boolean;
@@ -228,7 +228,7 @@ export default function SudokuScreen() {
   });
   const { lookup: lookupRank, reset: resetScore } = leaderboard;
 
-  // Timer bookkeeping.  `startMs` is the wall-clock at which play began,
+  // Timer bookkeeping.  `startMs` is the monotonic reading (`monotonicNow`) at which play began,
   // shifted forward while the app sits in the background so elapsed
   // reads as "time actively spent playing." null = no input yet.
   const startMsRef = useRef<number | null>(null);
@@ -346,7 +346,7 @@ export default function SudokuScreen() {
   // start moves forward on resume, and a pause in progress stops the count).
   const playedMs = useCallback((): number | null => {
     if (startMsRef.current === null) return null;
-    // Raw, so a wall clock that stepped back after a resume shows as a negative
+    // Raw, so a (defensive) negative difference shows as a negative
     // time: a completion then records no duration (below). The HUD clamps it.
     return (pausedAtRef.current ?? monotonicNow()) - startMsRef.current;
   }, []);
@@ -451,8 +451,8 @@ export default function SudokuScreen() {
   // and no best: only its result card is filled in.
   useCompletionTransition(state, isComplete, (s) => {
     const score = computeScore(s.difficulty, s.errorCount);
-    // A time is usable only when positive: a device clock that stepped back
-    // after a resume cannot make a 00:00 solve, a "New best", or a best of 0
+    // A time is usable only when positive: a non-positive elapsed time
+    // cannot make a 00:00 solve, a "New best", or a best of 0
     // (which is also the "no best yet" mark). Then the duration is unknown.
     const playedS = Math.floor((playedMs() ?? 0) / 1000);
     const finalElapsed = playedS > 0 ? playedS : null;

@@ -17,5 +17,7 @@
  */
 export function monotonicNow(): number {
   const perf = (globalThis as { performance?: { now?: () => number } }).performance;
-  return typeof perf?.now === "function" ? perf.now() : Date.now();
+  // Whole milliseconds, as `Date.now()` was: `performance.now()` is fractional, and a
+  // fractional `duration_ms` is rejected by the backend's int result models.
+  return typeof perf?.now === "function" ? Math.floor(perf.now()) : Date.now();
 }

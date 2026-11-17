@@ -1,5 +1,5 @@
-import { monotonicNow } from "../game/_shared/monotonicNow";
 import { useCallback, useEffect, useRef } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import type { Dispatch, SetStateAction } from "react";
 import type { PlayClock } from "../game/_shared/playClock";
 import { usePauseWhileAway, type FocusEventSource } from "./usePauseWhileAway";

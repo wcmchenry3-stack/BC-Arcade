@@ -107,4 +107,14 @@ describe("useCascadeClock (#2750, #3700)", () => {
     expect(clock.elapsed()).toBe(90_000);
     spy.mockRestore();
   });
+
+  it("reports a whole number of milliseconds for a fractional performance.now (#3925)", async () => {
+    const clock = (await renderHook(() => useCascadeClock())).result.current;
+    const mono = jest.spyOn(performance, "now").mockReturnValue(1000.4);
+    clock.start();
+    mono.mockReturnValue(4234.567);
+    expect(Number.isInteger(clock.elapsed())).toBe(true);
+    expect(clock.elapsed()).toBe(3234);
+    mono.mockRestore();
+  });
 });

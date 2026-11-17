@@ -57,10 +57,9 @@ export function withClock<T extends PlayClock>(target: T, clock: PlayClock): T {
 
 /** Play time so far: what is banked plus the running segment, if any. */
 export function clockElapsedMs(clock: PlayClock, now: number = monotonicNow()): number {
-  // A device clock set back mid-segment makes `now - startedAt` negative: a
-  // segment banks 0 at the least, never a negative play time (#3738). A
-  // startedAt in the future banks 0 until now catches up, so time played during
-  // a backwards jump is intentionally not credited.
+  // `now` is monotonic (#3925), so a device clock change cannot move it. The clamp stays as a
+  // defence (#3738): a segment banks 0 at the least, never a negative play time, e.g. a
+  // `startedAt` read from another run's origin or from an old wall-time save.
   return clock.accumulatedMs + (clock.startedAt !== null ? Math.max(0, now - clock.startedAt) : 0);
 }
 

@@ -25,8 +25,8 @@
  *      (useTransientToast, #2981).
  */
 
-import { monotonicNow } from "../game/_shared/monotonicNow";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 import Animated from "react-native-reanimated";

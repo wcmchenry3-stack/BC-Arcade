@@ -10,8 +10,8 @@
  * - A restored game runs on from the load with its saved play banked (`restore`), paused if the
  *   load lands while the player is away.
  */
-import { monotonicNow } from "../_shared/monotonicNow";
 import { useState } from "react";
+import { monotonicNow } from "../_shared/monotonicNow";
 import {
   clockElapsedMs,
   pauseClock,

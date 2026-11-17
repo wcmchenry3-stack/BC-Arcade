@@ -23,8 +23,8 @@
  * is intentionally route-agnostic and reads its navigation via the hook.
  */
 
-import { monotonicNow } from "../game/_shared/monotonicNow";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
 import {
   Platform,
   StyleSheet,

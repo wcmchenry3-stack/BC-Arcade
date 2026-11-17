@@ -81,11 +81,8 @@ beforeEach(() => {
 
 // The React Native jest setup makes `performance.now` a jest.fn() over Date.now, so
 // spyOn(performance, "now").mockRestore() strips its implementation and the play clock
-// (`monotonicNow`, #3925) would read undefined in the next test. Re-install it.
+// (`monotonicNow`, #3925) would read undefined in the next test. Reset it every test.
 beforeEach(() => {
-  const perf = (globalThis as { performance?: { now?: unknown } }).performance;
-  const now = perf?.now as jest.Mock | undefined;
-  if (now !== undefined && jest.isMockFunction(now) && typeof now() !== "number") {
-    now.mockImplementation(() => Date.now());
-  }
+  const now = (globalThis as { performance?: { now?: unknown } }).performance?.now;
+  if (jest.isMockFunction(now)) now.mockImplementation(() => Date.now());
 });
