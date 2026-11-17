@@ -6,8 +6,8 @@
  * worklets; under Jest they run directly, so a test sees what the UI thread does.
  */
 import React from "react";
-import { Text } from "react-native";
-import { act, render, renderHook } from "@testing-library/react-native";
+import { Platform, Text } from "react-native";
+import { act, render, renderHook, screen } from "@testing-library/react-native";
 import CascadeAimArea from "../CascadeAimArea";
 import { useBoardMotion } from "../useBoardMotion";
 import { AIM_STATE } from "../../../game/cascade/aim";
@@ -264,4 +264,22 @@ it("a refused tap just ends (the piece never left the ring)", async () => {
   await m.press(150);
   await m.release();
   expect(m.motion.values.aimState.value).toBe(AIM_STATE.idle);
+});
+
+// #3934: keyboard aiming is web only; the board is a tab stop there and nowhere else.
+describe("keyboard focus (#3934)", () => {
+  afterEach(() => jest.restoreAllMocks());
+  const board = () => screen.getByTestId("cascade-game-area");
+
+  it("is a tab stop on web", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    await mount();
+    expect(board().props.tabIndex).toBe(0);
+  });
+
+  it("is not focusable on iOS or Android", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    await mount();
+    expect(board().props.tabIndex).toBeUndefined();
+  });
 });
