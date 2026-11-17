@@ -145,13 +145,13 @@ Adding a new shared image set: add imports + export object to `_shared/images.ts
 cd frontend && npm run prebuild      # or: node scripts/optimize-assets.js
 ```
 
-- Lossless crush of `icon.png`, `splash-icon.png`, `adaptive-icon.png`, `favicon.png`. (It also palette-quantized Cascade's baked sprites until they were replaced by code-drawn pieces in #3698.)
+- Lossless crush of `icon.png` and `favicon.png`. (`splash-icon.png` and `adaptive-icon.png` are generated palette PNGs from `tools/assets/gen_app_icons.py` (#3935) and are not crushed, so the generator's `--check` stays exact.) (It also palette-quantized Cascade's baked sprites until they were replaced by code-drawn pieces in #3698.)
 
 The script is idempotent.
 
 ## Tweaking a generated asset
 
-The in-house sounds (`synth_starswarm_sfx.py`, `synth_arcade_sfx.py`, `synth_puzzle_sfx.py`) and the Star Swarm sprites (`draw_starswarm_art.py`) are the output of their scripts in `tools/assets/`. Tests fail when a shipped file stops matching its generator (#3672), so a change always goes through the script:
+The in-house sounds (`synth_starswarm_sfx.py`, `synth_arcade_sfx.py`, `synth_puzzle_sfx.py`) and the Star Swarm sprites (`draw_starswarm_art.py`) are the output of their scripts in `tools/assets/`. The splash and Android launcher art (`gen_app_icons.py`, #3935) is generated the same way from the mascot; `python tools/assets/gen_app_icons.py` rewrites them in place (palette PNGs, about 0.4 MB net over the old placeholders) and `--check` lists stale files. Tests fail when a shipped file stops matching its generator (#3672), so a change always goes through the script:
 
 1. Edit the recipe in the generator script.
 2. Rerun the generator for that name into a scratch folder, e.g. `python tools/assets/synth_puzzle_sfx.py /tmp/out daily-word-win` (sprites: `python tools/assets/draw_starswarm_art.py --out /tmp/out <name>`).
