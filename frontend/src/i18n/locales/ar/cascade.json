@@ -14,6 +14,8 @@
   "event.merged": "تم الدمج! تم إنشاء {{fruit}}.",
   "score.high": "الأعلى",
   "a11y.board": "لوحة لعبة Cascade",
+  "a11y.boardHint": "انقر مرتين لإسقاط القطعة التالية في المنتصف. اضغط واسحب للتصويب.",
+  "a11y.dropPiece": "إسقاط القطعة",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

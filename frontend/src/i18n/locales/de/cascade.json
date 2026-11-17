@@ -14,6 +14,8 @@
   "event.merged": "Fusion! {{fruit}} erstellt.",
   "score.high": "Rekord",
   "a11y.board": "Cascade-Spielfeld",
+  "a11y.boardHint": "Doppeltippen, um das nächste Teil in der Mitte fallen zu lassen. Drücken und ziehen zum Zielen.",
+  "a11y.dropPiece": "Teil fallen lassen",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

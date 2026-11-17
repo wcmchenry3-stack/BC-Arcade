@@ -9,6 +9,7 @@ import type { BoardMotion, ChainGlyphs } from "../drawMotion";
 import { CASCADE_LID_PALETTE, CASCADE_MOTION } from "../../../../theme/theme.cascade";
 import { LID_LINE, SPAWNER } from "../../lidVisuals";
 import { DANGER_IDLE_PHASE, MOTION } from "../../motion";
+import { AIM_STATE } from "../../aim";
 import {
   MOTION_KIND,
   createMotionLog,
@@ -61,7 +62,7 @@ jest.mock("@shopify/react-native-skia", () => {
 type P = { color: string; alpha: number; style: string; width: number; dash: unknown };
 type Op =
   | { k: "circle"; x: number; y: number; r: number; p: P }
-  | { k: "line"; y: number; p: P }
+  | { k: "line"; x: number; y: number; y1: number; p: P }
   | { k: "rect"; rect: { x: number; y: number; width: number; height: number }; p: P }
   | { k: "path"; svg: string; p: P }
   | { k: "image" }
@@ -75,8 +76,8 @@ function recorder() {
   const canvas = {
     drawCircle: (x: number, y: number, r: number, p: { st: P }) =>
       ops.push({ k: "circle", x, y, r, p: snap(p) }),
-    drawLine: (_x0: number, y: number, _x1: number, _y1: number, p: { st: P }) =>
-      ops.push({ k: "line", y, p: snap(p) }),
+    drawLine: (x: number, y: number, _x1: number, y1: number, p: { st: P }) =>
+      ops.push({ k: "line", x, y, y1, p: snap(p) }),
     drawRect: (rect: Extract<Op, { k: "rect" }>["rect"], p: { st: P }) =>
       ops.push({ k: "rect", rect, p: snap(p) }),
     drawPath: (path: { svg: string }, p: { st: P }) =>
@@ -360,5 +361,90 @@ describe("next piece in the spawner (B)", () => {
     expect(
       draw(frame, motionAt([drop], 0, { reduceMotion: true })).some((o) => o.k === "image")
     ).toBe(false);
+  });
+});
+
+// #3928: the aim guide (owner pick A): a dashed plumb line and a dashed ghost where it lands.
+describe("aim guide (#3928)", () => {
+  const tier = 1;
+  const R = tierDrawnRadius(tier);
+  const pile = [piece(1, 4, 200, 520)];
+  const frame = frameOf(pile, 0, tier);
+  const aimAt = (state: number, ms: number, x = 200, over: Partial<BoardMotion> = {}) =>
+    motionAt([], 1000, { aim: { state, x, ms, fromX: x }, ...over });
+  const guideLine = (ops: Op[]) =>
+    ops.find(
+      (o): o is Extract<Op, { k: "line" }> =>
+        o.k === "line" && o.p.width === MOTION.aim.lineWidth && o.p.dash !== null
+    );
+  const ghost = (ops: Op[]) =>
+    circles(ops).filter((c) => c.r === R && c.y < 520 && c.y > LID_LINE.y);
+
+  it("aiming: a dashed line from under the piece to a ghost resting on the pile", () => {
+    const ops = draw(frame, aimAt(AIM_STATE.aiming, MOTION.aim.inMs));
+    const landY = 520 - (tierDrawnRadius(4) + R);
+    const line = guideLine(ops)!;
+    expect(line.x).toBe(200);
+    expect(line.y1).toBeCloseTo(landY - R, 5);
+    expect(line.p.color).toBe(lid.ink);
+    expect(line.p.alpha).toBeCloseTo(MOTION.aim.lineAlpha, 5);
+    const g = ghost(ops);
+    expect(g.map((c) => c.y)).toEqual([expect.closeTo(landY, 5), expect.closeTo(landY, 5)]);
+    expect(g[0]!.p.color).toBe(tones[tier]!.l); // the faint fill
+    expect(g[1]!.p).toMatchObject({ color: lid.ink, style: "stroke" }); // the dashed outline
+  });
+
+  it("the spawner piece leaves the ring for the finger; the ring stays centred", () => {
+    const ops = draw(frame, aimAt(AIM_STATE.aiming, MOTION.aim.pickUpMs, 300));
+    const t = ops.filter((o): o is Extract<Op, { k: "translate" }> => o.k === "translate");
+    expect(t[t.length - 1]!.x).toBe(300);
+    expect(circles(ops).some((c) => c.x === SPAWNER.cx && c.r === SPAWNER.ringRadius)).toBe(true);
+  });
+
+  it("a press that is not yet a drag (a tap) draws no guide and keeps the piece in the ring", () => {
+    const ops = draw(frame, aimAt(AIM_STATE.pressed, 50, 320));
+    expect(guideLine(ops)).toBeUndefined();
+    const t = ops.filter((o): o is Extract<Op, { k: "translate" }> => o.k === "translate");
+    expect(t[t.length - 1]!.x).toBe(SPAWNER.cx);
+  });
+
+  it("the dashes march with the clock; under Reduce Motion they stand still and show at once", () => {
+    const a = guideLine(
+      draw(frame, motionAt([], 0, { aim: { state: AIM_STATE.aiming, x: 200, ms: 500, fromX: 0 } }))
+    )!;
+    const b = guideLine(
+      draw(
+        frame,
+        motionAt([], 100, { aim: { state: AIM_STATE.aiming, x: 200, ms: 500, fromX: 0 } })
+      )
+    )!;
+    expect(a.p.dash).not.toEqual(b.p.dash);
+    const calm = (clock: number) =>
+      guideLine(
+        draw(
+          frame,
+          motionAt([], clock, {
+            reduceMotion: true,
+            aim: { state: AIM_STATE.aiming, x: 200, ms: 0, fromX: 0 },
+          })
+        )
+      )!;
+    expect(calm(0).p.dash).toEqual(calm(100).p.dash);
+    expect(calm(0).p.alpha).toBeCloseTo(MOTION.aim.lineAlpha, 5); // no fade in
+  });
+
+  it("after a release only the line fades; Reduce Motion hides it at once", () => {
+    const ops = draw(frame, aimAt(AIM_STATE.released, MOTION.aim.outMs / 2));
+    expect(guideLine(ops)!.p.alpha).toBeCloseTo(MOTION.aim.lineAlpha / 2, 5);
+    expect(ghost(ops)).toHaveLength(0);
+    expect(
+      guideLine(draw(frame, aimAt(AIM_STATE.released, 0, 200, { reduceMotion: true })))
+    ).toBeUndefined();
+  });
+
+  it("over the open floor the ghost rests on the floor", () => {
+    const ops = draw(frame, aimAt(AIM_STATE.aiming, MOTION.aim.inMs, 330));
+    const floorY = 600 - 20 - R;
+    expect(circles(ops).some((c) => c.r === R && Math.abs(c.y - floorY) < 1e-6)).toBe(true);
   });
 });

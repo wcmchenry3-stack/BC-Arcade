@@ -14,6 +14,8 @@
   "event.merged": "Fusionné! {{fruit}} créé.",
   "score.high": "Record",
   "a11y.board": "Plateau de jeu Cascade",
+  "a11y.boardHint": "Touchez deux fois pour lâcher la prochaine pièce au centre. Appuyez et glissez pour viser.",
+  "a11y.dropPiece": "Lâcher la pièce",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

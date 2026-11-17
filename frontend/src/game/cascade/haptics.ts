@@ -6,6 +6,8 @@
  *   - chain: a rising run on the counter's paced steps (`MOTION.chain.stepMs`): ×2 Light, ×3
  *     Medium, ×4 and on Heavy; a chain link fires its chain pulse instead of a merge pulse;
  *   - danger: one Warning when the lid count passes `dangerAt` (again only after it has cleared);
+ *   - aim (#3928): one selection tick when a press becomes a drag (the finger first moves past the
+ *     tap slop); never on a tap, no tick per column;
  *   - win: the result card's Success (`GameResultModal`, as built), so the win has exactly one,
  *     as in Sort (#3660). The winning merge itself fires nothing here.
  *
@@ -20,7 +22,7 @@ import { Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import { MOTION } from "./motion";
 
-export type CascadeHaptic = "light" | "medium" | "heavy" | "warning";
+export type CascadeHaptic = "light" | "medium" | "heavy" | "warning" | "selection";
 
 export function fireCascadeHaptic(kind: CascadeHaptic): void {
   if (Platform.OS === "web") return;
@@ -28,13 +30,15 @@ export function fireCascadeHaptic(kind: CascadeHaptic): void {
     const run =
       kind === "warning"
         ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
-        : Haptics.impactAsync(
-            kind === "light"
-              ? Haptics.ImpactFeedbackStyle.Light
-              : kind === "medium"
-                ? Haptics.ImpactFeedbackStyle.Medium
-                : Haptics.ImpactFeedbackStyle.Heavy
-          );
+        : kind === "selection"
+          ? Haptics.selectionAsync()
+          : Haptics.impactAsync(
+              kind === "light"
+                ? Haptics.ImpactFeedbackStyle.Light
+                : kind === "medium"
+                  ? Haptics.ImpactFeedbackStyle.Medium
+                  : Haptics.ImpactFeedbackStyle.Heavy
+            );
     run?.catch(() => undefined);
   } catch {
     // No haptics available (or a partial module): play goes on.
@@ -66,6 +70,8 @@ export interface HapticPacerDeps {
 
 export interface HapticPacer {
   land(tier: number): void;
+  /** A press became a drag (#3928): one selection tick per gesture. */
+  dragStart(): void;
   /** A merge that made `tier`; `link` is its place in the drop's chain (1 = a plain merge). */
   merge(tier: number, link: number): void;
   /** The lid count after a step. */
@@ -98,6 +104,9 @@ export function createHapticPacer(deps: HapticPacerDeps): HapticPacer {
   }
 
   return {
+    dragStart() {
+      request("selection", deps.now());
+    },
     land(tier) {
       const now = deps.now();
       // A landing is never queued: one that would wait, or comes right after another, is dropped.

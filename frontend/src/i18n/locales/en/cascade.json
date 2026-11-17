@@ -14,6 +14,8 @@
   "event.merged": "Merged! {{fruit}} created.",
   "score.high": "High",
   "a11y.board": "Cascade game board",
+  "a11y.boardHint": "Double-tap to drop the next piece in the middle. Press and drag to aim.",
+  "a11y.dropPiece": "Drop piece",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

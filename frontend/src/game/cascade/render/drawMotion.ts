@@ -48,6 +48,7 @@ import {
   type SpawnerArrival,
 } from "../motion";
 import { MOTION_FIELD, MOTION_KIND, MOTION_SLOTS, MOTION_STRIDE, slotAge } from "../motionLog";
+import type { BoardAim } from "./drawAim";
 
 /** The chain counter's glyphs (`chainGlyphs.ts`): centre-line paths in a 1-high em box. */
 export interface ChainGlyphs {
@@ -74,6 +75,8 @@ export interface BoardMotion {
   /** pt per world px (the board's scale): the counter is sized in pt. */
   readonly ptPerUnit: number;
   readonly glyphs: ChainGlyphs | null;
+  /** #3928: the aim (press, drag, release); absent or null: no aiming. */
+  readonly aim?: BoardAim | null;
 }
 
 const BIN_X = WALL_THICKNESS;

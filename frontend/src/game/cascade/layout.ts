@@ -47,21 +47,16 @@ export function calculateCascadeLayout({
   };
 }
 
-/** The parts of a press event's `nativeEvent` that locate it inside the board. */
-export interface BoardPressPoint {
-  locationX?: number;
-  offsetX?: number;
-}
-
 /**
- * A press on the board as a drop x in world units, kept between the walls, or null when the
- * press has no usable x. iOS and Android report `locationX`. react-native-web's mouse and touch
- * presses do not, so the web reads the DOM `offsetX` instead (the board canvas, the press's only
- * child, fills the pressable). Without it the drop x was NaN, which broke the physics world and
- * no piece ever fell on the web.
+ * A point on the board (px from the board view's left edge) as a drop x in world units, kept
+ * between the walls, or null when it has no usable x or the board has no size yet. A worklet: the
+ * aim gesture (#3928) calls it on the UI thread. #3922's rule stands: a non-finite x never becomes
+ * a drop (a NaN x broke the physics world and no piece fell on the web). Since #3928 the x comes
+ * from react-native-gesture-handler's event, which reports it on iOS, Android and web alike (the
+ * old Pressable path needed the DOM `offsetX` on web).
  */
-export function tapToWorldX(point: BoardPressPoint, scale: number): number | null {
-  const px = Number.isFinite(point.locationX) ? point.locationX : point.offsetX;
+export function boardPxToWorldX(px: number | undefined, scale: number): number | null {
+  "worklet";
   if (px === undefined || !Number.isFinite(px) || !(scale > 0)) return null;
   return Math.max(WALL_THICKNESS, Math.min(WORLD_WIDTH - WALL_THICKNESS, px / scale));
 }

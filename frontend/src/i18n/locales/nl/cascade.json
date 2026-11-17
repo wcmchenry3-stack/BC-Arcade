@@ -14,6 +14,8 @@
   "event.merged": "Versmolten! {{fruit}} gemaakt.",
   "score.high": "Record",
   "a11y.board": "Cascade-speelveld",
+  "a11y.boardHint": "Dubbeltik om het volgende stuk in het midden te laten vallen. Houd ingedrukt en sleep om te mikken.",
+  "a11y.dropPiece": "Stuk laten vallen",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",

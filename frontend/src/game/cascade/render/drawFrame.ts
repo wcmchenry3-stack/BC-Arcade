@@ -59,6 +59,8 @@ import {
   type BoardMotion,
 } from "./drawMotion";
 import { MOTION } from "../motion";
+import { aimPieceX } from "../aim";
+import { drawAimGuide } from "./drawAim";
 
 /**
  * What the board draws with that is not per frame: per-tier sizes and placeholder colours, and
@@ -274,6 +276,11 @@ function drawSpawner(
   const r = hasPiece ? spawnerPieceRadius(radius) : SPAWNER.maxPieceRadius;
   const pieceOpacity = canDrop ? 1 : GHOST_FILL_OPACITY;
 
+  // #3928: while aiming the piece leaves the ring for the finger (the ring stays centred).
+  const aim = motion?.aim ?? null;
+  const px = aim
+    ? aimPieceX(aim.state, aim.x, aim.fromX, aim.ms, motion?.reduceMotion === true, radius)
+    : cx;
   if (hasPiece) {
     // #3701: the new piece drops into the spawner after each drop (a fade under Reduce Motion).
     const arrival = spawnerMotion(motion);
@@ -282,10 +289,10 @@ function drawSpawner(
     const sprite = sprites[tier];
     if (opacity > 0.001) {
       if (sprite) {
-        drawSprite(canvas, cache, sprite, cx, y, (r / radius) * arrival.scale, 0, opacity);
+        drawSprite(canvas, cache, sprite, px, y, (r / radius) * arrival.scale, 0, opacity);
       } else {
         canvas.drawCircle(
-          cx,
+          px,
           y,
           r * arrival.scale,
           elementPaint(cache, style.color[tier] ?? null, opacity)
@@ -300,7 +307,7 @@ function drawSpawner(
       GHOST_STROKE_WIDTH
     );
     paint.setPathEffect(cache.dash);
-    canvas.drawCircle(cx, cy, r, paint);
+    canvas.drawCircle(px, cy, r, paint);
   }
   // The ring: a faint track, then what is left of the countdown on top.
   canvas.drawCircle(
@@ -357,6 +364,19 @@ export function drawFrame(
   drawGameOverDim(canvas, motion);
   drawLidLine(canvas, cache, style, dangerRatio);
   drawLidMotion(canvas, motion, style.palette);
+  if (motion?.aim) {
+    drawAimGuide(
+      canvas,
+      frame,
+      style.radius,
+      spawnerTier,
+      motion.aim,
+      style.palette,
+      motion.tones[spawnerTier] ?? null,
+      motion.clock,
+      motion.reduceMotion
+    );
+  }
   drawSpawner(canvas, cache, style, sprites, dangerRatio, canDrop, spawnerTier, motion);
   drawSpawnerBlink(canvas, motion);
   drawMergeMotion(canvas, motion, style.radius);

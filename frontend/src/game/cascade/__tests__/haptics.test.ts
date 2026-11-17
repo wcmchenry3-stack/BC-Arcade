@@ -17,6 +17,7 @@ import { MOTION } from "../motion";
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
   notificationAsync: jest.fn(() => Promise.resolve()),
+  selectionAsync: jest.fn(() => Promise.resolve()),
   ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
   NotificationFeedbackType: { Success: "success", Warning: "warning", Error: "error" },
 }));
@@ -139,6 +140,14 @@ describe("pacing", () => {
     expect(fired.map(([, k]) => k)).toEqual(["warning", "warning"]);
   });
 
+  // #3928: one selection tick when a press becomes a drag.
+  it("a drag start is one selection tick", () => {
+    const { pacer, fired, advance } = pacerOnClock();
+    pacer.dragStart();
+    advance(100);
+    expect(fired).toEqual([[0, "selection"]]);
+  });
+
   it("reset cancels what is waiting", () => {
     const { pacer, fired, advance } = pacerOnClock();
     pacer.merge(8, 1);
@@ -155,6 +164,12 @@ describe("fireCascadeHaptic (best effort)", () => {
     jest.clearAllMocks();
   });
 
+  it("a selection tick is expo-haptics' selectionAsync", () => {
+    Platform.OS = "ios";
+    fireCascadeHaptic("selection");
+    expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+  });
+
   it("maps to expo-haptics", () => {
     Platform.OS = "ios";
     fireCascadeHaptic("light");
@@ -169,8 +184,10 @@ describe("fireCascadeHaptic (best effort)", () => {
     Platform.OS = "web";
     fireCascadeHaptic("heavy");
     fireCascadeHaptic("warning");
+    fireCascadeHaptic("selection");
     expect(Haptics.impactAsync).not.toHaveBeenCalled();
     expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+    expect(Haptics.selectionAsync).not.toHaveBeenCalled();
   });
 
   it("swallows a failure, sync or async", async () => {

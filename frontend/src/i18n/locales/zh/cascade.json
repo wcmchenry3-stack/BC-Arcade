@@ -14,6 +14,8 @@
   "event.merged": "合并成功！生成{{fruit}}。",
   "score.high": "最高分",
   "a11y.board": "Cascade 游戏面板",
+  "a11y.boardHint": "双击可将下一个方块投放到中间。按住并拖动可瞄准。",
+  "a11y.dropPiece": "投放方块",
   "pieces.fruits.cherry": "Cherry",
   "pieces.fruits.blueberry": "Blueberry",
   "pieces.fruits.lemon": "Lemon",
