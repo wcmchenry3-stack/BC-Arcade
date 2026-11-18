@@ -19,15 +19,6 @@ LIMIT_BYTES = 5 * 1024 * 1024  # 5 MiB (issue #2967)
 # unlisted file over LIMIT_BYTES fails, even inside these directories.
 # If a sound file ever exceeds the limit, list it here explicitly (#1779).
 GRANDFATHERED: dict[str, int] = {
-    # Star Swarm music session archive (#3642) — design/audition artifacts, not game assets.
-    "docs/games/starswarm-music/Other_Working_Audio/00-draft-full.mp3": 12235615,
-    "docs/games/starswarm-music/Rounds/Round_21/starswarm-round21-full-rough.mp3": 5881052,
-    "docs/games/starswarm-music/Rounds/Round_23/starswarm-round23-integrated-rough.mp3": 5881052,
-    # Star Swarm Rounds 44 and 46 (#3734): the seven-minute ambient foundation and the
-    # integrated signature mix. Audition artifacts, not game assets; kept bit-exact (never
-    # re-encoded) so the approved render stays reproducible. Same precedent as Round 21/23.
-    "docs/games/starswarm-music/Rounds/Round_44/starswarm-round44-seven-minute-ambient-foundation.mp3": 6721196,
-    "docs/games/starswarm-music/Rounds/Round_46/starswarm-round46-seven-minute-signature-mix.mp3": 6721196,
     # Star Swarm background music (#3638): the one 6:52.7 track that replaces the four Pixabay
     # tracks (11.28 MB combined). The owner's Round 46 render with the loop edit
     # (tools/assets/make_starswarm_bgm_loop.py): fades trimmed, 3 s seam, +2.9 dB, one encode.

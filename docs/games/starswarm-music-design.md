@@ -28,10 +28,9 @@ The owner built the track over 46 rounds of procedural synthesis. Full detail is
 
 ## Archive and fingerprints
 
-Every round's generator script and render is archived in [`docs/games/starswarm-music/`](starswarm-music/)
-(#3675, #3734; the round zips were unpacked into plain files in #3762). Round 46 is the folder
-`Rounds/Round_46/` (render, generator, exact cue JSON and `README.md`; the Round 44 and 45B inputs
-are in their own round folders).
+Every round's generator script and render was archived in `docs/games/starswarm-music/` (#3675, #3734, #3762).
+That 128 MB archive (which also held the four Pixabay reference tracks) was **removed from the repo in the asset
+audit**; the owner keeps it outside the repo. Paths in the table below are relative to that external archive.
 
 | Item              | File                                                               | SHA-256                                                            |
 | ----------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
@@ -46,7 +45,7 @@ loop edit below and nothing else; a Jest test checks its hash. To reproduce it b
 
 ```sh
 python tools/assets/make_starswarm_bgm_loop.py \
-  docs/games/starswarm-music/Rounds/Round_46/starswarm-round46-seven-minute-signature-mix.mp3 \
+  <archive>/Rounds/Round_46/starswarm-round46-seven-minute-signature-mix.mp3 \
   /tmp/starswarm-bgm.mp3
 sha256sum /tmp/starswarm-bgm.mp3   # 85950430fbfaf0ed9c6425e7b79ee238a44fd6be40c99de934709f661a13426c
 ```

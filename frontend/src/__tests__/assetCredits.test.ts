@@ -50,6 +50,16 @@ describe("Star Swarm asset credits (#2492)", () => {
     expect(files.filter((f) => !credits.includes(f))).toEqual([]);
   });
 
+  // Asset audit: the whole sound folder, not just Star Swarm, must be credited.
+  it("every sound file has an entry in SOUND_CREDITS.md", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const missing = fs
+      .readdirSync(SOUNDS)
+      .filter((f) => !f.endsWith(".md"))
+      .filter((f) => !credits.includes(f));
+    expect(missing).toEqual([]);
+  });
+
   it("every Star Swarm sound has an entry in SOUND_CREDITS.md", () => {
     const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
     const missing = fs
