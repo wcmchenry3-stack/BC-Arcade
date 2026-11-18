@@ -225,7 +225,12 @@ function withReplaySummary(
   data: Record<string, unknown>
 ): Record<string, unknown> {
   const mode = game ? replayModeOf(game) : "off";
-  if (!game || mode === "off") return data;
+  if (!game || mode === "off") {
+    // An off session carries no summary, even one the recorder put in (#3940).
+    if (!("replay" in data)) return data;
+    const { replay: _dropped, ...rest } = data;
+    return rest;
+  }
   // The recorder's counts (`useGameRecorder.complete`), when the game records.
   const counts = isPlainRecord(data.replay) ? data.replay : {};
   const block: Record<string, unknown> = { ...counts, m: mode === "local" ? "s" : "f" };

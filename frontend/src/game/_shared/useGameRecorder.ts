@@ -28,7 +28,9 @@
  *    `complete` also puts the recorder's counts (`stats()`) in the payload's
  *    `replay` field, for the `game_ended` replay summary (#3279). The hook's own
  *    abandons (unmount, `start` / `restart` over an open game) carry the same
- *    `replay` counts, added to the game's progress snapshot payload (#3940).
+ *    `replay` counts, added to the game's progress snapshot payload (#3940):
+ *    unmount, `start` / `restart` and `close` over an open game, and `resume`
+ *    replacing one.
  *  - A new `gameType` (or policy) ends the old recorder's session and uses a
  *    new recorder. While the same game session stays open, the old one's
  *    events are saved to it and the new recorder carries the clock, unit
@@ -140,11 +142,24 @@ export function useGameRecorder<G extends GameType>(
   const setProgressSnapshot = useCallback((getSnapshot: () => ProgressSnapshot) => {
     gameSnapshotRef.current = getSnapshot;
   }, []);
+  // Set while `resume` runs: its abandon of an open game happens with the
+  // recorder's session still in progress (a failed resume keeps it), so the
+  // counts are read from the live session then.
+  const resumingRef = useRef(false);
   useEffect(() => {
     syncSetProgressSnapshot(() => {
-      const snapshot = gameSnapshotRef.current() ?? {};
-      // Runs after the recorder's session ended (unmount cleanup / start), so
-      // stats() reads the ended session's counts: a few field reads, no I/O.
+      let snapshot: ProgressSnapshot = {};
+      try {
+        snapshot = gameSnapshotRef.current() ?? {};
+      } catch {
+        // Isolation: a broken game getter degrades to a bare abandon, which
+        // still carries the counts.
+      }
+      // Pings (every move) read the snapshot too: add the counts only for an
+      // abandon, when the recorder's session has ended (unmount, start,
+      // restart, close) or `resume` is replacing the open game. A few field
+      // reads, no I/O.
+      if (recorder.inSession && !resumingRef.current) return snapshot;
       let stats: RecorderStats | null = null;
       try {
         stats = recorder.stats();
@@ -202,7 +217,13 @@ export function useGameRecorder<G extends GameType>(
           extra: { error: error instanceof Error ? error.name : typeof error },
         });
       }
-      const resumed = syncResume(match);
+      resumingRef.current = true;
+      let resumed: boolean;
+      try {
+        resumed = syncResume(match);
+      } finally {
+        resumingRef.current = false;
+      }
       // A failed resume keeps the numbering and the clock. A successful one
       // over an open game session restarts recording (t_ms from now); with no
       // game session open, the recorder session in progress carries on and

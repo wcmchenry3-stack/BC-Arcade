@@ -16,9 +16,9 @@ import { useGameRecorder } from "../useGameRecorder";
 /** Every gameEventClient call, in order: [method, gameId, detail]. */
 const mockCalls: [string, string, unknown][] = [];
 let mockNextId = 0;
-/** Every saved event: [gameId, type, unit, t_ms]. */
 /** Every completeGame payload (game_ended data), in order: [gameId, payload]. */
 const mockEnded: [string, Record<string, unknown> | undefined][] = [];
+/** Every saved event: [gameId, type, unit, t_ms]. */
 const mockSaved: [string, string, unknown, unknown][] = [];
 /** What gameEventClient.resumeGame returns: null resumes nothing. */
 let mockResumeId: string | null = null;
@@ -199,6 +199,78 @@ describe("useGameRecorder", () => {
     expect(payload.end_step).toBe(7);
     expect(payload.replay.n).toBe(37);
     expect(payload.replay.x).toBe(1);
+  });
+
+  it("a throwing game getter still yields the replay counts; a throwing stats() still abandons (#3940)", async () => {
+    const { result, unmount } = await renderHook(() =>
+      useGameRecorder("hearts", { policy: "on_session_end" })
+    );
+    await act(() => {
+      result.current.setProgressSnapshot(() => {
+        throw new Error("boom");
+      });
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      result.current.record("card_played", { c: "QS" });
+    });
+    await unmount();
+    expect(mockEnded[0]?.[1]).toMatchObject({ outcome: "abandoned", replay: { u: 1, n: 1 } });
+
+    // endSession reads stats() itself once; the abandon's read is the next call.
+    const real = GameRecorder.prototype.stats;
+    let calls = 0;
+    const spy = jest.spyOn(GameRecorder.prototype, "stats").mockImplementation(function (
+      this: GameRecorder
+    ) {
+      calls += 1;
+      if (calls > 1) throw new Error("stats");
+      return real.call(this);
+    });
+    try {
+      const second = await renderHook(() => useGameRecorder("hearts"));
+      await act(() => {
+        second.result.current.start();
+        second.result.current.markStarted();
+      });
+      await second.unmount();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(mockEnded[1]?.[1]).toEqual({ outcome: "abandoned" });
+  });
+
+  it("pings do not read the recorder's counts while a session is in progress (#3940)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    const spy = jest.spyOn(GameRecorder.prototype, "stats");
+    await act(() => {
+      result.current.setProgressSnapshot(() => ({ result: { a: 1 } }));
+      result.current.start();
+      result.current.markStarted();
+      result.current.record("card_played", { c: "2C" });
+    });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("resume over an open game: the abandon carries the replay stats; a failed resume does not abandon (#3940)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      result.current.record("card_played", { c: "2C" });
+    });
+    await act(() => {
+      expect(result.current.resume()).toBe(false); // nothing to resume
+    });
+    expect(mockEnded).toHaveLength(0);
+    mockResumeId = "r1";
+    await act(() => {
+      expect(result.current.resume()).toBe(true);
+    });
+    expect(mockEnded[0]?.[0]).toBe("g1");
+    expect(mockEnded[0]?.[1]).toMatchObject({ outcome: "abandoned", replay: { u: 1, n: 1 } });
   });
 
   it("restart over an open game: the abandon carries the replay stats (#3940)", async () => {

@@ -1226,12 +1226,8 @@ describe("HeartsScreen — game session (#2629)", () => {
     });
     expect(mockSetProgressSnapshot).toHaveBeenCalled();
     const getSnapshot = mockSetProgressSnapshot.mock.calls.at(-1)![0];
-    // #3940: the recorder adds its counts to the abandon's payload.
-    expect(getSnapshot()).toEqual({
-      result: { hands_played: 2 },
-      durationMs: 45_000,
-      payload: { replay: expect.any(Object) },
-    });
+    // #3940: the recorder's counts are added only once its session has ended, not on pings.
+    expect(getSnapshot()).toEqual({ result: { hands_played: 2 }, durationMs: 45_000 });
   });
 
   it("New Game mid-game abandons the game in play with its own progress", async () => {
