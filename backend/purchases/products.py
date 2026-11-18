@@ -24,9 +24,9 @@ def slug_for_product(product_id: str) -> str | None:
 def purchasable_slug_for_product(product_id: str) -> str | None:
     """Like :func:`slug_for_product`, but None for a disabled game's product too.
 
-    A game in ``DISABLED_GAMES`` (#3001: Cascade until its rework) stays premium
-    but is not sold, so a receipt for its product is refused like an unknown
-    product (``422 unknown_product``) and grants nothing. Notifications still use
+    A game in ``DISABLED_GAMES`` (empty today) stays premium but is not sold,
+    so a receipt for its product is refused like an unknown product
+    (``422 unknown_product``) and grants nothing. Notifications still use
     :func:`slug_for_product`, so a refund or revocation of an existing purchase
     row keeps applying."""
     slug = slug_for_product(product_id)

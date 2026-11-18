@@ -15,7 +15,7 @@
  * An entry with `"enabled": false` keeps its game → product mapping (the game
  * is still premium, and the drift tests still see it) but is not sold:
  * `STORE_PRODUCTS` leaves it out, so it is not created in or listed on either
- * store. Cascade is disabled pending its rework (#3001, epic #3033).
+ * store. Only a game in `DISABLED_GAMES` may carry it; none does today.
  */
 import catalog from "./premiumProducts.json";
 

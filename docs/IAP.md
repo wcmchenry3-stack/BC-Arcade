@@ -73,15 +73,17 @@ either console or listed by the store setup (#2874). Only a game in
 (`premiumProducts.test.ts`). In a store build the paywall offers only a game
 that is visible and in `STORE_PRODUCTS`; anything else shows the unavailable
 state without asking the store. The backend refuses a disabled game's product
-too: `purchasable_slug_for_product` (`purchases/service.py`) treats a product
+too: `purchasable_slug_for_product` (`purchases/products.py`) treats a product
 whose game is in `DISABLED_GAMES` (`backend/entitlements/service.py`) as
 `422 unknown_product`, both in the client purchase routes (before any store
 call) and in the grant path, so a verified receipt for it grants nothing and a
 notification for it records nothing. Refunds and revocations of an existing
-purchase row still apply. Today that is **Cascade, disabled pending rework**
-(#3001, epic #3033, re-enabled by ship story #3703), so the first premium update
-sells four products, not five. Create store products from `STORE_PRODUCTS`, not
-`PREMIUM_PRODUCTS`.
+purchase row still apply. No product is disabled today, so the first premium
+update sells all five (Cascade was held back from #3001 until its rework shipped
+in #3703). Create store products from `STORE_PRODUCTS`, not `PREMIUM_PRODUCTS`.
+`com.buffingchi.games.premium.cascade` must exist in App Store Connect and Play
+Console, like the other four, before the first premium update that unhides the
+premium games ships.
 
 **Drift guards** (both run in CI):
 
@@ -1730,7 +1732,7 @@ separate product decision.
 - **Premium update:** the reviewed binary contains the paywall, the adapter
   and the products. It removes the five slugs from `HIDDEN_GAMES`, and they
   appear as locked tiles. The products are submitted **with that binary**.
-  A game in `DISABLED_GAMES` (Cascade, #3001) stays hidden in store builds
+  A game in `DISABLED_GAMES` (none today) stays hidden in store builds
   regardless, and its product (`"enabled": false`) is not submitted.
 - **No server-side unhide, ever.** `GET /games/catalog`, `is_premium` and any
   tier change must never make a hidden game visible.

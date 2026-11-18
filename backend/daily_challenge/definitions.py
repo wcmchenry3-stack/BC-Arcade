@@ -40,7 +40,8 @@ Fields the evaluators read, per game (the result each game must send):
     mahjong     won, pairs, duration_ms (column)       (MahjongResult)
                 — premium since 2026-09-24, so not in the free pool (see below)
     cascade     won, max_tier, duration_ms (column)    (CascadeResult, #3700)
-                — no goals yet (#3703); "won within" applies its 20 s win floor
+                — premium; no goals yet (they join with the other premium games'
+                in #2458); "won within" applies its 20 s win floor
 
 Slates
 ------
@@ -187,7 +188,7 @@ def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
 
 # The lowest plausible value of a "won within" measure, per (game, measure): a
 # win under it is a broken clock or a forged result and never meets the goal.
-# Cascade's 20 s win floor (#3700), so a forged 1 s win can't pass #3703's
+# Cascade's 20 s win floor (#3700), so a forged 1 s win can't pass a Cascade
 # "win in under N minutes". Read when the goal is built, by every path that
 # builds one (the pools and ``goal_from_spec``), so a frozen day keeps it.
 _WON_WITHIN_FLOORS: dict[tuple[str, str], int] = {
@@ -369,9 +370,9 @@ class Template:
 def rotation(slate: Slate, salt: int) -> tuple[str, ...]:
     """The non-Daily-Word games in salt-seeded order. Reproducible for a given salt.
 
-    Disabled games (``entitlements.service.DISABLED_GAMES``, #3001: Cascade until
-    its rework) are skipped even if a pool lists them, so no slate can pick a
-    game that store builds hide; ``pick_template`` only draws from here."""
+    Disabled games (``entitlements.service.DISABLED_GAMES``, empty today) are
+    skipped even if a pool lists them, so no slate can pick a game that store
+    builds hide; ``pick_template`` only draws from here."""
     games = sorted(g for g in GOAL_POOLS[slate] if g != ALWAYS_PRESENT and g not in DISABLED_GAMES)
     if len(games) < _MIN_ROTATION:
         raise ValueError(f"{slate} pool has {len(games)} rotating games; need {_MIN_ROTATION}")

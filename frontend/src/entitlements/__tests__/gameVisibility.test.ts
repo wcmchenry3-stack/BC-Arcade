@@ -143,20 +143,36 @@ describe("gameVisibility", () => {
     expect(dev.isGameVisible("blackjack")).toBe(true);
   });
 
-  describe("disabled games (#3001: Cascade off until its rework, epic #3033)", () => {
+  describe("disabled games (DISABLED_GAMES)", () => {
     /** Simulates the premium release switch (#2875) emptying HIDDEN_GAMES in this module copy. */
     function unhidePremium(mod: GameVisibility): void {
       (mod.HIDDEN_GAMES as Set<string>).clear();
     }
 
-    it("DISABLED_GAMES is exactly Cascade, and Cascade is still a premium game", () => {
-      const { DISABLED_GAMES } = loadWith({ dev: false, apiUrl: PRODUCTION_API_URL });
-      expect([...DISABLED_GAMES]).toEqual(["cascade"]);
+    /** Disables a game in this module copy, as #3001 did for Cascade until #3703. */
+    function disable(mod: GameVisibility, slug: string): void {
+      (mod.DISABLED_GAMES as Set<string>).add(slug);
+    }
+
+    it("no game is disabled (#3703 re-enabled Cascade), and Cascade is hidden like every premium game", () => {
+      const { DISABLED_GAMES, HIDDEN_GAMES } = loadWith({ dev: false, apiUrl: PRODUCTION_API_URL });
+      expect([...DISABLED_GAMES]).toEqual([]);
       expect(PREMIUM_GAMES.has("cascade")).toBe(true);
+      expect(HIDDEN_GAMES.has("cascade")).toBe(true);
     });
 
-    it("a store build hides Cascade even once the premium games are unhidden", () => {
+    it("once the premium games are unhidden, a store build shows Cascade with the rest", () => {
       const store = loadWith({ dev: false, apiUrl: PRODUCTION_API_URL });
+      expect(store.isGameVisible("cascade")).toBe(false);
+      unhidePremium(store);
+      for (const slug of [...PREMIUM_SLUGS, ...FREE_SLUGS]) {
+        expect(store.isGameVisible(slug)).toBe(true);
+      }
+    });
+
+    it("a store build hides a disabled game even once the premium games are unhidden", () => {
+      const store = loadWith({ dev: false, apiUrl: PRODUCTION_API_URL });
+      disable(store, "cascade");
       unhidePremium(store);
       expect(store.isGameVisible("cascade")).toBe(false);
       for (const slug of PREMIUM_SLUGS.filter((s) => s !== "cascade")) {
@@ -165,8 +181,9 @@ describe("gameVisibility", () => {
       for (const slug of FREE_SLUGS) expect(store.isGameVisible(slug)).toBe(true);
     });
 
-    it("the forced store-build seam hides Cascade too, with or without the premium unhide", () => {
+    it("the forced store-build seam hides a disabled game too, with or without the premium unhide", () => {
       const dev = loadWith({ dev: true });
+      disable(dev, "cascade");
       dev.__forceStoreBuildForTests(true);
       expect(dev.isGameVisible("cascade")).toBe(false);
       unhidePremium(dev);
@@ -176,13 +193,14 @@ describe("gameVisibility", () => {
       expect(dev.isGameVisible("cascade")).toBe(true);
     });
 
-    it("internal builds (dev, e2e, pre-launch) still show Cascade for the rework", () => {
+    it("internal builds (dev, e2e, pre-launch) still show a disabled game for its rework", () => {
       const internal = [
         loadWith({ dev: true, apiUrl: PRODUCTION_API_URL }),
         loadWith({ dev: false, testHooks: "1", apiUrl: PRODUCTION_API_URL }),
         loadWith({ dev: false, apiUrl: PRE_LAUNCH_API_URL }),
       ];
       for (const mod of internal) {
+        disable(mod, "cascade");
         expect(mod.SHOW_HIDDEN_GAMES).toBe(true);
         expect(mod.isGameVisible("cascade")).toBe(true);
         unhidePremium(mod);

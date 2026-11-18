@@ -47,12 +47,12 @@ describe("premiumProducts", () => {
     expect(new Set(PREMIUM_PRODUCTS.map((p) => p.productId)).size).toBe(PREMIUM_PRODUCTS.length);
   });
 
-  describe("store products (#3001)", () => {
+  describe("store products", () => {
     const storeSlugs = () => STORE_PRODUCTS.map((p) => p.gameSlug).sort();
 
-    it("leaves Cascade out of the store list while keeping its catalog entry", () => {
-      expect(storeSlugs()).toEqual(["blackjack", "hearts", "mahjong", "starswarm"]);
-      expect(PREMIUM_PRODUCTS.find((p) => p.gameSlug === "cascade")?.enabled).toBe(false);
+    it("sells all five premium games, Cascade included again (#3703)", () => {
+      expect(storeSlugs()).toEqual(["blackjack", "cascade", "hearts", "mahjong", "starswarm"]);
+      expect(PREMIUM_PRODUCTS.find((p) => p.gameSlug === "cascade")?.enabled).toBeUndefined();
     });
 
     it("sells every premium game except the disabled ones", () => {

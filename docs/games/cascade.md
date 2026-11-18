@@ -2,7 +2,7 @@
 
 **Category:** Arcade
 **Tier:** Premium (`PREMIUM_GAMES`; the backend marks it premium)
-**Status:** Disabled in store builds pending rework (#3033, `DISABLED_GAMES` in `frontend/src/entitlements/gameVisibility.ts`, #3001); shown in dev, test and pre-launch builds. Its ship story (#3703) removes it from that list.
+**Status:** Shipped as a premium game (v2 rework, epic #3033). Like every premium game it is hidden in store builds until the premium games are unhidden (`HIDDEN_GAMES` in `frontend/src/entitlements/gameVisibility.ts`), and shown in dev, test and pre-launch builds. (From #3001 until #3703 it was also held out of store builds and unsold while it was reworked.)
 
 This is the canonical specification of Cascade's gameplay, written against the engine as it stands on `dev` after the v2 rework (epic #3033). It is in two parts; the second is a separate file.
 
@@ -128,7 +128,7 @@ Cascade has no endpoints of its own: it uses the generic `/games` routes (the le
 - **Session.** `useGameRecorder("cascade")` (`useGameSync` plus the shared replay recorder): `POST /games` at the first drop, then `PATCH /games/{id}/complete`. The replay events it records (`game_started`, `drop`, `merge`, `game_ended`) are in [Recording and replay](#recording-and-replay-3858); the server validates `drop` and `merge` (`backend/cascade/events.py`) and holds a game to `CASCADE_CAP` in `backend/games/replay_caps.py` (128 events, 80 KB).
 - **Outcomes.** `win` (the capstone), `loss` (the lid or hard stop), `abandoned`. Builds before #3699 sent `completed` for both end states, which stays a finish with no winner.
 - **Result block** (`cascadeResultBlock`): `merge_score` and `max_tier` (app), `won`, `outcome`, `time_bonus`, `bonus_rule` and `final_score` (server, recomputed), plus `duration_ms`, `theme`, `total_drops`, `total_merges`. Table and rules: [The result block](cascade-decisions.md#the-result-block-3700). About 100 bytes more per game, on the existing row, uploaded once at game end.
-- **Daily Challenge** goals read `won`, `max_tier` and the `duration_ms` column (win-within-time goals, 20 s floor; #3703).
+- **Daily Challenge.** The result block carries what Cascade goals will read: `won`, `max_tier` and the `duration_ms` column (win-within-time goals get a 20 s floor, `_WON_WITHIN_FLOORS`). Cascade has no goals in any pool yet; they join with the other premium games' goals (#2458, [DAILY-CHALLENGE.md](../DAILY-CHALLENGE.md) §2).
 - **Time bonus source of truth:** `backend/cascade/time_bonus.py`, mirrored in `frontend/src/game/cascade/timeBonus.ts`, both checked against `backend/tests/fixtures/cascade_time_bonus.json`.
 
 ### 11. Stats and leaderboard
@@ -198,7 +198,7 @@ Cascade departs from the shared gameplay standards in these places. Each is inte
 - **Translations.** The English copies in other locales await translation (`frontend/scripts/i18n-english-copies.json`).
 - **Reduce Motion physics** is a deliberate deviation, in [section 14](#14-deviations-from-shared-standards).
 - **App version in recordings.** `game_started` records no app version yet; #3942 adds one for every game.
-- **Shipping.** The game stays disabled in store builds until #3703.
+- **No Daily Challenge goals yet.** See section 10; they arrive with the premium goal pool (#2458).
 
 ### Recording and replay (#3858)
 

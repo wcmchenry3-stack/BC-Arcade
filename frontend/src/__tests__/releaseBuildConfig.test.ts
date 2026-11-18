@@ -88,13 +88,14 @@ describe("store build exposes exactly the seven free games", () => {
     expect(all.filter(isGameVisible).sort()).toEqual(Object.keys(FREE_GAME_ROUTES).sort());
   });
 
-  it("Cascade is disabled (#3001): hidden, unrouted and not sold in a store build", () => {
-    expect(DISABLED_GAMES.has("cascade")).toBe(true);
+  it("Cascade is an ordinary premium game again (#3703): no game is disabled, all five are sold", () => {
+    expect([...DISABLED_GAMES]).toEqual([]);
+    // Hidden and unrouted in a store build only because every premium game is (HIDDEN_GAMES).
     __forceStoreBuildForTests(true);
     expect(isGameVisible("cascade")).toBe(false);
     expect(visiblePremiumRoutes().map((r) => r.slug)).not.toContain("cascade");
-    expect(STORE_PRODUCTS.map((p) => p.gameSlug)).not.toContain("cascade");
-    expect(STORE_PRODUCTS.map((p) => p.productId)).not.toContain(
+    expect(STORE_PRODUCTS.map((p) => p.gameSlug).sort()).toEqual([...PREMIUM_GAMES].sort());
+    expect(STORE_PRODUCTS.map((p) => p.productId)).toContain(
       "com.buffingchi.games.premium.cascade"
     );
   });

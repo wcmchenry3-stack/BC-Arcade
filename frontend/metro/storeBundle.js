@@ -35,7 +35,7 @@ const PRE_LAUNCH_API = /^https:\/\/dev-games-api\.buffingchi\.com(?:[/:?#]|$)/;
 /**
  * Screens owned by the games in HIDDEN_GAMES (src/entitlements/gameVisibility.ts).
  * Store-bundle exclusion must cover the hidden AND the disabled games
- * (DISABLED_GAMES, #3001: Cascade until its rework): when the premium unhide
+ * (DISABLED_GAMES, empty today): when the premium unhide
  * (#2875) drops a game from HIDDEN_GAMES, keep every disabled game's screens
  * here. storeBundle.test.ts fails if a disabled game's screen is not excluded.
  */
@@ -57,7 +57,7 @@ const HIDDEN_GAME_SCREENS = {
  * Modules outside a hidden game's screens that would still pull its code into a store bundle,
  * and the stand-in each resolves to there. The home tile's Cascade icon (#3698) draws the piece
  * with Skia and the Cascade art; in a store bundle (Cascade hidden) it resolves to its
- * emoji-only variant, so neither ships. Keep it while Cascade is hidden or disabled.
+ * emoji-only variant, so neither ships. Keep it while Cascade is in HIDDEN_GAMES.
  */
 const CASCADE_COMPONENTS = path.join(__dirname, "..", "src", "components", "cascade");
 const STUBBED_MODULES = new Map([

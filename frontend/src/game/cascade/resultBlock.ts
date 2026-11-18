@@ -5,7 +5,7 @@
  *
  * - `merge_score`: the merge points (the engine's score).
  * - `max_tier`: the highest tier on the board this game (10 on a win).
- * - `won` / `outcome`: what the Daily Challenge goals read (#3703).
+ * - `won` / `outcome`: what Cascade's Daily Challenge goals will read (#2458).
  * - `time_bonus` / `bonus_rule`: the app's copy, for display only; the server
  *   recomputes both from the completion's `outcome` and `duration_ms`.
  * - `final_score` = `merge_score + time_bonus`, the score the server stores.

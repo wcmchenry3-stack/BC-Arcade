@@ -531,8 +531,9 @@ hung request. It is rate limited to 30/minute per IP.
   `.wasm` file served from the site itself. Browsers refuse to compile WebAssembly under a CSP
   whose `script-src` lacks `'wasm-unsafe-eval'` (Cascade then shows its load error). The dev
   frontend's CSP in `render.yaml` has it; if that service's headers are also kept in the
-  dashboard, add it there too. Prod does not yet: the store web build leaves Cascade out until it
-  ships (#3703), and that story adds `'wasm-unsafe-eval'` to the prod CSP (yaml and dashboard).
+  dashboard, add it there too. Prod does not yet: the store web build leaves Cascade out while
+  it is in `HIDDEN_GAMES` with the other premium games. Add `'wasm-unsafe-eval'` to the prod CSP
+  (yaml and dashboard) in the change that shows Cascade in the store web build.
   It permits WebAssembly compilation only, not JavaScript `eval`.
 - The scan reads the service IDs from two **secrets**, `RENDER_PROD_API_SERVICE_ID`
   and `RENDER_PROD_FRONTEND_SERVICE_ID`, plus `RENDER_API_KEY`.
