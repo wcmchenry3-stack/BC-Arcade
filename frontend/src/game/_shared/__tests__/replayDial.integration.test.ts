@@ -122,6 +122,36 @@ describe("replay dial, end to end (#3279)", () => {
     resetLogConfig();
   });
 
+  describe("the recorder's counts in game_ended (#3940)", () => {
+    const counts = { u: 2, n: 3, b: 40 };
+    it("an off session drops a caller-set replay block, for complete and abandon alike", async () => {
+      hooks.mode = "off";
+      const done = play("yacht", 0);
+      p.client.completeGame(done, { outcome: "completed" }, { replay: counts });
+      const left = play("yacht", 0);
+      p.client.completeGame(
+        left,
+        { outcome: "abandoned" },
+        { outcome: "abandoned", replay: counts }
+      );
+      await flushMicro();
+      await p.worker.flush();
+      expect(endedReplay(done)).toBeUndefined();
+      expect(endedReplay(left)).toBeUndefined();
+    });
+    it("a sampled-out (local) session keeps them next to m: s; a full one next to m: f", async () => {
+      const local = play("yacht", 0);
+      p.client.completeGame(local, { outcome: "abandoned" }, { replay: counts });
+      hooks.mode = "full";
+      const full = play("yacht", 0);
+      p.client.completeGame(full, { outcome: "abandoned" }, { replay: counts });
+      await flushMicro();
+      await p.worker.flush();
+      expect(endedReplay(local)).toEqual({ ...counts, m: "s" });
+      expect(endedReplay(full)).toEqual({ ...counts, m: "f" });
+    });
+  });
+
   describe("a local (sampled-out) session sends lifecycle rows only", () => {
     it("completed: game_started and game_ended go, the gameplay rows are deleted just before the PATCH, which is not blocked", async () => {
       const gid = play();

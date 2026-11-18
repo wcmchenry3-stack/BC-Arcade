@@ -682,7 +682,13 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     });
     // #3858 (review S1): the unmount abandon's game_ended carries the end step too (the stand-in
     // engine reports none: 0), never in the PATCH result.
-    expect(eventData).toEqual({ ...summary.result, end_step: 0, outcome: "abandoned" });
+    // #3940: and the recorder's replay counts.
+    expect(eventData).toEqual({
+      ...summary.result,
+      end_step: 0,
+      outcome: "abandoned",
+      replay: expect.any(Object),
+    });
     expect(summary.result).not.toHaveProperty("end_step");
   });
 
