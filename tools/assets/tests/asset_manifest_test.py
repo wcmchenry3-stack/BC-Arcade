@@ -23,9 +23,7 @@ ALLOW = set(MANIFEST["third_party_allowlist"])
 
 def _shipped() -> list[str]:
     return sorted(
-        p.relative_to(REPO).as_posix()
-        for p in (REPO / "frontend/assets").rglob("*")
-        if p.is_file()
+        p.relative_to(REPO).as_posix() for p in (REPO / "frontend/assets").rglob("*") if p.is_file()
     )
 
 
@@ -79,7 +77,13 @@ def test_every_shipped_ogg_is_made_by_a_recipe_and_vice_versa():
     import synth_puzzle_sfx
     import synth_starswarm_sfx
 
-    made = {f"{n}.ogg" for m in (synth_arcade_sfx, synth_cascade_sfx, synth_puzzle_sfx) for n in m.SOUNDS}
+    made = {
+        f"{n}.ogg"
+        for m in (synth_arcade_sfx, synth_cascade_sfx, synth_puzzle_sfx)
+        for n in m.SOUNDS
+    }
     made |= {f"starswarm-{n}.ogg" for n in synth_starswarm_sfx.SOUNDS}
     shipped = {p.name for p in (REPO / "frontend/assets/sounds").glob("*.ogg")}
-    assert shipped == made, f"no recipe: {sorted(shipped - made)}; not shipped: {sorted(made - shipped)}"
+    assert (
+        shipped == made
+    ), f"no recipe: {sorted(shipped - made)}; not shipped: {sorted(made - shipped)}"
