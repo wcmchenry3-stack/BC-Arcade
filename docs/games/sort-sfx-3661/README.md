@@ -1,6 +1,6 @@
 # Sort sound prototypes (#3661), archived
 
-The scripts the Sort "glass and water" sounds were designed with: every round's options, including the ones not picked, so a sound can be recreated or changed later. **Reference only.** The shipped recipes live in [`tools/assets/synth_puzzle_sfx.py`](../../../tools/assets/synth_puzzle_sfx.py), which is the source of truth (and what generates `frontend/assets/sounds/sort-*.ogg`). The reasoning and the owner's feedback are in the [design log](../puzzle-sound-design.md). The same convention as [`../starswarm-music`](../starswarm-music): design/research scripts, linted with no rules (`ruff.toml`), scripts only (no audio or video).
+The scripts the Sort "glass and water" sounds were designed with: every round's options, including the ones not picked, so a sound can be recreated or changed later. **Reference only.** The shipped recipes live in [`tools/assets/synth_puzzle_sfx.py`](../../../tools/assets/synth_puzzle_sfx.py), which is the source of truth (and what generates `frontend/assets/sounds/sort-*.ogg`). The reasoning and the owner's feedback are in the [design log](../puzzle-sound-design.md). The same convention as the Star Swarm music archive (now kept outside the repo): design/research scripts, linted with no rules (`ruff.toml`), scripts only (no audio or video).
 
 ## Scripts
 

@@ -114,7 +114,8 @@ owner-attested.
 One index maps each shipped file to its kind (generated / attested / third-party), its recipe and its credits file.
 `tools/assets/tests/asset_manifest_test.py` (CI: `Test tools (pytest)`) fails if a file under `frontend/assets/` has no
 rule, if a `.ogg` has no recipe (or a recipe has no `.ogg`), or if a third-party file appears that is not on the
-allow-list. Adding an asset means adding it to a recipe or a manifest rule.
+allow-list. It covers `frontend/assets/`; the native launcher and splash rasters are covered by
+`gen_app_icons.py --check` instead. Adding an asset means adding it to a recipe or a manifest rule.
 
 | Asset | Recipe |
 | ----- | ------ |

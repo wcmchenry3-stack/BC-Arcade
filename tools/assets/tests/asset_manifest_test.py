@@ -33,6 +33,14 @@ def _matches(rule: dict, path: str) -> bool:
     return re.fullmatch(rx, path) is not None
 
 
+def _recipe_scripts(recipe: str) -> list[str]:
+    """Script file names in a recipe string; expands `synth_{a,b}_sfx.py` style braces."""
+    names = []
+    for pre, alts, post in re.findall(r"tools/assets/(\w*)\{([^}]*)\}(\w*\.py)", recipe):
+        names += [f"{pre}{a}{post}" for a in alts.split(",")]
+    return names + re.findall(r"tools/assets/(\w+\.py)", recipe)
+
+
 def test_every_asset_matches_exactly_one_rule():
     bad = {}
     for path in _shipped():
@@ -46,7 +54,7 @@ def test_rules_point_at_real_files():
     for rule in RULES:
         if "credits" in rule:
             assert (REPO / rule["credits"]).is_file(), rule
-        for script in re.findall(r"tools/assets/(\w+\.py)", rule.get("recipe", "")):
+        for script in _recipe_scripts(rule.get("recipe", "")):
             assert (TOOLS_ASSETS / script).is_file(), (rule["glob"], script)
         if rule["kind"] in ("attested", "third-party"):
             assert rule.get("why"), f"{rule['glob']} needs a why"
@@ -54,9 +62,10 @@ def test_rules_point_at_real_files():
             assert rule.get("recipe"), f"{rule['glob']} needs a recipe"
 
 
-def test_generator_scripts_named_in_sound_rule_exist():
-    for name in ("arcade", "cascade", "puzzle", "starswarm"):
-        assert (TOOLS_ASSETS / f"synth_{name}_sfx.py").is_file()
+def test_every_rule_matches_at_least_one_file():
+    shipped = _shipped()
+    stale = [r["glob"] for r in RULES if not any(_matches(r, p) for p in shipped)]
+    assert not stale, f"rules that match no file: {stale}"
 
 
 def test_third_party_files_are_exactly_the_allowlist():
