@@ -17,6 +17,8 @@ import { useGameRecorder } from "../useGameRecorder";
 const mockCalls: [string, string, unknown][] = [];
 let mockNextId = 0;
 /** Every saved event: [gameId, type, unit, t_ms]. */
+/** Every completeGame payload (game_ended data), in order: [gameId, payload]. */
+const mockEnded: [string, Record<string, unknown> | undefined][] = [];
 const mockSaved: [string, string, unknown, unknown][] = [];
 /** What gameEventClient.resumeGame returns: null resumes nothing. */
 let mockResumeId: string | null = null;
@@ -35,8 +37,10 @@ jest.mock("../gameEventClient", () => ({
       for (const e of events) mockSaved.push([id, e.type, e.data?.unit, e.data?.t_ms]);
       mockCalls.push(["enqueueEvents", id, events.map((e) => [e.type, e.data?.unit])]);
     },
-    completeGame: (id: string, summary: { outcome: string }) =>
-      mockCalls.push(["completeGame", id, summary.outcome]),
+    completeGame: (id: string, summary: { outcome: string }, payload?: Record<string, unknown>) => {
+      mockEnded.push([id, payload]);
+      mockCalls.push(["completeGame", id, summary.outcome]);
+    },
     discardGame: (id: string) => mockCalls.push(["discardGame", id, null]),
     resumeGame: () => mockResumeId,
     setProgressOutcome: () => undefined,
@@ -55,6 +59,7 @@ describe("useGameRecorder", () => {
   beforeEach(() => {
     mockCalls.length = 0;
     mockSaved.length = 0;
+    mockEnded.length = 0;
     mockNextId = 0;
     mockResumeId = null;
   });
@@ -154,6 +159,58 @@ describe("useGameRecorder", () => {
       ["completeGame", "g1"],
     ]);
     expect(mockCalls[3]?.[2]).toBe("abandoned");
+  });
+
+  it("unmount abandon carries the replay stats, after the last unit is saved (#3940)", async () => {
+    const { result, unmount } = await renderHook(() =>
+      useGameRecorder("hearts", { policy: "on_session_end" })
+    );
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      result.current.record("card_played", { c: "QS" });
+      result.current.beginUnit(2);
+      result.current.record("card_played", { c: "KS" });
+    });
+    await unmount();
+    expect(mockSaved).toHaveLength(2);
+    const payload = mockEnded[0]?.[1] as { outcome: string; replay: Record<string, number> };
+    expect(payload.outcome).toBe("abandoned");
+    expect(payload.replay).toMatchObject({ u: 2, n: 2 });
+    expect(payload.replay.b).toBeGreaterThan(0);
+    expect(payload.replay.x).toBeUndefined();
+  });
+
+  it("unmount abandon reports x when the caps dropped events, and keeps the game's own payload (#3940)", async () => {
+    const big = () => ({ p: "x".repeat(1700) });
+    const { result, unmount } = await renderHook(() =>
+      useGameRecorder("hearts", { policy: "on_session_end" })
+    );
+    await act(() => {
+      result.current.setProgressSnapshot(() => ({ payload: { end_step: 7 } }));
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      for (let i = 0; i < 38; i += 1) result.current.record("e", big()); // 38th is over the session cap
+    });
+    await unmount();
+    const payload = mockEnded[0]?.[1] as { end_step: number; replay: { n: number; x: number } };
+    expect(payload.end_step).toBe(7);
+    expect(payload.replay.n).toBe(37);
+    expect(payload.replay.x).toBe(1);
+  });
+
+  it("restart over an open game: the abandon carries the replay stats (#3940)", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      result.current.record("card_played", { c: "2C" });
+      result.current.restart();
+    });
+    expect(mockEnded[0]?.[1]).toMatchObject({ outcome: "abandoned", replay: { u: 1, n: 1 } });
   });
 
   it("restart saves the old session's events to the old session, then records the new one from unit 1", async () => {

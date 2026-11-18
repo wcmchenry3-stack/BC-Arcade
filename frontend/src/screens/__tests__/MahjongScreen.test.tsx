@@ -1116,7 +1116,12 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
       result: { won: false, pairs: 12 },
       durationMs: PLAY_MS,
     });
-    expect(data).toEqual({ won: false, pairs: 12, outcome: "abandoned" });
+    expect(data).toEqual({
+      won: false,
+      pairs: 12,
+      outcome: "abandoned",
+      replay: expect.any(Object),
+    }); // #3940
   });
 
   // #2633: ⋯ → Leaderboard covers the game; its clock must not run meanwhile.
@@ -1207,7 +1212,12 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
       result: { won: false, pairs: 12 },
       durationMs: PLAY_MS,
     });
-    expect(data).toEqual({ won: false, pairs: 12, outcome: "abandoned" });
+    expect(data).toEqual({
+      won: false,
+      pairs: 12,
+      outcome: "abandoned",
+      replay: expect.any(Object),
+    }); // #3940
   });
 });
 

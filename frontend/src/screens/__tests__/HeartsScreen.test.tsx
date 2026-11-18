@@ -1226,7 +1226,12 @@ describe("HeartsScreen — game session (#2629)", () => {
     });
     expect(mockSetProgressSnapshot).toHaveBeenCalled();
     const getSnapshot = mockSetProgressSnapshot.mock.calls.at(-1)![0];
-    expect(getSnapshot()).toEqual({ result: { hands_played: 2 }, durationMs: 45_000 });
+    // #3940: the recorder adds its counts to the abandon's payload.
+    expect(getSnapshot()).toEqual({
+      result: { hands_played: 2 },
+      durationMs: 45_000,
+      payload: { replay: expect.any(Object) },
+    });
   });
 
   it("New Game mid-game abandons the game in play with its own progress", async () => {
@@ -1252,7 +1257,13 @@ describe("HeartsScreen — game session (#2629)", () => {
     expect(r.getByTestId("hearts-start-game")).toBeTruthy();
     // The hook abandons it (close()) with the registered snapshot.
     expect(mockSyncClose).toHaveBeenCalledTimes(1);
-    expect(mockAbandons).toEqual([{ result: { hands_played: 2 }, durationMs: 45_000 }]);
+    expect(mockAbandons).toEqual([
+      {
+        result: { hands_played: 2 },
+        durationMs: 45_000,
+        payload: { replay: expect.any(Object) },
+      },
+    ]);
     expect(mockSyncComplete).not.toHaveBeenCalled();
   });
 

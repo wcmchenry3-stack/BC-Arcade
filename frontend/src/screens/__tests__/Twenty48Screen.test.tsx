@@ -1048,7 +1048,12 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     // #2468: an abandon never carries the ranked score.
     expect(summary).not.toHaveProperty("finalScore");
     // #2619: the analytics payload is the result plus outcome.
-    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+    // #3940: the abandon also carries the recorder's replay counts.
+    expect(eventData).toEqual({
+      ...summary.result,
+      outcome: "abandoned",
+      replay: expect.any(Object),
+    });
     expect(mockDiscardGame).not.toHaveBeenCalled();
     expect(mockStartGame).toHaveBeenLastCalledWith("twenty48", {}, expect.any(Object));
   });

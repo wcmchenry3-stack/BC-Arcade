@@ -26,7 +26,9 @@
  *  - `complete` / `close` — and the unmount — end the recorder session,
  *    saving what is still in memory before the session's `game_ended`.
  *    `complete` also puts the recorder's counts (`stats()`) in the payload's
- *    `replay` field, for the `game_ended` replay summary (#3279).
+ *    `replay` field, for the `game_ended` replay summary (#3279). The hook's own
+ *    abandons (unmount, `start` / `restart` over an open game) carry the same
+ *    `replay` counts, added to the game's progress snapshot payload (#3940).
  *  - A new `gameType` (or policy) ends the old recorder's session and uses a
  *    new recorder. While the same game session stays open, the old one's
  *    events are saved to it and the new recorder carries the clock, unit
@@ -44,6 +46,7 @@ import {
   GameRecorder,
   type RecordActor,
   type RecorderHandoff,
+  type RecorderStats,
   type SendPolicy,
 } from "./gameRecorder";
 import type { EventTypeOf } from "./eventQueueConfig";
@@ -51,7 +54,7 @@ import { gameEventClient } from "./gameEventClient";
 import type { CompleteSummary } from "./pendingGamesStore";
 import { captureThrottledMessage } from "./sentryThrottle";
 import { isRecordingEnabled } from "./replayDial";
-import { useGameSync, type UseGameSyncReturn } from "./useGameSync";
+import { useGameSync, type ProgressSnapshot, type UseGameSyncReturn } from "./useGameSync";
 import type { GameType } from "./types";
 
 export interface UseGameRecorderOptions {
@@ -129,7 +132,28 @@ export function useGameRecorder<G extends GameType>(
     resume: syncResume,
     complete: syncComplete,
     close: syncClose,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = sync;
+  // The game's own snapshot getter; the abandon reads it through the wrapper
+  // registered below, which adds the recorder's counts (#3940).
+  const gameSnapshotRef = useRef<() => ProgressSnapshot>(() => ({}));
+  const setProgressSnapshot = useCallback((getSnapshot: () => ProgressSnapshot) => {
+    gameSnapshotRef.current = getSnapshot;
+  }, []);
+  useEffect(() => {
+    syncSetProgressSnapshot(() => {
+      const snapshot = gameSnapshotRef.current() ?? {};
+      // Runs after the recorder's session ended (unmount cleanup / start), so
+      // stats() reads the ended session's counts: a few field reads, no I/O.
+      let stats: RecorderStats | null = null;
+      try {
+        stats = recorder.stats();
+      } catch {
+        // Isolation: a recorder that throws must not lose the abandon.
+      }
+      return stats ? { ...snapshot, payload: { ...snapshot.payload, replay: stats } } : snapshot;
+    });
+  }, [recorder, syncSetProgressSnapshot]);
   useEffect(() => {
     recorder.setSink({
       canAccept: () => getGameId() !== null,
@@ -229,6 +253,7 @@ export function useGameRecorder<G extends GameType>(
     resume,
     complete,
     close,
+    setProgressSnapshot,
     beginUnit,
     record,
     closeUnit,
