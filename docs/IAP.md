@@ -81,6 +81,9 @@ notification for it records nothing. Refunds and revocations of an existing
 purchase row still apply. No product is disabled today, so the first premium
 update sells all five (Cascade was held back from #3001 until its rework shipped
 in #3703). Create store products from `STORE_PRODUCTS`, not `PREMIUM_PRODUCTS`.
+`com.buffingchi.games.premium.cascade` must exist in App Store Connect and Play
+Console, like the other four, before the first premium update that unhides the
+premium games ships.
 
 **Drift guards** (both run in CI):
 

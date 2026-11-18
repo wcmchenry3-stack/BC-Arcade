@@ -92,6 +92,16 @@ describe("HIDDEN_GAME_SCREENS", () => {
 
   // A disabled game (DISABLED_GAMES, empty today) stays out of store bundles too.
   // When #2875 shrinks HIDDEN_GAMES, storeBundle.js must keep excluding disabled games.
+  it("has screens for every hidden or disabled game, so each can stay out of store bundles", () => {
+    const keys = new Set(Object.keys(storeBundle.HIDDEN_GAME_SCREENS));
+    for (const slug of [...HIDDEN_GAMES, ...DISABLED_GAMES]) expect(keys.has(slug)).toBe(true);
+    // Cascade stands in for a disabled game while DISABLED_GAMES is empty.
+    expect(storeBundle.HIDDEN_GAME_SCREENS.cascade.length).toBeGreaterThan(0);
+    for (const name of storeBundle.HIDDEN_GAME_SCREENS.cascade) {
+      expect(storeBundle.isExcludedScreen(screenPath(name))).toBe(true);
+    }
+  });
+
   it("excludes every disabled game's screens from store bundles", () => {
     for (const slug of DISABLED_GAMES) {
       expect(storeBundle.HIDDEN_GAME_SCREENS[slug]?.length ?? 0).toBeGreaterThan(0);
