@@ -29,8 +29,8 @@
  * `EntitlementContext.tsx` still decide locked vs. playable wherever a hidden
  * game is shown (dev, test and pre-launch builds).
  *
- * Disabled games (`DISABLED_GAMES`, #3001) are a second, independent list:
- * games switched off pending a rework. A store build hides them even after the
+ * Disabled games (`DISABLED_GAMES`, empty today) are a second, independent
+ * list: premium games switched off for a rework. A store build hides them even after the
  * premium games are unhidden (#2875 shrinks or empties `HIDDEN_GAMES`), so
  * unhiding premium can never bring a disabled game back. Internal builds (dev,
  * e2e, pre-launch API: `SHOW_HIDDEN_GAMES`) still show them on purpose, so the
@@ -62,10 +62,11 @@ export const SHOW_HIDDEN_GAMES: boolean = IS_INTERNAL_BUILD;
 
 /**
  * Games switched off in every store build until their rework ships, whatever
- * `HIDDEN_GAMES` says. Cascade: owner decision 2026-10-04, rework epic #3033;
- * its ship story (#3703) removes it from here. Internal builds still show it.
+ * `HIDDEN_GAMES` says. Internal builds still show them. Empty today: Cascade
+ * was listed from #3001 until its rework shipped (#3703). Mirrors
+ * `DISABLED_GAMES` in `backend/entitlements/service.py`.
  */
-export const DISABLED_GAMES: ReadonlySet<string> = new Set(["cascade"]);
+export const DISABLED_GAMES: ReadonlySet<string> = new Set<string>([]);
 
 export function isGameVisible(slug: string): boolean {
   const showHidden = SHOW_HIDDEN_GAMES && !isStoreBuildForced();

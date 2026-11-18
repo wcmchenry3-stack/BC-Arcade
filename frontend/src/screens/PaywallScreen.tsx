@@ -55,9 +55,9 @@ type Notice =
 const STORE_SLUGS: ReadonlySet<string> = new Set(STORE_PRODUCTS.map((p) => p.gameSlug));
 
 /**
- * Whether this build may offer `slug` for sale (#3001): the game must be
+ * Whether this build may offer `slug` for sale: the game must be
  * visible here, and a store build must also sell its product. A disabled game
- * (Cascade until its rework) fails both in a store build, so its paywall shows
+ * (`DISABLED_GAMES`) fails both in a store build, so its paywall shows
  * the unavailable state and never asks the store for a product.
  */
 function isOfferedInThisBuild(slug: PremiumGameSlug): boolean {

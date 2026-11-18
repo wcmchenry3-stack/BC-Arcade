@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
 from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
-from daily_challenge import service
+from daily_challenge import definitions, service
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
     FREE_GOAL_POOL,
@@ -212,30 +212,34 @@ _GAME_VISIBILITY_TS = (
 
 
 def test_disabled_games_are_in_no_goal_pool_and_stay_premium() -> None:
-    # #3001: Cascade is off in every store build until its rework (#3033), even
-    # after the premium unhide, so no slate — free, premium (#2458) or pending —
-    # may pick it. It stays premium so nothing grants it for free.
-    assert {"cascade"} == DISABLED_GAMES
+    # Cascade was disabled from #3001 until its rework shipped (#3703); the list
+    # is empty now. Whatever it holds, no slate — free, premium (#2458) or
+    # pending — may list a disabled game, and a disabled game stays premium so
+    # nothing grants it for free.
+    assert not DISABLED_GAMES
     for pool in GOAL_POOLS.values():
         assert set(pool).isdisjoint(DISABLED_GAMES)
     assert set(PENDING_PREMIUM_GOALS).isdisjoint(DISABLED_GAMES)
     assert set(ALL_PREMIUM_SLUGS) >= DISABLED_GAMES
 
 
+_CASCADE_GOALS = (
+    _at_least("cascade", "score", 1, "easy"),
+    _at_least("cascade", "score", 2, "medium"),
+    _at_least("cascade", "score", 3, "hard"),
+)
+
+
 @pytest.mark.parametrize("slate", ["free", "premium"])
 def test_a_disabled_game_added_to_a_pool_never_reaches_a_slate(
     monkeypatch: pytest.MonkeyPatch, slate: str
 ) -> None:
-    # #3001: even if a future change (#2458) lists Cascade in a pool, rotation()
-    # skips it, so no day's template can name it.
-    cascade_goals = (
-        _at_least("cascade", "score", 1, "easy"),
-        _at_least("cascade", "score", 2, "medium"),
-        _at_least("cascade", "score", 3, "hard"),
-    )
+    # Even if a pool lists a disabled game, rotation() skips it, so no day's
+    # template can name it. Cascade stands in for a disabled game here.
     rotation.cache_clear()
     pick_template.cache_clear()
-    monkeypatch.setitem(GOAL_POOLS[slate], "cascade", cascade_goals)
+    monkeypatch.setattr(definitions, "DISABLED_GAMES", frozenset({"cascade"}))
+    monkeypatch.setitem(GOAL_POOLS[slate], "cascade", _CASCADE_GOALS)
     try:
         assert "cascade" in GOAL_POOLS[slate]
         for salt in (0, 7):
@@ -243,6 +247,23 @@ def test_a_disabled_game_added_to_a_pool_never_reaches_a_slate(
             for offset in range(60):
                 template = pick_template(date(2026, 11, 1) + timedelta(days=offset), slate, salt)
                 assert all(goal.game_type != "cascade" for goal in template.goals)
+    finally:
+        rotation.cache_clear()
+        pick_template.cache_clear()
+
+
+@pytest.mark.parametrize("slate", ["free", "premium"])
+def test_cascade_is_no_longer_skipped_once_a_pool_lists_it(
+    monkeypatch: pytest.MonkeyPatch, slate: str
+) -> None:
+    # #3703 re-enabled Cascade: when its goals join a pool (#2458), the rotation
+    # draws it like any other game.
+    rotation.cache_clear()
+    pick_template.cache_clear()
+    monkeypatch.setitem(GOAL_POOLS[slate], "cascade", _CASCADE_GOALS)
+    try:
+        for salt in (0, 7):
+            assert "cascade" in rotation(slate, salt)
     finally:
         rotation.cache_clear()
         pick_template.cache_clear()
@@ -1230,7 +1251,7 @@ def test_a_day_frozen_with_the_old_goals_keeps_them_after_the_flip(sort_edition)
 
 
 # ---------------------------------------------------------------------------
-# Cascade's 20 s win floor in "win within N" (#3700, for #3703's goals)
+# Cascade's 20 s win floor in "win within N" (#3700, for Cascade's goals in #2458)
 # ---------------------------------------------------------------------------
 
 
