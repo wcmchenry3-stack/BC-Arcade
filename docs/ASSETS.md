@@ -100,13 +100,34 @@ None for audio or sprites. The only CC BY 4.0 file, `sounds/freecell-game-win.mp
 
 ### Everything else
 
-All other recorded audio and sprites are Kenney CC0, Freesound CC0 or the Pixabay Content License,
-none of which requires attribution. Star Swarm's sound effects are original sounds synthesized in-house
-(generator `tools/assets/synth_starswarm_sfx.py`, design log
-[`games/starswarm-sound-design.md`](games/starswarm-sound-design.md)), and its background music is an
-original, project-owned track (design log [`games/starswarm-music-design.md`](games/starswarm-music-design.md),
-#3638); see the sound table in [`games/starswarm.md`](games/starswarm.md#sound). Pixabay forbids redistributing the files on their own, so they
-must stay inside the app.
+The only third-party media still shipping are the three Pixabay lo-fi Mahjong tracks (`sounds/mahjong-bg-1..3.mp3`,
+Pixabay Content License: no attribution required, but Pixabay forbids redistributing the files on their own, so they
+must stay inside the app). This is a declared exception, pinned by the allow-list in
+`tools/assets/asset_manifest.json`. Everything else is original: sound effects are synthesized in-house
+(`tools/assets/synth_*_sfx.py`, design logs under `games/`), Star Swarm's background music is an original,
+project-owned track (design log [`games/starswarm-music-design.md`](games/starswarm-music-design.md), #3638; its round
+archive is kept by the owner outside the repo), sprites and Mahjong tiles are generated, and the mascot art is
+owner-attested.
+
+### Where every asset comes from (`tools/assets/asset_manifest.json`)
+
+One index maps each shipped file to its kind (generated / attested / third-party), its recipe and its credits file.
+`tools/assets/tests/asset_manifest_test.py` (CI: `Test tools (pytest)`) fails if a file under `frontend/assets/` has no
+rule, if a `.ogg` has no recipe (or a recipe has no `.ogg`), or if a third-party file appears that is not on the
+allow-list. It covers `frontend/assets/`; the native launcher and splash rasters are covered by
+`gen_app_icons.py --check` instead. Adding an asset means adding it to a recipe or a manifest rule.
+
+| Asset | Recipe |
+| ----- | ------ |
+| `sounds/*.ogg` (199) | `synth_{arcade,cascade,puzzle,starswarm}_sfx.py` |
+| `starswarm/**`, `home/starswarm-tile.webp` (44) | `draw_starswarm_art.py` |
+| `mahjong/*.svg` (42) | `gen_mahjong_tiles.py` |
+| `fonts/*.subset.ttf` | `subset_icon_fonts.py` |
+| `splash-icon.png`, `adaptive-icon.png`, Android launcher, iOS splash | `gen_app_icons.py` |
+| `starswarm-bgm.mp3` | none (owner-generated); `make_starswarm_bgm_loop.py` does the loop edit |
+| `icon.png`, `logo.png`, `favicon.png`, iOS AppIcon | none (mascot, owner-attested; only master is the iOS AppIcon PNG, back it up) |
+| `mahjong-bg-*.mp3` | none (third-party) |
+| Cascade pieces | code: `src/game/cascade/art/` |
 
 **Not recorded (UNVERIFIED, owner must confirm or replace):** Mahjong tile SVGs (42), app icon, splash and logo art (5 plus 29 native derivatives), Blackjack
 `bust`/`card-deal`/`push` sounds (3), Mahjong layouts (25, authorship only). Details in the audit.

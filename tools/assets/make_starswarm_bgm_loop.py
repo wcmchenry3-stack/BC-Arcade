@@ -11,11 +11,9 @@ This is the ONLY edit applied to the owner's Round 46 render; the composition is
 Owner-approved 2026-11-12 after a seam audition. Every original time t becomes t - TRIM_HEAD_S -
 XFADE_S (5.5 s); see docs/games/starswarm-music-design.md.
 
-SOURCE_MP3 is the archived Round 46 render (#3734, unpacked from its zip in #3762):
-
-    docs/games/starswarm-music/Rounds/Round_46/starswarm-round46-seven-minute-signature-mix.mp3
-
-(SHA-256 29b0a1604e458fa1b0cb92d0502c283b836d1b1f9b2a63a3f012fd3c815f442a.)
+SOURCE_MP3 is the owner's Round 46 render, `starswarm-round46-seven-minute-signature-mix.mp3`. The
+round archive is held by the owner outside the repo (removed from `docs/` in the asset audit), so
+check the file you pass against SHA-256 29b0a1604e458fa1b0cb92d0502c283b836d1b1f9b2a63a3f012fd3c815f442a.
 
 Usage: python tools/assets/make_starswarm_bgm_loop.py SOURCE_MP3 OUT_MP3 [--wav INTERMEDIATE.wav]
 """

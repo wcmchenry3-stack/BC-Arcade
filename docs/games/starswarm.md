@@ -2171,8 +2171,7 @@ Credits: `frontend/assets/sounds/SOUND_CREDITS.md`. Why each sound sounds the wa
 owner's brief, the variants auditioned, the feedback) is in the
 [sound design log](starswarm-sound-design.md).
 The background track's provenance, starting points, originality check and playback are in the
-[music design log](starswarm-music-design.md); every round's generator and render is archived in
-[`starswarm-music/`](starswarm-music/) (#3637). How it plays is under
+[music design log](starswarm-music-design.md); every round's generator and render is archived by the owner outside the repo (#3637). How it plays is under
 [Background music](#background-music) below.
 The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
 `src/hooks/useStarSwarmAudio.ts`; the screen hands the canvas the callbacks. Overhauled in #3526.

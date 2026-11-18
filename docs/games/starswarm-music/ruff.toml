@@ -1,3 +1,0 @@
-# Design/research scripts — not production code; skip all lint rules.
-[lint]
-select = []
