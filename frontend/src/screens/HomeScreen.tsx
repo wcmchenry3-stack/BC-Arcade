@@ -379,8 +379,13 @@ export default function HomeScreen() {
             // Resolved by Pressable on the UI side of the press: no state, no animation loop.
             pressed && (reduceMotion ? styles.cardPressedStill : styles.cardPressed),
           ]}
-          onPressIn={() => tilePressHaptic(muted)}
-          onPress={isLocked ? () => openPaywall(item.slug) : item.action}
+          // The haptic is on tap, not touch-down: a finger that starts a scroll on a tile
+          // grants the Pressable the responder first and must not buzz (#4007).
+          onPress={() => {
+            tilePressHaptic(muted);
+            if (isLocked) openPaywall(item.slug);
+            else item.action();
+          }}
           accessibilityRole="button"
           accessibilityLabel={
             isLocked ? t("common:home.locked.cardLabel", { title: item.title }) : item.playLabel

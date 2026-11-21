@@ -8,17 +8,22 @@
  *   0  tertiary -> secondary      1  secondary -> accent
  *   2  accent -> accentBright     3  accentBright -> tertiary
  *
- * Assignment (2 columns, across and down; no two touching tiles share a pair):
+ * Assignment, shown at 2 columns:
  *
  *   store build, 7 tiles          row 1: daily_word 0, yacht 1
  *                                 row 2: twenty48 3,   solitaire 2
  *                                 row 3: freecell 1,   sudoku 0
  *                                 row 4: sort 3
  *
- * The other five (cascade 2, blackjack 0, hearts 3, starswarm 1, mahjong 2) are picked so the
- * 12-game internal lobby also has no touching pair, in 2 columns and in 1. A game's pair never
- * depends on which others are visible. `Record<GameType, ...>` makes a new game without an
- * accent fail to compile.
+ * The other five (cascade 2, blackjack 0, hearts 3, starswarm 1, mahjong 2) fill out the
+ * 12-game internal lobby. Touching means next to each other in a row, or one above the other.
+ * Phones (1 and 2 columns) have none, in the store lobby and in the 12-game one. With four
+ * pairs, no mapping can have none at every width: across 1 to 4 columns the first five store
+ * tiles all touch each other. An exhaustive search gives the fewest on tablets: one store pair
+ * each at 3 columns (yacht, freecell) and 4 columns (twenty48, sort), and in the 12-game lobby
+ * four at 3 columns and one at 4. Tests pin all of this (tileAccents.test.ts), reading the
+ * column counts from `lobbyColumns`. A game's pair never depends on which others are visible.
+ * `Record<GameType, ...>` makes a new game without an accent fail to compile.
  *
  * Label: the Play label is `textOnAccent` (dark ink) on every pair, in both themes. In the
  * light theme `secondary` (#a34fc4) reaches only 4.1:1 under that ink and no ink reaches 4.5:1

@@ -864,6 +864,34 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
     expect(grads.sort).toEqual([dark.accentBright, dark.tertiary]);
   });
 
+  it("every game keeps the same stops in the store build and in the all-games build (#4007)", async () => {
+    type Json = {
+      type: string;
+      props: { colors?: string[]; testID?: string };
+      children?: (Json | string)[] | null;
+    };
+    const stopsBySlug = async (store: boolean) => {
+      __forceStoreBuildForTests(store);
+      const { toJSON, unmount } = await renderScreen(390);
+      const out: Record<string, string[]> = {};
+      const walk = (n: Json | string | null | (Json | string)[]) => {
+        if (n == null || typeof n === "string") return;
+        if (Array.isArray(n)) return n.forEach(walk);
+        if (n.type === "LinearGradient" && n.props.testID?.startsWith("game-btn-"))
+          out[n.props.testID.slice("game-btn-".length)] = n.props.colors as string[];
+        n.children?.forEach(walk);
+      };
+      walk(toJSON() as Json | Json[] | null);
+      await unmount();
+      return out;
+    };
+    const store = await stopsBySlug(true);
+    const all = await stopsBySlug(false);
+    expect(Object.keys(store)).toHaveLength(7);
+    expect(Object.keys(all)).toHaveLength(12);
+    for (const slug of Object.keys(store)) expect(all[slug]).toEqual(store[slug]);
+  });
+
   it("locked and unlocked play buttons resolve to the same border width and padding", async () => {
     mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
     const { getByTestId } = await renderScreen(390);
@@ -1024,7 +1052,11 @@ describe("HomeScreen — tile type (#4006)", () => {
 });
 
 describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
   afterEach(() => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
   });
 
@@ -1034,7 +1066,7 @@ describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
   const holdDown = async (el: Parameters<typeof fireEvent>[0]) => {
     await fireEvent(el, "responderGrant", touch);
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 200));
+      jest.advanceTimersByTime(200);
     });
   };
 
@@ -1069,19 +1101,31 @@ describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
     expect(style.transform).toBeUndefined();
   });
 
-  it.each(["ios", "android"] as const)("taps a light haptic once on press-in on %s", async (os) => {
+  it.each(["ios", "android"] as const)("taps a light haptic once on a tap on %s", async (os) => {
     jest.replaceProperty(Platform, "OS", os);
     const { getByTestId } = await renderScreen(390);
     await fireEvent(getByTestId("game-tile-yacht"), "pressIn");
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    await fireEvent.press(getByTestId("game-tile-yacht"));
     expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
     expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+  });
+
+  it("taps no haptic when a touch-down is taken over by a scroll", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    const { getByTestId } = await renderScreen(390);
+    await holdDown(getByTestId("game-tile-yacht"));
+    await fireEvent(getByTestId("game-tile-yacht"), "responderTerminate", touch);
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it("taps no haptic on web", async () => {
     jest.replaceProperty(Platform, "OS", "web");
     const { getByTestId } = await renderScreen(390);
-    await fireEvent(getByTestId("game-tile-yacht"), "pressIn");
+    await fireEvent.press(getByTestId("game-tile-yacht"));
     expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalled();
   });
 
   it("taps no haptic when sound effects are muted", async () => {
@@ -1098,7 +1142,7 @@ describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
       </SafeAreaProvider>
     );
     await act(async () => {});
-    await fireEvent(getByTestId("game-tile-yacht"), "pressIn");
+    await fireEvent.press(getByTestId("game-tile-yacht"));
     expect(Haptics.impactAsync).not.toHaveBeenCalled();
   });
 
@@ -1106,7 +1150,6 @@ describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
     jest.replaceProperty(Platform, "OS", "ios");
     (Haptics.impactAsync as jest.Mock).mockRejectedValueOnce(new Error("no engine"));
     const { getByLabelText } = await renderScreen(390);
-    await fireEvent(getByLabelText("Play Solitaire"), "pressIn");
     await fireEvent.press(getByLabelText("Play Solitaire"));
     expect(mockNavigate).toHaveBeenCalledWith("Solitaire");
   });
@@ -1115,10 +1158,8 @@ describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
     jest.replaceProperty(Platform, "OS", "ios");
     mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
     const { getByTestId } = await renderScreen(390);
-    await fireEvent(getByTestId("game-tile-sudoku"), "pressIn");
     await fireEvent.press(getByTestId("game-tile-sudoku"));
     expect(mockNavigate).toHaveBeenCalledWith("Sudoku");
-    await fireEvent(getByTestId("game-tile-cascade"), "pressIn");
     await fireEvent.press(getByTestId("game-tile-cascade"));
     expect(mockNavigate).toHaveBeenCalledWith("Paywall", { gameSlug: "cascade" });
   });

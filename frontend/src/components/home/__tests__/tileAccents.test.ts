@@ -1,5 +1,6 @@
 import { GAME_TYPES, type GameType } from "../../../api/vocab";
 import { dark, light } from "../../../theme/ThemeContext";
+import { lobbyColumns } from "../lobbyColumns";
 import { TILE_ACCENT_PAIR, tileAccent } from "../tileAccents";
 
 // WCAG 2.x relative luminance / contrast ratio for opaque #rrggbb colours, same helper shape as
@@ -63,24 +64,56 @@ describe("tileAccents (#4007)", () => {
     for (const slug of STORE) expect(INTERNAL).toContain(slug);
   });
 
-  it("a game's pair is the same with all 12 games and with only the 7 store games", () => {
-    // The pair is looked up by slug alone, so neither list can move it.
-    for (const slug of STORE) {
-      expect(tileAccent(slug, dark, "dark")).toEqual(tileAccent(slug, dark, "dark"));
-    }
-    const pairsIn = (order: GameType[]) => order.map((s) => [s, TILE_ACCENT_PAIR[s]]);
-    const full = new Map(pairsIn(INTERNAL));
-    for (const [slug, pair] of pairsIn(STORE)) expect(full.get(slug as GameType)).toBe(pair);
+  it("pins each game's pair, and the lookup takes a slug only", () => {
+    expect(TILE_ACCENT_PAIR).toEqual({
+      daily_word: 0,
+      yacht: 1,
+      cascade: 2,
+      blackjack: 0,
+      twenty48: 3,
+      solitaire: 2,
+      freecell: 1,
+      hearts: 3,
+      sudoku: 0,
+      starswarm: 1,
+      mahjong: 2,
+      sort: 3,
+    });
+    // No position or list argument: a tile cannot be recoloured by where it sits.
+    expect(tileAccent.length).toBe(3);
   });
 
-  it.each([2, 1])("no touching tiles share a pair in the 7-tile store lobby, %i col", (cols) => {
-    for (const [a, b] of touching(STORE, cols))
-      expect(TILE_ACCENT_PAIR[a]).not.toBe(TILE_ACCENT_PAIR[b]);
+  // The column counts the lobby really uses, read off its breakpoints (320 pt phone, 390 pt
+  // phone, 800 pt tablet, 1200 pt tablet), not hardcoded.
+  const COLUMNS = [320, 390, 800, 1200].map(lobbyColumns);
+  const conflicts = (order: GameType[], cols: number) =>
+    touching(order, cols).filter(([a, b]) => TILE_ACCENT_PAIR[a] === TILE_ACCENT_PAIR[b]);
+
+  it("covers every column count the lobby has", () => {
+    expect(COLUMNS).toEqual([1, 2, 3, 4]);
   });
 
-  it.each([2, 1])("no touching tiles share a pair in the 12-game lobby, %i col", (cols) => {
-    for (const [a, b] of touching(INTERNAL, cols))
-      expect(TILE_ACCENT_PAIR[a]).not.toBe(TILE_ACCENT_PAIR[b]);
+  // The intended final order, Daily Word first (#4009, PR #4018). HomeScreen on this branch
+  // still has Daily Word last until #4018 is merged in; the mapping does not depend on it.
+  it("no touching tiles share a pair in the store lobby on a phone (1 and 2 columns)", () => {
+    for (const cols of COLUMNS.filter((c) => c <= 2)) expect(conflicts(STORE, cols)).toEqual([]);
+  });
+
+  it("no touching tiles share a pair in the 12-game lobby on a phone (1 and 2 columns)", () => {
+    for (const cols of COLUMNS.filter((c) => c <= 2)) expect(conflicts(INTERNAL, cols)).toEqual([]);
+  });
+
+  // With 4 pairs it is impossible to have none at every width: across the four layouts the
+  // first five store tiles (daily_word, yacht, twenty48, solitaire, freecell) all touch one
+  // another, a K5. The search for the best mapping (zero at 1 and 2 columns first) leaves the
+  // least possible on tablets: exactly one store pair each at 3 and 4 columns. Pinned, so a
+  // change can only improve it.
+  it("tablet layouts keep the known minimum of conflicts", () => {
+    expect(conflicts(STORE, 3)).toEqual([["yacht", "freecell"]]);
+    expect(conflicts(STORE, 4)).toEqual([["twenty48", "sort"]]);
+    // Internal 12-game lobby: 4 touching pairs at 3 columns, 1 at 4 columns.
+    expect(conflicts(INTERNAL, 3)).toHaveLength(4);
+    expect(conflicts(INTERNAL, 4)).toHaveLength(1);
   });
 
   it("uses theme tokens only", () => {
