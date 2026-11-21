@@ -103,7 +103,7 @@ describe("Star Swarm asset credits (#2492)", () => {
   it("every Cascade sound has an entry in SOUND_CREDITS.md naming its generator (#3702)", () => {
     const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
     const cascade = fs.readdirSync(SOUNDS).filter((f) => f.startsWith("cascade-"));
-    expect(cascade).toHaveLength(42); // 21 per piece set
+    expect(cascade).toHaveLength(44); // 22 per piece set (merge-t11, #3966)
     // The Kenney files are gone, with their entries (#3702).
     for (const old of ["cascade-combo.ogg", "cascade-fruit-merge.ogg", "cascade-game-over.ogg"]) {
       expect(cascade).not.toContain(old);
