@@ -1,7 +1,8 @@
 # Home Screen Icon Credits
 
-Images on the home screen's game tiles. Every one is original art generated in-house; they use no
-third-party art. `src/__tests__/assetCredits.test.ts` fails if a file here has no row, and
+Images on the home screen's game tiles. Every one is original art generated in-house. The only
+third-party element is the numeral outlines on the 2048 and Sudoku tiles: Space Grotesk Bold, under
+the SIL OFL 1.1 (`tools/assets/lobby_numerals.OFL.txt`). `src/__tests__/assetCredits.test.ts` fails if a file here has no row, and
 `src/__tests__/lobbyTileBudget.test.ts` caps each tile at 3,400 B.
 
 | File                | Pack                                                       | Source file              | Notes                                                                                                                                                                         |
