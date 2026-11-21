@@ -16,6 +16,7 @@ import {
   hiddenLobbyTilePattern,
   hiddenOnlySoundNames,
   metroAssetName,
+  readStringSet,
   summarize,
 } from "./size-report.mjs";
 
@@ -291,4 +292,105 @@ test("CLI: --forbid-hidden-locales fails a bundle that holds a hidden locale's s
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- #4017: slug source covers HIDDEN_GAMES + DISABLED_GAMES and survives empty sets ---
+
+/** A throwaway project root holding only a gameVisibility.ts with the given set literals. */
+function fixtureRoot(hidden, disabled) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "size-report-vis-"));
+  fs.mkdirSync(path.join(dir, "src/entitlements"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "src/game"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "src/entitlements/gameVisibility.ts"),
+    `export const HIDDEN_GAMES: ReadonlySet<string> = ${hidden};\n` +
+      `export const DISABLED_GAMES: ReadonlySet<string> = ${disabled};\n`
+  );
+  return dir;
+}
+
+test("hiddenGameSlugs tolerates empty sets, type arguments, comments and multi-line lists", () => {
+  const cases = [
+    ["new Set([])", "new Set([])", []],
+    ["new Set<string>([])", "new Set<string>([])", []],
+    ['new Set<string>(["a", "b"])', "new Set([])", ["a", "b"]],
+    ["new Set(['a'])", "new Set<string>([ ])", ["a"]],
+    ['new Set<string>([\n  // note, "x"\n  "a",\n  "b", /* "y" */\n])', "new Set([])", ["a", "b"]],
+  ];
+  for (const [hidden, disabled, want] of cases) {
+    const dir = fixtureRoot(hidden, disabled);
+    try {
+      assert.deepEqual([...hiddenGameSlugs(dir)].sort(), want, hidden);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("hiddenGameSlugs is HIDDEN_GAMES union DISABLED_GAMES (a disabled-only slug counts)", () => {
+  const dir = fixtureRoot('new Set(["hearts"])', 'new Set<string>(["cascade"])');
+  try {
+    assert.deepEqual([...hiddenGameSlugs(dir)].sort(), ["cascade", "hearts"]);
+    // hiddenOnlySoundNames shares the parser: a disabled game's sounds count as hidden-only.
+    fs.mkdirSync(path.join(dir, "src/game/cascade"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "src/game/cascade/sounds.ts"),
+      'export const S = require("../../../assets/sounds/cascade-win.ogg");\n'
+    );
+    assert.ok(hiddenOnlySoundNames(dir).has("assets_sounds_cascadewin.ogg"));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("hiddenGameSlugs still throws when a set declaration is missing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "size-report-vis-"));
+  fs.mkdirSync(path.join(dir, "src/entitlements"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "src/entitlements/gameVisibility.ts"), "export const X = 1;\n");
+  try {
+    assert.throws(() => hiddenGameSlugs(dir), /could not read HIDDEN_GAMES/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an empty slug set means no hidden lobby tile: nothing matches, nothing throws", () => {
+  const { re } = hiddenLobbyTilePattern(new Set());
+  assert.ok(!re.test("assets_home_tile.webp"));
+  assert.ok(!re.test("assets_home_starswarmtile.webp"));
+  const hits = findHiddenPremiumAssets(
+    [{ file: "drawable-mdpi/assets_home_yachttile.webp", bytes: 1 }],
+    new Set(),
+    new Set()
+  );
+  assert.deepEqual(hits, []);
+});
+
+test("findHiddenPremiumAssets flags a tile for a slug given from DISABLED_GAMES", () => {
+  const hits = findHiddenPremiumAssets(
+    [{ file: "drawable-mdpi/assets_home_cascadetile.webp", bytes: 1 }],
+    new Set(),
+    new Set(["cascade"])
+  );
+  assert.equal(hits.length, 1);
+});
+
+test("readStringSet rejects non-literal entries instead of dropping them (#4017 review)", () => {
+  const read = (body) => readStringSet(`export const S = new Set([${body}]);`, "S");
+  assert.throws(() => read('...OTHER, "a"'), /plain string literals/);
+  assert.throws(() => read('"a", someSlug'), /plain string literals/);
+  assert.throws(() => read("`a${x}`"), /plain string literals/);
+  assert.deepEqual([...read("`a`, 'b', \"c\"")], ["a", "b", "c"]);
+});
+
+test("readStringSet anchors to the declaration and handles nested generics", () => {
+  // The name appears in a semicolon-less import before the real declaration.
+  const src =
+    'import { HIDDEN_GAMES }\nconst unrelated = new Set(["zzz"])\n' +
+    'export const HIDDEN_GAMES: ReadonlySet<string> = new Set<Array<string>>(["a"]);\n';
+  assert.deepEqual([...readStringSet(src, "HIDDEN_GAMES")], ["a"]);
+  assert.throws(
+    () => readStringSet('import { HIDDEN_GAMES }\nconst x = new Set(["zzz"]);\n', "HIDDEN_GAMES"),
+    /could not read HIDDEN_GAMES/
+  );
 });

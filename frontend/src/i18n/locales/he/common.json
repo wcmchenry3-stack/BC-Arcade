@@ -51,6 +51,7 @@
   "overflow.abandon.body": "התחלת משחק חדש תמחק את ההתקדמות שלך בסיבוב הזה. הסטטיסטיקות הכלליות שלך לא יושפעו.",
   "overflow.abandon.keepPlaying": "להמשיך לשחק",
   "overflow.abandon.startNew": "להתחיל חדש",
+  "play": "שחק",
   "home.locked.buttonLabel": "פתיחה",
   "home.locked.cardLabel": "{{title}} — נעול, הקישו לפתיחה",
   "deleteData.label": "מחיקת הנתונים שלי",
