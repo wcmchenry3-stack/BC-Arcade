@@ -297,6 +297,85 @@ The CLAUDE.md order applies: cost, then performance, then data. A first look:
 4. **Cut stories** with `plan-issues` (update #2946 / #2458 instead of duplicating them), then ship with
    `ship-story`.
 
+## 12. Per-game design (draft for review)
+
+Built from each game's spec in [`docs/games/`](games/) and its result fields. Every row follows §7a: win / loss /
+abandon as the game defines them, and abandons never count. **Target rules** use §5: the personal target is set
+from the player's last ~10 finished games of that game, pinned at the start of the day, capped below their best,
+and eases off after two misses. Numbers marked *start* are cold-start values, used until the player has about 3
+finished games, and are server dials.
+
+### Ending rules per game
+
+| Game         | Win                               | Loss                              | Abandon                    | Finish = |
+| ------------ | --------------------------------- | --------------------------------- | -------------------------- | -------- |
+| Daily Word   | solve the word                    | out of guesses                    | leave unfinished           | win or loss |
+| 2048         | make the 2048 tile                | stuck before 2048                 | New Game / leave           | win or loss |
+| Solitaire    | clear the deal                    | **none**                          | redeal / leave             | **win only** |
+| FreeCell     | clear the deal                    | **none**                          | redeal / leave             | **win only** |
+| Bottle Sort  | solve the level                   | none                              | leave the level            | win only |
+| Sudoku       | solve the puzzle                  | none                              | leave / new puzzle         | win only |
+| Yacht        | vs computer: beat it; solo: n/a   | vs computer: lose                 | leave mid-game             | 13 rounds scored |
+| Hearts*      | lowest score at the end           | not lowest                        | leave mid-game             | win or loss |
+| Mahjong*     | clear the board                   | deadlock (recorded on leaving)    | leave mid-board            | win or loss |
+| Blackjack*   | reach the table's chip goal       | chips run out first               | quit before the goal       | win or loss |
+| Cascade*     | make the capstone                 | stack over the lid                | restart / switch set       | win or loss |
+| Star Swarm*  | **none** (endless run)            | game over                         | New Game mid-run           | game over |
+
+\* premium. Solitaire and FreeCell deal only **provably solvable** deals, so their wins are skill, not luck.
+
+### Goals per game
+
+| Game         | Goals (2–3 each)                                                                                              | Personal measure                     | Cold start (*start*)                | Win-dependent goal |
+| ------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ----------------------------------- | ------------------ |
+| Daily Word   | **Complete today's word** (only goal, always core 1)                                                          | none                                 | same                                | none               |
+| 2048         | Finish a game · Score at least *target* · Make the 2048 tile                                                  | `final_score`                        | Finish a game                       | 2048 tile          |
+| Solitaire    | Win a deal · Win in at most *target* moves                                                                    | `moves` on wins                      | Win a deal                          | none (solvable)    |
+| FreeCell     | Win a deal · Win in at most *target* moves                                                                    | `moves` on wins                      | Win a deal                          | none (solvable)    |
+| Bottle Sort  | Solve *N* new levels (N = 1–3) · Earn 3 stars on a level you've solved                                         | levels solved per day; stars         | Solve 1 new level                   | none               |
+| Sudoku       | Solve a puzzle · Solve one at your usual difficulty or one higher · Solve with at most *target* errors         | difficulty, `errors`                 | Solve an Easy puzzle                | none               |
+| Yacht        | Finish a game · Score at least *target* · Beat the computer                                                   | `final_score`                        | Finish a game                       | beat the computer  |
+| Hearts*      | Finish a game · Win a game                                                                                    | win rate (for picking, not target)   | Finish a game                       | win                |
+| Mahjong*     | Clear a board · Clear one in under *target* time                                                              | `duration_ms` on clears              | Clear a board                       | none (a deadlock can be undone) |
+| Blackjack*   | Finish a run · Win a run · Win a run one table up from your usual                                             | the table of your recent runs        | Finish a run at Beginner            | win a run          |
+| Cascade*     | Finish a game · Win a game · (light) Win in under *target* time                                               | `duration_ms` on wins                | Finish a game                       | none (skill game)  |
+| Star Swarm*  | Finish a run · Reach wave *target* · Score at least *target*                                                   | `wave_reached`, `final_score`        | Finish a run                        | none               |
+
+Notes:
+
+- **Finish-only games.** For Solitaire, FreeCell, Sort and Sudoku a finished game *is* a win, so their base goal is
+  the win. That's fine because the deals and levels are always solvable. Their stretch is quality (fewer moves,
+  fewer errors, a harder puzzle, stars), not score.
+- **Bottle Sort.** "Solve N new levels" counts levels above the highest level solved before today, so it can never
+  already be done, and it stops at level 120. A player who has finished the catalog gets the stars goal instead.
+- **Star Swarm** has no win, so it has no Skill goal. Its stretch should use the difficulty tier the player
+  usually plays, since score depends on the tier.
+- **Hearts** games last longer (about 6 minutes), so it gets no score stretch. Winning is the stretch.
+- **Cascade** stretch goals stay light until the new tier's win rate is known (§7a).
+
+### What this changes in today's goal pool
+
+- **Daily Word:** drop the "win" and "win in 4 guesses" goals (§4).
+- **Solitaire / FreeCell:** "make 10 moves" and "make 5 moves" are not really easy goals. These games have no
+  loss, so a finished row only exists for a win, and these goals already require one. They also wrongly mark
+  Solitaire's win as luck-dependent: the code comment says "Klondike deals are not always winnable", but the deal
+  bank is provably solvable.
+- **Yacht:** the comment "abandoned games count with their score so far" is out of date: abandons are filtered.
+- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels".
+- **Blackjack:** the pending hand-count goals are dropped (§7a).
+
+### Data needed per measure (input to step 3)
+
+| Measure                            | Server today                    | Device today                              | Gap                                     |
+| ---------------------------------- | ------------------------------- | ----------------------------------------- | --------------------------------------- |
+| Recent finished games per game (scores, moves, times) | `games` rows (full history) | only the personal best                  | small per-game ring buffer (§9)         |
+| Highest Sort level solved          | `final_score` on solves         | Sort progress save                        | none                                    |
+| Sort stars per level               | not stored as a field           | `personal_best_v1:sort` (best moves) vs par | server: derive from moves and par, or skip offline |
+| Sudoku difficulty, errors          | `games.metadata`                | personal best per variant                 | ring buffer                             |
+| Blackjack table of recent runs     | `starting_chips` in metadata    | local run records                         | none                                    |
+| Star Swarm tier, wave              | result block                    | `starswarm.*` best                        | ring buffer                             |
+| Affinity (games played recently)   | `games` rows                    | none                                      | ring buffer gives it for free           |
+
 [cbs]: https://business.columbia.edu/sites/default/files-efs/citation_file_upload/Personalized_games.pdf
 [dof-puzzles]: https://www.deconstructoroffun.com/blog/2024/9/23/daily-missions-in-puzzles-why-should-we-see-them-more-often
 [dof-goals]: https://www.deconstructoroffun.com/blog//2016/07/the-making-of-mechanic-daily-goals.html?format=amp
