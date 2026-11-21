@@ -56,7 +56,6 @@ Deployment (Render): [`docs/RENDER.md`](docs/RENDER.md). Design system is **BC A
 ## Key Conventions
 
 - Game logic lives in `frontend/src/game/<name>/engine.ts` (client-side, offline-capable). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Adding a Star Swarm power-up, enemy tier or hit cause: follow the [checklist](docs/games/starswarm.md#adding-content).
-- Lobby tile status (#4008: Resume, Done today, Best) is read-only: about 1 AsyncStorage key per visible game per Home focus, after first paint, batched; 0 bytes written, 0 network, 0 Sentry events, so no dial is needed. A new status reader must keep to that, and hidden games get none (`components/home/lobbyStatusReaders.ts`).
 - Scoring is server-side; outcomes are queued locally when offline and flushed by `SyncWorker`.
 - Premium access is gated by an RS256 entitlement JWT from `GET /entitlements` (24-hr TTL, 7-day offline grace). See [`docs/ARCHITECTURE.md §10`](docs/ARCHITECTURE.md).
 - Yacht scoring keys: `ones` `twos` `threes` `fours` `fives` `sixes` `three_of_a_kind` `four_of_a_kind` `full_house` `small_straight` `large_straight` `yacht` `chance`.
