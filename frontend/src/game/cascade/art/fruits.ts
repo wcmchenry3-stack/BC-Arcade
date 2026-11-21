@@ -233,7 +233,7 @@ const grape: PieceArt = {
 
 /**
  * The Plum (tier 4, #3964, owner pick B "Santa Rosa" 2026-11-21): violet shoulders fading to ruby
- * red, pale speckles, a seam, and a stem with a green leaf (overhang about 0.31 r). Its face ink is
+ * red, pale speckles, a seam, and a stem with a green leaf (overhang about 0.31 r above the circle, about 0.42 r radially at the leaf tip). Its face ink is
  * dark: a light ink read as white blobs on it.
  */
 const plum: PieceArt = {

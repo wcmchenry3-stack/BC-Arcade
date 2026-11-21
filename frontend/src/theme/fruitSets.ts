@@ -22,10 +22,12 @@ export interface FruitSet {
 const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[] }> = {
   fruits: {
     id: "fruits",
-    // The emoji and colours below are dev-panel / fallback only (the art is code-drawn). Unicode has
-    // no lychee, plum or pomegranate emoji, so those three borrow the nearest one: 🍓 (a bumpy red
-    // shell), 🍑 (a stone fruit) and 🍎 (a red fruit with a calyx). Lime is 🍋‍🟩 (Emoji 15.1; older
-    // platforms show a lemon).
+    // The emoji are dev-panel / fallback only (the art is code-drawn); the colours are live: they
+    // colour each merge's burst (`CascadeScreen`: `mergeBursts.add`), so keep them equal to the
+    // fruit's `CASCADE_PIECE_COLORS` entry. Unicode has no lychee, plum or pomegranate emoji, so
+    // those three borrow the nearest one: 🍓 (a bumpy red shell), 🍑 (a stone fruit) and 🍎 (a red
+    // fruit with a calyx). Lime is 🍋‍🟩 (Emoji 15.1; platforms without the sequence show a lemon
+    // followed by a green square, two glyphs, which is harmless in the dev panel).
     label: "Fruits",
     fruits: [
       {
