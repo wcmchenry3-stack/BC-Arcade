@@ -1335,7 +1335,7 @@ export default function SolitaireScreen() {
         }
       >
         {state === null ? (
-          <PreGameModal onChoose={deal} />
+          <PreGameModal onChoose={deal} onHome={() => navigation.popToTop()} />
         ) : (
           <CardSizeContext.Provider value={cardSize}>
             <CardFlightContext.Provider value={flights}>

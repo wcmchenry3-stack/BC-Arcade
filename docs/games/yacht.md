@@ -52,6 +52,8 @@ The current theoretical maximum is **1575**, including the upper bonus and all p
 
 ## Modes
 
+The mode picker covers the header's back arrow, so a labelled "Lobby" chip floats over the scrim near that spot (mirrored in right-to-left) (`ModalCard`'s `onHome`, #3969). It returns to the lobby without starting a game or saving a mode; Android's hardware Back still picks Solo (#3463).
+
 ### Solo
 
 One player completes the 13-category scorecard.
