@@ -355,15 +355,15 @@ Notes:
 
 ### What this changes in today's goal pool
 
-- **Daily Word:** drop the "win" and "win in 4 guesses" goals (§4). *Shipped (#3991).*
+- **Daily Word:** drop the "win" and "win in 4 guesses" goals (§4). _Shipped (#3991)._
 - **Solitaire / FreeCell:** "make 10 moves" and "make 5 moves" are not really easy goals. These games have no
   loss, so a finished row only exists for a win, and these goals already require one. They also wrongly mark
   Solitaire's win as luck-dependent: the code comment says "Klondike deals are not always winnable", but the deal
-  bank is provably solvable. *Shipped (#3993).*
+  bank is provably solvable. _Shipped (#3993)._
 - **Yacht:** the comment "abandoned games count with their score so far" is out of date: abandons are filtered.
-  *Fixed (#3993).*
-- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". *Shipped for
-  the personal pick (#3993); the shared template keeps them (see "Shipped" below).*
+  _Fixed (#3993)._
+- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Shipped for
+  the personal pick (#3993); the shared template keeps them (see "Shipped" below)._
 - **Blackjack:** the pending hand-count goals are dropped (§7a).
 
 ### Shipped for the free games (#3993, #3994)
@@ -387,11 +387,16 @@ from the tables above:
   one goal type, the personal score.
 - **Yacht "Beat the computer" is not built**: the vs result is stored (`vs_result`) but there is no `goal.yacht.won`
   copy in the app, so it would need a new kind in every locale.
-- **Sudoku's "usual difficulty or one higher" and "at most *target* errors" are one goal**: score at least *T*
+- **Sudoku's "usual difficulty or one higher" and "at most _target_ errors" are one goal**: score at least _T_
   (`final_score` = difficulty base minus 10 per error, so a higher target asks for a harder puzzle or fewer errors).
 - **Bottle Sort's stars goal is not built** (it would need a `stars_at_least` kind and copy). A player who has
   solved level 120 (or 23 while `SORT_CATALOG_EDITION_ENFORCED` is off) gets their goals from another game.
-- **Step-down is per (game, goal type)** and also applies to Sort (one level fewer).
+- **Step-down is per (game, goal type)** and also applies to Sort (one level fewer). Only days whose goal was a
+  personal target and on which the game was played count as misses.
+- **Goals already shown never change** (§13 item 5): a day an install could have been served unpinned (no game in
+  some 48 h window since the day could first be asked for) is pinned as the shared template, so a new install's
+  cached `/upcoming` days and a lapsed install's comeback day keep the goals the device shows.
+- **Bottle Sort's pace** is each day's best `final_score` minus the best before it, over the affinity window.
 - **The variety guard is strict at 3+ games with affinity**, so with exactly 3 or 4 games it sets the rotation more
   than affinity does. §6's "unless the player only plays one or two games" is the exception as written.
 - **Discovery** (`discovery_candidates`) and its rest rule are in place for #3995: 3 ignored offers within 30 days

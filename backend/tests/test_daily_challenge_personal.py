@@ -106,6 +106,11 @@ def _history(
         if d < day and isinstance(score, int):
             best = h.best_scores.setdefault(day, {})
             best[game] = max(best.get(game, 0), score)
+            if d >= day - timedelta(days=window):
+                bests = h.daily_best.setdefault(game, {})
+                bests[d] = max(bests.get(d, 0), score)
+            else:
+                h.best_before_window[game] = max(h.best_before_window.get(game, 0), score)
     h.pinned = dict(pinned or {})
     return h
 
@@ -734,7 +739,10 @@ async def _add(
     final_score: int | None = None,
     metadata: dict | None = None,
     outcome: str = "completed",
+    created_at: datetime | None = None,
 ) -> None:
+    """A finished game; its server-side ``created_at`` is ``when`` unless given, so a
+    seeded history reads as continuous play (``InstallHistory.always_pinnable``)."""
     async with get_session_factory()() as db:
         gt_id = (await db.execute(select(GameType.id).where(GameType.name == game))).scalar_one()
         db.add(
@@ -743,6 +751,7 @@ async def _add(
                 game_type_id=gt_id,
                 started_at=when - timedelta(minutes=5),
                 completed_at=when,
+                created_at=created_at or when,
                 outcome=outcome,
                 final_score=final_score,
                 game_metadata=metadata or {},
@@ -916,7 +925,7 @@ async def test_the_loader_probes_the_last_two_days_of_each_stretch_goal() -> Non
         )
     async with get_session_factory()() as db:
         h = await load_install_history(db, sid, today)
-    assert len([g for g in h.games["yacht"] if g.recent]) == 20  # 2 x HISTORY_GAMES
+    assert len([g for g in h.games["yacht"] if g.recent]) == 10  # HISTORY_GAMES
     assert all(h.played_on("yacht", d) for d in old)
     assert personal.stepped_down(h, "yacht", "score")
     # The step-down: 200 x 0.88 = 176 -> 175.
@@ -976,7 +985,7 @@ def _count_statements():
 
 
 @needs_db
-async def test_one_personal_pick_is_three_queries() -> None:
+async def test_one_personal_pick_is_four_queries() -> None:
     sid = str(uuid.uuid4())
     today = local_day(0).date
     await _seed_2048(sid, today)
@@ -995,8 +1004,9 @@ async def test_one_personal_pick_is_three_queries() -> None:
     finally:
         stop()
     assert picked.template.goals[0] == _DW
-    # pinned assignments, recent games (+ probe days), per-day counts and bests.
-    assert len(statements) == 3, statements
+    # pinned assignments, recent games (+ probe days), per-day counts and bests,
+    # game creation times (always_pinnable).
+    assert len(statements) == 4, statements
     assert "daily_challenge_assignments" in statements[0]
 
 
@@ -1011,8 +1021,8 @@ async def test_upcoming_reads_the_history_once_for_three_days(client: TestClient
         body = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
     finally:
         stop()
-    # assignment SELECT, recent-play EXISTS, 3 history queries, the INSERT.
-    assert len(statements) == 6, statements
+    # assignment SELECT, recent-play EXISTS, 4 history queries, the INSERT.
+    assert len(statements) == 7, statements
     days = [d["goals"] for d in body["days"]]
     # Today, +1 and +2 see each other: no game in two consecutive days' core slots
     # needs 3+ games; with two, a (game, goal type) still never repeats within 3 days.
@@ -1220,3 +1230,227 @@ async def test_a_context_asked_for_a_day_it_did_not_load_reloads() -> None:
 def test_a_kind_no_spec_names_is_its_own_goal_type() -> None:
     assert goal_type_name(_at_least("solitaire", "moves", 10, "easy")) == "moves_at_least"
     assert goal_type_name(_won("mahjong", "easy")) == "won"
+
+
+# ---------------------------------------------------------------------------
+# Review round 1: goals already shown never change when the day is pinned later
+# ---------------------------------------------------------------------------
+
+_H = timedelta(hours=1)
+
+
+def _pinnable_history(day: date, created: list[datetime], now: datetime) -> InstallHistory:
+    h = _history(day, [])
+    h.created, h.now = sorted(created), now
+    return h
+
+
+def test_request_opens_covers_every_timezone_two_days_ahead() -> None:
+    # Local Nov 19 begins at 10:00 UTC Nov 18 at +14:00, the earliest anywhere.
+    assert history_mod.request_opens(_DAY) == datetime(2026, 11, 18, 10, tzinfo=UTC)
+
+
+def test_always_pinnable_needs_play_in_every_window_since_the_day_could_be_asked_for() -> None:
+    opens = history_mod.request_opens(_DAY)
+    now = datetime(2026, 11, 21, 12, tzinfo=UTC)
+    daily = [opens - 40 * _H + i * 24 * _H for i in range(5)]  # every 24 h from before
+    assert _pinnable_history(_DAY, daily, now).always_pinnable(_DAY)
+    # The first game only after the day opened: a device may hold shared goals.
+    assert not _pinnable_history(_DAY, daily[2:], now).always_pinnable(_DAY)
+    # A gap longer than the 48 h window since then: served unpinned in between.
+    gap = [daily[0], daily[0] + 49 * _H, now - _H]
+    assert not _pinnable_history(_DAY, gap, now).always_pinnable(_DAY)
+    # Exactly 48 h apart is still covered.
+    edge = [opens - _H, opens + 47 * _H, now - _H]
+    assert _pinnable_history(_DAY, edge, now).always_pinnable(_DAY)
+    # A gap long before the day could be asked for does not matter.
+    old_gap = [opens - 30 * 24 * _H, *daily]
+    assert _pinnable_history(_DAY, old_gap, now).always_pinnable(_DAY)
+    # No game in the last 48 h (may_pin would refuse anyway).
+    assert not _pinnable_history(_DAY, daily[:2], now).always_pinnable(_DAY)
+    # Not read (hand-built histories): treated as pinnable.
+    assert _history(_DAY, []).always_pinnable(_DAY)
+
+
+def test_serves_shared_for_a_day_that_could_have_been_served_unpinned() -> None:
+    h = _history(_DAY, _profile_plays({"twenty48": 2}, _DAY))
+    assert not personal.serves_shared(h, _DAY)
+    h.created, h.now = [datetime(2026, 11, 21, 1, tzinfo=UTC)], datetime(
+        2026, 11, 21, 2, tzinfo=UTC
+    )
+    assert personal.serves_shared(h, _DAY)
+
+
+async def _status_ids(client: TestClient, sid: str) -> list[str]:
+    return [
+        g["id"]
+        for g in client.get("/daily-challenge/status", headers=_headers(sid)).json()["goals"]
+    ]
+
+
+async def _rows_for(sid: str) -> list[DailyChallengeAssignment]:
+    async with get_session_factory()() as db:
+        return list(
+            (
+                await db.execute(
+                    select(DailyChallengeAssignment)
+                    .where(DailyChallengeAssignment.session_id == uuid.UUID(sid))
+                    .order_by(DailyChallengeAssignment.local_date)
+                )
+            ).scalars()
+        )
+
+
+@needs_db
+async def test_a_lapsed_installs_shared_goals_stay_after_its_next_game_syncs(
+    client: TestClient,
+) -> None:
+    """The reviewer's probe: an install with plenty of history but no game created in
+    the last 48 h is served the shared template unpinned. Its next game syncs mid-day:
+    the day is pinned, with the same shared goals it already showed."""
+    sid = str(uuid.uuid4())
+    today = local_day(0).date
+    for back in range(3, 9):
+        await _add(
+            sid,
+            "twenty48",
+            _noon(today - timedelta(days=back)),
+            final_score=1500,
+            metadata={"highest_tile": 512},
+        )
+    before = await _status_ids(client, sid)
+    upcoming_before = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    assert await _rows_for(sid) == []  # unpinned
+    await _add(sid, "twenty48", datetime.now(UTC) - timedelta(minutes=1), final_score=100)
+    assert await _status_ids(client, sid) == before
+    upcoming_after = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    assert upcoming_after == upcoming_before
+    assert len(await _rows_for(sid)) == 3  # now pinned, as shown
+
+
+@needs_db
+async def test_a_new_installs_offline_cached_days_stay_after_three_games_sync(
+    client: TestClient,
+) -> None:
+    """A new install caches /upcoming (shared, unpinned) before its first game. It then
+    plays 3 games today: tomorrow and the day after are pinned with the cached goals."""
+    sid = str(uuid.uuid4())
+    cached = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    for minutes in (30, 20, 10):
+        await _add(
+            sid,
+            "twenty48",
+            datetime.now(UTC) - timedelta(minutes=minutes),
+            final_score=1500,
+            metadata={"highest_tile": 512},
+        )
+    later = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    assert later == cached
+    assert len(await _rows_for(sid)) == 3
+
+
+@needs_db
+async def test_continuous_play_still_gets_personal_goals_for_all_three_days(
+    client: TestClient,
+) -> None:
+    sid = str(uuid.uuid4())
+    today = local_day(0).date
+    await _seed_2048(sid, today)
+    await _add(
+        sid,
+        "twenty48",
+        datetime.now(UTC) - timedelta(minutes=1),
+        final_score=1500,
+        metadata={"highest_tile": 512},
+    )
+    shared = client.get("/daily-challenge/upcoming").json()
+    mine = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    assert all(m["goals"] != s["goals"] for m, s in zip(mine["days"], shared["days"], strict=True))
+
+
+# ---------------------------------------------------------------------------
+# Review round 1: Sort pace from per-day standings; pre-day history per served day
+# ---------------------------------------------------------------------------
+
+
+def test_a_heavy_sort_player_gets_three_new_levels() -> None:
+    days = _days_before(_DAY, 6)[::-1]
+    plays = [
+        ("sort", d, {"won": True, "final_score": 10 * i + lvl})
+        for i, d in enumerate(days)
+        for lvl in range(1, 11)
+    ]
+    h = _history(_DAY, plays)
+    assert h.sort_new_levels_per_day(_DAY) == [10] * 6
+    [option] = options_for("sort", h, _DAY, pct=12, catalog_on=True)
+    assert option.goal.target == 63  # 60 + 3
+
+
+@needs_db
+async def test_the_loader_reads_a_heavy_sort_players_pace_from_daily_standings() -> None:
+    sid = str(uuid.uuid4())
+    for i, back in enumerate(range(6, 0, -1)):
+        for lvl in range(1, 11):
+            await _add(
+                sid,
+                "sort",
+                _noon(_DAY - timedelta(days=back)) + timedelta(minutes=lvl),
+                final_score=10 * i + lvl,
+                metadata={"won": True},
+            )
+    async with get_session_factory()() as db:
+        h = await load_install_history(db, sid, _DAY)
+    assert h.sort_new_levels_per_day(_DAY) == [10] * 6
+    assert options_for("sort", h, _DAY, pct=12, catalog_on=True)[0].goal.target == 63
+
+
+@needs_db
+async def test_a_days_own_games_never_push_out_the_history_before_it() -> None:
+    """Codex P2: /upcoming loads today..today+2. 25 games of one type today must not
+    wipe out the games before today, so today keeps its personal goals."""
+    sid = str(uuid.uuid4())
+    today = local_day(0).date
+    await _seed_2048(sid, today)
+    start = local_day_of(today, 0).start_utc
+    for i in range(25):
+        await _add(
+            sid,
+            "twenty48",
+            start + timedelta(minutes=i + 1),
+            final_score=10,
+            metadata={"highest_tile": 16},
+            created_at=datetime.now(UTC) - timedelta(minutes=30),
+        )
+    ctx = service.PickContext([today, today + timedelta(days=1), today + timedelta(days=2)])
+    async with get_session_factory()() as db:
+        picked = await service.pick_for_install(db, sid, today, context=ctx)
+    assert {g.id for g in picked.template.goals[1:]} == _EXPECTED_2048
+    assert ctx.history is not None
+    assert len(ctx.history.recent_facts("twenty48", today, 10)) == 5
+    # Tomorrow reads today's latest 10 (all low): its score target is at the floor.
+    assert len(ctx.history.recent_facts("twenty48", today + timedelta(days=1), 10)) == 10
+
+
+# ---------------------------------------------------------------------------
+# Review round 1: step-down ignores shared-template days and days not played
+# ---------------------------------------------------------------------------
+
+
+def test_a_shared_template_goal_missed_twice_is_no_step_down() -> None:
+    days = _days_before(_DAY, 5)[::-1]
+    plays = [("yacht", d, _score(150)) for d in days] * 2
+    shared_goal = FREE_GOAL_POOL["yacht"][1]  # final_score >= 175, a pool goal
+    pinned = {d: _pin(shared_goal, FREE_GOAL_POOL["twenty48"][0]) for d in days[-2:]}
+    h = _history(_DAY, plays, pinned)
+    assert not personal.stepped_down(h, "yacht", "score")
+
+
+def test_a_day_the_game_was_not_played_is_no_miss() -> None:
+    days = _days_before(_DAY, 5)[::-1]
+    goal = _at_least("yacht", "final_score", 300, "medium")
+    plays = [("yacht", d, _score(200)) for d in days[:3]] + [("yacht", days[4], _score(200))]
+    pinned = {d: _pin(goal, FREE_GOAL_POOL["twenty48"][0]) for d in days[-2:]}  # days[3] unplayed
+    h = _history(_DAY, plays, pinned)
+    assert not personal.stepped_down(h, "yacht", "score")
+    plays.append(("yacht", days[3], _score(200)))
+    assert personal.stepped_down(_history(_DAY, plays, pinned), "yacht", "score")

@@ -21,9 +21,10 @@ never change what a day already showed. ``assignments.get_or_pin`` (#3992) then
 pins the install's own goals for the day into ``daily_challenge_assignments``
 (``pick_for_install`` chooses them), so every later read returns the same goals.
 The pick (#3993/#3994) reads the install's history once per request
-(``history.load_install_history``, three queries) and chooses personal goals with
-``personal.choose_core``; an install with too little history gets the shared
-template exactly (``personal.is_new_install``).
+(``history.load_install_history``, at most four queries) and chooses personal goals
+with ``personal.choose_core``; an install with too little history, or a day it could
+already have been shown unpinned, gets the shared template exactly
+(``personal.serves_shared``).
 """
 
 from __future__ import annotations
@@ -230,14 +231,17 @@ async def pick_for_install(
     the result, so this runs at most once per (install, day) while the kill switch
     is on, and never while it is off.
 
-    * **New install** (``personal.is_new_install``: fewer than 3 finished games, or
-      none in the affinity window): the shared frozen template for the slate
-      ``resolve_slate`` chooses (``shared_for_install``), exactly, so the goals it saw
-      before it could pin do not change when the day is pinned.
+    * **Shared** (``personal.serves_shared``): a new install (fewer than 3 finished
+      games of games with specs, or none in the affinity window), or a day the
+      install could already have been served unpinned (no game created in some
+      ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS`` window since the day could first be
+      asked for, ``InstallHistory.always_pinnable``). The shared frozen template for
+      the slate ``resolve_slate`` chooses (``shared_for_install``), exactly, so goals a
+      device already shows for the day never change when it is pinned.
     * **Otherwise**: Daily Word plus two personal goals (``personal.choose_core``),
       on the slate ``resolve_slate`` chooses, stored with the day. No bonus (#3995).
 
-    Queries: the history (three, once per ``context``), then none for a personal
+    Queries: the history (at most four, once per ``context``), then none for a personal
     pick while no premium game has specs and the two slates match; the shared path
     adds the frozen template read (and an INSERT for a day never frozen).
 
@@ -255,7 +259,7 @@ async def pick_for_install(
         )
     install = ctx.history
     result: Assignment | None = None
-    if not personal.is_new_install(install, day):
+    if not personal.serves_shared(install, day):
         if ctx.eligible is None:
             ctx.eligible = await eligible_games(session, session_id)
         slate = await resolve_slate(session, session_id, day)

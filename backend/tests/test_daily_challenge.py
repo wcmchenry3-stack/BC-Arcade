@@ -384,6 +384,48 @@ def test_rotation_never_repeats_a_game_whatever_the_pool_size(
         rotation.cache_clear()
 
 
+def test_a_second_win_goal_falls_back_to_that_games_easy_goal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No live free goal is luck-dependent since #3993, so the at-most-one-win rule
+    is exercised on a pool that has win goals: medium and hard tiers are wins, easy
+    is not. Every day keeps at most one win, and the other falls back to easy."""
+
+    def goals(game: str):
+        return (
+            _at_least(game, "final_score", 1, "easy"),
+            definitions._won(game, "medium"),
+            _won_within(game, "moves", 100, "hard"),
+        )
+
+    pool = {ALWAYS_PRESENT: FREE_GOAL_POOL[ALWAYS_PRESENT]} | {
+        f"g{i}": goals(f"g{i}") for i in range(5)
+    }
+    monkeypatch.setitem(GOAL_POOLS, "free", pool)
+    rotation.cache_clear()
+    pick_template.cache_clear()
+    try:
+        fell_back = 0
+        for day in _days(60):
+            template = pick_template(day, "free", 0)
+            assert sum(g.is_win for g in template.goals) <= 1
+            ordinal = day.toordinal()
+            games = (ALWAYS_PRESENT, *pick_games(day, "free", 0))
+            raw = [pool[g][(ordinal + i) % len(TIERS)] for i, g in enumerate(games)]
+            if sum(g.is_win for g in raw) == 2:
+                fell_back += 1
+                swapped = [
+                    i for i, (r, f) in enumerate(zip(raw, template.goals, strict=True)) if r != f
+                ]
+                assert len(swapped) == 1
+                i = swapped[0]
+                assert template.goals[i] == pool[games[i]][0]  # that game's easy goal
+        assert fell_back > 0
+    finally:
+        rotation.cache_clear()
+        pick_template.cache_clear()
+
+
 def test_win_limits_are_above_the_physical_minimum() -> None:
     # A win is impossible below these, so a goal under them could never be met.
     minimum = {

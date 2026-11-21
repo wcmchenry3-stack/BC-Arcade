@@ -16,9 +16,10 @@ Every goal is one of the existing kinds with an absolute target (``final_score_a
 ``highest_tile_at_least``, ``won``, ``won_moves_at_most``, ``solved``), so installed app
 builds word it and ``Goal.evaluate`` scores it with no per-player logic.
 
-New installs (fewer than ``MIN_FINISHED_GAMES`` finished games in total, or none in the
-affinity window) are not handled here: ``is_new_install`` sends them to the shared
-frozen template, so goals seen before the first game synced never change.
+``serves_shared`` sends a day to the shared frozen template instead: a new install
+(fewer than ``MIN_FINISHED_GAMES`` finished games of games with specs, or none in the
+affinity window), or a day the install could already have been served unpinned
+(``InstallHistory.always_pinnable``), so goals a device already shows never change.
 
 Targets (``personal_target``)
 -----------------------------
@@ -33,9 +34,10 @@ games of that game before the day starts:
   least" target is at most the best, an "at most" limit at least the fewest moves);
 * **floored** at the game's minimum (the easy-tier numbers of ``FREE_GOAL_POOL``);
   the floor wins over the cap for a player whose best is below it;
-* **stepped down** after two consecutive misses: when the last two pinned days that
-  held this (game, goal type) were both missed, the stretch is applied the other way
-  (a tile target halves, Sort asks one level fewer).
+* **stepped down** after two consecutive misses: when, on the last two pinned days that
+  held this (game, goal type) as a personal target, the game was played and the goal
+  missed, the stretch is applied the other way (a tile target halves, Sort asks one
+  level fewer). Shared-template days and days the game was not played never count.
 
 A game with fewer than ``MIN_FINISHED_GAMES`` finished games gets its cold-start goal
 (``GameSpec.cold_start``). Bottle Sort's goal is "solve N new levels", pinned as
@@ -73,7 +75,9 @@ from typing import TYPE_CHECKING, Literal
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
     FREE_GOAL_POOL,
+    GOAL_POOLS,
     SALT,
+    SORT_CATALOG_GOALS,
     Goal,
     goal_from_spec,
 )
@@ -81,6 +85,7 @@ from settings import Settings
 from sort.catalog import LEVEL_COUNT
 
 if TYPE_CHECKING:
+    from daily_challenge.assignments import Assignment
     from daily_challenge.history import InstallHistory
 
 # A game (and an install) needs this many finished games for a personal target.
@@ -387,18 +392,42 @@ def _values(gtype: GoalType, facts_list: Iterable[Mapping]) -> list[int | float]
     return out
 
 
-def last_occurrences(
+def _shared_goal_ids() -> frozenset[str]:
+    """Every goal id a shared template can hold (the live pools, Sort's catalog goals)."""
+    return frozenset(
+        g.id
+        for pool in (*GOAL_POOLS.values(), {"sort": SORT_CATALOG_GOALS})
+        for goals in pool.values()
+        for g in goals
+    )
+
+
+def _goal_of(assignment: Assignment, game: str, type_name: str) -> Goal | None:
+    return next(
+        (
+            g
+            for g in assignment.template.goals
+            if g.game_type == game and goal_type_name(g) == type_name
+        ),
+        None,
+    )
+
+
+def last_personal_occurrences(
     history: InstallHistory, game: str, type_name: str, before: date, count: int = 2
 ) -> list[date]:
-    """The latest ``count`` pinned days before ``before`` that held this (game, type)."""
+    """The latest ``count`` pinned days before ``before`` whose (game, type) goal was a
+    personal target. A goal equal to a shared-pool goal is taken as shared (a pinned
+    new-install day) and skipped; a personal target that happens to equal one is
+    skipped too, which only delays a step-down."""
+    shared = _shared_goal_ids()
     days = sorted(
         (
             d
             for d, a in history.pinned.items()
             if d < before
-            and any(
-                g.game_type == game and goal_type_name(g) == type_name for g in a.template.goals
-            )
+            and (goal := _goal_of(a, game, type_name)) is not None
+            and goal.id not in shared
         ),
         reverse=True,
     )
@@ -406,19 +435,17 @@ def last_occurrences(
 
 
 def stepped_down(history: InstallHistory, game: str, type_name: str) -> bool:
-    """Two consecutive misses: the last two pinned days (before the first day this
-    history serves, so a day still being played never counts) that held this
-    (game, goal type) were both missed, i.e. no finished game that day met it."""
-    days = last_occurrences(history, game, type_name, history.first_day)
+    """Two consecutive misses: on the last two pinned days (before the first day this
+    history serves, so a day still being played never counts) that held this (game,
+    goal type) as a personal target, the install played the game and no finished
+    game met the goal. A day the game was not played at all is not a miss."""
+    days = last_personal_occurrences(history, game, type_name, history.first_day)
     if len(days) < 2:
         return False
     for d in days:
-        goal = next(
-            g
-            for g in history.pinned[d].template.goals
-            if g.game_type == game and goal_type_name(g) == type_name
-        )
-        if history.met_on(goal, d):
+        goal = _goal_of(history.pinned[d], game, type_name)
+        assert goal is not None
+        if not history.played_on(game, d) or history.met_on(goal, d):
             return False
     return True
 
@@ -472,6 +499,13 @@ def options_for(
 # ---------------------------------------------------------------------------
 # Selection (#3994)
 # ---------------------------------------------------------------------------
+
+
+def serves_shared(history: InstallHistory, day: date) -> bool:
+    """Whether ``day``'s pick is the shared template: a new install
+    (``is_new_install``), or one that could already have been served ``day`` unpinned
+    (``InstallHistory.always_pinnable``), so the goals a device may hold never change."""
+    return is_new_install(history, day) or not history.always_pinnable(day)
 
 
 def is_new_install(history: InstallHistory, day: date) -> bool:
