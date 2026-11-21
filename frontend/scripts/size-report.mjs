@@ -49,17 +49,28 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * The string literals of `export const <name> ... = new Set([...])` in gameVisibility.ts.
- * Tolerates a type argument (`new Set<string>([...])`), an empty set, comments and
- * multi-line / single-quoted formatting. An empty set returns an empty Set; a missing
- * declaration throws, so a rename cannot silently turn the guard off.
+ * Tolerates a type argument (`new Set<string>([...])`, nested generics too), an empty set,
+ * comments and multi-line / single- or double-quoted / `plain` template formatting. An empty
+ * set returns an empty Set. It throws when the declaration is missing or the list holds
+ * anything but string literals (a spread, an identifier, a `${}` template), so a hidden game
+ * can never silently drop out of the guard.
  */
 export function readStringSet(source, name) {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
   const match = code.match(
-    new RegExp(`\\b${name}\\b[^=;]*=\\s*new\\s+Set\\s*(?:<[^>]*>)?\\s*\\(\\s*\\[([^\\]]*)\\]`)
+    new RegExp(
+      `(?:^|[;\\s])(?:export\\s+)?const\\s+${name}\\b\\s*(?::[^=]+)?=\\s*new\\s+Set\\s*(?:<[^(]*>)?\\s*\\(\\s*\\[([^\\]]*)\\]\\s*,?\\s*\\)`
+    )
   );
   if (!match) throw new Error(`size-report: could not read ${name} from gameVisibility.ts`);
-  return new Set([...match[1].matchAll(/(["'])((?:(?!\1).)*)\1/g)].map((m) => m[2]));
+  const literal = /"([^"\\]*)"|'([^'\\]*)'|`([^`\\$]*)`/g;
+  const body = match[1];
+  const leftover = body.replace(literal, "").replace(/[\s,]/g, "");
+  if (leftover)
+    throw new Error(
+      `size-report: ${name} in gameVisibility.ts must list plain string literals only (found "${leftover.slice(0, 40)}")`
+    );
+  return new Set([...body.matchAll(literal)].map((m) => m[1] ?? m[2] ?? m[3]));
 }
 
 /**
@@ -80,8 +91,9 @@ export function hiddenGameSlugs(rootDir = root) {
 
 /**
  * A hidden game's lobby tile image (#4011): `assets/home/<slug>-tile.webp`, packaged as
- * `assets_home_<slug>tile.webp`. Derived from HIDDEN_GAMES and DISABLED_GAMES, so a tile for any such game is
- * caught without editing this script, and a game's tile is allowed again once it is unhidden.
+ * `assets_home_<slug>tile.webp`. Derived from HIDDEN_GAMES and DISABLED_GAMES, so a tile for any
+ * such game is caught without editing this script, and a game's tile is allowed again once it
+ * is in neither set.
  */
 export function hiddenLobbyTilePattern(slugs = hiddenGameSlugs()) {
   const flat = [...slugs].map((slug) => slug.toLowerCase().replace(/[^a-z0-9_]/g, "")).sort();
@@ -91,11 +103,12 @@ export function hiddenLobbyTilePattern(slugs = hiddenGameSlugs()) {
 }
 
 /**
- * Metro flattens `assets/sounds/mahjong-bg-1.mp3` to `assets_sounds_mahjongbg1.mp3`
- * (lowercased, non-alphanumerics other than `_` dropped) and Android groups it under
- * `drawable-*` (images) or `raw/` (everything else). Fonts keep their file name.
+ * Fixed hidden-premium patterns. Metro flattens `assets/sounds/mahjong-bg-1.mp3` to
+ * `assets_sounds_mahjongbg1.mp3` (lowercased, non-alphanumerics other than `_` dropped) and
+ * Android groups it under `drawable-*` (images) or `raw/` (everything else). Fonts keep their
+ * file name. The lobby-tile pattern is not here: `findHiddenPremiumAssets` builds it per call,
+ * so reading the slugs stays lazy.
  */
-/** Fixed patterns; the lobby-tile pattern is built per call, so reading the slugs stays lazy. */
 export const HIDDEN_PREMIUM_PATTERNS = [
   // `bgm?`: Star Swarm's one track is `starswarm-bgm.mp3` (#3638), Mahjong's `mahjong-bg-N.mp3`.
   { name: "Star Swarm / Mahjong BGM", re: /(?:^|_)(?:starswarm|mahjong)bgm?\d*\./ },

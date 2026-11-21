@@ -11,7 +11,12 @@ import path from "path";
 
 import { isPreLaunchApiBuild, areTestHooksEnabled } from "../../game/_shared/envFlags";
 import { LAUNCH_LOCALE_CODES, LOCALES } from "../../i18n/locales";
-import { DISABLED_GAMES, HIDDEN_GAMES } from "../gameVisibility";
+import {
+  __forceStoreBuildForTests,
+  DISABLED_GAMES,
+  HIDDEN_GAMES,
+  isGameVisible,
+} from "../gameVisibility";
 import { PREMIUM_ROUTES } from "../premiumRoutes";
 
 type Resolution = { type: string; filePath?: string };
@@ -416,10 +421,19 @@ describe("hidden games' lobby tile images stay out of store bundles (#4011)", ()
     expect(homeScreenMismatches(["yacht"], excluded)).toEqual([]);
   });
 
-  it("STORE_EXCLUDED is HIDDEN_GAMES plus DISABLED_GAMES", () => {
-    expect([...STORE_EXCLUDED].sort()).toEqual(
-      [...new Set([...HIDDEN_GAMES, ...DISABLED_GAMES])].sort()
-    );
+  // No module exports the store-excluded set, so STORE_EXCLUDED above is recomputed from the real
+  // sets; this ties it to the real rule (`isGameVisible` in a store build) so it cannot drift.
+  it("STORE_EXCLUDED matches what isGameVisible hides in a store build", () => {
+    __forceStoreBuildForTests(true);
+    try {
+      for (const slug of STORE_EXCLUDED) expect(isGameVisible(slug)).toBe(false);
+      for (const slug of ["yacht", "sudoku", "sort", "twenty48"]) {
+        expect(STORE_EXCLUDED.has(slug)).toBe(false);
+        expect(isGameVisible(slug)).toBe(true);
+      }
+    } finally {
+      __forceStoreBuildForTests(false);
+    }
   });
 
   it("HomeScreen imports no hidden or disabled game's tile image directly", () => {

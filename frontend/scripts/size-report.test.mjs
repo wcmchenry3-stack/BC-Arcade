@@ -16,6 +16,7 @@ import {
   hiddenLobbyTilePattern,
   hiddenOnlySoundNames,
   metroAssetName,
+  readStringSet,
   summarize,
 } from "./size-report.mjs";
 
@@ -372,4 +373,24 @@ test("findHiddenPremiumAssets flags a tile for a slug given from DISABLED_GAMES"
     new Set(["cascade"])
   );
   assert.equal(hits.length, 1);
+});
+
+test("readStringSet rejects non-literal entries instead of dropping them (#4017 review)", () => {
+  const read = (body) => readStringSet(`export const S = new Set([${body}]);`, "S");
+  assert.throws(() => read('...OTHER, "a"'), /plain string literals/);
+  assert.throws(() => read('"a", someSlug'), /plain string literals/);
+  assert.throws(() => read("`a${x}`"), /plain string literals/);
+  assert.deepEqual([...read("`a`, 'b', \"c\"")], ["a", "b", "c"]);
+});
+
+test("readStringSet anchors to the declaration and handles nested generics", () => {
+  // The name appears in a semicolon-less import before the real declaration.
+  const src =
+    'import { HIDDEN_GAMES }\nconst unrelated = new Set(["zzz"])\n' +
+    'export const HIDDEN_GAMES: ReadonlySet<string> = new Set<Array<string>>(["a"]);\n';
+  assert.deepEqual([...readStringSet(src, "HIDDEN_GAMES")], ["a"]);
+  assert.throws(
+    () => readStringSet('import { HIDDEN_GAMES }\nconst x = new Set(["zzz"]);\n', "HIDDEN_GAMES"),
+    /could not read HIDDEN_GAMES/
+  );
 });
