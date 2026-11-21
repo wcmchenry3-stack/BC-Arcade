@@ -3,7 +3,7 @@
  * way the haptics are (`haptics.ts`).
  *
  *   - drop: as the piece leaves the spawner;
- *   - land: the light file for tiers 0-4, the heavy one for 5-11, louder with the tier. Landings
+ *   - land: the light file for tiers 0-5, the heavy one for 6-11 (`MOTION.sound.heavyLandTier`), louder with the tier. Landings
  *     within `MOTION.sound.landGapMs` of the last are one sound: the highest tier among them;
  *   - merge: the pre-pitched file of the tier it made. A chain link (2, 3, …) plays its merge and
  *     its chain step together on the counter's paced steps (`MOTION.chain.stepMs`), as the chain
@@ -17,7 +17,9 @@
  *     still warns, with no frame callback. Either way at least `DANGER_TICK_MIN_GAP_MS` apart
  *     (never above 3 Hz), louder as the count runs;
  *   - win: at the winning merge, its chord as the celebration's card shows (2.1 s); under Reduce
- *     Motion the card comes 0.5 s sooner, so the file starts 0.5 s in;
+ *     Motion the card comes 0.5 s sooner, so the file starts 0.5 s in. The capstone's own merge
+ *     file (`merge-t11`) plays at the same instant, from its start (#3966): the screen sends the
+ *     winning merge here, not to `merge`, so it takes no queue slot and no gap;
  *   - game over: at the game over, its chord as the loss card shows (`gameOver.cardAtMs`).
  *     Merges and chain steps still waiting are dropped.
  *
@@ -96,6 +98,19 @@ function createLaterQueue(schedule: SoundPacerDeps["schedule"]) {
       queued = 0;
     },
   };
+}
+
+/**
+ * An extra voice that must never take a main sound down with it: its lazy player failing to build
+ * (an audio-session or native resource error) is swallowed, so the callback that plays it still
+ * goes on to play the sound it accompanies (#3966: the capstone's `merge-t11` and the win chord).
+ */
+function playExtra(deps: SoundPacerDeps, name: CascadeSoundName): void {
+  try {
+    deps.play(name, 1, 0);
+  } catch {
+    // Deliberately silent: the extra is optional, the chord is not.
+  }
 }
 
 export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
@@ -225,7 +240,14 @@ export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
     },
     win() {
       const from = calm ? CALM_WIN_OFFSET_S : 0;
-      later(() => deps.play("win", 1, from), 0, false);
+      later(
+        () => {
+          playExtra(deps, "merge-t11"); // the winning merge's own sound, with the chord
+          deps.play("win", 1, from);
+        },
+        0,
+        false
+      );
     },
     gameOver() {
       queue.drop();
@@ -243,6 +265,7 @@ export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
       warmed = false;
       calmTimer = 0;
       deps.stop("win");
+      deps.stop("merge-t11"); // its 0.8 s tail must not sound over a new game
       deps.stop("game-over");
     },
   };

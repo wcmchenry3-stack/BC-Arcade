@@ -143,9 +143,9 @@ Cascade has no endpoints of its own: it uses the generic `/games` routes (the le
 
 ### 12. Audio and accessibility
 
-**Audio** (owner picks, #3702). Fruits plays "Juicy pops", Cosmos plays "Starlight glass"; each set has 21 original, in-house synthesized sounds (42 files, about 345 KB; `tools/assets/synth_cascade_sfx.py`, credits in `SOUND_CREDITS.md`, reasoning in the [sound design log](cascade-sound-design.md)).
+**Audio** (owner picks, #3702). Fruits plays "Juicy pops", Cosmos plays "Starlight glass"; each set has 22 original, in-house synthesized sounds (44 files, about 365 KB; `tools/assets/synth_cascade_sfx.py`, credits in `SOUND_CREDITS.md`, reasoning in the [sound design log](cascade-sound-design.md)).
 
-- Events: drop, land (light or heavy by tier, volume rising with tier), merge (one pre-pitched file per tier, C-major pentatonic, louder up the ladder), chain (steps 1-4 with the link's merge sound, paced like the chain counter), danger (a tick on each on-beat of the blink), win (a run, a fizz and a chord timed to the card), game over (a falling line and a chord timed to the card). Table: [Sound](cascade-decisions.md#sound-3702).
+- Events: drop, land (light or heavy by tier, volume rising with tier), merge (one pre-pitched file per tier, C-major pentatonic, louder up the ladder; the winning merge's own t11 file plays with the win), chain (steps 1-4 with the link's merge sound, paced like the chain counter), danger (a tick on each on-beat of the blink), win (a run, a fizz and a chord timed to the card), game over (a falling line and a chord timed to the card). Table: [Sound](cascade-decisions.md#sound-3702).
 - Mute is the app-wide sound setting; there is no Cascade-only setting. Reduce Motion keeps every sound (the danger tick keeps its own timer). Nothing plays while a restored game settles or for a test fast-forward, except the win and game-over sounds. A covered board or a backgrounded app is silent.
 
 **Accessibility.** Cascade's board is a Skia canvas, outside the native accessibility tree, so the game states are carried by native elements beside it.
