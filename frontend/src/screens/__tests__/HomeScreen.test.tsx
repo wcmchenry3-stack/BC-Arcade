@@ -199,10 +199,10 @@ describe("HomeScreen — game cards", () => {
   });
 
   it("colours tile icons from the theme so text-presentation glyphs stay visible", async () => {
-    // Solitaire's "♠" and FreeCell's "🂡" are not colour emoji; without an explicit
-    // colour iOS draws them black, which disappeared on the dark theme.
+    // Hearts' "♥" is not a colour emoji; without an explicit colour iOS draws it black, which
+    // disappeared on the dark theme. (Solitaire's "♠" and FreeCell's "🂡" are tile art since #4012.)
     const { getByTestId } = await renderScreen();
-    for (const slug of ["solitaire", "freecell"]) {
+    for (const slug of ["hearts"]) {
       const style = StyleSheet.flatten(getByTestId(`game-icon-${slug}`).props.style);
       expect(style.color).toBeTruthy();
       expect(style.color).not.toBe("#000");
@@ -224,15 +224,13 @@ describe("HomeScreen — game cards", () => {
 
     it("keeps the emoji on every other tile", async () => {
       const { getByTestId } = await renderScreen();
-      // Yacht, 2048, Sudoku and Sort show gameplay art since #4011 (tested below).
+      // Yacht, 2048, Sudoku and Sort (#4011), Solitaire, FreeCell and Daily Word (#4012) show
+      // gameplay art (tested below).
       const emojis: Record<string, string> = {
         cascade: "🍉",
         blackjack: "🃏",
-        solitaire: "♠",
-        freecell: "🂡",
         hearts: "♥",
         mahjong: "🀄",
-        daily_word: "📝",
       };
       for (const [slug, emoji] of Object.entries(emojis)) {
         const icon = getByTestId(`game-icon-${slug}`);
@@ -278,6 +276,43 @@ describe("HomeScreen — game cards", () => {
       // Each tile has its own picture.
       const sources = Object.keys(ART).map((slug) => getByTestId(`game-icon-${slug}`).props.source);
       expect(new Set(sources.map((s) => JSON.stringify(s))).size).toBe(4);
+    });
+
+    it("keeps the tiles' labels and hides the images from screen readers", async () => {
+      const { getByTestId } = await renderScreen();
+      for (const [slug, { label }] of Object.entries(ART)) {
+        expect(getByTestId(`game-tile-${slug}`).props.accessibilityLabel).toBe(label);
+        expect(getByTestId(`game-icon-${slug}`).props.accessible).toBe(false);
+      }
+    });
+  });
+
+  describe("gameplay tile art, batch 2 (#4012)", () => {
+    const ART: Record<string, { label: string; emoji: string }> = {
+      solitaire: { label: "Play Solitaire", emoji: "♠" },
+      freecell: { label: "Play FreeCell", emoji: "🂡" },
+      daily_word: { label: "Play Daily Word", emoji: "📝" },
+    };
+
+    it("draws Solitaire, FreeCell and Daily Word as a 64 pt image, not the glyph or emoji", async () => {
+      const { getByTestId, queryByText } = await renderScreen();
+      for (const [slug, { emoji }] of Object.entries(ART)) {
+        const icon = getByTestId(`game-icon-${slug}`);
+        expect(icon.type).not.toBe("Text");
+        expect(icon.props.children).toBeUndefined();
+        expect(icon.props.source).toBeTruthy();
+        expect(icon.props.resizeMode).toBe("contain");
+        const style = StyleSheet.flatten(icon.props.style);
+        expect([style.width, style.height]).toEqual([64, 64]);
+        expect(queryByText(emoji)).toBeNull();
+      }
+    });
+
+    it("gives every art tile its own picture", async () => {
+      const { getByTestId } = await renderScreen();
+      const slugs = ["yacht", "twenty48", "sudoku", "sort", ...Object.keys(ART)];
+      const sources = slugs.map((slug) => getByTestId(`game-icon-${slug}`).props.source);
+      expect(new Set(sources.map((s) => JSON.stringify(s))).size).toBe(slugs.length);
     });
 
     it("keeps the tiles' labels and hides the images from screen readers", async () => {
@@ -925,8 +960,8 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
 
   it("compacts the icon zone to TILE_ICON_ZONE (68) and the emoji to 44", async () => {
     const { getByTestId } = await renderScreen(390);
-    // Solitaire still shows an emoji glyph; Yacht is tile art since #4011.
-    const icon = getByTestId("game-icon-solitaire");
+    // Hearts still shows an emoji glyph; Yacht (#4011) and Solitaire (#4012) are tile art.
+    const icon = getByTestId("game-icon-hearts");
     expect(StyleSheet.flatten(icon.props.style).fontSize).toBe(44);
     const zone = icon.parent;
     expect(StyleSheet.flatten(zone?.props.style).height).toBe(68);

@@ -11,7 +11,7 @@ frontend/assets/
 ├── logo.png            In-app logo (PNG)
 │
 ├── fonts/             Subset icon fonts (MaterialIcons, MaterialCommunityIcons; generated, #3843) + CREDITS.md
-├── home/              Lobby tile images (gameplay scenes #4011, the Star Swarm hex badge #3599; generated) + CREDITS.md
+├── home/              Lobby tile images (gameplay scenes #4011, #4012, the Star Swarm hex badge #3599; generated) + CREDITS.md
 ├── mahjong/            42 tile SVGs (rendered via react-native-svg at runtime)
 ├── starswarm/          WebP sprites — player layers, Buddy, enemies (incl. Carrier), rocks, shots, pickups
 │   ├── CREDITS.md      Source for every sprite (all original and generated since #3595)
@@ -45,12 +45,12 @@ https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 Rule: a runtime image must be at least its largest rendered size in points times the device pixel ratio (3x on phones, 2x on iPads, which have the larger point sizes; take the larger product), plus a margin. Anything much bigger only costs bundle size and decode memory. Measured on the files as of #2833:
 
-| Family                                                              | Files (bundled) | Pixels                 | Drawn by               | Largest rendered size | Pixels needed       | Verdict                                                                                                                              |
-| ------------------------------------------------------------------- | --------------- | ---------------------- | ---------------------- | --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `icon.png`                                                          | app.json only   | 1024 px, 8-bit palette | store/app icon source  | —                     | 1024 px (App Store) | Kept; already palette, re-encoding would grow it                                                                                     |
-| `ios/.../App-Icon-1024x1024@1x.png`                                 | iOS binary      | 1024 px RGB, no alpha  | App Store icon         | —                     | 1024 px, no alpha   | Lossless re-compress only (−2.4%)                                                                                                    |
-| `starswarm/`, `mahjong/` (SVG), `logo.png`, splash/adaptive/favicon | all             | small                  | —                      | —                     | —                   | Star Swarm 65,376 B (63.8 KB) in 43 images after #3708, plus the 2,698 B home tile icon (#3599); see `games/starswarm-art-design.md` |
-| `home/{yacht,twenty48,sudoku,sort}-tile.webp`                       | 4               | 192 px                 | `HomeScreen` `cardArt` | 64 pt                 | 192 px (64 pt x 3)  | Drawn at exactly 3x; 11,858 B in all, each at most 3,400 B (#4011)                                                                   |
+| Family                                                                               | Files (bundled) | Pixels                 | Drawn by               | Largest rendered size | Pixels needed       | Verdict                                                                                                                              |
+| ------------------------------------------------------------------------------------ | --------------- | ---------------------- | ---------------------- | --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `icon.png`                                                                           | app.json only   | 1024 px, 8-bit palette | store/app icon source  | —                     | 1024 px (App Store) | Kept; already palette, re-encoding would grow it                                                                                     |
+| `ios/.../App-Icon-1024x1024@1x.png`                                                  | iOS binary      | 1024 px RGB, no alpha  | App Store icon         | —                     | 1024 px, no alpha   | Lossless re-compress only (−2.4%)                                                                                                    |
+| `starswarm/`, `mahjong/` (SVG), `logo.png`, splash/adaptive/favicon                  | all             | small                  | —                      | —                     | —                   | Star Swarm 65,376 B (63.8 KB) in 43 images after #3708, plus the 2,698 B home tile icon (#3599); see `games/starswarm-art-design.md` |
+| `home/<slug>-tile.webp` (Yacht, 2048, Sudoku, Sort, Solitaire, FreeCell, Daily Word) | 7               | 192 px                 | `HomeScreen` `cardArt` | 64 pt                 | 192 px (64 pt x 3)  | Drawn at exactly 3x; 21,402 B in all, each at most 3,400 B (#4011, #4012)                                                            |
 
 The world is 400 × 600 units. The canvas takes the whole game area, so `scale` peaks around 2.0–2.3 on a 13" iPad in portrait (1376 pt tall at most, so `scale` can never pass 1376 / 600 ≈ 2.3) and around 1.06 on a 440 pt-wide phone. Cascade's code-drawn pieces have no fixed resolution: the board rasterises them at the board's `scale` times the device pixel ratio (`game/cascade/art/sprites.ts`), so they are sharp at every size.
 
@@ -86,13 +86,19 @@ rows name the recipe, and the
 design log is [`games/starswarm-art-design.md`](games/starswarm-art-design.md). Its explosions,
 Smart Bomb flash and nebula background have no image files: they are drawn in code (#3597).
 
-The lobby tiles of Yacht, 2048, Sudoku and Sort Puzzle (`home/<slug>-tile.webp`, #4011, #4004) are
+The lobby tiles of Yacht, 2048, Sudoku and Sort Puzzle (#4011, #4004) and of Solitaire, FreeCell
+and Daily Word (#4012) (`home/<slug>-tile.webp`) are
 gameplay scenes generated by `tools/assets/draw_lobby_tile_art.py`: open scenes with no frame, a
 mid-grey outline (`#8a8a98`) so they read on the dark and the light card, the games' own colours,
 192 px (3x the 64 pt `cardArt` slot in `HomeScreen.tsx`) and at most 3,400 B each
-(`src/__tests__/lobbyTileBudget.test.ts`). The 2048 and Sudoku numerals are Space Grotesk Bold
-outlines (SIL OFL 1.1), extracted once into `tools/assets/lobby_numerals.json` with the licence in
-`lobby_numerals.OFL.txt`. A tile for a game in `HIDDEN_GAMES` goes in
+(`src/__tests__/lobbyTileBudget.test.ts`). The 2048 and Sudoku numerals, the card ranks and the
+Daily Word letters are Space Grotesk Bold outlines (SIL OFL 1.1), extracted once into
+`tools/assets/lobby_numerals.json` (0-9) and `tools/assets/lobby_glyphs.json` (A-Z) with the
+licence in `lobby_numerals.OFL.txt`. The Daily Word tile spells real guesses (PIANO, FOCAL, then
+FINAL solved), chosen because all three are answers in the English, Spanish and French word lists,
+the languages the game is played in. A full-size playing card costs ~300 B of WebP, so the
+Solitaire tile shows only the few cards that tell its game and FreeCell's small cards show a suit
+pip only. A tile for a game in `HIDDEN_GAMES` goes in
 `src/components/home/hiddenGameTileArt.ts`, never as an import in `HomeScreen.tsx`: a store bundle
 stubs that module, and `--forbid-hidden-assets` fails a store build that packages a hidden game's
 tile ([PERFORMANCE.md](PERFORMANCE.md#store-build-hidden-premium-exclusion-2830)).
@@ -129,19 +135,19 @@ rule, if a `.ogg` has no recipe (or a recipe has no `.ogg`), or if a third-party
 allow-list. It covers `frontend/assets/`; the native launcher and splash rasters are covered by
 `gen_app_icons.py --check` instead. Adding an asset means adding it to a recipe or a manifest rule.
 
-| Asset                                                                | Recipe                                                                                                                                                   |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sounds/*.ogg` (201)                                                 | `synth_{arcade,cascade,puzzle,starswarm}_sfx.py`                                                                                                         |
-| `starswarm/**`, `home/starswarm-tile.webp` (44)                      | `draw_starswarm_art.py`                                                                                                                                  |
-| `home/{yacht,twenty48,sudoku,sort}-tile.webp` (4)                    | `draw_lobby_tile_art.py` (numerals from `lobby_numerals.json`)                                                                                           |
-| `mahjong/*.svg` (42)                                                 | `gen_mahjong_tiles.py`                                                                                                                                   |
-| `fonts/*.subset.ttf`                                                 | `subset_icon_fonts.py`                                                                                                                                   |
-| `splash-icon.png`, `adaptive-icon.png`, Android launcher, iOS splash | `gen_app_icons.py`                                                                                                                                       |
-| `starswarm-bgm.mp3`                                                  | `build_starswarm_bgm.py` (layers and cue sheets in `starswarm_bgm/`, then the `make_starswarm_bgm_loop.py` loop edit); pinned by `starswarm_bgm_test.py` |
-| `icon.png`, `logo.png`, `favicon.png`, iOS AppIcon                   | none (mascot, owner-attested; only master is the iOS AppIcon PNG, back it up)                                                                            |
-| `mahjong-bg-*.mp3`                                                   | none (third-party)                                                                                                                                       |
-| Cascade pieces                                                       | code: `src/game/cascade/art/`                                                                                                                            |
-| Mahjong layouts (25, `src/game/mahjong/layouts/*.ts`)                | none (source files; generated by code in epic #1687, validated by the `layoutRegistry` tests)                                                            |
+| Asset                                                                           | Recipe                                                                                                                                                   |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sounds/*.ogg` (201)                                                            | `synth_{arcade,cascade,puzzle,starswarm}_sfx.py`                                                                                                         |
+| `starswarm/**`, `home/starswarm-tile.webp` (44)                                 | `draw_starswarm_art.py`                                                                                                                                  |
+| `home/{yacht,twenty48,sudoku,sort,solitaire,freecell,daily_word}-tile.webp` (7) | `draw_lobby_tile_art.py` (glyphs from `lobby_numerals.json` and `lobby_glyphs.json`)                                                                     |
+| `mahjong/*.svg` (42)                                                            | `gen_mahjong_tiles.py`                                                                                                                                   |
+| `fonts/*.subset.ttf`                                                            | `subset_icon_fonts.py`                                                                                                                                   |
+| `splash-icon.png`, `adaptive-icon.png`, Android launcher, iOS splash            | `gen_app_icons.py`                                                                                                                                       |
+| `starswarm-bgm.mp3`                                                             | `build_starswarm_bgm.py` (layers and cue sheets in `starswarm_bgm/`, then the `make_starswarm_bgm_loop.py` loop edit); pinned by `starswarm_bgm_test.py` |
+| `icon.png`, `logo.png`, `favicon.png`, iOS AppIcon                              | none (mascot, owner-attested; only master is the iOS AppIcon PNG, back it up)                                                                            |
+| `mahjong-bg-*.mp3`                                                              | none (third-party)                                                                                                                                       |
+| Cascade pieces                                                                  | code: `src/game/cascade/art/`                                                                                                                            |
+| Mahjong layouts (25, `src/game/mahjong/layouts/*.ts`)                           | none (source files; generated by code in epic #1687, validated by the `layoutRegistry` tests)                                                            |
 
 **Nothing is unverified.** The last open group, the 25 Mahjong layout files, is recorded as original work (see [Mahjong layout provenance](games/mahjong.md#layout-provenance)); the mascot art is owner-attested. Details in the audit.
 Do not add new assets without a source, license and download date in the matching credits file.
