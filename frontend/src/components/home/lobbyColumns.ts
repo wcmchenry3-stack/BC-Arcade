@@ -25,11 +25,10 @@ export const LOBBY_TITLE_LINE_HEIGHT = 20;
 export const LOBBY_DESCRIPTION_SIZE = 12;
 export const LOBBY_DESCRIPTION_LINE_HEIGHT = 16;
 export const LOBBY_BUTTON_SIZE = 13;
-/**
- * Description lines every tile reserves, at every font scale (#431, #4005). English needs 3 at
- * 12 pt; the longest translations (ru Daily Word at the default scale, pt/nl/fr-CA at 1.5x) need 4.
- */
-export const LOBBY_DESCRIPTION_LINES = 4;
+/** Description lines every tile reserves at the default font scale (#431, #4005). */
+export const LOBBY_DESCRIPTION_LINES = 3;
+/** Description lines reserved once text is enlarged: the longest translations need 4 at 1.5x. */
+export const LOBBY_DESCRIPTION_LINES_LARGE = 4;
 
 /**
  * Cap on how far the system font scale (iOS Dynamic Type, Android font size) may grow tile text.
@@ -41,22 +40,23 @@ export const LOBBY_MAX_FONT_SCALE = 1.5;
  * Title and description room for a tile at the given system font scale (#4006). Heights are
  * minimums that scale with the text, never fixed points, rounded up to whole points so Android's
  * per-line rounding cannot make a row uneven. The title takes one line at the default size and
- * two once text is enlarged (it wraps rather than truncates); the description four lines at
- * every scale. Every tile in a row reserves the same, so rows stay level.
+ * two once text is enlarged (it wraps rather than truncates); the description three lines, four
+ * once text is enlarged. Every tile in a row reserves the same, so rows stay level.
  */
 export function lobbyTileTextSizing(fontScale: number): {
   titleLines: 1 | 2;
   titleMinHeight: number;
+  descriptionLines: 3 | 4;
   descriptionMinHeight: number;
 } {
   const scale = Math.min(Math.max(fontScale || 1, 1), LOBBY_MAX_FONT_SCALE);
   const large = scale > 1;
   const titleLines = large ? 2 : 1;
+  const descriptionLines = large ? LOBBY_DESCRIPTION_LINES_LARGE : LOBBY_DESCRIPTION_LINES;
   return {
     titleLines,
     titleMinHeight: Math.ceil(LOBBY_TITLE_LINE_HEIGHT * titleLines * scale),
-    descriptionMinHeight: Math.ceil(
-      LOBBY_DESCRIPTION_LINE_HEIGHT * LOBBY_DESCRIPTION_LINES * scale
-    ),
+    descriptionLines,
+    descriptionMinHeight: Math.ceil(LOBBY_DESCRIPTION_LINE_HEIGHT * descriptionLines * scale),
   };
 }

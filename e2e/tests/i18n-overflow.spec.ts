@@ -406,10 +406,10 @@ for (const locale of LOCALES) {
 }
 
 /**
- * Lobby tiles (#4006): 16/12/13 pt type with four-line descriptions must not be truncated or
+ * Lobby tiles (#4006): 16/12/13 pt type with three-line descriptions must not be truncated or
  * spill, in all 13 locales, at 359 pt (the one-column
  * layout just below the 360 breakpoint) and 390 pt (two columns). The "clamp" detector flags a
- * description that needs more than its four lines; "clip" flags a title that truncates.
+ * description that needs more than its three lines; "clip" flags a title that truncates.
  */
 const LOBBY_PLAY_LABEL = {
   en: "Play",

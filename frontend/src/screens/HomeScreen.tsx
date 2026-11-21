@@ -54,7 +54,6 @@ import {
   lobbyTileTextSizing,
   LOBBY_BUTTON_SIZE,
   LOBBY_DESCRIPTION_LINE_HEIGHT,
-  LOBBY_DESCRIPTION_LINES,
   LOBBY_DESCRIPTION_SIZE,
   LOBBY_MAX_FONT_SCALE,
   LOBBY_TITLE_LINE_HEIGHT,
@@ -438,7 +437,7 @@ export default function HomeScreen() {
               styles.cardDesc,
               { color: colors.textMuted, minHeight: textSizing.descriptionMinHeight },
             ]}
-            numberOfLines={LOBBY_DESCRIPTION_LINES}
+            numberOfLines={textSizing.descriptionLines}
             maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
           >
             {item.description}

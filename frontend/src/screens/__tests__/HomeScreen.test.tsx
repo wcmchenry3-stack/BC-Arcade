@@ -861,10 +861,10 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
     const short = getByText("Guess the five-letter word in six tries.");
     const long = getByText("Pour colors bottle to bottle — sort them all to win.");
     const flat = [short, long].map((el) => StyleSheet.flatten(el.props.style));
-    // 16 pt line height x 4 lines at the default font scale.
+    // 16 pt line height x 3 lines at the default font scale.
     expect(flat[0].minHeight).toBe(flat[1].minHeight);
-    expect(flat[0].minHeight).toBe(64);
-    for (const el of [short, long]) expect(el.props.numberOfLines).toBe(4);
+    expect(flat[0].minHeight).toBe(48);
+    for (const el of [short, long]) expect(el.props.numberOfLines).toBe(3);
   });
 });
 
@@ -958,8 +958,8 @@ describe("HomeScreen — tile type (#4006)", () => {
 
   it.each([
     // [system font scale, title lines, title min height, description lines, description min height]
-    [1, 1, 20, 4, 64],
-    // At 1.5x the title may wrap to two lines and the title may wrap; descriptions reserve four lines at every scale.
+    [1, 1, 20, 3, 48],
+    // At 1.5x the title may wrap to two lines and the title may wrap and descriptions reserve four lines.
     [1.5, 2, 60, 4, 96],
     // The cap holds: a 3x system scale reserves no more than 1.5x.
     [3, 2, 60, 4, 96],
