@@ -1,23 +1,28 @@
 /**
  * The Yacht scorecard (#3748): one table for solo and for a game against the computer — one score
  * column for you, two with the computer's — with all 13 rows, the upper subtotal band and the
- * total on a 390 x 844 phone: no tabs, no scrolling. Below the height that takes (a 320 x 568
- * phone) the table scrolls, and the computer's last row is scrolled into view.
+ * total on one screen: no tabs, no scrolling. The row height is measured, not assumed
+ * (`scoreRowHeight.ts`, #3968): 26 to 32 pt from the height the screen gives the table. Below the
+ * height 13 rows of 26 pt need, the table scrolls, and the computer's last row is scrolled into view.
  *
- * Row look, in both modes: an open row with points on the table shows them in the potential
- * (teal) colour, 0s dimmed, and the best row boxed; a scored row shows its score in bold; the
- * Hint's row is tinted green with a bar; the row the computer just scored is tinted purple with
- * a bar. The upper subtotal is a band of its own (not a score row, not tappable).
+ * Row look, in both modes (#3968): a scored row has a muted fill, a check mark before its label, a
+ * dimmer label and a bold score (a scored 0 too, so it never reads as an open "—"); an open row has
+ * no fill, with the points on the table in the potential (teal) colour, 0s dimmed, and the best row
+ * boxed. The Hint's row is tinted green with a bar; the row the computer just scored is tinted
+ * purple with a bar (over the fill when you have scored it too). The check, not the colour, is the
+ * cue. The upper subtotal is a band of its own (not a score row, not tappable). Text ignores
+ * system font scaling above 1.2x so the rows keep their height.
  *
  * Motion (#3749, `scoreMotion.tsx`): a score's cell pops and the total counts up, for you and the
  * computer; the "+35" pulses when the upper bonus is earned. None of it under Reduce Motion.
  */
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import Animated from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import MaterialIcons from "../icons/MaterialIcons";
 import { useReduceMotion } from "../shared/useReduceMotion";
 import {
   UPPER_CATEGORY_KEYS,
@@ -33,6 +38,14 @@ import {
   SCORE_POP_SCALE,
 } from "../../game/yacht/motion";
 import { CountUpText, usePop } from "./scoreMotion";
+import { DEFAULT_ROW_HEIGHT, clampRowHeight } from "./scoreRowHeight";
+
+/**
+ * Dynamic Type / font scale is capped on the card's text (#3968): the 13 rows, the band and the
+ * total are sized to fit one screen, so a large system font must not grow them. 1.2 keeps the
+ * text readable (a 13 pt label becomes 15.6 pt) and the rows' height holds.
+ */
+const MAX_FONT_SCALE = 1.2;
 
 /** A view that pops when `on` turns true (a score lands, a bonus is earned). */
 function Pop({
@@ -60,8 +73,8 @@ function Pop({
   );
 }
 
-/** Row height (pt): 13 rows fit a 390 x 844 phone with the band, the total and the tray. */
-export const SCORE_ROW_HEIGHT = 29;
+/** Size (pt) of the scored row's check mark. */
+const CHECK_SIZE = 14;
 /** Width (pt) of a score column. */
 const COL_W = 56;
 /** How far above a row to leave when it is scrolled into view. */
@@ -118,6 +131,13 @@ export default function ScoreTable({
   // The computer's column is purple in text: the outcome "draw" purple reaches AA on cream.
   const cpuText = colors.outcomeDraw;
   const bandBg = theme === "dark" ? colors.surfaceHigh : colors.surfaceAlt;
+  // A scored row's fill (#3968): the band's quiet surface. Only ~1.15 to 1.2:1 against the card, so
+  // it is never the only cue: the check mark, the dimmer label and the bold score carry the meaning.
+  const scoredBg = bandBg;
+
+  // Row height from the height the table is given (#3968); 29 pt until it is measured.
+  const [availH, setAvailH] = useState<number | null>(null);
+  const rowH = availH === null ? DEFAULT_ROW_HEIGHT : clampRowHeight(availH);
 
   const playerUpper = upperSum(playerScores);
   const cpuUpper = cpu ? upperSum(cpu.scores) : 0;
@@ -176,9 +196,9 @@ export default function ScoreTable({
     let playerWeight: "400" | "700" = "400";
     if (filled) {
       playerText = String(playerScore);
-      // A scratched row (0) is dimmed, like a 0 potential.
-      playerColor = playerScore === 0 ? colors.textMuted : colors.text;
-      playerWeight = playerScore === 0 ? "400" : "700";
+      // A scored value is bold, a scratched 0 too: it is a result, not an open "—" (#3968).
+      playerColor = colors.text;
+      playerWeight = "700";
     } else if (hasPotential) {
       playerText = String(possible);
       // Zeros are dimmed: a wasted row reads quieter than a row with points in it.
@@ -203,23 +223,51 @@ export default function ScoreTable({
                 })
               : t("score.label", { category: label, state: stateText })
           }
-          accessibilityState={{ disabled: !hot || inputLocked }}
+          accessibilityState={{ disabled: !hot || inputLocked, checked: filled, selected: filled }}
           style={[
             styles.row,
+            { minHeight: rowH },
             !isLast && {
               borderBottomWidth: StyleSheet.hairlineWidth,
               borderBottomColor: colors.border,
             },
-            { backgroundColor: tint },
+            { backgroundColor: filled ? scoredBg : tint },
           ]}
         >
+          {filled && isCpuRow && (
+            // The computer's tint sits over the scored row's fill, so both read (#3968).
+            <View
+              pointerEvents="none"
+              testID="yacht-cpu-row-tint"
+              style={[styles.tintOverlay, { backgroundColor: tint }]}
+            />
+          )}
           {barColor !== null && (
             <View
               testID={isCpuRow ? "yacht-cpu-row-bar" : "yacht-hint-row-bar"}
               style={[styles.bar, { backgroundColor: barColor }]}
             />
           )}
-          <Text style={[styles.label, { color: colors.text }]} numberOfLines={2}>
+          {filled && (
+            <MaterialIcons
+              testID={`score-row-check-${key}`}
+              name="check"
+              size={CHECK_SIZE}
+              color={colors.text}
+              style={styles.check}
+            />
+          )}
+          <Text
+            style={[
+              styles.label,
+              filled && styles.labelAfterCheck,
+              { color: filled ? colors.textMuted : colors.text },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+          >
             {label}
           </Text>
           <View style={styles.cell}>
@@ -236,9 +284,13 @@ export default function ScoreTable({
                   borderColor: colors.accentText,
                   backgroundColor: colors.heldBg,
                 },
+                { height: rowH - 3 },
               ]}
             >
-              <Text style={[styles.value, { color: playerColor, fontWeight: playerWeight }]}>
+              <Text
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
+                style={[styles.value, { color: playerColor, fontWeight: playerWeight }]}
+              >
                 {playerText}
               </Text>
             </Pop>
@@ -252,6 +304,7 @@ export default function ScoreTable({
               style={styles.cell}
             >
               <Text
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
                 style={[
                   styles.value,
                   cpuScore !== null && cpuScore > 0
@@ -288,19 +341,31 @@ export default function ScoreTable({
         ]}
       >
         <View style={styles.bandLabelBox}>
-          <Text style={[styles.bandLabel, { color: colors.text }]} numberOfLines={1}>
+          <Text
+            style={[styles.bandLabel, { color: colors.text }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+          >
             {t("vsMode.upperSubtotal")}
           </Text>
           <Text
             testID="yacht-upper-bonus-line"
             style={[styles.bandLine, { color: colors.textMuted }]}
-            numberOfLines={2}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
           >
             {line}
           </Text>
         </View>
         <View style={styles.cell}>
-          <Text style={[styles.bandValue, { color: colors.text }]}>{playerUpper}</Text>
+          <Text
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+            style={[styles.bandValue, { color: colors.text }]}
+          >
+            {playerUpper}
+          </Text>
           <Pop
             on={playerEarned}
             peak={BONUS_PULSE_SCALE}
@@ -308,13 +373,23 @@ export default function ScoreTable({
             reduceMotion={reduceMotion}
           >
             {playerEarned && (
-              <Text style={[styles.bandBonus, { color: colors.text }]}>+{UPPER_BONUS_VALUE}</Text>
+              <Text
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
+                style={[styles.bandBonus, { color: colors.text }]}
+              >
+                +{UPPER_BONUS_VALUE}
+              </Text>
             )}
           </Pop>
         </View>
         {isVs && (
           <View style={styles.cell}>
-            <Text style={[styles.bandValue, { color: cpuText }]}>{cpuUpper}</Text>
+            <Text
+              maxFontSizeMultiplier={MAX_FONT_SCALE}
+              style={[styles.bandValue, { color: cpuText }]}
+            >
+              {cpuUpper}
+            </Text>
             <Pop
               on={cpuEarned}
               peak={BONUS_PULSE_SCALE}
@@ -322,7 +397,12 @@ export default function ScoreTable({
               reduceMotion={reduceMotion}
             >
               {cpuEarned && (
-                <Text style={[styles.bandBonus, { color: cpuText }]}>+{UPPER_BONUS_VALUE}</Text>
+                <Text
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}
+                  style={[styles.bandBonus, { color: cpuText }]}
+                >
+                  +{UPPER_BONUS_VALUE}
+                </Text>
               )}
             </Pop>
           </View>
@@ -343,6 +423,8 @@ export default function ScoreTable({
       style={styles.container}
       contentContainerStyle={styles.content}
       testID="yacht-scorecard"
+      // The height the screen gives the table sets the row height (#3968).
+      onLayout={(e) => setAvailH(e.nativeEvent.layout.height)}
     >
       <View
         testID="yacht-score-card"
@@ -352,14 +434,26 @@ export default function ScoreTable({
         style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
       >
         <View style={styles.head}>
-          <Text style={[styles.headLabel, { color: colors.textMuted }]} numberOfLines={1}>
+          <Text
+            style={[styles.headLabel, { color: colors.textMuted }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+          >
             {t("vsMode.category")}
           </Text>
-          <Text style={[styles.headCol, { color: colors.accentText }]} numberOfLines={1}>
+          <Text
+            style={[styles.headCol, { color: colors.accentText }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+          >
             {t("score.you")}
           </Text>
           {isVs && (
-            <Text style={[styles.headCol, { color: cpuText }]} numberOfLines={1}>
+            <Text
+              style={[styles.headCol, { color: cpuText }]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}
+            >
               {t("vsMode.cpu")}
             </Text>
           )}
@@ -379,11 +473,19 @@ export default function ScoreTable({
           ]}
         >
           <View style={styles.bandLabelBox}>
-            <Text style={[styles.totalLabel, { color: colors.text }]} numberOfLines={1}>
+            <Text
+              style={[styles.totalLabel, { color: colors.text }]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}
+            >
               {t("score.total")}
             </Text>
             {anyYachtBonus && (
-              <Text style={[styles.bandLine, { color: colors.textMuted }]} numberOfLines={1}>
+              <Text
+                style={[styles.bandLine, { color: colors.textMuted }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
+              >
                 {t("bonus.yachtLabel")}
               </Text>
             )}
@@ -393,13 +495,17 @@ export default function ScoreTable({
               value={playerTotalScore}
               reduceMotion={reduceMotion}
               testID="yacht-total-you"
+              maxFontSizeMultiplier={MAX_FONT_SCALE}
               style={[
                 styles.totalValue,
                 { color: playerLeading ? colors.outcomeWin : colors.text },
               ]}
             />
             {anyYachtBonus && (
-              <Text style={[styles.bandBonus, { color: colors.textMuted }]}>
+              <Text
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
+                style={[styles.bandBonus, { color: colors.textMuted }]}
+              >
                 {playerYachtBonusTotal > 0 ? `+${playerYachtBonusTotal}` : "—"}
               </Text>
             )}
@@ -410,10 +516,14 @@ export default function ScoreTable({
                 value={cpu.totalScore}
                 reduceMotion={reduceMotion}
                 testID="yacht-total-cpu"
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
                 style={[styles.totalValue, { color: cpuLeading ? colors.outcomeWin : colors.text }]}
               />
               {anyYachtBonus && (
-                <Text style={[styles.bandBonus, { color: colors.textMuted }]}>
+                <Text
+                  maxFontSizeMultiplier={MAX_FONT_SCALE}
+                  style={[styles.bandBonus, { color: colors.textMuted }]}
+                >
                   {cpu.yachtBonusTotal > 0 ? `+${cpu.yachtBonusTotal}` : "—"}
                 </Text>
               )}
@@ -459,7 +569,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: SCORE_ROW_HEIGHT,
+    minHeight: DEFAULT_ROW_HEIGHT,
     gap: 6,
     paddingHorizontal: 2,
     borderRadius: 4,
@@ -473,10 +583,13 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   label: { flex: 1, fontSize: 13, lineHeight: 15, fontWeight: "500", paddingLeft: 4 },
+  labelAfterCheck: { paddingLeft: 0 },
+  check: { marginLeft: 4 },
+  tintOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, borderRadius: 4 },
   cell: { width: COL_W, alignItems: "center", justifyContent: "center" },
   valueBox: {
     minWidth: COL_W - 8,
-    height: SCORE_ROW_HEIGHT - 3,
+    height: DEFAULT_ROW_HEIGHT - 3,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",

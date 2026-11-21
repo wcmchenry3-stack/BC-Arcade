@@ -45,7 +45,7 @@ test.describe("Yacht — scoring verification (#180)", () => {
 
     // Wait for potential scores to appear
     const chanceBtn = page.getByRole("button", {
-      name: /Chance: potential score/,
+      name: /Chance: open, would score/,
     });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
@@ -60,13 +60,13 @@ test.describe("Yacht — scoring verification (#180)", () => {
     await page.getByRole("button", { name: /Roll/i }).click();
 
     const chanceBtn = page.getByRole("button", {
-      name: /Chance: potential score/,
+      name: /Chance: open, would score/,
     });
     await expect(chanceBtn).toBeVisible();
 
     // Extract the potential value from the accessibility label before scoring
     const label = (await chanceBtn.getAttribute("aria-label")) ?? "";
-    const match = label.match(/potential score (\d+)/);
+    const match = label.match(/would score (\d+)/);
     const potentialValue = match ? parseInt(match[1], 10) : null;
 
     await chanceBtn.click();
@@ -77,7 +77,7 @@ test.describe("Yacht — scoring verification (#180)", () => {
     if (potentialValue !== null) {
       await expect(
         page.getByRole("button", {
-          name: new RegExp(`Chance: scored ${potentialValue}`),
+          name: new RegExp(`Chance: scored, ${potentialValue}`),
         }),
       ).toBeVisible();
     }
@@ -95,10 +95,10 @@ test.describe("Yacht — scoring verification (#180)", () => {
   test("scoring Ones updates the upper subtotal", async ({ page }) => {
     await page.getByRole("button", { name: /Roll/i }).click();
 
-    const onesBtn = page.getByRole("button", { name: /Ones: potential score/ });
+    const onesBtn = page.getByRole("button", { name: /Ones: open, would score/ });
     if (await onesBtn.isVisible()) {
       const label = (await onesBtn.getAttribute("aria-label")) ?? "";
-      const match = label.match(/potential score (\d+)/);
+      const match = label.match(/would score (\d+)/);
       const potentialValue = match ? parseInt(match[1], 10) : null;
 
       await onesBtn.click();
@@ -113,7 +113,7 @@ test.describe("Yacht — scoring verification (#180)", () => {
       // Ones not in potential scores (dice show no 1s) — still verify scoring
       // any available category advances the round
       await page
-        .getByRole("button", { name: /Chance: potential score/ })
+        .getByRole("button", { name: /Chance: open, would score/ })
         .click();
       await expect(page.getByText("Round 2 / 13")).toBeVisible();
     }
@@ -125,13 +125,13 @@ test.describe("Yacht — scoring verification (#180)", () => {
     await page.getByRole("button", { name: /Roll/i }).click();
 
     const chanceBtn = page.getByRole("button", {
-      name: /Chance: potential score/,
+      name: /Chance: open, would score/,
     });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
 
     // Row is now filled — accessibility label includes "scored"
-    const filledRow = page.getByRole("button", { name: /Chance: scored \d+/ });
+    const filledRow = page.getByRole("button", { name: /Chance: scored, \d+/ });
     await expect(filledRow).toBeVisible();
   });
 

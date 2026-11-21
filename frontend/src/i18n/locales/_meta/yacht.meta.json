@@ -181,7 +181,7 @@
   },
   "score.scored": {
     "component": "ScoreTable",
-    "description": "Accessibility text when a category is already scored.",
+    "description": "Accessibility text when a category is already scored: reads as \"scored, 25\" so it is clearly not an open row (#3968).",
     "tone": "functional",
     "characterLimit": 20,
     "placeholders": ["{{score}}"],
@@ -190,7 +190,7 @@
   },
   "score.potential": {
     "component": "ScoreTable",
-    "description": "Accessibility text when a category can be scored this turn.",
+    "description": "Accessibility text when a category is still open and can be scored this turn: reads as \"open, would score 25, double-tap to score\" (#3968).",
     "tone": "functional",
     "characterLimit": 65,
     "placeholders": ["{{potential}}"],
@@ -784,7 +784,7 @@
   },
   "score.cpuOpen": {
     "component": "ScoreTable",
-    "description": "What a screen reader says for the computer's value in a row it has not scored yet.",
+    "description": "What a screen reader says for the computer's value in a row it has not scored yet: the single word \"open\" (#3968).",
     "tone": "functional",
     "characterLimit": 24,
     "placeholders": [],

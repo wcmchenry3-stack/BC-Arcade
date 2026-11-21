@@ -75,7 +75,7 @@ test.describe("Yacht — error paths and navigation", () => {
 
     // Score Chance in round 1
     await page.getByRole("button", { name: /Roll/i }).click();
-    await page.getByRole("button", { name: /Chance: potential score/ }).click();
+    await page.getByRole("button", { name: /Chance: open, would score/ }).click();
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
     // Chance row is now filled — it should be disabled
@@ -181,7 +181,7 @@ test.describe("Yacht — error paths and navigation", () => {
 
     // Score any available category that shows "Ones" is selectable
     const onesSelectable = page.getByRole("button", {
-      name: /Ones: potential score/,
+      name: /Ones: open, would score/,
     });
     const onesAvailable = await onesSelectable.isVisible();
 
@@ -197,7 +197,7 @@ test.describe("Yacht — error paths and navigation", () => {
       // Ones shows "not available" (this can happen if dice are all blank — skip)
       // Score Chance to advance the round instead
       await page
-        .getByRole("button", { name: /Chance: potential score/ })
+        .getByRole("button", { name: /Chance: open, would score/ })
         .click();
       await expect(page.getByText("Round 2 / 13")).toBeVisible();
     }
@@ -292,7 +292,7 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
     await expect(rollBtn).not.toBeDisabled();
     await rollBtn.click();
     await expect(
-      page.getByRole("button", { name: /Chance: potential score/ }),
+      page.getByRole("button", { name: /Chance: open, would score/ }),
     ).toBeVisible();
   });
 

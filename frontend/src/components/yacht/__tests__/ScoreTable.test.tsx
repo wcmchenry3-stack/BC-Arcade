@@ -1,8 +1,10 @@
 import React from "react";
-import { render, fireEvent, within } from "@testing-library/react-native";
+import { render, fireEvent, within, act } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ScrollView, StyleSheet } from "react-native";
 import ScoreTable from "../ScoreTable";
-import { ThemeProvider, dark } from "../../../theme/ThemeContext";
+import { ThemeProvider, dark, light } from "../../../theme/ThemeContext";
+import { clampRowHeight, DEFAULT_ROW_HEIGHT } from "../scoreRowHeight";
 
 const ALL_CATEGORIES = [
   "ones",
@@ -225,19 +227,19 @@ describe("ScoreTable — scoring rows", () => {
       playerPossibleScores: { ones: 3 },
     });
     expect(getByTestId("score-row-chance").props.accessibilityLabel).toBe(
-      "Chance: scored 22. Computer: 21"
+      "Chance: scored, 22. Computer: 21"
     );
     expect(getByTestId("score-row-ones").props.accessibilityLabel).toBe(
-      "Ones: potential score 3, double-tap to score. Computer: not scored"
+      "Ones: open, would score 3, double-tap to score. Computer: open"
     );
     expect(getByTestId("score-row-threes").props.accessibilityLabel).toBe(
-      "Threes: not available. Computer: not scored"
+      "Threes: not available. Computer: open"
     );
   });
 
   it("solo: a row's label is yours alone", async () => {
     const { getByTestId } = await renderTable({ playerScores: { ...emptyScores, twos: 6 } });
-    expect(getByTestId("score-row-twos").props.accessibilityLabel).toBe("Twos: scored 6");
+    expect(getByTestId("score-row-twos").props.accessibilityLabel).toBe("Twos: scored, 6");
   });
 
   it("labels an open row for a screen reader with its potential, a scored one with its score", async () => {
@@ -247,9 +249,9 @@ describe("ScoreTable — scoring rows", () => {
       playerPossibleScores: { ones: 3 },
     });
     expect(getByTestId("score-row-ones").props.accessibilityLabel).toBe(
-      "Ones: potential score 3, double-tap to score"
+      "Ones: open, would score 3, double-tap to score"
     );
-    expect(getByTestId("score-row-twos").props.accessibilityLabel).toBe("Twos: scored 6");
+    expect(getByTestId("score-row-twos").props.accessibilityLabel).toBe("Twos: scored, 6");
     expect(getByTestId("score-row-threes").props.accessibilityLabel).toBe("Threes: not available");
   });
 });
@@ -302,7 +304,8 @@ describe("ScoreTable — potentials look the same in both modes", () => {
     });
     const colorOf = (key: string, text: string) =>
       flat(within(scratched.getByTestId(`score-row-${key}`)).getByText(text)).color;
-    expect(colorOf("twos", "0")).toBe(dark.textMuted);
+    // A scored 0 is a result: bold, like any scored value, not the dimmed open look (#3968).
+    expect(colorOf("twos", "0")).toBe(dark.text);
     expect(colorOf("fours", "12")).toBe(dark.text);
     await scratched.unmount();
     const before = await renderTable({
@@ -407,5 +410,152 @@ describe("ScoreTable — in vs the computer's scores are in its column", () => {
     expect(within(getByTestId("score-row-chance")).getByText("21")).toBeTruthy();
     // Ones: your dash and the computer's.
     expect(within(getByTestId("score-row-ones")).getAllByText("—")).toHaveLength(2);
+  });
+});
+
+describe("ScoreTable — scored rows are obvious without colour (#3968)", () => {
+  const scoredProps = {
+    playerRollsUsed: 1,
+    playerScores: { ...emptyScores, twos: 6, fours: 0 },
+    playerPossibleScores: { ones: 3, threes: 0, chance: 21 },
+  };
+
+  it("a scored row has a check, a fill, a dimmer label and a bold score; an open row has none", async () => {
+    const { getByTestId, queryByTestId } = await renderTable(scoredProps);
+    const twos = getByTestId("score-row-twos");
+    expect(getByTestId("score-row-check-twos")).toBeTruthy();
+    expect(flat(twos).backgroundColor).toBe(dark.surfaceHigh);
+    expect(flat(within(twos).getByText("Twos")).color).toBe(dark.textMuted);
+    expect(flat(within(twos).getByText("6")).fontWeight).toBe("700");
+    expect(flat(within(twos).getByText("6")).color).toBe(dark.text);
+
+    const ones = getByTestId("score-row-ones");
+    expect(queryByTestId("score-row-check-ones")).toBeNull();
+    expect(flat(ones).backgroundColor).toBe("transparent");
+    expect(flat(within(ones).getByText("Ones")).color).toBe(dark.text);
+    expect(flat(within(ones).getByText("3")).color).toBe(dark.potential);
+    expect(flat(within(ones).getByText("3")).fontWeight).not.toBe("700");
+  });
+
+  it("uses the lighter surface token in the light theme", async () => {
+    await AsyncStorage.setItem("gaming_app_theme_mode", "light");
+    const { getByTestId } = await renderTable(scoredProps);
+    await act(async () => {});
+    expect(flat(getByTestId("score-row-twos")).backgroundColor).toBe(light.surfaceAlt);
+    await AsyncStorage.clear();
+  });
+
+  it("a scored 0 keeps the check and a bold 0, unlike an open row's dash or dimmed 0", async () => {
+    const { getByTestId, queryByTestId } = await renderTable(scoredProps);
+    const fours = getByTestId("score-row-fours");
+    expect(getByTestId("score-row-check-fours")).toBeTruthy();
+    expect(flat(within(fours).getByText("0")).fontWeight).toBe("700");
+    // An open row with a 0 potential: no check, regular weight, dimmed.
+    const threes = getByTestId("score-row-threes");
+    expect(queryByTestId("score-row-check-threes")).toBeNull();
+    expect(flat(within(threes).getByText("0")).fontWeight).toBe("400");
+    expect(flat(within(threes).getByText("0")).color).toBe(dark.textMuted);
+    // An open row with nothing to score: a dash.
+    expect(within(getByTestId("score-row-fives")).getByText("—")).toBeTruthy();
+  });
+
+  it("the check mark carries no extra spoken label (the row's label says scored)", async () => {
+    const { getByTestId } = await renderTable(scoredProps);
+    expect(getByTestId("score-row-twos").props.accessibilityLabel).toBe("Twos: scored, 6");
+    expect(getByTestId("score-row-fours").props.accessibilityLabel).toBe("Fours: scored, 0");
+    expect(getByTestId("score-row-ones").props.accessibilityLabel).toBe(
+      "Ones: open, would score 3, double-tap to score"
+    );
+  });
+
+  it("states scored as checked and selected for a screen reader; an open row is neither", async () => {
+    const { getByTestId } = await renderTable(scoredProps);
+    expect(getByTestId("score-row-twos").props.accessibilityState).toEqual({
+      disabled: true,
+      checked: true,
+      selected: true,
+    });
+    expect(getByTestId("score-row-ones").props.accessibilityState).toEqual({
+      disabled: false,
+      checked: false,
+      selected: false,
+    });
+  });
+
+  it("vs: the computer's last-scored tint shows over a row you scored, with the fill under it", async () => {
+    const { getByTestId } = await renderTable({
+      ...scoredProps,
+      cpu: { ...CPU, scores: { ...emptyScores, twos: 8 } },
+      cpuLastScored: "twos",
+    });
+    const row = getByTestId("score-row-twos");
+    expect(flat(row).backgroundColor).toBe(dark.surfaceHigh);
+    expect(flat(within(row).getByTestId("yacht-cpu-row-tint")).backgroundColor).toBe(
+      dark.secondary + "26"
+    );
+    expect(within(row).getByTestId("yacht-cpu-row-bar")).toBeTruthy();
+    expect(within(row).getByTestId("score-row-check-twos")).toBeTruthy();
+  });
+
+  it("the Hint's tint replaces the fill on an open row (an open row is never filled)", async () => {
+    const { getByTestId } = await renderTable({ ...scoredProps, hintCategory: "ones" });
+    expect(flat(getByTestId("score-row-ones")).backgroundColor).toBe(dark.outcomeWin + "26");
+  });
+});
+
+describe("ScoreTable — row height is measured and font scaling is capped (#3968)", () => {
+  it("starts at the default height before it is measured", async () => {
+    const { getByTestId } = await renderTable();
+    expect(flat(getByTestId("score-row-ones")).minHeight).toBe(DEFAULT_ROW_HEIGHT);
+  });
+
+  it("sizes the rows from the measured height of the table", async () => {
+    const { getByTestId } = await renderTable();
+    await fireEvent(getByTestId("yacht-scorecard"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 560 } },
+    });
+    const expected = clampRowHeight(560);
+    expect(expected).not.toBe(DEFAULT_ROW_HEIGHT);
+    expect(flat(getByTestId("score-row-ones")).minHeight).toBe(expected);
+    await fireEvent(getByTestId("yacht-scorecard"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 400 } },
+    });
+    expect(flat(getByTestId("score-row-ones")).minHeight).toBe(26);
+  });
+
+  it("caps font scaling on the row, band and total text, and keeps the band line to one line", async () => {
+    const { getByTestId, getByText } = await renderTable({
+      playerScores: { ...emptyScores, twos: 6 },
+    });
+    const row = getByTestId("score-row-twos");
+    expect(within(row).getByText("Twos").props.maxFontSizeMultiplier).toBe(1.2);
+    expect(within(row).getByText("6").props.maxFontSizeMultiplier).toBe(1.2);
+    const line = getByTestId("yacht-upper-bonus-line");
+    expect(line.props.maxFontSizeMultiplier).toBe(1.2);
+    expect(line.props.numberOfLines).toBe(1);
+    expect(getByTestId("yacht-total-you").props.maxFontSizeMultiplier).toBe(1.2);
+    expect(getByText("Total").props.maxFontSizeMultiplier).toBe(1.2);
+  });
+});
+
+describe("clampRowHeight (#3968)", () => {
+  it("is the default until the table is measured", () => {
+    expect(clampRowHeight(null)).toBe(DEFAULT_ROW_HEIGHT);
+    expect(clampRowHeight(undefined)).toBe(DEFAULT_ROW_HEIGHT);
+    expect(clampRowHeight(0)).toBe(DEFAULT_ROW_HEIGHT);
+    expect(clampRowHeight(Number.NaN)).toBe(DEFAULT_ROW_HEIGHT);
+  });
+
+  it("is the largest whole-point row that fits 13 rows plus the chrome", () => {
+    // 126 pt of chrome: 126 + 13 * 29 = 503 fits 29; 502 does not.
+    expect(clampRowHeight(503)).toBe(29);
+    expect(clampRowHeight(502)).toBe(28);
+    expect(clampRowHeight(126 + 13 * 30)).toBe(30);
+  });
+
+  it("never goes below 26 (the table scrolls instead) or above 32", () => {
+    expect(clampRowHeight(300)).toBe(26);
+    expect(clampRowHeight(1)).toBe(26);
+    expect(clampRowHeight(2000)).toBe(32);
   });
 });
