@@ -254,7 +254,7 @@ target, a weight or a dial.** Those come from real players after launch. What it
   redeal rather than finish. Even "Finish a game" is a real ask in those games. Leaving a Blackjack run before its chip goal is
   correctly an abandon, not a bug.
 
-## 9. Cost, performance and offline: early read (step 3 will verify)
+## 9. Cost, performance and offline: early read (superseded by §13)
 
 The CLAUDE.md order applies: cost, then performance, then data. A first look:
 
@@ -375,6 +375,106 @@ Notes:
 | Blackjack table of recent runs     | `starting_chips` in metadata    | local run records                         | none                                    |
 | Star Swarm tier, wave              | result block                    | `starswarm.*` best                        | ring buffer                             |
 | Affinity (games played recently)   | `games` rows                    | none                                      | ring buffer gives it for free           |
+
+## 13. Offline, cost and data design (step 3)
+
+This replaces the early read in §9. The main change is that **the server picks every goal, and the device only
+caches**. The pick logic lives in one place (Python) and is never re-implemented on the device, and **no new
+on-device history is needed**. §9's ring buffer is dropped.
+
+### How a day is assigned
+
+1. **Pin when served.** On the first `/status` or `/upcoming` request that needs a given (install, local date),
+   the server picks that day's goals for that install and **stores them as a pinned assignment**. Every later read,
+   on any device, returns the same pinned goals. This applies the existing frozen-day idea (§4 of
+   DAILY-CHALLENGE.md) per install instead of per date.
+2. **Targets become plain numbers.** A personal target is resolved at pick time into an absolute value: "Score at
+   least 1,800", "Reach Sort level 23" (baseline 21 + 2 new levels), "Win in at most 104 moves". The existing
+   evaluator (`*_at_least`, `won_*_at_most`, `won`, `completed`) checks them with no per-player logic. Replaying a
+   past day for the streak just reads the pinned row.
+3. **Inputs at pick time** (one windowed query): the install's last ~10 finished games per game type and the last
+   14 days of play, for affinity. Also the install's recent assignments, for the variety guard and the "rest a
+   game after 3 ignored suggestions" rule. Plus entitlements, for eligibility.
+4. **The 3-day offline window stays.** `/upcoming` becomes per-install: it returns today and the next 2 days,
+   pinned. A device going offline has 3 days of its own goals, exactly as today. The device's progress display
+   (`localProgress.ts`) already evaluates queued games against cached goals. It needs no change beyond knowing the
+   bonus slot.
+   - Trade-off: days +1 and +2 are pinned from the history known when they were first served, so their targets
+     can be up to 2 days stale. That's accepted: the staleness is small and it keeps one pick per day per install.
+5. **New installs.** The first `/status` of an install with no history pins cold-start goals (§12). An install that
+   is offline from first launch has nothing cached and keeps today's "connect to get today's challenge" message.
+
+### Wire compatibility with installed builds
+
+- Core goals keep the current shape (`game_type`, `kind`, `target`). Sort's "N new levels" is sent as
+  `final_score_at_least` with the pinned level, so **older app builds render every new core goal correctly**.
+- The bonus goal goes in a **new `bonus` field** that older builds ignore. They keep showing 3 goals and a correct
+  done count.
+- Cross-game rules unchanged: at most one win-dependent goal a day, and abandons never count.
+
+### Cost (CLAUDE.md priority 1)
+
+| Item | Estimate | Bound |
+| --- | --- | --- |
+| Assignment row (install, date, 3 core goals + 1 bonus, compact encoding) | ~150 B incl. index | 1 per install per day served; at most 3 days ahead |
+| Per 1,000 daily players | ~150 KB/day; **~9 MB** held at 60-day retention | prune after `STREAK_LOOKBACK_DAYS` (60), daily batched delete like `daily_word_progress` |
+| Per 10,000 daily players | ~1.5 MB/day; **~90 MB** held | same prune. For scale: their `games` rows (~13 games/day, several hundred bytes each) grow over 30× faster |
+| Pick query | one windowed read of the install's recent games, **once per install per day** | later reads of that day are one row lookup |
+| Requests | none new: `/status` and `/upcoming` already exist and are called on Home focus | — |
+
+Abandoned or never-opened days cost nothing: a row exists only when a day is served.
+
+### Dials and kill switch (no app release needed)
+
+Server env vars, read lazily like the existing daily-challenge settings:
+
+- `DAILY_CHALLENGE_PERSONALIZED` (default on). **Kill switch**: off means every install gets the shared frozen
+  template (today's behaviour with the Daily Word fix), and no assignment rows are written.
+- `DAILY_CHALLENGE_STRETCH_PCT` (start 12), `DAILY_CHALLENGE_DISCOVERY_SHARE` (start 0.5),
+  `DAILY_CHALLENGE_BONUS_ENABLED` (start on), `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (60).
+
+None of these touch the device, so the `/games/catalog` dial carrier isn't needed.
+
+### Performance (priority 2)
+
+Nothing is added to a game's frame, gesture or animation path, and nothing is uploaded mid-game. The device does no
+new computation: the pick runs on the server once per install per day.
+
+### Privacy and Delete My Data
+
+- Assignment rows are keyed by install ID and derived only from that install's own games.
+- **Delete My Data (`DELETE /me`) must delete them.** That's a fail-safe test.
+- DATA-INVENTORY.md gets a row. No new store-privacy category: this is app functionality from first-party gameplay
+  data (#3988).
+
+### Fail-safe tests (epic #3273 style)
+
+- Kill switch off: shared template served, no rows written.
+- Retention prune removes rows older than the window, and the streak never reads past it.
+- At most 3 future days pinned per install.
+- Every personal target lies within its floor and cap, and never at or below what the player had already reached
+  before the day (e.g. a Sort level already solved).
+- Abandoned games never satisfy any goal.
+- An older build's card shows 3 goals and a correct count when `bonus` is present.
+- `DELETE /me` removes the install's assignment rows.
+- Offline: cached per-install days are used for 3 days; a goal met offline is credited when the game syncs.
+- The streak counts only core goals; the bonus never affects it.
+
+## 14. Proposed stories
+
+The epic covers updating or replacing #2946, #2458 and #3945. Model choice per story is the ship-story default
+(cheapest capable). This is a suggestion.
+
+| # | Story | Depends on | Size | Suggested model |
+| - | ----- | ---------- | ---- | --------------- |
+| 1 | Daily Word goal = "complete" only (pool change; frozen days untouched) | — | S | Sonnet |
+| 2 | Per-install pinned assignments: table, pin-on-serve for `/status` and `/upcoming`, prune, `DELETE /me`, streak replay reads it, kill switch | — | L | Opus |
+| 3 | Personal targets: per-game goal specs and target rules from §12 for the free games (incl. Sort "N new levels", Solitaire/FreeCell fixes) | 2 | M | Opus |
+| 4 | Game selection: eligible set (free vs premium), affinity weighting, variety guard, discovery rest rule | 2 | M | Sonnet |
+| 5 | Bonus goal: `bonus` field, Home card UI (marked optional), i18n, offline progress, never in the streak | 2, 4 | M | Sonnet |
+| 6 | Premium games' goals (Blackjack, Cascade, Hearts, Mahjong, Star Swarm) per §12, replacing #2458 / #3945 | 3 | M | Sonnet |
+| 7 | Docs: DAILY-CHALLENGE.md (new contract), DATA-INVENTORY.md row, retire superseded sections of this proposal | 2–6 | S | Haiku |
+| 8 | Tuning query: the §8 metrics as a read-only SQL script for the dev/prod database (no new collection) | 2 | S | Sonnet |
 
 [cbs]: https://business.columbia.edu/sites/default/files-efs/citation_file_upload/Personalized_games.pdf
 [dof-puzzles]: https://www.deconstructoroffun.com/blog/2024/9/23/daily-missions-in-puzzles-why-should-we-see-them-more-often
