@@ -506,3 +506,44 @@ class DailyChallengeDay(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class DailyChallengeAssignment(Base):
+    """One install's daily-challenge goals for one local day, pinned when first
+    served (#3992, docs/DAILY-CHALLENGE.md §4).
+
+    ``daily_challenge_days`` freezes one shared template per (date, slate); this
+    table applies the same idea per install: the first ``/status`` or ``/upcoming``
+    that needs a (session, local date) picks that install's goals
+    (``service.pick_for_install``) and stores them here, and every later read,
+    including the streak's replay of that day, returns this row unchanged.
+
+    Compact on purpose (CLAUDE.md priority 1): one row per install per day served,
+    at most today..today+2 ahead, pruned after
+    ``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` (``daily_challenge.retention``).
+
+    * ``session_id`` is a native ``uuid`` (16 bytes, not 36 bytes of text); the
+      ``X-Session-ID`` header is always a UUID (``session.get_session_id``).
+    * ``goals`` / ``bonus`` are compact JSON text (``assignments.encode_goals``):
+      each goal is ``[game_type, kind, target, tier]``, the self-contained spec
+      ``goal_from_spec`` rebuilds, never a key into a live pool.
+    * ``template_id`` and ``slate`` are NULL in the common case (an id derived
+      from the goals; the free slate) and then cost nothing.
+
+    No surrogate id and no extra index: the primary key ``(session_id,
+    local_date)`` serves the per-install reads, ``DELETE /me`` and the streak's
+    windowed read; the daily prune by ``local_date`` scans the retention-bounded
+    table once a day.
+    """
+
+    __tablename__ = "daily_challenge_assignments"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    local_date: Mapped[dt_date] = mapped_column(Date, primary_key=True)
+    goals: Mapped[str] = mapped_column(Text, nullable=False)
+    bonus: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    slate: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
