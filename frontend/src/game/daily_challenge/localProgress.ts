@@ -95,20 +95,21 @@ export async function queuedGamesEndedOn(day: string, offsetMinutes: number): Pr
 }
 
 /**
- * `challenge` with every goal a game in `ended` meets marked done. A goal
- * already done stays done: it came from the last `/status` of the day, which
- * counted the games that had already synced.
+ * `challenge` with every goal a game in `ended` meets marked done, the bonus goal
+ * (#3995) included, the same way. A goal already done stays done: it came from the
+ * last `/status` of the day, which counted the games that had already synced.
  */
 export function withLocalProgress(
   challenge: DailyChallenge,
   ended: readonly EndedGame[]
 ): DailyChallenge {
+  const mark = (goal: ChallengeGoal): ChallengeGoal =>
+    goal.completed || !ended.some((g) => g.gameType === goal.gameSlug && goalMetBy(goal, g.facts))
+      ? goal
+      : { ...goal, completed: true };
   return {
     ...challenge,
-    goals: challenge.goals.map((goal) =>
-      goal.completed || !ended.some((g) => g.gameType === goal.gameSlug && goalMetBy(goal, g.facts))
-        ? goal
-        : { ...goal, completed: true }
-    ),
+    goals: challenge.goals.map(mark),
+    ...(challenge.bonus ? { bonus: mark(challenge.bonus) } : {}),
   };
 }

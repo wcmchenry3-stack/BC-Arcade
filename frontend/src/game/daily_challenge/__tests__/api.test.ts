@@ -245,31 +245,65 @@ describe("dailyChallengeApi.getUpcoming — goals cached for offline play (#3228
   });
 });
 
-describe("dailyChallengeApi — the reserved `bonus` field (#3992, #3995)", () => {
+describe("dailyChallengeApi — the `bonus` field (#3992, #3995)", () => {
   const bonus = {
     id: "yacht:final_score_at_least:100",
     game_type: "yacht",
     kind: "final_score_at_least",
     target: 100,
   };
+  const parsed = {
+    id: bonus.id,
+    gameSlug: "yacht",
+    kind: "final_score_at_least",
+    target: 100,
+    completed: false,
+  };
 
-  it.each([null, bonus])(
-    "ignores bonus=%p on /status, /today and /upcoming: 3 goals, same count",
+  it("parses the bonus on /status with its completed flag, apart from the 3 core goals", async () => {
+    respond({ status: { ...status, bonus: { ...bonus, completed: false, best_score: null } } });
+    const open = await dailyChallengeApi.getDailyChallenge(0);
+    expect(open.bonus).toEqual(parsed);
+    expect(open.goals).toHaveLength(3);
+    expect(open.goals.filter((g) => g.completed)).toHaveLength(1); // the bonus is not counted
+
+    respond({ status: { ...status, bonus: { ...bonus, completed: true, best_score: 120 } } });
+    expect((await dailyChallengeApi.getDailyChallenge(0)).bonus).toEqual({
+      ...parsed,
+      completed: true,
+    });
+  });
+
+  it("parses the bonus on /today (the fallback) and /upcoming, not done", async () => {
+    respond({ status: new Error("boom"), today: { ...today, bonus } });
+    const fallback = await dailyChallengeApi.getDailyChallenge(0);
+    expect(fallback.bonus).toEqual(parsed);
+    expect(fallback.goals.map((g) => g.id)).toEqual(today.goals.map((g) => g.id));
+
+    mockRequest.mockResolvedValue({ days: [{ ...today, bonus }] });
+    const [day] = await dailyChallengeApi.getUpcoming(0);
+    expect(day!.bonus).toEqual(parsed);
+    expect(day!.goals).toHaveLength(3);
+  });
+
+  it("converts a time-limit bonus to minutes like a core goal", async () => {
+    const timed = { ...bonus, id: "m", game_type: "mahjong", kind: "won_duration_ms_at_most" };
+    respond({ status: { ...status, bonus: { ...timed, target: 480000, completed: false } } });
+    expect((await dailyChallengeApi.getDailyChallenge(0)).bonus?.target).toBe(8);
+  });
+
+  it.each([null, undefined, "x", { id: 1 }, { ...bonus, target: "7" }])(
+    "has no bonus for bonus=%p, and still reads the 3 goals",
     async (value) => {
       respond({ status: { ...status, bonus: value } });
-      const withBonus = await dailyChallengeApi.getDailyChallenge(0);
-      respond({ status });
-      expect(withBonus).toEqual(await dailyChallengeApi.getDailyChallenge(0));
-      expect(withBonus.goals).toHaveLength(3);
-      expect(withBonus.goals.filter((g) => g.completed)).toHaveLength(1);
-
-      respond({ status: new Error("boom"), today: { ...today, bonus: value } });
-      const fallback = await dailyChallengeApi.getDailyChallenge(0);
-      expect(fallback.goals.map((g) => g.id)).toEqual(today.goals.map((g) => g.id));
+      const result = await dailyChallengeApi.getDailyChallenge(0);
+      expect(result.bonus ?? null).toBeNull();
+      expect(result.goals).toHaveLength(3);
+      expect(result.goals.filter((g) => g.completed)).toHaveLength(1);
 
       mockRequest.mockResolvedValue({ days: [{ ...today, bonus: value }] });
       const [day] = await dailyChallengeApi.getUpcoming(0);
-      expect(day!.goals.map((g) => g.id)).toEqual(today.goals.map((g) => g.id));
+      expect(day!.bonus ?? null).toBeNull();
     }
   );
 });
