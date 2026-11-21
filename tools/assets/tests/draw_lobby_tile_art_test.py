@@ -1,11 +1,13 @@
 """
-pytest suite for draw_lobby_tile_art.py (#4011, #4004): the lobby tiles' gameplay vignettes.
+pytest suite for draw_lobby_tile_art.py (#4011, #4004, #4012): the lobby tiles' gameplay vignettes.
 
 Renders the real scenes (they are small), but writes only into tmp_path.
 """
 
 import itertools
+import json
 import re
+import string
 import subprocess
 import sys
 from pathlib import Path
@@ -23,15 +25,23 @@ SCRIPT = Path(art.__file__)
 REPO = SCRIPT.parents[2]
 SHIPPED = REPO / "frontend/assets/home"
 THEME = REPO / "frontend/src/theme"
-NAMES = ["sort", "yacht", "twenty48", "sudoku"]
+NAMES = ["sort", "yacht", "twenty48", "sudoku", "solitaire", "freecell", "daily_word"]
 
 # The owner's budget is 3,400 B per tile (#4010). Measured 2026-11-21 at quality 82 / alpha
 # quality 70 with the pinned Pillow (bytes in the comments); the budget is the hard cap, not
 # measured + headroom, so a libwebp change that crosses it is a design question, not a bump.
-MEASURED = {"sort": 3030, "yacht": 3198, "twenty48": 3052, "sudoku": 2578}
+MEASURED = {
+    "sort": 3030,
+    "yacht": 3198,
+    "twenty48": 3052,
+    "sudoku": 2578,
+    "solitaire": 2916,  # #4012, the owner's round-2 picks
+    "freecell": 3276,
+    "daily_word": 3352,
+}
 
 
-def test_the_scenes_are_the_four_tiles_of_this_story():
+def test_the_scenes_are_the_lobby_tiles_drawn_so_far():
     assert list(art.SCENES) == NAMES
 
 
@@ -239,7 +249,240 @@ def test_yacht_landed_dice_sit_in_one_row_on_the_pixel_grid_below_the_tumbling_o
 
 
 # --------------------------------------------------------------------------------------------
-# Digits: Space Grotesk Bold outlines, extracted once with their licence
+# Playing cards (#4012): the games' own card colours
+
+
+def test_card_colours_are_the_games():
+    ctx = _theme("ThemeContext.tsx")
+    assert f'cardFace: "{_hex(art.CARD_FACE)[:4]}"' in ctx  # "#fff"
+    assert f'cardInk: "{_hex(art.CARD_INK)}"' in ctx
+    assert f'cardBack: "{_hex(art.CARD_BACK)}"' in ctx
+    assert f'CARD_RED_SUIT = "{_hex(art.CARD_RED)}"' in _theme("theme.cards.ts")
+
+
+def _mask(im: np.ndarray, rgb, tol: int = 10) -> np.ndarray:
+    return (np.abs(im[..., :3].astype(int) - np.array(rgb)).max(-1) <= tol) & (im[..., 3] == 255)
+
+
+def _rgb(colour) -> list[int]:
+    return [round(v * 255) for v in colour[:3]]
+
+
+RANKS = ["A", *[str(n) for n in range(2, 11)], "J", "Q", "K"]
+
+
+def _value(face: str) -> int:
+    return RANKS.index(face[:-1]) + 1
+
+
+def _cards(name: str) -> list[str]:
+    if name == "solitaire":
+        return [*art.SOL_WASTE, *art.SOL_COLUMN, art.SOL_MOVING]
+    return [f for faces in art.FC_CASCADES for f in faces]
+
+
+@pytest.mark.parametrize("name", ["solitaire", "freecell"])
+def test_every_card_is_a_real_card_drawn_once(name):
+    cards = _cards(name)
+    assert len(set(cards)) == len(cards)  # one deck
+    for f in cards:
+        assert f[:-1] in RANKS and f[-1] in "SHDC", f
+
+
+@pytest.mark.parametrize("name", ["solitaire", "freecell"])
+def test_card_scenes_show_red_and_black_suits(name):
+    im = np.asarray(art.render(name))
+    assert _mask(im, _rgb(art.CARD_RED)).sum() > 150
+    assert _mask(im, _rgb(art.CARD_INK)).sum() > 150
+
+
+def test_card_draws_its_index_in_the_suit_colour():
+    for face, ink in (("7H", art.CARD_RED), ("7S", art.CARD_INK), ("10D", art.CARD_RED)):
+        c = art.TileCanvas()
+        art.card(c, 40, 40, 50, 70, face)
+        im = np.asarray(c.image())
+        top = im[40 : 40 + 2 * art.CARD_INDEX]  # the index strip
+        assert _mask(top, _rgb(ink)).sum() > 60, face
+        other = art.CARD_INK if ink is art.CARD_RED else art.CARD_RED
+        assert _mask(top, _rgb(other)).sum() == 0, face
+
+
+@pytest.mark.parametrize("face", ["AH", "10S", "JC", "QD", "KS"])
+def test_card_draws_every_real_rank(face):
+    art.card(art.TileCanvas(), 40, 40, 50, 70, face)
+
+
+@pytest.mark.parametrize(
+    ("face", "message"),
+    [
+        ("1H", "rank must be one of"),
+        ("11S", "rank must be one of"),
+        ("ZD", "rank must be one of"),
+        ("7X", "suit must be one of"),
+        ("7", "rank must be one of"),
+    ],
+)
+def test_card_rejects_faces_it_cannot_draw(face, message):
+    with pytest.raises(ValueError, match=message):
+        art.card(art.TileCanvas(), 40, 40, 50, 70, face)
+
+
+def test_pip_card_rejects_unknown_suits():
+    with pytest.raises(ValueError, match="suit must be one of"):
+        art.pip_card(art.TileCanvas(), 40, 40, 19, 30, "7X")
+
+
+# --------------------------------------------------------------------------------------------
+# Solitaire (Klondike; the owner's pick B, #4012): stock, waste, a card moving off the waste
+
+
+def test_solitaire_column_alternates_and_descends_over_a_face_down_card():
+    assert art.SOL_COLUMN_DOWN >= 1
+    for a, b in itertools.pairwise(art.SOL_COLUMN):
+        assert art.is_red(a) != art.is_red(b), (a, b)
+        assert _value(a) - _value(b) == 1, (a, b)
+
+
+def test_solitaire_moving_card_is_the_wastes_and_a_legal_move_onto_the_column():
+    """The 7S came off the waste (Klondike's draw pile) and goes onto the 8H at the column's foot:
+    black on red, one rank down. It is drawn between the two: right of the column, below the
+    waste, lower than the waste's top and higher than where it lands."""
+    mv, target = art.SOL_MOVING, art.SOL_COLUMN[-1]
+    assert art.is_red(mv) != art.is_red(target) and _value(target) - _value(mv) == 1
+    w, _ = art.SOL_SIZE
+    mx, my = art.SOL_MOVING_AT
+    cx, cy = art.SOL_COLUMN_AT
+    landing = cy + art.SOL_COLUMN_DOWN * art.DOWN_STEP + len(art.SOL_COLUMN) * art.SOL_STEP
+    wx, wy = art.SOL_WASTE_AT
+    assert cx < mx < cx + w  # overlapping the column, offset to its right
+    assert wy < my < landing
+    assert mx >= wx + (len(art.SOL_WASTE) - 1) * art.SOL_WASTE_FAN  # past the waste's fan
+
+
+def test_solitaire_shows_the_stock_face_down():
+    """Klondike's tell, and what sets the tile apart from FreeCell: the stock's teal backs, and
+    the face-down card under the column's run."""
+    im = np.asarray(art.render("solitaire"))
+    back = _mask(im, _rgb(art.CARD_BACK))
+    sx, sy = art.SOL_STOCK_AT
+    w, h = art.SOL_SIZE
+    assert back[sy : sy + h, sx : sx + w].mean() > 0.5  # the stock's top card
+    cx, cy = art.SOL_COLUMN_AT
+    assert back[cy : cy + art.DOWN_STEP, cx : cx + w].sum() > 40  # under the run
+
+
+def test_solitaire_waste_is_fanned_face_up_beside_the_stock():
+    w, _ = art.SOL_SIZE
+    assert art.SOL_WASTE_AT[0] > art.SOL_STOCK_AT[0] + w  # its own pile
+    assert 0 < art.SOL_WASTE_FAN < w  # overlapping, each index showing
+    im = np.asarray(art.render("solitaire"))
+    wx, wy = art.SOL_WASTE_AT
+    strip = (slice(wy + 2, wy + 2 * art.CARD_INDEX), slice(wx + 2, wx + art.SOL_WASTE_FAN))
+    ink = _rgb(art.CARD_RED if art.is_red(art.SOL_WASTE[0]) else art.CARD_INK)
+    assert _mask(im, ink)[strip].sum() > 20  # the first waste card's rank shows under the fan
+
+
+# --------------------------------------------------------------------------------------------
+# FreeCell (the owner's pick B, #4012): the deal, eight cascades all face up
+
+
+def test_freecell_deals_eight_cascades_of_uneven_length():
+    assert len(art.FC_CASCADES) == 8
+    lengths = [len(f) for f in art.FC_CASCADES]
+    assert min(lengths) >= 2 and len(set(lengths)) > 1
+
+
+def test_freecell_cards_are_all_face_up_with_no_backs():
+    im = np.asarray(art.render("freecell"))
+    assert _mask(im, _rgb(art.CARD_BACK)).sum() == 0
+
+
+def test_freecell_draws_eight_columns_side_by_side():
+    """Eight separate columns of cards across the tile: eight white card faces, each edged in
+    the outline grey, along a row through the first cards."""
+    im = np.asarray(art.render("freecell"))
+    y = art.FC_TOP + art.FC_SIZE[1] - 6
+    white = _mask(im, _rgb(art.CARD_FACE), tol=2)[y].astype(int)
+    assert (np.diff(white) == 1).sum() == 8
+
+
+def test_freecell_each_card_shows_its_suit_colour():
+    im = np.asarray(art.render("freecell"))
+    red, ink = _mask(im, _rgb(art.CARD_RED)), _mask(im, _rgb(art.CARD_INK))
+    w, _ = art.FC_SIZE
+    x0 = (art.TILE_PX - (8 * art.FC_PITCH - (art.FC_PITCH - w))) // 2
+    for i, faces in enumerate(art.FC_CASCADES):
+        for j, f in enumerate(faces):
+            x, y = x0 + i * art.FC_PITCH, art.FC_TOP + j * art.FC_STEP
+            box = (slice(y + 2, y + 2 * art.FC_PIP_Y - 1), slice(x + 2, x + w - 2))
+            want, other = (red, ink) if art.is_red(f) else (ink, red)
+            assert want[box].sum() > 5 and other[box].sum() == 0, f
+
+
+def test_solitaire_and_freecell_tiles_differ_at_a_glance():
+    """At 64 pt (the 1x tile) the two card tiles must not look alike (owner, #4012)."""
+    small = [
+        np.asarray(art.render(n).resize((art.DISPLAY_PT,) * 2, Image.LANCZOS)).astype(float)
+        for n in ("solitaire", "freecell")
+    ]
+    a0, a1 = (s[..., 3] / 255 for s in small)
+    assert np.abs(a0 - a1).mean() > 0.15
+
+
+# --------------------------------------------------------------------------------------------
+# Daily Word (the owner's pick A, #4012): real guesses, scored as the game scores them
+
+
+def test_dailyword_colours_are_the_games():
+    src = _theme("theme.dailyword.ts")
+    assert f'DAILYWORD_CORRECT = "{_hex(art.DW_CORRECT)}"' in src
+    assert f'DAILYWORD_PRESENT = "{_hex(art.DW_PRESENT)}"' in src
+    assert f'DAILYWORD_ABSENT = "{_hex(art.DW_ABSENT)}"' in src
+    assert f'DAILYWORD_LETTER_TEXT = "{_hex(art.DW_LETTER)}"' in src
+
+
+@pytest.mark.parametrize(
+    ("guess", "answer", "marks"),
+    [
+        ("PIANO", "FINAL", "acppa"),
+        ("FOCAL", "FINAL", "caacc"),
+        ("FINAL", "FINAL", "ccccc"),
+        ("CANAL", "FINAL", "aaccc"),  # the second A is green, so the first one is grey
+        ("LLAMA", "FINAL", "papaa"),  # one L and one A left over: only the first of each is yellow
+    ],
+)
+def test_dailyword_scores_like_the_game(guess, answer, marks):
+    assert art.score(guess, answer) == marks
+
+
+def test_dailyword_words_are_answers_in_every_language_the_game_plays():
+    words = REPO / "backend/daily_word/words"
+    for lang in ("en", "es", "fr"):
+        answers = set((words / f"answers_{lang}.txt").read_text(encoding="utf-8").split())
+        for w in [*art.DW_GUESSES, art.DW_ANSWER]:
+            assert w.lower() in answers, (lang, w)
+
+
+def test_dailyword_guesses_end_solved_and_use_hit_near_and_miss():
+    assert art.DW_GUESSES[-1] == art.DW_ANSWER
+    marks = "".join(art.score(g, art.DW_ANSWER) for g in art.DW_GUESSES[:-1])
+    assert set(marks) == {"c", "p", "a"}
+    im = np.asarray(art.render("daily_word"))
+    for colour in (art.DW_CORRECT, art.DW_PRESENT, art.DW_ABSENT):
+        assert _mask(im, _rgb(colour), tol=6).sum() > 300, colour
+
+
+def test_dailyword_draws_every_letter_in_white(monkeypatch):
+    drawn = []
+    real = art.text
+    monkeypatch.setattr(art, "text", lambda c, s, *a: (drawn.append(s), real(c, s, *a)))
+    im = np.asarray(art.render("daily_word"))
+    assert "".join(drawn) == "".join(art.DW_GUESSES)
+    assert _mask(im, _rgb(art.DW_LETTER), tol=8).sum() > 600
+
+
+# --------------------------------------------------------------------------------------------
+# Digits and letters: Space Grotesk Bold outlines, extracted once with their licence
 
 
 def test_numerals_cover_0_to_9_with_the_ofl_licence():
@@ -248,6 +491,32 @@ def test_numerals_cover_0_to_9_with_the_ofl_licence():
     assert "Open Font License" in doc["license"]
     ofl = (SCRIPT.parent / "lobby_numerals.OFL.txt").read_text(encoding="utf-8")
     assert "Space Grotesk" in ofl and "SIL OPEN FONT LICENSE" in ofl.upper()
+
+
+def test_letters_cover_a_to_z_in_the_same_font():
+    letters = json.loads(art.LETTERS_FILE.read_text(encoding="utf-8"))
+    assert sorted(letters["glyphs"]) == list(string.ascii_uppercase)
+    assert letters["font"] == art.digits()["font"] and "Open Font License" in letters["license"]
+    assert letters["capHeight"] == art.digits()["capHeight"]
+    assert set(art.glyphs()["glyphs"]) == set("0123456789" + string.ascii_uppercase)
+
+
+def test_extract_reproduces_the_shipped_outlines(tmp_path, monkeypatch):
+    """`extract` rewrites both outline files byte for byte from the font (needs fontTools and
+    the font from `npm ci`; skipped without them)."""
+    pytest.importorskip("fontTools")
+    font = (
+        REPO
+        / "frontend/node_modules/@expo-google-fonts/space-grotesk/700Bold/SpaceGrotesk_700Bold.ttf"
+    )
+    if not font.exists():
+        pytest.skip("Space Grotesk not installed (cd frontend && npm ci)")
+    digits, letters = tmp_path / "n.json", tmp_path / "g.json"
+    monkeypatch.setattr(art, "DIGITS_FILE", digits)
+    monkeypatch.setattr(art, "LETTERS_FILE", letters)
+    art.extract(font)
+    assert digits.read_bytes() == (SCRIPT.parent / "lobby_numerals.json").read_bytes()
+    assert letters.read_bytes() == (SCRIPT.parent / "lobby_glyphs.json").read_bytes()
 
 
 def test_counters_are_cut_out_of_the_digits():

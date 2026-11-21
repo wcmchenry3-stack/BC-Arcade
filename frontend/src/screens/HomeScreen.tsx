@@ -50,6 +50,9 @@ import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { getLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
+import dailyWordTile from "../../assets/home/daily_word-tile.webp";
+import freecellTile from "../../assets/home/freecell-tile.webp";
+import solitaireTile from "../../assets/home/solitaire-tile.webp";
 import sortTile from "../../assets/home/sort-tile.webp";
 import sudokuTile from "../../assets/home/sudoku-tile.webp";
 import twenty48Tile from "../../assets/home/twenty48-tile.webp";
@@ -73,7 +76,7 @@ import {
 
 // A tile's icon is an emoji, or a generated image, or Cascade's code-drawn piece (#3698), which
 // shows the emoji until it is ready (and on web). Images are gameplay scenes drawn by
-// tools/assets/draw_lobby_tile_art.py (#4011), shown at `cardArt` (64 pt, inside the 68 pt
+// tools/assets/draw_lobby_tile_art.py (#4011, #4012), shown at `cardArt` (64 pt, inside the 68 pt
 // TILE_ICON_ZONE); a `badge` image is Star Swarm's hex badge (#3599), 56 pt until #4013 redraws it.
 type GameCardIcon =
   | { emoji: string; image?: undefined; drawn?: boolean; badge?: undefined }
@@ -253,7 +256,7 @@ export default function HomeScreen() {
     {
       key: "daily_word",
       slug: "daily_word",
-      emoji: "📝",
+      image: dailyWordTile, // PIANO, FOCAL, then FINAL solved (answers in the en, es and fr lists)
       title: t("daily_word:game.title"),
       playLabel: t("daily_word:game.playLabel"),
       description: t("daily_word:game.description"),
@@ -299,7 +302,7 @@ export default function HomeScreen() {
     {
       key: "solitaire",
       slug: "solitaire",
-      emoji: "♠",
+      image: solitaireTile, // stock and waste, the waste's 7♠ moving onto an 8♥
       title: t("solitaire:game.title"),
       playLabel: t("solitaire:game.playLabel"),
       description: t("solitaire:game.description"),
@@ -308,7 +311,7 @@ export default function HomeScreen() {
     {
       key: "freecell",
       slug: "freecell",
-      emoji: "🂡",
+      image: freecellTile, // the deal: eight cascades, every card face up
       title: t("freecell:game.title"),
       playLabel: t("freecell:game.playLabel"),
       description: t("freecell:game.description"),
@@ -405,9 +408,10 @@ export default function HomeScreen() {
 
           {/* Emoji icon zone */}
           <View style={styles.emojiZone}>
-            {/* Not every icon is a colour emoji: "♠", "♥" and "🂡" are text-presentation
-                glyphs that take the Text colour, which defaults to black — invisible on
-                the dark theme. Colour emoji ignore `color`, so this is safe for the rest. */}
+            {/* The glyph colour now serves only Hearts (a hidden game, shown in internal
+                builds): its "♥" is a text-presentation glyph that takes the Text colour, which
+                defaults to black — invisible on the dark theme. Colour emoji ignore `color`, so
+                this is safe for the rest. Drop it once Hearts gets tile art (#4013). */}
             {item.image ? (
               <Image
                 source={item.image}

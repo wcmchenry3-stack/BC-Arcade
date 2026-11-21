@@ -438,7 +438,15 @@ describe("hidden games' lobby tile images stay out of store bundles (#4011)", ()
 
   it("HomeScreen imports no hidden or disabled game's tile image directly", () => {
     const slugs = tileImports(HOME_SCREEN);
-    expect(slugs.sort()).toEqual(["sort", "sudoku", "twenty48", "yacht"]);
+    expect(slugs.sort()).toEqual([
+      "daily_word",
+      "freecell",
+      "solitaire",
+      "sort",
+      "sudoku",
+      "twenty48",
+      "yacht",
+    ]);
     expect(homeScreenMismatches(slugs, STORE_EXCLUDED)).toEqual([]);
     expect(fs.readFileSync(HOME_SCREEN, "utf8")).toMatch(
       /from "\.\.\/components\/home\/hiddenGameTileArt"/
