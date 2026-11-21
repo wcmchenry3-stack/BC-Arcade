@@ -63,6 +63,20 @@ probability proportional to its game's affinity. Options are ranked by, in order
 6. a different goal archetype from the other slot.
 
 The draw is seeded from (session_id, day, ``SALT``), never the clock.
+
+The bonus goal (``choose_bonus``, #3995)
+----------------------------------------
+A personal day (never a shared-template day) may carry one optional bonus goal beside
+the three core goals; it never counts toward the streak or "day complete". With
+probability ``DAILY_CHALLENGE_DISCOVERY_SHARE`` (default 0.5) it is a **discovery**
+goal: the cold-start goal (a finish or a low fixed score) of a ``discovery_candidates``
+game. Otherwise it is a **bigger stretch**: a personal target in an affinity game with
+the stretch percentage doubled, still capped at the personal best (the same
+``personal_target`` rule). It is never a game of a core goal that day, never
+luck-dependent (``Goal.is_win``), and null when no candidate exists. The draw uses its
+own stream seeded from (session_id, day, ``SALT``, "bonus"), so adding a bonus never
+changes the core picks. A discovery bonus is marked by tier ``easy`` and a stretch
+bonus by tier ``medium`` in the pinned row (``bonus_kind``).
 """
 
 from __future__ import annotations
@@ -94,8 +108,8 @@ if TYPE_CHECKING:
 MIN_FINISHED_GAMES = 3
 # A (game, goal type) does not repeat within this many days (today included).
 NO_REPEAT_DAYS = 3
-# Discovery rest rule (#3995 uses it): a game offered as the bonus and not played that
-# day this many times within REST_DAYS rests for REST_DAYS after the last of them.
+# Discovery rest rule (``resting``, #3995): a game offered as the bonus and not played
+# that day this many times within REST_DAYS rests for REST_DAYS after the last of them.
 REST_AFTER_IGNORES = 3
 REST_DAYS = 30
 
@@ -122,6 +136,17 @@ def affinity_days() -> int:
 def history_games() -> int:
     """``DAILY_CHALLENGE_HISTORY_GAMES`` (default 10)."""
     return _get_settings().daily_challenge_history_games
+
+
+def bonus_enabled() -> bool:
+    """``DAILY_CHALLENGE_BONUS_ENABLED`` (default true): false pins no new bonus."""
+    return _get_settings().daily_challenge_bonus_enabled
+
+
+def discovery_share() -> float:
+    """``DAILY_CHALLENGE_DISCOVERY_SHARE`` (default 0.5, 0-1): the probability a bonus
+    is a discovery goal rather than a bigger stretch."""
+    return _get_settings().daily_challenge_discovery_share
 
 
 # ---------------------------------------------------------------------------
@@ -469,9 +494,11 @@ def is_new_install(history: InstallHistory, day: date) -> bool:
     return not any(history.affinity(day).values())
 
 
-def _rng(session_id: str, day: date, salt: int) -> random.Random:
+def _rng(session_id: str, day: date, salt: int, stream: str = "") -> random.Random:
     # A str seed is hashed with SHA-512 (random's version 2): stable across processes.
-    return random.Random(f"{session_id}|{day.isoformat()}|{salt}")
+    # ``stream`` names an independent draw (the bonus) so it never shifts the core one.
+    suffix = f"|{stream}" if stream else ""
+    return random.Random(f"{session_id}|{day.isoformat()}|{salt}{suffix}")
 
 
 def choose_core(
@@ -537,12 +564,12 @@ def choose_core(
 
 
 # ---------------------------------------------------------------------------
-# Discovery candidates (for the bonus slot, #3995)
+# Discovery candidates and the rest rule (the bonus slot, #3995)
 # ---------------------------------------------------------------------------
 
 
 def resting(history: InstallHistory, game: str, day: date) -> bool:
-    """A game offered as the bonus and not played that day ``REST_AFTER_IGNORES``
+    """A game offered as the discovery bonus and not played that day ``REST_AFTER_IGNORES``
     times within ``REST_DAYS`` rests for ``REST_DAYS`` after the last of them.
     Only finished days count (before the first day this history serves)."""
     ignored = sorted(
@@ -550,6 +577,7 @@ def resting(history: InstallHistory, game: str, day: date) -> bool:
         for d, a in history.pinned.items()
         if d < min(day, history.first_day)
         and a.bonus is not None
+        and bonus_kind(a.bonus) == "discovery"
         and a.bonus.game_type == game
         and not history.played_on(game, d)
     )
@@ -570,3 +598,77 @@ def discovery_candidates(history: InstallHistory, eligible: Iterable[str], day: 
         for g in eligible
         if g in GAME_SPECS and not played.get(g) and not resting(history, g, day)
     )
+
+
+# ---------------------------------------------------------------------------
+# The bonus goal (#3995)
+# ---------------------------------------------------------------------------
+
+BonusKind = Literal["discovery", "stretch"]
+# The tier stored with a pinned bonus is its marker: a discovery goal is built "easy",
+# a stretch goal is a personal target, "medium" (``build_goal``).
+DISCOVERY_TIER = "easy"
+STRETCH_TIER = "medium"
+
+
+def bonus_kind(goal: Goal) -> BonusKind:
+    """Whether a pinned bonus ``goal`` was a discovery goal or a stretch (its tier)."""
+    return "discovery" if goal.tier == DISCOVERY_TIER else "stretch"
+
+
+def _discovery_goal(game: str) -> Goal:
+    spec = GAME_SPECS[game]
+    gtype = spec.type(spec.cold_type)
+    return goal_from_spec(
+        {
+            "game_type": game,
+            "kind": gtype.kind,
+            "target": spec.cold_target,
+            "tier": DISCOVERY_TIER,
+        }
+    )
+
+
+def choose_bonus(
+    history: InstallHistory,
+    day: date,
+    eligible: Sequence[str],
+    core: Sequence[Goal],
+    *,
+    session_id: str,
+    pct: int | None = None,
+    share: float | None = None,
+) -> Goal | None:
+    """The day's optional bonus goal, or ``None`` (module docstring). The drawn kind
+    falls back to the other when it has no candidate; ``None`` only when neither has."""
+    pct = stretch_pct() if pct is None else pct
+    share = discovery_share() if share is None else share
+    rng = _rng(session_id, day, SALT, "bonus")
+    core_games = {g.game_type for g in core}
+
+    discovery = [
+        _discovery_goal(g)
+        for g in discovery_candidates(history, eligible, day)
+        if g not in core_games
+    ]
+    discovery = [g for g in discovery if not g.is_win]
+
+    affinity = history.affinity(day)
+    stretch: list[Option] = []
+    for game in sorted(eligible):
+        if game not in GAME_SPECS or game in core_games or not affinity.get(game):
+            continue
+        spec = GAME_SPECS[game]
+        for opt in options_for(game, history, day, pct=min(100, pct * 2)):
+            if spec.type(opt.type_name).personal and not opt.goal.is_win:
+                stretch.append(opt)
+
+    want_discovery = rng.random() < share
+    if want_discovery and discovery:
+        return rng.choice(discovery)
+    if stretch:
+        weights = [affinity[o.game_type] for o in stretch]
+        return rng.choices(stretch, weights=weights)[0].goal
+    if discovery:
+        return rng.choice(discovery)
+    return None
