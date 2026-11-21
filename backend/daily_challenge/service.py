@@ -14,10 +14,12 @@ most paths — a 9,000-point Twenty48 run ended with "New Game" used to clear a
 result block reports ``won: false``; threshold goals were not, so the rows are
 filtered here instead of relying on each goal kind to notice.
 
-The only write here is indirect: ``schedule.get_or_create_template`` (#2493)
-freezes today's assignment into ``daily_challenge_days`` the first time it is
-requested, so tuning the goal pool or ``DAILY_CHALLENGE_SALT`` later can never
-change what a day already showed.
+The writes here are pins, never progress. ``schedule.get_or_create_template``
+(#2493) freezes a day's shared template into ``daily_challenge_days`` the first
+time it is requested, so tuning the goal pool or ``DAILY_CHALLENGE_SALT`` later can
+never change what a day already showed. ``assignments.get_or_pin`` (#3992) then
+pins the install's own goals for the day into ``daily_challenge_assignments``
+(``pick_for_install`` chooses them), so every later read returns the same goals.
 """
 
 from __future__ import annotations
@@ -29,7 +31,8 @@ from datetime import date, datetime
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from daily_challenge import schedule
+from daily_challenge import assignments, schedule
+from daily_challenge.assignments import Assignment
 from daily_challenge.definitions import (
     Facts,
     Goal,
@@ -58,6 +61,9 @@ class ChallengeStatus:
     slate: Slate
     template: Template
     goals: tuple[GoalStatus, ...]
+    # The optional bonus goal (#3995): never counted in ``completed_goals`` or the
+    # streak. Always None until #3995 fills it.
+    bonus: Goal | None = None
 
     @property
     def completed_goals(self) -> int:
@@ -127,8 +133,11 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
     refreshed on every Home focus. Otherwise one statement: the template's games
     joined to this session's entitlements.
 
-    The slate choice is live and not stored: a mid-day entitlement change can
-    move the session to the other slate on the next call. Note that the choice
+    The slate is pinned with the day (#3992): ``pick_for_install`` calls this once,
+    when the install's day is first served, and the pinned row keeps that slate,
+    so a mid-day entitlement change applies from the next day not yet pinned. It
+    is resolved per request only for unpinned days (an install that may not pin,
+    or ``DAILY_CHALLENGE_PERSONALIZED`` off, via ``shared_for_install``). The choice
     is made from the *computed* templates (``template_for(day, "premium")`` and
     ``template_for(day, "free")``, from the current pool and salt), while the
     template the caller then serves is the *frozen* one for that (day, slate)
@@ -160,6 +169,41 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
     )
 
 
+async def pick_for_install(session: AsyncSession, session_id: str, day: date) -> Assignment:
+    """Choose one install's goals for ``day``; ``assignments.get_or_pin`` stores
+    the result, so this runs at most once per (install, day) while the kill switch
+    is on, and on every request while it is off.
+
+    For now (#3992) it is today's behaviour exactly: the shared frozen template
+    for the slate ``resolve_slate`` chooses, and no bonus. Personal targets
+    (#3993), game selection (#3994) and the bonus goal (#3995) replace it; the
+    install's history and entitlements are its context, read here through
+    ``session`` and ``session_id``.
+
+    Behaviour change from pinning: the slate is now resolved once, when the day is
+    pinned, so a mid-day purchase no longer swaps that day's goals (it applies from
+    the next unpinned day). Invisible while the free and premium pools match.
+    """
+    return await shared_for_install(session, session_id, day)
+
+
+async def shared_for_install(session: AsyncSession, session_id: str, day: date) -> Assignment:
+    """The shared frozen template for the slate ``resolve_slate`` chooses: what an
+    install that may not pin (``assignments.may_pin``) or any install while the
+    kill switch is off is served. Never written to ``daily_challenge_assignments``."""
+    slate = await resolve_slate(session, session_id, day)
+    template = await schedule.get_or_create_template(
+        session, day, slate, lambda: template_for(day, slate)
+    )
+    return Assignment(template=template, slate=slate, bonus=None)
+
+
+async def _shared_days(
+    session: AsyncSession, session_id: str, days: list[date]
+) -> dict[date, Assignment]:
+    return {d: await shared_for_install(session, session_id, d) for d in days}
+
+
 async def get_status_for_session(
     session: AsyncSession,
     *,
@@ -168,10 +212,16 @@ async def get_status_for_session(
     utc_now: datetime | None = None,
 ) -> ChallengeStatus:
     day = local_day(tz_offset_minutes, utc_now)
-    slate = await resolve_slate(session, session_id, day.date)
-    template = await schedule.get_or_create_template(
-        session, day.date, slate, lambda: template_for(day.date, slate)
+    pinned = await assignments.get_or_pin(
+        session,
+        session_id,
+        [day.date],
+        today=day.date,
+        pick=lambda d: pick_for_install(session, session_id, d),
+        shared=lambda ds: _shared_days(session, session_id, ds),
     )
+    assignment = pinned[day.date]
+    template = assignment.template
     game_types = {goal.game_type for goal in template.goals}
 
     rows = (
@@ -195,7 +245,8 @@ async def get_status_for_session(
     ]
     return ChallengeStatus(
         day=day,
-        slate=slate,
+        slate=assignment.slate,
         template=template,
         goals=evaluate_template(template, ended),
+        bonus=assignment.bonus,
     )

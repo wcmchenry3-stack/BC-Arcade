@@ -388,6 +388,10 @@ on-device history is needed**. §9's ring buffer is dropped.
    the server picks that day's goals for that install and **stores them as a pinned assignment**. Every later read,
    on any device, returns the same pinned goals. This applies the existing frozen-day idea (§4 of
    DAILY-CHALLENGE.md) per install instead of per date.
+   - **Shipped in #3992** (storage and plumbing; the pick is still the shared template). Pinning starts only for
+     an install with a `games` row created in the last `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (48), and only while
+     storage is under budget: the fuller of replay events vs `REPLAY_STORAGE_BUDGET_MB` and the whole database vs `DATABASE_PLAN_MB`, at the replay recorder's 90 % turn-down point. Any other install is served the shared
+     template and nothing is stored. The slate is pinned with the day.
 2. **Targets become plain numbers.** A personal target is resolved at pick time into an absolute value: "Score at
    least 1,800", "Reach Sort level 23" (baseline 21 + 2 new levels), "Win in at most 104 moves". The existing
    evaluator (`*_at_least`, `won_*_at_most`, `won`, `completed`) checks them with no per-player logic. Replaying a
@@ -401,8 +405,10 @@ on-device history is needed**. §9's ring buffer is dropped.
    bonus slot.
    - Trade-off: days +1 and +2 are pinned from the history known when they were first served, so their targets
      can be up to 2 days stale. That's accepted: the staleness is small and it keeps one pick per day per install.
-5. **New installs.** The first `/status` of an install with no history pins cold-start goals (§12). An install that
-   is offline from first launch has nothing cached and keeps today's "connect to get today's challenge" message.
+5. **New installs.** The first `/status` of an install with no history gets cold-start goals (§12), but as shipped
+   (#3992) they are **not pinned until its first game syncs**: a brand-new install's first-day goals, and the days
+   it caches for offline play, come from the unpinned path and the next request after that game pins. An install
+   that is offline from first launch has nothing cached and keeps today's "connect to get today's challenge" message.
 
 ### Wire compatibility with installed builds
 
@@ -416,13 +422,14 @@ on-device history is needed**. §9's ring buffer is dropped.
 
 | Item | Estimate | Bound |
 | --- | --- | --- |
-| Assignment row (install, date, 3 core goals + 1 bonus, compact encoding) | ~150 B incl. index | 1 per install per day served; at most 3 days ahead |
-| Per 1,000 daily players | ~150 KB/day; **~9 MB** held at 60-day retention | prune after `STREAK_LOOKBACK_DAYS` (60), daily batched delete like `daily_word_progress` |
-| Per 10,000 daily players | ~1.5 MB/day; **~90 MB** held | same prune. For scale: their `games` rows (~13 games/day, several hundred bytes each) grow over 30× faster |
+| Assignment row (install, date, 3 core goals, compact encoding) | **~250 B incl. index, measured** on Postgres 16 (193 B heap + 54 B index); a bonus goal adds ~40 B. The ~150 B first estimate was below the fixed per-row cost (~120 B) | 1 per recently active install per day served; at most 3 days ahead; none while over the storage budget |
+| Per 1,000 daily players | ~250 KB/day; **~15 MB** held at 60-day retention | prune after `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default and minimum `STREAK_LOOKBACK_DAYS` + 1, 61), daily batched delete like `daily_word_progress` |
+| Per 10,000 daily players | ~2.5 MB/day; **~150 MB** held | same prune. For scale: their `games` rows (~13 games/day, several hundred bytes each) grow many times faster |
 | Pick query | one windowed read of the install's recent games, **once per install per day** | later reads of that day are one row lookup |
 | Requests | none new: `/status` and `/upcoming` already exist and are called on Home focus | — |
 
-Abandoned or never-opened days cost nothing: a row exists only when a day is served.
+Abandoned or never-opened days cost nothing: a row exists only when a day is served to an install that has played
+in the last 48 h.
 
 ### Dials and kill switch (no app release needed)
 
@@ -430,8 +437,10 @@ Server env vars, read lazily like the existing daily-challenge settings:
 
 - `DAILY_CHALLENGE_PERSONALIZED` (default on). **Kill switch**: off means every install gets the shared frozen
   template (today's behaviour with the Daily Word fix), and no assignment rows are written.
-- `DAILY_CHALLENGE_STRETCH_PCT` (start 12), `DAILY_CHALLENGE_DISCOVERY_SHARE` (start 0.5),
-  `DAILY_CHALLENGE_BONUS_ENABLED` (start on), `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (60).
+- Shipped in #3992: `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default `STREAK_LOOKBACK_DAYS` + 1, 61; refused below
+  that) and `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (48).
+- Proposed for later stories: `DAILY_CHALLENGE_STRETCH_PCT` (start 12), `DAILY_CHALLENGE_DISCOVERY_SHARE` (start
+  0.5), `DAILY_CHALLENGE_BONUS_ENABLED` (start on).
 
 None of these touch the device, so the `/games/catalog` dial carrier isn't needed.
 

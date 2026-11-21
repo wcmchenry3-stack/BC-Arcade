@@ -259,6 +259,41 @@ async def measure_storage(session: AsyncSession) -> StorageSize | None:
     return StorageSize(events_bytes=int(row[0]), database_bytes=int(row[1]))
 
 
+# The latest size reading in this process, for callers that must not measure per
+# request: the daily-challenge pin guard (daily_challenge.assignments, #3992).
+SIZE_CACHE_TTL = timedelta(hours=1)
+_cached_size: tuple[datetime, StorageSize] | None = None
+
+
+def _remember(size: StorageSize, now: datetime | None = None) -> None:
+    global _cached_size
+    _cached_size = (now or datetime.now(UTC), size)
+
+
+async def cached_storage(
+    session: AsyncSession, *, now: datetime | None = None
+) -> StorageSize | None:
+    """The last reading if under ``SIZE_CACHE_TTL`` old, else a fresh one (one query
+    at most an hour per process, Postgres only; ``None`` on SQLite)."""
+    now = now or datetime.now(UTC)
+    if _cached_size is not None and now - _cached_size[0] < SIZE_CACHE_TTL:
+        return _cached_size[1]
+    size = await measure_storage(session)
+    if size is not None:
+        _remember(size, now)
+    return size
+
+
+async def storage_over_budget(session: AsyncSession) -> bool:
+    """True when the fuller of the two ratios (``read_budget``) is at or over
+    ``EXCEEDED_THRESHOLD``: the same 90 % point at which the replay recorder is
+    turned down. False when not measurable (SQLite)."""
+    size = await cached_storage(session)
+    if size is None:
+        return False
+    return read_budget(size, budget_bytes(), plan_bytes()).ratio >= EXCEEDED_THRESHOLD
+
+
 def crossed_threshold(used: int, budget: int) -> float | None:
     """The highest of ``BUDGET_THRESHOLDS`` that ``used / budget`` has reached."""
     ratio = used / budget
@@ -348,6 +383,7 @@ async def check_storage_budget(
     size = await (measure or measure_storage)(session)
     if size is None:
         return None
+    _remember(size)
     reading = read_budget(size, budget, plan)
     logger.info(
         "replay storage: game_events %d of %d bytes, database %d of %d bytes",
