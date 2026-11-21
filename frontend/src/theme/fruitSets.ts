@@ -22,8 +22,10 @@ export interface FruitSet {
 const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[] }> = {
   fruits: {
     id: "fruits",
-    // TEMP(#3962): Lychee (blueberry art), Plum (grape art), Lime (recoloured lemon) and Pomegranate (coconut art)
-    // are stand-ins until #3964; the emoji and colours below are dev-panel / fallback only.
+    // The emoji and colours below are dev-panel / fallback only (the art is code-drawn). Unicode has
+    // no lychee, plum or pomegranate emoji, so those three borrow the nearest one: 🍓 (a bumpy red
+    // shell), 🍑 (a stone fruit) and 🍎 (a red fruit with a calyx). Lime is 🍋‍🟩 (Emoji 15.1; older
+    // platforms show a lemon).
     label: "Fruits",
     fruits: [
       {
@@ -35,14 +37,14 @@ const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[
       {
         tier: 1,
         name: "Lychee",
-        emoji: "🫐",
-        color: "#6d28d9",
+        emoji: "🍓",
+        color: "#e4546a",
       },
       {
         tier: 2,
         name: "Lime",
-        emoji: "🍋",
-        color: "#84cc16",
+        emoji: "🍋‍🟩",
+        color: "#2f8f2a",
       },
       {
         tier: 3,
@@ -53,8 +55,8 @@ const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[
       {
         tier: 4,
         name: "Plum",
-        emoji: "🍇",
-        color: "#7c3aed",
+        emoji: "🍑",
+        color: "#d63a5c",
       },
       {
         tier: 5,
@@ -71,8 +73,8 @@ const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[
       {
         tier: 7,
         name: "Pomegranate",
-        emoji: "🥥",
-        color: "#78716c",
+        emoji: "🍎",
+        color: "#c4262e",
       },
       {
         tier: 8,

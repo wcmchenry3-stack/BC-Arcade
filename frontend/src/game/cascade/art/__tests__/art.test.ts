@@ -192,8 +192,10 @@ describe("overhangs", () => {
     // the Lychee moved up one from #3920's table.
     fruits: {
       0: [0, 0.52, 0, 0], // cherry stem
-      4: [0, 0.4, 0, 0], // grape stem
+      1: [0, 0.225, 0, 0], // lychee stem and leaf (#3964; 0.35 r at the leaf tip, measured radially)
+      4: [0, 0.31, 0, 0], // plum stem and leaf (#3964)
       6: [0, 0.4, 0, 0], // apple stem and leaf
+      7: [0, 0.27, 0, 0], // pomegranate calyx (#3964)
       8: [0.12, 0.475, 0.12, 0], // dragonfruit: crown on top, side bracts
       9: [0, 0.45, 0, 0], // pineapple crown
       11: [0, 0.335, 0, 0], // pumpkin stem
@@ -258,6 +260,13 @@ describe("overhangs", () => {
     fruits: {
       peach: [0, 0.28, 0, 0], // stem and leaf
       appleRed: [0, 0.4, 0, 0], // stem and leaf, the same drawing as the green Apple
+      // #3964: the pieces the Lychee, Plum and Pomegranate replaced, and three unused proposals.
+      blueberry: [0, 0, 0, 0], // no overhang
+      grape: [0, 0.4, 0, 0], // stem
+      coconut: [0, 0, 0, 0], // no overhang
+      figB: [0, 0.195, 0, 0], // stem
+      figC: [0, 0.325, 0, 0], // neck and stem
+      mangosteenB: [0, 0.23, 0, 0], // calyx
     },
     // The Moon is back in play at tier 1 (#3960), so Cosmos retires nothing.
     cosmos: {},
