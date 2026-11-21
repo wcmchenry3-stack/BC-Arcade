@@ -1,6 +1,6 @@
 {
   "game.title": "Слово дня",
-  "game.description": "Слово из 5 букв. 6 попыток. Новая головоломка каждый день.",
+  "game.description": "Слово из 5 букв. 6 попыток. Каждый день новое.",
   "game.playLabel": "Играть в «Слово дня»",
   "hud.guessesLeft_one": "Осталась {{count}} попытка",
   "hud.guessesLeft_few": "Осталось {{count}} попытки",

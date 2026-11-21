@@ -1,6 +1,6 @@
 {
   "game.title": "FreeCell",
-  "game.description": "Переложите все карты в базы — продумывайте каждый ход.",
+  "game.description": "Переложите все карты в базы.",
   "game.playLabel": "Играть в FreeCell",
   "action.undo": "Отменить",
   "action.hint": "Совет",

@@ -1287,6 +1287,17 @@ tile keeps the column width. The tile icon slot is `TILE_ICON_ZONE` (68 pt) from
 module; art drawn in it (emoji 44 pt, Star Swarm image and Cascade icon 56 pt) must fit.
 Locked and unlocked Play buttons both carry a 1 pt border so tiles are the same height.
 
+**Lobby tile type (#4006).** Title 16 pt (line height 20), description 12 pt (16), button
+label 13 pt in sentence case, letter-spacing 0.2 (constants in `lobbyColumns.ts`); nothing
+in a tile is below 11 pt. Every tile `Text` sets `maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}`
+(1.5), so Dynamic Type / Android font size grows tile text by at most 1.5x. No tile text has
+a fixed height: `lobbyTileTextSizing(fontScale)` returns `minHeight`s that scale with the
+window's `fontScale` (capped at the same 1.5, rounded up to whole points): the description reserves 3 lines, or 5 once
+`fontScale > 1` (`numberOfLines` to match), and the title 1 line, or 2 once `fontScale > 1`, so a title wraps
+instead of truncating and tiles in a row stay equal. The button reads `common:play`
+("Play"); the tile's accessibility label is the game's `game.playLabel`, kept on the
+`GameCard` entry rather than keyed by translated title.
+
 **Lobby order (#4009).** Tiles follow `allGames` in `HomeScreen.tsx`, a fixed order with Daily
 Word first (the daily game) and every other game in its existing relative slot. Store builds
 show Daily Word, Yacht, 2048, Solitaire, FreeCell, Sudoku, Sort Puzzle. The order never changes
