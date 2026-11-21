@@ -1,6 +1,7 @@
 import React from "react";
 import { Text } from "react-native";
-import { fireEvent, render, screen, within } from "@testing-library/react-native";
+import i18n from "i18next";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { ModalCard, ModalPrimaryButton, ModalSecondaryButton } from "../ModalCard";
@@ -58,6 +59,46 @@ describe("ModalCard Lobby chip (#3969)", () => {
     expect(within(screen.getByTestId("card")).queryByTestId("modal-home-chip")).toBeNull();
     await fireEvent.press(chip);
     expect(onHome).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ModalCard Lobby chip RTL and status bar (#3969)", () => {
+  afterEach(async () => {
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+  });
+
+  it("does not mirror the arrow in LTR", async () => {
+    await renderInTheme(<ModalCard visible onHome={() => {}} />);
+    const style = StyleSheet.flatten(screen.getByTestId("modal-home-chip-icon").props.style);
+    expect(style?.transform).toBeUndefined();
+  });
+
+  it("mirrors the arrow in an RTL locale", async () => {
+    await act(async () => {
+      await i18n.changeLanguage("ar");
+    });
+    await renderInTheme(<ModalCard visible onHome={() => {}} />);
+    const style = StyleSheet.flatten(screen.getByTestId("modal-home-chip-icon").props.style);
+    expect(style.transform).toEqual([{ scaleX: -1 }]);
+  });
+
+  it("is status-bar translucent only when onHome is set", async () => {
+    // Walk up from the card to its Modal host node, which carries the Modal's props.
+    const modalProps = (testID: string) => {
+      let node = screen.getByTestId(testID).parent;
+      while (node && !("accessibilityViewIsModal" in node.props)) node = node.parent;
+      return node!.props;
+    };
+    const { rerender } = await renderInTheme(<ModalCard visible testID="card" onHome={() => {}} />);
+    expect(modalProps("card").statusBarTranslucent).toBe(true);
+    await rerender(
+      <ThemeProvider>
+        <ModalCard visible testID="card" />
+      </ThemeProvider>
+    );
+    expect(modalProps("card").statusBarTranslucent).toBeUndefined();
   });
 });
 

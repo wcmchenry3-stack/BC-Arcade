@@ -65,7 +65,7 @@ extraction — see [Wave Structure](#wave-structure)).
 
 - Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately. While the wave-clear autopilot flies the ship (#2842) the drag is ignored; a drag held through it picks up from the ship's new position rather than snapping back under the finger.
 - The ship auto-fires; there is no ammunition economy.
-- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape close it and return to the paused run (#3463); with no run under the picker (cold start, a finished run) they start a run like Start. The picker covers the header, so a "Lobby" chip floats over it at the Back arrow's position (#3969): it does what the header's Back does (saves a held run, then returns to the lobby) and never starts a run.
+- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape close it and return to the paused run (#3463); with no run under the picker (cold start, a finished run) they start a run like Start. The picker covers the header, so a "Lobby" chip floats over it near the Back arrow's position (mirrored in right-to-left) (#3969): it does what the header's Back does (saves a held run, then returns to the lobby) and never starts a run.
 - New Game starts a clean run and abandons the old server session if one is open.
 - Development-only tuning controls are test aids, not player rules.
 

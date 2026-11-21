@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { RTL_LOCALES } from "../../i18n/locales";
 import { useTheme } from "../../theme/ThemeContext";
 import MaterialIcons from "../icons/MaterialIcons";
 import { typography } from "../../theme/typography";
@@ -60,7 +61,9 @@ export function ModalCard({
   children,
 }: ModalCardProps) {
   const { colors } = useTheme();
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
+  // Native pins LTR (i18n.ts), so only web can be RTL; there the arrow must mirror.
+  const isRtl = RTL_LOCALES.has(i18n.language);
   const insets = useSafeAreaInsets();
 
   return (
@@ -70,6 +73,8 @@ export function ModalCard({
       animationType={animationType}
       onRequestClose={onRequestClose}
       accessibilityViewIsModal
+      // The chip sits at insets.top, so the modal must draw under the status bar on Android.
+      statusBarTranslucent={onHome ? true : undefined}
     >
       <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
         {onHome && (
@@ -89,7 +94,13 @@ export function ModalCard({
               },
             ]}
           >
-            <MaterialIcons name="arrow-back" size={18} color={colors.text} />
+            <MaterialIcons
+              name="arrow-back"
+              size={18}
+              color={colors.text}
+              style={isRtl ? styles.mirrored : undefined}
+              testID="modal-home-chip-icon"
+            />
             <Text style={[styles.homeChipText, { color: colors.text }]} maxFontSizeMultiplier={1.3}>
               {t("nav.lobby")}
             </Text>
@@ -234,6 +245,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  mirrored: {
+    transform: [{ scaleX: -1 }],
   },
   homeChipText: {
     fontSize: 14,
