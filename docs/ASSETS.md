@@ -11,7 +11,7 @@ frontend/assets/
 ├── logo.png            In-app logo (PNG)
 │
 ├── fonts/             Subset icon fonts (MaterialIcons, MaterialCommunityIcons; generated, #3843) + CREDITS.md
-├── home/              Home tile images (the Star Swarm hex badge, generated, #3599) + CREDITS.md
+├── home/              Lobby tile images (gameplay scenes #4011, the Star Swarm hex badge #3599; generated) + CREDITS.md
 ├── mahjong/            42 tile SVGs (rendered via react-native-svg at runtime)
 ├── starswarm/          WebP sprites — player layers, Buddy, enemies (incl. Carrier), rocks, shots, pickups
 │   ├── CREDITS.md      Source for every sprite (all original and generated since #3595)
@@ -45,11 +45,12 @@ https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 Rule: a runtime image must be at least its largest rendered size in points times the device pixel ratio (3x on phones, 2x on iPads, which have the larger point sizes; take the larger product), plus a margin. Anything much bigger only costs bundle size and decode memory. Measured on the files as of #2833:
 
-| Family                                                              | Files (bundled) | Pixels                 | Drawn by              | Largest rendered size | Pixels needed       | Verdict                                                                                                                              |
-| ------------------------------------------------------------------- | --------------- | ---------------------- | --------------------- | --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `icon.png`                                                          | app.json only   | 1024 px, 8-bit palette | store/app icon source | —                     | 1024 px (App Store) | Kept; already palette, re-encoding would grow it                                                                                     |
-| `ios/.../App-Icon-1024x1024@1x.png`                                 | iOS binary      | 1024 px RGB, no alpha  | App Store icon        | —                     | 1024 px, no alpha   | Lossless re-compress only (−2.4%)                                                                                                    |
-| `starswarm/`, `mahjong/` (SVG), `logo.png`, splash/adaptive/favicon | all             | small                  | —                     | —                     | —                   | Star Swarm 65,376 B (63.8 KB) in 43 images after #3708, plus the 2,698 B home tile icon (#3599); see `games/starswarm-art-design.md` |
+| Family                                                              | Files (bundled) | Pixels                 | Drawn by               | Largest rendered size | Pixels needed       | Verdict                                                                                                                              |
+| ------------------------------------------------------------------- | --------------- | ---------------------- | ---------------------- | --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `icon.png`                                                          | app.json only   | 1024 px, 8-bit palette | store/app icon source  | —                     | 1024 px (App Store) | Kept; already palette, re-encoding would grow it                                                                                     |
+| `ios/.../App-Icon-1024x1024@1x.png`                                 | iOS binary      | 1024 px RGB, no alpha  | App Store icon         | —                     | 1024 px, no alpha   | Lossless re-compress only (−2.4%)                                                                                                    |
+| `starswarm/`, `mahjong/` (SVG), `logo.png`, splash/adaptive/favicon | all             | small                  | —                      | —                     | —                   | Star Swarm 65,376 B (63.8 KB) in 43 images after #3708, plus the 2,698 B home tile icon (#3599); see `games/starswarm-art-design.md` |
+| `home/{yacht,twenty48,sudoku,sort}-tile.webp`                       | 4               | 192 px                 | `HomeScreen` `cardArt` | 64 pt                 | 192 px (64 pt x 3)  | Drawn at exactly 3x; 11,858 B in all, each at most 3,400 B (#4011)                                                                   |
 
 The world is 400 × 600 units. The canvas takes the whole game area, so `scale` peaks around 2.0–2.3 on a 13" iPad in portrait (1376 pt tall at most, so `scale` can never pass 1376 / 600 ≈ 2.3) and around 1.06 on a 440 pt-wide phone. Cascade's code-drawn pieces have no fixed resolution: the board rasterises them at the board's `scale` times the device pixel ratio (`game/cascade/art/sprites.ts`), so they are sharp at every size.
 
@@ -84,6 +85,17 @@ pickups, #3592, #3600, #3593, #3596, #3594, #3595, #3708) and the Star Swarm hom
 rows name the recipe, and the
 design log is [`games/starswarm-art-design.md`](games/starswarm-art-design.md). Its explosions,
 Smart Bomb flash and nebula background have no image files: they are drawn in code (#3597).
+
+The lobby tiles of Yacht, 2048, Sudoku and Sort Puzzle (`home/<slug>-tile.webp`, #4011, #4004) are
+gameplay scenes generated by `tools/assets/draw_lobby_tile_art.py`: open scenes with no frame, a
+mid-grey outline (`#8a8a98`) so they read on the dark and the light card, the games' own colours,
+192 px (3x the 64 pt `cardArt` slot in `HomeScreen.tsx`) and at most 3,400 B each
+(`src/__tests__/lobbyTileBudget.test.ts`). The 2048 and Sudoku numerals are Space Grotesk Bold
+outlines (SIL OFL 1.1), extracted once into `tools/assets/lobby_numerals.json` with the licence in
+`lobby_numerals.OFL.txt`. A tile for a game in `HIDDEN_GAMES` goes in
+`src/components/home/hiddenGameTileArt.ts`, never as an import in `HomeScreen.tsx`: a store bundle
+stubs that module, and `--forbid-hidden-assets` fails a store build that packages a hidden game's
+tile ([PERFORMANCE.md](PERFORMANCE.md#store-build-hidden-premium-exclusion-2830)).
 
 ### Required attribution
 
@@ -121,6 +133,7 @@ allow-list. It covers `frontend/assets/`; the native launcher and splash rasters
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sounds/*.ogg` (201)                                                 | `synth_{arcade,cascade,puzzle,starswarm}_sfx.py`                                                                                                         |
 | `starswarm/**`, `home/starswarm-tile.webp` (44)                      | `draw_starswarm_art.py`                                                                                                                                  |
+| `home/{yacht,twenty48,sudoku,sort}-tile.webp` (4)                    | `draw_lobby_tile_art.py` (numerals from `lobby_numerals.json`)                                                                                           |
 | `mahjong/*.svg` (42)                                                 | `gen_mahjong_tiles.py`                                                                                                                                   |
 | `fonts/*.subset.ttf`                                                 | `subset_icon_fonts.py`                                                                                                                                   |
 | `splash-icon.png`, `adaptive-icon.png`, Android launcher, iOS splash | `gen_app_icons.py`                                                                                                                                       |
@@ -175,9 +188,9 @@ The script is idempotent.
 The in-house sounds (`synth_starswarm_sfx.py`, `synth_arcade_sfx.py`, `synth_puzzle_sfx.py`) and the Star Swarm sprites (`draw_starswarm_art.py`) are the output of their scripts in `tools/assets/`. The splash and Android launcher art (`gen_app_icons.py`, #3935) is generated the same way from the mascot; `python tools/assets/gen_app_icons.py` rewrites them in place (palette PNGs, about 0.4 MB net over the old placeholders) and `--check` lists stale files. Tests fail when a shipped file stops matching its generator (#3672), so a change always goes through the script:
 
 1. Edit the recipe in the generator script.
-2. Rerun the generator for that name into a scratch folder, e.g. `python tools/assets/synth_puzzle_sfx.py /tmp/out daily-word-win` (sprites: `python tools/assets/draw_starswarm_art.py --out /tmp/out <name>`).
+2. Rerun the generator for that name into a scratch folder, e.g. `python tools/assets/synth_puzzle_sfx.py /tmp/out daily-word-win` (sprites: `python tools/assets/draw_starswarm_art.py --out /tmp/out <name>`; lobby tiles: `python tools/assets/draw_lobby_tile_art.py --out /tmp/out --sheet <name>`).
 3. Listen to or look at the result, then copy it over the shipped file in `frontend/assets/`.
-4. Run `cd tools && python -m pytest`. `synth_shipped_test.py` (sounds) and `draw_starswarm_art_test.py` (sprites, pixel for pixel) must pass. The sound test compares decoded samples, which in practice means bit-exact decoded PCM under a matched ffmpeg/libvorbis build: its 2% relative RMS tolerance only absorbs trivial float differences, it fails a 0.17 dB recipe change, and it does not survive an encoder change (a libvorbis quality change moves the decode by 2% to 18%). It needs ffmpeg with libvorbis; CI gets it from the pinned `ubuntu-24.04` runner image plus an apt install, and under CI a missing ffmpeg fails the test instead of skipping. If the test fails and you changed no recipe, the encoder build probably changed: refresh the shipped sounds with the procedure below.
+4. Run `cd tools && python -m pytest`. `synth_shipped_test.py` (sounds), `draw_starswarm_art_test.py` (sprites, pixel for pixel) and `draw_lobby_tile_art_test.py` (lobby tiles, pixel for pixel) must pass. The sound test compares decoded samples, which in practice means bit-exact decoded PCM under a matched ffmpeg/libvorbis build: its 2% relative RMS tolerance only absorbs trivial float differences, it fails a 0.17 dB recipe change, and it does not survive an encoder change (a libvorbis quality change moves the decode by 2% to 18%). It needs ffmpeg with libvorbis; CI gets it from the pinned `ubuntu-24.04` runner image plus an apt install, and under CI a missing ffmpeg fails the test instead of skipping. If the test fails and you changed no recipe, the encoder build probably changed: refresh the shipped sounds with the procedure below.
 
 ### Pinned generator libraries
 
