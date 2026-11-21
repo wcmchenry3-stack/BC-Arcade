@@ -9,7 +9,7 @@
   ],
   "rules": [
     {"glob": "frontend/assets/sounds/*.ogg", "kind": "generated", "recipe": "tools/assets/synth_{arcade,cascade,puzzle,starswarm}_sfx.py (SOUNDS tables; pinned by synth_shipped_test.py)", "credits": "frontend/assets/sounds/SOUND_CREDITS.md"},
-    {"glob": "frontend/assets/sounds/starswarm-bgm.mp3", "kind": "attested", "recipe": "tools/assets/make_starswarm_bgm_loop.py (loop edit only)", "why": "Owner-generated Round 46 render; the round archive is held outside the repo. Source and shipped SHA-256 are in SOUND_CREDITS.md and checked by a Jest test.", "credits": "frontend/assets/sounds/SOUND_CREDITS.md"},
+    {"glob": "frontend/assets/sounds/starswarm-bgm.mp3", "kind": "generated", "recipe": "tools/assets/build_starswarm_bgm.py (starswarm_bgm/ layers and cues, then tools/assets/make_starswarm_bgm_loop.py; pinned by starswarm_bgm_test.py)", "credits": "frontend/assets/sounds/SOUND_CREDITS.md"},
     {"glob": "frontend/assets/sounds/mahjong-bg-*.mp3", "kind": "third-party", "why": "Pixabay Content License lo-fi tracks; declared exception, no attribution required, must not be redistributed on their own.", "credits": "frontend/assets/sounds/SOUND_CREDITS.md"},
     {"glob": "frontend/assets/starswarm/**/*.webp", "kind": "generated", "recipe": "tools/assets/draw_starswarm_art.py", "credits": "frontend/assets/starswarm/CREDITS.md"},
     {"glob": "frontend/assets/home/starswarm-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_starswarm_art.py (home-tile-badge)", "credits": "frontend/assets/home/CREDITS.md"},
