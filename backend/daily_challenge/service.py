@@ -53,7 +53,7 @@ from daily_challenge.definitions import (
 from daily_challenge.history import InstallHistory
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import DISABLED_GAMES, is_dev_override_active
-from games.filters import not_abandoned
+from games.filters import not_abandoned, not_dev_affected
 
 logger = logging.getLogger(__name__)
 
@@ -197,8 +197,9 @@ async def eligible_games(session: AsyncSession, session_id: str) -> list[str]:
     goal specs, plus the premium games with specs it is entitled to (the dev override
     counts as entitled, as in ``resolve_slate``). Never a game in ``DISABLED_GAMES``.
 
-    No premium game has specs yet (#3996), so today this is the free games and runs
-    no query. A premium game must not get specs while store builds hide it."""
+    The premium games with specs (#3996: Blackjack, Cascade, Hearts, Mahjong, Star
+    Swarm) are offered only to an install entitled to them, so a free install never
+    gets one; with none left it is the free games and runs no query."""
     spec_games = [g for g in sorted(personal.GAME_SPECS) if g not in DISABLED_GAMES]
     free = [g for g in spec_games if g in FREE_GOAL_POOL]
     premium = [g for g in spec_games if g not in FREE_GOAL_POOL]
@@ -240,8 +241,9 @@ async def pick_for_install(
     * **Otherwise**: Daily Word plus two personal goals (``personal.choose_core``),
       on the slate ``resolve_slate`` chooses, stored with the day. No bonus (#3995).
 
-    Queries: the history (at most four, once per ``context``), then none for a personal
-    pick while no premium game has specs and the two slates match; the shared path
+    Queries: the history (at most four, once per ``context``), then the entitlements
+    (one, once per ``context``, none with the dev override) for a personal pick, and
+    nothing more while the two slates match (``resolve_slate``); the shared path
     adds the frozen template read (and an INSERT for a day never frozen).
 
     Behaviour change from pinning: the slate is resolved once, when the day is
@@ -332,6 +334,8 @@ async def get_status_for_session(
                 Game.completed_at >= day.start_utc,
                 Game.completed_at < day.end_utc,
                 not_abandoned(),
+                # A run a dev-panel action touched never counts (#3510, #3996).
+                not_dev_affected(),
             )
         )
     ).all()

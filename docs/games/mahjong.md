@@ -237,3 +237,7 @@ Triggers are in `frontend/src/components/mahjong/useMahjongFeedback.ts`; the pla
 | `mahjong.deadlock`              | `mahjong-deadlock.ogg`, "gong and bells"                       | no moves are left (a muted gong with the board shake; a falling bell as the card shows)                  | 1.0    |
 
 Background music: `mahjong.bg1`–`bg3` (`mahjong-bg-{1,2,3}.mp3`, `game/mahjong/useMahjongAudio.ts`); out of scope for #3578.
+
+## Daily Challenge (#3996)
+
+Premium players get Mahjong goals through the personal pick ([DAILY-CHALLENGE.md §2a](../DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)); a free install never does: **clear a board** (`won`, the cold-start goal, not luck-dependent: a deadlock can be undone) and **clear one in under _T_ minutes** (`won_duration_ms_at_most`, in whole minutes: the median of the last 10 clears x 0.88, never below the fastest of them, floor 4 minutes; offered after 3 clears). Both read the result block's `won` (sent by the app) and the `duration_ms` column. A deadlock left (`loss`) and an abandon never count. Unlike Cascade, the time goal has no win floor against a forged clock (`_WON_WITHIN_FLOORS`; the clear-time floor `MIN_CLEAR_MS` only keeps such a row off the board).

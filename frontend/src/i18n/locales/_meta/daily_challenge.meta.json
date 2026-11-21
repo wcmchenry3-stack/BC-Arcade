@@ -305,6 +305,105 @@
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
+  "goal.blackjack.completed": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish one Blackjack run (reach its chip goal or run out of chips; leaving early does not count).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.blackjack.won": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: win one Blackjack run (reach the table's chip goal).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.blackjack.starting_chips_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish a Blackjack run at a table that starts the player with at least {{target}} chips (the 100 / 250 / 500 chip tables). \"+\" means \"or more\".",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{game}}", "{{target}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Keep {{target}} as the number."
+  },
+  "goal.cascade.completed": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish one game, win or lose (leaving early does not count).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.cascade.won": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: win one game (make the top piece).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.cascade.won_duration_ms_at_most": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: win a game within {{target}} minutes (a whole number).",
+    "tone": "functional",
+    "characterLimit": 50,
+    "placeholders": ["{{game}}", "{{target}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Keep {{target}} as the number."
+  },
+  "goal.hearts.completed": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish one game, win or lose (leaving early does not count).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.hearts.won": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: win one game (the lowest score).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.starswarm.completed": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: play one run until the game ends (leaving early does not count).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.starswarm.wave_reached_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: reach at least wave number {{target}} in one run.",
+    "tone": "functional",
+    "characterLimit": 42,
+    "placeholders": ["{{game}}", "{{target}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Keep {{target}} as the number."
+  },
+  "goal.starswarm.final_score_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: reach at least the given score in one run, e.g. \"Score 2500+ in Star Swarm\".",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}", "{{target}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Keep {{target}} as the number."
+  },
   "goal.doneA11y": {
     "component": "DailyChallengeCard",
     "description": "Screen-reader label for a goal chip that is done. {{goal}} is the chip's visible text.",

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validat
 from pydantic_core import PydanticCustomError
 
 from games.board import MAX_BOARD_VALUE
+from games.result_flags import with_outcome_flags
 
 # Run aggregates older builds sent when starting a session (#539). Nothing read
 # them, so current builds send none (#3140); they are still accepted and stripped
@@ -59,6 +60,16 @@ class BlackjackResult(BaseModel):
     hands_played: int | None = Field(default=None, ge=0)
     starting_chips: int | None = None
     final_chips: int | None = Field(default=None, ge=0, le=MAX_BOARD_VALUE)
+    # Written by the server from the completion's outcome, never the app's (#3996):
+    # ``won`` when the run reached its goal, ``is_complete`` for a win or a loss.
+    # The Daily Challenge's win and finish goals read them.
+    won: bool | None = None
+    is_complete: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _outcome_flags(cls, data: object, info: ValidationInfo) -> object:
+        return with_outcome_flags(data, (info.context or {}).get("outcome"))
 
     @model_validator(mode="after")
     def _final_score_is_final_chips(self, info: ValidationInfo) -> BlackjackResult:

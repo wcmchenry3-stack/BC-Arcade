@@ -364,7 +364,7 @@ Notes:
   _Fixed (#3993)._
 - **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Deferred
   to #4028; the shared template keeps them (see "Shipped" below)._
-- **Blackjack:** the pending hand-count goals are dropped (§7a).
+- **Blackjack:** the pending hand-count goals are dropped (§7a). _Shipped (#3996)._
 
 ### Shipped for the free games (#3993, #3994)
 
@@ -403,6 +403,18 @@ from the tables above:
   rest a game for 30 days after the last one.
 - Dials shipped: `DAILY_CHALLENGE_STRETCH_PCT` (12), `DAILY_CHALLENGE_AFFINITY_DAYS` (14),
   `DAILY_CHALLENGE_HISTORY_GAMES` (10).
+
+### Shipped for the premium games (#3996)
+
+Personal-pick goals for Blackjack, Cascade, Hearts, Mahjong and Star Swarm (`GAME_SPECS`), offered only to an install entitled to the game. Contract and numbers: [DAILY-CHALLENGE.md §2a](DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993). Where it differs from the tables above:
+
+- **Blackjack "win a run one table up" is "finish a run at table _T_ or higher"** (`starting_chips_at_least`, 100 / 250 / 500): no existing kind combines a win with a table condition. It is not luck-dependent. The table steps up from the usual one only after a recent win at it (the next table unlocks on a completed run). Cold start is plain "finish a run": at Beginner a table condition adds nothing. The hand-count goals are removed from `PENDING_PREMIUM_GOALS`; frozen days still rebuild.
+- **Finish and win needed server-written facts.** The apps send no `won` / `is_complete` for Blackjack, Hearts or Star Swarm (Cascade had `won`), and the evaluator never reads `games.outcome`, so the result models write them from the completion's outcome (`backend/games/result_flags.py`). Verified: a Blackjack run that reaches its goal records `win` (`endSession` and the kill-sweep snapshot both send it; the server stores it), Hearts records `win` / `loss` / `push`, Cascade `win` / `loss`, Mahjong `won` itself, Star Swarm `completed`.
+- **Cascade and Mahjong wins are not luck-dependent** (`SKILL_WIN_GAMES`); Blackjack and Hearts wins are.
+- **Times are in whole minutes** (Cascade floor 2 min, Mahjong 4 min), so the card shows no fractions.
+- **Star Swarm targets use the usual `difficulty_tier`**, separated in memory from the 10 recent runs (no extra query); the goal is not tier-bound because no existing kind asks for one.
+- **`PREMIUM_GOAL_POOL` stays equal to `FREE_GOAL_POOL`.** Premium games in it would let `resolve_slate` change a day already served (#2760), change streak replays of unfrozen days, and add frozen rows, for a shared template only an install without history sees.
+- **Fixes it needed:** `/status` and the streak now skip `dev_affected` rows (the history already did), and the streak reads every game with a spec (it read only the pools' games, so a premium goal day could never score).
 
 ### Data needed per measure (input to step 3)
 
