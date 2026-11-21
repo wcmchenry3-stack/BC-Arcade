@@ -28,7 +28,7 @@ From [`PRODUCT.md`](PRODUCT.md), and they bind this design:
 - **No purchase prompts that exploit a streak.** A free player never sees a goal for a premium game they don't own,
   and never sees "buy X to keep your streak".
 - **Free games stay complete.** Challenges never unlock or gate content.
-- **Analytics (PRODUCT.md, updated with this proposal).** First-party gameplay data may be used inside the app: to
+- **Analytics (owner decision; PRODUCT.md update tracked in #3988).** First-party gameplay data may be used inside the app: to
   personalize features like Daily Challenge, and in aggregate to decide what to improve in the games. It is never
   sold, never used for marketing or ads outside the app, and never used to build profiles of identifiable people.
 
@@ -116,7 +116,7 @@ Rules:
 - **Premium player:** eligible games = every game.
 
 This replaces today's per-template "owns every premium game named" check with one flag. Note: `docs/IAP.md` still
-describes one product per game with no bundle; it needs reconciling with this decision, outside this proposal.
+describes one product per game with no bundle; the docs and the purchase code are changed by #3989.
 
 ### Focus on what they play (core slots)
 
@@ -281,7 +281,7 @@ The CLAUDE.md order applies: cost, then performance, then data. A first look:
    its checkmark (a reward can be revisited later).
 3. ~~Analytics rule.~~ **Decided (owner, 2026-11-21):** in bounds. First-party data is used inside the app to
    personalize features and improve the games; it is not sold, not used for outside marketing, and not used to
-   profile identifiable people. PRODUCT.md is updated to say this.
+   profile identifiable people. PRODUCT.md update: #3988.
 4. ~~Premium floor.~~ **Decided (owner, 2026-11-21):** premium unlocks every premium game, so a player is either free
    or premium. No extra quota; premium games are picked by play, and unplayed ones surface in the bonus slot.
 5. ~~Ship order.~~ **Decided (owner, 2026-11-21):** all of this ships before go-live. "Daily Word = complete only" can

@@ -20,7 +20,7 @@ A calm, no-BS arcade of simple games designed for short moments — not long ses
 - Forced ads to continue playing
 - Complex user profiles
 - Cross-game social leaderboards
-- Analytics that leave the app: no selling data, no marketing or ad targeting outside the app, no profiles of identifiable people. (First-party gameplay data may be used inside the app to personalize features such as Daily Challenge, and in aggregate to decide what to improve.)
+- Advanced analytics beyond error reporting
 
 ## Platforms
 
