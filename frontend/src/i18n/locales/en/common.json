@@ -51,6 +51,7 @@
   "overflow.abandon.body": "Starting a new game will discard your progress in this round. Your lifetime stats won't be affected.",
   "overflow.abandon.keepPlaying": "Keep Playing",
   "overflow.abandon.startNew": "Start New",
+  "play": "Play",
   "home.locked.buttonLabel": "Unlock",
   "home.locked.cardLabel": "{{title}} — Locked, tap to unlock",
   "deleteData.label": "Delete my data",

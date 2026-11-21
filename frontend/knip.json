@@ -19,6 +19,8 @@
     // metro/storeBundle.js resolves hidden premium screens to it in store
     // bundles (#2830); nothing imports it by name.
     "src/screens/StoreBuildExcludedScreen.tsx!",
+    // ...and the hidden games' lobby tile art to this image-free stand-in (#4011).
+    "src/components/home/hiddenGameTileArt.store.ts!",
     // build-yacht-oracle.ts imports these through a ../../frontend/... path
     // that knip 6 no longer follows from an out-of-workspace entry.
     "tooling/yacht/oracleBuild/solver.ts",
