@@ -168,9 +168,34 @@ Deliberately small, from data we already have (frozen assignments plus `games` r
 | Bonus discovery: game played after suggestion | Watch                | Low means lower the discovery share                    |
 | Next-day return after a qualifying day        | Watch                | The real retention signal                              |
 
-**Current data reality:** the `bc-arcade` Supabase project holds very little play so far (tens of games, a handful
-of sessions). We can't tune from data yet. We launch on the heuristics above with **server-controlled dials** and
-tune once real players arrive.
+**Current data reality:** production (`bc-arcade` `main`) holds almost nothing yet (52 games, 3 sessions). We launch
+on the heuristics above with **server-controlled dials** and tune once real players arrive.
+
+### What the dev branch shows (2026-11-21)
+
+The Supabase `dev` branch has 763 finished game rows from 2026-10-10 to 2026-11-21 across 126 sessions. But 123 of
+those sessions played only one game type (tests and reinstalls), and one session (a heavy tester) accounts for
+584 rows over 35 active days. So this is a **sanity check of the strategy, not a tuning set**. What it shows:
+
+- **Play is concentrated with a long tail.** The heavy player touched all 12 games but mostly two: Star Swarm 234
+  and Yacht 150, then Cascade/Solitaire 36 each and the rest between 4 and 30. "Played in the last 14 days" would
+  include nearly every game for such a player, so affinity has to be **weighted by volume**, not a yes/no.
+- **The fixed targets are miscalibrated, in both directions.**
+  - 2048: median score ~2,970, so "500" (easy) and "2,500" (hard) are both trivial.
+  - Yacht: median ~236, so "250" (hard) is a coin flip and "100" (easy) is a given.
+  - Sort: median level 3.5, best 17, so the catalog goals of 30/60 are out of reach.
+
+  This is exactly the "arbitrary" feel, and relative targets fix it.
+- **Sessions are bite-sized.** Median game length is 0.3–6 minutes depending on the game. On a typical active day:
+  ~13 games, 4 different games, ~30 minutes in total. Two core goals of one to three games each fit the vision.
+- **Daily Word is already a habit.** 30 plays on 25 of 35 active days, so it works as the anchor.
+- **The most-played game can't be a goal today.** Star Swarm, a premium game, has no goals in any pool (#2458).
+  Under the affinity rule, a premium owner's favourite game must be eligible.
+- **Abandons matter more than expected.** Abandoned rows never count toward a goal, and abandon rates are high in
+  some games: Solitaire 72%, FreeCell 68%, Cascade 64%, Blackjack 92% (vs Yacht 6%, Daily Word 13%). Players often
+  redeal rather than finish. Even "Finish a game" is a real ask in those games, and the per-game step must check how
+  each game records its normal end. Blackjack's 92% suggests a normal "leave the table" ends as `abandoned`, which
+  would make every Blackjack goal unreachable.
 
 ## 9. Cost, performance and offline: early read (step 3 will verify)
 
