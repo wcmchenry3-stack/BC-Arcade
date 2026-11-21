@@ -51,6 +51,7 @@
   "overflow.abandon.body": "Een nieuw spel starten verwijdert je voortgang in deze ronde. Je statistieken blijven behouden.",
   "overflow.abandon.keepPlaying": "Doorgaan",
   "overflow.abandon.startNew": "Nieuw starten",
+  "play": "Spelen",
   "home.locked.buttonLabel": "Ontgrendelen",
   "home.locked.cardLabel": "{{title}} — Vergrendeld, tik om te ontgrendelen",
   "deleteData.label": "Verwijder mijn gegevens",

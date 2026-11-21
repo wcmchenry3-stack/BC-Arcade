@@ -123,6 +123,8 @@ export default defineConfig({
         "i18n-overflow.spec.ts",
         // #4005: was matched by no project, so CI never ran it.
         "lobby-responsive.spec.ts",
+        // #4006: lobby descriptions fit their reserved lines at the 1.5x font cap.
+        "lobby-tile-text-fit.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },
