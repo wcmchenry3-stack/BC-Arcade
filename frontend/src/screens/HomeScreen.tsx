@@ -88,6 +88,11 @@ type GameCard = GameCardIcon & {
   playLabel: string;
   description: string;
   action: () => void;
+  /**
+   * What a tap does while the tile says Resume, for a game whose plain `action` would not land in
+   * the saved game (Sort opens its level grid). Omitted: `action` already resumes (#4008).
+   */
+  resumeAction?: () => void;
 };
 
 export default function HomeScreen() {
@@ -355,6 +360,8 @@ export default function HomeScreen() {
       playLabel: t("sort:game.playLabel"),
       description: t("sort:game.description"),
       action: () => navigation.navigate("Sort"),
+      // The tile says Resume only for a board the level grid would Continue: land in it.
+      resumeAction: () => navigation.navigate("Sort", { resume: true }),
     },
   ];
   // Store builds hide the premium games entirely (#2390) — see gameVisibility.ts.
@@ -421,7 +428,13 @@ export default function HomeScreen() {
       <View style={[styles.cardWrapper, numColumns === 1 && styles.cardWrapperFull]}>
         <Pressable
           style={[styles.card, { backgroundColor: colors.surfaceHigh }]}
-          onPress={isLocked ? () => openPaywall(item.slug) : item.action}
+          onPress={
+            isLocked
+              ? () => openPaywall(item.slug)
+              : status?.kind === "resume" && item.resumeAction
+                ? item.resumeAction
+                : item.action
+          }
           accessibilityRole="button"
           accessibilityLabel={tileLabel(item, isLocked, status)}
           // Resume says its status in the label; Done today and Best are the tile's value.

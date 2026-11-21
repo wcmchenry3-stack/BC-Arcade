@@ -15,6 +15,7 @@ import type { TileStatus } from "../../game/_shared/lobbyStatus";
 import { __resetPersonalBestForTests, recordResult } from "../../game/_shared/personalBest";
 import { newGame as newTwenty48 } from "../../game/twenty48/engine";
 import { saveGame as saveTwenty48 } from "../../game/twenty48/storage";
+import { SORT_CATALOG_VERSION } from "../../game/sort/catalog";
 import { dealGame as dealFreeCell } from "../../game/freecell/engine";
 import { saveGame as saveFreeCell } from "../../game/freecell/storage";
 
@@ -1065,6 +1066,46 @@ describe("HomeScreen — tile status from local data (#4008)", () => {
     // Tapping opens the game, which restores the save exactly as it always did.
     fireEvent.press(tile);
     expect(mockNavigate).toHaveBeenCalledWith("Twenty48");
+  });
+
+  it("shows Resume for a Sort save, and a tap opens Sort on that level (not the level grid)", async () => {
+    await AsyncStorage.setItem("@sort/catalog_version", String(SORT_CATALOG_VERSION));
+    await AsyncStorage.setItem(
+      "@sort/progress",
+      JSON.stringify({
+        unlockedLevel: 3,
+        currentLevelId: 3,
+        currentState: {
+          bottles: [["red", "blue"], ["blue", "red"], []],
+          moveCount: 2,
+          undosUsed: 0,
+          isComplete: false,
+          selectedBottleIndex: null,
+        },
+      })
+    );
+    const r = await renderScreen();
+    const tile = await r.findByLabelText("Play Sort Puzzle — in progress, tap to resume");
+    expect(r.getByTestId("game-status-sort").props.children).toBe("In progress");
+    expect(within(r.getByTestId("game-btn-sort")).getByText("Resume")).toBeTruthy();
+
+    fireEvent.press(tile);
+    expect(mockNavigate).toHaveBeenCalledWith("Sort", { resume: true });
+  });
+
+  it("shows Play and opens Sort plainly when there is no Sort board to continue", async () => {
+    await AsyncStorage.setItem("@sort/catalog_version", String(SORT_CATALOG_VERSION));
+    await AsyncStorage.setItem(
+      "@sort/progress",
+      JSON.stringify({ unlockedLevel: 3, currentLevelId: null })
+    );
+    const r = await renderScreen();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(r.queryByTestId("game-status-sort")).toBeNull();
+    fireEvent.press(r.getByLabelText("Play Sort Puzzle"));
+    expect(mockNavigate).toHaveBeenCalledWith("Sort");
   });
 
   it("renders the grid with the normal description while a read has not landed", async () => {

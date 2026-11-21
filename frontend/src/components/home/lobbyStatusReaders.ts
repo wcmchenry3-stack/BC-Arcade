@@ -15,6 +15,7 @@ import { getLobbyStatus as twenty48 } from "../../game/twenty48/lobbyStatus";
 import { getLobbyStatus as solitaire } from "../../game/solitaire/lobbyStatus";
 import { getLobbyStatus as freecell } from "../../game/freecell/lobbyStatus";
 import { getLobbyStatus as sudoku } from "../../game/sudoku/lobbyStatus";
+import { getLobbyStatus as sort } from "../../game/sort/lobbyStatus";
 import { getLobbyStatus as dailyWord } from "../../game/daily_word/lobbyStatus";
 
 export type LobbyStatusReader = () => Promise<TileStatus | undefined>;
@@ -25,7 +26,6 @@ export const LOBBY_STATUS_READERS: Readonly<Record<string, LobbyStatusReader>> =
   solitaire,
   freecell,
   sudoku,
+  sort,
   daily_word: dailyWord,
-  // Sort has none: its mid-level save is opened from the level grid's Continue, not by the tile,
-  // and its bests are one per level (see docs/ARCHITECTURE.md, lobby tile status).
 };

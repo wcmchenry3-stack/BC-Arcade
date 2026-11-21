@@ -206,6 +206,7 @@ describe("LOBBY_STATUS_READERS (#4008)", () => {
       "daily_word",
       "freecell",
       "solitaire",
+      "sort",
       "sudoku",
       "twenty48",
       "yacht",
