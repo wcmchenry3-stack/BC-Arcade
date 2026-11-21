@@ -570,7 +570,7 @@ export const gameEventRegistry = {
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      // #3858: one of each per unit of up to 20 drops (game/cascade/replay.ts): the drops and
+      // #3858: one of each per unit of up to 30 drops (game/cascade/replay.ts): the drops and
       // the danger moments; the merges, split on `m` if oversized.
       drop: { tier: Priority.REPLAY, maxBytes: CASCADE_DROP_MAX_BYTES },
       merge: { tier: Priority.REPLAY, maxBytes: CASCADE_MERGE_MAX_BYTES, chunkField: "m" },

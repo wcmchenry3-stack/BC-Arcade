@@ -1,7 +1,7 @@
 """Cascade's replay events, ``drop`` and ``merge`` (#3858, epic #3273).
 
 The app records a Cascade game through the shared GameRecorder
-(``frontend/src/game/cascade/replay.ts``), one unit per 20 drops (fewer when the game
+(``frontend/src/game/cascade/replay.ts``), one unit per 30 drops (fewer when the game
 ends or the app goes to the background), each unit a ``drop`` and a ``merge`` event:
 
 - ``drop``: ``{"d": [[step, x_tenths, tier], ...], "z": [[start, peak], ...]?, "rs": 1?}``.
@@ -52,8 +52,8 @@ MERGE = "merge"
 SCHEMA_VERSION = 1
 
 MAX_DROP_BYTES = 1024
-"""Compact-JSON bytes one ``drop`` event may take: 20 drops, 32 danger moments and the
-envelope are about 740 B at the widest."""
+"""Compact-JSON bytes one ``drop`` event may take: 30 drops, 32 danger moments and the
+envelope are about 940 B at the widest."""
 MAX_MERGE_BYTES = 1024
 """Compact-JSON bytes one ``merge`` event (or part) may take."""
 MAX_DROPS_PER_EVENT = 32

@@ -435,8 +435,8 @@ frontend/src/
 
 **fruitSets.test.ts**
 
-- All 3 sets (fruits, gems, planets) define exactly 11 tiers
-- No duplicate tiers within a set; all tiers 0–10 covered
+- All 3 sets (fruits, gems, planets) define exactly 12 tiers
+- No duplicate tiers within a set; all tiers 0–11 covered
 - Every fruit has non-empty name, emoji, and color
 - Radii increase monotonically with tier
 - Radii are identical across all sets for the same tier (physics skin-agnostic)

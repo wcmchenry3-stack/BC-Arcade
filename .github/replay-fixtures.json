@@ -155,7 +155,7 @@
     },
     {
       "path": "backend/tests/test_cascade_replay_events.py",
-      "sha256": "b9c70ba14543a56fe073a5bdfcfba29c782e7cdedf5eeed12594a4f41d73bc47",
+      "sha256": "b647dcb9c874c3fd0449c04006ba08634eb78070d6c6fee4771a825b83356625",
       "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
     },
     {

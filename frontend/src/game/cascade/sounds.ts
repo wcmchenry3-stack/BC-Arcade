@@ -1,5 +1,5 @@
 /**
- * Cascade's sounds (#3702): one set of 21 files per piece set, synthesized in-house by
+ * Cascade's sounds (#3702): one set of 22 sounds per piece set (21 files until #3966), synthesized in-house by
  * `tools/assets/synth_cascade_sfx.py` (owner picks: Fruits "Juicy pops", Cosmos "Starlight
  * glass"). The Fruits / Cosmos toggle picks the set. What plays when, and how it is paced:
  * `soundPacer.ts`; the players: `useCascadeSounds.ts`. Design log:

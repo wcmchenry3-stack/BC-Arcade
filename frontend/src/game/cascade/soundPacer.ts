@@ -3,7 +3,7 @@
  * way the haptics are (`haptics.ts`).
  *
  *   - drop: as the piece leaves the spawner;
- *   - land: the light file for tiers 0-4, the heavy one for 5-10, louder with the tier. Landings
+ *   - land: the light file for tiers 0-4, the heavy one for 5-11, louder with the tier. Landings
  *     within `MOTION.sound.landGapMs` of the last are one sound: the highest tier among them;
  *   - merge: the pre-pitched file of the tier it made. A chain link (2, 3, …) plays its merge and
  *     its chain step together on the counter's paced steps (`MOTION.chain.stepMs`), as the chain

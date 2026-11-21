@@ -20,7 +20,7 @@ export const CASCADE_PIECE_COLORS = [
   "#4361ee", // 1 Lychee (TEMP(#3962): blueberry colour until #3964) / Moon
   "#9bd13f", // 2 Lime (TEMP(#3962): until #3964) / Mercury
   "#f9c80e", // 3 Lemon / Mars
-  "#6a0572", // 4 Grape / Venus
+  "#6a0572", // 4 Plum (TEMP(#3962): the grape colour until #3964) / Venus
   "#f77f00", // 5 Orange / Earth
   "#7cc242", // 6 Apple (green, #3920) / Neptune
   "#6f4e37", // 7 Pomegranate (TEMP(#3962): coconut colour until #3964) / Uranus

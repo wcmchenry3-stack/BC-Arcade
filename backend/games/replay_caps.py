@@ -213,7 +213,7 @@ SORT_CAP = ReplayCap(
 # 10-minute game is about 18 rows and 12 KB (frontend/perf/replay-budget.json; #3967. On the
 # 11-tier ladder with 20-drop units: 16 rows and 8,192 B, 26 rows and 13 KB). 32 units of
 # the widest honest rows (30 drops at 6-digit steps, 45 merges, the 32 danger moments a game
-# may keep on one of them) are 64 rows and 58,997 B (tests/test_cascade_replay_events.py;
+# may keep on one of them) are 64 rows and 60,437 B (tests/test_cascade_replay_events.py;
 # 96 rows and 66,901 B at 48 units of 20):
 # 128 events and 80 KB leave room for merge parts. Lifecycle rows are not counted (their own
 # cap). This replaces the provisional 3,000 events / 900 KB (#3318), set before Cascade

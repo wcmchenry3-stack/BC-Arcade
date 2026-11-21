@@ -386,7 +386,7 @@ function buildMahjong(): Played {
 
 /**
  * Cascade (#3858): a seeded game on the real engine, recorded as the screen records it (a unit
- * per 20 drops through the replay log). `gapMs` is the bot's pace; the 10-minute game is the
+ * per 30 drops through the replay log). `gapMs` is the bot's pace; the 10-minute game is the
  * skilled bot dropping every 2.4 s (seed 6 is still alive at 600 s, so it is abandoned there;
  * seed 3 until #3967, whose ladder ends it at 8 min),
  * with a trip to the background after its 120th drop.

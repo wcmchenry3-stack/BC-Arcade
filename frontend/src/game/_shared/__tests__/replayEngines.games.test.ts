@@ -129,7 +129,7 @@ const CASES: readonly Case[] = [
     engines: cascade.REPLAY_ENGINES,
     version: cascadeEngine.ENGINE_VERSION,
     rules: {}, // a fresh engine on the seed: cascade/__tests__/replay.fixture.test.ts replays it
-    started: { fruit_set: "fruits", seed: 3, engine_seed: 4, tuning: "lively3.overlap1.ladder11" },
+    started: { fruit_set: "fruits", seed: 3, engine_seed: 4, tuning: "lively3.overlap1.ladder12" },
   },
   {
     game: "daily_word",

@@ -76,7 +76,7 @@ const FLOOR_Y = 580;
 const ticksMs = (ticks: number): number => ticks * FIXED_STEP_MS;
 /**
  * `win`: how far right of the lower tier-10 piece the upper one falls (#3920). Two tier-10 pieces
- * (r 80.7) fit side by side on the floor, so the upper one falls onto the lower one's shoulder.
+ * (r 80.33) fit side by side on the floor, so the upper one falls onto the lower one's shoulder.
  */
 const WIN_OFFSET_X = 100;
 
@@ -136,7 +136,7 @@ function wallTower(tiers: number[], side: "left" | "right"): CascadeSetup["piece
  *    fast-forwarded past the restore grace and a sixth of the count, so the ring is draining
  *    when the screen shows it and the lid ends the game about 2.5 s later.
  *  - `fillBin`: that tower plus a tower of tiers 10 to 6 against the right wall (top edge at about
- *    y = 38); the lid ends the game (the live rule, no force) about 4 s after the restore.
+ *    y = 19); the lid ends the game (the live rule, no force) about 4 s after the restore.
  *  - `win` (#3920): two tier-10 pieces (Watermelon / Sun) about to merge into the capstone: one on
  *    the floor against the left wall, the other above it, offset by WIN_OFFSET_X towards the
  *    middle and 43 px higher than where it would first touch it. It falls onto it, and the merge

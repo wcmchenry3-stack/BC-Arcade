@@ -207,7 +207,7 @@ def _widest_unit(unit: int, merges: int | None = None) -> list[dict[str, Any]]:
         "t_ms": 2_147_483_647,
     }
     merge: dict[str, Any] = {"m": [], "v": 1, "unit": unit, "t_ms": 2_147_483_647}
-    entry = [999_999, 9, 99]
+    entry = [999_999, 10, 99]  # a merge from tier 10 (into the capstone), the widest tierFrom
     while merges is None or len(merge["m"]) < merges:
         grown = {**merge, "m": [*merge["m"], entry]}
         if len(json.dumps(grown, separators=(",", ":"))) > MAX_MERGE_BYTES:
@@ -233,7 +233,7 @@ def test_a_game_of_the_most_units_fits_the_server_cap() -> None:
         rows += [drop, merge]
     stored = sum(json_bytes(r) + ROW_OVERHEAD_BYTES for r in rows)
     assert len(rows) <= CASCADE_CAP.max_events
-    assert stored == 58_997
+    assert stored == 60_437
     assert stored <= CASCADE_CAP.max_bytes
 
 
