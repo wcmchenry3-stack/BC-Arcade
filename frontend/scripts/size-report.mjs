@@ -48,29 +48,46 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * The slugs in HIDDEN_GAMES (src/entitlements/gameVisibility.ts): the games a store build hides.
+ * The string literals of `export const <name> ... = new Set([...])` in gameVisibility.ts.
+ * Tolerates a type argument (`new Set<string>([...])`), an empty set, comments and
+ * multi-line / single-quoted formatting. An empty set returns an empty Set; a missing
+ * declaration throws, so a rename cannot silently turn the guard off.
+ */
+export function readStringSet(source, name) {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const match = code.match(
+    new RegExp(`\\b${name}\\b[^=;]*=\\s*new\\s+Set\\s*(?:<[^>]*>)?\\s*\\(\\s*\\[([^\\]]*)\\]`)
+  );
+  if (!match) throw new Error(`size-report: could not read ${name} from gameVisibility.ts`);
+  return new Set([...match[1].matchAll(/(["'])((?:(?!\1).)*)\1/g)].map((m) => m[2]));
+}
+
+/**
+ * The slugs a store build keeps out: HIDDEN_GAMES union DISABLED_GAMES
+ * (src/entitlements/gameVisibility.ts), the same union `isGameVisible` and
+ * `metro/storeBundle.js` use. Either set may be empty.
  */
 export function hiddenGameSlugs(rootDir = root) {
   const visibility = fs.readFileSync(
     path.join(rootDir, "src/entitlements/gameVisibility.ts"),
     "utf8"
   );
-  const setBody = visibility.match(/HIDDEN_GAMES[^=]*=\s*new Set\(\[([^\]]*)\]/)?.[1];
-  if (!setBody) throw new Error("size-report: could not read HIDDEN_GAMES from gameVisibility.ts");
-  return new Set([...setBody.matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+  return new Set([
+    ...readStringSet(visibility, "HIDDEN_GAMES"),
+    ...readStringSet(visibility, "DISABLED_GAMES"),
+  ]);
 }
 
 /**
  * A hidden game's lobby tile image (#4011): `assets/home/<slug>-tile.webp`, packaged as
- * `assets_home_<slug>tile.webp`. Derived from HIDDEN_GAMES, so a tile for any hidden game is
+ * `assets_home_<slug>tile.webp`. Derived from HIDDEN_GAMES and DISABLED_GAMES, so a tile for any such game is
  * caught without editing this script, and a game's tile is allowed again once it is unhidden.
  */
 export function hiddenLobbyTilePattern(slugs = hiddenGameSlugs()) {
   const flat = [...slugs].map((slug) => slug.toLowerCase().replace(/[^a-z0-9_]/g, "")).sort();
-  return {
-    name: "Hidden game lobby tile",
-    re: new RegExp(`(?:^|_)assets_home_(?:${flat.join("|")})tile\\.`),
-  };
+  // No hidden slugs: match nothing (an empty alternation would match `assets_home_tile.`).
+  const re = flat.length ? new RegExp(`(?:^|_)assets_home_(?:${flat.join("|")})tile\\.`) : /(?!)/;
+  return { name: "Hidden game lobby tile", re };
 }
 
 /**
@@ -78,12 +95,12 @@ export function hiddenLobbyTilePattern(slugs = hiddenGameSlugs()) {
  * (lowercased, non-alphanumerics other than `_` dropped) and Android groups it under
  * `drawable-*` (images) or `raw/` (everything else). Fonts keep their file name.
  */
+/** Fixed patterns; the lobby-tile pattern is built per call, so reading the slugs stays lazy. */
 export const HIDDEN_PREMIUM_PATTERNS = [
   // `bgm?`: Star Swarm's one track is `starswarm-bgm.mp3` (#3638), Mahjong's `mahjong-bg-N.mp3`.
   { name: "Star Swarm / Mahjong BGM", re: /(?:^|_)(?:starswarm|mahjong)bgm?\d*\./ },
   { name: "Mahjong tile art", re: /(?:^|_)assets_mahjong_/ },
   { name: "Star Swarm sprites", re: /(?:^|_)assets_starswarm_/ },
-  hiddenLobbyTilePattern(),
 ];
 
 /** Bucket a packaged asset (path relative to --assets-dest) for the report. */
@@ -117,7 +134,7 @@ export function metroAssetName(relToAssets) {
 /**
  * Sounds only the hidden premium games use (#2830): required by a hidden game's
  * `src/game/<slug>/sounds.ts` and by no other game's. Derived from the sound maps
- * and HIDDEN_GAMES (src/entitlements/gameVisibility.ts) so a new premium SFX is
+ * and HIDDEN_GAMES / DISABLED_GAMES (src/entitlements/gameVisibility.ts) so a new premium SFX is
  * covered without editing this script. Returns Metro packaged names.
  */
 export function hiddenOnlySoundNames(rootDir = root) {
@@ -137,13 +154,14 @@ export function hiddenOnlySoundNames(rootDir = root) {
 }
 
 /** Returns [{file, bytes, pattern}] for packaged files that only hidden premium games use. */
-export function findHiddenPremiumAssets(files, hiddenSounds = new Set()) {
+export function findHiddenPremiumAssets(files, hiddenSounds = new Set(), slugs = undefined) {
+  const patterns = [...HIDDEN_PREMIUM_PATTERNS, hiddenLobbyTilePattern(slugs)];
   const hits = [];
   for (const f of files) {
     const base = path.posix.basename(f.file.split(path.sep).join("/")).toLowerCase();
     const pattern = hiddenSounds.has(base)
       ? { name: "hidden-game-only sound" }
-      : HIDDEN_PREMIUM_PATTERNS.find((p) => p.re.test(base));
+      : patterns.find((p) => p.re.test(base));
     if (pattern) hits.push({ file: f.file, bytes: f.bytes, pattern: pattern.name });
   }
   return hits;

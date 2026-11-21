@@ -354,6 +354,22 @@ describe("hidden games' lobby tile images stay out of store bundles (#4011)", ()
       TILE_ART,
       platform
     ).filePath;
+  /** Games a store build keeps out: HIDDEN_GAMES union DISABLED_GAMES, like `isGameVisible`. */
+  const STORE_EXCLUDED: ReadonlySet<string> = new Set([...HIDDEN_GAMES, ...DISABLED_GAMES]);
+  /** Problems with the tile-art module: a non-excluded slug in it, or an excluded tile not in it. */
+  const tileArtMismatches = (
+    artSlugs: string[],
+    onDisk: string[],
+    excluded: ReadonlySet<string>
+  ): string[] => [
+    ...artSlugs.filter((slug) => !excluded.has(slug)).map((slug) => `not excluded: ${slug}`),
+    ...onDisk
+      .filter((slug) => excluded.has(slug) && !artSlugs.includes(slug))
+      .map((slug) => `missing: ${slug}`),
+  ];
+  /** The excluded games' tiles that HomeScreen still imports directly. */
+  const homeScreenMismatches = (homeSlugs: string[], excluded: ReadonlySet<string>): string[] =>
+    homeSlugs.filter((slug) => excluded.has(slug));
   /** The `assets/home/<slug>-tile.*` images a source file imports, by slug. */
   const tileImports = (file: string): string[] =>
     [...fs.readFileSync(file, "utf8").matchAll(/assets\/home\/([a-z0-9_]+)-tile\.\w+"/g)].map(
@@ -378,21 +394,38 @@ describe("hidden games' lobby tile images stay out of store bundles (#4011)", ()
     expect(stub).toMatch(/import type \{ HiddenGameTileArt \}/);
   });
 
-  it("holds every hidden game's tile and only those", () => {
+  it("holds every hidden or disabled game's tile and only those", () => {
     const slugs = tileImports(TILE_ART);
     expect(slugs.length).toBeGreaterThan(0);
-    for (const slug of slugs) expect(HIDDEN_GAMES.has(slug)).toBe(true);
     const onDisk = fs
       .readdirSync(TILES_DIR)
       .map((file) => /^([a-z0-9_]+)-tile\.\w+$/.exec(file)?.[1])
       .filter((slug): slug is string => slug !== undefined);
-    expect(onDisk.filter((slug) => HIDDEN_GAMES.has(slug)).sort()).toEqual([...slugs].sort());
+    expect(tileArtMismatches(slugs, onDisk, STORE_EXCLUDED)).toEqual([]);
   });
 
-  it("HomeScreen imports no hidden game's tile image directly", () => {
+  it("a disabled-only game's tile counts as excluded art (#4017)", () => {
+    // `cascade` is only disabled here: its tile must live in hiddenGameTileArt.ts, not HomeScreen.
+    const excluded = new Set([...new Set(["starswarm"]), ...new Set(["cascade"])]);
+    expect(
+      tileArtMismatches(["starswarm", "cascade"], ["starswarm", "cascade", "yacht"], excluded)
+    ).toEqual([]);
+    // Tile art missing for the disabled game, or a disabled game's tile left in HomeScreen.
+    expect(tileArtMismatches(["starswarm"], ["starswarm", "cascade"], excluded)).not.toEqual([]);
+    expect(homeScreenMismatches(["yacht", "cascade"], excluded)).toEqual(["cascade"]);
+    expect(homeScreenMismatches(["yacht"], excluded)).toEqual([]);
+  });
+
+  it("STORE_EXCLUDED is HIDDEN_GAMES plus DISABLED_GAMES", () => {
+    expect([...STORE_EXCLUDED].sort()).toEqual(
+      [...new Set([...HIDDEN_GAMES, ...DISABLED_GAMES])].sort()
+    );
+  });
+
+  it("HomeScreen imports no hidden or disabled game's tile image directly", () => {
     const slugs = tileImports(HOME_SCREEN);
     expect(slugs.sort()).toEqual(["sort", "sudoku", "twenty48", "yacht"]);
-    for (const slug of slugs) expect(HIDDEN_GAMES.has(slug)).toBe(false);
+    expect(homeScreenMismatches(slugs, STORE_EXCLUDED)).toEqual([]);
     expect(fs.readFileSync(HOME_SCREEN, "utf8")).toMatch(
       /from "\.\.\/components\/home\/hiddenGameTileArt"/
     );
