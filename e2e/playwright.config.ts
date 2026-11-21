@@ -19,7 +19,8 @@ import { join } from "path";
  *   sudoku      — sudoku-*.spec.ts
  *   sort        — sort-*.spec.ts
  *   daily_word  — daily-word-*.spec.ts
- *   cross       — accessibility.spec.ts, ui-preferences.spec.ts, i18n-overflow.spec.ts
+ *   cross       — accessibility.spec.ts, ui-preferences.spec.ts, i18n-overflow.spec.ts,
+ *                 lobby-responsive.spec.ts
  *   logs-budget — logs-*.spec.ts (#373 acceptance gate, CPU-throttled to
  *                  approximate mid-tier mobile device performance)
  *
@@ -120,6 +121,8 @@ export default defineConfig({
         "accessibility.spec.ts",
         "ui-preferences.spec.ts",
         "i18n-overflow.spec.ts",
+        // #4005: was matched by no project, so CI never ran it.
+        "lobby-responsive.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },
