@@ -119,7 +119,7 @@ allow-list. It covers `frontend/assets/`; the native launcher and splash rasters
 
 | Asset                                                                | Recipe                                                                                        |
 | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `sounds/*.ogg` (199)                                                 | `synth_{arcade,cascade,puzzle,starswarm}_sfx.py`                                              |
+| `sounds/*.ogg` (201)                                                 | `synth_{arcade,cascade,puzzle,starswarm}_sfx.py`                                              |
 | `starswarm/**`, `home/starswarm-tile.webp` (44)                      | `draw_starswarm_art.py`                                                                       |
 | `mahjong/*.svg` (42)                                                 | `gen_mahjong_tiles.py`                                                                        |
 | `fonts/*.subset.ttf`                                                 | `subset_icon_fonts.py`                                                                        |

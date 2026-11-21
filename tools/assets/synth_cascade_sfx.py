@@ -1,6 +1,6 @@
 """Synthesize Cascade's sound effects, one full set per piece set (no samples, no third-party audio). #3702
 
-Two sets of 21 files, switched with the Fruits / Cosmos toggle. Each recipe is the one the owner
+Two sets of 22 files, switched with the Fruits / Cosmos toggle. Each recipe is the one the owner
 approved from the spectrogram proposals on #3702 (2026-11-16): Fruits plays "Juicy pops" and
 Cosmos plays "Starlight glass". The reasoning, the options and the picks are in
 docs/games/cascade-sound-design.md. The building blocks are in synth_common.py, plus the glass
@@ -15,12 +15,14 @@ Run from the repo root (needs numpy and ffmpeg with libvorbis):
 
 With no sound names, every sound is written. A name is the file stem, e.g. cascade-fruits-drop.
 
-Every set has the same 21 sounds, timed to game/cascade/motion.ts and celebration.ts:
+Every set has the same 22 sounds, timed to game/cascade/motion.ts and celebration.ts:
 - drop: the piece leaves the spawner (every turn: the quietest sound).
-- land-light / land-heavy: a piece's first contact; light for tiers 0-4, heavy for 5-10 (the
-  player also scales the volume by tier).
-- merge-t0 .. merge-t10: one pre-pitched file per tier made (C-major pentatonic, rising with
-  the tier; no playback-rate pitch shift).
+- land-light / land-heavy: a piece's first contact; light for tiers 0-5, heavy for 6-11 (the
+  player also scales the volume by tier; MOTION.sound.heavyLandTier).
+- merge-t0 .. merge-t11: one pre-pitched file per tier made (C-major pentatonic, rising with
+  the tier; no playback-rate pitch shift). t0-t10 are the #3702 recipes, unchanged. t11 is the
+  capstone's own file (#3966, owner option C): the t10 note plus a higher chord, played together
+  with the win at the winning merge (soundPacer.win).
 - chain-1 .. chain-4: a chain's paced steps (MOTION.chain.stepMs, 80 ms), rising; steps past
   the fourth replay chain-4. Each is shorter than two steps.
 - danger: one tick per on-beat of the lid's danger blink (at most 3 Hz). Shorter than the
@@ -154,7 +156,7 @@ def sub_thump(f0: float, dur: float, decay: float) -> np.ndarray:
     return np.sin(phase(f)) * np.exp(-t / decay) * np.clip(t / 0.002, 0, 1)
 
 
-# Land sizes and seeds: light (tiers 0-4) and heavy (tiers 5-10). The seeds are the proposals'.
+# Land sizes and seeds: light (tiers 0-5) and heavy (tiers 6-11). The seeds are the proposals'.
 LAND = {"land-light": (0.0, 1166), "land-heavy": (1.0, 1366)}
 
 
@@ -201,6 +203,24 @@ def fruits_merge(n: int) -> np.ndarray:
     if n >= 8:
         place(x, ks_pluck(f * 2, dur, 8400 + n, bright=0.6, decay=0.99) * 0.4, 0.03)
     return fade(x, 0.0, 0.05)
+
+
+def fruits_merge_capstone() -> np.ndarray:
+    """merge-t11, 0.75 s (#3966, option C): the t10 note, then D7 and G7 strummed over it (tiny
+    stagger) with extra bubble fizz, so the capstone sounds like the top of the climb."""
+    n = 10
+    x = blank(0.75)
+    place(x, fruits_merge(n), 0.0)
+    for j, semi in enumerate([penta(n) - 5 + 7, penta(n) - 5 + 12]):  # D7, G7
+        place(
+            x,
+            ks_pluck(f_of(semi), 0.6, 8910 + j, bright=0.8, decay=0.992) * (0.45 - 0.1 * j),
+            0.035 + 0.03 * j,
+        )
+    rng = np.random.default_rng(8920)
+    for _ in range(14):
+        place(x, bubble(rng.uniform(2200, 4200), 0.03, 0.006) * 0.12, rng.uniform(0.05, 0.4))
+    return fade(x, 0.0, 0.08)
 
 
 def fruits_chain(k: int) -> np.ndarray:
@@ -295,6 +315,18 @@ def cosmos_merge(n: int) -> np.ndarray:
     return fade(x, 0.0, 0.06)
 
 
+def cosmos_merge_capstone() -> np.ndarray:
+    """merge-t11, 0.82 s (#3966, option C): the t10 bell with C7 + G7 + C8 bells over it, an
+    octave shimmer on C8 and the t10's deeper sub, a bright capstone chord."""
+    n = 10
+    x = blank(0.82)
+    place(x, cosmos_merge(n), 0.0)
+    for j, semi in enumerate([31, 36]):  # G7, C8 (the t10 bell is C7)
+        place(x, glass(semi, 0.7, 0.3) * (0.4 - 0.1 * j), 0.03 + 0.03 * j)
+    place(x, shimmer(f_of(36), 0.7, 0.35, beat=5.0) * 0.18, 0.06)
+    return fade(x, 0.0, 0.08)
+
+
 def cosmos_chain(k: int) -> np.ndarray:
     """A crystal ping with a 50 ms echo: C7 D7 E7 G7."""
     x = blank(0.2)
@@ -362,7 +394,7 @@ LEVELS: dict[str, Level] = {
     "drop": rms50(-27.0, -3.0),  # every turn: the quietest, like 2048's spawn
     "land-light": rms50(-26.0, -3.0),
     "land-heavy": rms50(-23.0, -3.0),
-    **{f"merge-t{n}": rms50(-23.0 + 0.5 * n, -1.0) for n in range(11)},  # -23 .. -18
+    **{f"merge-t{n}": rms50(-23.0 + 0.5 * n, -1.0) for n in range(12)},  # -23 .. -17.5
     **{f"chain-{k}": rms50(-23.0 + 1.0 * k, -3.0) for k in range(1, 5)},  # -22 .. -19
     "danger": rms50(-26.0, -3.0),  # repeats: a nudge, not an alarm
     "win": rms50(-15.0, -1.0),  # the top of the ladder, like yacht-win
@@ -374,6 +406,7 @@ VOICES = {
         "drop": fruits_drop,
         "land": fruits_land,
         "merge": fruits_merge,
+        "merge_capstone": fruits_merge_capstone,
         "chain": fruits_chain,
         "danger": fruits_danger,
         "win": fruits_win,
@@ -383,6 +416,7 @@ VOICES = {
         "drop": cosmos_drop,
         "land": cosmos_land,
         "merge": cosmos_merge,
+        "merge_capstone": cosmos_merge_capstone,
         "chain": cosmos_chain,
         "danger": cosmos_danger,
         "win": cosmos_win,
@@ -397,6 +431,7 @@ def _recipes(v: dict) -> dict[str, Callable[[], np.ndarray]]:
         out[name] = lambda size=size, seed=seed: v["land"](size, seed)
     for n in range(11):
         out[f"merge-t{n}"] = lambda n=n: v["merge"](n)
+    out["merge-t11"] = v["merge_capstone"]
     for k in range(1, 5):
         out[f"chain-{k}"] = lambda k=k: v["chain"](k)
     out["danger"] = v["danger"]
@@ -411,6 +446,16 @@ SOUNDS: dict[str, tuple[Callable[[], np.ndarray], Level]] = {
     for s in SETS
     for name, recipe in _recipes(VOICES[s]).items()
 }
+
+# The Fruits capstone's spread-out strum reads about 3 dB quieter than the same level on the other
+# merges, so it gets +2.5 dB after the leveling (the peak stays under -1 dBFS). Owner-approved
+# render, #3966.
+FRUITS_T11_TRIM_DB = 2.5
+_fruits_t11_recipe, _fruits_t11_level = SOUNDS["cascade-fruits-merge-t11"]
+SOUNDS["cascade-fruits-merge-t11"] = (
+    _fruits_t11_recipe,
+    lambda x: _fruits_t11_level(x) * 10 ** (FRUITS_T11_TRIM_DB / 20),
+)
 
 
 def main(out_dir: Path, names: list[str]) -> None:
