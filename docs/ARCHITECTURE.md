@@ -1560,7 +1560,8 @@ At the architecture level, the important boundaries are:
 - normal games write their existing shared session/result data; they do not
   call a separate challenge-completion endpoint;
 - `backend/daily_challenge/` reads those rows and freezes each day's assigned
-  goal specs in `daily_challenge_days`;
+  goal specs in `daily_challenge_days`, and pins each install's goals for a
+  served day in `daily_challenge_assignments` (#3992);
 - the challenge and streak are derived views, not mutable counters;
 - the Home card consumes the session-scoped status route and localizes goal
   copy on the client.

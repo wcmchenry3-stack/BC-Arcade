@@ -76,6 +76,19 @@ affect only days that have not yet been frozen.
 
 Each frozen goal is stored as a self-contained spec rather than a pointer back into the current goal pool, so a historical day can still be replayed after a live goal is retuned or removed.
 
+### Per-install pinned assignments (#3992)
+
+The same idea also applies per install. The first `/status` or `/upcoming` request that needs a `(session, local date)` asks `service.pick_for_install` for that install's goals and stores them in `daily_challenge_assignments` (`assignments.get_or_pin`). Every later request for that install and day, on any device, and the streak's replay of that day return the stored row unchanged.
+
+- **What the pick returns today:** the shared frozen template above, for the slate `resolve_slate` chooses, and no bonus goal. So in this release every install still sees the same goals as everyone else; the table is the plumbing that personal targets (#3993), game selection (#3994) and the bonus goal (#3995) build on.
+- **The slate is pinned with the day.** A purchase part-way through a day no longer swaps that day's goals; it applies from the next day not yet pinned. Invisible while the free and premium pools are identical.
+- **Concurrent first requests** cannot store two different rows: the primary key is `(session_id, local_date)` and the insert is `ON CONFLICT DO NOTHING`, after which the stored row is read back and served.
+- **At most 3 days ahead:** only today..today+2 in the requesting client's local calendar are ever pinned (`MAX_DAYS_AHEAD`); `get_or_pin` refuses any other day.
+- **Encoding:** each goal is `[game_type, kind, target, tier]` (the spec `goal_from_spec` rebuilds) in compact JSON text; the session id is a native `uuid`; `template_id` and `slate` are stored only when they differ from the defaults (an id derived from the goals, the free slate), so they are NULL and free for every real day. About 250 bytes a row on disk including the primary-key index (measured on Postgres 16; see [DATA-INVENTORY.md §2d](DATA-INVENTORY.md#2d-daily-challenge-assignments-3992)).
+- **Retention:** a daily batched prune (`daily_challenge/retention.py`, started by `jobs.lifespan`) deletes rows whose `local_date` is more than `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default `STREAK_LOOKBACK_DAYS`, 60) before today in UTC. A pruned day is replayed from the shared template.
+- **Delete My Data** (`DELETE /me`) deletes the install's rows.
+- **Kill switch:** `DAILY_CHALLENGE_PERSONALIZED=false` (default true) serves every install the shared frozen template, exactly as before this table existed: no row is read or written, by the routes or the streak. Rows already stored stay until retention or `DELETE /me` removes them.
+
 ## 5. Goal evaluation
 
 A goal is evaluated against **one finished game row** of the matching game type.
@@ -136,10 +149,12 @@ Today the two live pools are identical, so the slate distinction does not change
 | Route | Scope | Purpose | Limit |
 | --- | --- | --- | ---: |
 | `GET /daily-challenge/today` | public / IP-keyed | Free slate for the local day, without player progress | 60/min |
-| `GET /daily-challenge/upcoming` | public / IP-keyed | Free slate for today, today+1 and today+2 (`{"days": [...]}`, each shaped like `/today`) | 60/min |
-| `GET /daily-challenge/status` | `X-Session-ID` | This session's resolved slate plus completion/progress | 60/min |
+| `GET /daily-challenge/upcoming` | IP-keyed; session-aware | Today, today+1 and today+2 (`{"days": [...]}`, each shaped like `/today`). With a valid `X-Session-ID`: that install's pinned assignment for each day (§4). Without one: the shared free slate | 60/min |
+| `GET /daily-challenge/status` | `X-Session-ID` | This install's pinned goals for today (§4) plus completion/progress | 60/min |
 
-`/upcoming` takes the same `tz_offset_minutes` (-840..840) as the other routes and resolves each day from the client's local calendar. Reading a day freezes it through `get_or_create_templates`, so a second read, another device, and a later `/today` all return the same goals. Scoring is unchanged: a completion is still checked against its own local day when it syncs.
+`/upcoming` takes the same `tz_offset_minutes` (-840..840) as the other routes and resolves each day from the client's local calendar. Without a session (or a header that is not a UUID, or with the kill switch off) it is the public route it always was: reading a day freezes it through `get_or_create_templates`, so a second read, another device, and a later `/today` all return the same goals. With a session it pins each day for that install, so `/status` later serves today exactly as `/upcoming` cached it. The app's shared HTTP client sends `X-Session-ID` on every request, `/upcoming` included. Scoring is unchanged: a completion is still checked against its own local day when it syncs.
+
+Every day payload (`/today`, each `/upcoming` day, `/status`) carries a nullable `bonus` goal (`{id, game_type, kind, target}` or `null`), reserved for the optional bonus goal (#3995). It is always `null` until then, it is never one of `goals`, it never counts toward `completed_goals` or the streak, and older app builds ignore it (the client's wire normalizer reads only the fields it knows).
 
 The Home card treats `/status` as authoritative because a future premium session's goal list can differ from `/today`, not merely its completion flags.
 
@@ -168,8 +183,8 @@ Offline game completions can count later after the shared game-session queue upl
 
 While online, the hook (`useDailyChallenge.ts`) saves goals on the device (`offlineCache.ts`), so an offline player still gets each day's goals for up to 3 days:
 
-- **`daily_challenge_upcoming_v1`**: the `/upcoming` answer (the free goals for today, today+1 and today+2), read at most once per local day, after the server answers a refresh.
-- **`daily_challenge_status_v1`**: the last `/status` answer of the day: this session's slate (free or premium) with the goals already met. A premium player's goals for today come from here; days 2 and 3 fall back to the free `/upcoming` goals. The server re-checks every completion when it syncs, so a goal from the "wrong" slate can never be credited.
+- **`daily_challenge_upcoming_v1`**: the `/upcoming` answer (this install's pinned goals for today, today+1 and today+2, §4), read at most once per local day, after the server answers a refresh.
+- **`daily_challenge_status_v1`**: the last `/status` answer of the day: this install's goals with the ones already met. Since #3992 `/upcoming` and `/status` serve the same pinned goals for a day, so days 2 and 3 from `/upcoming` are the goals `/status` will show on those days. The server re-checks every completion when it syncs.
 
 Offline (or after a network failure), for the device's current local date:
 
@@ -190,7 +205,7 @@ The app-wide streak is derived from Daily Challenge history; there is no mutable
 
 A calendar day qualifies when the player met **at least 2 of that day's 3 goals**.
 
-The streak walks backward over frozen daily templates:
+The streak scores each day on the goals that install was served: its pinned assignment (§4) when one exists, else the shared frozen template (days before #3992, days pruned by retention, or every day while `DAILY_CHALLENGE_PERSONALIZED` is off). Only the core goals count; the bonus goal never does. The pinned rows for the whole window come from one query, so the query count stays fixed however long the lookback is. It walks backward over those days:
 
 - If today already qualifies, the run ends today.
 - If today does not yet qualify, today is treated as unfinished rather than failed, and the run may end yesterday.
@@ -238,7 +253,8 @@ Daily Word is always one of the three Daily Challenge goals, but completing/play
 
 - `definitions.py` owns scheduling policy and live goal specs.
 - `schedule.py` owns day/slate freezing.
-- `service.py` owns current-day evaluation and slate resolution.
+- `assignments.py` owns per-install pinning and its kill switch; `retention.py` its prune.
+- `service.py` owns current-day evaluation, slate resolution and `pick_for_install`.
 - `streak.py` owns the streak calculation.
 - `router.py` owns the HTTP surface.
 - the frontend Daily Challenge client owns wire normalization/fallback;
