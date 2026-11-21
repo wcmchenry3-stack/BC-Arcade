@@ -6,7 +6,7 @@ This document is the current product/system source of truth. The implementation 
 
 ## 1. Daily structure
 
-Each challenge has exactly three goals:
+Each challenge has exactly three **core** goals (and, on a personal day, one optional bonus goal, below):
 
 1. Daily Word. Its goal is always "complete today's word" (win or lose); it never asks for a win or a guess limit.
 2. A goal from an eligible game.
@@ -15,6 +15,7 @@ Each challenge has exactly three goals:
 There are two ways a day's goals are chosen (`service.pick_for_install`):
 
 - **Personal pick** (#3993, #3994), for an install with at least 3 finished games of the games with personal goal specs (2048, Solitaire, FreeCell, Sudoku, Yacht; Daily Word and Bottle Sort do not count), at least one of them in the last `DAILY_CHALLENGE_AFFINITY_DAYS` (14), and continuous recent play (below): goals 2 and 3 come from the games the install plays, each with a personal target (§2a, §3a). This is what an active player sees.
+- **Bonus goal** (#3995): a personal day may carry one optional extra goal beside the three core goals (§3b). It never counts toward the streak, `completed_goals` or "day complete", and a shared-template day never has one.
 - **Shared template**, for every other install (a new install, or one back after a gap) and for everyone while the kill switch is off: the same three goals for every install, drawn from the per-game easy / medium / hard goals below (§2, §3). When such an install's day is pinned it is pinned as **exactly** the shared template (`shared_for_install`).
 
 **Goals already shown never change.** An install can be shown a day's goals before that day is pinned: `assignments.may_pin` refuses to pin while the install has no `games` row created in the last `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (48), so a brand-new or lapsed install is served the shared template unpinned, and the device caches it (`/upcoming` covers today..today+2). So a day is picked personally only if that could not have happened (`InstallHistory.always_pinnable`, `personal.serves_shared`): from the earliest instant any client could have asked for the day (the start of local day − 2 in the easternmost time zone, UTC+14) until now, the install must have had a game created within the 48 h window before every instant. That needs a game created in the 48 h before that instant, no gap of more than 48 h between consecutive games since, and one in the last 48 h. Otherwise the day is the shared template, the same goals an unpinned request would have shown. A brand-new install therefore gets the shared template for its first few days, including the days its first `/upcoming` cached, and a lapsed install for the day it comes back and the two after. Exceptions (accepted, no extra state is kept for them):
@@ -123,7 +124,19 @@ The salt is environment-specific. Its purpose is to make the future schedule sta
 
 **History** (`history.load_install_history`) is read with at most four queries, whatever the number of games: the install's pinned assignments for the last 60 days (the variety guard, the step-down and the rest rule below); its latest `DAILY_CHALLENGE_HISTORY_GAMES` finished games per game type before the first served day, and as many again within each later served day (so a day's own games never push the history before it out), plus every finished game on the days the step-down and rest rules look at; one grouped row per game type with its finished games per local day and its best `final_score` before each served day; and one aggregate row over the install's game creations since the first served day could be asked for (`LAG()` gives each served day's first creation, gaps over the pin window and the latest creation; the "goals already shown" rule, §1; skipped when every served day is a new-install day). Abandoned and `dev_affected` games never count. The pick runs at most once per install per day (pin on serve), writes nothing beyond the assignment row, and that row stays about 250 B (a personal day's goal text is 115–140 B, against 129 B measured for the shared template).
 
-**Discovery candidates** (for the bonus goal, #3995): `personal.discovery_candidates` returns the eligible games the install has not finished in the affinity window, minus resting games. A game offered as the bonus (`bonus` on the pinned row, always null until #3995) and not played that day 3 times within 30 days rests for 30 days after the last of them.
+**Discovery candidates** (for the bonus goal, §3b): `personal.discovery_candidates` returns the eligible games the install has not finished in the affinity window, minus resting games. A game offered as a **discovery** bonus (`bonus` on the pinned row, tier `easy`) and not played that day 3 times within 30 days rests for 30 days after the last of them (`personal.resting`, read from the pinned rows; only finished days count). A stretch bonus (tier `medium`) never rests a game.
+
+### 3b. The bonus goal (#3995)
+
+`personal.choose_bonus` runs right after `choose_core`, in `service.pick_for_install`, for a personal pick only:
+
+- **When.** `DAILY_CHALLENGE_BONUS_ENABLED` (default true) is on. Off, no new bonus is pinned (a day already pinned keeps the one it has).
+- **Which kind.** With probability `DAILY_CHALLENGE_DISCOVERY_SHARE` (default 0.5, 0-1) the bonus is a **discovery** goal: the cold-start goal (`GameSpec.cold_type`: a finish, or the low fixed score) of a `discovery_candidates` game, so a game the player has not touched in the affinity window (14 days) and is not resting. Otherwise it is a **bigger stretch**: a personal target (§2a) in a game with affinity, with the stretch percentage **doubled** (24 % at the default), still capped at the personal best and floored at the game's minimum, through the same `personal_target`. A game with fewer than 3 finished games has no stretch, so it is only ever a discovery candidate.
+- **Constraints.** Never the game of a core goal that day; never luck-dependent (`Goal.is_win`; no free goal is today); when the drawn kind has no candidate the other kind is used; with neither, `bonus` is `null`.
+- **Determinism.** The draw uses its own stream seeded from (session id, day, `DAILY_CHALLENGE_SALT`, `"bonus"`), never the clock, so adding a bonus never changes the core picks.
+- **Marker.** The pinned row's goal tier tells the two kinds apart: `easy` is a discovery goal, `medium` a stretch (`personal.bonus_kind`). No encoding change: the stored bonus is still `[game_type, kind, target, tier]`.
+- **Shared days.** A shared-template pick (a new install, `serves_shared`, the kill switch, an install that may not pin) has `bonus = null`. The goals a device shows never change, so a shared day never gains a bonus later either.
+- **Streak.** `GOALS_TO_QUALIFY` is over the core goals only; the streak scores `assignment.template`, never the bonus.
 
 ## 4. Frozen days
 
@@ -146,7 +159,7 @@ Each frozen goal is stored as a self-contained spec rather than a pointer back i
 
 The same idea also applies per install. The first `/status` or `/upcoming` request that needs a `(session, local date)` asks `service.pick_for_install` for that install's goals and stores them in `daily_challenge_assignments` (`assignments.get_or_pin`). Every later request for that install and day, on any device, and the streak's replay of that day return the stored row unchanged.
 
-- **What the pick returns:** for an install with history, the personal pick (§3a) on the slate `resolve_slate` chooses; for a new install, exactly the shared frozen template above for that slate. No bonus goal yet (#3995). A day already pinned is never picked again.
+- **What the pick returns:** for an install with history, the personal pick (§3a) on the slate `resolve_slate` chooses, plus its optional bonus goal (§3b); for a new install, exactly the shared frozen template above for that slate, with no bonus. A day already pinned is never picked again.
 - **The slate is pinned with the day.** A purchase part-way through a day no longer swaps that day's goals; it applies from the next day not yet pinned. Invisible while the free and premium pools are identical.
 - **Write ceiling: only recently active installs pin, and only under the storage budget.** Before picking, `assignments.may_pin` checks two things, and only when a requested day is not pinned yet (a pinned day's read stays one SELECT):
 
@@ -238,7 +251,7 @@ A personal pick keeps the slate too: it is stored on the assignment, as for a sh
 
 `/upcoming` takes the same `tz_offset_minutes` (-840..840) as the other routes and resolves each day from the client's local calendar. Without a session (or a header that is not a UUID, or with the kill switch off) it is the public route it always was: reading a day freezes it through `get_or_create_templates`, so a second read, another device, and a later `/today` all return the same goals. With a session it pins each day for that install, so `/status` later serves today exactly as `/upcoming` cached it. The app's shared HTTP client sends `X-Session-ID` on every request, `/upcoming` included. Scoring is unchanged: a completion is still checked against its own local day when it syncs.
 
-Every day payload (`/today`, each `/upcoming` day, `/status`) carries a nullable `bonus` goal (`{id, game_type, kind, target}` or `null`), reserved for the optional bonus goal (#3995). It is always `null` until then, it is never one of `goals`, it never counts toward `completed_goals` or the streak, and older app builds ignore it (the client's wire normalizer reads only the fields it knows).
+Every day payload (`/status`, each `/upcoming` day, `/today`) carries a nullable `bonus` goal (`{id, game_type, kind, target}` or `null`), the optional bonus goal (§3b, #3995). `/status` adds `completed` and `best_score` to it, the same shape as a core goal; `/today` (shared, free slate) is always `null`. It is never one of `goals`, which stays exactly three entries, and it never counts toward `completed_goals`, `total_goals`, `completed` or the streak, so older app builds ignore it and keep a correct done count.
 
 The Home card treats `/status` as authoritative because a future premium session's goal list can differ from `/today`, not merely its completion flags.
 
@@ -253,8 +266,9 @@ Daily Challenge appears near the top of Home.
 The card:
 
 - shows three localized goal chips and completion marks;
-- shows done/total progress;
-- shows a completion note when all visible goals are done;
+- shows done/total progress, over the core goals only;
+- shows a completion note when all visible core goals are done;
+- shows the optional bonus goal (#3995) below a dashed divider as a row with a small uppercase "Bonus" label and one chip: dashed outline and a hollow star when open, a solid green outline and a filled star when done (never the core accent fill). Its screen-reader label is "Bonus, optional: {goal}, completed / not completed yet"; the glyph and label are hidden from readers. The bonus is hidden when its game is hidden in the build, is cached with its day for offline play and marked done from queued games like a core goal (`localProgress.ts`); it never changes the count or the completion note;
 - filters out goals for games hidden in the current build;
 - renders nothing for a non-network server-side unavailable state the player cannot act on;
 - shows a retryable offline message when the device/network is the actionable problem and no goals are cached for today (the shared 3-day message once the cached goals have run out);
@@ -372,12 +386,12 @@ It reads `DATABASE_URL` like the app (`backend/.env` or the environment). Point 
 
 What it reports, over the pinned install-days in the window:
 
-| Metric                                  | Definition                                                                                                                                                                                                |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core goal completion, per game and kind | `played` = met / offered, where an install-day is offered a game's goal only if that install finished a non-abandoned game of that type that day. `overall` = met / every pinned goal. Plus an `ALL` row. |
-| Days with 2 of 3 core goals met         | Over install-days with any finished game (the streak rule).                                                                                                                                               |
-| Bonus discovery                         | Of pinned days with a bonus goal, the share where the bonus game was played that day. "no bonus data yet" until #3995 pins bonuses.                                                                       |
-| Next-day return after a qualifying day  | Of qualifying install-days whose next day is over, the share where the install finished a game the next day.                                                                                              |
+| Metric                                  | Definition                                                                                                                                                                                                                                |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core goal completion, per game and kind | `played` = met / offered, where an install-day is offered a game's goal only if that install finished a non-abandoned game of that type that day. `overall` = met / every pinned goal. Plus an `ALL` row.                                 |
+| Days with 2 of 3 core goals met         | Over install-days with any finished game (the streak rule).                                                                                                                                                                               |
+| Bonus discovery                         | Of pinned days with a bonus goal, the share where the bonus game was played that day, then the same split by kind (`bonus_by_kind`: `discovery` = tier `easy`, `stretch` = tier `medium`, §3b). "no bonus data yet" while no row has one. |
+| Next-day return after a qualifying day  | Of qualifying install-days whose next day is over, the share where the install finished a game the next day.                                                                                                                              |
 
 Goals are rebuilt with `goal_from_spec` and scored with `evaluate_goal`, so the semantics (abandoned games never count) are the live ones.
 
@@ -387,6 +401,6 @@ Goals are rebuilt with `goal_from_spec` and scored with `evaluate_goal`, so the 
 
 - **Core goal completion, `played` column: target 65-75%.** Above about 75% the goals are too easy; below about 65% they are too hard. The overall column is lower by design (it counts days the game was not played) and is for context, not the band. Judge a game or kind only with enough `offered` days (a few hundred); small rows are noise.
 - **2 of 3 share near 100%** means 2 of 3 may be too easy; a low share means too hard.
-- **Bonus discovery** low means lower the discovery share; **next-day return** is the retention signal to watch, with no target yet.
+- **Bonus discovery**, read on the `discovery` line: low means lower the discovery share (the `stretch` line is a game the player already plays, so it is mostly a sanity check); **next-day return** is the retention signal to watch, with no target yet.
 
-**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (live since #3993, default 12, 0–50; see §2a) moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (arrives with #3995) controls how often the bonus suggests a game the player does not usually play. Re-run after a few days on the new value; one dial change at a time.
+**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (live since #3993, default 12, 0–50; see §2a) moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (live since #3995, default 0.5, 0-1) controls how often the bonus suggests a game the player does not usually play, and `DAILY_CHALLENGE_BONUS_ENABLED` (default true) turns the bonus off without an app release. Re-run after a few days on the new value; one dial change at a time.
