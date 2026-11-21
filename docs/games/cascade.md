@@ -17,33 +17,36 @@ Where this document and the code disagree, the code is right and this document i
 
 Cascade is a physics piece-drop game in the Suika family. Pieces fall into a bin. Two pieces of the same tier that touch merge into one piece of the next tier, and the merge scores points. The game has one winning condition and two losing ones.
 
-- **Win.** Merge two tier-9 pieces (Watermelon / Sun) into the **capstone**, tier 10 (Pumpkin / Milky Way). By any merge path (contact, the 1.5 px merge-gap scan or chain reach). Play ends at that step: no more drops, the score is final, a celebration plays and the "You Win!" card follows. The capstone is never dropped, never merges, and two on the board (only the dev panel or a test restore can put them there) are not a win. See [The win](cascade-decisions.md#the-win-3920) and [The celebration and the win card](cascade-decisions.md#the-celebration-and-the-win-card-3699).
+- **Win.** Merge two tier-10 pieces (Watermelon / Sun) into the **capstone**, tier 11 (Pumpkin / Milky Way) (12 tiers since #3960). By any merge path (contact, the 1.5 px merge-gap scan or chain reach). Play ends at that step: no more drops, the score is final, a celebration plays and the "You Win!" card follows. The capstone is never dropped, never merges, and two on the board (only the dev panel or a test restore can put them there) are not a win. See [The win](cascade-decisions.md#the-win-3920) and [The celebration and the win card](cascade-decisions.md#the-celebration-and-the-win-card-3699).
 - **Loss: the lid (overflow).** A settled piece whose top edge is above the lid line (y = 80 of the 600-unit world) for 180 consecutive physics steps (3 s) ends the game (`gameOver`, reason `overflow`). A merge in the danger band pauses the count for 1 s. See [section 6](#6-danger-and-the-lid).
 - **Loss: the hard stop.** A settled piece whose top edge reaches the top of the board (y <= 0) ends the game at once (reason `hardStop`). The last dropped piece gets a 0.5 s grace.
 - **Nothing else ends a game.** There is no move limit, no timer and no lives. Leaving the screen, restarting or switching the piece set ends the _session_ as an abandon, never as a loss (see [section 9](#9-save-resume-and-abandon)).
 
 ### 2. The ladder and the merge rules
 
-There are **11 fixed tiers** (0-10) and two piece sets, **Fruits** and **Cosmos**, with the same rules and different art, names and sounds. The player picks the set with the toggle under the score; it can be switched mid-game, which abandons the game and starts a new one.
+There are **12 fixed tiers** (0-11, #3960) and two piece sets, **Fruits** and **Cosmos**, with the same rules and different art, names and sounds. The player picks the set with the toggle under the score; it can be switched mid-game, which abandons the game and starts a new one.
 
 | Tier | Fruits        | Cosmos    | Radius | Drawn | Density | Score | Droppable |
 | ---- | ------------- | --------- | ------ | ----- | ------- | ----- | --------- |
 | 0    | Cherry        | Pluto     | 11.5   | 11.3  | 1.00    | 1     | yes       |
-| 1    | Blueberry     | Mercury   | 14.2   | 14.0  | 0.90    | 2     | yes       |
-| 2    | Lemon         | Mars      | 17.7   | 17.4  | 0.81    | 4     | yes       |
-| 3    | Grape         | Venus     | 21.9   | 21.5  | 0.73    | 8     | yes       |
-| 4    | Orange        | Earth     | 27.1   | 26.7  | 0.65    | 16    | yes       |
-| 5    | Apple (green) | Neptune   | 33.6   | 33.1  | 0.59    | 32    | yes       |
-| 6    | Coconut       | Uranus    | 41.6   | 41.0  | 0.53    | 64    | no        |
-| 7    | Dragonfruit   | Saturn    | 51.5   | 50.8  | 0.47    | 128   | no        |
-| 8    | Pineapple     | Jupiter   | 63.8   | 62.9  | 0.42    | 256   | no        |
-| 9    | Watermelon    | Sun       | 79.1   | 77.9  | 0.38    | 512   | no        |
-| 10   | Pumpkin       | Milky Way | 98.0   | 96.5  | 0.34    | 1024  | no        |
+| 1    | Blackberry    | Moon      | 14.0   | 13.8  | 0.91    | 2     | yes       |
+| 2    | Lime          | Mercury   | 17.0   | 16.7  | 0.82    | 4     | yes       |
+| 3    | Lemon         | Mars      | 20.6   | 20.3  | 0.75    | 8     | yes       |
+| 4    | Grape         | Venus     | 25.1   | 24.7  | 0.68    | 16    | yes       |
+| 5    | Orange        | Earth     | 30.5   | 30.0  | 0.61    | 32    | yes       |
+| 6    | Apple (green) | Neptune   | 37.0   | 36.4  | 0.56    | 64    | no        |
+| 7    | Pomegranate   | Uranus    | 45.0   | 44.3  | 0.51    | 128   | no        |
+| 8    | Dragonfruit   | Saturn    | 54.6   | 53.8  | 0.46    | 256   | no        |
+| 9    | Pineapple     | Jupiter   | 66.4   | 65.4  | 0.42    | 512   | no        |
+| 10   | Watermelon    | Sun       | 80.7   | 79.4  | 0.38    | 1024  | no        |
+| 11   | Pumpkin       | Milky Way | 98.0   | 96.5  | 0.34    | 2048  | no        |
+
+(#3962: the Fruits Blackberry, Lime and Pomegranate draw placeholder art until #3964; see [Piece progression](cascade-decisions.md#piece-progression).)
 
 Radii are world units (the bin is 400 x 600; its inner width is 360). This table is a copy of `frontend/src/game/cascade/tiers.ts`, the only place a tier's radius, score, density, droppable flag and name keys are defined; `tiers.test.ts` fails if another module defines one. How the radii, densities and drawn radii were chosen: [Piece progression](cascade-decisions.md#piece-progression).
 
-- **Droppable tiers are 0-5.** Tiers 6-10 exist only by merging.
-- **Merge rule.** Two same-tier pieces merge (tier n < 10 into n + 1; two tier-9 pieces into the capstone) when a physics contact begins between them, or when their circles are within **1.5 px** (`MERGE_GAP_PX`) at the end of a step (resting pieces sit a fraction of a pixel apart, which looks like touching).
+- **Droppable tiers are 0-5.** Tiers 6-11 exist only by merging.
+- **Merge rule.** Two same-tier pieces merge (tier n < 11 into n + 1; two tier-10 pieces into the capstone) when a physics contact begins between them, or when their circles are within **1.5 px** (`MERGE_GAP_PX`) at the end of a step (resting pieces sit a fraction of a pixel apart, which looks like touching).
 - **The new piece** appears at the midpoint of its parents, clamped so its full circle is inside the walls and above the floor, with their mean velocity (capped at 3 px per step) and a small upward pop (0.4 px per step). It starts at its parents' size and **grows to its own over 16 steps (267 ms)**, easing its neighbours aside; the lid, the merge grace and the drop gate use the full size throughout.
 - **Chains.** A merge product that touches a third piece of its own tier merges again without waiting for its grow-in (**chain reach**, 2 px at full size, checked in the step it is made and every step it grows), so a chain runs one link per step. The screen's "chain" is the count of merges since the last drop; see [section 8](#8-motion-and-celebration-states).
 - **Pieces never leave the bin.** Merges only remove bodies; nothing is teleported; a safety net puts a piece that somehow escaped back and reports it in dev builds (the sim requires zero).
@@ -114,7 +117,7 @@ Everything is drawn in code on the board's Skia Picture on the UI thread; nothin
 
 ### 9. Save, resume and abandon
 
-- **Autosave.** The board (each piece's tier and position), score, queue, `playedMs` and the replay log's place (`replay`, #3858) are saved to AsyncStorage (`cascade_game_v7`, `SavedState` v7) at most every 2 s after drops and merges, and in full when another screen covers the board or the app goes to the background. Velocities are not saved.
+- **Autosave.** The board (each piece's tier and position), score, queue, `playedMs` and the replay log's place (`replay`, #3858) are saved to AsyncStorage (`cascade_game_v8`, `SavedState` v8) at most every 2 s after drops and merges, and in full when another screen covers the board or the app goes to the background. Velocities are not saved.
 - **Resume.** On open, a saved game with at least one piece is restored at rest, the play clock continues from `playedMs` (the time the app was closed does not count), the session a killed app left open is continued (#2654), and drops are refused for 60 frames (1 s at 60 Hz) while the pile settles; the lid's merge grace applies once. Nothing is saved or restored for a game that has been won or lost: the save is cleared at the win and at the game over, so a relaunch starts a new game.
 - **Old saves.** A present but invalid or older-version save is discarded, never migrated and never falls back to an older one; its key is removed. History: [Persistence](cascade-decisions.md#persistence-storagets).
 - **New game / abandon.** Restart (the shell's New Game, Play Again) and switching Fruits / Cosmos start a fresh game and clear the save; they end the session as `abandoned` with the score so far. Leaving the screen records `abandoned` once a piece has been dropped (an unplayed game is discarded without a row). Abandoned rows never rank or count toward Best.
@@ -175,7 +178,7 @@ Cascade has no endpoints of its own: it uses the generic `/games` routes (the le
 | Sim harness and baseline               | `frontend/src/game/cascade/sim/` (`baseline.json`, `sim/__tests__/sim.test.ts`), `npm run sim:cascade`, `.github/workflows/cascade-sim-gate.yml`; see [Sim harness](cascade-decisions.md#sim-harness-sim-2893) and [TESTING.md](../TESTING.md)                                             |
 | End to end                             | Playwright `e2e/tests/cascade-smoke.spec.ts` (project `cascade`); Maestro `e2e/maestro/flows/cascade/` (`smoke`, `demo-open`, `demo-aim`, `demo-drop`, `demo-merge`, `demo-chain`, `demo-danger`, `demo-loss`, `demo-win`); test hooks `__cascade_*` (`testHooks.ts`, test builds only)    |
 
-The sim's headline numbers on `dev` (`sim/baseline.json`, 100 seeds): the skilled bot wins 66 % of games, in a median 215 s; the spam bot loses at the lid in under 120 s (longest 84.9 s) and never wins; no guard rail fires.
+The sim's headline numbers on `dev` before the 12-tier ladder (#3960; being re-measured in #3967) (`sim/baseline.json`, 100 seeds): the skilled bot wins 66 % of games, in a median 215 s; the spam bot loses at the lid in under 120 s (longest 84.9 s) and never wins; no guard rail fires.
 
 ### 14. Deviations from shared standards
 
