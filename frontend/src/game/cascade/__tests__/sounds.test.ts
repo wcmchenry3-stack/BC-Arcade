@@ -1,5 +1,5 @@
 /**
- * #3702: Cascade's sound registry. One set of 21 synthesized files per piece set; every registered
+ * #3702: Cascade's sound registry. One set of 22 synthesized files per piece set; every registered
  * file exists, the three Kenney files are gone, the total stays under the owner's raised budget,
  * and each event picks the right file per tier.
  */
@@ -40,17 +40,20 @@ describe("Cascade sound registry (#3702)", () => {
   const files = registryFiles();
 
   it.each(["fruits", "cosmos"])(
-    "%s has all 21 sounds, each its own cascade-%s-<name>.ogg",
+    "%s has all 22 sounds, each its own cascade-%s-<name>.ogg",
     (set) => {
       expect(Object.keys(files[set]!).sort()).toEqual([...CASCADE_SOUND_NAMES].sort());
       for (const name of CASCADE_SOUND_NAMES) {
-        expect(files[set]![name]).toBe(`cascade-${set}-${name}.ogg`);
+        // TEMP(#3962): merge-t11 plays the t10 file until #3966 synthesises its own.
+        const file = name === "merge-t11" ? "merge-t10" : name;
+        expect(files[set]![name]).toBe(`cascade-${set}-${file}.ogg`);
       }
     }
   );
 
   it("every registered file exists, and every Cascade file on disk is registered", () => {
-    const registered = Object.values(files).flatMap((f) => Object.values(f));
+    // TEMP(#3962): merge-t11 shares the t10 file, so a file may be registered twice.
+    const registered = [...new Set(Object.values(files).flatMap((f) => Object.values(f)))];
     for (const f of registered) expect(fs.existsSync(path.join(SOUNDS_DIR, f))).toBe(true);
     const onDisk = fs.readdirSync(SOUNDS_DIR).filter((f) => f.startsWith("cascade-"));
     expect(onDisk.sort()).toEqual([...registered].sort());
@@ -94,20 +97,20 @@ describe("which file an event plays", () => {
     expect(soundSetFor("unknown")).toBe("fruits");
   });
 
-  it("land: light for tiers 0-4, heavy for 5-10, louder with the tier", () => {
+  it("land: light for tiers 0-4, heavy for 5-11, louder with the tier", () => {
     expect(landSound(0)).toEqual({ name: "land-light", volume: MOTION.sound.landVolume0 });
     expect(landSound(4).name).toBe("land-light");
     expect(landSound(5).name).toBe("land-heavy");
-    expect(landSound(10)).toEqual({ name: "land-heavy", volume: 1 });
-    for (let t = 1; t <= 10; t++) {
+    expect(landSound(11)).toEqual({ name: "land-heavy", volume: 1 });
+    for (let t = 1; t <= 11; t++) {
       expect(landSound(t).volume).toBeGreaterThan(landSound(t - 1).volume);
     }
   });
 
   it("merge: the pre-pitched file of the tier made, clamped to the ladder", () => {
-    for (let t = 0; t <= 10; t++) expect(mergeSound(t)).toBe(`merge-t${t}`);
+    for (let t = 0; t <= 11; t++) expect(mergeSound(t)).toBe(`merge-t${t}`);
     expect(mergeSound(-1)).toBe("merge-t0");
-    expect(mergeSound(12)).toBe("merge-t10");
+    expect(mergeSound(12)).toBe("merge-t11");
   });
 
   it("chain: link 2 is chain-1, rising to chain-4 from link 5 on; a plain merge has none", () => {

@@ -56,7 +56,7 @@ export interface CascadeHookDeps {
   setupNearLid: () => void;
   /** Fills the bin above the lid, so the lid ends the game on its own within seconds. */
   fillBin: () => void;
-  /** Restores two tier-9 pieces about to merge into the capstone: the win follows at once. */
+  /** Restores two tier-10 pieces about to merge into the capstone: the win follows at once. */
   setupWin: () => void;
 }
 
@@ -75,8 +75,8 @@ export interface CascadeSetup {
 const FLOOR_Y = 580;
 const ticksMs = (ticks: number): number => ticks * FIXED_STEP_MS;
 /**
- * `win`: how far right of the lower tier-9 piece the upper one falls (#3920). Two tier-9 pieces
- * (r 79.1) fit side by side on the floor, so the upper one falls onto the lower one's shoulder.
+ * `win`: how far right of the lower tier-10 piece the upper one falls (#3920). Two tier-10 pieces
+ * (r 80.33) fit side by side on the floor, so the upper one falls onto the lower one's shoulder.
  */
 const WIN_OFFSET_X = 100;
 
@@ -130,14 +130,14 @@ function wallTower(tiers: number[], side: "left" | "right"): CascadeSetup["piece
  *    the lively physics a free cherry rolls away on the floor, so the old set-up, tiers 1, 2 and 3
  *    side by side where the first of two drops had to come to rest beside the 1, no longer held;
  *    the cherry it waited for is now part of the pile.)
- *  - `nearLid`: a tower of the capstone and tiers 9, 8 and 4 against the left wall (#3920
+ *  - `nearLid`: a tower of the capstone and tiers 10, 9 and 5 against the left wall (12-tier
  *    ladder: its top edge at about y = 49, over the lid; with a tier 7 on top it would reach
- *    over the canvas top, the hard stop), wedged by a tier 9 and 8 against the right wall,
+ *    over the canvas top, the hard stop), wedged by a tier 10 and 9 against the right wall,
  *    fast-forwarded past the restore grace and a sixth of the count, so the ring is draining
  *    when the screen shows it and the lid ends the game about 2.5 s later.
- *  - `fillBin`: that tower plus a tower of tiers 9 to 5 against the right wall (top edge at about
- *    y = 38); the lid ends the game (the live rule, no force) about 4 s after the restore.
- *  - `win` (#3920): two tier-9 pieces (Watermelon / Sun) about to merge into the capstone: one on
+ *  - `fillBin`: that tower plus a tower of tiers 10 to 6 against the right wall (top edge at about
+ *    y = 19); the lid ends the game (the live rule, no force) about 4 s after the restore.
+ *  - `win` (#3920): two tier-10 pieces (Watermelon / Sun) about to merge into the capstone: one on
  *    the floor against the left wall, the other above it, offset by WIN_OFFSET_X towards the
  *    middle and 43 px higher than where it would first touch it. It falls onto it, and the merge
  *    that makes the capstone is the win (about 0.2 s after the restore). Nothing is forced. The
@@ -145,7 +145,7 @@ function wallTower(tiers: number[], side: "left" | "right"): CascadeSetup["piece
  */
 export function cascadeSetup(id: CascadeSetupId): CascadeSetup {
   const mid = WORLD_WIDTH / 2;
-  const leftTower = wallTower([CAPSTONE_TIER, 9, 8, 4], "left");
+  const leftTower = wallTower([CAPSTONE_TIER, 10, 9, 5], "left");
   switch (id) {
     case "chain":
       return {
@@ -157,13 +157,13 @@ export function cascadeSetup(id: CascadeSetupId): CascadeSetup {
       return {
         // The two right-hand pieces wedge the capstone against the left wall (on its own it
         // slides out from under the tower on the lively floor).
-        pieces: [...leftTower, ...wallTower([9, 8], "right")],
+        pieces: [...leftTower, ...wallTower([10, 9], "right")],
         settleMs: ticksMs(OVERFLOW_IGNORE_MERGE_TICKS + 30),
       };
     case "fillBin":
-      // The towers repeat tiers 9 and 8, but never at the same height, so nothing merges.
+      // The towers repeat tiers 10 and 9, but never at the same height, so nothing merges.
       return {
-        pieces: [...leftTower, ...wallTower([9, 8, 7, 6, 5], "right")],
+        pieces: [...leftTower, ...wallTower([10, 9, 8, 7, 6], "right")],
         settleMs: 0,
       };
     case "win": {

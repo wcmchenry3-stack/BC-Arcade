@@ -52,14 +52,16 @@ function pacerOnClock() {
 describe("the map (owner pick B + C's danger)", () => {
   it("land: Light, Medium for big pieces", () => {
     expect(landHaptic(0)).toBe("light");
-    expect(landHaptic(5)).toBe("light");
-    expect(landHaptic(6)).toBe("medium");
+    expect(landHaptic(6)).toBe("light");
+    expect(landHaptic(7)).toBe("medium");
   });
 
   it("merge: Medium, Heavy, then a double Heavy, by the tier it made", () => {
     expect(mergeHaptic(1)).toEqual({ kind: "medium", double: false });
-    expect(mergeHaptic(5)).toEqual({ kind: "heavy", double: false });
-    expect(mergeHaptic(8)).toEqual({ kind: "heavy", double: true });
+    expect(mergeHaptic(4)).toEqual({ kind: "medium", double: false });
+    expect(mergeHaptic(6)).toEqual({ kind: "heavy", double: false });
+    expect(mergeHaptic(7)).toEqual({ kind: "heavy", double: false });
+    expect(mergeHaptic(9)).toEqual({ kind: "heavy", double: true });
   });
 
   it("chain: a rising run", () => {
@@ -96,7 +98,7 @@ describe("pacing", () => {
 
   it("no two pulses closer than the minimum gap; a big merge's double comes after it", () => {
     const { pacer, fired, advance } = pacerOnClock();
-    pacer.merge(8, 1);
+    pacer.merge(9, 1);
     pacer.merge(1, 1);
     advance(500);
     const times = fired.map(([t]) => t);
@@ -112,9 +114,9 @@ describe("pacing", () => {
     advance(30);
     pacer.land(1); // 30 ms later: dropped
     advance(100);
-    pacer.land(6);
+    pacer.land(7);
     advance(10);
-    pacer.merge(8, 1); // Heavy now and in 50 ms
+    pacer.merge(9, 1); // Heavy now and in 50 ms
     advance(10);
     pacer.land(2); // a pulse is still waiting: dropped
     advance(500);
@@ -150,7 +152,7 @@ describe("pacing", () => {
 
   it("reset cancels what is waiting", () => {
     const { pacer, fired, advance } = pacerOnClock();
-    pacer.merge(8, 1);
+    pacer.merge(9, 1);
     pacer.reset();
     advance(500);
     expect(fired).toEqual([]);

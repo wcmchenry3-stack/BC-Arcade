@@ -2,7 +2,7 @@ appId: com.buffingchi.games
 # Cascade demo flow (#3699): the win, its celebration and the win card. Tagged `demo`, so only
 # the `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
 #
-# `cascade-test-win` (test-build-only, see demo-loss.yaml) restores two tier-9 pieces about to
+# `cascade-test-win` (test-build-only, see demo-loss.yaml) restores two tier-10 pieces about to
 # merge: within about 0.2 s they make the capstone (Pumpkin / Milky Way), which is the win. The
 # celebration plays for about 2.1 s (the pile dims, the capstone rises to the centre with its
 # glow, gold ring and cheering face), then the result card (`cascade-result-title`, "You Win!").

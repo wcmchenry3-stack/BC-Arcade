@@ -188,18 +188,19 @@ describe("overhangs", () => {
    * [left, top, right, bottom]; anything not listed overhangs nowhere.
    */
   const OVERHANG: Record<string, Record<number, [number, number, number, number]>> = {
-    // #3920: the Peach (Fruits) and the Moon (Cosmos) are gone, so tiers above them moved down.
+    // #3960: 12 tiers (the Moon is back at tier 1, a Lime sits at tier 2), so every tier above
+    // the Lychee moved up one from #3920's table.
     fruits: {
       0: [0, 0.52, 0, 0], // cherry stem
-      3: [0, 0.4, 0, 0], // grape stem
-      5: [0, 0.4, 0, 0], // apple stem and leaf
-      7: [0.12, 0.475, 0.12, 0], // dragonfruit: crown on top, side bracts
-      8: [0, 0.45, 0, 0], // pineapple crown
-      10: [0, 0.335, 0, 0], // pumpkin stem
+      4: [0, 0.4, 0, 0], // grape stem
+      6: [0, 0.4, 0, 0], // apple stem and leaf
+      8: [0.12, 0.475, 0.12, 0], // dragonfruit: crown on top, side bracts
+      9: [0, 0.45, 0, 0], // pineapple crown
+      11: [0, 0.335, 0, 0], // pumpkin stem
     },
     cosmos: {
-      6: [0, 0.265, 0, 0.245], // Uranus ring (a tilted ring, both ends)
-      7: [0.305, 0, 0.305, 0], // Saturn rings
+      7: [0, 0.265, 0, 0.245], // Uranus ring (a tilted ring, both ends)
+      8: [0.305, 0, 0.305, 0], // Saturn rings
     },
   };
   /** Measurement slack: one pixel of the R = 200 render, and the box margin. */
@@ -258,7 +259,8 @@ describe("overhangs", () => {
       peach: [0, 0.28, 0, 0], // stem and leaf
       appleRed: [0, 0.4, 0, 0], // stem and leaf, the same drawing as the green Apple
     },
-    cosmos: { moon: [0, 0, 0, 0] },
+    // The Moon is back in play at tier 1 (#3960), so Cosmos retires nothing.
+    cosmos: {},
   };
 
   it("keeps every retired piece's recipe, and it still draws as approved (#3920)", () => {

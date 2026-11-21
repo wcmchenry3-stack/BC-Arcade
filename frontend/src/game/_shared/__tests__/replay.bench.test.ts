@@ -7,7 +7,7 @@
  *   - a full Hearts game: 7 hands, a unit per trick plus one for the pass;
  *   - a 300-move Solitaire game: a unit per move;
  *   - a 13-round Yacht game against the CPU: a unit per round (both turns);
- *   - a 10-minute Cascade game (#3858) on the real engine: a unit per 20 drops, a `drop` and a
+ *   - a 10-minute Cascade game (#3858) on the real engine: a unit per 30 drops (#3967), a `drop` and a
  *     `merge` event each, as the screen records them (`cascade/replay.ts`).
  *
  * The payloads are compact ASCII codes, the shapes #3280's adoptions record.
@@ -127,6 +127,8 @@ const BUDGETS: Readonly<Record<string, Budget>> = {
   },
   // #3858, measured on the 10-minute game: recorded 7,003 B in 13 units (26 rows), 375,884 B
   // written against the queue at its cap, ≤ 13,352 B a plain save, ≤ 46,873 B an evicting one.
+  // #3967 (30-drop units, 12-tier ladder, seed 6): 6,658 B in 9 units (18 rows), 201,494 B
+  // written, ≤ 6,322 B a plain save, ≤ 45,996 B an evicting one. The budgets are unchanged.
   cascade: {
     queueWritesPerSave: 1,
     queueWritesPerEvictingSave: 5,
@@ -269,7 +271,8 @@ function yachtGame(): Script {
 
 /**
  * Cascade (#3858): a 10-minute game on the real engine, the skilled bot dropping every 2.4 s
- * (seed 3 is still alive at 600 s, so the game stops there), its units as the replay log hands
+ * (seed 6 is still alive at 600 s, so the game stops there; seed 3 until #3967, whose ladder
+ * ends it sooner), its units as the replay log hands
  * them over. Played once; every run below records the same units.
  */
 let cascadeUnits: Recorded[][] | null = null;
@@ -286,9 +289,9 @@ function cascadeGame(): Script {
         closeUnit: () => undefined,
       },
       {
-        seeds: { queue: 1003, engine: 2003 },
+        seeds: { queue: 1006, engine: 2006 },
         bot: { ...skilledBot, nextDelayMs: () => 2400 },
-        botSeed: 3,
+        botSeed: 6,
         maxSimMs: 600_000,
       }
     );

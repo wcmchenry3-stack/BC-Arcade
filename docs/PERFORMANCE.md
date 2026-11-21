@@ -394,7 +394,7 @@ Whole-bundle context (Android, `npx expo export --platform android`): store Herm
 
 Before #3698: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 KB budget. After #3698 the art is code (17.4 KB minified, see [Cascade code-drawn art](#cascade-code-drawn-art-3698)) and the image bytes are zero; the sounds are what remains over budget until the sound story lands.
 
-**#3702: the owner raised the sound budget.** Cascade plays one full set of 21 synthesized sounds per piece set (Fruits and Cosmos), at the house encoding (44.1 kHz mono Vorbis q5): 182,373 B + 162,885 B = **345,258 B** for 42 files, against a 120 KB budget that one set at a lower encoding would have fitted. The owner chose two full sets at the house setting and raised the sound budget to about 345 KB (#3702, 2026-11-16), so the Cascade total is now about 380 KB with its JS (the row above, raised from 200 KB by that decision). Every Ogg carries about 3.7 KB of fixed Vorbis header, so the 42 files cost about 155 KB before any audio. `src/game/cascade/__tests__/sounds.test.ts` fails if the Cascade sounds pass 350 KiB. Only the active set's players exist, so a game holds at most 21 players. **8 are created at mount** (drop, the two landings, merges t0-t3 and the first chain step: the sounds of every turn); the other 13 on their first play, or pre-warmed when they become likely (the win once a tier-9 piece is on the board, danger and game over when the lid count first runs).
+**#3702: the owner raised the sound budget.** Cascade plays one full set of 22 sound names per piece set (21 synthesized files: `merge-t11` plays the t10 file until #3966 synthesises its own, so the byte figures below did not change with the 12-tier ladder) (Fruits and Cosmos), at the house encoding (44.1 kHz mono Vorbis q5): 182,373 B + 162,885 B = **345,258 B** for 42 files, against a 120 KB budget that one set at a lower encoding would have fitted. The owner chose two full sets at the house setting and raised the sound budget to about 345 KB (#3702, 2026-11-16), so the Cascade total is now about 380 KB with its JS (the row above, raised from 200 KB by that decision). Every Ogg carries about 3.7 KB of fixed Vorbis header, so the 42 files cost about 155 KB before any audio. `src/game/cascade/__tests__/sounds.test.ts` fails if the Cascade sounds pass 350 KiB. Only the active set's players exist, so a game holds at most 22 players. **8 are created at mount** (drop, the two landings, merges t0-t3 and the first chain step: the sounds of every turn); the other 14 on their first play, or pre-warmed when they become likely (the win once a tier-10 piece is on the board, danger and game over when the lid count first runs).
 
 **Guard.** `frontend/src/game/cascade/__tests__/assetBudget.test.ts` fails if `frontend/assets/` gains any Cascade image file or folder (the pinned list is empty since #3698), or if any of the files deleted in #3692 reappear. `scripts/check_large_files.py` (#2967) no longer grandfathers the two deleted source-art folders.
 
@@ -1420,7 +1420,7 @@ Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT 
 
 - **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events). This is a stand-in shape (per-card events) from before #3283; the events Hearts really records, and their measured cost, are in [games/hearts.md](games/hearts.md#replay-recording).
 - **Solitaire:** 300 moves, one unit per move.
-- **Cascade** (#3858): a 10-minute game on the real engine (the skilled bot dropping every 2.4 s; 249 drops, 216 merges), one unit per 20 drops as the screen records them: 13 units, 26 events, 7,003 B recorded, 375,884 B written to storage, ≤ 13.4 KB a plain save and ≤ 46.9 KB an evicting one, 2 event POSTs, none while open. It has only 26 rows, so its queue is seeded at 4,990 rows for its saves to evict.
+- **Cascade** (#3858; #3967): a 10-minute game on the real engine (the skilled bot dropping every 2.4 s, seed 6 on the 12-tier ladder; 249 drops, 210 merges), one unit per 30 drops as the screen records them: 9 units, 18 events, 6,660 B recorded, 201,502 B written to storage, ≤ 6.3 KB a plain save and ≤ 46.0 KB an evicting one, 2 event POSTs, none while open (on the 11-tier ladder with 20-drop units: 13 units, 26 events, 7,003 B, 375,884 B, ≤ 13.4 / 46.9 KB). It has only 18 rows, so its queue is seeded at 4,990 rows for its saves to evict.
 - **Yacht:** 13 rounds against the CPU, one unit per round (13 units, 104 events). This is a stress fixture for the pipeline, not Yacht's real recording: since #3282 the app sends 26 units of one `turn_completed` event each (both players), measured in [games/yacht.md](games/yacht.md#replay-recording).
 
 The count budgets are hard, because the fixture is deterministic. Time has only a generous ceiling, a mean of 40 ms per save, because CI runners are shared and run jest with coverage.
@@ -1550,10 +1550,10 @@ Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbe
 
 | Metric                                            |  Measured | Budget (`max`) |
 | ------------------------------------------------- | --------: | -------------: |
-| HTTP requests                                     |       152 |            160 |
-| Bytes uploaded                                    |   158,703 |        182,508 |
+| HTTP requests                                     |       154 |            160 |
+| Bytes uploaded                                    |   161,731 |        182,508 |
 | Requests during the offline hour                  |        12 |             14 |
-| Storage writes (day)                              |     1,121 |          1,184 |
+| Storage writes (day)                              |     1,113 |          1,184 |
 | Sentry events, healthy / offline hour / recording | 0 / 0 / 0 |      0 / 0 / 0 |
 | Gameplay requests, open in foreground             |         0 |              0 |
 | Hold-fallback requests                            |        14 |             17 |
@@ -1568,9 +1568,9 @@ Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbe
 | Sudoku (1)     |                        6,649 |  7,647 |                                  27 |     32 |
 | Mahjong (1)    |                        4,957 |  5,701 |                                  15 |     18 |
 | Daily Word (1) |                          834 |    960 |                                  11 |     13 |
-| Cascade (3)    |                       34,341 | 39,492 |                                  34 |     39 |
+| Cascade (3)    |                       36,879 | 39,492 |                                  26 |     39 |
 
-#3858 added the three Cascade games and re-measured the day totals with them (HTTP requests 139 → 152, bytes uploaded 137,405 → 158,703, storage writes 1,029 → 1,121); only the bytes uploaded needed a higher `max`. The other games' rows are unchanged: Cascade plays last, so nothing before it moves.
+#3858 added the three Cascade games and re-measured the day totals with them (HTTP requests 139 → 152, bytes uploaded 137,405 → 158,703, storage writes 1,029 → 1,121); only the bytes uploaded needed a higher `max`. The other games' rows are unchanged: Cascade plays last, so nothing before it moves. #3962 / #3967 (the 12-tier ladder, a unit per 30 drops) re-measured the Cascade rows and the day totals (HTTP requests 154, bytes uploaded 161,731, storage writes 1,113; Cascade 36,879 B stored and 26 writes a game); no `max` changed.
 
 ### Raising a budget
 

@@ -8,8 +8,8 @@
 import React, { Suspense, type ReactNode } from "react";
 import { View } from "react-native";
 
-/** Tier 9 of the Fruits set (#3920; tier 10 before the Peach was removed). */
-const WATERMELON = { set: "fruits", tier: 9 } as const;
+/** Tier 10 of the Fruits set (Watermelon; #3960 added a tier below it). */
+const WATERMELON = { set: "fruits", tier: 10 } as const;
 
 export interface CascadeTileIconProps {
   /** Square size, points. */

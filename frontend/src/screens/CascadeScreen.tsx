@@ -112,7 +112,7 @@ function CascadeGame() {
   // The celebration's clock (ms since the win, -1: none), animated by CascadeCelebration and
   // drawn by the board on the UI thread.
   const celebrationClock = useSharedValue(-1);
-  // A tier-9 piece is on the board: the board builds the celebration ahead, in idle time. Ready:
+  // A tier-10 piece is on the board: the board builds the celebration ahead, in idle time. Ready:
   // the game is won and the board can draw it, so its clock may start (#3699, iOS demo on #3924).
   const [nearWin, setNearWin] = useState(false);
   const [celebrationReady, setCelebrationReady] = useState(false);

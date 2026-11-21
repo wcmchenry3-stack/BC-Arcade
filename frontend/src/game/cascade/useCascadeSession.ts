@@ -12,7 +12,7 @@
  *     `judgeEnd` gives the card the result block of the stopped clock.
  *   - Replay (#3858, `replay.ts`): `game_started` carries the game's seeds, tuning and
  *     `engine_version`; `rec` takes the screen's drops and the engine's merge and danger events
- *     into the log, which hands a unit to the recorder every 20 drops, at the end and when the app
+ *     into the log, which hands a unit to the recorder every 30 drops, at the end and when the app
  *     goes to the background; `game_ended` adds the end, capstone and lid steps. With the replay
  *     dial off for the session (`isRecording`), none of it runs.
  */

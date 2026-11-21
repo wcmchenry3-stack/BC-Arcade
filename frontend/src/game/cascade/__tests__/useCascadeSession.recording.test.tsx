@@ -2,7 +2,8 @@
  * Cascade's session records its play on the shared recorder (#3858), through the real
  * `useGameRecorder` and the real `gameEventClient`:
  *  - `game_started` carries the seeds, the tuning and `engine_version`;
- *  - drops and merges stay in memory, and a unit of 20 drops is saved in one `enqueueEvents`
+ *  - drops and merges stay in memory, and a unit of `CASCADE_DROPS_PER_UNIT` (30, #3967) drops is
+ *    saved in one `enqueueEvents`
  *    call at the next idle moment, never one write per drop;
  *  - going to the background saves the unit waiting, synchronously;
  *  - the end saves the last unit before `game_ended`, which adds the end and capstone steps;
@@ -11,7 +12,7 @@
  *  - a Sentry event raised during the game carries `game.id` and `game.type` (#3277);
  *  - leaving the screen mid-game (the abandon) carries the end and lid steps and the danger
  *    moment still running (review S1, S2);
- *  - nothing gameplay is uploaded while a 40-drop game is open in the foreground (S4);
+ *  - nothing gameplay is uploaded while a two-unit game is open in the foreground (S4);
  *  - a test seam's reseed before the first drop restarts the game with the new seeds.
  */
 import * as Sentry from "@sentry/react-native";
@@ -34,6 +35,7 @@ import {
   OVERFLOW_IGNORE_MERGE_TICKS,
   WORLD_HEIGHT,
 } from "../constants";
+import { CASCADE_DROPS_PER_UNIT } from "../replay";
 import { tierRadius } from "../tiers";
 
 const setTag = Sentry.setTag as jest.Mock;
@@ -122,27 +124,28 @@ describe("Cascade session recording (#3858)", () => {
     );
   });
 
-  it("keeps drops and merges in memory, and saves a unit of 20 drops in one call at idle", async () => {
+  it("keeps drops and merges in memory, and saves a full unit of drops in one call at idle", async () => {
     const { result, engine } = await mount();
     await act(() => result.current.startSession("fruits"));
     const { rec } = result.current;
-    for (let i = 0; i < 19; i += 1) {
+    const last = CASCADE_DROPS_PER_UNIT - 1;
+    for (let i = 0; i < last; i += 1) {
       engine.steps = i * 90;
       expect(rec.drop(i % 6, 100.04 + i)).toBe(Math.round((100.04 + i) * 10) / 10);
       rec.events([merge(i * 90 + 40, 0)]);
     }
     await act(() => jest.advanceTimersByTime(5000));
     expect(gameEventClient.enqueueEvents).not.toHaveBeenCalled();
-    engine.steps = 1800;
+    engine.steps = last * 90 + 90;
     rec.drop(2, 250);
     expect(gameEventClient.enqueueEvents).not.toHaveBeenCalled(); // saved at idle, not in the tap
     await act(() => jest.advanceTimersByTime(5000));
     expect(saves()).toHaveLength(1);
     const [drop, mergeEvent] = saves()[0]!;
     expect(drop!.type).toBe("drop");
-    expect((drop!.data.d as number[][]).length).toBe(20);
-    expect((drop!.data.d as number[][])[19]).toEqual([1800, 2500, 2]);
-    expect(mergeEvent!.data.m).toHaveLength(19);
+    expect((drop!.data.d as number[][]).length).toBe(CASCADE_DROPS_PER_UNIT);
+    expect((drop!.data.d as number[][])[last]).toEqual([last * 90 + 90, 2500, 2]);
+    expect(mergeEvent!.data.m).toHaveLength(last);
     expect(drop!.data.unit).toBe(1);
   });
 
@@ -165,7 +168,7 @@ describe("Cascade session recording (#3858)", () => {
     await act(() => result.current.startSession("fruits"));
     engine.steps = 10;
     result.current.rec.drop(4, 200);
-    result.current.rec.events([merge(400, 9), { type: "win", x: 0, y: 0, id: 5 }]);
+    result.current.rec.events([merge(400, 10), { type: "win", x: 0, y: 0, id: 5 }]);
     engine.steps = 402;
     const order: string[] = [];
     (gameEventClient.enqueueEvents as jest.Mock).mockImplementation(() => order.push("units"));
@@ -271,7 +274,7 @@ describe("Cascade session recording (#3858)", () => {
     const engine = new CascadeEngine({ seed: 1 });
     const pieces: { tier: number; x: number; y: number }[] = [];
     let bottom = WORLD_HEIGHT - FLOOR_THICKNESS;
-    for (const tier of [10, 9, 7, 4]) {
+    for (const tier of [11, 10, 8, 4]) {
       pieces.push({ tier, x: 121, y: bottom - tierRadius(tier) });
       bottom -= 2 * tierRadius(tier);
     }
@@ -291,7 +294,7 @@ describe("Cascade session recording (#3858)", () => {
     engine.destroy();
   });
 
-  it("no gameplay row is uploaded while a 40-drop game is open in the foreground (S4)", async () => {
+  it("no gameplay row is uploaded while a two-unit game is open in the foreground (S4)", async () => {
     const api = new MockSyncApi();
     api.defaultResponse = ok();
     const fetchSpy = jest.spyOn(globalThis, "fetch");
@@ -302,7 +305,8 @@ describe("Cascade session recording (#3858)", () => {
       await act(() => result.current.startSession("fruits"));
       const gid = (gameEventClient.startGame as jest.Mock).mock.results.at(-1)!.value as string;
       result.current.sync.markStarted();
-      for (let i = 0; i < 40; i += 1) {
+      const drops = 2 * CASCADE_DROPS_PER_UNIT; // 40 when a unit was 20 drops (#3967: 30)
+      for (let i = 0; i < drops; i += 1) {
         engine.steps = i * 120;
         result.current.rec.drop(i % 6, 100 + i);
         result.current.rec.events([merge(i * 120 + 60, i % 5)]);
@@ -319,7 +323,7 @@ describe("Cascade session recording (#3858)", () => {
       expect(api.calls.filter(gameplay)).toEqual([]);
       expect(fetchSpy).not.toHaveBeenCalled(); // and nothing reached the network but the mock
       // The end releases them.
-      engine.steps = 4800;
+      engine.steps = drops * 120;
       await act(() => result.current.endSession("loss"));
       await act(() => jest.advanceTimersByTimeAsync(100));
       await act(() => worker.flush());

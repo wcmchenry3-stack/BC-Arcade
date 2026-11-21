@@ -47,7 +47,7 @@
  *     next step), and again each step it grows: the solver can shove a product made at its
  *     parents' size on top of a third piece several px in its first step, out of reach of the
  *     neighbour it was made touching (#3920: up to 12 px on the 11.5-98 ladder, a lost chain).
- *   - The win (#3920; #3904 was two touching capstones): the merge of two tier-9 pieces into the
+ *   - The win (#3920; #3904 was two touching capstones): the merge of two tier-10 pieces into the
  *     capstone. It is an ordinary merge (`merge` and `score` events, the capstone's own score, no
  *     extra), then `{ type: "win", x, y, id }` at the capstone's spawn point with its id. The win
  *     ends the play: from that step on `canDrop()` is false, `drop()` does nothing, no other merge
@@ -137,9 +137,12 @@ const DEFAULT_SEED = 0x2545f491;
 /**
  * Version of the rules this engine plays by (#3909, #3858). Sent in `game_started` as
  * `engine_version` so a stored game says which rules made it. Bump it when a change to this
- * engine, its physics (`constants.ts`, `physicsWorld.ts`) or the ladder (`tiers.ts`) would make
- * an older recorded game replay differently, and keep the old fixture (#3908). A `game_started`
- * without the field is version 1.
+ * engine or its physics (`constants.ts`, `physicsWorld.ts`) would make an older recorded game
+ * replay differently, and keep the old fixture (#3908). A `game_started` without the field is
+ * version 1. A ladder change made before release (`tiers.ts`, #3962 / #3967) does not bump it: it
+ * is carried by the tuning id (`CASCADE_TUNING_ID`, now `lively3.overlap1.ladder12`) and the golden
+ * fixture is re-recorded under an `accepted_changes` entry in `.github/replay-fixtures.json`
+ * (owner decision #3974).
  */
 export const ENGINE_VERSION = 1;
 const FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;

@@ -12,21 +12,22 @@
  */
 
 /**
- * Debug-only placeholder colour per tier of the ladder (`game/cascade/tiers.ts`, tiers 0-10,
- * #3920). Each is distinct from its neighbours so stacked circles stay readable.
+ * Debug-only placeholder colour per tier of the ladder (`game/cascade/tiers.ts`, tiers 0-11,
+ * #3960). Each is distinct from its neighbours so stacked circles stay readable.
  */
 export const CASCADE_PIECE_COLORS = [
   "#e63946", // 0 Cherry / Pluto
-  "#4361ee", // 1 Blueberry / Mercury
-  "#f9c80e", // 2 Lemon / Mars
-  "#6a0572", // 3 Grape / Venus
-  "#f77f00", // 4 Orange / Earth
-  "#7cc242", // 5 Apple (green, #3920) / Neptune
-  "#6f4e37", // 6 Coconut / Uranus
-  "#ff4d9d", // 7 Dragonfruit / Saturn
-  "#ffd166", // 8 Pineapple / Jupiter
-  "#2d6a4f", // 9 Watermelon / Sun
-  "#e76f00", // 10 Pumpkin / Milky Way (capstone)
+  "#4361ee", // 1 Lychee (TEMP(#3962): blueberry colour until #3964) / Moon
+  "#9bd13f", // 2 Lime (TEMP(#3962): until #3964) / Mercury
+  "#f9c80e", // 3 Lemon / Mars
+  "#6a0572", // 4 Plum (TEMP(#3962): the grape colour until #3964) / Venus
+  "#f77f00", // 5 Orange / Earth
+  "#7cc242", // 6 Apple (green, #3920) / Neptune
+  "#6f4e37", // 7 Pomegranate (TEMP(#3962): coconut colour until #3964) / Uranus
+  "#ff4d9d", // 8 Dragonfruit / Saturn
+  "#ffd166", // 9 Pineapple / Jupiter
+  "#2d6a4f", // 10 Watermelon / Sun
+  "#e76f00", // 11 Pumpkin / Milky Way (capstone)
 ] as const;
 
 /** The lid and danger-state colours for one theme (#3694). All `#rrggbb`: the screen mixes them. */
@@ -81,6 +82,8 @@ export const CASCADE_ART = {
     blue: { b: "#3f55b8", l: "#7d93ea", d: "#1f2b6e", o: "#18204f" },
     blueCalyx: "#141a3e",
     lemon: { b: "#f7d531", l: "#fff08a", d: "#c9a20a", o: "#9c7a06" },
+    /** TEMP(#3962): a recoloured lemon stands in for the Lime until #3964 draws it. */
+    lime: { b: "#8fd13a", l: "#d4f58a", d: "#4f9a14", o: "#2f6a0a" },
     grapeBg: { b: "#3e1a5e", l: "#5a2a84", d: "#24103a" },
     grape: { b: "#8a45c0", l: "#c08aec", d: "#55237e", o: "#3b145c" },
     orange: { b: "#f58a1f", l: "#ffb766", d: "#c2560a", o: "#8f3c05" },
@@ -111,6 +114,7 @@ export const CASCADE_ART = {
     ink: [
       "#3a1418",
       "#0f1330",
+      "#1a3a06", // lime (TEMP(#3962): replaced by #3964)
       "#4a3205",
       "#1c0830",
       "#4a2003",
@@ -126,7 +130,7 @@ export const CASCADE_ART = {
     retiredInk: { appleRed: "#3a0208", peach: "#5a1a0c" },
   },
   cosmos: {
-    /** Retired by #3920 (kept for `COSMOS_ART.retired`, never drawn in play): the Moon. */
+    /** The Moon (tier 1 again since #3960; archived by #3920 in between). */
     moon: { b: "#cfd0d4", l: "#f2f2f4", d: "#8e9098" },
     maria: "#9d9fa8",
     pluto: { b: "#c99d76", l: "#e9c9a6", d: "#8d6244" },
@@ -166,6 +170,7 @@ export const CASCADE_ART = {
     /** Face ink per tier. */
     ink: [
       "#3a2416",
+      "#2a2a33", // moon (#3960)
       "#1a1612",
       "#3a1004",
       "#4a3006",
@@ -177,8 +182,6 @@ export const CASCADE_ART = {
       "#6a2a00",
       "#f4eaff",
     ],
-    /** Face ink of the retired pieces (#3920). */
-    retiredInk: { moon: "#2a2a33" },
   },
 } as const;
 
@@ -285,12 +288,13 @@ export const CASCADE_MOTION: {
   tones: {
     fruits: [
       { b: F.cherry.b, l: F.cherry.l, d: F.cherry.d },
-      { b: F.blue.b, l: F.blue.l, d: F.blue.d },
+      { b: F.blue.b, l: F.blue.l, d: F.blue.d }, // TEMP(#3962): Lychee until #3964
+      { b: F.lime.b, l: F.lime.l, d: F.lime.d }, // TEMP(#3962): Lime until #3964
       { b: F.lemon.b, l: F.lemon.l, d: F.lemon.d },
       { b: F.grape.b, l: F.grape.l, d: F.grape.d },
       { b: F.orange.b, l: F.orange.l, d: F.orange.d },
       { b: F.apple.b, l: F.apple.l, d: F.apple.d },
-      { b: F.coconut.b, l: F.coconut.l, d: F.coconut.d },
+      { b: F.coconut.b, l: F.coconut.l, d: F.coconut.d }, // TEMP(#3962): Pomegranate until #3964
       { b: F.dragonfruit.b, l: F.dragonfruit.l, d: F.dragonfruit.d },
       { b: F.pine.b, l: F.pine.l, d: F.pine.d },
       { b: F.melon.b, l: F.melon.l, d: F.melon.d },
@@ -298,6 +302,7 @@ export const CASCADE_MOTION: {
     ],
     cosmos: [
       { b: C.pluto.b, l: C.pluto.l, d: C.pluto.d },
+      { b: C.moon.b, l: C.moon.l, d: C.moon.d },
       { b: C.mercury.b, l: C.mercury.l, d: C.mercury.d },
       { b: C.mars.b, l: C.mars.l, d: C.mars.d },
       { b: C.venus.b, l: C.venus.l, d: C.venus.d },

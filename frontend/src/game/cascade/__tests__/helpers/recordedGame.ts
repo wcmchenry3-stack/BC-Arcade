@@ -2,7 +2,7 @@
  * Plays one seeded Cascade game on the real engine and records it as the screen does (#3858):
  * the queue drawn from the game's queue seed, the engine on its engine seed, a sim bot's taps
  * gated by `canDrop()`, each drop at `quantizeX(x)` logged at the engine's step, every step's
- * merge and danger events logged, a unit handed over every 20 drops and the last one at the end.
+ * merge and danger events logged, a unit handed over every 30 drops and the last one at the end.
  *
  * Frames are irregular on purpose (60 and 120 Hz, a long frame now and then), as on a device:
  * the recording is keyed to fixed steps, so a rebuild at one step per call must match it anyway.

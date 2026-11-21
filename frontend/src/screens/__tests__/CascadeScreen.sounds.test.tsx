@@ -201,7 +201,7 @@ it("a switch to the Cosmos pieces plays the Cosmos set and resets the pacer", as
 
 it("the winning merge plays the win (no merge sound); a loss plays the game over", async () => {
   await mount();
-  mockPendingEvents.push(merge(10, 9), { type: "win" });
+  mockPendingEvents.push(merge(11, 9), { type: "win" });
   await frames(100);
   expect(mockSounds.win).toHaveBeenCalledTimes(1);
   expect(mockSounds.merge).not.toHaveBeenCalled();
@@ -254,9 +254,9 @@ it("a test fast-forward plays no landing or merge", async () => {
 
 it("a restored game settling is quiet (the danger phase still steps); play after it is not", async () => {
   await AsyncStorage.setItem(
-    "cascade_game_v7",
+    "cascade_game_v8",
     JSON.stringify({
-      version: 7,
+      version: 8,
       pieces: [{ tier: 4, x: 120, y: 500 }],
       score: 40,
       savedAt: Date.now(),

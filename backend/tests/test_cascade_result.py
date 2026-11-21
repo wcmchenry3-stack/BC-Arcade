@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from cascade.models import CascadeResult
+from cascade.models import MAX_TIER, CascadeResult
 from cascade.module import module as cascade_module
 from cascade.time_bonus import BONUS_MAX, BONUS_RULE, MIN_WIN_MS, PAR_TIME_MS, time_bonus
 from db.base import get_session_factory
@@ -44,15 +44,15 @@ _live = pytest.mark.skipif(
 # A finished game's block as the app sends it (resultBlock.ts), with the app's
 # own (display-only) bonus copy.
 APP_BLOCK: dict[str, Any] = {
-    "final_score": 16_278,
+    "final_score": 20_417,
     "merge_score": 8_000,
-    "time_bonus": 8_278,
-    "bonus_rule": 1,
+    "time_bonus": 12_417,
+    "bonus_rule": 2,
     "duration_ms": 211_000,
     "theme": "fruits",
     "total_drops": 188,
     "total_merges": 170,
-    "max_tier": 10,
+    "max_tier": 11,
     "won": True,
     "outcome": "win",
 }
@@ -76,7 +76,7 @@ def _validate(
 
 
 def test_the_rule_matches_the_owner_decision_and_the_fixture() -> None:
-    assert (BONUS_MAX, PAR_TIME_MS, MIN_WIN_MS, BONUS_RULE) == (20_000, 360_000, 20_000, 1)
+    assert (BONUS_MAX, PAR_TIME_MS, MIN_WIN_MS, BONUS_RULE) == (30_000, 360_000, 20_000, 2)
     assert FIXTURE["rule"] == {
         "bonus_rule": BONUS_RULE,
         "bonus_max": BONUS_MAX,
@@ -95,8 +95,8 @@ def test_time_bonus_matches_the_shared_fixture(case: dict[str, Any]) -> None:
     [
         ("win", 0, 0),  # t = 0: under the floor
         ("win", MIN_WIN_MS - 1, 0),  # just under the floor
-        ("win", MIN_WIN_MS, 18_889),  # at the floor
-        ("win", 211_000, 8_278),  # the sim's median win
+        ("win", MIN_WIN_MS, 28_333),  # at the floor
+        ("win", 211_000, 12_417),  # the 11-tier sim's median win
         ("win", PAR_TIME_MS, 0),  # t = T
         ("win", PAR_TIME_MS * 2, 0),  # t > T
         ("loss", 60_000, 0),
@@ -108,8 +108,8 @@ def test_time_bonus(outcome: str, duration_ms: int | None, expected: int) -> Non
 
 
 def test_time_bonus_rounds_half_up_like_the_app() -> None:
-    # 20,000 × 9 / 360,000 = 0.5 exactly: Python's round() would give 0.
-    assert time_bonus("win", PAR_TIME_MS - 9) == 1
+    # 30,000 × 6 / 360,000 = 0.5 exactly: Python's round() would give 0 (rule 2, #3967).
+    assert time_bonus("win", PAR_TIME_MS - 6) == 1
 
 
 def test_time_bonus_never_rises_as_the_win_slows() -> None:
@@ -125,9 +125,9 @@ def test_time_bonus_never_rises_as_the_win_slows() -> None:
 def test_the_server_recomputes_the_bonus_and_ignores_the_apps() -> None:
     forged = {**APP_BLOCK, "time_bonus": 1_000_000, "bonus_rule": 99, "final_score": 999_999}
     stored = _validate(forged, "win", 211_000)
-    assert stored["time_bonus"] == 8_278
+    assert stored["time_bonus"] == 12_417
     assert stored["bonus_rule"] == BONUS_RULE
-    assert stored["final_score"] == 8_000 + 8_278
+    assert stored["final_score"] == 8_000 + 12_417
 
 
 def test_the_bonus_reads_the_completions_duration_not_the_blocks() -> None:
@@ -193,16 +193,25 @@ def test_a_block_from_before_3700_gets_no_server_bonus_fields() -> None:
 
 @pytest.mark.parametrize(
     "field,value",
-    [("max_tier", 11), ("max_tier", -1), ("merge_score", -5), ("merge_score", "lots")],
+    [("max_tier", 12), ("max_tier", -1), ("merge_score", -5), ("merge_score", "lots")],
 )
 def test_a_malformed_app_field_is_rejected(field: str, value: Any) -> None:
     with pytest.raises(ValidationError):
         _validate({**APP_BLOCK, field: value}, "win", 211_000)
 
 
+def test_the_capstone_tier_is_the_highest_max_tier() -> None:
+    """#3975: the 12-tier ladder's capstone is tier 11; a tier-12 ``max_tier`` is rejected."""
+    assert MAX_TIER == 11
+    assert _validate({**APP_BLOCK, "max_tier": 11}, "win", 211_000)["max_tier"] == 11
+    assert _validate({**APP_BLOCK, "max_tier": 10}, "loss", 211_000)["max_tier"] == 10
+    with pytest.raises(ValidationError):
+        _validate({**APP_BLOCK, "max_tier": MAX_TIER + 1}, "win", 211_000)
+
+
 def test_a_malformed_server_field_from_the_app_is_dropped_not_rejected() -> None:
     stored = _validate({**APP_BLOCK, "time_bonus": "huge", "bonus_rule": None}, "win", 211_000)
-    assert (stored["time_bonus"], stored["bonus_rule"]) == (8_278, BONUS_RULE)
+    assert (stored["time_bonus"], stored["bonus_rule"]) == (12_417, BONUS_RULE)
 
 
 @pytest.mark.parametrize("merge", ["5000", True], ids=["string", "bool"])
@@ -211,7 +220,7 @@ def test_a_coerced_merge_score_scores_the_block_and_the_column_alike(merge: Any)
     stored = _validate({**APP_BLOCK, "merge_score": merge}, "win", 211_000)
     column = cascade_module.derive_final_score(999, "win", stored)
     assert stored["merge_score"] == int(merge)
-    assert stored["final_score"] == column == int(merge) + 8_278
+    assert stored["final_score"] == column == int(merge) + 12_417
 
 
 def test_a_null_merge_score_writes_no_bonus_and_keeps_the_sent_score() -> None:
@@ -253,8 +262,8 @@ def test_the_score_is_clamped_to_the_int32_column() -> None:
     "sent,outcome,result,expected",
     [
         # A finished game: merge score + the server's bonus, whatever was sent.
-        (999_999, "win", {"merge_score": 8_000, "time_bonus": 8_278}, 16_278),
-        (None, "win", {"merge_score": 8_000, "time_bonus": 8_278}, 16_278),
+        (999_999, "win", {"merge_score": 8_000, "time_bonus": 12_417}, 20_417),
+        (None, "win", {"merge_score": 8_000, "time_bonus": 12_417}, 20_417),
         (8_000, "loss", {"merge_score": 8_000, "time_bonus": 0}, 8_000),
         (123, "loss", {"merge_score": 8_000, "time_bonus": 0}, 8_000),
         # Old builds (no merge_score): the sent score, no bonus.
@@ -335,12 +344,12 @@ async def test_complete_stores_the_server_score_and_block(client: TestClient) ->
     r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
     assert r.status_code == 200, r.text
     row = await _stored(gid)
-    assert row.final_score == 8_000 + 8_278
-    assert row.game_metadata["time_bonus"] == 8_278
+    assert row.final_score == 8_000 + 12_417
+    assert row.game_metadata["time_bonus"] == 12_417
     assert row.game_metadata["bonus_rule"] == BONUS_RULE
-    assert row.game_metadata["final_score"] == 8_000 + 8_278
+    assert row.game_metadata["final_score"] == 8_000 + 12_417
     assert row.game_metadata["won"] is True
-    assert row.game_metadata["max_tier"] == 10
+    assert row.game_metadata["max_tier"] == 11
 
 
 @_live
@@ -409,7 +418,7 @@ async def test_the_board_ranks_by_score_with_old_rows_alongside(client: TestClie
     old_row = f"Old{tag}"
     loss = f"Loss{tag}"
     await _seed(slow_win, 9_000, {"merge_score": 9_000, "time_bonus": 0}, minutes=1)
-    await _seed(fast_win, 16_278, {"merge_score": 8_000, "time_bonus": 8_278}, minutes=2)
+    await _seed(fast_win, 20_417, {"merge_score": 8_000, "time_bonus": 12_417}, minutes=2)
     await _seed(old_row, 12_000, {"duration_ms": 90_000}, minutes=3)  # before #3700
     await _seed(loss, 8_500, {"merge_score": 8_500, "outcome": "loss"}, minutes=4)
     viewer = str(uuid.uuid4())
@@ -424,7 +433,7 @@ async def test_the_board_ranks_by_score_with_old_rows_alongside(client: TestClie
     # Score desc: a fast win's bonus puts it over a slower win with more merges, and a row from
     # before #3700 ranks by its score among them.
     assert ours == [
-        (fast_win, 16_278),
+        (fast_win, 20_417),
         (old_row, 12_000),
         (slow_win, 9_000),
         (loss, 8_500),

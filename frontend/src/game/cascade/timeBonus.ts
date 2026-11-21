@@ -9,17 +9,18 @@
  *
  * `bonus = round(BONUS_MAX × max(0, 1 − t / PAR_TIME_MS))` for a win whose play
  * time `t` is at least `MIN_WIN_MS`; 0 for a loss, an abandon, a faster win or
- * one with no time. Owner decision 2026-11-16 (B = 20,000, T = 6 min, 20 s floor).
+ * one with no time. Owner decision 2026-11-16 (B = 20,000, T = 6 min, 20 s floor); B = 30,000
+ * since #3967 (owner decision #3978, rule 2), for the 12-tier ladder's higher merge scores.
  */
 
 /** `B`: the bonus of a win at t = 0 (the floor zeroes it in practice). */
-export const BONUS_MAX = 20_000;
+export const BONUS_MAX = 30_000;
 /** `T`: 6 minutes. A win at or after it earns no bonus. */
 export const PAR_TIME_MS = 360_000;
 /** The plausibility floor: a win under 20 s earns no bonus (it still counts). */
 export const MIN_WIN_MS = 20_000;
 /** The version of (B, T, floor); the server stores it as `bonus_rule`. */
-export const BONUS_RULE = 1;
+export const BONUS_RULE = 2;
 
 /**
  * The time bonus the server gives a game with this outcome and play time.

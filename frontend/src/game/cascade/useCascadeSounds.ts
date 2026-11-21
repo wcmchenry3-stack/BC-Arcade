@@ -1,9 +1,9 @@
 /**
- * Cascade's sound players (#3702): the active piece set's 21 sounds (`CASCADE_SOUNDS`) on the
+ * Cascade's sound players (#3702): the active piece set's 22 sounds (`CASCADE_SOUNDS`) on the
  * shared one-shot pool (`_shared/soundPool.ts`, one player per file, each holding the audio
  * session), driven by the pacer (`soundPacer.ts`). The frequent sounds get their player at mount
  * (8, see `LAZY_CASCADE_SOUNDS`); the rest on their first play, or ahead of it when they become
- * likely: the win once a tier-9 piece is on the board (`nearWin`, the celebration's pre-warm
+ * likely: the win once a tier-10 piece (one below the capstone) is on the board (`nearWin`, the celebration's pre-warm
  * trigger), danger and game over when the lid count first runs. A piece-set switch releases the
  * old set's players and takes the new set's. Silent while the game sound is muted
  * (`useSoundSettings`), sounds already waiting included; waiting sounds are dropped on unmount.

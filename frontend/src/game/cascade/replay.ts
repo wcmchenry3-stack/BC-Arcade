@@ -37,8 +37,13 @@ import { CASCADE_TUNING_ID } from "./constants";
 import { ENGINE_VERSION, type EngineEvent } from "./engine";
 import { CAPSTONE_TIER } from "./tiers";
 
-/** Drops per unit: one `drop` and one `merge` row per this many drops. */
-export const CASCADE_DROPS_PER_UNIT = 20;
+/**
+ * Drops per unit: one `drop` and one `merge` row per this many drops. 30 since #3967 (20 before):
+ * the 12-tier ladder's longer games went over the replay budget, and fuller rows cut the stored
+ * bytes (200 B a row beyond its JSON) and the storage writes with no data lost; a crash can lose
+ * up to 30 drops instead of 20. Owner decision #3978.
+ */
+export const CASCADE_DROPS_PER_UNIT = 30;
 /** A drop's x is recorded, and played, in tenths of a pixel. */
 export const X_SCALE = 10;
 /** A danger moment shorter than this (fixed steps, 1/6 s) is a flicker, not recorded. */

@@ -36,7 +36,7 @@ def _events() -> list[tuple[str, Any]]:
 
 def _report(events: list[tuple[str, Any]]) -> str:
     now = datetime(2026, 1, 1, tzinfo=UTC)
-    game = replay.GameRow(uuid.uuid4(), "cascade", now, now, "win", 10272, 290842, {})
+    game = replay.GameRow(uuid.uuid4(), "cascade", now, now, "win", 18862, 546660, {})
     rows = [replay.EventRow(i, name, now, data) for i, (name, data) in enumerate(events)]
     return replay.render(game, rows)
 
@@ -44,14 +44,14 @@ def _report(events: list[tuple[str, Any]]) -> str:
 def test_a_cascade_report_prints_the_events_and_the_story() -> None:
     report = _report(_events())
     assert "type        cascade" in report
-    assert "events (18), in event_index order:" in report
+    assert "events (22), in event_index order:" in report
     assert "replay     drop" in report and "replay     merge" in report
     assert "  engine     engine_version 1 (current)" in report
     assert "cascade game, read from its events (not re-simulated):" in report
-    assert "units      8 (1-8): 143 drops, 132 merges" in report
-    assert "capstone   made at step 17450 (290.8 s)" in report
-    assert "score      10272 = 6430 merges + 3842 time bonus" in report
-    assert "the recorded merges add up to 6430: agrees" in report
+    assert "units      10 (1-10): 271 drops, 242 merges" in report
+    assert "capstone   made at step 32799 (546.6 s)" in report
+    assert "score      18862 = 18862 merges + 0 time bonus" in report
+    assert "the recorded merges add up to 18862: agrees" in report
 
 
 def test_an_incompatible_engine_is_flagged_and_the_story_still_reads() -> None:
@@ -59,7 +59,7 @@ def test_an_incompatible_engine_is_flagged_and_the_story_still_reads() -> None:
     events[0] = ("game_started", {**events[0][1], "engine_version": 7})
     report = _report(events)
     assert "INCOMPATIBLE: incompatible engine: engine_version 7, this reader rebuilds 1" in report
-    assert "units      8 (1-8): 143 drops, 132 merges" in report
+    assert "units      10 (1-10): 271 drops, 242 merges" in report
 
 
 def test_a_game_with_a_gap_and_no_game_ended_says_so() -> None:

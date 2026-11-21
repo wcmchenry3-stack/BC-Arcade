@@ -3,7 +3,7 @@
  *
  * `engine.ts` owns the rules (merges, the lid, the drop gate, combos, the win); this module owns
  * the planck `World`, the bin, and the conversions. Box2D works in metres, seconds and kilograms
- * and is tuned for bodies of 0.1-10 m, so the world is scaled at `PX_PER_M` (50): radii 11.5-98 px
+ * and is tuned for bodies of 0.1-10 m, so the world is scaled at `PX_PER_M` (50): radii 11-98 px
  * (#3920) are 0.23-1.96 m and the bin is 7.2 x 11.2 m. The engine keeps the units it always had:
  * world pixels, velocities in px per fixed step (`FIXED_STEP_MS`), angles in radians, angular
  * velocity in rad per fixed step. One fixed step is `PLANCK_STEPS_PER_FIXED_STEP` planck steps (#3904).

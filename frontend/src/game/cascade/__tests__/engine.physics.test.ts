@@ -250,20 +250,20 @@ describe("density per tier", () => {
     const m = (tier: number) => masses.find((x) => x.tier === tier)!.mass;
     const ratio = m(CAPSTONE_TIER) / m(0);
     expect(ratio).toBeCloseTo((tierRadius(CAPSTONE_TIER) / tierRadius(0)) ** 1.5, 6);
-    // #3920: 24.9 : 1 on the 11.5-98 ladder (87 : 1 on #3904's 5-98; 73 : 1 at one density for
+    // #3967: 26.6 : 1 on the 11-98 ladder (#3920: 24.9 : 1 on 11.5-98; 87 : 1 on #3904's 5-98; 73 : 1 at one density for
     // every tier). Flattening it cost the win rate more than it helped the overlap (#3904):
     // docs/games/cascade-decisions.md#physics.
-    expect(ratio).toBeCloseTo(24.9, 1);
+    expect(ratio).toBeCloseTo(26.6, 1);
     engine.destroy();
   });
 });
 
-describe("the win: making the capstone (#3920; #3699 builds on it)", () => {
+describe("the win: making the capstone (#3920, #3960; #3699 builds on it)", () => {
   const CAPSTONE_SCORE = TIERS[CAPSTONE_TIER]!.score;
   /** The tier whose merge makes the capstone. */
   const PRE = CAPSTONE_TIER - 1;
 
-  it("two touching tier-9 pieces merge into the capstone: merge, its own score, then one win there", () => {
+  it("two touching tier-10 pieces merge into the capstone: merge, its own score, then one win there", () => {
     const engine = new CascadeEngine({});
     engine.restore(pair(PRE), 100);
     const step = engine.step(HZ60).events;
@@ -280,7 +280,7 @@ describe("the win: making the capstone (#3920; #3699 builds on it)", () => {
     expect(engine.hasWon()).toBe(true);
   });
 
-  it("two tier-9 pieces resting within the merge gap (no contact) also make the capstone and win", () => {
+  it("two tier-10 pieces resting within the merge gap (no contact) also make the capstone and win", () => {
     const engine = new CascadeEngine({});
     const r = tierRadius(PRE);
     const gap = MERGE_GAP_PX / 2;
@@ -299,7 +299,7 @@ describe("the win: making the capstone (#3920; #3699 builds on it)", () => {
   it("ends the play: no drops and no merges after the win, the score is final; the physics still steps", () => {
     const engine = new CascadeEngine({});
     const r0 = tierRadius(0);
-    // Two tier 9s, and two cherries off to the side, one 20 px above the other: the top one
+    // Two tier 10s, and two cherries off to the side, one 20 px above the other: the top one
     // lands on the bottom one after the win, which would merge them in play.
     const lowY = FLOOR_TOP - r0;
     const highY = lowY - 2 * r0 - 20;
@@ -323,8 +323,8 @@ describe("the win: making the capstone (#3920; #3699 builds on it)", () => {
     expect(capstone.scale ?? 1).toBe(1);
   });
 
-  it("a tier 9 still growing in makes the capstone with a tier 9 its full circle reaches (chain reach)", () => {
-    // Two tier 8s on the floor make a tier 9 at their radius (63.8, not 79.1); a second tier 9
+  it("a tier 10 still growing in makes the capstone with a tier 10 its full circle reaches (chain reach)", () => {
+    // Two tier 9s on the floor make a tier 10 at their radius (66.4, not 80.7); a second tier 10
     // hangs above, 3 px beyond touching the product's full circle.
     const full = tierRadius(PRE);
     const engine = new CascadeEngine({});

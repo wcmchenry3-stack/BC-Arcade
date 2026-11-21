@@ -419,7 +419,7 @@ describe("1 px-contact spawn helper (#1302)", () => {
   });
 });
 
-describe("the ladder (#3695; 11 tiers since #3920)", () => {
+describe("the ladder (#3695; 12 tiers since #3960)", () => {
   it("takes every per-tier number from the ladder", () => {
     expect(DEFAULT_CONSTANTS.maxTier).toBe(CAPSTONE_TIER);
     expect(DEFAULT_CONSTANTS.droppableTiers).toBe(DROPPABLE_TIERS);
@@ -431,7 +431,7 @@ describe("the ladder (#3695; 11 tiers since #3920)", () => {
     }
   });
 
-  it("a 9 + 9 contact pair makes the capstone, and that is the win; two capstones are not (#3920)", () => {
+  it("a 10 + 10 contact pair makes the capstone, and that is the win; two capstones are not (#3920)", () => {
     const engine = new CascadeEngine({});
     engine.restore(contactPair(CAPSTONE_TIER - 1, 200), 0);
     const events: EngineEvent[] = [];

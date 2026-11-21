@@ -161,7 +161,10 @@ export const MOTION = {
     landGapMs: 60,
     /** Landing volume: `landVolume0` at tier 0, rising to 1 at the capstone. */
     landVolume0: 0.6,
-    /** Tiers from here up land with the heavy file. */
+    /**
+     * Tiers from here up land with the heavy file. Not shifted for the 12-tier ladder yet: deferred
+     * to #3966 (the sound pass).
+     */
     heavyLandTier: 5,
     /** Danger tick volume: `dangerVolume0` as the count starts, rising to 1 at its end. */
     dangerVolume0: 0.45,
