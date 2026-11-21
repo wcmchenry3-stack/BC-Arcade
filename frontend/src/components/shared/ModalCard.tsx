@@ -87,7 +87,9 @@ export function ModalCard({
               styles.homeChip,
               {
                 top: insets.top + HOME_CHIP_TOP_GAP,
-                start: Math.max(insets.left, HOME_CHIP_GUTTER),
+                ...(isRtl
+                  ? { right: Math.max(insets.right, HOME_CHIP_GUTTER) }
+                  : { left: Math.max(insets.left, HOME_CHIP_GUTTER) }),
                 backgroundColor: colors.surfaceHigh,
                 borderColor: colors.textMuted,
                 opacity: pressed ? 0.7 : 1,

@@ -84,6 +84,23 @@ describe("ModalCard Lobby chip RTL and status bar (#3969)", () => {
     expect(style.transform).toEqual([{ scaleX: -1 }]);
   });
 
+  it("pins the chip to the left edge in LTR", async () => {
+    await renderInTheme(<ModalCard visible onHome={() => {}} />);
+    const style = StyleSheet.flatten(screen.getByTestId("modal-home-chip").props.style);
+    expect(style.left).toBe(16);
+    expect(style.right).toBeUndefined();
+  });
+
+  it("pins the chip to the right edge in an RTL locale", async () => {
+    await act(async () => {
+      await i18n.changeLanguage("ar");
+    });
+    await renderInTheme(<ModalCard visible onHome={() => {}} />);
+    const style = StyleSheet.flatten(screen.getByTestId("modal-home-chip").props.style);
+    expect(style.right).toBe(16);
+    expect(style.left).toBeUndefined();
+  });
+
   it("is status-bar translucent only when onHome is set", async () => {
     // Walk up from the card to its Modal host node, which carries the Modal's props.
     const modalProps = (testID: string) => {
