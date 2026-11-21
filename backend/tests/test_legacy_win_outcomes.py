@@ -88,6 +88,15 @@ def _mahjong(outcome: str, won: bool) -> dict:
     }
 
 
+def _stored(game_type: str, body: dict) -> dict:
+    """The metadata a completion is stored with: the result as sent, plus the Daily
+    Challenge flags Blackjack's result model writes from the outcome (#3996)."""
+    flags = {}
+    if game_type == "blackjack":
+        flags = {"is_complete": body["outcome"] != "abandoned", "won": body["outcome"] == "win"}
+    return {**body["result"], **flags}
+
+
 def _blackjack(outcome: str, final_chips: int) -> dict:
     return {
         "final_score": final_chips,
@@ -164,7 +173,7 @@ async def test_an_older_build_finish_that_is_not_a_certain_win_is_unchanged(
 ) -> None:
     _, row = _play(client, sid, game_type, body, initial_board=board)
     assert row["outcome"] == body["outcome"]
-    assert row["metadata"] == body["result"]
+    assert row["metadata"] == _stored(game_type, body)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +199,7 @@ async def test_current_build_completions_are_unchanged(
 ) -> None:
     _, row = _play(client, sid, game_type, body, initial_board=_FRESH_BOARD)
     assert row["outcome"] == body["outcome"]
-    assert row["metadata"] == body["result"]
+    assert row["metadata"] == _stored(game_type, body)
 
 
 async def test_other_games_are_never_rewritten(client: TestClient, sid: str) -> None:

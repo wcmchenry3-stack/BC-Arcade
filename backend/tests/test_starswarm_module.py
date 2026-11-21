@@ -239,6 +239,8 @@ def test_a_game_over_is_accepted_and_carries_the_partition_key() -> None:
         "outcome": "completed",
         "wave_reached": 9,
         "difficulty_tier": "Captain",
+        # Written by the server from the outcome, for the Daily Challenge's finish goal (#3996).
+        "is_complete": True,
     }
     assert detail["final_score"] is None
 
