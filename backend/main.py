@@ -113,7 +113,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     steps run in their previous registration order.
 
     The background jobs (``jobs.lifespan.configured_jobs()``: Daily Word
-    retention, replay storage (#3292), App Store replay, Google Play jobs) start
+    retention, replay storage (#3292), bug-log retention (#3298), daily-challenge
+    assignment retention (#3992), App Store replay, Google Play jobs) start
     in that order, as tasks in ``app.state.job_tasks`` (which tests read), and stop in reverse
     (#2994). They start before the DB health check, which can take up to
     ``DB_PING_TIMEOUT_SECONDS``, and the stack unwinds on every exit —

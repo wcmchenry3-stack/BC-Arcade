@@ -12,8 +12,11 @@
  *  - `GET /daily-challenge/today` — public, no session, always the FREE slate.
  *    Only a fallback for when `/status` fails, so the card can still name the
  *    day's goals (without progress).
- *  - `GET /daily-challenge/upcoming` — public, the FREE slate for today and the
- *    next 2 local days (#3227). Only read to cache goals for offline play (#3228).
+ *  - `GET /daily-challenge/upcoming` — today and the next 2 local days (#3227):
+ *    this install's pinned goals for each day (#3992; the shared client sends
+ *    `X-Session-ID`), the same goals `/status` serves on that day. Only read to
+ *    cache goals for offline play (#3228).
+ * Every day payload may carry a `bonus` goal (#3995); this build ignores it.
  * A premium session's two responses can describe different goals, so the goal
  * list is never built from one and its completion read from the other.
  */
@@ -157,7 +160,7 @@ export const dailyChallengeApi = {
   },
 
   /**
-   * The free slate for today and the next 2 local days (#3227), every goal not
+   * This install's goals for today and the next 2 local days (#3227), every goal not
    * done, in day order. Read only to cache goals for offline play (#3228); the
    * card never shows these online. Throws on any failure or unexpected body.
    */
