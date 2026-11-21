@@ -4,7 +4,10 @@ A win adds ``round(BONUS_MAX × max(0, 1 − t / PAR_TIME_MS))`` to its merge
 score, where ``t`` is the completion's ``duration_ms`` (the app's pausable play
 clock, started at the first drop). A loss, an abandon, a win under
 ``MIN_WIN_MS`` and a win with no ``duration_ms`` get 0. Owner decision
-2026-11-16 ("Balanced", from the sim numbers on #3700).
+2026-11-16 ("Balanced", from the sim numbers on #3700); ``BONUS_MAX`` raised from
+20,000 to 30,000 for the 12-tier ladder (#3967, owner decision #3978, rule 2):
+its merge score grows about 55 points a second, so the old slope (56) no
+longer kept every win above every long losing run.
 
 The server always recomputes the bonus (``CascadeResult``) and ignores the one
 the app sends. The app mirrors the formula for display only
@@ -19,7 +22,7 @@ from __future__ import annotations
 
 import math
 
-BONUS_MAX = 20_000
+BONUS_MAX = 30_000
 """``B``: the bonus of a win at ``t`` = 0 (the floor zeroes it in practice)."""
 
 PAR_TIME_MS = 360_000
@@ -31,9 +34,10 @@ MIN_WIN_MS = 20_000
 A shorter ``duration_ms`` is a broken clock or a forged result: the win is
 stored, with a bonus of 0, never rejected (a 400 dead-letters the game)."""
 
-BONUS_RULE = 1
+BONUS_RULE = 2
 """The version of (``BONUS_MAX``, ``PAR_TIME_MS``, ``MIN_WIN_MS``), stored on
-every row the server scores (``bonus_rule``). A retune bumps it, so rows scored
+every row the server scores (``bonus_rule``). 1: B = 20,000 (#3700); 2: B = 30,000
+(#3967). A retune bumps it, so rows scored
 under an older rule can be told apart without a migration."""
 
 WIN = "win"

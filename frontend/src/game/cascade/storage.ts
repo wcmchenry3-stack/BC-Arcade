@@ -4,7 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const SUBSYSTEM = "cascade.storage";
 
 /**
- * The current save format. v8 = the 12-tier ladder (#3960: radii 11.5-98, the Moon back at tier 1,
+ * The current save format. v8 = the 12-tier ladder (#3960: radii 11-98 since #3967, the Moon back at tier 1,
  * a new tier 2, every tier above 0 a different piece or size). v7 (the 11-tier ladder, #3920:
  * radii 11.5-98, the Peach and the Moon removed), v6 (#3904's 12-tier ladder, radii 5-98), v5 (the lively ladder on planck.js, #3697:
  * radii 18-63), v4 (the #3695 ladder, radii 22-101, on Matter.js) and v3 (the old 10-tier ladder)

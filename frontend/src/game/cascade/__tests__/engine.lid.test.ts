@@ -24,9 +24,9 @@
  * tier 10). The columns are rebuilt from it with the same tops' roles. BIG stays tier 8 (r 63.8):
  * its spawn top edge is at y = -53.
  *
- * #3960: the 12-tier ladder (r0 / r10 / r11 = 11.5 / 80.7 / 98; tiers 0-5 drop; the capstone is
+ * #3960: the 12-tier ladder (r0 / r10 / r11 = 11 / 80.3 / 98 since #3967; tiers 0-5 drop; the capstone is
  * tier 11). Every column's tiers moved up by one so each keeps its role (a top edge over the lid, or
- * a ledge just under it); BIG is tier 9 (r 66.4) to keep its size.
+ * a ledge just under it); BIG is tier 9 (r 66.4; 65.8 since #3967) to keep its size.
  */
 import { World } from "planck";
 import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
@@ -214,8 +214,11 @@ describe("the lid: hard stop", () => {
 });
 
 describe("the lid: hard stop grace for the dropped piece", () => {
-  /** A capstone and tiers 10, 7 and 3: its top edge rests at about y = 91. */
-  const LEDGE = stack([11, 10, 7, 3]);
+  /**
+   * A capstone and tiers 10, 7 and 4: its top edge rests at about y = 86 (#3967: tier 4, not 3, on
+   * the R0 = 11 ladder, whose smaller pieces left tiers 11, 10, 7 and 3 at y = 95, below the ledge).
+   */
+  const LEDGE = stack([11, 10, 7, 4]);
 
   it("a large piece touching a pile just under the lid is not a hard stop at once", () => {
     const engine = new CascadeEngine({});
@@ -234,8 +237,8 @@ describe("the lid: hard stop grace for the dropped piece", () => {
     // The drop must land dead centre on the column (the nudge would roll it off the top).
     const engine = new CascadeEngine({ bench: { noDropNudge: true } });
     // #3904: a drop spawns with its bottom edge at y = 75, so only a big one can come to rest
-    // above the canvas: BIG (r 66.4, #3960) dropped on the ledge (top edge at y = 91) rests on
-    // top, its top edge at about y = -42.
+    // above the canvas: BIG (r 65.8, #3967) dropped on the ledge (top edge at y = 86) rests on
+    // top, its top edge at about y = -46.
     engine.restore(LEDGE, 0);
     engine.drop(BIG, STACK_X);
     const results = run(engine, 120);

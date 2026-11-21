@@ -250,10 +250,10 @@ describe("density per tier", () => {
     const m = (tier: number) => masses.find((x) => x.tier === tier)!.mass;
     const ratio = m(CAPSTONE_TIER) / m(0);
     expect(ratio).toBeCloseTo((tierRadius(CAPSTONE_TIER) / tierRadius(0)) ** 1.5, 6);
-    // #3920: 24.9 : 1 on the 11.5-98 ladder (87 : 1 on #3904's 5-98; 73 : 1 at one density for
+    // #3967: 26.6 : 1 on the 11-98 ladder (#3920: 24.9 : 1 on 11.5-98; 87 : 1 on #3904's 5-98; 73 : 1 at one density for
     // every tier). Flattening it cost the win rate more than it helped the overlap (#3904):
     // docs/games/cascade-decisions.md#physics.
-    expect(ratio).toBeCloseTo(24.9, 1);
+    expect(ratio).toBeCloseTo(26.6, 1);
     engine.destroy();
   });
 });

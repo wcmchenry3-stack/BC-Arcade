@@ -672,7 +672,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
       final_score: expect.any(Number),
       merge_score: expect.any(Number),
       time_bonus: 0,
-      bonus_rule: 1,
+      bonus_rule: 2,
       duration_ms: expect.any(Number),
       theme: "fruits",
       total_drops: 1,
@@ -801,7 +801,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
       final_score: expect.any(Number),
       merge_score: expect.any(Number),
       time_bonus: 0,
-      bonus_rule: 1,
+      bonus_rule: 2,
       duration_ms: expect.any(Number),
       theme: "fruits",
       total_drops: 1,
@@ -1454,7 +1454,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         const playedMs = summary.result.duration_ms as number;
         expect(playedMs).toBe(200_000);
         const bonus = timeBonus("win", playedMs);
-        expect(bonus).toBe(8_889);
+        expect(bonus).toBe(13_333); // #3967: rule 2, B = 30,000 (8,889 on rule 1)
         expect(card.outcome).toBe("win");
         // The score shown is the server's formula: merge score + time bonus.
         expect(card.hero).toEqual({ kind: "score", label: "Score", value: 9000 + bonus });
@@ -1472,7 +1472,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
             final_score: 9000 + bonus,
             merge_score: 9000,
             time_bonus: bonus,
-            bonus_rule: 1,
+            bonus_rule: 2,
             max_tier: CAPSTONE_TIER,
             won: true,
             outcome: "win",

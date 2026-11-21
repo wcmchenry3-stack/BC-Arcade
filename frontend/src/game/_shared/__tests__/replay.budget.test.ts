@@ -387,7 +387,8 @@ function buildMahjong(): Played {
 /**
  * Cascade (#3858): a seeded game on the real engine, recorded as the screen records it (a unit
  * per 20 drops through the replay log). `gapMs` is the bot's pace; the 10-minute game is the
- * skilled bot dropping every 2.4 s (seed 3 is still alive at 600 s, so it is abandoned there),
+ * skilled bot dropping every 2.4 s (seed 6 is still alive at 600 s, so it is abandoned there;
+ * seed 3 until #3967, whose ladder ends it at 8 min),
  * with a trip to the background after its 120th drop.
  */
 function buildCascade(seed: number, gapMs: number, withBackground: boolean): Played {
@@ -427,7 +428,7 @@ function buildDay(): { games: Played[]; offlineStartsAt: number } {
   const sudoku = buildSudoku();
   const cascade = [
     buildCascade(1, 1200, false),
-    buildCascade(3, 2400, true), // the 10-minute game
+    buildCascade(6, 2400, true), // the 10-minute game (#3967: seed 6; seed 3 now ends at 8 min)
     buildCascade(2, 1200, false),
   ];
   const games: Played[] = [

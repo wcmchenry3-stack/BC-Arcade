@@ -57,7 +57,7 @@ envelope are about 740 B at the widest."""
 MAX_MERGE_BYTES = 1024
 """Compact-JSON bytes one ``merge`` event (or part) may take."""
 MAX_DROPS_PER_EVENT = 32
-"""The app sends 20 (``CASCADE_DROPS_PER_UNIT``); the headroom is for a retuned unit."""
+"""The app sends 30 (``CASCADE_DROPS_PER_UNIT``, #3967; 20 before); the headroom is for a cut unit."""
 MAX_DANGER_PER_EVENT = 32
 """The app records at most 32 danger moments a game (``CASCADE_MAX_DANGER``)."""
 MAX_MERGES_PER_EVENT = 128

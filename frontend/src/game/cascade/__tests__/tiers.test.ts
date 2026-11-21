@@ -31,12 +31,13 @@ describe("the ladder", () => {
     }
   });
 
-  // #3920 / #3960 (owner decision): one constant ratio for the whole ladder, unrounded, 11.5 to 98.
-  it("follows the documented constant-ratio series, radius(n) = 11.5 * (98 / 11.5)^(n / 11)", () => {
-    const k = (98 / 11.5) ** (1 / 11);
-    expect(k).toBeCloseTo(1.215048, 6);
-    TIERS.forEach((t) => expect(t.radius).toBeCloseTo(11.5 * k ** t.tier, 9));
-    expect(TIERS[0]!.radius).toBe(11.5);
+  // #3920 / #3960 (owner decision): one constant ratio for the whole ladder, unrounded, 11 to 98
+  // (R0 = 11 since #3967's balance pass, owner decision #3978; 11.5 before).
+  it("follows the documented constant-ratio series, radius(n) = 11 * (98 / 11)^(n / 11)", () => {
+    const k = (98 / 11) ** (1 / 11);
+    expect(k).toBeCloseTo(1.219968, 6);
+    TIERS.forEach((t) => expect(t.radius).toBeCloseTo(11 * k ** t.tier, 9));
+    expect(TIERS[0]!.radius).toBe(11);
     // The capstone is exactly 98 (the table is built so, not just close to it).
     expect(TIERS[CAPSTONE_TIER]!.radius).toBeCloseTo(98, 9);
     expect(Math.abs(TIERS[CAPSTONE_TIER]!.radius - 98)).toBeLessThan(1e-9);

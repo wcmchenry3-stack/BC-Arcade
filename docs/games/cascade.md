@@ -28,17 +28,17 @@ There are **12 fixed tiers** (0-11, #3960) and two piece sets, **Fruits** and **
 
 | Tier | Fruits        | Cosmos    | Radius | Drawn | Density | Score | Droppable |
 | ---- | ------------- | --------- | ------ | ----- | ------- | ----- | --------- |
-| 0    | Cherry        | Pluto     | 11.5   | 11.3  | 1.00    | 1     | yes       |
-| 1    | Lychee        | Moon      | 14.0   | 13.8  | 0.91    | 2     | yes       |
-| 2    | Lime          | Mercury   | 17.0   | 16.7  | 0.82    | 4     | yes       |
-| 3    | Lemon         | Mars      | 20.6   | 20.3  | 0.75    | 8     | yes       |
-| 4    | Plum          | Venus     | 25.1   | 24.7  | 0.68    | 16    | yes       |
-| 5    | Orange        | Earth     | 30.5   | 30.0  | 0.61    | 32    | yes       |
-| 6    | Apple (green) | Neptune   | 37.0   | 36.4  | 0.56    | 64    | no        |
-| 7    | Pomegranate   | Uranus    | 45.0   | 44.3  | 0.51    | 128   | no        |
-| 8    | Dragonfruit   | Saturn    | 54.6   | 53.8  | 0.46    | 256   | no        |
-| 9    | Pineapple     | Jupiter   | 66.4   | 65.4  | 0.42    | 512   | no        |
-| 10   | Watermelon    | Sun       | 80.7   | 79.4  | 0.38    | 1024  | no        |
+| 0    | Cherry        | Pluto     | 11.0   | 10.8  | 1.00    | 1     | yes       |
+| 1    | Lychee        | Moon      | 13.4   | 13.2  | 0.91    | 2     | yes       |
+| 2    | Lime          | Mercury   | 16.4   | 16.1  | 0.82    | 4     | yes       |
+| 3    | Lemon         | Mars      | 20.0   | 19.7  | 0.74    | 8     | yes       |
+| 4    | Plum          | Venus     | 24.4   | 24.0  | 0.67    | 16    | yes       |
+| 5    | Orange        | Earth     | 29.7   | 29.3  | 0.61    | 32    | yes       |
+| 6    | Apple (green) | Neptune   | 36.3   | 35.7  | 0.55    | 64    | no        |
+| 7    | Pomegranate   | Uranus    | 44.2   | 43.6  | 0.50    | 128   | no        |
+| 8    | Dragonfruit   | Saturn    | 54.0   | 53.2  | 0.45    | 256   | no        |
+| 9    | Pineapple     | Jupiter   | 65.8   | 64.9  | 0.41    | 512   | no        |
+| 10   | Watermelon    | Sun       | 80.3   | 79.1  | 0.37    | 1024  | no        |
 | 11   | Pumpkin       | Milky Way | 98.0   | 96.5  | 0.34    | 2048  | no        |
 
 (#3962: the Fruits Lychee, Lime, Plum and Pomegranate draw placeholder art until #3964; see [Piece progression](cascade-decisions.md#piece-progression).)
@@ -53,15 +53,15 @@ Radii are world units (the bin is 400 x 600; its inner width is 360). This table
 
 ### 3. Scoring and the time bonus
 
-- **Merge score.** Each merge adds the score of the piece it makes: `2^n` for a merge into tier n (1 for a Cherry up to 1024 for the capstone; the winning merge scores its normal 1024, with no extra, and there is no jackpot). The per-tier values are final (owner, #2823); the time bonus (#3700) was tuned against them.
-- **Time bonus (win only).** `time_bonus = round(20000 x max(0, 1 - t / 360000))`, `t` being the game's `duration_ms` (active play time). A loss gets 0. A win under **20 s** (`MIN_WIN_MS`), or with no duration, gets 0 and is stored anyway; it is never rejected.
-- **Final score** = merge score + time bonus, **computed by the server**; the app mirrors the formula for display only. Rounding is half up in integer arithmetic on both sides. Rule version `BONUS_RULE` = 1.
+- **Merge score.** Each merge adds the score of the piece it makes: `2^n` for a merge into tier n (1 for a Cherry up to 2048 for the capstone; the winning merge scores its normal 2048, with no extra, and there is no jackpot). The per-tier values are final (owner, #2823); the time bonus (#3700) was tuned against them.
+- **Time bonus (win only).** `time_bonus = round(30000 x max(0, 1 - t / 360000))` (20000 under rule 1, before #3967), `t` being the game's `duration_ms` (active play time). A loss gets 0. A win under **20 s** (`MIN_WIN_MS`), or with no duration, gets 0 and is stored anyway; it is never rejected.
+- **Final score** = merge score + time bonus, **computed by the server**; the app mirrors the formula for display only. Rounding is half up in integer arithmetic on both sides. Rule version `BONUS_RULE` = 2 (#3967: the 12-tier ladder's merge score grows faster, so `B` went from 20,000 to 30,000 to keep every win above every loss).
 - **The play clock** starts at the game's first piece (a drop, or a test or dev placement), so time looking at an empty board costs nothing; it stops while another screen covers the board or the app is in the background, and for good at the win or the lid. It uses the monotonic clock (`monotonicNow()`), so changing the device time cannot change it (#3925). See [Scoring (Persistence)](cascade-decisions.md#scoring-persistence) for why these numbers.
 
 ### 4. Spawn, drop and input
 
 - **What drops.** The piece to drop (DROP) and the next one (NEXT) come from a queue. Each draw picks a droppable tier (0-5) by weight: base `1 1 2 3 4 4` (#3967); **drought boost** (+3 to any tier absent from the queue's last 10 picks, which include DROP and NEXT); **danger mode** (when the pile is near the lid: tiers 2-4 scaled to 20 % and the top droppable tier, 5, to 25 %, fractional); **streak ban** (a tier that filled the last 4 picks is banned for one draw). Details and rationale: [Piece Queue & Spawn Selection](cascade-decisions.md#piece-queue--spawn-selection-piecequeuets-spawnselectorts).
-- **Where it spawns.** At the aim x, with its top edge above the lid (centre at `lid - radius - 5`); x is clamped so the whole piece is between the walls, after a seeded nudge of at most +-0.4 px so a column of same-x drops still topples. A tier-5 piece spawns with its top edge at y = 7.9, on the canvas.
+- **Where it spawns.** At the aim x, with its top edge above the lid (centre at `lid - radius - 5`); x is clamped so the whole piece is between the walls, after a seeded nudge of at most +-0.4 px so a column of same-x drops still topples. A tier-5 piece spawns with its top edge at y = 15.5, on the canvas.
 - **When a drop is allowed.** Every gate must pass: the game is not over or won; the engine's `canDrop()` (the last piece has fallen with its top edge at or under the lid, or merged into one that has); the 200 ms drop cooldown; the board is not settling after a restore (60 frames: 1 s at 60 Hz, 0.5 s at 120 Hz); the player is not away (another screen covers the board, or the app is in the background). A refused drop does nothing. While the engine refuses a drop (`canDrop()`: the last piece is still over the lid, or play has ended) the spawner shows a dashed, faded "waiting" ghost; the other gates show nothing.
 - **Input: press, drag, release** (`CascadeAimArea`, owner pick #3928 "Dashed line + ghost"). A finger on the board does nothing yet. **Tap** (released within 90 ms and 10 pt): drops at once at the press x, no guide. **Drag** (moving past the slop or holding past 90 ms): the spawner piece glides to the finger and follows it, clamped by its radius; a dashed plumb line and a ghost show where it would first touch (first contact, not where it then rolls); one selection haptic when the finger first moves past the 10 pt slop. **Release** drops at the aim x through the same gates. **Cancel** (leaving the board's rect, a second finger, or the system taking the gesture): the piece glides back and **nothing drops**; coming back onto the board before release aims again. Swipe-back is off on this screen. The full table, the gesture's activation rules and the thread model: [Aiming](cascade-decisions.md#aiming-3928).
 - **Screen readers.** The board has a label and hint and an "activate" action; a double-tap drops the next piece in the middle of the bin.
@@ -72,7 +72,7 @@ Radii are world units (the bin is 400 x 600; its inner width is 360). This table
 
 Pieces are true circles in a planck.js (Box2D) world: gravity 2,500 px/s^2, restitution 0.2, friction 0.12, light air friction, free rolling (spin clamped), 60 fixed steps a second (up to 3 per frame; slower than 20 fps the game runs slower than the wall clock instead of queueing). What a player sees as a result:
 
-- Pieces roll and settle; heavier (bigger) pieces sink into lighter ones, mass growing as radius^1.5 (the capstone is 24.9 times a Cherry).
+- Pieces roll and settle; heavier (bigger) pieces sink into lighter ones, mass growing as radius^1.5 (the capstone is 26.6 times a Cherry).
 - Each game's deepest overlap is gated in the sim at a 3 px median and a 5 px p90 across games, and the mean visible gap must stay above −0.5 px (about +0.8 px measured); each piece is drawn 1.5 % inside its collider so neighbours show a hair of gap.
 - Walls are solid, 200 px thick, and reach 600 px above the canvas; nothing tunnels out and there is no teleporting guard rail.
 - The same fixed steps run at 60 and 120 Hz, so the rules (lid, merge grace, chain timing) take the same simulated time at either rate.
@@ -178,7 +178,7 @@ Cascade has no endpoints of its own: it uses the generic `/games` routes (the le
 | Sim harness and baseline               | `frontend/src/game/cascade/sim/` (`baseline.json`, `sim/__tests__/sim.test.ts`), `npm run sim:cascade`, `.github/workflows/cascade-sim-gate.yml`; see [Sim harness](cascade-decisions.md#sim-harness-sim-2893) and [TESTING.md](../TESTING.md)                                             |
 | End to end                             | Playwright `e2e/tests/cascade-smoke.spec.ts` (project `cascade`); Maestro `e2e/maestro/flows/cascade/` (`smoke`, `demo-open`, `demo-aim`, `demo-drop`, `demo-merge`, `demo-chain`, `demo-danger`, `demo-loss`, `demo-win`); test hooks `__cascade_*` (`testHooks.ts`, test builds only)    |
 
-The sim's headline numbers on `dev` before the 12-tier ladder (#3960; being re-measured in #3967) (`sim/baseline.json`, 100 seeds): the skilled bot wins 66 % of games, in a median 215 s; the spam bot loses at the lid in under 120 s (longest 84.9 s) and never wins; no guard rail fires. On the 12-tier ladder with the #3967 weights (`1 1 2 3 4 4`, 200 seeds, 600 s cap): the skilled bot wins 37.5 % in a median 240 s and the heuristic bot 16.5 % (untuned: 29 % / 18 %, median 373 s); the target and the open owner calls are in [the balance pass](cascade-decisions.md#balance-pass-for-the-12-tier-ladder-3967-owner-decision-pending).
+The sim's headline numbers on the 12-tier ladder (#3967, owner decision #3978; R0 = 11, weights `1 1 2 3 4 4`; 200 seeds, 600 s cap): the skilled bot wins 45.5 % of games in a median 247 s, the heuristic bot 27 %; the deepest overlap's p90 is 3.88 px; the spam bot loses at the lid in under 120 s and never wins; no guard rail fires (11-tier ladder: 66 % in a median 215 s). Every trial: [the balance pass](cascade-decisions.md#balance-pass-for-the-12-tier-ladder-3967).
 
 ### 14. Deviations from shared standards
 
@@ -207,10 +207,10 @@ Cascade departs from the shared gameplay standards in these places. Each is inte
 
 Every game is recorded on the shared `GameRecorder` (epic #3273) so it can be read back from a Sentry issue (`game.id`) and tuned from real games. Nothing is recorded per frame and no board is snapshotted. Format, numbers and measurements: [Replay recording](cascade-decisions.md#replay-recording-3858).
 
-- **What is recorded.** `game_started`: the piece set, the queue seed and the engine seed (live play is seeded per game; the draws are uniform, so play is unchanged), the physics tuning id and `engine_version` (1). Then one **unit per 20 drops** (fewer at the end or when the app goes to the background): a `drop` event with each drop as `[step, x in tenths of a world px, tier]` and the danger moments `[start, peak]` (lid episodes of 10 steps or more, at most 32 a game), and a `merge` event with each merge as `[step, tierFrom, chain]`. `game_ended` adds `end_step`, `capstone_step` (a win), `lid_step` and the cap flags to the result block. `step` is the engine's fixed 60 Hz step, never wall time; the screen drops at the recorded tenth-of-a-pixel x.
-- **When it is written.** A unit is handed to the recorder on its 20th drop and saved at the next idle moment in one write; going to the background saves at once. Every end (win, loss, New Game, leaving the screen) flushes the running danger moment and the last unit before `game_ended`. Gameplay rows are held on the device during play and uploaded when the session ends, the app goes to the background, or at most every 5 minutes (#3275).
-- **Caps.** 1 KB per `drop` event (never split) and per `merge` part (a bigger `merge` is split on `m`), 32 KB a recorder session, 48 units a game (kept in the save, so a relaunch does not reset it), 32 danger moments; past a cap the game records a clean prefix and says so (`rec_cut`, `z_cut`, `x` in the replay summary, one throttled Sentry report). The server caps a game at 128 events and 80 KB and drops a bad event without a 400.
-- **Volume and dials.** A typical game stores about 9.5 KB (18 rows), a 10-minute game about 14 KB, the worst case about 67 KB. At sample rate `r` (10 % with no dial), 1,000 games a day store about 285 MB × r at the 30-day retention steady state. The kill switch, the sample rate, the upgrade on error and the 90 % storage trip turn it down without a release. Cascade is premium-only, so the volume tracks paying players.
+- **What is recorded.** `game_started`: the piece set, the queue seed and the engine seed (live play is seeded per game; the draws are uniform, so play is unchanged), the physics tuning id and `engine_version` (1). Then one **unit per 30 drops** (20 before #3967) (fewer at the end or when the app goes to the background): a `drop` event with each drop as `[step, x in tenths of a world px, tier]` and the danger moments `[start, peak]` (lid episodes of 10 steps or more, at most 32 a game), and a `merge` event with each merge as `[step, tierFrom, chain]`. `game_ended` adds `end_step`, `capstone_step` (a win), `lid_step` and the cap flags to the result block. `step` is the engine's fixed 60 Hz step, never wall time; the screen drops at the recorded tenth-of-a-pixel x.
+- **When it is written.** A unit is handed to the recorder on its 30th drop and saved at the next idle moment in one write; going to the background saves at once. Every end (win, loss, New Game, leaving the screen) flushes the running danger moment and the last unit before `game_ended`. Gameplay rows are held on the device during play and uploaded when the session ends, the app goes to the background, or at most every 5 minutes (#3275).
+- **Caps.** 1 KB per `drop` event (never split) and per `merge` part (a bigger `merge` is split on `m`), 32 KB a recorder session, 32 units a game (960 drops; 48 units of 20 before #3967; kept in the save, so a relaunch does not reset it), 32 danger moments; past a cap the game records a clean prefix and says so (`rec_cut`, `z_cut`, `x` in the replay summary, one throttled Sentry report). The server caps a game at 128 events and 80 KB and drops a bad event without a 400.
+- **Volume and dials.** A typical game stores about 12 KB (18-20 rows), the 10-minute one about 12 KB too (18 rows: a long game drops slowly), the worst case about 59 KB (#3967; 9.5, 14 and 67 KB with 20-drop units on the 11-tier ladder). At sample rate `r` (10 % with no dial), 1,000 games a day store about 370 MB × r at the 30-day retention steady state (37 MB at 10 %). The kill switch, the sample rate, the upgrade on error and the 90 % storage trip turn it down without a release. Cascade is premium-only, so the volume tracks paying players.
 - **Replays.** The recorded merges and outcome tell the game's story on their own (`backend/scripts/replay_game.py`, `backend/cascade/replay.py`, which checks the merges add up to the merge score). Re-simulating from the seeds and drops (`rebuild.ts`) is best effort on one JS engine and never verifies a score. A change that moves the golden game bumps `ENGINE_VERSION` and keeps the old fixture.
 
 ---

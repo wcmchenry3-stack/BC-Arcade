@@ -18,12 +18,14 @@
  * ## Radii
  *
  * One constant ratio for the whole ladder (#3920, owner decision after the playtest of #3904's
- * V1): `radius(n) = R0 * K ^ n`, unrounded, with R0 = 11.5 and K = (R11 / R0) ^ (1 / 11) =
- * 1.2150..., so the capstone is exactly R11 = 98 and every tier-to-tier ratio is exactly K. The
- * Cherry / Pluto is about 6.4 % of the bin's 360 px inner width across (about 22 pt on a 390 pt
- * phone), the share of the owner's reference game; the Pumpkin stays about half the bin. Droppable
- * tiers are 0-5 (radius 11.5-30.5). Win rates on this 12-tier ladder are being re-measured in
- * #3967 (the 11-tier ladder measured skilled 66 % / heuristic 49 %; docs/games/cascade.md).
+ * V1): `radius(n) = R0 * K ^ n`, unrounded, with R0 = 11 and K = (R11 / R0) ^ (1 / 11) =
+ * 1.2200..., so the capstone is exactly R11 = 98 and every tier-to-tier ratio is exactly K. The
+ * Cherry / Pluto is about 6.1 % of the bin's 360 px inner width across (about 21 pt on a 390 pt
+ * phone; 11.5 and 6.4 % on #3920's ladder, the share of the owner's reference game); the Pumpkin
+ * stays about half the bin. Droppable tiers are 0-5 (radius 11-29.7). R0 = 11 is the #3967
+ * balance pass (owner decision #3978): with 11.5 the skilled bot won about 40 %, with 11 about
+ * 46 % (200 seeds; docs/games/cascade-decisions.md). The capstone stays 98 for the
+ * three-capstone rule below (tiers.test.ts).
  * (#3904's V1 was R0 = 5 on 12 tiers with a two-capstone win.)
  *
  * ## Scores
@@ -36,7 +38,7 @@
  * ## Density
  *
  * planck.js density per tier: `(r0 / r) ^ 0.5` (#3697), so mass grows as r^1.5 instead of r^2.
- * On this ladder the capstone is 24.9 times a cherry (87 on #3904's 5-98 ladder, 6.5 on the old
+ * On this ladder the capstone is 26.6 times a cherry (24.9 on #3920's 11.5-98 ladder, 87 on #3904's 5-98 ladder, 6.5 on the old
  * 18-63 one). #3904 tried flattening it (exponent 0.75 to 1.37, 41 : 1 to 6.5 : 1), the owner's
  * first lever on the overlap: it cut the overlap less than the solver did and cost the skilled win rate most (heavy
  * pieces sinking through light ones is also what packs the pile), so it stays. Only ratios matter
@@ -46,7 +48,7 @@
  *
  * A piece is drawn DRAW_INSET (1.5 %) smaller than its collider: `drawnRadius = radius * (1 -
  * DRAW_INSET)`. It is the last of the owner's overlap levers, used because the solver alone left
- * the skilled games' p90 deepest overlap at 5.2 px against the 5 px gate; it takes 0.35 px off a
+ * the skilled games' p90 deepest overlap at 5.2 px against the 5 px gate; it takes 0.33 px off a
  * pair of cherries and 2.9 px off a pair of capstones (12-tier ladder). Everything that draws a
  * piece (the board, the art bitmaps, the spawner) reads `drawnRadius`; the physics, the lid, the
  * spawn and the merges read `radius`.
@@ -75,7 +77,7 @@ export const TIER_COUNT = 12;
 export const CAPSTONE_TIER = TIER_COUNT - 1;
 
 /** The ladder's ends (see "Radii" above): tier 0's and the capstone's radius, world px. */
-const R0 = 11.5;
+const R0 = 11;
 const R11 = 98;
 /** The one tier-to-tier ratio: R0 * K ^ 11 = R11. */
 const K = (R11 / R0) ** (1 / CAPSTONE_TIER);

@@ -413,9 +413,9 @@ export const DAILY_WORD_GUESS_MAX_BYTES = 384;
 
 /**
  * Cascade (#3858): the cap on one `drop` event's JSON length. A unit is up to
- * `CASCADE_DROPS_PER_UNIT` (20) drops, each `[step, x_tenths, tier]` (`[36000,3800,5],` is 15),
- * plus up to `CASCADE_MAX_DANGER` danger moments `[start, peak]` (`[36000,180],` is 12) and the
- * envelope: a widest honest event is about 740, so 1 KB never bites one and still bounds a bad
+ * `CASCADE_DROPS_PER_UNIT` (30 since #3967) drops, each `[step, x_tenths, tier]` (`[36000,3800,5],`
+ * is 15), plus up to `CASCADE_MAX_DANGER` danger moments `[start, peak]` (`[36000,180],` is 12) and
+ * the envelope: a widest honest event is about 950 (6-digit steps), so 1 KB never bites one and still bounds a bad
  * one. Never split: an event over it is dropped and reported. The backend's `MAX_DROP_BYTES`
  * (cascade/events.py) holds the same figure.
  */
@@ -423,8 +423,8 @@ export const CASCADE_DROP_MAX_BYTES = 1024;
 
 /**
  * Cascade (#3858): the cap on one `merge` event's JSON length, split on `m` when over it. A
- * merge is `[step, tierFrom, chain]` (`[36000,9,12],` is 13); a unit of 20 drops makes about 17
- * merges (the sim's skilled bot, 0.87 a drop), about 260 B with the envelope. The backend's
+ * merge is `[step, tierFrom, chain]` (`[36000,9,12],` is 13); a unit of 30 drops makes about 27
+ * merges (the sim's skilled bot, about 0.9 a drop), about 400 B with the envelope. The backend's
  * `MAX_MERGE_BYTES` holds the same figure.
  */
 export const CASCADE_MERGE_MAX_BYTES = 1024;
@@ -439,12 +439,12 @@ export const CASCADE_SESSION_MAX_BYTES = 32 * 1024;
 
 /**
  * Cascade (#3858): the most units (a `drop` and a `merge` row each) a game records, the
- * row-count half of the cost bound (each stored row costs about 200 B beyond its JSON). 48 units
- * of 20 drops is 960 drops, about 30 minutes; a background flush cuts a unit short, so this also
+ * row-count half of the cost bound (each stored row costs about 200 B beyond its JSON). 32 units
+ * of 30 drops is 960 drops, about 30 minutes (#3967; 48 units of 20 before, the same ceiling); a background flush cuts a unit short, so this also
  * bounds a player who backgrounds the app after every drop. Counted by the unit number, which the
  * save carries, so a resume does not reset it. The backend's `CASCADE_CAP` is sized from it.
  */
-export const CASCADE_MAX_UNITS = 48;
+export const CASCADE_MAX_UNITS = 32;
 
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
