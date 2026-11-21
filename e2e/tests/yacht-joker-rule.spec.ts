@@ -65,20 +65,20 @@ test.describe("Yacht — joker rule enforcement (#181)", () => {
 
     // "Threes" row should show potential score (joker gives sum = 15 for five 3s)
     await expect(
-      page.getByRole("button", { name: /Threes: potential score/ }),
+      page.getByRole("button", { name: /Threes: open, would score/ }),
     ).toBeVisible();
 
     // Upper categories other than Threes should NOT show potential score
     await expect(
-      page.getByRole("button", { name: /Ones: potential score/ }),
+      page.getByRole("button", { name: /Ones: open, would score/ }),
     ).not.toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Twos: potential score/ }),
+      page.getByRole("button", { name: /Twos: open, would score/ }),
     ).not.toBeVisible();
 
     // Lower categories (e.g. Chance) should NOT show potential score when upper is forced
     await expect(
-      page.getByRole("button", { name: /Chance: potential score/ }),
+      page.getByRole("button", { name: /Chance: open, would score/ }),
     ).not.toBeVisible();
   });
 
@@ -89,14 +89,14 @@ test.describe("Yacht — joker rule enforcement (#181)", () => {
     await page.getByRole("button", { name: "Play Yacht" }).click();
     await expect(page.getByText(/Round 2 \/ 13/)).toBeVisible();
 
-    await page.getByRole("button", { name: /Threes: potential score/ }).click();
+    await page.getByRole("button", { name: /Threes: open, would score/ }).click();
 
     // Round advances
     await expect(page.getByText(/Round 3 \/ 13/)).toBeVisible();
 
     // Threes scored with sum of dice (5×3 = 15)
     await expect(
-      page.getByRole("button", { name: /Threes: scored 15/ }),
+      page.getByRole("button", { name: /Threes: scored, 15/ }),
     ).toBeVisible();
 
     // Yacht bonus count incremented → yacht bonus row becomes visible
@@ -121,13 +121,13 @@ test.describe("Yacht — joker rule enforcement (#181)", () => {
 
     // Lower section categories should show potential scores (joker values)
     await expect(
-      page.getByRole("button", { name: /Chance: potential score/ }),
+      page.getByRole("button", { name: /Chance: open, would score/ }),
     ).toBeVisible();
 
     // Upper categories other than the already-scored ones should NOT be selectable
     // when P2 lower categories are open
     await expect(
-      page.getByRole("button", { name: /Ones: potential score/ }),
+      page.getByRole("button", { name: /Ones: open, would score/ }),
     ).not.toBeVisible();
   });
 
@@ -147,10 +147,10 @@ test.describe("Yacht — joker rule enforcement (#181)", () => {
     await expect(page.getByText(/Round 3 \/ 13/)).toBeVisible();
 
     // Score "Chance" — joker gives sum = 15
-    await page.getByRole("button", { name: /Chance: potential score/ }).click();
+    await page.getByRole("button", { name: /Chance: open, would score/ }).click();
     await expect(page.getByText(/Round 4 \/ 13/)).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Chance: scored 15/ }),
+      page.getByRole("button", { name: /Chance: scored, 15/ }),
     ).toBeVisible();
   });
 
@@ -180,12 +180,12 @@ test.describe("Yacht — joker rule enforcement (#181)", () => {
     // Without joker active, all unfilled categories should show normal potential scores
     // Fours should show 20 (normal scoring: 5×4 = 20)
     await expect(
-      page.getByRole("button", { name: /Fours: potential score/ }),
+      page.getByRole("button", { name: /Fours: open, would score/ }),
     ).toBeVisible();
 
     // Chance should also be selectable (normal scoring — no joker restriction)
     await expect(
-      page.getByRole("button", { name: /Chance: potential score/ }),
+      page.getByRole("button", { name: /Chance: open, would score/ }),
     ).toBeVisible();
   });
 });

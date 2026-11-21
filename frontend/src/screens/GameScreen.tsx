@@ -991,7 +991,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.8,
   },
-  // The scorecard takes the height the tray leaves; it scrolls only below the height 13 rows need.
+  // The scorecard takes the height the tray leaves; ScoreTable measures it and sizes its rows to it (#3968). It scrolls only below the height 13 rows need.
   scorecardContainer: {
     flex: 1,
     minHeight: 0,
