@@ -245,6 +245,35 @@ describe("dailyChallengeApi.getUpcoming — goals cached for offline play (#3228
   });
 });
 
+describe("dailyChallengeApi — the reserved `bonus` field (#3992, #3995)", () => {
+  const bonus = {
+    id: "yacht:final_score_at_least:100",
+    game_type: "yacht",
+    kind: "final_score_at_least",
+    target: 100,
+  };
+
+  it.each([null, bonus])(
+    "ignores bonus=%p on /status, /today and /upcoming: 3 goals, same count",
+    async (value) => {
+      respond({ status: { ...status, bonus: value } });
+      const withBonus = await dailyChallengeApi.getDailyChallenge(0);
+      respond({ status });
+      expect(withBonus).toEqual(await dailyChallengeApi.getDailyChallenge(0));
+      expect(withBonus.goals).toHaveLength(3);
+      expect(withBonus.goals.filter((g) => g.completed)).toHaveLength(1);
+
+      respond({ status: new Error("boom"), today: { ...today, bonus: value } });
+      const fallback = await dailyChallengeApi.getDailyChallenge(0);
+      expect(fallback.goals.map((g) => g.id)).toEqual(today.goals.map((g) => g.id));
+
+      mockRequest.mockResolvedValue({ days: [{ ...today, bonus: value }] });
+      const [day] = await dailyChallengeApi.getUpcoming(0);
+      expect(day!.goals.map((g) => g.id)).toEqual(today.goals.map((g) => g.id));
+    }
+  );
+});
+
 describe("wireTarget", () => {
   it("turns a time limit back into milliseconds and leaves other targets alone", () => {
     const base = { id: "x", gameSlug: "mahjong", completed: false };

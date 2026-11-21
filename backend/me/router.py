@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 from sqlalchemy import delete
@@ -9,6 +11,7 @@ from sqlalchemy import delete
 from db.base import DbSession
 from db.models import (
     BugLog,
+    DailyChallengeAssignment,
     DailyWordProgress,
     Game,
     GameEntitlement,
@@ -44,6 +47,13 @@ async def delete_me(request: Request, db: DbSession) -> Response:
     # Daily Word guess records are session-keyed too (#2197); the 14-day
     # retention prune is a backstop, not the erasure path (#2779).
     await db.execute(delete(DailyWordProgress).where(DailyWordProgress.session_id == sid))
+    # The install's pinned daily-challenge goals (#3992); retention is again only a
+    # backstop. Keyed by the session's UUID, whatever spelling the header used.
+    await db.execute(
+        delete(DailyChallengeAssignment).where(
+            DailyChallengeAssignment.session_id == uuid.UUID(sid)
+        )
+    )
     # The display name (#2624) is personal data too.
     await db.execute(delete(Player).where(Player.session_id == sid))
     await db.commit()
