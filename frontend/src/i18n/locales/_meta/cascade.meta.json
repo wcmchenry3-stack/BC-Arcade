@@ -215,25 +215,7 @@
     "doNotTranslate": [],
     "notes": "A fruit."
   },
-  "pieces.fruits.blueberry": {
-    "component": "NextFruitPreview",
-    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "A fruit."
-  },
   "pieces.fruits.lemon": {
-    "component": "NextFruitPreview",
-    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "A fruit."
-  },
-  "pieces.fruits.grape": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
     "tone": "neutral",
@@ -261,15 +243,6 @@
     "notes": "A fruit."
   },
   "pieces.fruits.apple": {
-    "component": "NextFruitPreview",
-    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "A fruit."
-  },
-  "pieces.fruits.coconut": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
     "tone": "neutral",
