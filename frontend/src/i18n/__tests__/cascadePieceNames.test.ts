@@ -1,5 +1,5 @@
 /**
- * Every Cascade piece name (#3695; #3920: 22 names, both capstones) has a key in every locale file and
+ * Every Cascade piece name (#3695; #3960: 24 names, both capstones) has a key in every locale file and
  * its translator metadata. Untranslated locales carry the English copy, tracked in
  * scripts/i18n-english-copies.json (see docs/I18N.md).
  */
@@ -24,8 +24,8 @@ const read = (file: string): Record<string, string> =>
   JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, string>;
 
 describe("Cascade piece names", () => {
-  it("covers 22 distinct names (#3920: 11 tiers x 2 sets)", () => {
-    expect(new Set(keys).size).toBe(22);
+  it("covers 24 distinct names (#3960: 12 tiers x 2 sets)", () => {
+    expect(new Set(keys).size).toBe(24);
   });
 
   it.each(localeDirs)("%s has every piece name key", (locale) => {

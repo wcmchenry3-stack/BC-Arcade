@@ -47,7 +47,7 @@
  *     next step), and again each step it grows: the solver can shove a product made at its
  *     parents' size on top of a third piece several px in its first step, out of reach of the
  *     neighbour it was made touching (#3920: up to 12 px on the 11.5-98 ladder, a lost chain).
- *   - The win (#3920; #3904 was two touching capstones): the merge of two tier-9 pieces into the
+ *   - The win (#3920; #3904 was two touching capstones): the merge of two tier-10 pieces into the
  *     capstone. It is an ordinary merge (`merge` and `score` events, the capstone's own score, no
  *     extra), then `{ type: "win", x, y, id }` at the capstone's spawn point with its id. The win
  *     ends the play: from that step on `canDrop()` is false, `drop()` does nothing, no other merge

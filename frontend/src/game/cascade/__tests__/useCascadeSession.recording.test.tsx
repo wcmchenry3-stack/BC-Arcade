@@ -165,7 +165,7 @@ describe("Cascade session recording (#3858)", () => {
     await act(() => result.current.startSession("fruits"));
     engine.steps = 10;
     result.current.rec.drop(4, 200);
-    result.current.rec.events([merge(400, 9), { type: "win", x: 0, y: 0, id: 5 }]);
+    result.current.rec.events([merge(400, 10), { type: "win", x: 0, y: 0, id: 5 }]);
     engine.steps = 402;
     const order: string[] = [];
     (gameEventClient.enqueueEvents as jest.Mock).mockImplementation(() => order.push("units"));
@@ -271,7 +271,7 @@ describe("Cascade session recording (#3858)", () => {
     const engine = new CascadeEngine({ seed: 1 });
     const pieces: { tier: number; x: number; y: number }[] = [];
     let bottom = WORLD_HEIGHT - FLOOR_THICKNESS;
-    for (const tier of [10, 9, 7, 4]) {
+    for (const tier of [11, 10, 8, 4]) {
       pieces.push({ tier, x: 121, y: bottom - tierRadius(tier) });
       bottom -= 2 * tierRadius(tier);
     }

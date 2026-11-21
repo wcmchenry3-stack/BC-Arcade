@@ -123,7 +123,7 @@ export function celebrationStyleKey({ setId, theme, pxPerUnit }: CelebrationStyl
  * The celebration's style for a board (#3699), built on the first call for its key and cached:
  * the capstone's 1.4x raster with its cheering face (or `fallback`, the board's own capstone, if
  * that could not be made), then the paths, gradients and tables. Its `reduceMotion` is false: the
- * board sets its own. `useCelebrationStyle` asks for it in idle time once the board holds a tier-9
+ * board sets its own. `useCelebrationStyle` asks for it in idle time once the board holds a tier-10
  * piece, so the win itself normally does no raster work.
  */
 export function celebrationStyleFor(

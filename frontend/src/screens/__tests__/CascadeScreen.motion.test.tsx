@@ -159,7 +159,7 @@ it("no haptics on web", async () => {
 
 it("the winning merge fires no merge pulse (the win card's Success covers it)", async () => {
   await mount();
-  mockPendingEvents.push(merge(10, 9));
+  mockPendingEvents.push(merge(11, 9));
   await frames(300);
   expect(impacts()).toEqual([]);
 });
@@ -184,9 +184,9 @@ it("a test fast-forward fires no haptics", async () => {
 
 it("a restored game settling fires no haptics; play after it does", async () => {
   await AsyncStorage.setItem(
-    "cascade_game_v7",
+    "cascade_game_v8",
     JSON.stringify({
-      version: 7,
+      version: 8,
       pieces: [{ tier: 4, x: 120, y: 500 }],
       score: 40,
       savedAt: Date.now(),

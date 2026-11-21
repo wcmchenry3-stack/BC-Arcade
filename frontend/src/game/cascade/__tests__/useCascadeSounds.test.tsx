@@ -83,7 +83,7 @@ it("takes 8 players at mount (the sounds of every turn) and the rest on their fi
   expect(mockHolds.at(-1)!.lazy).toBe(true);
 });
 
-it("pre-warms the win once a tier-9 piece is on the board, and danger and game over when the count runs", async () => {
+it("pre-warms the win once a tier-10 piece is on the board, and danger and game over when the count runs", async () => {
   const { result, rerender } = await mount();
   expect(holdOf("win")).toBeUndefined();
   await rerender({ id: "fruits", rm: false, nearWin: true });

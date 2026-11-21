@@ -25,7 +25,7 @@ describe("CascadeTileIcon (native)", () => {
     await render(<CascadeTileIcon size={56} fallback={fallback} testID="art" />);
     const glyphs = () => screen.root!.queryAll((n) => n.type === "FruitGlyph");
     await waitFor(() => expect(glyphs()).toHaveLength(1));
-    // #3920: the Watermelon is tier 9 since the Peach was removed (tier 10 is the Pumpkin).
+    // #3960: the Watermelon is tier 10 (tier 11 is the Pumpkin).
     const watermelon = FRUIT_SETS.fruits!.fruits.find((f) => f.name === "Watermelon")!;
     expect(glyphs()[0]!.props).toEqual({
       fruit: { set: "fruits", tier: watermelon.tier },

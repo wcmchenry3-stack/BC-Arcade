@@ -89,8 +89,8 @@ describe("cascadeSetup('fillBin')", () => {
   });
 });
 
-describe("cascadeSetup('win') (#3904; #3920: one capstone)", () => {
-  it("restores two tier-9 pieces, not yet touching, that merge into the capstone and win within 0.5 s", () => {
+describe("cascadeSetup('win') (#3904; #3920: one capstone; #3960: tier 10 merges into it)", () => {
+  it("restores two tier-10 pieces, not yet touching, that merge into the capstone and win within 0.5 s", () => {
     const { engine } = load("win");
     const before = engine.getState().pieces;
     expect(before.map((p) => p.tier)).toEqual([CAPSTONE_TIER - 1, CAPSTONE_TIER - 1]);

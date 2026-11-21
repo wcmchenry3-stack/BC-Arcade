@@ -1,6 +1,5 @@
 /**
- * #3698: the Cosmos set, tiers 0-10 (#3920: the Moon removed, Pluto is tier 0; the Moon is
- * kept as a recipe in `COSMOS_ART.retired`, never drawn in play), as small descriptions for the kawaii pen (`pen.ts`); see `fruits.ts` for the unit space. Overhangs
+ * #3698: the Cosmos set, tiers 0-11 (#3960: the Moon is back at tier 1; #3920 had archived it), as small descriptions for the kawaii pen (`pen.ts`); see `fruits.ts` for the unit space. Overhangs
  * (owner-approved 2026-11-14): Saturn's rings 0.305 r each side and Uranus's ring 0.265 r
  * (measured with the strokes), each drawn as a back arc (before the body) and a front arc (after
  * it), never clipped; no haze on the Sun or the Milky Way.
@@ -75,7 +74,7 @@ function ring(
   c.restore();
 }
 
-/** Retired by #3920 (see `COSMOS_ART.retired`): the Moon, Cosmos tier 0 until #3920. */
+/** The Moon, Cosmos tier 1 again (#3960; it was retired by #3920). TEMP(#3962): the recipe is the old one, #3963 owns the final art. */
 const moon: PieceArt = {
   body(pen) {
     pen.body(T.moon);
@@ -388,11 +387,21 @@ const milkyWay: PieceArt = {
 };
 
 export const COSMOS_ART: ArtSet = {
-  pieces: [pluto, mercury, mars, venus, earth, neptune, uranus, saturn, jupiter, sun, milkyWay],
+  pieces: [
+    pluto,
+    moon,
+    mercury,
+    mars,
+    venus,
+    earth,
+    neptune,
+    uranus,
+    saturn,
+    jupiter,
+    sun,
+    milkyWay,
+  ],
   ink: T.ink,
   closedEyes: true,
-  // #3920: kept as a recipe, never drawn in play (docs/games/cascade-decisions.md#retired-pieces-3920).
-  retired: {
-    moon: { art: moon, ink: T.retiredInk.moon, was: "tier 0; removed from the ladder by #3920" },
-  },
+  // No retired pieces: the Moon was archived by #3920 and is back in play at tier 1 (#3960).
 };

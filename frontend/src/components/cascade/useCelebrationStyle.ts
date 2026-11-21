@@ -6,7 +6,7 @@
  * held the board on the plain capstone while the UI-thread clock ran on, so the celebration
  * appeared finished, its dim and rise never seen (iOS demo on #3924). So:
  *
- * - **Pre-warm.** Once the board holds a tier-9 piece (`prepare`: one merge from the win), the
+ * - **Pre-warm.** Once the board holds a tier-10 piece (`prepare`: one merge from the win), the
  *   style is built in idle time (`requestIdleCallback`, with a deadline), never on the frame or
  *   gesture path. Games that never get near a win pay nothing.
  * - **On demand.** A win before the pre-warm has run builds it at once, after the win's commit.
@@ -51,7 +51,7 @@ export interface UseCelebrationStyleArgs {
   readonly pxPerUnit: number;
   /** The board's own capstone bitmaps: drawn if the bigger raster cannot be made. */
   readonly fallback: PieceSprite | null;
-  /** The board holds a tier-9 piece: build ahead, in idle time. */
+  /** The board holds a tier-10 piece: build ahead, in idle time. */
   readonly prepare: boolean;
   readonly won: boolean;
   readonly reduceMotion: boolean;

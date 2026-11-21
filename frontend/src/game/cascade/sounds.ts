@@ -24,6 +24,7 @@ export const CASCADE_SOUND_NAMES = [
   "merge-t8",
   "merge-t9",
   "merge-t10",
+  "merge-t11",
   "chain-1",
   "chain-2",
   "chain-3",
@@ -53,6 +54,8 @@ export const CASCADE_SOUNDS: Readonly<
     "merge-t8": require("../../../assets/sounds/cascade-fruits-merge-t8.ogg"),
     "merge-t9": require("../../../assets/sounds/cascade-fruits-merge-t9.ogg"),
     "merge-t10": require("../../../assets/sounds/cascade-fruits-merge-t10.ogg"),
+    // TEMP(#3962): the t10 file again until #3966 synthesises the real merge-t11.
+    "merge-t11": require("../../../assets/sounds/cascade-fruits-merge-t10.ogg"),
     "chain-1": require("../../../assets/sounds/cascade-fruits-chain-1.ogg"),
     "chain-2": require("../../../assets/sounds/cascade-fruits-chain-2.ogg"),
     "chain-3": require("../../../assets/sounds/cascade-fruits-chain-3.ogg"),
@@ -76,6 +79,8 @@ export const CASCADE_SOUNDS: Readonly<
     "merge-t8": require("../../../assets/sounds/cascade-cosmos-merge-t8.ogg"),
     "merge-t9": require("../../../assets/sounds/cascade-cosmos-merge-t9.ogg"),
     "merge-t10": require("../../../assets/sounds/cascade-cosmos-merge-t10.ogg"),
+    // TEMP(#3962): the t10 file again until #3966 synthesises the real merge-t11.
+    "merge-t11": require("../../../assets/sounds/cascade-cosmos-merge-t10.ogg"),
     "chain-1": require("../../../assets/sounds/cascade-cosmos-chain-1.ogg"),
     "chain-2": require("../../../assets/sounds/cascade-cosmos-chain-2.ogg"),
     "chain-3": require("../../../assets/sounds/cascade-cosmos-chain-3.ogg"),
@@ -101,6 +106,7 @@ export const LAZY_CASCADE_SOUNDS: ReadonlySet<CascadeSoundName> = new Set<Cascad
   "merge-t8",
   "merge-t9",
   "merge-t10",
+  "merge-t11",
   "chain-2",
   "chain-3",
   "chain-4",

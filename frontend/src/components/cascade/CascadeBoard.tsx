@@ -13,7 +13,7 @@
  * shared value the screen animates (ms since the win, -1 for none), so the celebration plays on
  * the UI thread with no JS loop. What it draws with (`render/celebrationStyle.ts`, including the
  * capstone rasterised bigger, with its cheering face) is built ahead, in idle time, once the board
- * holds a tier-9 piece (`prepareCelebration`), or at the win if that has not run yet; the board
+ * holds a tier-10 piece (`prepareCelebration`), or at the win if that has not run yet; the board
  * says when it is ready (`onCelebrationReady`) so the clock starts then (`useCelebrationStyle`).
  */
 import React, { useMemo } from "react";
@@ -56,7 +56,7 @@ export interface CascadeBoardProps {
   readonly lidPalette: CascadeLidPalette;
   /** The active theme: the bin's colours. */
   readonly theme: "light" | "dark";
-  /** The board holds a tier-9 piece (#3699): build the celebration ahead, in idle time. */
+  /** The board holds a tier-10 piece (#3699): build the celebration ahead, in idle time. */
   readonly prepareCelebration?: boolean;
   /** The game was won (#3699): draw the celebration. */
   readonly won?: boolean;

@@ -4,7 +4,7 @@
  * (`backend/cascade/models.py`) and merged into `games.metadata`.
  *
  * - `merge_score`: the merge points (the engine's score).
- * - `max_tier`: the highest tier on the board this game (10 on a win).
+ * - `max_tier`: the highest tier on the board this game (11 on a win).
  * - `won` / `outcome`: what Cascade's Daily Challenge goals will read (#2458).
  * - `time_bonus` / `bonus_rule`: the app's copy, for display only; the server
  *   recomputes both from the completion's `outcome` and `duration_ms`.

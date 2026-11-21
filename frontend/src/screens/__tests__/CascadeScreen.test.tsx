@@ -1178,7 +1178,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       jest.advanceTimersByTime(20_000);
     });
     await setAppState("background"); // the pause saves the board
-    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v7"))!);
+    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v8"))!);
     expect(saved.playedMs).toBe(20_000);
     await act(() => {
       first.unmount(); // the OS kills the app from here
@@ -1205,10 +1205,10 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
   // #3699: only a game that ended shows a card; a restored game is in progress.
   it("restores an in-progress game with no result card", async () => {
     await AsyncStorage.setItem(
-      "cascade_game_v7",
+      "cascade_game_v8",
       JSON.stringify({
-        version: 7,
-        pieces: [{ tier: 9, x: 120, y: 500 }],
+        version: 8,
+        pieces: [{ tier: 10, x: 120, y: 500 }],
         score: 900,
         savedAt: Date.now(),
         queue: { current: 0, next: 1 },
@@ -1236,9 +1236,9 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
   // the clock counts from the load. It must still restore the board.
   it("restores an older build's save without playedMs, counting from the load", async () => {
     await AsyncStorage.setItem(
-      "cascade_game_v7",
+      "cascade_game_v8",
       JSON.stringify({
-        version: 7,
+        version: 8,
         pieces: [{ tier: 0, x: 200, y: 500 }],
         score: 10,
         savedAt: Date.now() - 2 * 24 * 60 * 60_000,
@@ -1283,7 +1283,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       });
       await setAppState("background"); // a save, before the win
       await setAppState("active");
-      expect(await AsyncStorage.getItem("cascade_game_v7")).not.toBeNull();
+      expect(await AsyncStorage.getItem("cascade_game_v8")).not.toBeNull();
       pendingEngineEvents.push({ type: "win", x: 200, y: 400, id: 1 });
       mockEngineHasWon.mockReturnValue(true);
       await act(() => {
@@ -1610,8 +1610,8 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         }
       });
 
-      // iOS demo on #3924: the style is built ahead, once the board holds a tier-9 piece.
-      it("pre-warms the celebration on the first tier-9 piece, not before, off the render", async () => {
+      // iOS demo on #3924: the style is built ahead, once the board holds a tier-10 piece.
+      it("pre-warms the celebration on the first tier-10 piece, not before, off the render", async () => {
         __resetCelebrationStylesForTests();
         const build = jest.spyOn(celebrationStyles, "celebrationStyleFor");
         jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -1669,7 +1669,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
     it("clears the saved game and saves nothing after it, on pause or otherwise", async () => {
       const renderer = await renderScreen();
       await win(renderer);
-      expect(await AsyncStorage.getItem("cascade_game_v7")).toBeNull();
+      expect(await AsyncStorage.getItem("cascade_game_v8")).toBeNull();
       await setAppState("background");
       await act(() => {
         jest.advanceTimersByTime(10_000);
@@ -1677,7 +1677,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      expect(await AsyncStorage.getItem("cascade_game_v7")).toBeNull();
+      expect(await AsyncStorage.getItem("cascade_game_v8")).toBeNull();
       await act(() => {
         renderer.unmount();
       });

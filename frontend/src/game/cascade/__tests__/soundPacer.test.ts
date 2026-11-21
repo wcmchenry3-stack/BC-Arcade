@@ -72,7 +72,7 @@ describe("one-shot sounds", () => {
     pacer.land(4);
     advance(0);
     expect(played.map(([, n, v]) => [n, v])).toEqual([["land-heavy", expect.any(Number)]]);
-    expect(played[0]![2]).toBeCloseTo(0.6 + 0.4 * 0.7);
+    expect(played[0]![2]).toBeCloseTo(0.6 + 0.4 * (7 / 11));
     // A lighter one inside the gap is dropped; a heavier one still plays.
     advance(MOTION.sound.landGapMs - 20);
     pacer.land(3);
@@ -81,7 +81,7 @@ describe("one-shot sounds", () => {
     pacer.land(9);
     advance(0);
     expect(played).toHaveLength(2);
-    expect(played[1]![2]).toBeCloseTo(0.6 + 0.4 * 0.9);
+    expect(played[1]![2]).toBeCloseTo(0.6 + 0.4 * (9 / 11));
     // After the gap anything plays again.
     advance(MOTION.sound.landGapMs + 1);
     pacer.land(0);

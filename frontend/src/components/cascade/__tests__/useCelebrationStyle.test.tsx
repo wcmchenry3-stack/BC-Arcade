@@ -1,6 +1,6 @@
 /**
  * #3699 (iOS demo on #3924): the celebration's style is built ahead, in idle time, once the board
- * holds a tier-9 piece, and the board says when the won game's celebration can be drawn.
+ * holds a tier-10 piece, and the board says when the won game's celebration can be drawn.
  */
 import React from "react";
 import { act, create } from "react-test-renderer";
@@ -63,7 +63,7 @@ describe("useCelebrationStyle", () => {
     jest.restoreAllMocks();
   });
 
-  it("builds nothing during play until a tier-9 piece is on the board", async () => {
+  it("builds nothing during play until a tier-10 piece is on the board", async () => {
     await render({});
     await idle();
     expect(mockBuild).not.toHaveBeenCalled();

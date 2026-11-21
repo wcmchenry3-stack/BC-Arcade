@@ -7,23 +7,24 @@
  * (`__tests__/tiers.test.ts`) fails if another module defines a per-tier radius, score or density
  * table: two parallel tables are what once drew the wrong fruit at the wrong size.
  *
- * ## The ladder (11 tiers, 0..10; #3920)
+ * ## The ladder (12 tiers, 0..11; #3960)
  *
- * Merging two pieces of tier n (n < 10) makes one of tier n + 1. Two tier-9 pieces make the
- * capstone (tier 10, Pumpkin / Milky Way), and making it is the win (#3920): the engine emits
- * `win` and play ends. The capstone is never dropped. #3920 removed the Peach (Fruits) and the
- * Moon (Cosmos) from #3904's 12-tier ladder.
+ * Merging two pieces of tier n (n < 11) makes one of tier n + 1. Two tier-10 pieces make the
+ * capstone (tier 11, Pumpkin / Milky Way), and making it is the win (#3920): the engine emits
+ * `win` and play ends. The capstone is never dropped. #3920 cut #3904's 12-tier ladder to 11
+ * (removing the Peach and the Moon); #3960 lengthens it to 12 again (Moon back at tier 1, a new
+ * Lime in Fruits, Blueberry -> Blackberry, Coconut -> Pomegranate).
  *
  * ## Radii
  *
  * One constant ratio for the whole ladder (#3920, owner decision after the playtest of #3904's
- * V1): `radius(n) = R0 * K ^ n`, unrounded, with R0 = 11.5 and K = (R10 / R0) ^ (1 / 10) =
- * 1.2389..., so the capstone is exactly R10 = 98 and every tier-to-tier ratio is exactly K. The
+ * V1): `radius(n) = R0 * K ^ n`, unrounded, with R0 = 11.5 and K = (R11 / R0) ^ (1 / 11) =
+ * 1.2150..., so the capstone is exactly R11 = 98 and every tier-to-tier ratio is exactly K. The
  * Cherry / Pluto is about 6.4 % of the bin's 360 px inner width across (about 22 pt on a 390 pt
  * phone), the share of the owner's reference game; the Pumpkin stays about half the bin. Droppable
- * tiers are 0-5 (radius 11.5-33.6). Measured in the sim as shipped (100 seeds, 10 min cap):
- * skilled bot wins 66 %, heuristic 49 %, skilled median time to win 215 s (about 3.6 min);
- * docs/games/cascade.md. (#3904's V1 was R0 = 5 on 12 tiers with a two-capstone win.)
+ * tiers are 0-5 (radius 11.5-30.5). Win rates on this 12-tier ladder are being re-measured in
+ * #3967 (the 11-tier ladder measured skilled 66 % / heuristic 49 %; docs/games/cascade.md).
+ * (#3904's V1 was R0 = 5 on 12 tiers with a two-capstone win.)
  *
  * ## Scores
  *
@@ -46,7 +47,7 @@
  * A piece is drawn DRAW_INSET (1.5 %) smaller than its collider: `drawnRadius = radius * (1 -
  * DRAW_INSET)`. It is the last of the owner's overlap levers, used because the solver alone left
  * the skilled games' p90 deepest overlap at 5.2 px against the 5 px gate; it takes 0.35 px off a
- * pair of cherries and 2.9 px off a pair of capstones (#3920 ladder). Everything that draws a
+ * pair of cherries and 2.9 px off a pair of capstones (12-tier ladder). Everything that draws a
  * piece (the board, the art bitmaps, the spawner) reads `drawnRadius`; the physics, the lid, the
  * spawn and the merges read `radius`.
  */
@@ -69,15 +70,15 @@ export interface TierDef {
   readonly nameKeys: Readonly<Record<TierSetId, string>>;
 }
 
-export const TIER_COUNT = 11;
+export const TIER_COUNT = 12;
 /** The capstone: never dropped; making one is the win (#3920). */
 export const CAPSTONE_TIER = TIER_COUNT - 1;
 
 /** The ladder's ends (see "Radii" above): tier 0's and the capstone's radius, world px. */
 const R0 = 11.5;
-const R10 = 98;
-/** The one tier-to-tier ratio: R0 * K ^ 10 = R10. */
-const K = (R10 / R0) ** (1 / CAPSTONE_TIER);
+const R11 = 98;
+/** The one tier-to-tier ratio: R0 * K ^ 11 = R11. */
+const K = (R11 / R0) ** (1 / CAPSTONE_TIER);
 /** Exponent of the density rule `(r0 / r) ^ DENSITY_EXPONENT` (see "Density" above). */
 const DENSITY_EXPONENT = 0.5;
 /** How much smaller a piece is drawn than its collider (#3904: see "Drawn radius" above). */
@@ -89,12 +90,13 @@ type Names = readonly [nameKeyFruits: string, nameKeyCosmos: string];
 
 const NAMES: readonly Names[] = [
   ["cherry", "pluto"],
-  ["blueberry", "mercury"],
+  ["blackberry", "moon"],
+  ["lime", "mercury"],
   ["lemon", "mars"],
   ["grape", "venus"],
   ["orange", "earth"],
   ["apple", "neptune"],
-  ["coconut", "uranus"],
+  ["pomegranate", "uranus"],
   ["dragonfruit", "saturn"],
   ["pineapple", "jupiter"],
   ["watermelon", "sun"],

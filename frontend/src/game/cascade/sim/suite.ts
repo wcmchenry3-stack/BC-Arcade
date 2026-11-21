@@ -164,7 +164,7 @@ export function aggregateGames(games: GameMetrics[], maxTier: number): FlatMetri
   out["win.timeToWinS.p25"] = pct(winS, 0.25);
   out["win.timeToWinS.median"] = pct(winS, 0.5);
   out["win.timeToWinS.p75"] = pct(winS, 0.75);
-  // The time to the tier below the capstone (tier 9 since #3920): one more merge of it is the win.
+  // The time to the tier below the capstone (tier 10 on the 12-tier ladder): one more merge of it is the win.
   const tPre = games.map((g) => {
     const ms = g.tierFirstMs?.[maxTier - 1];
     return ms === null || ms === undefined ? null : ms / 1000;

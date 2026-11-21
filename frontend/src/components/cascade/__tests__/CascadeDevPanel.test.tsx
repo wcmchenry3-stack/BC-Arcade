@@ -78,13 +78,13 @@ describe("CascadeDevPanel", () => {
     expect(screen.queryByTestId("cascade-frame-stats")).toBeNull();
   });
 
-  it("lists all 11 tiers with the active set's names, and spawns the capstone (#3695; #3920)", async () => {
+  it("lists all 12 tiers with the active set's names, and spawns the capstone (#3695; #3960)", async () => {
     const p = await renderPanel();
-    expect(screen.getAllByText("Spawn")).toHaveLength(11);
-    expect(screen.getAllByText("9 · Watermelon").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("10 · Pumpkin").length).toBeGreaterThan(0);
-    await fireEvent.press(screen.getAllByText("Spawn")[10]!);
-    expect(p.onSpawn).toHaveBeenCalledWith(10);
+    expect(screen.getAllByText("Spawn")).toHaveLength(12);
+    expect(screen.getAllByText("10 · Watermelon").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("11 · Pumpkin").length).toBeGreaterThan(0);
+    await fireEvent.press(screen.getAllByText("Spawn")[11]!);
+    expect(p.onSpawn).toHaveBeenCalledWith(11);
   });
 });
 

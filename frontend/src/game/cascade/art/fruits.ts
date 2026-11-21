@@ -1,5 +1,5 @@
 /**
- * #3698: the Fruits set, tiers 0-10 (#3920: the Peach removed, the Apple green; both old pieces
+ * #3698: the Fruits set, tiers 0-11 (#3920: the Peach removed, the Apple green; both old pieces
  * are kept as recipes in `FRUIT_ART.retired`, never drawn in play), as small descriptions for the kawaii pen (`pen.ts`), in unit space (collider radius 1, centre 0, 0, y
  * down). `body` is clipped to the circle; `back` and `front` are the only parts drawn outside it,
  * the owner-approved overhangs (2026-11-14) (measured with the outline strokes, in radii past the
@@ -7,7 +7,7 @@
  * and sides 0.12; the lemon's nubs stay inside). `box` bounds each piece's ink, strokes included,
  * within 0.03 r.
  */
-import { CASCADE_ART } from "../../../theme/theme.cascade";
+import { CASCADE_ART, type CascadeTone } from "../../../theme/theme.cascade";
 import {
   P,
   UNIT_BOX,
@@ -89,29 +89,36 @@ const blueberry: PieceArt = {
   box: UNIT_BOX,
 };
 
-const lemon: PieceArt = {
-  back(pen) {
-    pen.over(
-      P((b) => b.circ(0.71, -0.71, 0.24)),
-      T.lemon
-    );
-    pen.over(
-      P((b) => b.circ(-0.71, 0.71, 0.24)),
-      T.lemon
-    );
-  },
-  body(pen) {
-    pen.body(T.lemon);
-    pen.line(
-      P((b) => b.M(0.62, -0.62).L(0.75, -0.75)),
-      T.lemon.d,
-      0.06,
-      0.6
-    );
-  },
-  face: { s: 0.95 },
-  box: [-1, -1, 1, 1],
-};
+/** The lemon's drawing in a skin colour (the Lime, TEMP(#3962), is a recolour until #3964 draws it). */
+function citrus(tone: CascadeTone & { l: string; d: string; o: string }): PieceArt {
+  return {
+    back(pen) {
+      pen.over(
+        P((b) => b.circ(0.71, -0.71, 0.24)),
+        tone
+      );
+      pen.over(
+        P((b) => b.circ(-0.71, 0.71, 0.24)),
+        tone
+      );
+    },
+    body(pen) {
+      pen.body(tone);
+      pen.line(
+        P((b) => b.M(0.62, -0.62).L(0.75, -0.75)),
+        tone.d,
+        0.06,
+        0.6
+      );
+    },
+    face: { s: 0.95 },
+    box: [-1, -1, 1, 1],
+  };
+}
+
+const lemon: PieceArt = citrus(T.lemon);
+/** TEMP(#3962): stands in for the Lime until #3964. */
+const lime: PieceArt = citrus(T.lime);
 
 const GRAPES = [
   [-0.5, -0.5],
@@ -423,12 +430,13 @@ const dragonfruit: PieceArt = {
 export const FRUIT_ART: ArtSet = {
   pieces: [
     cherry,
-    blueberry,
+    blueberry, // TEMP(#3962): stands in for the Blackberry until #3964
+    lime, // TEMP(#3962): a recoloured lemon until #3964
     lemon,
     grape,
     orange,
     apple,
-    coconut,
+    coconut, // TEMP(#3962): stands in for the Pomegranate until #3964
     dragonfruit,
     pineapple,
     watermelon,
