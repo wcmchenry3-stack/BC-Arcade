@@ -17,8 +17,8 @@ interface Props {
   onRequestSelect?: (id: string) => void;
 }
 
-// A tab is ~28px tall; the touch target grows to the 44pt guideline without changing the layout.
-const TAB_HIT_SLOP = { top: 8, bottom: 8, left: 4, right: 4 } as const;
+// A tab is ~28px tall; the touch target grows to the 44pt guideline without changing the layout. Vertical only: tabs are adjacent, so horizontal slop would overlap.
+const TAB_HIT_SLOP = { top: 8, bottom: 8 } as const;
 
 function ThemeSelector({ onRequestSelect }: Props) {
   const { t } = useTranslation("cascade");

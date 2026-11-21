@@ -88,10 +88,13 @@ jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview")
 let mockSetFruitSetById: ((id: string) => void) | null = null;
 // The selector's tap handler (`onRequestSelect`, #3970): the screen's guard in front of the setter.
 let mockRequestFruitSet: ((id: string) => void) | undefined;
+let mockActiveSetId = "";
 jest.mock("../../components/cascade/ThemeSelector", () => {
   const { useFruitSet } = jest.requireActual("../../theme/FruitSetContext");
   return function MockThemeSelector(props: { onRequestSelect?: (id: string) => void }) {
-    mockSetFruitSetById = useFruitSet().setFruitSetById;
+    const fruitSet = useFruitSet();
+    mockSetFruitSetById = fruitSet.setFruitSetById;
+    mockActiveSetId = fruitSet.activeFruitSet.id;
     mockRequestFruitSet = props.onRequestSelect;
     return null;
   };
@@ -1787,12 +1790,12 @@ describe("CascadeGame — the lid (#3694)", () => {
 describe("CascadeScreen — piece-set switch confirm (#3970)", () => {
   const PIECE = { id: 1, tier: 0, x: 200, y: 300, angle: 0 };
   const findConfirm = (renderer: ReturnType<typeof create>, suffix: "confirm" | "cancel") =>
-    renderer.root.findAll(
+    renderer.root.find(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (node: any) =>
         node.props.testID === `cascade-switch-confirm-${suffix}` &&
         typeof node.props.onPress === "function"
-    )[0];
+    );
   const confirmVisible = (renderer: ReturnType<typeof create>) =>
     renderer.root.findAllByType(Modal).some((m) => m.props.visible === true);
   /** Lets the session's deferred start (and other queued work) land before a test clears mocks. */
@@ -1804,6 +1807,7 @@ describe("CascadeScreen — piece-set switch confirm (#3970)", () => {
     }
   };
   const request = async (id: string) => {
+    if (!mockRequestFruitSet) throw new Error("ThemeSelector got no onRequestSelect");
     await act(() => {
       mockRequestFruitSet?.(id);
     });
@@ -1819,6 +1823,9 @@ describe("CascadeScreen — piece-set switch confirm (#3970)", () => {
     await settleAll();
     return renderer;
   }
+  const liveScore = (renderer: ReturnType<typeof create>) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    renderer.root.find((n: any) => typeof n.props.store?.get === "function").props.store.get();
   const startedWith = () => mockStartGame.mock.calls.map((c) => c[2]?.fruit_set);
 
   // The chosen set persists (AsyncStorage): every test starts on Fruits.
@@ -1856,18 +1863,36 @@ describe("CascadeScreen — piece-set switch confirm (#3970)", () => {
   });
 
   it("Cancel closes the dialog with no reset, no abandoned session and the old set", async () => {
+    mockEngineScore = 42;
     const renderer = await midGame();
     const clear = jest.spyOn(cascadeStorage, "clearGame");
     mockStartGame.mockClear();
     mockCompleteGame.mockClear();
+    const instances = mockEngineInstanceCount;
+    expect(liveScore(renderer)).toBe(42);
     await request("cosmos");
 
+    // Under the dialog the loop is paused: no engine steps.
+    mockEngineStep.mockClear();
     await act(() => {
-      findConfirm(renderer, "cancel")?.props.onPress();
+      advanceOneFrame();
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+
+    await act(() => {
+      findConfirm(renderer, "cancel").props.onPress();
     });
     await act(() => {
       advanceOneFrame();
     });
+    await act(() => {
+      advanceOneFrame();
+    });
+    // The loop resumes; the board, score and set are as they were.
+    expect(mockEngineStep).toHaveBeenCalled();
+    expect(mockEngineInstanceCount).toBe(instances);
+    expect(mockActiveSetId).toBe("fruits");
+    expect(liveScore(renderer)).toBe(42);
 
     expect(confirmVisible(renderer)).toBe(false);
     expect(isAppOverlayOpen()).toBe(false);
@@ -1887,7 +1912,7 @@ describe("CascadeScreen — piece-set switch confirm (#3970)", () => {
     await request("cosmos");
 
     await act(() => {
-      findConfirm(renderer, "confirm")?.props.onPress();
+      findConfirm(renderer, "confirm").props.onPress();
     });
     await act(() => {
       advanceOneFrame();
@@ -1931,6 +1956,20 @@ describe("CascadeScreen — piece-set switch confirm (#3970)", () => {
 
     expect(confirmVisible(renderer)).toBe(false);
     expect(startedWith()).toEqual(["cosmos"]);
+  });
+
+  it("a switch tapped right after New Game shows no dialog", async () => {
+    const renderer = await midGame();
+    const shell = renderer.root.find(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onNewGame === "function"
+    );
+    await act(() => {
+      shell.props.onNewGame();
+    });
+    await request("cosmos"); // no frame yet: the old pieces must not count
+
+    expect(confirmVisible(renderer)).toBe(false);
   });
 
   it("tapping the active set mid-game does nothing", async () => {

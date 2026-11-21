@@ -277,6 +277,7 @@ function CascadeGame() {
       setCelebrationReady(false);
       celebrationClock.set(-1);
       setQueueVersion((v) => v + 1);
+      piecesRef.current = []; // a switch tapped before the next frame sees a fresh board
       publishBoard(NO_PIECES);
       clearCascadeGame().catch(() => {});
       lastSaveTimeRef.current = 0;

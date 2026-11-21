@@ -114,7 +114,8 @@ describe("Cascade ThemeSelector", () => {
     for (const label of ["Fruits theme", "Cosmos theme"]) {
       const slop = radio(label).props.hitSlop;
       expect(slop.top + slop.bottom + 28).toBeGreaterThanOrEqual(44);
-      expect(slop.left + slop.right).toBeGreaterThan(0);
+      expect(slop.left ?? 0).toBe(0); // adjacent tabs: no horizontal overlap
+      expect(slop.right ?? 0).toBe(0);
     }
   });
 });

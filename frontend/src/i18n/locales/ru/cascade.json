@@ -12,7 +12,7 @@
   "theme.groupLabel": "Тема фруктов",
   "theme.optionLabel": "Тема {{label}}",
   "theme.switchConfirm.title": "Сменить набор?",
-  "theme.switchConfirm.body": "Смена начнёт новую игру, и прогресс в этом раунде будет потерян. Общая статистика не изменится.",
+  "theme.switchConfirm.body": "Смена начнёт новую игру, и прогресс в этом раунде будет потерян. Эта игра не засчитается в лучший результат.",
   "theme.switchConfirm.confirm": "Сменить и начать заново",
   "theme.switchConfirm.cancel": "Продолжить игру",
   "event.merged": "Объединено! Создан {{fruit}}.",

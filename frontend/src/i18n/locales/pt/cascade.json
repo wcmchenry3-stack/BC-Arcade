@@ -12,7 +12,7 @@
   "theme.groupLabel": "Tema de frutas",
   "theme.optionLabel": "Tema {{label}}",
   "theme.switchConfirm.title": "Trocar de conjunto?",
-  "theme.switchConfirm.body": "Trocar inicia um novo jogo e descarta seu progresso nesta rodada. Suas estatísticas gerais não serão afetadas.",
+  "theme.switchConfirm.body": "Trocar inicia um novo jogo e descarta seu progresso nesta rodada. Este jogo não contará para sua melhor pontuação.",
   "theme.switchConfirm.confirm": "Trocar e iniciar novo jogo",
   "theme.switchConfirm.cancel": "Continuar jogando",
   "event.merged": "Combinado! {{fruit}} criado.",

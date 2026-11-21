@@ -12,7 +12,7 @@
   "theme.groupLabel": "ערכת פירות",
   "theme.optionLabel": "ערכת {{label}}",
   "theme.switchConfirm.title": "להחליף ערכת חלקים?",
-  "theme.switchConfirm.body": "החלפה תתחיל משחק חדש ותמחק את ההתקדמות בסיבוב הזה. הסטטיסטיקה הכוללת שלך לא תושפע.",
+  "theme.switchConfirm.body": "החלפה תתחיל משחק חדש ותמחק את ההתקדמות בסיבוב הזה. המשחק הזה לא יחושב בשיא שלך.",
   "theme.switchConfirm.confirm": "החלף והתחל משחק חדש",
   "theme.switchConfirm.cancel": "המשך לשחק",
   "event.merged": "התמזגו! נוצר {{fruit}}.",

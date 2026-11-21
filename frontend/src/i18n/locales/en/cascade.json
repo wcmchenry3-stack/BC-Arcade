@@ -12,7 +12,7 @@
   "theme.groupLabel": "Fruit set theme",
   "theme.optionLabel": "{{label}} theme",
   "theme.switchConfirm.title": "Switch piece set?",
-  "theme.switchConfirm.body": "Switching starts a new game and discards your progress in this round. Your lifetime stats won't be affected.",
+  "theme.switchConfirm.body": "Switching starts a new game and discards your progress in this round. This game won't count toward your best score.",
   "theme.switchConfirm.confirm": "Switch and start new game",
   "theme.switchConfirm.cancel": "Keep playing",
   "event.merged": "Merged! {{fruit}} created.",

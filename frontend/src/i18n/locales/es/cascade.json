@@ -12,7 +12,7 @@
   "theme.groupLabel": "Tema de frutas",
   "theme.optionLabel": "Tema {{label}}",
   "theme.switchConfirm.title": "¿Cambiar de conjunto?",
-  "theme.switchConfirm.body": "Al cambiar se inicia una partida nueva y se descarta tu progreso de esta ronda. Tus estadísticas totales no se verán afectadas.",
+  "theme.switchConfirm.body": "Al cambiar se inicia una partida nueva y se descarta tu progreso. Esta partida no contará para tu mejor puntuación.",
   "theme.switchConfirm.confirm": "Cambiar y empezar de nuevo",
   "theme.switchConfirm.cancel": "Seguir jugando",
   "event.merged": "¡Unido! {{fruit}} creado.",

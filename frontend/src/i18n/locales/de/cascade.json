@@ -12,7 +12,7 @@
   "theme.groupLabel": "Frucht-Set Thema",
   "theme.optionLabel": "{{label}} Thema",
   "theme.switchConfirm.title": "Set wechseln?",
-  "theme.switchConfirm.body": "Beim Wechsel startet ein neues Spiel und dein Fortschritt in dieser Runde geht verloren. Deine Gesamtstatistik bleibt unberührt.",
+  "theme.switchConfirm.body": "Beim Wechsel startet ein neues Spiel und dein Fortschritt geht verloren. Dieses Spiel zählt nicht für deinen Bestwert.",
   "theme.switchConfirm.confirm": "Wechseln und neu starten",
   "theme.switchConfirm.cancel": "Weiterspielen",
   "event.merged": "Fusion! {{fruit}} erstellt.",
