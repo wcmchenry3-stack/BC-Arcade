@@ -301,11 +301,61 @@ All 24 pieces are drawn in code (and the retired ones are kept as recipes, see [
 
 - Queue holds `{ current, next }` tiers; `advanceQueue()` shifts forward and generates a new `next`
 - Tier selection uses a weighted random algorithm:
-  1. Base weights over tiers 0-5 (`2 3 3 3 2 1`, #3920): a drop carries about 7.7 Cherries' worth of material, so the win (one capstone, 1024 Cherries) is about 133 perfect drops away (#3904's V1: tiers 0-7 weighted `2 3 3 3 3 3 2 1`, 22.2 Cherries a drop, two capstones to win; #3697: 0-5 weighted `2 3 3 3 3 2`)
+  1. Base weights over tiers 0-5 (`1 1 2 3 4 4`, #3967, for the 12-tier ladder): a drop carries about 15.1 Cherries' worth of material, so the win (one capstone, 2048 Cherries) is about 135 perfect drops away, as on the 11-tier ladder (#3920's 11 tiers: `2 3 3 3 2 1`, 7.7 Cherries a drop, 133 drops; #3904's V1: tiers 0-7 weighted `2 3 3 3 3 3 2 1`, 22.2 Cherries a drop, two capstones to win; #3697: 0-5 weighted `2 3 3 3 3 2`)
   2. Drought boost: tiers absent from the queue's last 10 picks (DROP and NEXT included) gain +3 weight
-  3. Danger mode: when the stack is near the overflow line, tiers 2-4 are scaled to 20% of their weight and the top tier (5) to 35% (#3920; on #3904's ladder tiers 3-6 and 7, the same intent; fractional; #3697 rounded and kept at least weight 1, which left the weight-1 tier 7 unpenalised; the milder top-tier factor is the owner's PR #3919 decision, see [Danger rules and mashing](#game-over-the-lid)). (#3697 also multiplied tiers 0-2 by 1.5; #3904 removed that, see [Danger rules and mashing](#game-over-the-lid).)
+  3. Danger mode: when the stack is near the overflow line, tiers 2-4 are scaled to 20% of their weight and the top tier (5) to 25% (#3967; 35% on #3920's weights, where tier 5 had weight 1: at weight 4, x0.35 left it as common in danger as calm, 24.3% against 24.1%, so x0.25 makes it 19.4%; #3920; on #3904's ladder tiers 3-6 and 7, the same intent; fractional; #3697 rounded and kept at least weight 1, which left the weight-1 tier 7 unpenalised; the milder top-tier factor is the owner's PR #3919 decision, see [Danger rules and mashing](#game-over-the-lid)). (#3697 also multiplied tiers 0-2 by 1.5; #3904 removed that, see [Danger rules and mashing](#game-over-the-lid).)
   4. Streak hard-ban: if the last 4 picks are identical, that tier is banned for one turn
 - RNG is injectable for deterministic testing and seeded replay. Since #3858 live play is seeded too: each game draws a queue seed and an engine seed (`useCascadeQueue`, `newSeeds`), the queue draws from the queue seed (`pieceQueue.createSeededRng`, the generator the `__cascade_setSeed` test seam uses) and the engine's drop nudge from the engine seed; both are recorded in `game_started`. The draws are uniform like `Math.random`'s, so play is unchanged
+
+### Balance pass for the 12-tier ladder (#3967, owner decision pending)
+
+Target (owner, #3961): skilled bot about 50-55 %, heuristic about 30-35 %, median skilled win about 4-5 min. Fixed: R0 = 11.5 and capstone 98 (K derived), tiers 0-5 droppable, score `2^n`, no density flattening (#3904). Levers in order: (a) spawn and danger weights, (b) lid timing if a tuning constant, (c) the capstone radius and / or R0. The lid's 3 s count, its 1 s merge grace and the y = 160 danger band are rules in the specification ([cascade.md section 6](cascade.md#6-danger-and-the-lid)), so (b) was not used.
+
+Every trial: the skilled or heuristic bot at 60 Hz, games to the win or 600 s, seeds 1-n (seeds 101-200 where marked); the time is the median of the games that won; overlap is the p90 across games of each game's deepest overlap (gate 5 px). Weights are tiers 0-5; danger factors are tiers 2-4 / tier 5 (0.2 / 0.35 unless noted).
+
+| Trial                 | Change                          | Seeds    | Skilled win % (median s) | Heuristic win % (median s) | Overlap p90 px |
+| --------------------- | ------------------------------- | -------- | ------------------------ | -------------------------- | -------------- |
+| 11 tiers (dev, #3920) | `2 3 3 3 2 1`, 11.5-98          | 100      | 66 (215)                 | 49 (188)                   | 3.98           |
+| T0                    | none (12 tiers, `2 3 3 3 2 1`)  | 100      | 29 (373)                 | 18 (358)                   | 4.61           |
+| A                     | `1 2 3 3 3 2`                   | 50       | 20 (320)                 |                            | 5.74           |
+| B                     | `1 2 2 3 3 3`                   | 50       | 32 (284)                 |                            | 2.47           |
+| C                     | `2 2 3 3 3 2`                   | 50       | 24 (299)                 |                            | 4.27           |
+| D                     | `1 1 2 2 3 3`                   | 100      | 39 (253)                 | 17 (261)                   | 2.31 / 3.07    |
+| E                     | `1 1 1 2 3 4`                   | 50 / 100 | 32 (212)                 | 22 (230)                   | 4.04           |
+| G                     | `1 1 2 3 3 3`                   | 50       | 34 (262)                 |                            | 2.70           |
+| H                     | `1 1 1 2 2 3`                   | 50       | 40 (261)                 |                            | 3.48           |
+| I                     | `1 1 2 2 3 4`                   | 50       | 32 (241)                 |                            | 3.32           |
+| D1                    | D, danger 0.1 / 0.2             | 50       | 42 (253)                 |                            | 2.82           |
+| D2                    | D, danger 0.2 / 0.2             | 50       | 36 (252)                 |                            | 2.65           |
+| D3                    | D, danger 0.05 / 0.1            | 50       | 38 (253)                 |                            | 3.03           |
+| D4                    | D, danger 0.1 / 0.1 from tier 1 | 100      | 40 (255)                 | 14 (262)                   | 2.65 / 3.38    |
+| Q                     | `1 1 1 1 2 2`                   | 100      | 33 (262)                 |                            | 2.11           |
+| R                     | `2 2 2 3 3 3`, danger as D4     | 100      | 36 (287)                 |                            | 4.28           |
+| P                     | `1 1 2 3 4 4`                   | 200      | 39.5 (243)               | 21 (237)                   | 2.72 / 2.72    |
+| P4                    | P, danger as D4                 | 100      | 38 (235)                 |                            | 2.34           |
+| P5                    | `1 1 2 3 4 5`                   | 100      | 37 (226)                 | 19 (217)                   | 2.55           |
+| P6                    | `1 1 1 3 4 5`                   | 100      | 33 (244)                 |                            | 3.38           |
+| P7                    | `1 2 3 4 4 4`                   | 100      | 31 (257)                 |                            | 4.86           |
+| **F (in the code)**   | P, tier-5 danger 0.25           | 200      | **37.5 (240)**           | **16.5 (228)**             | 2.72 / 3.48    |
+| D4 r94                | D4, capstone 94                 | 50       | 32 (284)                 |                            | 7.75           |
+| D4 r90                | D4, capstone 90                 | 50       | 58 (276)                 |                            | 3.52           |
+| D r90                 | D, capstone 90                  | 50       | 54 (267)                 |                            | 3.52           |
+| P r90                 | P, capstone 90                  | 100      | 46 (258)                 |                            | 2.42           |
+| P r92                 | P, capstone 92                  | 100      | 45 (261)                 |                            | 3.12           |
+| P r95                 | P, capstone 95                  | 200      | 51 (255)                 | 23 (248)                   | 3.17 / 2.89    |
+| P r96                 | P, capstone 96                  | 100      | 42 (241)                 |                            | 3.02           |
+| X1                    | P, R0 11, capstone 92           | 100      | 51 (258)                 | 24 (253)                   | 3.32           |
+| X2                    | P, R0 11, capstone 95           | 100      | 51 (255)                 | 17 (260)                   | 2.03           |
+| Y11                   | P, R0 11, capstone 98           | 200      | 46 (246)                 |                            | 2.50 / 4.95    |
+| Y10.75                | P, R0 10.75, capstone 98        | 200      | 42.5 (250)               |                            | 2.74 / 3.20    |
+| Z1 (information only) | drops 0-6, `2 3 3 3 3 2 1`      | 100      | 23 (221)                 | 7 (205)                    | 3.13           |
+| Z2 (information only) | drops 0-6, `1 1 2 3 4 4 2`      | 100      | 33 (155)                 | 20 (170)                   | 2.04           |
+
+Reading: a 100-seed win rate is good to about +-5 points (one standard error), so trials within 10 points of each other are not told apart; 50-seed rows are coarser. The extra tier doubles the material a win needs (2048 Cherries), so the weights that carry more material per drop bring the median win back to about 4 min, but the skilled bot's win rate plateaus at about 40 % with any weights or danger factors, and the heuristic bot at 15-24 % with any lever tried (radius and droppable range included). A capstone under 98 reaches about 51 % skilled, but 97.2 is the most a capstone can be and still let four of them fit under the lid, the #3904 owner rule that `tiers.test.ts` pins. Two owner calls are open on #3967 (the capstone and the heuristic target), so `sim/baseline.json`, the golden replay and the replay budget are measured once they are answered.
+
+**Time bonus (#3700) against the 12-tier scores:** on F (400 games, 108 wins), the merge score grows about 55 points a second, the bonus slope (20,000 / 6 min) is 56, and 22 of the 108 wins score below the best loss (22,688, a 10-minute losing run), so a win no longer dominates a long losing run. With `B` = 30,000 and `T` = 6 min (83 points a second) no win scores below any loss (lowest win 23,842); `B` = 40,000 and `T` = 8 min gives the same ordering with higher totals. Not changed yet: it waits for the final ladder and is an owner call (`BONUS_RULE` 2).
+
+**Replay budget (#3858) on F:** Cascade stores 43,950 B over the day's three games (max 39,492) and the most writes a game costs is 40 (max 39); untuned it was 65,450 B and 56. A unit of 30 drops instead of 20 (`CASCADE_DROPS_PER_UNIT`; the server accepts up to 32) brings both under the budget (25 drops: 40,562 B, still over), with no data lost: fewer, fuller rows, fewer writes; a crash can lose up to 30 drops instead of 20. Not changed yet, for the same reason.
 
 ## Combo Detection (`engine.ts`)
 
@@ -367,6 +417,7 @@ Baseline today (pre-12-tier, being re-measured in #3967; #3920: the 11-tier 11.5
 - Metadata model: `CascadeMetadata` — `player_name: str = ""` (max 64 chars). Current builds send no metadata.
 - Result model: `CascadeResult` (`backend/cascade/models.py`, #3700), `extra="ignore"` (a key a later build adds is dropped, never a 400). See [The result block](#the-result-block-3700).
 - Time bonus: `backend/cascade/time_bonus.py`, the one source of truth; `CascadeModule.derive_final_score` stores merge score + bonus.
+- Tier range (#3975, the 12-tier ladder of #3960): `MAX_TIER` = 11 in `backend/cascade/models.py`, the capstone (`CAPSTONE_TIER` in `tiers.ts`). A result's `max_tier` is 0-11 (11 on a win; 12 is rejected); a replay `drop` or `merge` tier is 0-10 (`Tier` in `events.py`: a merge from tier 10 is the win, nothing merges from or drops the capstone). `merge_points(n)` is `2 ** (n + 1)`, so the winning merge scores 2,048. No migration: `max_tier` lives in the `game_metadata` JSON, with no check constraint or enum in `backend/alembic/`.
 - Replay events (#3858): `CascadeModule.validate_event` checks `drop` and `merge` against their v1 schema and 1 KB caps (`backend/cascade/events.py`); a bad one is dropped (2xx) and reported by reason, throttled. `backend/cascade/replay.py` reads a game's story for `backend/scripts/replay_game.py`. See [Replay recording](#replay-recording-3858).
 - Scoring: see [Scoring](#scoring-persistence)
 
