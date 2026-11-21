@@ -84,11 +84,15 @@ The same idea also applies per install. The first `/status` or `/upcoming` reque
 
 - **What the pick returns today:** the shared frozen template above, for the slate `resolve_slate` chooses, and no bonus goal. So in this release every install still sees the same goals as everyone else; the table is the plumbing that personal targets (#3993), game selection (#3994) and the bonus goal (#3995) build on.
 - **The slate is pinned with the day.** A purchase part-way through a day no longer swaps that day's goals; it applies from the next day not yet pinned. Invisible while the free and premium pools are identical.
-- **Only installs that have played pin.** Before inserting, `get_or_pin` checks (one `EXISTS` on `games.session_id`, run only when a requested day is not pinned yet) that the session has at least one game row. A session with none is served the pick (the shared template, as a cold start would get) and nothing is written; pinning starts on the first request after its first game has synced. This is the write ceiling: a made-up session id cannot create assignment rows without first creating game rows. A pinned day's read stays one SELECT.
+- **Write ceiling: only recently active installs pin, and only under the storage budget.** Before picking, `assignments.may_pin` checks two things, and only when a requested day is not pinned yet (a pinned day's read stays one SELECT):
+  - **Recent play:** the session has a `games` row created (server time) within `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (default 48). One `EXISTS` on the `games_session_created_idx (session_id, created_at)` index.
+  - **Storage budget:** the database is under the replay storage budget's 90 % point (the same reading and threshold at which the replay recorder is turned down, `games/replay_storage.py`; the size reading is cached in-process for an hour, so there is no size query per request).
+
+  An install that fails either is served the shared template (the `/upcoming` public path's one batched read, or `/status`'s slate-resolved frozen template) and nothing is written; `pick_for_install` never runs for it. A brand-new install's first day, and the days it caches for offline play, are therefore unpinned until its first game syncs; the next request then pins. A lapsed install stops pinning after 48 h without a game.
 - **Concurrent first requests** cannot store two different rows: the primary key is `(session_id, local_date)` and the insert is `ON CONFLICT DO NOTHING`, after which the stored row is read back and served.
 - **At most 3 days ahead:** only today..today+2 in the requesting client's local calendar are ever pinned (`MAX_DAYS_AHEAD`); `get_or_pin` refuses any other day.
 - **Encoding:** each goal is `[game_type, kind, target, tier]` (the spec `goal_from_spec` rebuilds) in compact JSON text; the session id is a native `uuid`; `template_id` and `slate` are stored only when they differ from the defaults (an id derived from the goals, the free slate), so they are NULL and free for every real day. About 250 B a row on disk including the primary-key index (measured on Postgres 16: 193 B heap + 54 B index, 129 B of it goal text; about 15 MB held at 60 days per 1,000 daily players, 150 MB per 10,000; see [DATA-INVENTORY.md §2d](DATA-INVENTORY.md#2d-daily-challenge-assignments-3992)).
-- **Retention:** a daily batched prune (`daily_challenge/retention.py`, started by `jobs.lifespan`) deletes rows whose `local_date` is more than `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default `STREAK_LOOKBACK_DAYS`, 60) before today in UTC. A pruned day is replayed from the shared template.
+- **Retention:** `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` may not be below `STREAK_LOOKBACK_DAYS` (the settings refuse it), since a pinned day pruned inside the streak window would be re-scored on the shared template and could flip a past streak day. A daily batched prune (`daily_challenge/retention.py`, started by `jobs.lifespan`) deletes rows whose `local_date` is more than `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default `STREAK_LOOKBACK_DAYS`, 60) before today in UTC. A pruned day is replayed from the shared template.
 - **Delete My Data** (`DELETE /me`) deletes the install's rows.
 - **Kill switch:** `DAILY_CHALLENGE_PERSONALIZED=false` (default true) serves every install the shared frozen template, exactly as before this table existed: no row is read or written, by the routes or the streak. Rows already stored stay until retention or `DELETE /me` removes them.
 
@@ -136,7 +140,7 @@ The system has two slate names: `free` and `premium`.
 
 The public `/today` route has no player/session context, so it always returns the free slate.
 
-The session-scoped `/status` route can resolve a premium slate. The rule is:
+The session-scoped `/status` route can resolve a premium slate. The slate is resolved when an install's day is first served and is then pinned with the day (§4); it is resolved per request only for a day that is not pinned. The rule is:
 
 - inspect the premium games named by that day's premium template;
 - the session receives the premium slate only if it owns **every** named premium game;
@@ -240,7 +244,7 @@ When #2478 is implemented, this section must be updated as part of that change.
 
 Two current approximations matter when interpreting old streak days:
 
-- **Current entitlements are used when replaying past days.** Once free/premium goal pools actually diverge, gaining or losing entitlement can change which historical slate is used for the replay window.
+- **Current entitlements are used only for unpinned past days.** The slate is pinned with the day (§4), so a pinned day replays with the slate it was served with. For unpinned days (before #3992, pruned by retention, or days the install could not pin), once free/premium goal pools actually diverge, gaining or losing entitlement can change which slate is used for the replay.
 - **Game history is client-reported within the shared trust model.** Daily Challenge/streak is a lightweight accomplishment count, not a prize or financial system. Revisit anti-tamper assumptions before attaching valuable rewards.
 
 ## 13. Daily Challenge vs Daily Word

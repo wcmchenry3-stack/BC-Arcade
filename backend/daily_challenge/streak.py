@@ -28,10 +28,11 @@ so a client renders it as "60+" (a true 60 and a true 200 look the same — that
 cap, not a bug).
 
 Accepted approximations (documented, not silent):
-- **Current entitlements are used for every past day**, not the ones the session had
-  then. Invisible while the two pools are identical; once #2458 gives the premium pool
-  games of its own, buying (or losing) a premium game re-scores the whole window under
-  the other slate, and can break or extend a streak with goals the player never saw.
+- **Current entitlements are used for every unpinned past day**, not the ones the
+  session had then. A pinned day (#3992) keeps the slate it was served with. Invisible
+  while the two pools are identical; once #2458 gives the premium pool games of its own,
+  buying (or losing) a premium game re-scores the unpinned days of the window under the
+  other slate (days before #3992, pruned days, days an install could not pin).
 - **One UTC offset for the whole window.** The client sends its offset *today*
   (``tz_offset_minutes``, as for every other route here); a daylight-saving change
   inside the 60 days moves a game finished within an hour of local midnight onto the

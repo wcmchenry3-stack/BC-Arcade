@@ -133,8 +133,11 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
     refreshed on every Home focus. Otherwise one statement: the template's games
     joined to this session's entitlements.
 
-    The slate choice is live and not stored: a mid-day entitlement change can
-    move the session to the other slate on the next call. Note that the choice
+    The slate is pinned with the day (#3992): ``pick_for_install`` calls this once,
+    when the install's day is first served, and the pinned row keeps that slate,
+    so a mid-day entitlement change applies from the next day not yet pinned. It
+    is resolved per request only for unpinned days (an install that may not pin,
+    or ``DAILY_CHALLENGE_PERSONALIZED`` off, via ``shared_for_install``). The choice
     is made from the *computed* templates (``template_for(day, "premium")`` and
     ``template_for(day, "free")``, from the current pool and salt), while the
     template the caller then serves is the *frozen* one for that (day, slate)
@@ -181,11 +184,24 @@ async def pick_for_install(session: AsyncSession, session_id: str, day: date) ->
     pinned, so a mid-day purchase no longer swaps that day's goals (it applies from
     the next unpinned day). Invisible while the free and premium pools match.
     """
+    return await shared_for_install(session, session_id, day)
+
+
+async def shared_for_install(session: AsyncSession, session_id: str, day: date) -> Assignment:
+    """The shared frozen template for the slate ``resolve_slate`` chooses: what an
+    install that may not pin (``assignments.may_pin``) or any install while the
+    kill switch is off is served. Never written to ``daily_challenge_assignments``."""
     slate = await resolve_slate(session, session_id, day)
     template = await schedule.get_or_create_template(
         session, day, slate, lambda: template_for(day, slate)
     )
     return Assignment(template=template, slate=slate, bonus=None)
+
+
+async def _shared_days(
+    session: AsyncSession, session_id: str, days: list[date]
+) -> dict[date, Assignment]:
+    return {d: await shared_for_install(session, session_id, d) for d in days}
 
 
 async def get_status_for_session(
@@ -202,6 +218,7 @@ async def get_status_for_session(
         [day.date],
         today=day.date,
         pick=lambda d: pick_for_install(session, session_id, d),
+        shared=lambda ds: _shared_days(session, session_id, ds),
     )
     assignment = pinned[day.date]
     template = assignment.template

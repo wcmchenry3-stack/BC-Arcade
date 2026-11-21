@@ -47,8 +47,10 @@ Slates
 ------
 ``FREE_GOAL_POOL`` holds the games a store build can show; ``PREMIUM_GOAL_POOL`` is
 a superset for sessions entitled to premium games. Which slate a session gets is
-decided per request from ``game_types.is_premium`` + entitlements (service layer,
-#2454) — never from a list in this module. Premium-only goal specs are
+decided from ``game_types.is_premium`` + entitlements (service layer, #2454) —
+never from a list in this module — when the install's day is first served, and is
+then pinned with that day (``daily_challenge_assignments``, #3992). Only unpinned
+days (an install that may not pin, or the kill switch off) resolve it per request. Premium-only goal specs are
 post-launch (#2458), so today the two pools hold the same games and both slates
 pick identically.
 

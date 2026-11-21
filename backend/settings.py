@@ -41,7 +41,8 @@ own ``_settings``, like the ``ENTITLEMENT_*`` fields, so ``create_app(settings)`
 not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``STALE_GAME_AFTER_HOURS`` (``games.sweep``), ``MAX_RESULT_BYTES`` (``games.sessions``),
 ``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``DAILY_CHALLENGE_PERSONALIZED`` and
-``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` (``daily_challenge.assignments``, #3992),
+``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` and ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``
+(``daily_challenge.assignments``, #3992),
 ``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
 ``DB_PING_TIMEOUT_SECONDS`` (``routes.health``), plus the payload caps and retention of #3298:
@@ -220,9 +221,15 @@ class Settings(BaseSettings):
     # writes no daily_challenge_assignments rows.
     daily_challenge_personalized: bool = Field(default=True, alias="DAILY_CHALLENGE_PERSONALIZED")
     # How long a pinned assignment is kept (daily_challenge.retention). Unset means
-    # STREAK_LOOKBACK_DAYS, so the streak can read every pinned day it looks back over.
+    # STREAK_LOOKBACK_DAYS, so the streak can read every pinned day it looks back over;
+    # a smaller value is rejected (see _assignment_retention_covers_the_streak).
     daily_challenge_assignment_retention_days: int | None = Field(
         default=None, alias="DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", ge=1, le=365
+    )
+    # Write ceiling (daily_challenge.assignments): an install pins its days only if it
+    # has a games row created (server time) within this many hours.
+    daily_challenge_pin_recent_play_hours: int = Field(
+        default=48, alias="DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS", ge=1, le=720
     )
     # The App Store notification-history replay window (purchases.apple_notifications).
     # The one window is sent to every environment, and Sandbox only accepts a startDate
@@ -327,6 +334,17 @@ class Settings(BaseSettings):
         if isinstance(value, SecretStr):
             return SecretStr(value.get_secret_value().strip())
         return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _assignment_retention_covers_the_streak(self) -> Settings:
+        # A pinned day pruned inside the streak window would be re-scored on the shared
+        # template, so a past streak day could flip from met to missed (#3992).
+        retention = self.daily_challenge_assignment_retention_days
+        if retention is not None and retention < self.streak_lookback_days:
+            raise ValueError(
+                "DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS must be at least STREAK_LOOKBACK_DAYS"
+            )
+        return self
 
     @model_validator(mode="after")
     def _command_timeout_outlasts_statement_timeout(self) -> Settings:

@@ -13,8 +13,14 @@ slate ``resolve_slate`` chooses, so what a player sees does not change.
 
 Bounds (CLAUDE.md priority 1, docs/DATA-INVENTORY.md):
 
-* **Played installs only.** A session with no ``games`` row is served the pick and
-  nothing is stored (``get_or_pin``), so rows cannot be minted with made-up ids.
+* **Write ceiling** (``may_pin``). A day is pinned only for an install with a
+  ``games`` row created in the last ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``
+  (default 48), and never while the database is over the replay storage budget's
+  90 % point. So rows are written at most 3 per install per day of recent play: a
+  made-up session must keep creating game rows to keep pinning, and assignment rows
+  stay a small multiple of fresh ``games`` rows. Those game rows (rate-limited, but
+  kept until Delete My Data) remain the larger existing exposure; this table adds
+  ~250 B per pinned day on top, pruned after retention.
 * **Days ahead.** Only today..today+``MAX_DAYS_AHEAD`` (the requesting client's
   local calendar) are ever pinned; ``get_or_pin`` refuses any other day.
 * **Retention.** ``daily_challenge.retention`` deletes rows older than
@@ -34,7 +40,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from daily_challenge.definitions import Goal, Slate, Template, goal_from_spec
 from db.dialect import dialect_insert
 from db.models import DailyChallengeAssignment, Game
+from games import replay_storage
 from settings import Settings
 
 # Today plus this many days ahead may be pinned: /upcoming's offline window.
@@ -169,12 +176,36 @@ async def read_assignments(
 Pick = Callable[[date], Awaitable[Assignment]]
 
 
-async def _has_played(session: AsyncSession, session_id: str) -> bool:
-    """True if the session has at least one ``games`` row (indexed on session_id).
+Shared = Callable[[list[date]], Awaitable[dict[date, Assignment]]]
+
+
+def recent_play_window() -> timedelta:
+    """``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS`` (default 48)."""
+    return timedelta(hours=_get_settings().daily_challenge_pin_recent_play_hours)
+
+
+async def may_pin(session: AsyncSession, session_id: str, now: datetime | None = None) -> bool:
+    """The write ceiling: may this install pin new days right now?
+
+    * **Storage budget.** Not while the database is at or over the replay budget's
+      90 % point (``replay_storage.storage_over_budget``: the cached size reading,
+      at most one size query an hour per process).
+    * **Recent play.** Only if the session has a ``games`` row created (server time,
+      not client-reported) within ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``. One
+      EXISTS on the ``games_session_created_idx`` (session_id, created_at) index.
+
     Run only when some requested day is not pinned yet, so a pinned day's read
-    stays one SELECT."""
+    stays one SELECT.
+    """
+    if await replay_storage.storage_over_budget(session):
+        return False
+    since = (now or datetime.now(UTC)) - recent_play_window()
     return bool(
-        (await session.execute(select(exists().where(Game.session_id == session_id)))).scalar()
+        (
+            await session.execute(
+                select(exists().where(Game.session_id == session_id, Game.created_at >= since))
+            )
+        ).scalar()
     )
 
 
@@ -185,6 +216,7 @@ async def get_or_pin(
     *,
     today: date,
     pick: Pick,
+    shared: Shared | None = None,
 ) -> dict[date, Assignment]:
     """The install's assignment for each of ``days``, pinning the missing ones.
 
@@ -193,19 +225,25 @@ async def get_or_pin(
     pinned first is skipped by the insert and read back (one more SELECT), so two
     first requests can never leave two different assignments: the stored row wins.
 
-    Only a session that has played pins: before inserting, one EXISTS on
-    ``games.session_id`` (skipped when every day is already pinned). A session
-    with no game rows gets ``pick``'s result and nothing is written, so a made-up
-    session id cannot create assignment rows without first creating game rows.
+    Before picking, ``may_pin`` (skipped when every day is already pinned): an
+    install that may not pin (no recent game, or the database over budget) gets
+    ``shared`` for the missing days, the shared templates with as few queries as
+    the caller can manage, and nothing is written. ``pick`` never runs for it.
 
     Every day must be pinnable relative to ``today`` (the caller's local date);
     anything else raises ``ValueError``, so no route can pin past today+2.
-    With the kill switch off, returns ``pick``'s result for each day and writes
-    nothing.
+    With the kill switch off, returns ``shared`` for every day and writes nothing.
+    ``shared`` defaults to ``pick`` day by day (correct while the pick is the
+    shared template, as in #3992).
     """
     days = list(dict.fromkeys(days))
+    if shared is None:
+
+        async def shared(ds: list[date]) -> dict[date, Assignment]:
+            return {d: await pick(d) for d in ds}
+
     if not personalized_on():
-        return {d: await pick(d) for d in days}
+        return await shared(days)
     outside = [d for d in days if not pinnable(d, today)]
     if outside:
         raise ValueError(f"cannot pin daily challenge days {outside}: outside today..today+2")
@@ -224,14 +262,14 @@ async def get_or_pin(
     if not missing:
         return result
 
-    fresh = {d: await pick(d) for d in missing}
-    if not await _has_played(session, session_id):
-        # The write ceiling: a session with no game rows (a new install, or an id
-        # made up to fill the table) is served the pick and nothing is stored.
-        # Pinning starts on the first request after its first game has synced, so
-        # assignment rows can only grow as fast as (rate-limited, capped) games.
-        result.update(fresh)
+    if not await may_pin(session, session_id):
+        # The write ceiling (see may_pin): an install with no game in the last
+        # DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS (a new install, a lapsed one, or an id
+        # made up to fill the table), or any install while storage is over budget,
+        # is served the shared templates and nothing is stored.
+        result.update(await shared(missing))
         return result
+    fresh = {d: await pick(d) for d in missing}
     # Same pattern as schedule.get_or_create_templates (#3013): no IntegrityError,
     # no rollback, no retry. Rows go in date order so two overlapping batches take
     # their row locks in the same order on Postgres.

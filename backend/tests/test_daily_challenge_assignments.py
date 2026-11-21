@@ -33,9 +33,11 @@ from daily_challenge.definitions import (
     pick_template,
 )
 from daily_challenge.streak import compute_streak
-from db.base import get_session_factory
+from db.base import get_engine, get_session_factory
 from db.models import DailyChallengeAssignment, DailyChallengeDay, Game, GameType
+from games import replay_storage
 from jobs import lifespan as jobs_lifespan
+from settings import Settings
 from tests._helpers import session_headers as _headers
 from tests._helpers import set_dev_override
 
@@ -628,6 +630,7 @@ async def test_prune_follows_the_retention_setting(monkeypatch: pytest.MonkeyPat
     now = datetime(2026, 11, 21, 12, tzinfo=UTC)
     sid = str(uuid.uuid4())
     await _pin(sid, now.date() - timedelta(days=20))
+    monkeypatch.setenv("STREAK_LOOKBACK_DAYS", "5")
     monkeypatch.setenv("DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", "10")
     monkeypatch.setattr(assignments, "_settings", None)
     async with get_session_factory()() as db:
@@ -672,3 +675,208 @@ async def test_delete_me_removes_the_installs_assignments(client: TestClient) ->
     assert client.delete("/me", headers=_headers(sid.upper())).status_code == 204
     assert await _rows(sid) == []
     assert len(await _rows(other)) == 3
+
+
+# ---------------------------------------------------------------------------
+# Write ceiling: recent play and the storage budget
+# ---------------------------------------------------------------------------
+
+
+def test_retention_below_the_streak_lookback_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pinned day pruned inside the streak window would re-score a past streak day."""
+    monkeypatch.setenv("STREAK_LOOKBACK_DAYS", "60")
+    monkeypatch.setenv("DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", "59")
+    with pytest.raises(ValueError, match="at least STREAK_LOOKBACK_DAYS"):
+        Settings()
+    monkeypatch.setenv("DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", "60")
+    assert Settings().daily_challenge_assignment_retention_days == 60
+
+
+def test_the_recent_play_window_defaults_to_48_hours(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(assignments, "_settings", None)
+    assert assignments.recent_play_window() == timedelta(hours=48)
+    monkeypatch.setenv("DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS", "6")
+    monkeypatch.setattr(assignments, "_settings", None)
+    assert assignments.recent_play_window() == timedelta(hours=6)
+
+
+async def _game_created(sid: str, hours_ago: float) -> None:
+    """A finished game whose server-side ``created_at`` is ``hours_ago`` in the past."""
+    created = datetime.now(UTC) - timedelta(hours=hours_ago)
+    async with get_session_factory()() as db:
+        gt_id = (
+            await db.execute(select(GameType.id).where(GameType.name == "twenty48"))
+        ).scalar_one()
+        db.add(
+            Game(
+                session_id=sid,
+                game_type_id=gt_id,
+                started_at=created - timedelta(minutes=5),
+                completed_at=created,
+                created_at=created,
+                outcome="completed",
+                final_score=600,
+                game_metadata={},
+            )
+        )
+        await db.commit()
+
+
+@needs_db
+async def test_only_stale_play_writes_nothing(client: TestClient) -> None:
+    sid = str(uuid.uuid4())
+    await _game_created(sid, hours_ago=49)
+    status = client.get("/daily-challenge/status", headers=_headers(sid)).json()
+    up = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    assert status["template_id"] == _SHARED.id
+    assert [d["template_id"] for d in up["days"]] == [_SHARED.id] * 3
+    assert await _rows() == []
+
+
+@needs_db
+async def test_recent_play_pins(client: TestClient) -> None:
+    sid = str(uuid.uuid4())
+    await _game_created(sid, hours_ago=47)
+    client.get("/daily-challenge/upcoming", headers=_headers(sid))
+    assert len(await _rows(sid)) == 3
+
+
+def _sized(events_bytes: int, database_bytes: int) -> None:
+    """Seed the process's cached size reading, as the daily budget check does."""
+    replay_storage._remember(
+        replay_storage.StorageSize(events_bytes=events_bytes, database_bytes=database_bytes)
+    )
+
+
+@needs_db
+async def test_over_the_storage_budget_writes_nothing(client: TestClient) -> None:
+    sid = await _played()
+    _sized(events_bytes=0, database_bytes=replay_storage.plan_bytes())  # database at 100 %
+    status = client.get("/daily-challenge/status", headers=_headers(sid)).json()
+    up = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    assert status["template_id"] == _SHARED.id
+    assert [d["template_id"] for d in up["days"]] == [_SHARED.id] * 3
+    assert await _rows() == []
+
+
+@needs_db
+async def test_under_the_storage_budget_pins(client: TestClient) -> None:
+    sid = await _played()
+    # 89 % of the replay budget, 10 % of the plan: under the 90 % turn-down point.
+    _sized(
+        events_bytes=int(replay_storage.budget_bytes() * 0.89),
+        database_bytes=replay_storage.plan_bytes() // 10,
+    )
+    client.get("/daily-challenge/status", headers=_headers(sid))
+    assert len(await _rows(sid)) == 1
+
+
+@needs_db
+async def test_the_budget_guard_reuses_a_cached_reading_for_an_hour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    measured: list[int] = []
+
+    async def measure(_db) -> replay_storage.StorageSize:
+        measured.append(1)
+        return replay_storage.StorageSize(events_bytes=1, database_bytes=1)
+
+    monkeypatch.setattr(replay_storage, "measure_storage", measure)
+    now = datetime(2026, 11, 21, 12, tzinfo=UTC)
+    async with get_session_factory()() as db:
+        await replay_storage.cached_storage(db, now=now)
+        await replay_storage.cached_storage(db, now=now + timedelta(minutes=59))
+        assert len(measured) == 1
+        await replay_storage.cached_storage(db, now=now + timedelta(minutes=61))
+        assert len(measured) == 2
+        assert await replay_storage.storage_over_budget(db) is False
+
+
+@needs_db
+async def test_the_budget_guard_is_off_where_size_cannot_be_measured() -> None:
+    async with get_session_factory()() as db:  # SQLite: no pg_* size functions
+        assert await replay_storage.cached_storage(db) is None
+        assert await replay_storage.storage_over_budget(db) is False
+
+
+@needs_db
+async def test_the_daily_budget_check_refreshes_the_cached_reading() -> None:
+    size = replay_storage.StorageSize(events_bytes=5, database_bytes=7)
+
+    async def measure(_db) -> replay_storage.StorageSize:
+        return size
+
+    async with get_session_factory()() as db:
+        await replay_storage.check_storage_budget(db, measure=measure)
+    assert replay_storage._cached_size is not None
+    assert replay_storage._cached_size[1] == size
+
+
+# ---------------------------------------------------------------------------
+# Query counts: an ineligible install is the shared path, a pinned one one SELECT
+# ---------------------------------------------------------------------------
+
+
+def _count_statements():
+    engine = get_engine().sync_engine
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement, *_rest) -> None:
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    return statements, lambda: event.remove(engine, "before_cursor_execute", record)
+
+
+@needs_db
+async def test_an_ineligible_installs_status_never_picks(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sid = str(uuid.uuid4())  # never played
+    client.get("/daily-challenge/today")  # freeze today's shared template first
+
+    async def no_pick(*_a, **_k):
+        raise AssertionError("an install that may not pin is never picked for")
+
+    monkeypatch.setattr(service, "pick_for_install", no_pick)
+    statements, stop = _count_statements()
+    try:
+        async with get_session_factory()() as db:
+            status = await service.get_status_for_session(db, session_id=sid, tz_offset_minutes=0)
+    finally:
+        stop()
+    assert status.template == _SHARED
+    # assignment SELECT, recent-play EXISTS, the frozen template SELECT, today's games.
+    assert len(statements) == 4, statements
+    assert await _rows() == []
+
+
+@needs_db
+async def test_a_pinned_installs_status_is_one_select_plus_its_games(client: TestClient) -> None:
+    sid = await _played()
+    client.get("/daily-challenge/status", headers=_headers(sid))  # pins today
+    statements, stop = _count_statements()
+    try:
+        async with get_session_factory()() as db:
+            await service.get_status_for_session(db, session_id=sid, tz_offset_minutes=0)
+    finally:
+        stop()
+    assert len(statements) == 2, statements  # the pinned row, today's games
+    assert "daily_challenge_assignments" in statements[0]
+
+
+@needs_db
+async def test_an_ineligible_installs_upcoming_is_one_batched_template_read(
+    client: TestClient,
+) -> None:
+    sid = str(uuid.uuid4())  # never played
+    client.get("/daily-challenge/upcoming")  # freeze the 3 shared days first
+    statements, stop = _count_statements()
+    try:
+        body = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    finally:
+        stop()
+    assert body == client.get("/daily-challenge/upcoming").json()
+    # assignment SELECT, recent-play EXISTS, one batched daily_challenge_days SELECT.
+    assert len(statements) == 3, statements
+    assert sum("daily_challenge_days" in s for s in statements) == 1

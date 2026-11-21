@@ -216,13 +216,15 @@ def _reset_process_caches():
     those tables directly, or backdates rows, must not see an earlier test's
     snapshot.
     """
-    from games import catalog_cache, sweep_gate
+    from games import catalog_cache, replay_storage, sweep_gate
 
     catalog_cache.invalidate()
     sweep_gate.clear()
+    replay_storage._cached_size = None
     yield
     catalog_cache.invalidate()
     sweep_gate.clear()
+    replay_storage._cached_size = None
 
 
 @pytest.fixture(autouse=True)

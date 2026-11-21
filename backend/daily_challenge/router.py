@@ -19,11 +19,12 @@ and always null until then. Older app builds ignore it.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Query, Request
 
 from daily_challenge import assignments, schedule, service
+from daily_challenge.assignments import Assignment
 from daily_challenge.definitions import (
     Goal,
     LocalDay,
@@ -93,26 +94,34 @@ async def get_upcoming(
     today = local_day(tz_offset_minutes)
     days = [local_day_of(today.date + timedelta(days=i), tz_offset_minutes) for i in range(3)]
     sid = parse_session_id(request.headers.get("X-Session-ID"))
+
+    async def shared_free(ds: list[date]) -> dict[date, Assignment]:
+        # The public path: one batched read of the shared free slate. Reading a day
+        # freezes it, so every device (and a later /today) sees the same goals.
+        templates = await schedule.get_or_create_templates(
+            db, ds, "free", lambda d: template_for(d, "free")
+        )
+        return {d: Assignment(templates[d]) for d in ds}
+
+    dates = [d.date for d in days]
     if sid is not None and assignments.personalized_on():
         # Per install (#3992): each day is pinned for this install on first read,
-        # so /status serves today's exactly as cached here for offline play.
-        pinned = await assignments.get_or_pin(
+        # so /status serves today's exactly as cached here for offline play. An
+        # install that may not pin (assignments.may_pin) gets the shared free slate.
+        result = await assignments.get_or_pin(
             db,
             sid,
-            [d.date for d in days],
+            dates,
             today=today.date,
             pick=lambda d: service.pick_for_install(db, sid, d),
+            shared=shared_free,
         )
-        return UpcomingChallengeResponse(
-            days=[_day_response(d, pinned[d.date].template, pinned[d.date].bonus) for d in days]
-        )
-    # No session (or the kill switch is off): the shared free slate, like /today.
-    # Reading a day freezes it, so every device (and a later /today) sees the same
-    # goals.
-    templates = await schedule.get_or_create_templates(
-        db, [d.date for d in days], "free", lambda d: template_for(d, "free")
+    else:
+        # No session (or the kill switch is off): the shared free slate, like /today.
+        result = await shared_free(dates)
+    return UpcomingChallengeResponse(
+        days=[_day_response(d, result[d.date].template, result[d.date].bonus) for d in days]
     )
-    return UpcomingChallengeResponse(days=[_day_response(d, templates[d.date], None) for d in days])
 
 
 @router.get("/status", response_model=ChallengeStatusResponse)
