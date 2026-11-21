@@ -37,13 +37,20 @@ from observability import report
 _FIXTURE = Path(__file__).parent / "fixtures" / "cascade_replay_v1.json"
 _TS = Path(__file__).resolve().parents[2] / "frontend" / "src" / "game" / "_shared"
 _QUEUE_CONFIG = (_TS / "eventQueueConfig.ts").read_text(encoding="utf-8")
+_REPLAY_TS = (_TS.parent / "cascade" / "replay.ts").read_text(encoding="utf-8")
+# Drops per unit (``CASCADE_DROPS_PER_UNIT`` in replay.ts): 30 since #3967, 20 before.
+# No f-strings in this file: the replay fixture guard hashes its tokens, and Python 3.12+
+# tokenizes f-strings differently from 3.11, so an f-string gives each version its own hash.
+_DROPS_PER_UNIT = 30
 
-# Written out by hand, not read from the fixture: what the seeded game ended on.
-_DROPS = 143
-_MERGES = 132
-_MERGE_SCORE = 6430
-_CAPSTONE_STEP = 17450
-_UNITS = 8
+# Written out by hand, not read from the fixture: what the seeded game ended on. Re-recorded on
+# the 12-tier ladder (#3967 / #3975, owner decision #3974): 143 drops, 132 merges, 6430, step
+# 17450 and 8 units on the 11-tier ladder with 20-drop units.
+_DROPS = 271
+_MERGES = 242
+_MERGE_SCORE = 18862
+_CAPSTONE_STEP = 32799
+_UNITS = 10
 
 
 def _game() -> dict[str, Any]:
@@ -68,7 +75,7 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
 
 
 def _ts_const(name: str) -> int:
-    found = re.search(rf"export const {name} = ([\d* ]+);", _QUEUE_CONFIG)
+    found = re.search("export const " + name + r" = ([\d* ]+);", _QUEUE_CONFIG)
     assert found, name
     value = 1
     for factor in found.group(1).split("*"):  # a literal like "32 * 1024"
@@ -118,8 +125,8 @@ def test_the_story_reads_from_the_events_alone() -> None:
     assert story.ended["merge_score"] == _MERGE_SCORE
     assert story.ended["outcome"] == "win"
     assert story.ended["capstone_step"] == _CAPSTONE_STEP
-    # The capstone is the last merge: two tier-9 pieces.
-    assert story.merges[-1][:2] == (_CAPSTONE_STEP, 9)
+    # The capstone is the last merge: two tier-10 pieces (#3960; tier 9 on the 11-tier ladder).
+    assert story.merges[-1][:2] == (_CAPSTONE_STEP, MAX_TIER - 1)
     # Steps only move forward, and every chain counts from 1 after a drop.
     steps = [s for s, _, _ in story.drops]
     assert steps == sorted(steps)
@@ -129,11 +136,22 @@ def test_the_story_reads_from_the_events_alone() -> None:
 def test_the_story_render_prints_the_game() -> None:
     text = "\n".join(render(_pairs(_game())))
     assert "cascade game, read from its events (not re-simulated):" in text
-    assert f"units      {_UNITS} (1-{_UNITS}): {_DROPS} drops, {_MERGES} merges" in text
-    assert f"score from merges {_MERGE_SCORE}" in text
-    assert f"capstone   made at step {_CAPSTONE_STEP}" in text
-    assert f"the recorded merges add up to {_MERGE_SCORE}: agrees" in text
-    assert 'outcome    "win" at step 17450' in text
+    assert (
+        "units      "
+        + str(_UNITS)
+        + " (1-"
+        + str(_UNITS)
+        + "): "
+        + str(_DROPS)
+        + " drops, "
+        + str(_MERGES)
+        + " merges"
+        in text
+    )
+    assert "score from merges " + str(_MERGE_SCORE) in text
+    assert "capstone   made at step " + str(_CAPSTONE_STEP) in text
+    assert "the recorded merges add up to " + str(_MERGE_SCORE) + ": agrees" in text
+    assert 'outcome    "win" at step ' + str(_CAPSTONE_STEP) in text
 
 
 def test_a_game_with_its_tail_missing_says_the_merges_disagree() -> None:
@@ -155,7 +173,7 @@ def test_the_stored_game_fits_the_cap_with_room() -> None:
     rows = _game()["events"]
     stored = sum(json_bytes(e["data"]) + ROW_OVERHEAD_BYTES for e in rows)
     assert len(rows) == 2 * _UNITS
-    assert stored == 8_192
+    assert stored == 13_089
     assert len(rows) <= CASCADE_CAP.max_events // 4
     assert stored <= CASCADE_CAP.max_bytes // 4
 
@@ -170,11 +188,19 @@ def test_the_byte_caps_and_unit_count_are_the_apps() -> None:
     assert cap_for("cascade") == CASCADE_CAP
 
 
+def test_the_unit_size_is_the_apps_and_keeps_the_960_drop_ceiling() -> None:
+    """#3967: 30 drops a unit and 32 units a game, the same 960 drops as 20 x 48 before."""
+    found = re.search(r"export const CASCADE_DROPS_PER_UNIT = (\d+);", _REPLAY_TS)
+    assert found and int(found.group(1)) == _DROPS_PER_UNIT
+    assert _DROPS_PER_UNIT <= cascade_events.MAX_DROPS_PER_EVENT
+    assert CASCADE_MAX_UNITS * _DROPS_PER_UNIT == 960
+
+
 def _widest_unit(unit: int, merges: int | None = None) -> list[dict[str, Any]]:
-    """The widest honest unit: 20 drops, 32 danger moments and 6-digit steps (an hour of play is
+    """The widest honest unit: 30 drops, 32 danger moments and 6-digit steps (an hour of play is
     216,000 steps), the widest envelope, and ``merges`` merges (a full 1 KB part by default)."""
     drop = {
-        "d": [[999_999, 3800, 5]] * 20,
+        "d": [[999_999, 3800, 5]] * _DROPS_PER_UNIT,
         "z": [[999_999, 180]] * 32,
         "v": 1,
         "unit": unit,
@@ -197,17 +223,17 @@ def test_the_widest_honest_events_validate() -> None:
 
 
 def test_a_game_of_the_most_units_fits_the_server_cap() -> None:
-    """48 units of the widest honest rows (danger moments are capped per game, so one unit
-    carries them; a unit of 20 drops makes about 17 merges, 30 is generous)."""
+    """32 units of the widest honest rows (danger moments are capped per game, so one unit
+    carries them; a unit of 30 drops makes about 27 merges, 45 is generous)."""
     rows: list[dict[str, Any]] = []
     for unit in range(1, CASCADE_MAX_UNITS + 1):
-        drop, merge = _widest_unit(unit, merges=30)
+        drop, merge = _widest_unit(unit, merges=45)
         if unit > 1:
             drop.pop("z")
         rows += [drop, merge]
     stored = sum(json_bytes(r) + ROW_OVERHEAD_BYTES for r in rows)
     assert len(rows) <= CASCADE_CAP.max_events
-    assert stored == 66_901
+    assert stored == 58_997
     assert stored <= CASCADE_CAP.max_bytes
 
 
@@ -268,7 +294,7 @@ def test_a_bad_event_is_dropped_and_reported_by_reason(
     assert cascade_module.validate_event(name, data) is None
     assert len(sent) == 1
     message, kw = sent[0]
-    assert message == f"cascade event: {name} {reason}"
+    assert message == "cascade event: " + name + " " + reason
     assert kw["tags"] == {"game_type": "cascade", "event_type": name, "reason": reason}
     # never a value from the payload
     assert "2000" not in json.dumps(kw.get("extras", {}))

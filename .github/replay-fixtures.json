@@ -8,25 +8,47 @@
   ],
   "games": {
     "solitaire": {
-      "version": { "file": "frontend/src/game/solitaire/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/solitaire/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/solitaire_moves_v1.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/solitaire_moves_v1.json",
+          "engine_version": 1
+        }
       ],
-      "expectations": ["frontend/src/game/_shared/cards/__tests__/fixtureReplay.test.ts"],
+      "expectations": [
+        "frontend/src/game/_shared/cards/__tests__/fixtureReplay.test.ts"
+      ],
       "retired_versions": {}
     },
     "freecell": {
-      "version": { "file": "frontend/src/game/freecell/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/freecell/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/freecell_moves_v1.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/freecell_moves_v1.json",
+          "engine_version": 1
+        }
       ],
-      "expectations": ["frontend/src/game/_shared/cards/__tests__/fixtureReplay.test.ts"],
+      "expectations": [
+        "frontend/src/game/_shared/cards/__tests__/fixtureReplay.test.ts"
+      ],
       "retired_versions": {}
     },
     "mahjong": {
-      "version": { "file": "frontend/src/game/mahjong/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/mahjong/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/mahjong_replay_v1.json", "engine_version": 1 },
+        {
+          "path": "backend/tests/fixtures/mahjong_replay_v1.json",
+          "engine_version": 1
+        },
         {
           "path": "frontend/src/game/mahjong/__tests__/__fixtures__/golden-replay.json",
           "engine_version": 1
@@ -41,55 +63,108 @@
         "name": "SORT_REPLAY_ENGINE_VERSION"
       },
       "fixtures": [
-        { "path": "backend/tests/fixtures/sort_replay_golden.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/sort_replay_golden.json",
+          "engine_version": 1
+        }
       ],
       "expectations": ["backend/tests/test_sort_golden.py"],
       "retired_versions": {}
     },
     "sudoku": {
-      "version": { "file": "frontend/src/game/sudoku/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/sudoku/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/sudoku_entries_v1.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/sudoku_entries_v1.json",
+          "engine_version": 1
+        }
       ],
       "expectations": [],
       "retired_versions": {}
     },
     "hearts": {
-      "version": { "file": "frontend/src/game/hearts/engine.ts", "name": "ENGINE_VERSION" },
-      "fixtures": [{ "path": "backend/tests/fixtures/hearts_replay_v1.json", "engine_version": 1 }],
-      "expectations": ["frontend/src/game/hearts/__tests__/replay.fixture.test.ts"],
+      "version": {
+        "file": "frontend/src/game/hearts/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
+      "fixtures": [
+        {
+          "path": "backend/tests/fixtures/hearts_replay_v1.json",
+          "engine_version": 1
+        }
+      ],
+      "expectations": [
+        "frontend/src/game/hearts/__tests__/replay.fixture.test.ts"
+      ],
       "retired_versions": {}
     },
     "yacht": {
-      "version": { "file": "frontend/src/game/yacht/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/yacht/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/yacht_turn_events_v1.json", "engine_version": 1 },
-        { "path": "backend/tests/fixtures/yacht_turn_events_diff_v1.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/yacht_turn_events_v1.json",
+          "engine_version": 1
+        },
+        {
+          "path": "backend/tests/fixtures/yacht_turn_events_diff_v1.json",
+          "engine_version": 1
+        }
       ],
       "expectations": ["backend/tests/test_yacht_replay.py"],
       "retired_versions": {}
     },
     "twenty48": {
-      "version": { "file": "frontend/src/game/twenty48/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/twenty48/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/twenty48_replay_v1.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/twenty48_replay_v1.json",
+          "engine_version": 1
+        }
       ],
-      "expectations": ["frontend/src/game/twenty48/__tests__/replay.fixture.test.ts"],
+      "expectations": [
+        "frontend/src/game/twenty48/__tests__/replay.fixture.test.ts"
+      ],
       "retired_versions": {}
     },
     "blackjack": {
-      "version": { "file": "frontend/src/game/blackjack/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/blackjack/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/blackjack_replay_v1.json", "engine_version": 1 },
-        { "path": "backend/tests/fixtures/blackjack_parity.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/blackjack_replay_v1.json",
+          "engine_version": 1
+        },
+        {
+          "path": "backend/tests/fixtures/blackjack_parity.json",
+          "engine_version": 1
+        }
       ],
-      "expectations": ["frontend/src/game/blackjack/__tests__/replay.golden.test.tsx"],
+      "expectations": [
+        "frontend/src/game/blackjack/__tests__/replay.golden.test.tsx"
+      ],
       "retired_versions": {}
     },
     "cascade": {
-      "version": { "file": "frontend/src/game/cascade/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/cascade/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/cascade_replay_v1.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/cascade_replay_v1.json",
+          "engine_version": 1
+        }
       ],
       "expectations": [
         "frontend/src/game/cascade/__tests__/replay.fixture.test.ts",
@@ -99,12 +174,23 @@
       "retired_versions": {}
     },
     "daily_word": {
-      "version": { "file": "frontend/src/game/daily_word/engine.ts", "name": "ENGINE_VERSION" },
+      "version": {
+        "file": "frontend/src/game/daily_word/engine.ts",
+        "name": "ENGINE_VERSION"
+      },
       "fixtures": [
-        { "path": "backend/tests/fixtures/daily_word_guess_events_v1.json", "engine_version": 1 },
-        { "path": "backend/tests/fixtures/daily_word_parity.json", "engine_version": 1 }
+        {
+          "path": "backend/tests/fixtures/daily_word_guess_events_v1.json",
+          "engine_version": 1
+        },
+        {
+          "path": "backend/tests/fixtures/daily_word_parity.json",
+          "engine_version": 1
+        }
       ],
-      "expectations": ["frontend/src/game/daily_word/__tests__/replay.fixture.test.ts"],
+      "expectations": [
+        "frontend/src/game/daily_word/__tests__/replay.fixture.test.ts"
+      ],
       "retired_versions": {}
     }
   },
@@ -147,5 +233,26 @@
       "reason": "Cascade time-bonus formula parity (#3700), versioned by bonus_rule in the payload; not a replay log"
     }
   ],
-  "accepted_changes": []
+  "accepted_changes": [
+    {
+      "path": "backend/tests/fixtures/cascade_replay_v1.json",
+      "sha256": "8de89a1da1a8bb929f075d024a60a5cdb1a98d19cdca13da8110c21dc9a32015",
+      "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
+    },
+    {
+      "path": "backend/tests/test_cascade_replay_events.py",
+      "sha256": "b9c70ba14543a56fe073a5bdfcfba29c782e7cdedf5eeed12594a4f41d73bc47",
+      "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
+    },
+    {
+      "path": "backend/tests/test_replay_game_cascade.py",
+      "sha256": "4e9683963c3ea5f23d0e6f539067e4455382f70d07c35d63960ca84e8301ca22",
+      "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
+    },
+    {
+      "path": "frontend/src/game/cascade/__tests__/replay.fixture.test.ts",
+      "sha256": "446d45f9ad624b029c279ea9c74676ec0accc3ca59cc8d60e2d65c050b6e7322",
+      "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
+    }
+  ]
 }
