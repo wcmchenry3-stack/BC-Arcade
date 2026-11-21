@@ -104,6 +104,14 @@ def test_shepard_falls_by_rate_octaves_per_second():
     assert abs(np.log2(a / b) - rate * gap) < 0.03, (a, b)
 
 
+def test_check_refuses_to_overwrite_the_shipped_file():
+    before = build_starswarm_bgm.SHIPPED.read_bytes()
+    # The guard runs before any rendering, so this returns at once instead of building the track.
+    with pytest.raises(SystemExit):
+        build_starswarm_bgm.main(["--check", str(build_starswarm_bgm.SHIPPED)])
+    assert build_starswarm_bgm.SHIPPED.read_bytes() == before
+
+
 def _rebuild_problem() -> str | None:
     if shutil.which("ffmpeg") is None:
         return "ffmpeg is not installed"
@@ -114,8 +122,8 @@ def _rebuild_problem() -> str | None:
         return "ffmpeg has no libmp3lame encoder"
     try:
         import soundfile  # noqa: F401
-    except ImportError:
-        return "soundfile is not installed"
+    except (ImportError, OSError) as e:
+        return f"soundfile is unusable: {e}"
     return None
 
 

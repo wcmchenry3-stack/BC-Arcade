@@ -22,7 +22,10 @@ def ease(v):
 
 
 def decode_mp3(data: bytes) -> np.ndarray:
-    """Decode MP3 bytes to float32 (2, n) at SR, as the rounds' `decode()` did."""
+    """Decode MP3 bytes to float32 (2, n) at SR.
+
+    The rounds decoded from a file; decoding from a pipe gives the same samples.
+    """
     p = subprocess.run(
         ["ffmpeg", "-v", "error", "-i", "pipe:0", "-ar", str(SR), "-ac", "2", "-f", "f32le", "-"],
         input=data,

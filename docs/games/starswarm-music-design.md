@@ -63,7 +63,8 @@ Things to know before changing it:
   to verify (`--check`), not a tidy-up.
 - **Changing the music:** edit a layer or a cue, rebuild with `--stages`, listen, then replace
   `frontend/assets/sounds/starswarm-bgm.mp3` and update its SHA-256 and size here, in
-  `SOUND_CREDITS.md` and in `scripts/check_large_files.py`. The starting points and the time map below
+  `SOUND_CREDITS.md`, in `scripts/check_large_files.py` and in `EXPECTED_SHA256` in
+  `frontend/src/__tests__/starswarmBgm.test.ts`. The starting points and the time map below
   are tied to the current cues.
 
 The recipe was recovered on 2026-11-21 from the round archive in git history (commit `356d7ed^`,

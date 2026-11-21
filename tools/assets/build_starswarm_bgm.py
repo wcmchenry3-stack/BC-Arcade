@@ -16,7 +16,8 @@ Usage:
                                                                       # shipped file
 
 Changing the music: edit a layer or a cue in `starswarm_bgm/`, rebuild, listen, then replace the
-shipped file and update its SHA-256 and size (SOUND_CREDITS.md, scripts/check_large_files.py).
+shipped file and update its SHA-256 and size (SOUND_CREDITS.md, scripts/check_large_files.py,
+and EXPECTED_SHA256 in frontend/src/__tests__/starswarmBgm.test.ts).
 See docs/games/starswarm-music-design.md.
 """
 
@@ -66,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if not args.check and not args.out_mp3:
         ap.error("give OUT.mp3, or --check")
+    if args.check and args.out_mp3 and args.out_mp3.resolve() == SHIPPED.resolve():
+        ap.error("--check must not write over the shipped file; give another OUT.mp3 or none")
 
     if not args.check:
         build(args.out_mp3, args.stages)
