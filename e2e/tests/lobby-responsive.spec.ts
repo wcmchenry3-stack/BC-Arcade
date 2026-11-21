@@ -102,4 +102,52 @@ test.describe("Lobby — responsive layout", () => {
 
     await context.close();
   });
+
+  // #4005: every tile in a row has the same width and height (locked/unlocked borders,
+  // spacer cells for a short last row), at a phone and a tablet width.
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1024, height: 768 },
+  ]) {
+    test(`tiles in a row share one width and height at ${viewport.width}x${viewport.height}`, async ({
+      browser,
+    }) => {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      await installEntitlementsMock(page);
+      await page.goto("/");
+      await expect(page.getByTestId("game-tile-yacht")).toBeVisible({
+        timeout: 10000,
+      });
+
+      const tiles = page.locator("[data-testid^='game-tile-']");
+      const count = await tiles.count();
+      expect(count).toBeGreaterThan(1);
+      const boxes = [];
+      for (let i = 0; i < count; i++) {
+        const box = await tiles.nth(i).boundingBox();
+        expect(box).not.toBeNull();
+        boxes.push(box!);
+      }
+
+      // Group tiles into rows by their top edge (within 2 px).
+      const rows: (typeof boxes)[] = [];
+      for (const box of boxes) {
+        const row = rows.find((r) => Math.abs(r[0].y - box.y) < 2);
+        if (row) row.push(box);
+        else rows.push([box]);
+      }
+      for (const row of rows) {
+        for (const box of row) {
+          expect(Math.abs(box.height - row[0].height)).toBeLessThan(0.5);
+          expect(Math.abs(box.width - row[0].width)).toBeLessThan(0.5);
+        }
+      }
+      // Every tile in the grid keeps the same column width, including the last row's.
+      const widths = boxes.map((b) => b.width);
+      expect(Math.max(...widths) - Math.min(...widths)).toBeLessThan(0.5);
+
+      await context.close();
+    });
+  }
 });
