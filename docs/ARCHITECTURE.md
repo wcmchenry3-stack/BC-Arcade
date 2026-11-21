@@ -1298,6 +1298,12 @@ instead of truncating and tiles in a row stay equal. The button reads `common:pl
 ("Play"); the tile's accessibility label is the game's `game.playLabel`, kept on the
 `GameCard` entry rather than keyed by translated title.
 
+**Lobby order (#4009).** Tiles follow `allGames` in `HomeScreen.tsx`, a fixed order with Daily
+Word first (the daily game) and every other game in its existing relative slot. Store builds
+show Daily Word, Yacht, 2048, Solitaire, FreeCell, Sudoku, Sort Puzzle. The order never changes
+with play history or saves (owner decision: muscle memory); hidden games keep their slots when
+unhidden (#2875).
+
 ### 10.8 How the free/premium split is decided
 
 The split is **criteria-driven, not quota-driven.** The original 6/6 was an
@@ -1484,6 +1490,9 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `MAX_BUG_LOGS_PER_SESSION`                                           | `500` (1–1000000; stored bug logs per session; excess dropped)                                                                                                                                                                                     | `logs/service.py` (lazy)                                                                                                                |
 | `BUG_LOG_RETENTION_DAYS`                                             | `90` (1–3650)                                                                                                                                                                                                                                      | `logs/retention.py` (lazy)                                                                                                              |
 | `STREAK_LOOKBACK_DAYS`                                               | `60` (1–365; also the largest streak reported)                                                                                                                                                                                                     | `daily_challenge/streak.py` (lazy)                                                                                                      |
+| `DAILY_CHALLENGE_PERSONALIZED`                                       | `true` (kill switch: `false` serves the shared template and reads/writes no `daily_challenge_assignments` row)                                                                                                                                     | `daily_challenge/assignments.py` (lazy)                                                                                                 |
+| `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`                          | unset → `STREAK_LOOKBACK_DAYS` + 1 (1–365; refused below `STREAK_LOOKBACK_DAYS` + 1)                                                                                                                                                               | `daily_challenge/assignments.py` (lazy)                                                                                                 |
+| `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS`                              | `48` (1–720; an install pins only with a game created this recently)                                                                                                                                                                               | `daily_challenge/assignments.py` (lazy)                                                                                                 |
 | `APPLE_REPLAY_WINDOW_HOURS`                                          | `48` (1–720)                                                                                                                                                                                                                                       | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`)                                                                   |
 | `DB_PING_TIMEOUT_SECONDS`                                            | `5.0` (above 0, at most 60)                                                                                                                                                                                                                        | `routes/health.py` (lazy)                                                                                                               |
 | `DB_STATEMENT_TIMEOUT_SECONDS`                                       | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection)                                                                                                                                | `db/base.py` (with `DATABASE_URL`; Postgres only)                                                                                       |
@@ -1580,7 +1589,8 @@ At the architecture level, the important boundaries are:
 - normal games write their existing shared session/result data; they do not
   call a separate challenge-completion endpoint;
 - `backend/daily_challenge/` reads those rows and freezes each day's assigned
-  goal specs in `daily_challenge_days`;
+  goal specs in `daily_challenge_days`, and pins each install's goals for a
+  served day in `daily_challenge_assignments` (#3992);
 - the challenge and streak are derived views, not mutable counters;
 - the Home card consumes the session-scoped status route and localizes goal
   copy on the client.

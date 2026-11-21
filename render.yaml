@@ -65,6 +65,9 @@ services:
       # - key: MAX_BUG_LOGS_PER_SESSION      # 500
       # - key: BUG_LOG_RETENTION_DAYS        # 90
       # - key: STREAK_LOOKBACK_DAYS          # 60
+      # - key: DAILY_CHALLENGE_PERSONALIZED  # true (kill switch)
+      # - key: DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS  # STREAK_LOOKBACK_DAYS + 1 (not below it)
+      # - key: DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS  # 48
       # - key: APPLE_REPLAY_WINDOW_HOURS     # 48
       # - key: DB_PING_TIMEOUT_SECONDS       # 5.0
       # - key: DB_STATEMENT_TIMEOUT_SECONDS  # 5.0
@@ -169,6 +172,9 @@ services:
       # - key: MAX_BUG_LOGS_PER_SESSION      # 500
       # - key: BUG_LOG_RETENTION_DAYS        # 90
       # - key: STREAK_LOOKBACK_DAYS          # 60
+      # - key: DAILY_CHALLENGE_PERSONALIZED  # true (kill switch)
+      # - key: DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS  # STREAK_LOOKBACK_DAYS + 1 (not below it)
+      # - key: DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS  # 48
       # - key: APPLE_REPLAY_WINDOW_HOURS     # 48
       # - key: DB_PING_TIMEOUT_SECONDS       # 5.0
       # - key: DB_STATEMENT_TIMEOUT_SECONDS  # 5.0

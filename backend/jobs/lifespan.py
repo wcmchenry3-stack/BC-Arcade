@@ -24,6 +24,16 @@ def retention_job() -> PeriodicJob | None:
     return build(get_session_factory)
 
 
+def daily_challenge_retention_job() -> PeriodicJob | None:
+    """daily_challenge_assignments retention (#3992); needs a database."""
+    if not is_configured():
+        return None
+    from daily_challenge.retention import retention_job as build
+    from db.base import get_session_factory
+
+    return build(get_session_factory)
+
+
 def replay_storage_job() -> PeriodicJob | None:
     """Replay-event retention and the storage-budget check (#3292); needs a database."""
     if not is_configured():
@@ -85,6 +95,7 @@ def configured_jobs() -> list[PeriodicJob]:
         retention_job(),
         replay_storage_job(),
         bug_log_retention_job(),
+        daily_challenge_retention_job(),
         apple_replay_job(),
         google_jobs_job(),
     ]
