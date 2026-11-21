@@ -48,6 +48,11 @@ const LOCALE_FILES: Array<[string, string]> = LOCALES.flatMap(({ code }) =>
 
 const STORE_ENV = { EXPO_PUBLIC_API_URL: "https://games-api.buffingchi.com" };
 
+// The hidden games' lobby tile images and their image-free store stand-in (#4011).
+const HOME_COMPONENTS = path.resolve(__dirname, "../../components/home");
+const TILE_ART = path.join(HOME_COMPONENTS, "hiddenGameTileArt.ts");
+const TILE_ART_STORE = path.join(HOME_COMPONENTS, "hiddenGameTileArt.store.ts");
+
 describe("isStoreBundle", () => {
   // Mutate, never replace, process.env: Expo's env shim holds the original object.
   const KEYS = ["EXPO_PUBLIC_API_URL", "EXPO_PUBLIC_TEST_HOOKS"] as const;
@@ -315,7 +320,10 @@ describe("the home tile's Cascade icon stays out of store bundles (#3698)", () =
     ).filePath;
 
   it("maps exactly the drawn icon to the emoji variant, and both exist", () => {
-    expect([...storeBundle.STUBBED_MODULES]).toEqual([[drawn, emoji]]);
+    expect([...storeBundle.STUBBED_MODULES]).toEqual([
+      [drawn, emoji],
+      [TILE_ART, TILE_ART_STORE],
+    ]);
     expect(fs.existsSync(drawn)).toBe(true);
     expect(fs.existsSync(emoji)).toBe(true);
     expect(fs.readFileSync(emoji, "utf8")).not.toMatch(/react-native-skia|FruitGlyph|\/art\//);
@@ -325,6 +333,69 @@ describe("the home tile's Cascade icon stays out of store bundles (#3698)", () =
     expect(resolve(false, STORE_ENV)).toBe(emoji);
     expect(resolve(true, STORE_ENV)).toBe(drawn);
     expect(resolve(false, { ...STORE_ENV, EXPO_PUBLIC_TEST_HOOKS: "1" })).toBe(drawn);
+  });
+});
+
+/**
+ * Lobby tile images (#4011). Metro packages every image HomeScreen imports, whether its tile
+ * renders or not, so a hidden game's tile image lives in `hiddenGameTileArt.ts`, which a store
+ * bundle resolves to an image-free stand-in. `starswarm-tile.webp` used to be imported by
+ * HomeScreen directly and was packaged in store builds.
+ */
+describe("hidden games' lobby tile images stay out of store bundles (#4011)", () => {
+  const HOME_SCREEN = path.resolve(__dirname, "../../screens/HomeScreen.tsx");
+  const TILES_DIR = path.resolve(__dirname, "../../../assets/home");
+  const resolve = (dev: boolean, env: Record<string, string | undefined>, platform = "android") =>
+    storeBundle.withStoreBundleExclusions({ resolver: {} }, env).resolver.resolveRequest!(
+      {
+        dev,
+        resolveRequest: (_c: object, name: string) => ({ type: "sourceFile", filePath: name }),
+      } as object,
+      TILE_ART,
+      platform
+    ).filePath;
+  /** The `assets/home/<slug>-tile.*` images a source file imports, by slug. */
+  const tileImports = (file: string): string[] =>
+    [...fs.readFileSync(file, "utf8").matchAll(/assets\/home\/([a-z0-9_]+)-tile\.\w+"/g)].map(
+      (m) => m[1]
+    );
+
+  it("a store bundle gets the stand-in; dev, e2e and pre-launch bundles keep the art", () => {
+    for (const platform of ["android", "ios", "web"]) {
+      expect(resolve(false, STORE_ENV, platform)).toBe(TILE_ART_STORE);
+    }
+    expect(resolve(true, STORE_ENV)).toBe(TILE_ART);
+    expect(resolve(false, { ...STORE_ENV, EXPO_PUBLIC_TEST_HOOKS: "1" })).toBe(TILE_ART);
+    expect(resolve(false, { EXPO_PUBLIC_API_URL: "https://dev-games-api.buffingchi.com" })).toBe(
+      TILE_ART
+    );
+  });
+
+  it("the stand-in imports no image", () => {
+    const stub = fs.readFileSync(TILE_ART_STORE, "utf8");
+    expect(stub).not.toMatch(/\.(webp|png|jpe?g|svg)"/);
+    expect(stub).not.toMatch(/require\(/);
+    expect(stub).toMatch(/import type \{ HiddenGameTileArt \}/);
+  });
+
+  it("holds every hidden game's tile and only those", () => {
+    const slugs = tileImports(TILE_ART);
+    expect(slugs.length).toBeGreaterThan(0);
+    for (const slug of slugs) expect(HIDDEN_GAMES.has(slug)).toBe(true);
+    const onDisk = fs
+      .readdirSync(TILES_DIR)
+      .map((file) => /^([a-z0-9_]+)-tile\.\w+$/.exec(file)?.[1])
+      .filter((slug): slug is string => slug !== undefined);
+    expect(onDisk.filter((slug) => HIDDEN_GAMES.has(slug)).sort()).toEqual([...slugs].sort());
+  });
+
+  it("HomeScreen imports no hidden game's tile image directly", () => {
+    const slugs = tileImports(HOME_SCREEN);
+    expect(slugs.sort()).toEqual(["sort", "sudoku", "twenty48", "yacht"]);
+    for (const slug of slugs) expect(HIDDEN_GAMES.has(slug)).toBe(false);
+    expect(fs.readFileSync(HOME_SCREEN, "utf8")).toMatch(
+      /from "\.\.\/components\/home\/hiddenGameTileArt"/
+    );
   });
 });
 

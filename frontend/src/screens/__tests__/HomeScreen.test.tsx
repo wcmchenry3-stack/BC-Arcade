@@ -196,17 +196,14 @@ describe("HomeScreen — game cards", () => {
 
     it("keeps the emoji on every other tile", async () => {
       const { getByTestId } = await renderScreen();
+      // Yacht, 2048, Sudoku and Sort show gameplay art since #4011 (tested below).
       const emojis: Record<string, string> = {
-        yacht: "🎲",
         cascade: "🍉",
         blackjack: "🃏",
-        twenty48: "🔢",
         solitaire: "♠",
         freecell: "🂡",
         hearts: "♥",
-        sudoku: "🧩",
         mahjong: "🀄",
-        sort: "🍾",
         daily_word: "📝",
       };
       for (const [slug, emoji] of Object.entries(emojis)) {
@@ -228,6 +225,39 @@ describe("HomeScreen — game cards", () => {
       const { getByTestId } = await renderScreen();
       expect(getByTestId("game-tile-starswarm").props.accessibilityLabel).toMatch(/Star Swarm/);
       expect(getByTestId("game-icon-starswarm").props.source).toBeTruthy();
+    });
+  });
+
+  describe("gameplay tile art (#4011)", () => {
+    const ART: Record<string, { label: string; emoji: string }> = {
+      yacht: { label: "Play Yacht", emoji: "🎲" },
+      twenty48: { label: "Play 2048", emoji: "🔢" },
+      sudoku: { label: "Play Sudoku", emoji: "🧩" },
+      sort: { label: "Play Sort Puzzle", emoji: "🍾" },
+    };
+
+    it("draws Yacht, 2048, Sudoku and Sort as a 64 pt image, not the emoji", async () => {
+      const { getByTestId, queryByText } = await renderScreen();
+      for (const [slug, { emoji }] of Object.entries(ART)) {
+        const icon = getByTestId(`game-icon-${slug}`);
+        expect(icon.type).not.toBe("Text");
+        expect(icon.props.source).toBeTruthy();
+        expect(icon.props.resizeMode).toBe("contain");
+        const style = StyleSheet.flatten(icon.props.style);
+        expect([style.width, style.height]).toEqual([64, 64]);
+        expect(queryByText(emoji)).toBeNull();
+      }
+      // Each tile has its own picture.
+      const sources = Object.keys(ART).map((slug) => getByTestId(`game-icon-${slug}`).props.source);
+      expect(new Set(sources.map((s) => JSON.stringify(s))).size).toBe(4);
+    });
+
+    it("keeps the tiles' labels and hides the images from screen readers", async () => {
+      const { getByTestId } = await renderScreen();
+      for (const [slug, { label }] of Object.entries(ART)) {
+        expect(getByTestId(`game-tile-${slug}`).props.accessibilityLabel).toBe(label);
+        expect(getByTestId(`game-icon-${slug}`).props.accessible).toBe(false);
+      }
     });
   });
 
@@ -837,7 +867,8 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
 
   it("compacts the icon zone to TILE_ICON_ZONE (68) and the emoji to 44", async () => {
     const { getByTestId } = await renderScreen(390);
-    const icon = getByTestId("game-icon-yacht");
+    // Solitaire still shows an emoji glyph; Yacht is tile art since #4011.
+    const icon = getByTestId("game-icon-solitaire");
     expect(StyleSheet.flatten(icon.props.style).fontSize).toBe(44);
     const zone = icon.parent;
     expect(StyleSheet.flatten(zone?.props.style).height).toBe(68);
