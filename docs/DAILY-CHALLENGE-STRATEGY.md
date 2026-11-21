@@ -157,6 +157,52 @@ Variety comes from combining a few things, not from many goal definitions:
 - **Variety rules:** the two core goals are of different archetypes where possible; the same (game, archetype)
   doesn't repeat within ~3 days; at most one Skill (win) goal a day.
 
+## 7a. Games with an endpoint: Blackjack and Cascade
+
+Most of our games follow the usual pattern for their genre: one game is one deal, puzzle, board or run, and it
+ends when it ends. **Blackjack and Cascade are deliberately not the usual game.** Real blackjack and Suika-style
+drop games have no end: you play until you stop or lose. Ours each have a **designed endpoint**, and their goals
+must be built around it. The per-game step designs these two first.
+
+**Blackjack: a run to a chip goal** ([`games/blackjack.md`](games/blackjack.md))
+
+- A run starts at a table with a fixed stack (Beginner 100, up to High Roller 500) and a chip goal.
+  - **Win:** reach the goal, then Cash Out, or Keep Playing and later bust.
+  - **Loss:** chips run out before the goal.
+  - **Abandoned:** New Game or quit before the goal.
+- A run can be resumed, so it can span sessions and days. Its one `games` row is written when the run ends.
+- Consequences for goals:
+  - **Goals about hands evaluated on the run row are a trap.** The current pending "play 3 hands" and "win 3 hands"
+    goals only count once the run ends, and never for a run the player walked away from. Twenty hands played and
+    then left earn nothing.
+  - **The unit to aim at is the run or the table.** The personal axis is the table: reach the goal at the table you
+    usually play, or one table up. It isn't a score.
+  - **Reaching the goal is luck-dependent**, so it counts as the day's one Skill (win) goal.
+  - **A "play N hands" goal would need per-hand facts.** The server keeps `hand_resolved` lifecycle events and the
+    device keeps a per-run hands count, so it may be cheap. Step 3 checks this, including offline.
+  - **Days:** a run started yesterday and finished today counts today (it is scored by `completed_at`). That's fine,
+    but state it.
+
+**Cascade: drop-and-merge with a capstone win** ([`games/cascade.md`](games/cascade.md))
+
+- A game ends in one of three ways:
+  - **Win:** merge two tier-10 pieces into the capstone (tier 11). This is rare and takes a long game.
+  - **Loss:** the lid (overflow) or the hard stop.
+  - **Abandoned:** restart or switching piece sets.
+- Consequences for goals:
+  - **The win is a long-term aim, not a daily one.** A "win" goal is for players who have won before, and as the
+    day's Skill goal.
+  - **The natural personal axis is the highest tier reached (`max_tier`, 0–11)**, plus score. "Reach a Melon",
+    with the tier set just above the player's typical `max_tier`, is the Stretch goal.
+  - **Finish** means a game that ends in a win or at the lid. A lid loss is a finish, and it should read that way
+    to the player.
+  - **Open question: should progress count in a restarted game?** Today an abandoned row never counts. The rule
+    exists to stop a quit game's score clearing a score goal. A tier reached before a restart isn't gamed in the
+    same way, so tier goals could count it. This is an owner decision, together with #3945 (Cascade targets).
+
+**General rule from this:** for every game, step 2 writes down (1) what one finished game is, (2) what ends it
+normally versus counts as an abandon, and (3) whether a progress goal may count a game that wasn't finished.
+
 ## 8. Measuring whether it works
 
 Deliberately small, from data we already have (frozen assignments plus `games` rows). No new client analytics.
@@ -195,9 +241,9 @@ target, a weight or a dial.** Those come from real players after launch. What it
   Under the affinity rule, a premium owner's favourite game must be eligible.
 - **Abandons matter more than expected.** Abandoned rows never count toward a goal, and abandon rates are high in
   some games: Solitaire 72%, FreeCell 68%, Cascade 64%, Blackjack 92% (vs Yacht 6%, Daily Word 13%). Players often
-  redeal rather than finish. Even "Finish a game" is a real ask in those games, and the per-game step must check how
-  each game records its normal end. Blackjack's 92% suggests a normal "leave the table" ends as `abandoned`, which
-  would make every Blackjack goal unreachable.
+  redeal rather than finish. Even "Finish a game" is a real ask in those games. Blackjack's and Cascade's numbers
+  mostly reflect how those two games end (§7a), not a bug: leaving a Blackjack run before its chip goal is correctly
+  an abandon.
 
 ## 9. Cost, performance and offline: early read (step 3 will verify)
 
@@ -229,7 +275,9 @@ The CLAUDE.md order applies: cost, then performance, then data. A first look:
    a separate, later decision.
 4. **Premium floor.** Is "an owned premium game appears ~2×/week" right, or should premium games get no special
    treatment at all?
-5. **Ship order.** Ship "Daily Word = complete only" now as a quick win, ahead of the rest? (Recommended.)
+5. **Progress in unfinished games.** May a progress goal (a Cascade tier, Blackjack hands) count a game that was
+   restarted or left (§7a)?
+6. **Ship order.** Ship "Daily Word = complete only" now as a quick win, ahead of the rest? (Recommended.)
 
 ## 11. Next steps
 
