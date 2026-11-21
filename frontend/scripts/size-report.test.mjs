@@ -11,7 +11,9 @@ import {
   evaluate,
   findHiddenLocaleStrings,
   findHiddenPremiumAssets,
+  hiddenGameSlugs,
   hiddenLocaleMarkers,
+  hiddenLobbyTilePattern,
   hiddenOnlySoundNames,
   metroAssetName,
   summarize,
@@ -55,6 +57,61 @@ test("findHiddenPremiumAssets flags premium-only art and BGM but not shared soun
   ]);
   assert.equal(hits.length, 4);
   assert.ok(hits.every((h) => !h.file.includes("yacht") && !h.file.includes("logo")));
+});
+
+test("findHiddenPremiumAssets flags a hidden game's lobby tile, not a free game's (#4011)", () => {
+  const hits = findHiddenPremiumAssets([
+    f("drawable-mdpi/assets_home_mahjongtile.webp"),
+    f("drawable-mdpi/assets_home_starswarmtile.webp"),
+    // allowed: the free games' tiles
+    f("drawable-mdpi/assets_home_yachttile.webp"),
+    f("drawable-mdpi/assets_home_sorttile.webp"),
+    f("drawable-mdpi/assets_home_sudokutile.webp"),
+    f("drawable-mdpi/assets_home_twenty48tile.webp"),
+  ]);
+  assert.deepEqual(
+    hits.map((h) => [h.file, h.pattern]),
+    [
+      ["drawable-mdpi/assets_home_mahjongtile.webp", "Hidden game lobby tile"],
+      ["drawable-mdpi/assets_home_starswarmtile.webp", "Hidden game lobby tile"],
+    ]
+  );
+});
+
+test("hiddenLobbyTilePattern follows HIDDEN_GAMES", () => {
+  for (const slug of hiddenGameSlugs()) {
+    assert.ok(hiddenLobbyTilePattern().re.test(metroAssetName(`home/${slug}-tile.webp`)), slug);
+  }
+  // Once a game is unhidden its tile is allowed again; lookalike names never match.
+  const re = hiddenLobbyTilePattern(new Set(["hearts"])).re;
+  assert.ok(re.test("assets_home_heartstile.webp"));
+  assert.ok(!re.test("assets_home_mahjongtile.webp"));
+  assert.ok(!re.test("assets_home_heartstileback.webp"));
+  assert.ok(!re.test("assets_hearts_tile.webp"));
+});
+
+test("CLI: --forbid-hidden-assets fails a packaged hidden-game lobby tile (#4011)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "size-report-tile-"));
+  try {
+    const bundle = path.join(dir, "b.bundle");
+    fs.writeFileSync(bundle, "x");
+    const assets = path.join(dir, "assets/drawable-mdpi");
+    fs.mkdirSync(assets, { recursive: true });
+    const run = () =>
+      spawnSync(
+        process.execPath,
+        [script, "--bundle", bundle, "--assets", path.dirname(assets), "--forbid-hidden-assets"],
+        { encoding: "utf8" }
+      );
+    fs.writeFileSync(path.join(assets, "assets_home_yachttile.webp"), "y");
+    assert.equal(run().status, 0);
+    fs.writeFileSync(path.join(assets, "assets_home_mahjongtile.webp"), "m");
+    const failed = run();
+    assert.equal(failed.status, 1);
+    assert.match(failed.stdout, /assets_home_mahjongtile\.webp.*Hidden game lobby tile/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("summarize totals files and bytes per bucket, largest first", () => {

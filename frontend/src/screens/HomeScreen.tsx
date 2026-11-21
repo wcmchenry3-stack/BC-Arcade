@@ -47,17 +47,24 @@ import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { getLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
-import starSwarmTile from "../../assets/home/starswarm-tile.webp";
+import sortTile from "../../assets/home/sort-tile.webp";
+import sudokuTile from "../../assets/home/sudoku-tile.webp";
+import twenty48Tile from "../../assets/home/twenty48-tile.webp";
+import yachtTile from "../../assets/home/yacht-tile.webp";
+// Hidden games' tile images: never imported here, or a store build would package them (#4011).
+import { HIDDEN_GAME_TILE_ART } from "../components/home/hiddenGameTileArt";
 import CascadeTileIcon from "../components/cascade/CascadeTileIcon";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
 
-// A tile's icon is an emoji, or a generated image drawn at the emoji's footprint (#3599), or
-// Cascade's code-drawn piece (#3698), which shows the emoji until it is ready (and on web).
+// A tile's icon is an emoji, or a generated image, or Cascade's code-drawn piece (#3698), which
+// shows the emoji until it is ready (and on web). Images are gameplay scenes drawn by
+// tools/assets/draw_lobby_tile_art.py (#4011), shown at `cardArt`; a `badge` image is Star
+// Swarm's hex badge (#3599), kept at the emoji's footprint until #4013 redraws it.
 type GameCardIcon =
-  | { emoji: string; image?: undefined; drawn?: boolean }
-  | { image: ImageSourcePropType; emoji?: undefined; drawn?: undefined };
+  | { emoji: string; image?: undefined; drawn?: boolean; badge?: undefined }
+  | { image: ImageSourcePropType; emoji?: undefined; drawn?: undefined; badge?: boolean };
 
 type GameCard = GameCardIcon & {
   key: string;
@@ -224,7 +231,7 @@ export default function HomeScreen() {
     {
       key: "yacht",
       slug: "yacht",
-      emoji: "🎲",
+      image: yachtTile, // dice landing on fives, one still tumbling
       title: t("yacht:game.title"),
       description: t("yacht:game.description"),
       action: startYacht,
@@ -249,7 +256,7 @@ export default function HomeScreen() {
     {
       key: "twenty48",
       slug: "twenty48",
-      emoji: "🔢",
+      image: twenty48Tile, // two 1024 tiles sliding together
       title: t("twenty48:game.title"),
       description: t("twenty48:game.description"),
       action: () => navigation.navigate("Twenty48"),
@@ -281,9 +288,7 @@ export default function HomeScreen() {
     {
       key: "sudoku",
       slug: "sudoku",
-      // twenty48 already owns 🔢 in the lobby; the puzzle-piece glyph
-      // keeps Sudoku visually distinct while staying puzzle-coded.
-      emoji: "🧩",
+      image: sudokuTile, // a 3x3 box with a digit just placed
       title: t("sudoku:game.title"),
       description: t("sudoku:game.description"),
       action: () => navigation.navigate("Sudoku"),
@@ -293,7 +298,8 @@ export default function HomeScreen() {
       slug: "starswarm",
       // The Wasp Grunt in a hex badge (#3599), drawn by tools/assets/draw_starswarm_art.py. It
       // carries its own dark face, so it reads on the light and the dark theme.
-      image: starSwarmTile,
+      image: HIDDEN_GAME_TILE_ART.starswarm,
+      badge: true,
       title: t("starswarm:game.title"),
       description: t("starswarm:game.description"),
       action: () => navigation.navigate("StarSwarm"),
@@ -309,7 +315,7 @@ export default function HomeScreen() {
     {
       key: "sort",
       slug: "sort",
-      emoji: "🍾",
+      image: sortTile, // one flask pouring into another
       title: t("sort:game.title"),
       description: t("sort:game.description"),
       action: () => navigation.navigate("Sort"),
@@ -387,7 +393,7 @@ export default function HomeScreen() {
             {item.image ? (
               <Image
                 source={item.image}
-                style={styles.cardImage}
+                style={item.badge ? styles.cardImage : styles.cardArt}
                 resizeMode="contain"
                 accessible={false}
                 testID={`game-icon-${item.slug}`}
@@ -586,6 +592,12 @@ const styles = StyleSheet.create({
   cardImage: {
     width: 56,
     height: 56,
+  },
+  // The lobby tile art's display size (#4011): the WebPs are drawn at 3x this (192 px) by
+  // tools/assets/draw_lobby_tile_art.py (its DISPLAY_PT), sized to sit in the icon zone.
+  cardArt: {
+    width: 64,
+    height: 64,
   },
   cardTitle: {
     fontFamily: typography.heading,
