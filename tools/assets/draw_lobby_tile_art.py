@@ -10,7 +10,8 @@ games' own (`frontend/src/theme/theme.*.ts`; the Yacht dice and the playing card
     yacht      all five dice: four landed on fives in a row, the fifth tumbling in
     twenty48   two 1024 tiles sliding together on a slice of the board, toward 2048
     sudoku     one 3x3 box: given digits, and a digit just placed in the selected cell
-    solitaire  two Klondike columns, face-up runs over face-down cards, and a six dropping on
+    solitaire  two Klondike columns, face-up runs over face-down cards, and the six of spades
+               dropping onto the seven of hearts
     freecell   the row of four free cells (one holding a card) over two cascades; a card rises
                into the last cell
     daily_word the six-row guessing grid in hit / near / miss colours, no letters (13 locales)
@@ -560,6 +561,8 @@ CARD_INK = hexrgb("#0e0e13")  # cardInk: ranks and black suits
 CARD_RED = hexrgb("#d32f2f")  # CARD_RED_SUIT (theme.cards.ts)
 CARD_BACK = hexrgb("#00737e")  # cardBack: the BC teal field inside the white margin
 RED_SUITS = frozenset("HD")
+CARD_SUITS = frozenset("SHDC")
+CARD_RANKS = frozenset("23456789")  # the digits lobby_numerals.json holds
 
 CARD_R = 3  # corner radius (px)
 CARD_SNAP = 0.5  # cards sit on the half pixel (px)
@@ -608,7 +611,18 @@ def suit(c: TileCanvas, kind: str, cx: float, cy: float, s: float) -> None:
 def card(c: TileCanvas, x: int, y: int, w: int, h: int, face: str | None) -> None:
     """A card whose top-left corner is pixel (x, y). `face` is rank + suit ("7H"), or None for a
     face-down card. A face shows its index only (the rank, the suit beside it): a cascade shows
-    each card's top strip, and the index is what a player reads there."""
+    each card's top strip, and the index is what a player reads there.
+
+    Raises ValueError for a rank other than 2-9 (`lobby_numerals.json` holds digits only, so there
+    is no A, 10, J, Q or K) and for a suit other than S, H, D or C, before anything is drawn."""
+    if face is not None:
+        rank, kind = face[:-1], face[-1:]
+        if rank not in CARD_RANKS:
+            raise ValueError(
+                f"card {face!r}: rank must be 2-9 (lobby_numerals has digits only), got {rank!r}"
+            )
+        if kind not in CARD_SUITS:
+            raise ValueError(f"card {face!r}: suit must be one of S, H, D, C, got {kind!r}")
     cx, cy = x + CARD_SNAP + w / 2, y + CARD_SNAP + h / 2
     body = rounded_rect(cx, cy, w, h, CARD_R)
     c.polygon(body, CARD_FACE)
@@ -671,8 +685,9 @@ def solitaire_scene(c: TileCanvas) -> None:
 
 # --------------------------------------------------------------------------------------------
 # FreeCell: the row of four free cells along the top, one holding a card and the rest empty
-# (dashed, as on the felt), over cascades dealt all face up; a card rises off the cascades into
-# the last free cell.
+# (dashed, as on the felt), over two face-up cascades in the first two columns; in the last
+# column, which has no cascade, the seven of hearts rises into the empty free cell, motion marks
+# trailing below it.
 
 FC_SIZE, FC_STEP = (38, 54), 20  # card size, and the cascade overlap (px)
 FC_PITCH = FC_SIZE[0] + 6  # free cells and cascades share the columns

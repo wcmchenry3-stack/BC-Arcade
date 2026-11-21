@@ -388,9 +388,10 @@ export default function HomeScreen() {
 
           {/* Emoji icon zone */}
           <View style={styles.emojiZone}>
-            {/* Not every icon is a colour emoji: Hearts' "♥" is a text-presentation glyph
-                that takes the Text colour, which defaults to black — invisible on the dark
-                theme. Colour emoji ignore `color`, so this is safe for the rest. */}
+            {/* The glyph colour now serves only Hearts (a hidden game, shown in internal
+                builds): its "♥" is a text-presentation glyph that takes the Text colour, which
+                defaults to black — invisible on the dark theme. Colour emoji ignore `color`, so
+                this is safe for the rest. Drop it once Hearts gets tile art (#4013). */}
             {item.image ? (
               <Image
                 source={item.image}

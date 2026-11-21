@@ -311,10 +311,40 @@ def test_solitaire_runs_alternate_red_and_black_and_descend():
             assert int(a[:-1]) - int(b[:-1]) == 1, (a, b)
 
 
-def test_solitaire_moving_card_is_a_legal_move_onto_a_column():
-    last = [faces[-1] for *_, faces in art.SOL_COLUMNS]
+def test_solitaire_moving_card_drops_onto_the_seven_of_hearts():
+    """The 6S is a legal move onto the right column's 7H (black on red, one rank down), and it
+    is drawn there: over or just past the 7H's column, not the left column's 7D."""
     mv = art.SOL_MOVING
-    assert any(art.is_red(t) != art.is_red(mv) and int(t[:-1]) - int(mv[:-1]) == 1 for t in last)
+    assert mv == "6S"
+    (tx, ty, tdown, tfaces), (ox, *_) = (
+        next(col for col in art.SOL_COLUMNS if col[3][-1] == "7H"),
+        next(col for col in art.SOL_COLUMNS if col[3][-1] == "7D"),
+    )
+    target = tfaces[-1]
+    assert art.is_red(target) != art.is_red(mv) and int(target[:-1]) - int(mv[:-1]) == 1
+    w, _ = art.SOL_SIZE
+    mx, my = art.SOL_MOVING_AT
+    # Horizontally it overlaps the 7H's column and not the 7D's.
+    assert mx < tx + w and mx + w > tx
+    assert mx >= ox + w
+    # Vertically it hangs just below the 7H, where it lands: within one card height of its place.
+    landing = ty + tdown * art.DOWN_STEP + (len(tfaces) - 1) * art.SOL_STEP + art.SOL_STEP
+    assert landing <= my <= landing + art.SOL_SIZE[1] // 2
+
+
+@pytest.mark.parametrize(
+    ("face", "message"),
+    [
+        ("AH", "rank must be 2-9"),
+        ("10S", "rank must be 2-9"),
+        ("KD", "rank must be 2-9"),
+        ("7X", "suit must be one of"),
+        ("7", "rank must be 2-9"),
+    ],
+)
+def test_card_rejects_faces_it_cannot_draw(face, message):
+    with pytest.raises(ValueError, match=message):
+        art.card(art.TileCanvas(), 40, 40, 50, 70, face)
 
 
 def test_solitaire_columns_sit_on_face_down_cards():
