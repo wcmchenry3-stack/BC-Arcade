@@ -67,10 +67,10 @@ describe("fruitSets structure", () => {
   it("uses the owner's smallest-to-largest order for fruits", () => {
     expect(FRUIT_SETS["fruits"]?.fruits.map((fruit) => fruit.name)).toEqual([
       "Cherry",
-      "Blackberry",
+      "Lychee",
       "Lime",
       "Lemon",
-      "Grape",
+      "Plum",
       "Orange",
       "Apple",
       "Pomegranate",

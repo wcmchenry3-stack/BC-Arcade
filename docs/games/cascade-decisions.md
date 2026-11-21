@@ -4,17 +4,17 @@
 
 ## Piece Progression
 
-Pieces evolve through **12 fixed tiers** (0-11, #3960; 11 since #3920, 12 before that). The lowest-tier pieces are droppable (tiers 0-5); higher tiers are only reachable via merging. Two pieces of tier n (n < 11) merge into tier n + 1; two tier-10 pieces make the **capstone** (tier 11, Pumpkin / Milky Way), which is never dropped (`MAX_TIER` = 11). **Making the capstone is the win** (#3920): see [The win](#the-win-3920). #3960 lengthened the ladder by one tier to make the game a little harder: the Moon is back at tier 1 of Cosmos, Fruits gain a Lime and swap Blueberry for Blackberry and Coconut for Pomegranate (see [retired pieces](#retired-pieces-3920); the Fruits art for the three new fruits is still a placeholder until #3964).
+Pieces evolve through **12 fixed tiers** (0-11, #3960; 11 since #3920, 12 before that). The lowest-tier pieces are droppable (tiers 0-5); higher tiers are only reachable via merging. Two pieces of tier n (n < 11) merge into tier n + 1; two tier-10 pieces make the **capstone** (tier 11, Pumpkin / Milky Way), which is never dropped (`MAX_TIER` = 11). **Making the capstone is the win** (#3920): see [The win](#the-win-3920). #3960 lengthened the ladder by one tier to make the game a little harder: the Moon is back at tier 1 of Cosmos, Fruits gain a Lime and swap Blueberry for Lychee, Grape for Plum and Coconut for Pomegranate (see [retired pieces](#retired-pieces-3920); the Fruits art for the four new fruits is still a placeholder until #3964).
 
 **One table.** `frontend/src/game/cascade/tiers.ts` is the only place a tier's radius, score, density, droppable flag and name keys are defined. The engine (`pieceDefs.ts`), the board renderer, the spawner and its lid ring, the next-piece preview, the theme selector, the dev panel and the i18n keys all read it. `theme/fruitSets.ts` keeps only per-set names, emoji, colours and sprite references. `tiers.test.ts` fails if any other module defines a per-tier radius, score or density.
 
 | Tier | Fruits        | Cosmos    | Radius | Drawn | Density | Score | Droppable |
 | ---- | ------------- | --------- | ------ | ----- | ------- | ----- | --------- |
 | 0    | Cherry        | Pluto     | 11.5   | 11.3  | 1.00    | 1     | yes       |
-| 1    | Blackberry    | Moon      | 14.0   | 13.8  | 0.91    | 2     | yes       |
+| 1    | Lychee        | Moon      | 14.0   | 13.8  | 0.91    | 2     | yes       |
 | 2    | Lime          | Mercury   | 17.0   | 16.7  | 0.82    | 4     | yes       |
 | 3    | Lemon         | Mars      | 20.6   | 20.3  | 0.75    | 8     | yes       |
-| 4    | Grape         | Venus     | 25.1   | 24.7  | 0.68    | 16    | yes       |
+| 4    | Plum          | Venus     | 25.1   | 24.7  | 0.68    | 16    | yes       |
 | 5    | Orange        | Earth     | 30.5   | 30.0  | 0.61    | 32    | yes       |
 | 6    | Apple (green) | Neptune   | 37.0   | 36.4  | 0.56    | 64    | no        |
 | 7    | Pomegranate   | Uranus    | 45.0   | 44.3  | 0.51    | 128   | no        |
@@ -23,7 +23,7 @@ Pieces evolve through **12 fixed tiers** (0-11, #3960; 11 since #3920, 12 before
 | 10   | Watermelon    | Sun       | 80.7   | 79.4  | 0.38    | 1024  | no        |
 | 11   | Pumpkin       | Milky Way | 98.0   | 96.5  | 0.34    | 2048  | no        |
 
-Placeholder art (#3962, until #3964 and #3963 land): the Fruits tier 1 (Blackberry) draws the Blueberry, tier 2 (Lime) is a green recolour of the Lemon and tier 7 (Pomegranate) draws the Coconut; the Cosmos Moon is the #3920 recipe moved back in. Their names are English copies in every locale until #3965, and the merge sound of tier 11 is the tier-10 file until #3966. Each is marked `TEMP(#3962)` in the code.
+Placeholder art (#3962, until #3964 and #3963 land): the Fruits tier 1 (Lychee) draws the Blueberry, tier 2 (Lime) is a green recolour of the Lemon, tier 4 (Plum) draws the Grape and tier 7 (Pomegranate) draws the Coconut; the Cosmos Moon is the #3920 recipe moved back in. Their names are English copies in every locale until #3965, and the merge sound of tier 11 is the tier-10 file until #3966. Each is marked `TEMP(#3962)` in the code.
 
 - **Radii** (#3920, owner decision after playing #3904's V1, which felt too small): one constant ratio for the whole ladder, `radius(n) = 11.5 * k^n` with k = (98 / 11.5)^(1/11) = 1.21505 since #3960 (1.23895 on the 11-tier ladder), **unrounded**, so every tier-to-tier ratio is exactly k and the capstone is exactly 98. The Cherry is about 6.4 % of the bin's 360 px inner width across (the share in the owner's reference game), about 22 pt on a 390 pt phone (the board is about 0.97 pt per world unit); the Pumpkin stays about half the bin. (#3904's V1 was `5 * (98 / 5)^(n / 11)` on 12 tiers; #3697's ladder was `round(18 * (56 / 18)^(n / 10))`, 18 to 56, with the capstone at 63 off the curve.) (#3960 kept both ends, 11.5 and 98, and put one more tier between them, so every tier is a little smaller than the same tier number was on the 11-tier ladder and the capstone's mass is still 24.9 times a cherry.) Why a single capstone, and why #3920 chose 11 tiers: on 12 tiers the bigger cherry could not be won (0 of 100 skilled games; two capstones take 4,096 cherries' worth of material, each now about 5 times the area), and two-capstone wins on 10 or 11 tiers stayed at 4-24 %; issue #3920 has the measured variants.
 - **Drawn radius** is 1.5 % inside the collider (`DRAW_INSET`, `tierDrawnRadius`, #3904): the last of the owner's overlap levers, see [Overlap](#overlap-3904). The board, the art bitmaps and the spawner draw at it; physics, the lid, spawning and merges use the radius.
@@ -31,7 +31,7 @@ Placeholder art (#3962, until #3964 and #3963 land): the Fruits tier 1 (Blackber
 - **Scores** double per tier: a merge into tier n scores `2^n`; the winning merge into the capstone scores its normal 2048, with no extra (#3920, #3960). The merge-score values are final (owner, #2823); the time bonus (#3700, see [Scoring (Persistence)](#scoring-persistence)) was set against them, so a win dominates a long losing run. There is no jackpot bonus.
 - **Density** is planck.js's fixture density, `(r0 / r)^0.5` (#3697): mass grows as r^1.5 instead of r^2. On this ladder the capstone is 24.9 times a cherry (87 on #3904's, 6.5 on #3697's). #3904 tried flattening it (exponents 0.75 to 1.37, down to today's 6.5 : 1) as the owner's first overlap lever; see [Overlap](#overlap-3904) for why it stayed. Only the ratios matter.
 - **Art.** All 24 pieces (12 fruits, 12 cosmos) are drawn in code, in `game/cascade/art/`; see [Art (#3698)](#art-3698). A tier whose art cannot be rasterised is drawn as a plain circle in its placeholder colour.
-- **Names** are `cascade:pieces.<set>.<key>` in every locale (24 keys; #3920 removed `fruits.peach` and `cosmos.moon`, #3960 added `fruits.blackberry`, `fruits.lime`, `fruits.pomegranate` and `cosmos.moon`; the `fruits.blueberry` and `fruits.coconut` keys are still in the locale files, unused by the ladder, until #3965 decides; English copy in locales still to be translated, tracked in `scripts/i18n-english-copies.json`).
+- **Names** are `cascade:pieces.<set>.<key>` in every locale (24 keys; #3920 removed `fruits.peach` and `cosmos.moon`, #3960 added `fruits.lychee`, `fruits.lime`, `fruits.plum`, `fruits.pomegranate` and `cosmos.moon`; the `fruits.blueberry`, `fruits.grape` and `fruits.coconut` keys are still in the locale files, unused by the ladder, until #3965 decides; English copy in locales still to be translated, tracked in `scripts/i18n-english-copies.json`).
 
 ## The win (#3920)
 

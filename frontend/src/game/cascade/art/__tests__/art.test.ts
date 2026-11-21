@@ -189,7 +189,7 @@ describe("overhangs", () => {
    */
   const OVERHANG: Record<string, Record<number, [number, number, number, number]>> = {
     // #3960: 12 tiers (the Moon is back at tier 1, a Lime sits at tier 2), so every tier above
-    // the Blackberry moved up one from #3920's table.
+    // the Lychee moved up one from #3920's table.
     fruits: {
       0: [0, 0.52, 0, 0], // cherry stem
       4: [0, 0.4, 0, 0], // grape stem

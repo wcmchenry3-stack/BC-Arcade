@@ -105,10 +105,10 @@ describe("the ladder", () => {
   it("names every tier of both sets from the ladder's keys, in the owner's order", () => {
     expect(TIERS.map((t) => t.nameKeys.fruits)).toEqual([
       "cherry",
-      "blackberry",
+      "lychee",
       "lime",
       "lemon",
-      "grape",
+      "plum",
       "orange",
       "apple",
       "pomegranate",

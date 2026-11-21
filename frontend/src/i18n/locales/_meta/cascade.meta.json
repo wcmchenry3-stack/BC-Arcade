@@ -161,7 +161,7 @@
     "doNotTranslate": [],
     "notes": "A fruit."
   },
-  "pieces.fruits.blackberry": {
+  "pieces.fruits.lychee": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
     "tone": "neutral",
@@ -198,6 +198,15 @@
     "notes": "A fruit."
   },
   "pieces.fruits.grape": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.plum": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
     "tone": "neutral",

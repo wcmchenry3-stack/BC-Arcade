@@ -13,7 +13,7 @@
  * capstone (tier 11, Pumpkin / Milky Way), and making it is the win (#3920): the engine emits
  * `win` and play ends. The capstone is never dropped. #3920 cut #3904's 12-tier ladder to 11
  * (removing the Peach and the Moon); #3960 lengthens it to 12 again (Moon back at tier 1, a new
- * Lime in Fruits, Blueberry -> Blackberry, Coconut -> Pomegranate).
+ * Lime in Fruits, Blueberry -> Lychee, Grape -> Plum, Coconut -> Pomegranate).
  *
  * ## Radii
  *
@@ -90,10 +90,10 @@ type Names = readonly [nameKeyFruits: string, nameKeyCosmos: string];
 
 const NAMES: readonly Names[] = [
   ["cherry", "pluto"],
-  ["blackberry", "moon"],
+  ["lychee", "moon"],
   ["lime", "mercury"],
   ["lemon", "mars"],
-  ["grape", "venus"],
+  ["plum", "venus"],
   ["orange", "earth"],
   ["apple", "neptune"],
   ["pomegranate", "uranus"],

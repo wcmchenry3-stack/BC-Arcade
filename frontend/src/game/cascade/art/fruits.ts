@@ -430,7 +430,7 @@ const dragonfruit: PieceArt = {
 export const FRUIT_ART: ArtSet = {
   pieces: [
     cherry,
-    blueberry, // TEMP(#3962): stands in for the Blackberry until #3964
+    blueberry, // TEMP(#3962): stands in for the Lychee until #3964
     lime, // TEMP(#3962): a recoloured lemon until #3964
     lemon,
     grape,

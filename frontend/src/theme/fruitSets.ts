@@ -22,7 +22,7 @@ export interface FruitSet {
 const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[] }> = {
   fruits: {
     id: "fruits",
-    // TEMP(#3962): Blackberry (blueberry art), Lime (recoloured lemon) and Pomegranate (coconut art)
+    // TEMP(#3962): Lychee (blueberry art), Plum (grape art), Lime (recoloured lemon) and Pomegranate (coconut art)
     // are stand-ins until #3964; the emoji and colours below are dev-panel / fallback only.
     label: "Fruits",
     fruits: [
@@ -34,7 +34,7 @@ const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[
       },
       {
         tier: 1,
-        name: "Blackberry",
+        name: "Lychee",
         emoji: "🫐",
         color: "#6d28d9",
       },
@@ -52,7 +52,7 @@ const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[
       },
       {
         tier: 4,
-        name: "Grape",
+        name: "Plum",
         emoji: "🍇",
         color: "#7c3aed",
       },

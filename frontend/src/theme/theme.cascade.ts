@@ -17,7 +17,7 @@
  */
 export const CASCADE_PIECE_COLORS = [
   "#e63946", // 0 Cherry / Pluto
-  "#4361ee", // 1 Blackberry (TEMP(#3962): blueberry colour until #3964) / Moon
+  "#4361ee", // 1 Lychee (TEMP(#3962): blueberry colour until #3964) / Moon
   "#9bd13f", // 2 Lime (TEMP(#3962): until #3964) / Mercury
   "#f9c80e", // 3 Lemon / Mars
   "#6a0572", // 4 Grape / Venus
@@ -288,7 +288,7 @@ export const CASCADE_MOTION: {
   tones: {
     fruits: [
       { b: F.cherry.b, l: F.cherry.l, d: F.cherry.d },
-      { b: F.blue.b, l: F.blue.l, d: F.blue.d }, // TEMP(#3962): Blackberry until #3964
+      { b: F.blue.b, l: F.blue.l, d: F.blue.d }, // TEMP(#3962): Lychee until #3964
       { b: F.lime.b, l: F.lime.l, d: F.lime.d }, // TEMP(#3962): Lime until #3964
       { b: F.lemon.b, l: F.lemon.l, d: F.lemon.d },
       { b: F.grape.b, l: F.grape.l, d: F.grape.d },

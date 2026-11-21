@@ -29,10 +29,10 @@ There are **12 fixed tiers** (0-11, #3960) and two piece sets, **Fruits** and **
 | Tier | Fruits        | Cosmos    | Radius | Drawn | Density | Score | Droppable |
 | ---- | ------------- | --------- | ------ | ----- | ------- | ----- | --------- |
 | 0    | Cherry        | Pluto     | 11.5   | 11.3  | 1.00    | 1     | yes       |
-| 1    | Blackberry    | Moon      | 14.0   | 13.8  | 0.91    | 2     | yes       |
+| 1    | Lychee        | Moon      | 14.0   | 13.8  | 0.91    | 2     | yes       |
 | 2    | Lime          | Mercury   | 17.0   | 16.7  | 0.82    | 4     | yes       |
 | 3    | Lemon         | Mars      | 20.6   | 20.3  | 0.75    | 8     | yes       |
-| 4    | Grape         | Venus     | 25.1   | 24.7  | 0.68    | 16    | yes       |
+| 4    | Plum          | Venus     | 25.1   | 24.7  | 0.68    | 16    | yes       |
 | 5    | Orange        | Earth     | 30.5   | 30.0  | 0.61    | 32    | yes       |
 | 6    | Apple (green) | Neptune   | 37.0   | 36.4  | 0.56    | 64    | no        |
 | 7    | Pomegranate   | Uranus    | 45.0   | 44.3  | 0.51    | 128   | no        |
@@ -41,7 +41,7 @@ There are **12 fixed tiers** (0-11, #3960) and two piece sets, **Fruits** and **
 | 10   | Watermelon    | Sun       | 80.7   | 79.4  | 0.38    | 1024  | no        |
 | 11   | Pumpkin       | Milky Way | 98.0   | 96.5  | 0.34    | 2048  | no        |
 
-(#3962: the Fruits Blackberry, Lime and Pomegranate draw placeholder art until #3964; see [Piece progression](cascade-decisions.md#piece-progression).)
+(#3962: the Fruits Lychee, Lime, Plum and Pomegranate draw placeholder art until #3964; see [Piece progression](cascade-decisions.md#piece-progression).)
 
 Radii are world units (the bin is 400 x 600; its inner width is 360). This table is a copy of `frontend/src/game/cascade/tiers.ts`, the only place a tier's radius, score, density, droppable flag and name keys are defined; `tiers.test.ts` fails if another module defines one. How the radii, densities and drawn radii were chosen: [Piece progression](cascade-decisions.md#piece-progression).
 

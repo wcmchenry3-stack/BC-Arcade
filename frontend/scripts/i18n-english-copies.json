@@ -226,7 +226,8 @@
   "pending": {
     "cascade": {
       "fr-CA": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -248,7 +249,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "es": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -270,7 +272,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "hi": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -292,7 +295,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "ar": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -314,7 +318,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "zh": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -336,7 +341,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "ja": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -358,7 +364,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "ko": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -380,7 +387,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "pt": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -402,7 +410,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "he": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -424,7 +433,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "de": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -446,7 +456,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "nl": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
@@ -468,7 +479,8 @@
         "pieces.cosmos.milkyWay"
       ],
       "ru": [
-        "pieces.fruits.blackberry",
+        "pieces.fruits.lychee",
+        "pieces.fruits.plum",
         "pieces.fruits.lime",
         "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
