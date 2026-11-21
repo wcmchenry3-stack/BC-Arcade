@@ -353,7 +353,7 @@ A build counts as a store build when `!context.dev && EXPO_PUBLIC_TEST_HOOKS !==
 **What remains in the store bundle (known limitation).**
 
 - Small shared modules that free surfaces import: hidden games' i18n namespaces (all locales), the `GameDetail` Hearts and Star Swarm sections, Hearts and Blackjack scorecards and models, the Blackjack and Hearts contexts and storage, and the Star Swarm engine (reached through `scoreLedger`, `GameDetail` and `LeaderboardScreen`). All pure JS, no large assets.
-- No sound that looks premium by name is required by a free game any more: `cascade-fruit-merge.ogg` stopped being Bottle Sort's with #3661, `hearts-moon-shot.mp3` stopped being Sudoku's with #3775 (it is not bundled at all, and the file was deleted in #3885), and Cascade's sounds (since #3702 its own 42 synthesized `cascade-fruits-*` / `cascade-cosmos-*` files, which replaced the three Kenney files) are used by Cascade only, so the store bundle leaves them all out with the hidden-premium exclusion (`blackjack-win.ogg` was deleted with #3581). `freecell-game-win.mp3` was bundled by no game either and was deleted in #3871. The guard deliberately does not flag SFX.
+- No sound that looks premium by name is required by a free game any more: `cascade-fruit-merge.ogg` stopped being Bottle Sort's with #3661, `hearts-moon-shot.mp3` stopped being Sudoku's with #3775 (it is not bundled at all, and the file was deleted in #3885), and Cascade's sounds (since #3702 its own 44 synthesized `cascade-fruits-*` / `cascade-cosmos-*` files, which replaced the three Kenney files) are used by Cascade only, so the store bundle leaves them all out with the hidden-premium exclusion (`blackjack-win.ogg` was deleted with #3581). `freecell-game-win.mp3` was bundled by no game either and was deleted in #3871. The guard deliberately does not flag SFX.
 - The Blackjack and Hearts providers stay mounted at startup (about 26 KB of source).
 - No premium-only native dependency exists (`planck`, Cascade's physics since #3697, is pure JS like `matter-js` before it), so native size is unchanged by #2830.
 
@@ -389,7 +389,7 @@ Whole-bundle context (Android, `npx expo export --platform android`): store Herm
 | Part                                                              |                                             Budget |
 | ----------------------------------------------------------------- | -------------------------------------------------: |
 | Piece art                                                         |        <= 20 KB, drawing code only, no image files |
-| Sounds                                                            |              <= 350 KB total (120 KB before #3702) |
+| Sounds                                                            |                <= 360 KiB total (120 KB pre-#3702) |
 | Cascade total (assets + Cascade JS, excluding the physics engine) | about 380 KB (200 KB before #3702; owner decision) |
 
 Before #3698: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 KB budget. After #3698 the art is code (17.4 KB minified, see [Cascade code-drawn art](#cascade-code-drawn-art-3698)) and the image bytes are zero; the sounds are what remains over budget until the sound story lands.

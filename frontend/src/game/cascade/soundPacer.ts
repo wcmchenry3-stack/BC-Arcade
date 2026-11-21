@@ -100,6 +100,19 @@ function createLaterQueue(schedule: SoundPacerDeps["schedule"]) {
   };
 }
 
+/**
+ * An extra voice that must never take a main sound down with it: its lazy player failing to build
+ * (an audio-session or native resource error) is swallowed, so the callback that plays it still
+ * goes on to play the sound it accompanies (#3966: the capstone's `merge-t11` and the win chord).
+ */
+function playExtra(deps: SoundPacerDeps, name: CascadeSoundName): void {
+  try {
+    deps.play(name, 1, 0);
+  } catch {
+    // Deliberately silent: the extra is optional, the chord is not.
+  }
+}
+
 export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
   const S = MOTION.sound;
   const queue = createLaterQueue(deps.schedule);
@@ -229,7 +242,7 @@ export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
       const from = calm ? CALM_WIN_OFFSET_S : 0;
       later(
         () => {
-          deps.play("merge-t11", 1, 0); // the winning merge's own sound, with the chord
+          playExtra(deps, "merge-t11"); // the winning merge's own sound, with the chord
           deps.play("win", 1, from);
         },
         0,
@@ -252,6 +265,7 @@ export function createSoundPacer(deps: SoundPacerDeps): SoundPacer {
       warmed = false;
       calmTimer = 0;
       deps.stop("win");
+      deps.stop("merge-t11"); // its 0.8 s tail must not sound over a new game
       deps.stop("game-over");
     },
   };

@@ -152,7 +152,7 @@ describe("merges and chains", () => {
     pacer.reset();
     advance(100);
     expect(played).toEqual([]);
-    expect(stopped.sort()).toEqual(["game-over", "win"]);
+    expect(stopped.sort()).toEqual(["game-over", "merge-t11", "win"]);
   });
 });
 
@@ -202,6 +202,26 @@ describe("the end sounds", () => {
     for (let t = 0; t <= 10; t++) pacer.merge(t, 1);
     advance(1000);
     expect(names()).not.toContain("merge-t11");
+  });
+
+  it("a merge-t11 player that fails never silences the win chord (#3966)", () => {
+    const played: CascadeSoundName[] = [];
+    const timers: (() => void)[] = [];
+    const pacer = createSoundPacer({
+      now: () => 0,
+      schedule: (run) => {
+        timers.push(run);
+      },
+      play: (name) => {
+        if (name === "merge-t11") throw new Error("the lazy player could not be built");
+        played.push(name);
+      },
+      prewarm: () => {},
+      stop: () => {},
+    });
+    pacer.win();
+    expect(() => timers.forEach((run) => run())).not.toThrow();
+    expect(played).toEqual(["win"]);
   });
 
   it("a landing of tier 5 is light and tier 6 heavy (heavyLandTier 6, #3966)", () => {
