@@ -337,12 +337,10 @@ def test_every_games_easy_goal_needs_no_win(game: str) -> None:
 
 
 # The luck-dependent goals, spelled out so a new one is a deliberate edit here.
-_LUCK_DEPENDENT = {
-    "solitaire:won",
-    "solitaire:won_moves_at_most:120",
-    "freecell:won",
-    "freecell:won_moves_at_most:100",
-}  # sudoku:solved is absent: a solve is skill, not luck
+# None in the live pools since #3993: Solitaire and FreeCell deal only provably
+# solvable deals, so their wins are skill (SOLVABLE_DEAL_GAMES), and a Sudoku solve
+# is skill too. Blackjack's chips_gained (pending premium) still is.
+_LUCK_DEPENDENT: set[str] = set()
 
 
 def test_luck_dependent_flag_is_exactly_the_listed_goals() -> None:
@@ -431,10 +429,11 @@ _EVALUATION_CASES = [
     ("twenty48", _HARD, {"final_score": 2500}, True),
     ("twenty48", _HARD, {"final_score": 2499}, False),
     # solitaire
-    ("solitaire", _EASY, {"won": False, "moves": 10}, True),
-    ("solitaire", _EASY, {"won": False, "moves": 9}, False),
-    ("solitaire", _MEDIUM, {"won": True, "moves": 300}, True),
-    ("solitaire", _MEDIUM, {"won": False, "moves": 300}, False),
+    # solitaire (#3993: the win is the easy goal; "make 10 moves" is gone)
+    ("solitaire", _EASY, {"won": True, "moves": 300}, True),
+    ("solitaire", _EASY, {"won": False, "moves": 300}, False),
+    ("solitaire", _MEDIUM, {"won": True, "moves": 150}, True),
+    ("solitaire", _MEDIUM, {"won": True, "moves": 151}, False),
     ("solitaire", _HARD, {"won": True, "moves": 120}, True),
     ("solitaire", _HARD, {"won": True, "moves": 121}, False),
     ("solitaire", _HARD, {"won": False, "moves": 20}, False),
@@ -446,13 +445,14 @@ _EVALUATION_CASES = [
     ("sort", _HARD, {"final_score": 15}, True),
     ("sort", _HARD, {"final_score": 14}, False),
     # freecell
-    ("freecell", _EASY, {"won": False, "moves": 5}, True),
-    ("freecell", _EASY, {"won": False, "moves": 4}, False),
-    ("freecell", _MEDIUM, {"won": True, "moves": 200}, True),
-    ("freecell", _MEDIUM, {"won": False, "moves": 200}, False),
+    # (#3993: the win is the easy goal; "make 5 moves" is gone)
+    ("freecell", _EASY, {"won": True, "moves": 200}, True),
+    ("freecell", _EASY, {"won": False, "moves": 200}, False),
+    ("freecell", _MEDIUM, {"won": True, "moves": 130}, True),
+    ("freecell", _MEDIUM, {"won": True, "moves": 131}, False),
     ("freecell", _HARD, {"won": True, "moves": 100}, True),
     ("freecell", _HARD, {"won": True, "moves": 101}, False),
-    # yacht — final_score only, abandoned or not
+    # yacht — final_score only (abandoned games are filtered by the service)
     ("yacht", _EASY, {"final_score": 100}, True),
     ("yacht", _EASY, {"final_score": 99}, False),
     ("yacht", _MEDIUM, {"final_score": 175}, True),
@@ -515,7 +515,7 @@ def test_a_bool_is_not_a_number() -> None:
 
 
 def test_evaluation_never_reads_outcome() -> None:
-    goal = FREE_GOAL_POOL["solitaire"][_MEDIUM]
+    goal = FREE_GOAL_POOL["solitaire"][_EASY]  # solitaire:won (the medium goal before #3993)
     assert not goal.evaluate({"outcome": "completed", "won": False})
     assert goal.evaluate({"outcome": "abandoned", "won": True})
 
@@ -1277,11 +1277,14 @@ def test_daily_word_goal_is_always_completed(slate: str, salt: int) -> None:
 
 
 def test_daily_word_no_longer_holds_the_win_slot() -> None:
-    # Over two years the win-dependent goal must come up for the other games.
+    # Daily Word never holds the win-dependent slot. Since #3993 no live free goal is
+    # luck-dependent (Solitaire and FreeCell deals are provably solvable), so over
+    # two years no day has one at all; a pending premium game's would be another game's.
     win_games = {
         g.game_type for day in _days(730) for g in pick_template(day, "free", 0).goals if g.is_win
     }
-    assert win_games and "daily_word" not in win_games
+    assert "daily_word" not in win_games
+    assert win_games == set()
 
 
 def test_a_day_frozen_with_an_old_daily_word_win_goal_still_replays() -> None:

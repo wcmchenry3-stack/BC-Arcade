@@ -98,14 +98,15 @@ def _facts(result: dict) -> dict:
 
 
 def test_validated_results_satisfy_the_freecell_goals() -> None:
+    # #3993: easy is the win itself ("make 5 moves" is gone), then wins within 130 / 100.
     easy, medium, hard = FREE_GOAL_POOL["freecell"]
     abandoned = _facts({"won": False, "moves": 5})
-    assert easy.evaluate(abandoned) and not medium.evaluate(abandoned)
+    assert not easy.evaluate(abandoned) and not medium.evaluate(abandoned)
     win = _facts({"won": True, "moves": 100})
-    assert medium.evaluate(win) and hard.evaluate(win)
+    assert easy.evaluate(win) and medium.evaluate(win) and hard.evaluate(win)
     slow_win = _facts({"won": True, "moves": 101})
-    assert medium.evaluate(slow_win) and not hard.evaluate(slow_win)
-    assert not easy.evaluate(_facts({"won": False, "moves": 4}))
+    assert easy.evaluate(slow_win) and medium.evaluate(slow_win) and not hard.evaluate(slow_win)
+    assert not medium.evaluate(_facts({"won": True, "moves": 131}))
 
 
 # ---------------------------------------------------------------------------

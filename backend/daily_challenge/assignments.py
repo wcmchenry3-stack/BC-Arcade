@@ -8,8 +8,8 @@ the same idea per install: the first ``/status`` or ``/upcoming`` that needs a
 The streak replays a past day from the install's row when one exists
 (``read_assignments``, one windowed query), else from the shared frozen template.
 
-Until #3993/#3994 replace the pick, it returns the shared frozen template and the
-slate ``resolve_slate`` chooses, so what a player sees does not change.
+The pick (#3993/#3994) is personal for an install with history and the shared
+frozen template for a new one; either way the row stores what it returned.
 
 Bounds (CLAUDE.md priority 1, docs/DATA-INVENTORY.md):
 
@@ -277,8 +277,9 @@ async def get_or_pin(
     Every day must be pinnable relative to ``today`` (the caller's local date);
     anything else raises ``ValueError``, so no route can pin past today+2.
     With the kill switch off, returns ``shared`` for every day and writes nothing.
-    ``shared`` defaults to ``pick`` day by day (correct while the pick is the
-    shared template, as in #3992).
+    ``shared`` defaults to ``pick`` day by day, which is only right for a pick
+    that returns the shared template; the routes always pass the shared path
+    (the pick is personal since #3993/#3994).
     """
     days = list(dict.fromkeys(days))
     if shared is None:
@@ -313,7 +314,8 @@ async def get_or_pin(
         # is served the shared templates and nothing is stored.
         result.update(await shared(missing))
         return result
-    fresh = {d: await pick(d) for d in missing}
+    # Date order: a pick can then see the day before it (the variety guard).
+    fresh = {d: await pick(d) for d in sorted(missing)}
     # Same pattern as schedule.get_or_create_templates (#3013): no IntegrityError,
     # no rollback, no retry. Rows go in date order so two overlapping batches take
     # their row locks in the same order on Postgres.

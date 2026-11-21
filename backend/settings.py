@@ -42,7 +42,9 @@ not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``STALE_GAME_AFTER_HOURS`` (``games.sweep``), ``MAX_RESULT_BYTES`` (``games.sessions``),
 ``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``DAILY_CHALLENGE_PERSONALIZED`` and
 ``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` and ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``
-(``daily_challenge.assignments``, #3992),
+(``daily_challenge.assignments``, #3992), ``DAILY_CHALLENGE_STRETCH_PCT``,
+``DAILY_CHALLENGE_AFFINITY_DAYS`` and ``DAILY_CHALLENGE_HISTORY_GAMES``
+(``daily_challenge.personal``, #3993/#3994),
 ``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
 ``DB_PING_TIMEOUT_SECONDS`` (``routes.health``), plus the payload caps and retention of #3298:
@@ -231,6 +233,19 @@ class Settings(BaseSettings):
     # has a games row created (server time) within this many hours.
     daily_challenge_pin_recent_play_hours: int = Field(
         default=48, alias="DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS", ge=1, le=720
+    )
+    # Personal picks (#3993/#3994, daily_challenge.personal / .history). The stretch
+    # above the player's recent median (an "at most" goal's limit drops by it).
+    daily_challenge_stretch_pct: int = Field(
+        default=12, alias="DAILY_CHALLENGE_STRETCH_PCT", ge=0, le=50
+    )
+    # How many local days of play count toward a game's affinity (core-slot weight).
+    daily_challenge_affinity_days: int = Field(
+        default=14, alias="DAILY_CHALLENGE_AFFINITY_DAYS", ge=1, le=60
+    )
+    # How many of an install's latest finished games per game a personal target reads.
+    daily_challenge_history_games: int = Field(
+        default=10, alias="DAILY_CHALLENGE_HISTORY_GAMES", ge=3, le=50
     )
     # The App Store notification-history replay window (purchases.apple_notifications).
     # The one window is sent to every environment, and Sandbox only accepts a startDate
