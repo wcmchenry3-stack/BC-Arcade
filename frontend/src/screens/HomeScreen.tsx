@@ -219,6 +219,16 @@ export default function HomeScreen() {
   }
 
   const allGames: GameCard[] = [
+    // Fixed order (owner, #4009): Daily Word, the game played every day, comes first; every other
+    // game keeps its relative slot, so tiles never move under a player's muscle memory.
+    {
+      key: "daily_word",
+      slug: "daily_word",
+      emoji: "📝",
+      title: t("daily_word:game.title"),
+      description: t("daily_word:game.description"),
+      action: () => navigation.navigate("DailyWord"),
+    },
     {
       key: "yacht",
       slug: "yacht",
@@ -311,14 +321,6 @@ export default function HomeScreen() {
       title: t("sort:game.title"),
       description: t("sort:game.description"),
       action: () => navigation.navigate("Sort"),
-    },
-    {
-      key: "daily_word",
-      slug: "daily_word",
-      emoji: "📝",
-      title: t("daily_word:game.title"),
-      description: t("daily_word:game.description"),
-      action: () => navigation.navigate("DailyWord"),
     },
   ];
   // Store builds hide the premium games entirely (#2390) — see gameVisibility.ts.

@@ -1287,6 +1287,12 @@ tile keeps the column width. The tile icon slot is `TILE_ICON_ZONE` (68 pt) from
 module; art drawn in it (emoji 44 pt, Star Swarm image and Cascade icon 56 pt) must fit.
 Locked and unlocked Play buttons both carry a 1 pt border so tiles are the same height.
 
+**Lobby order (#4009).** Tiles follow `allGames` in `HomeScreen.tsx`, a fixed order with Daily
+Word first (the daily game) and every other game in its existing relative slot. Store builds
+show Daily Word, Yacht, 2048, Solitaire, FreeCell, Sudoku, Sort Puzzle. The order never changes
+with play history or saves (owner decision: muscle memory); hidden games keep their slots when
+unhidden (#2875).
+
 ### 10.8 How the free/premium split is decided
 
 The split is **criteria-driven, not quota-driven.** The original 6/6 was an
