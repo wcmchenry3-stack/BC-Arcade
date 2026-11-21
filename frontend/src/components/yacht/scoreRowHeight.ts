@@ -15,7 +15,8 @@ export const SCORE_ROW_COUNT = 13;
 /**
  * Everything in the card that is not a score row (pt): card border (2) and padding (8), the header
  * (22), the upper subtotal band with its margins (40), the total with its margin (42) and the 12
- * hairlines between rows (counted as 1 pt each, the safe side).
+ * hairlines between rows (a hairline is under 1 pt; counting each as 1 pt is deliberately
+ * conservative, so the rows come out a point short rather than the table scrolling).
  */
 export const FIXED_CHROME_HEIGHT = 126;
 

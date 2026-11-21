@@ -50,6 +50,7 @@ async function renderTable(overrides: Partial<Props> = {}) {
   return await render(table(overrides));
 }
 
+const HIDDEN = { includeHiddenElements: true };
 const flat = (node: { props: { style?: unknown } }) =>
   StyleSheet.flatten(node.props.style as never);
 
@@ -423,14 +424,14 @@ describe("ScoreTable — scored rows are obvious without colour (#3968)", () => 
   it("a scored row has a check, a fill, a dimmer label and a bold score; an open row has none", async () => {
     const { getByTestId, queryByTestId } = await renderTable(scoredProps);
     const twos = getByTestId("score-row-twos");
-    expect(getByTestId("score-row-check-twos")).toBeTruthy();
+    expect(getByTestId("score-row-check-twos", HIDDEN)).toBeTruthy();
     expect(flat(twos).backgroundColor).toBe(dark.surfaceHigh);
     expect(flat(within(twos).getByText("Twos")).color).toBe(dark.textMuted);
     expect(flat(within(twos).getByText("6")).fontWeight).toBe("700");
     expect(flat(within(twos).getByText("6")).color).toBe(dark.text);
 
     const ones = getByTestId("score-row-ones");
-    expect(queryByTestId("score-row-check-ones")).toBeNull();
+    expect(queryByTestId("score-row-check-ones", HIDDEN)).toBeNull();
     expect(flat(ones).backgroundColor).toBe("transparent");
     expect(flat(within(ones).getByText("Ones")).color).toBe(dark.text);
     expect(flat(within(ones).getByText("3")).color).toBe(dark.potential);
@@ -438,21 +439,24 @@ describe("ScoreTable — scored rows are obvious without colour (#3968)", () => 
   });
 
   it("uses the lighter surface token in the light theme", async () => {
-    await AsyncStorage.setItem("gaming_app_theme_mode", "light");
-    const { getByTestId } = await renderTable(scoredProps);
-    await act(async () => {});
-    expect(flat(getByTestId("score-row-twos")).backgroundColor).toBe(light.surfaceAlt);
-    await AsyncStorage.clear();
+    try {
+      await AsyncStorage.setItem("gaming_app_theme_mode", "light");
+      const { getByTestId } = await renderTable(scoredProps);
+      await act(async () => {});
+      expect(flat(getByTestId("score-row-twos")).backgroundColor).toBe(light.surfaceAlt);
+    } finally {
+      await AsyncStorage.clear();
+    }
   });
 
   it("a scored 0 keeps the check and a bold 0, unlike an open row's dash or dimmed 0", async () => {
     const { getByTestId, queryByTestId } = await renderTable(scoredProps);
     const fours = getByTestId("score-row-fours");
-    expect(getByTestId("score-row-check-fours")).toBeTruthy();
+    expect(getByTestId("score-row-check-fours", HIDDEN)).toBeTruthy();
     expect(flat(within(fours).getByText("0")).fontWeight).toBe("700");
     // An open row with a 0 potential: no check, regular weight, dimmed.
     const threes = getByTestId("score-row-threes");
-    expect(queryByTestId("score-row-check-threes")).toBeNull();
+    expect(queryByTestId("score-row-check-threes", HIDDEN)).toBeNull();
     expect(flat(within(threes).getByText("0")).fontWeight).toBe("400");
     expect(flat(within(threes).getByText("0")).color).toBe(dark.textMuted);
     // An open row with nothing to score: a dash.
@@ -468,33 +472,82 @@ describe("ScoreTable — scored rows are obvious without colour (#3968)", () => 
     );
   });
 
-  it("states scored as checked and selected for a screen reader; an open row is neither", async () => {
+  it("keeps only `disabled` in the accessibility state: the label says scored or open", async () => {
     const { getByTestId } = await renderTable(scoredProps);
-    expect(getByTestId("score-row-twos").props.accessibilityState).toEqual({
-      disabled: true,
-      checked: true,
-      selected: true,
-    });
-    expect(getByTestId("score-row-ones").props.accessibilityState).toEqual({
-      disabled: false,
-      checked: false,
-      selected: false,
-    });
+    expect(getByTestId("score-row-twos").props.accessibilityState).toEqual({ disabled: true });
+    expect(getByTestId("score-row-ones").props.accessibilityState).toEqual({ disabled: false });
   });
 
-  it("vs: the computer's last-scored tint shows over a row you scored, with the fill under it", async () => {
-    const { getByTestId } = await renderTable({
+  it("hides the check mark from the accessibility tree", async () => {
+    const { getByTestId } = await renderTable(scoredProps);
+    const check = getByTestId("score-row-check-twos", HIDDEN);
+    expect(check.props.accessibilityElementsHidden).toBe(true);
+    expect(check.props.importantForAccessibility).toBe("no-hide-descendants");
+  });
+
+  it("vs: the computer's last row keeps its bar and the scored fill, with no tint over the fill", async () => {
+    const { getByTestId, queryByTestId } = await renderTable({
       ...scoredProps,
       cpu: { ...CPU, scores: { ...emptyScores, twos: 8 } },
       cpuLastScored: "twos",
     });
     const row = getByTestId("score-row-twos");
     expect(flat(row).backgroundColor).toBe(dark.surfaceHigh);
-    expect(flat(within(row).getByTestId("yacht-cpu-row-tint")).backgroundColor).toBe(
-      dark.secondary + "26"
-    );
+    expect(queryByTestId("yacht-cpu-row-tint")).toBeNull();
     expect(within(row).getByTestId("yacht-cpu-row-bar")).toBeTruthy();
-    expect(within(row).getByTestId("score-row-check-twos")).toBeTruthy();
+    expect(within(row).getByTestId("score-row-check-twos", HIDDEN)).toBeTruthy();
+  });
+
+  describe("WCAG AA contrast on a scored row, including the one the computer just took", () => {
+    const lin = (c: number) => {
+      const v = c / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    const lum = (hex: string) => {
+      const n = parseInt(hex.slice(1, 7), 16);
+      return 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+    };
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number];
+      return (hi + 0.05) / (lo + 0.05);
+    };
+
+    it.each([
+      ["dark", dark, dark.surfaceHigh],
+      ["light", light, light.surfaceAlt],
+    ] as const)(
+      "%s: label, score and the computer's value reach 4.5:1 on the fill",
+      (_n, c, fill) => {
+        expect(ratio(c.textMuted, fill)).toBeGreaterThanOrEqual(4.5);
+        expect(ratio(c.text, fill)).toBeGreaterThanOrEqual(4.5);
+        expect(ratio(c.outcomeDraw, fill)).toBeGreaterThanOrEqual(4.5);
+      }
+    );
+
+    it("the scored row in the table is drawn on exactly that fill, never with a tint over it", async () => {
+      const { getByTestId } = await renderTable({
+        ...scoredProps,
+        cpu: { ...CPU, scores: { ...emptyScores, twos: 8 } },
+        cpuLastScored: "twos",
+      });
+      const row = getByTestId("score-row-twos");
+      expect(flat(row).backgroundColor).toBe(dark.surfaceHigh);
+      expect(flat(within(row).getByText("Twos")).color).toBe(dark.textMuted);
+      expect(flat(within(row).getByText("8")).color).toBe(dark.outcomeDraw);
+    });
+  });
+
+  it("row labels stay on one line and shrink to 85% before they would truncate", async () => {
+    const { getByTestId } = await renderTable(scoredProps);
+    for (const [key, text] of [
+      ["twos", "Twos"],
+      ["ones", "Ones"],
+    ] as const) {
+      const label = within(getByTestId(`score-row-${key}`)).getByText(text);
+      expect(label.props.numberOfLines).toBe(1);
+      expect(label.props.adjustsFontSizeToFit).toBe(true);
+      expect(label.props.minimumFontScale).toBe(0.85);
+    }
   });
 
   it("the Hint's tint replaces the fill on an open row (an open row is never filled)", async () => {
@@ -533,6 +586,8 @@ describe("ScoreTable — row height is measured and font scaling is capped (#396
     const line = getByTestId("yacht-upper-bonus-line");
     expect(line.props.maxFontSizeMultiplier).toBe(1.2);
     expect(line.props.numberOfLines).toBe(1);
+    expect(line.props.adjustsFontSizeToFit).toBe(true);
+    expect(line.props.minimumFontScale).toBe(0.85);
     expect(getByTestId("yacht-total-you").props.maxFontSizeMultiplier).toBe(1.2);
     expect(getByText("Total").props.maxFontSizeMultiplier).toBe(1.2);
   });

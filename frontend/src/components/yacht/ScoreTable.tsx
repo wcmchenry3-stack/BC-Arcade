@@ -9,7 +9,7 @@
  * dimmer label and a bold score (a scored 0 too, so it never reads as an open "—"); an open row has
  * no fill, with the points on the table in the potential (teal) colour, 0s dimmed, and the best row
  * boxed. The Hint's row is tinted green with a bar; the row the computer just scored is tinted
- * purple with a bar (over the fill when you have scored it too). The check, not the colour, is the
+ * purple with a bar (the bar alone when you have scored it too: a tint over the fill fails AA). The check, not the colour, is the
  * cue. The upper subtotal is a band of its own (not a score row, not tappable). Text ignores
  * system font scaling above 1.2x so the rows keep their height.
  *
@@ -74,7 +74,7 @@ function Pop({
 }
 
 /** Size (pt) of the scored row's check mark. */
-const CHECK_SIZE = 14;
+const CHECK_SIZE = 12;
 /** Width (pt) of a score column. */
 const COL_W = 56;
 /** How far above a row to leave when it is scrolled into view. */
@@ -134,6 +134,9 @@ export default function ScoreTable({
   // A scored row's fill (#3968): the band's quiet surface. Only ~1.15 to 1.2:1 against the card, so
   // it is never the only cue: the check mark, the dimmer label and the bold score carry the meaning.
   const scoredBg = bandBg;
+  // On a row you scored that the computer just took, only the purple bar marks it: a tint over the
+  // fill takes the muted label and the computer's purple value below 4.5:1 (4.0 / 3.9 light, 4.6 / 4.5
+  // dark), the fill alone keeps them above it.
 
   // Row height from the height the table is given (#3968); 29 pt until it is measured.
   const [availH, setAvailH] = useState<number | null>(null);
@@ -223,7 +226,7 @@ export default function ScoreTable({
                 })
               : t("score.label", { category: label, state: stateText })
           }
-          accessibilityState={{ disabled: !hot || inputLocked, checked: filled, selected: filled }}
+          accessibilityState={{ disabled: !hot || inputLocked }}
           style={[
             styles.row,
             { minHeight: rowH },
@@ -234,14 +237,6 @@ export default function ScoreTable({
             { backgroundColor: filled ? scoredBg : tint },
           ]}
         >
-          {filled && isCpuRow && (
-            // The computer's tint sits over the scored row's fill, so both read (#3968).
-            <View
-              pointerEvents="none"
-              testID="yacht-cpu-row-tint"
-              style={[styles.tintOverlay, { backgroundColor: tint }]}
-            />
-          )}
           {barColor !== null && (
             <View
               testID={isCpuRow ? "yacht-cpu-row-bar" : "yacht-hint-row-bar"}
@@ -255,6 +250,9 @@ export default function ScoreTable({
               size={CHECK_SIZE}
               color={colors.text}
               style={styles.check}
+              // The row's label says "scored"; the mark is decoration for a screen reader.
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
             />
           )}
           <Text
@@ -265,7 +263,7 @@ export default function ScoreTable({
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.75}
+            minimumFontScale={0.85}
             maxFontSizeMultiplier={MAX_FONT_SCALE}
           >
             {label}
@@ -353,7 +351,7 @@ export default function ScoreTable({
             style={[styles.bandLine, { color: colors.textMuted }]}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.8}
+            minimumFontScale={0.85}
             maxFontSizeMultiplier={MAX_FONT_SCALE}
           >
             {line}
@@ -584,8 +582,7 @@ const styles = StyleSheet.create({
   },
   label: { flex: 1, fontSize: 13, lineHeight: 15, fontWeight: "500", paddingLeft: 4 },
   labelAfterCheck: { paddingLeft: 0 },
-  check: { marginLeft: 4 },
-  tintOverlay: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, borderRadius: 4 },
+  check: { marginLeft: 3 },
   cell: { width: COL_W, alignItems: "center", justifyContent: "center" },
   valueBox: {
     minWidth: COL_W - 8,
