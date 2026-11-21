@@ -40,7 +40,9 @@ The operational tunables (#3110, #3298) are read lazily through the owning modul
 own ``_settings``, like the ``ENTITLEMENT_*`` fields, so ``create_app(settings)`` does
 not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``STALE_GAME_AFTER_HOURS`` (``games.sweep``), ``MAX_RESULT_BYTES`` (``games.sessions``),
-``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``APPLE_REPLAY_WINDOW_HOURS``
+``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``DAILY_CHALLENGE_PERSONALIZED`` and
+``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` (``daily_challenge.assignments``, #3992),
+``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
 ``DB_PING_TIMEOUT_SECONDS`` (``routes.health``), plus the payload caps and retention of #3298:
 ``MAX_EVENT_DATA_BYTES``, ``MAX_EVENTS_PER_GAME``, ``MAX_EVENT_BYTES_PER_GAME``,
@@ -213,6 +215,15 @@ class Settings(BaseSettings):
     bug_log_retention_days: int = Field(default=90, alias="BUG_LOG_RETENTION_DAYS", ge=1, le=3650)
     # How far back the daily-challenge streak looks, and so its cap (daily_challenge.streak).
     streak_lookback_days: int = Field(default=60, alias="STREAK_LOOKBACK_DAYS", ge=1, le=365)
+    # Per-install pinned daily-challenge goals (#3992, daily_challenge.assignments).
+    # Kill switch: false serves every install the shared frozen template and reads or
+    # writes no daily_challenge_assignments rows.
+    daily_challenge_personalized: bool = Field(default=True, alias="DAILY_CHALLENGE_PERSONALIZED")
+    # How long a pinned assignment is kept (daily_challenge.retention). Unset means
+    # STREAK_LOOKBACK_DAYS, so the streak can read every pinned day it looks back over.
+    daily_challenge_assignment_retention_days: int | None = Field(
+        default=None, alias="DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", ge=1, le=365
+    )
     # The App Store notification-history replay window (purchases.apple_notifications).
     # The one window is sent to every environment, and Sandbox only accepts a startDate
     # within 30 days (Production allows 180), so the cap is 720 h = 30 days.

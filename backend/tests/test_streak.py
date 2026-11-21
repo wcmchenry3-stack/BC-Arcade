@@ -315,9 +315,10 @@ async def _statements_for_a_30_day_streak() -> list[str]:
 async def test_the_lookback_is_one_query_not_one_per_day_while_the_slates_match() -> None:
     # Free and premium templates are identical (as until #2458), so only one slate's
     # frozen templates are ever fetched: the window of games, one SELECT for the
-    # window's daily_challenge_days rows, and one INSERT freezing the ones that were
-    # missing (every day, on this fresh DB) — fixed regardless of lookback_days().
-    assert len(await _statements_for_a_30_day_streak()) == 3
+    # window's daily_challenge_days rows, one INSERT freezing the ones that were
+    # missing (every day, on this fresh DB), and one SELECT for the install's pinned
+    # assignments in the window (#3992) — fixed regardless of lookback_days().
+    assert len(await _statements_for_a_30_day_streak()) == 4
 
 
 @needs_db
@@ -326,10 +327,10 @@ async def test_entitlements_are_one_more_query_and_only_when_the_slates_differ(
 ) -> None:
     # Differing slates fetch both slates' frozen templates (SELECT + INSERT each, on
     # this fresh DB) and add the entitlements query: games(1) + free(2) + premium(2)
-    # + entitlements(1) = 6 — still fixed regardless of lookback_days(), just a higher
-    # constant than the matching-slates case above.
+    # + entitlements(1) + pinned assignments(1, #3992) = 7 — still fixed regardless
+    # of lookback_days(), just a higher constant than the matching-slates case above.
     statements = await _statements_for_a_30_day_streak()
-    assert len(statements) == 6, statements
+    assert len(statements) == 7, statements
 
 
 # ---------------------------------------------------------------------------

@@ -115,11 +115,13 @@ def test_timing_budget_is_the_target_locally_and_relaxed_on_ci(monkeypatch) -> N
 # the numbers are the steady state (the catalog cache costs two SELECTs once a
 # minute per process; the first streak read of a day freezes its templates).
 # Measured before -> after #2966 (SQLite): POST /games free 4 -> 1, premium
-# 5 -> 2, each +1 with a client id; /stats/me with win/loss rows 7 -> 5.
+# 5 -> 2, each +1 with a client id; /stats/me with win/loss rows 7 -> 5, then
+# 5 -> 6 with #3992 (the streak's one windowed read of the install's pinned
+# daily-challenge assignments).
 # ---------------------------------------------------------------------------
 
 POST_GAMES_BUDGET = 3
-STATS_ME_BUDGET = 5
+STATS_ME_BUDGET = 6
 
 
 @contextlib.contextmanager
