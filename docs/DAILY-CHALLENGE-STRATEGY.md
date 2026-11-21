@@ -174,8 +174,10 @@ on the heuristics above with **server-controlled dials** and tune once real play
 ### What the dev branch shows (2026-11-21)
 
 The Supabase `dev` branch has 763 finished game rows from 2026-10-10 to 2026-11-21 across 126 sessions. But 123 of
-those sessions played only one game type (tests and reinstalls), and one session (a heavy tester) accounts for
-584 rows over 35 active days. So this is a **sanity check of the strategy, not a tuning set**. What it shows:
+those sessions played only one game type (tests and reinstalls), and one session accounts for 584 rows over 35
+active days: **the owner's own play**. The app is not live, so this is one person, who knows the games and
+tests them on purpose. Treat it as a smoke test of the strategy's assumptions only. **Nothing here sets a
+target, a weight or a dial.** Those come from real players after launch. What it suggests:
 
 - **Play is concentrated with a long tail.** The heavy player touched all 12 games but mostly two: Star Swarm 234
   and Yacht 150, then Cascade/Solitaire 36 each and the rest between 4 and 30. "Played in the last 14 days" would
