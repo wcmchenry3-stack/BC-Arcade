@@ -9,7 +9,10 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../theme/ThemeContext";
+import MaterialIcons from "../icons/MaterialIcons";
 import { typography } from "../../theme/typography";
 
 export interface ModalCardProps {
@@ -28,6 +31,13 @@ export interface ModalCardProps {
   accentTop?: boolean;
   animationType?: "fade" | "slide";
   testID?: string;
+  /**
+   * Pre-game pickers only (#3969). The modal covers the GameShell header, so
+   * its back arrow is unreachable. When set, a labelled "Lobby" chip floats on
+   * the scrim at the header back-arrow position, outside the card, and calls
+   * this. It must leave the game without starting or abandoning anything.
+   */
+  onHome?: () => void;
   children?: React.ReactNode;
 }
 
@@ -46,9 +56,12 @@ export function ModalCard({
   accentTop = false,
   animationType = "fade",
   testID,
+  onHome,
   children,
 }: ModalCardProps) {
   const { colors } = useTheme();
+  const { t } = useTranslation("common");
+  const insets = useSafeAreaInsets();
 
   return (
     <Modal
@@ -59,6 +72,29 @@ export function ModalCard({
       accessibilityViewIsModal
     >
       <View style={[styles.backdrop, { backgroundColor: colors.overlay }]}>
+        {onHome && (
+          <Pressable
+            onPress={onHome}
+            accessibilityRole="button"
+            accessibilityLabel={t("locked.back_label")}
+            testID="modal-home-chip"
+            style={({ pressed }) => [
+              styles.homeChip,
+              {
+                top: insets.top + HOME_CHIP_TOP_GAP,
+                start: Math.max(insets.left, HOME_CHIP_GUTTER),
+                backgroundColor: colors.surfaceHigh,
+                borderColor: colors.textMuted,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <MaterialIcons name="arrow-back" size={18} color={colors.text} />
+            <Text style={[styles.homeChipText, { color: colors.text }]} maxFontSizeMultiplier={1.3}>
+              {t("nav.lobby")}
+            </Text>
+          </Pressable>
+        )}
         <View
           testID={testID}
           style={[
@@ -183,7 +219,26 @@ export function ModalSecondaryButton({
   );
 }
 
+const HOME_CHIP_GUTTER = 16;
+const HOME_CHIP_TOP_GAP = 8;
+
 const styles = StyleSheet.create({
+  homeChip: {
+    position: "absolute",
+    minHeight: 44,
+    minWidth: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  homeChipText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
   backdrop: {
     flex: 1,
     alignItems: "center",

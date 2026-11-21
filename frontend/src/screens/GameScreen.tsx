@@ -936,6 +936,7 @@ export default function GameScreen({ navigation, route }: Props) {
           title={t("vsMode.title")}
           accentTop
           testID="yacht-mode-card"
+          onHome={() => navigation.popToTop()}
         >
           <View style={styles.modeContent}>
             <ModeButton

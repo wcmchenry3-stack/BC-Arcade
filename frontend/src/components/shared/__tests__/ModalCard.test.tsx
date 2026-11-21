@@ -1,6 +1,6 @@
 import React from "react";
 import { Text } from "react-native";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, within } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { ModalCard, ModalPrimaryButton, ModalSecondaryButton } from "../ModalCard";
@@ -38,6 +38,26 @@ describe("ModalCard", () => {
   it("adds the accent top rule only when accentTop is set", async () => {
     await renderInTheme(<ModalCard visible accentTop testID="card" />);
     expect(StyleSheet.flatten(screen.getByTestId("card").props.style).borderTopWidth).toBe(3);
+  });
+});
+
+describe("ModalCard Lobby chip (#3969)", () => {
+  it("renders only when onHome is given", async () => {
+    await renderInTheme(<ModalCard visible title="Pick" />);
+    expect(screen.queryByTestId("modal-home-chip")).toBeNull();
+  });
+
+  it("is a labelled 44pt button outside the card that calls onHome", async () => {
+    const onHome = jest.fn();
+    await renderInTheme(<ModalCard visible title="Pick" testID="card" onHome={onHome} />);
+    const chip = screen.getByRole("button", { name: "Go back to lobby" });
+    expect(screen.getByText("Lobby")).toBeTruthy();
+    const style = StyleSheet.flatten(chip.props.style);
+    expect(style.minHeight).toBeGreaterThanOrEqual(44);
+    expect(style.position).toBe("absolute");
+    expect(within(screen.getByTestId("card")).queryByTestId("modal-home-chip")).toBeNull();
+    await fireEvent.press(chip);
+    expect(onHome).toHaveBeenCalledTimes(1);
   });
 });
 

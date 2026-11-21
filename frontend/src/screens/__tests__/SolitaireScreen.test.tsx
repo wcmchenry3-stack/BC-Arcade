@@ -62,9 +62,10 @@ const mockAddListener = jest.fn((event: string, handler: () => void) => {
 });
 
 const mockNavigate = jest.fn();
+const mockPopToTop = jest.fn();
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
-    popToTop: jest.fn(),
+    popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
     addListener: mockAddListener,
@@ -129,6 +130,20 @@ async function mount() {
   });
   return api;
 }
+
+describe("SolitaireScreen — draw-mode modal Lobby exit (#3969)", () => {
+  it("the Lobby chip leaves to the lobby without dealing a game", async () => {
+    mockPopToTop.mockClear();
+    mockStartGame.mockClear();
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByRole("button", { name: "Go back to lobby" }));
+    });
+    expect(mockPopToTop).toHaveBeenCalledTimes(1);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(api.getByLabelText("Draw 1")).toBeTruthy();
+  });
+});
 
 async function chooseDraw1(api: ReturnType<typeof renderScreen>) {
   await act(async () => {
