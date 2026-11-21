@@ -4,8 +4,10 @@
  *
  * Cost and timing: the reads start after first paint (`setTimeout(0)`, like
  * `prefetchLobbyGameScreens`), run together (one `Promise.all`, a few keys), and run again only
- * when Home gains focus or the app returns to the foreground. Nothing waits on them: the grid renders at once and a tile gains its
- * status when its read lands. No network, no writes, no Sentry. A reader that fails or finds
+ * when Home gains focus or the app returns to the foreground. Nothing waits on them: the grid
+ * renders at once and a tile gains its status when its read lands. There is no timer, so with
+ * Home open and the app in the foreground across midnight, "Done today" stays until the next
+ * focus or foreground. No network, no writes, no Sentry. A reader that fails or finds
  * nothing leaves its tile without a status, and a slug without a reader (a hidden game, or one
  * with no status) is never read.
  */

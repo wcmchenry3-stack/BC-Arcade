@@ -1305,7 +1305,7 @@ accent text, and the button reads "Resume", the label adds ", in progress, tap t
 `m:ss` time for Solitaire, "Best moves" for FreeCell). A locked tile shows none. Each game
 contributes a `getLobbyStatus()` in `game/<name>/lobbyStatus.ts`, listed in
 `components/home/lobbyStatusReaders.ts`; `useLobbyTileStatus` runs them all in one `Promise.all`
-after first paint (`setTimeout(0)`), on mount and on Home's `focus` only, and the grid never waits
+after first paint (`setTimeout(0)`), on mount, on Home's `focus` and on app foreground, and the grid never waits
 on them. The resume rule lives in the game's `lobbyStatus.ts` (`isResumable`); Yacht's is also what
 `startYacht` uses, so the tile and the tap agree (#2203). The others' screens always reopen a stored
 game, so their rule only decides the label: a game in progress is one that is not over and has had a
@@ -1313,7 +1313,7 @@ move. Shown for: Yacht, 2048, Solitaire, FreeCell, Sudoku (Resume), Daily Word (
 Yacht, 2048, Solitaire, FreeCell. **Not listed:** Sort (its mid-level save is continued from the
 level grid's Continue button, and its bests are one per level) and the hidden games (their storage
 is never imported or read, so a store bundle holds none of it); Sudoku shows no best (one per mode and
-difficulty). The reads are silent and write-free: a save or best that cannot be read, parsed or checked reads as no status and is left as stored (no removal, no Sentry event, and an older-format best is not moved in: the best comes from `peekBests`, not `getBest`). They run on mount, on Home's `focus` and when the app returns to the foreground, so "Done today" is derived again against the current date. Keys read: `docs/DATA-INVENTORY.md` §3.
+difficulty). The reads are silent and write-free: a save or best that cannot be read, parsed or checked reads as no status and is left as stored (no removal, no Sentry event, and an older-format best is not moved in: the best comes from `peekBests`, not `getBest`). They run on mount, on Home's `focus` and when the app returns to the foreground, so "Done today" is derived again against the current date (with Home open and the app in the foreground across midnight, it stays until the next focus or foreground; there is no timer). Keys read: `docs/DATA-INVENTORY.md` §3.
 
 ### 10.8 How the free/premium split is decided
 
