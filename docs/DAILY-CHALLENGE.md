@@ -356,3 +356,37 @@ When changing behavior:
 4. keep historical release notes as historical evidence.
 
 For shared game-session/offline behavior see [GAME-CONTRACT.md](GAME-CONTRACT.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## 15. Tuning metrics (#3998)
+
+`backend/scripts/daily_challenge_metrics.py` answers "are the goals too easy or too hard?" from data already stored (the pinned `daily_challenge_assignments` rows and `games`). It collects and writes nothing, prints aggregates only (never an install id), and issues SELECTs only (plus `SET TRANSACTION READ ONLY` on PostgreSQL).
+
+```bash
+cd backend
+python scripts/daily_challenge_metrics.py                                   # last 14 complete days
+python scripts/daily_challenge_metrics.py --since 2026-11-01 --until 2026-11-14
+python scripts/daily_challenge_metrics.py --json                            # machine use
+```
+
+It reads `DATABASE_URL` like the app (`backend/.env` or the environment). Point it at a read replica or run it off-peak; it makes `3 x ceil(installs / 500) + 1` queries (the last is the empty id page that ends the loop) and holds one 500-install chunk in memory, so a 60-day window on a 10k-DAU database is roughly 181 queries and tens of MB.
+
+What it reports, over the pinned install-days in the window:
+
+| Metric                                  | Definition                                                                                                                                                                                                |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core goal completion, per game and kind | `played` = met / offered, where an install-day is offered a game's goal only if that install finished a non-abandoned game of that type that day. `overall` = met / every pinned goal. Plus an `ALL` row. |
+| Days with 2 of 3 core goals met         | Over install-days with any finished game (the streak rule).                                                                                                                                               |
+| Bonus discovery                         | Of pinned days with a bonus goal, the share where the bonus game was played that day. "no bonus data yet" until #3995 pins bonuses.                                                                       |
+| Next-day return after a qualifying day  | Of qualifying install-days whose next day is over, the share where the install finished a game the next day.                                                                                              |
+
+Goals are rebuilt with `goal_from_spec` and scored with `evaluate_goal`, so the semantics (abandoned games never count) are the live ones.
+
+**Approximation.** A pinned row keeps the install's local _date_ but not its UTC offset, so every install is bucketed with one offset (`--tz-offset-minutes`, default 0, i.e. UTC days) through the same `local_day_of` window the service uses. A game near local midnight for an install far from that offset can land on the neighbouring day. Fine for a tuning read; do not use it for per-player questions. Today is excluded by default (the window ends yesterday) because it is unfinished, and a day counts for next-day return only once the day after it has ended (so the newest two days are left out). Installs are matched by canonical lowercase session id while `games.session_id` is stored as sent; real clients send lowercase, so the query does not handle other casings.
+
+**Reading it** (docs/DAILY-CHALLENGE-STRATEGY.md section 8):
+
+- **Core goal completion, `played` column: target 65-75%.** Above about 75% the goals are too easy; below about 65% they are too hard. The overall column is lower by design (it counts days the game was not played) and is for context, not the band. Judge a game or kind only with enough `offered` days (a few hundred); small rows are noise.
+- **2 of 3 share near 100%** means 2 of 3 may be too easy; a low share means too hard.
+- **Bonus discovery** low means lower the discovery share; **next-day return** is the retention signal to watch, with no target yet.
+
+**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (arrives with #3993) moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (arrives with #3995) controls how often the bonus suggests a game the player does not usually play. Re-run after a few days on the new value; one dial change at a time.
