@@ -400,6 +400,43 @@ for (const locale of LOCALES) {
 }
 
 /**
+ * Lobby tiles (#4006): 16/12/13 pt type with three-line descriptions must not be truncated or
+ * spill, in the longest copy (de, es, fr-CA) and the control (en), at 359 pt (the one-column
+ * layout just below the 360 breakpoint) and 390 pt (two columns). The "clamp" detector flags a
+ * description that needs more than its three lines; "clip" flags a title that truncates.
+ */
+const LOBBY_LOCALES = ["en", "de", "es", "fr-CA"] as const;
+const LOBBY_WIDTHS = [359, 390] as const;
+
+for (const locale of LOBBY_LOCALES) {
+  for (const width of LOBBY_WIDTHS) {
+    test.describe(`Lobby tile text — ${locale} @ ${width}`, () => {
+      test.use({ viewport: { width, height: 844 } });
+
+      test.beforeEach(async ({ page }) => {
+        await page.route("http://localhost:8000/**", (route) => route.abort());
+        await installEntitlementsMock(page);
+      });
+
+      test("tile title, description and Play button are not truncated", async ({
+        page,
+      }) => {
+        await openLobby(page, locale);
+        const found = await measure(page, "lobby", locale);
+        expect(found, JSON.stringify(found, null, 2)).toEqual([]);
+        // The short button label is the visible text; the game name stays in the a11y label.
+        const label = await page
+          .getByTestId("game-btn-yacht")
+          .evaluate((el) => el.textContent?.trim());
+        expect(label).toBe(
+          { en: "Play", de: "Spielen", es: "Jugar", "fr-CA": "Jouer" }[locale],
+        );
+      });
+    });
+  }
+}
+
+/**
  * The Yacht board (#3748), not just its mode picker: the thumb tray's scorecard, hint, Roll and
  * action bar in en, es and fr-CA (the longest words) at 320 pt (iPhone SE class and smaller) and
  * 390 pt, solo and VS, after a roll with a die held, and during the computer's turn.

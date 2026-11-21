@@ -1,7 +1,7 @@
 import { AppState, StyleSheet } from "react-native";
 import React from "react";
 import { Alert } from "react-native";
-import { act, render, renderHook, fireEvent, waitFor } from "@testing-library/react-native";
+import { act, render, renderHook, fireEvent, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -9,6 +9,8 @@ import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { StatsResponse } from "../../api/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
+import i18n from "../../i18n/i18n";
+import { LOBBY_MAX_FONT_SCALE } from "../../components/home/lobbyColumns";
 
 // Render gradients as a host element so tests can read their colours and style (#4005).
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
@@ -854,13 +856,123 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
     expect(getByTestId("game-tile-yacht").parent?.parent?.children).toHaveLength(3);
   });
 
-  it("keeps title and description heights fixed so short and long copy tile alike (#431)", async () => {
+  it("reserves the same title and description room on every tile, in scalable minimums (#431, #4006)", async () => {
     const { getByText } = await renderScreen(390);
     const short = getByText("Guess the five-letter word in six tries.");
     const long = getByText("Pour colors bottle to bottle — sort them all to win.");
-    for (const el of [short, long]) {
-      expect(StyleSheet.flatten(el.props.style).height).toBe(28);
-      expect(el.props.numberOfLines).toBe(2);
+    const flat = [short, long].map((el) => StyleSheet.flatten(el.props.style));
+    // 16 pt line height x 3 lines at the default font scale.
+    expect(flat[0].minHeight).toBe(flat[1].minHeight);
+    expect(flat[0].minHeight).toBe(48);
+    for (const el of [short, long]) expect(el.props.numberOfLines).toBe(3);
+  });
+});
+
+describe("HomeScreen — tile type (#4006)", () => {
+  /** A tile's title, description and button label, in that order. */
+  function tileTexts(r: Awaited<ReturnType<typeof renderScreen>>, slug: string, button: string) {
+    const tile = within(r.getByTestId(`game-tile-${slug}`));
+    return [
+      tile.getByText(i18n.t(`${slug}:game.title`)),
+      tile.getByText(i18n.t(`${slug}:game.description`)),
+      tile.getByText(button),
+    ];
+  }
+
+  beforeEach(() => {
+    mockWindow.fontScale = 1;
+  });
+  afterEach(() => {
+    mockWindow.fontScale = 1;
+  });
+
+  it("sets the description to 12 pt, the button label to 13 pt, and nothing in a tile below 11 pt", async () => {
+    const r = await renderScreen(390);
+    const desc = StyleSheet.flatten(
+      r.getByText("Guess the five-letter word in six tries.").props.style
+    );
+    expect(desc.fontSize).toBe(12);
+    expect(desc.lineHeight).toBe(16);
+    const title = StyleSheet.flatten(r.getByText("Yacht").props.style);
+    expect([title.fontSize, title.lineHeight]).toEqual([16, 20]);
+    const btn = StyleSheet.flatten(r.getAllByText("Play")[0].props.style);
+    expect(btn.fontSize).toBe(13);
+    expect(btn.textTransform).toBeUndefined();
+    expect(btn.letterSpacing).toBe(0.2);
+    for (const slug of ["yacht", "sort", "daily_word"]) {
+      for (const el of tileTexts(r, slug, "Play")) {
+        expect(StyleSheet.flatten(el.props.style).fontSize).toBeGreaterThanOrEqual(11);
+      }
     }
   });
+
+  it("caps every tile text at LOBBY_MAX_FONT_SCALE", async () => {
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const r = await renderScreen(390);
+    expect(LOBBY_MAX_FONT_SCALE).toBe(1.5);
+    for (const [slug, button] of [
+      ["yacht", "Play"],
+      ["cascade", "Unlock"],
+    ]) {
+      for (const el of tileTexts(r, slug, button)) {
+        expect(el.props.maxFontSizeMultiplier).toBe(LOBBY_MAX_FONT_SCALE);
+      }
+    }
+  });
+
+  it("gives title and description no fixed height", async () => {
+    const r = await renderScreen(390);
+    for (const el of [
+      r.getByText("Yacht"),
+      r.getByText("Guess the five-letter word in six tries."),
+    ]) {
+      expect(StyleSheet.flatten(el.props.style).height).toBeUndefined();
+    }
+  });
+
+  it("shows the short Play label as button text with the game's playLabel as accessibility label", async () => {
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const r = await renderScreen(390);
+    expect(r.getByTestId("game-tile-yacht").props.accessibilityLabel).toBe("Play Yacht");
+    expect(within(r.getByTestId("game-btn-yacht")).getByText("Play")).toBeTruthy();
+    expect(r.queryByText("Play Yacht")).toBeNull();
+    // Locked tiles keep Unlock and their card label.
+    expect(within(r.getByTestId("game-btn-cascade")).getByText("Unlock")).toBeTruthy();
+    expect(r.getByTestId("game-tile-cascade").props.accessibilityLabel).toBe(
+      i18n.t("common:home.locked.cardLabel", { title: "Cascade" })
+    );
+  });
+
+  it("keys play labels by slug: two tiles with the same translated title keep their own labels", async () => {
+    i18n.addResource("en", "sort", "game.title", "Daily Word");
+    try {
+      const r = await renderScreen(390);
+      expect(r.getByTestId("game-tile-sort").props.accessibilityLabel).toBe("Play Sort Puzzle");
+      expect(r.getByTestId("game-tile-daily_word").props.accessibilityLabel).toBe(
+        "Play Daily Word"
+      );
+    } finally {
+      i18n.addResource("en", "sort", "game.title", "Sort Puzzle");
+    }
+  });
+
+  it.each([
+    // [system font scale, expected title lines, title min height, description min height]
+    [1, 1, 20, 48],
+    // At 1.5x the title may wrap to two lines instead of truncating.
+    [1.5, 2, 60, 72],
+    // The cap holds: a 3x system scale reserves no more than 1.5x.
+    [3, 2, 60, 72],
+  ])(
+    "reserves title and description room that grows with font scale %s, up to the cap",
+    async (fontScale, titleLines, titleMin, descMin) => {
+      mockWindow.fontScale = fontScale;
+      const r = await renderScreen(390);
+      const t = r.getByText("Yacht");
+      const d = r.getByText("Guess the five-letter word in six tries.");
+      expect(t.props.numberOfLines).toBe(titleLines);
+      expect(StyleSheet.flatten(t.props.style).minHeight).toBe(titleMin);
+      expect(StyleSheet.flatten(d.props.style).minHeight).toBe(descMin);
+    }
+  );
 });

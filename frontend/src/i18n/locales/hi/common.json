@@ -51,6 +51,7 @@
   "overflow.abandon.body": "नया गेम शुरू करने से इस राउंड की प्रगति हट जाएगी। आपकी लाइफटाइम स्टैट्स पर कोई असर नहीं पड़ेगा।",
   "overflow.abandon.keepPlaying": "खेलते रहें",
   "overflow.abandon.startNew": "नया शुरू करें",
+  "play": "खेलें",
   "home.locked.buttonLabel": "अनलॉक करें",
   "home.locked.cardLabel": "{{title}} — लॉक है, अनलॉक करने के लिए टैप करें",
   "deleteData.label": "मेरा डेटा हटाएं",

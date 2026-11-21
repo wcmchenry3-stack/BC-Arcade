@@ -51,6 +51,7 @@
   "overflow.abandon.body": "Começar um novo jogo vai apagar seu progresso nesta rodada. Suas estatísticas gerais não serão afetadas.",
   "overflow.abandon.keepPlaying": "Continuar Jogando",
   "overflow.abandon.startNew": "Começar Novo",
+  "play": "Jogar",
   "home.locked.buttonLabel": "Desbloquear",
   "home.locked.cardLabel": "{{title}} — Bloqueado, toque para desbloquear",
   "deleteData.label": "Excluir meus dados",

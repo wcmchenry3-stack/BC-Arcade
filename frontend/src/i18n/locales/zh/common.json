@@ -51,6 +51,7 @@
   "overflow.abandon.body": "开始新游戏会丢失本轮的进度，但不会影响你的总统计数据。",
   "overflow.abandon.keepPlaying": "继续游戏",
   "overflow.abandon.startNew": "开始新游戏",
+  "play": "开始",
   "home.locked.buttonLabel": "解锁",
   "home.locked.cardLabel": "{{title}} — 已锁定，点按解锁",
   "deleteData.label": "删除我的数据",

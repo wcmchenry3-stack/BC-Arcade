@@ -49,7 +49,18 @@ import { getLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 import starSwarmTile from "../../assets/home/starswarm-tile.webp";
 import CascadeTileIcon from "../components/cascade/CascadeTileIcon";
-import { lobbyColumns, TILE_ICON_ZONE } from "../components/home/lobbyColumns";
+import {
+  lobbyColumns,
+  lobbyTileTextSizing,
+  LOBBY_BUTTON_SIZE,
+  LOBBY_DESCRIPTION_LINE_HEIGHT,
+  LOBBY_DESCRIPTION_LINES,
+  LOBBY_DESCRIPTION_SIZE,
+  LOBBY_MAX_FONT_SCALE,
+  LOBBY_TITLE_LINE_HEIGHT,
+  LOBBY_TITLE_SIZE,
+  TILE_ICON_ZONE,
+} from "../components/home/lobbyColumns";
 
 // A tile's icon is an emoji, or a generated 56 pt image (#3599), or
 // Cascade's code-drawn piece (#3698), which shows the emoji until it is ready (and on web).
@@ -61,6 +72,8 @@ type GameCard = GameCardIcon & {
   key: string;
   slug: string;
   title: string;
+  /** Accessibility label of the tile, e.g. "Play Yacht". Lives on the entry, never keyed by title. */
+  playLabel: string;
   description: string;
   action: () => void;
 };
@@ -93,9 +106,11 @@ export default function HomeScreen() {
       gameSlug,
     });
   };
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
 
   const numColumns = lobbyColumns(width);
+  // Tile text reserves room that grows with the system font scale instead of fixed points.
+  const textSizing = lobbyTileTextSizing(fontScale);
 
   useEffect(() => {
     if (APP_START_MS > 0) {
@@ -224,6 +239,7 @@ export default function HomeScreen() {
       slug: "yacht",
       emoji: "🎲",
       title: t("yacht:game.title"),
+      playLabel: t("yacht:game.playLabel"),
       description: t("yacht:game.description"),
       action: startYacht,
     },
@@ -233,6 +249,7 @@ export default function HomeScreen() {
       emoji: "🍉",
       drawn: true,
       title: t("cascade:game.title"),
+      playLabel: t("cascade:game.playLabel"),
       description: t("cascade:game.description"),
       action: () => navigation.navigate("Cascade"),
     },
@@ -241,6 +258,7 @@ export default function HomeScreen() {
       slug: "blackjack",
       emoji: "🃏",
       title: t("blackjack:game.title"),
+      playLabel: t("blackjack:game.playLabel"),
       description: t("blackjack:game.description"),
       action: () => navigation.navigate("BlackjackBetting"),
     },
@@ -249,6 +267,7 @@ export default function HomeScreen() {
       slug: "twenty48",
       emoji: "🔢",
       title: t("twenty48:game.title"),
+      playLabel: t("twenty48:game.playLabel"),
       description: t("twenty48:game.description"),
       action: () => navigation.navigate("Twenty48"),
     },
@@ -257,6 +276,7 @@ export default function HomeScreen() {
       slug: "solitaire",
       emoji: "♠",
       title: t("solitaire:game.title"),
+      playLabel: t("solitaire:game.playLabel"),
       description: t("solitaire:game.description"),
       action: () => navigation.navigate("Solitaire"),
     },
@@ -265,6 +285,7 @@ export default function HomeScreen() {
       slug: "freecell",
       emoji: "🂡",
       title: t("freecell:game.title"),
+      playLabel: t("freecell:game.playLabel"),
       description: t("freecell:game.description"),
       action: () => navigation.navigate("FreeCell"),
     },
@@ -273,6 +294,7 @@ export default function HomeScreen() {
       slug: "hearts",
       emoji: "♥",
       title: t("hearts:game.title"),
+      playLabel: t("hearts:game.playLabel"),
       description: t("hearts:game.description"),
       action: () => navigation.navigate("Hearts"),
     },
@@ -283,6 +305,7 @@ export default function HomeScreen() {
       // keeps Sudoku visually distinct while staying puzzle-coded.
       emoji: "🧩",
       title: t("sudoku:game.title"),
+      playLabel: t("sudoku:game.playLabel"),
       description: t("sudoku:game.description"),
       action: () => navigation.navigate("Sudoku"),
     },
@@ -293,6 +316,7 @@ export default function HomeScreen() {
       // carries its own dark face, so it reads on the light and the dark theme.
       image: starSwarmTile,
       title: t("starswarm:game.title"),
+      playLabel: t("starswarm:game.playLabel"),
       description: t("starswarm:game.description"),
       action: () => navigation.navigate("StarSwarm"),
     },
@@ -301,6 +325,7 @@ export default function HomeScreen() {
       slug: "mahjong",
       emoji: "🀄",
       title: t("mahjong:game.title"),
+      playLabel: t("mahjong:game.playLabel"),
       description: t("mahjong:game.description"),
       action: () => navigation.navigate("Mahjong"),
     },
@@ -309,6 +334,7 @@ export default function HomeScreen() {
       slug: "sort",
       emoji: "🍾",
       title: t("sort:game.title"),
+      playLabel: t("sort:game.playLabel"),
       description: t("sort:game.description"),
       action: () => navigation.navigate("Sort"),
     },
@@ -317,27 +343,13 @@ export default function HomeScreen() {
       slug: "daily_word",
       emoji: "📝",
       title: t("daily_word:game.title"),
+      playLabel: t("daily_word:game.playLabel"),
       description: t("daily_word:game.description"),
       action: () => navigation.navigate("DailyWord"),
     },
   ];
   // Store builds hide the premium games entirely (#2390) — see gameVisibility.ts.
   const games = allGames.filter((game) => isGameVisible(game.slug));
-
-  const playLabels: Record<string, string> = {
-    [t("yacht:game.title")]: t("yacht:game.playLabel"),
-    [t("cascade:game.title")]: t("cascade:game.playLabel"),
-    [t("blackjack:game.title")]: t("blackjack:game.playLabel"),
-    [t("twenty48:game.title")]: t("twenty48:game.playLabel"),
-    [t("solitaire:game.title")]: t("solitaire:game.playLabel"),
-    [t("freecell:game.title")]: t("freecell:game.playLabel"),
-    [t("hearts:game.title")]: t("hearts:game.playLabel"),
-    [t("sudoku:game.title")]: t("sudoku:game.playLabel"),
-    [t("starswarm:game.title")]: t("starswarm:game.playLabel"),
-    [t("mahjong:game.title")]: t("mahjong:game.playLabel"),
-    [t("sort:game.title")]: t("sort:game.playLabel"),
-    [t("daily_word:game.title")]: t("daily_word:game.playLabel"),
-  };
 
   // Cycle through BC Arcade accent colors for the gradient top border on each card.
   const cardGradients: [string, string][] = [
@@ -362,9 +374,7 @@ export default function HomeScreen() {
           onPress={isLocked ? () => openPaywall(item.slug) : item.action}
           accessibilityRole="button"
           accessibilityLabel={
-            isLocked
-              ? t("common:home.locked.cardLabel", { title: item.title })
-              : (playLabels[item.title] ?? item.title)
+            isLocked ? t("common:home.locked.cardLabel", { title: item.title }) : item.playLabel
           }
           accessibilityHint={item.description}
           testID={`game-tile-${item.slug}`}
@@ -414,12 +424,23 @@ export default function HomeScreen() {
           </View>
 
           {/* Title */}
-          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
+          <Text
+            style={[styles.cardTitle, { color: colors.text, minHeight: textSizing.titleMinHeight }]}
+            numberOfLines={textSizing.titleLines}
+            maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+          >
             {item.title}
           </Text>
 
           {/* Description */}
-          <Text style={[styles.cardDesc, { color: colors.textMuted }]} numberOfLines={2}>
+          <Text
+            style={[
+              styles.cardDesc,
+              { color: colors.textMuted, minHeight: textSizing.descriptionMinHeight },
+            ]}
+            numberOfLines={LOBBY_DESCRIPTION_LINES}
+            maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+          >
             {item.description}
           </Text>
 
@@ -429,7 +450,10 @@ export default function HomeScreen() {
               style={[styles.playBtn, { borderColor: colors.border }]}
               testID={`game-btn-${item.slug}`}
             >
-              <Text style={[styles.playBtnText, { color: colors.textMuted }]}>
+              <Text
+                style={[styles.playBtnText, { color: colors.textMuted }]}
+                maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+              >
                 {t("common:home.locked.buttonLabel")}
               </Text>
             </View>
@@ -441,8 +465,11 @@ export default function HomeScreen() {
               style={[styles.playBtn, styles.playBtnUnlocked]}
               testID={`game-btn-${item.slug}`}
             >
-              <Text style={[styles.playBtnText, { color: colors.textOnAccent }]}>
-                {playLabels[item.title] ?? t("common:play", "Play")}
+              <Text
+                style={[styles.playBtnText, { color: colors.textOnAccent }]}
+                maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+              >
+                {t("common:play")}
               </Text>
             </LinearGradient>
           )}
@@ -604,18 +631,16 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontFamily: typography.heading,
-    fontSize: 14,
-    lineHeight: 18,
-    height: 18,
+    fontSize: LOBBY_TITLE_SIZE,
+    lineHeight: LOBBY_TITLE_LINE_HEIGHT,
     letterSpacing: -0.3,
     paddingHorizontal: 8,
     textAlign: "center",
   },
   cardDesc: {
     fontFamily: typography.body,
-    fontSize: 10,
-    lineHeight: 14,
-    height: 28,
+    fontSize: LOBBY_DESCRIPTION_SIZE,
+    lineHeight: LOBBY_DESCRIPTION_LINE_HEIGHT,
     textAlign: "center",
     paddingHorizontal: 12,
   },
@@ -630,9 +655,8 @@ const styles = StyleSheet.create({
   },
   playBtnText: {
     fontFamily: typography.label,
-    fontSize: 9,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    fontSize: LOBBY_BUTTON_SIZE,
+    letterSpacing: 0.2,
   },
   // Both buttons carry a 1 pt border so locked and unlocked tiles measure the same (#4005).
   playBtnUnlocked: {

@@ -18,3 +18,38 @@ export function lobbyColumns(width: number): 1 | 2 | 3 | 4 {
   if (width < FOUR_COL_BREAKPOINT) return 3;
   return 4;
 }
+
+/** Lobby tile type sizes in pt (#4006). Nothing in a tile is below 11 pt. */
+export const LOBBY_TITLE_SIZE = 16;
+export const LOBBY_TITLE_LINE_HEIGHT = 20;
+export const LOBBY_DESCRIPTION_SIZE = 12;
+export const LOBBY_DESCRIPTION_LINE_HEIGHT = 16;
+export const LOBBY_BUTTON_SIZE = 13;
+/** Every description reserves this many lines so tiles in a row stay equal (#431, #4005). */
+export const LOBBY_DESCRIPTION_LINES = 3;
+
+/**
+ * Cap on how far the system font scale (iOS Dynamic Type, Android font size) may grow tile text.
+ * Applied as `maxFontSizeMultiplier` on every tile Text; the reserved heights use the same cap.
+ */
+export const LOBBY_MAX_FONT_SCALE = 1.5;
+
+/**
+ * Title and description room for a tile at the given system font scale (#4006). Heights are
+ * minimums that scale with the text, never fixed points: the title takes one line at the default
+ * size and two once text is enlarged (it wraps rather than truncates), the description always
+ * three. Every tile in a row reserves the same, so rows stay level.
+ */
+export function lobbyTileTextSizing(fontScale: number): {
+  titleLines: 1 | 2;
+  titleMinHeight: number;
+  descriptionMinHeight: number;
+} {
+  const scale = Math.min(Math.max(fontScale || 1, 1), LOBBY_MAX_FONT_SCALE);
+  const titleLines = scale > 1 ? 2 : 1;
+  return {
+    titleLines,
+    titleMinHeight: LOBBY_TITLE_LINE_HEIGHT * titleLines * scale,
+    descriptionMinHeight: LOBBY_DESCRIPTION_LINE_HEIGHT * LOBBY_DESCRIPTION_LINES * scale,
+  };
+}
