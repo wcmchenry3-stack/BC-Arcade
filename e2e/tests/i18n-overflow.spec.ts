@@ -291,7 +291,10 @@ async function detectSettled(page: Page): Promise<Finding[]> {
 async function measure(
   page: Page,
   screen: string,
-  locale: Locale | (typeof SUDOKU_BOARD_LOCALES)[number],
+  locale:
+    | Locale
+    | (typeof SUDOKU_BOARD_LOCALES)[number]
+    | keyof typeof LOBBY_PLAY_LABEL,
 ): Promise<Finding[]> {
   const all = await detectSettled(page);
   const entries = ALLOWLIST.filter(
@@ -314,7 +317,10 @@ async function measure(
 
 async function openLobby(
   page: Page,
-  locale: Locale | (typeof SUDOKU_BOARD_LOCALES)[number],
+  locale:
+    | Locale
+    | (typeof SUDOKU_BOARD_LOCALES)[number]
+    | keyof typeof LOBBY_PLAY_LABEL,
 ): Promise<void> {
   await page.goto("/");
   await page.getByTestId("game-tile-yacht").waitFor();
@@ -400,12 +406,29 @@ for (const locale of LOCALES) {
 }
 
 /**
- * Lobby tiles (#4006): 16/12/13 pt type with three-line descriptions must not be truncated or
- * spill, in the longest copy (de, es, fr-CA) and the control (en), at 359 pt (the one-column
+ * Lobby tiles (#4006): 16/12/13 pt type with four-line descriptions must not be truncated or
+ * spill, in all 13 locales, at 359 pt (the one-column
  * layout just below the 360 breakpoint) and 390 pt (two columns). The "clamp" detector flags a
- * description that needs more than its three lines; "clip" flags a title that truncates.
+ * description that needs more than its four lines; "clip" flags a title that truncates.
  */
-const LOBBY_LOCALES = ["en", "de", "es", "fr-CA"] as const;
+const LOBBY_PLAY_LABEL = {
+  en: "Play",
+  de: "Spielen",
+  es: "Jugar",
+  "fr-CA": "Jouer",
+  pt: "Jogar",
+  nl: "Spelen",
+  ru: "Играть",
+  ja: "プレイ",
+  ko: "플레이",
+  zh: "开始",
+  he: "שחק",
+  ar: "العب",
+  hi: "खेलें",
+} as const;
+const LOBBY_LOCALES = Object.keys(
+  LOBBY_PLAY_LABEL,
+) as (keyof typeof LOBBY_PLAY_LABEL)[];
 const LOBBY_WIDTHS = [359, 390] as const;
 
 for (const locale of LOBBY_LOCALES) {
@@ -428,9 +451,7 @@ for (const locale of LOBBY_LOCALES) {
         const label = await page
           .getByTestId("game-btn-yacht")
           .evaluate((el) => el.textContent?.trim());
-        expect(label).toBe(
-          { en: "Play", de: "Spielen", es: "Jugar", "fr-CA": "Jouer" }[locale],
-        );
+        expect(label).toBe(LOBBY_PLAY_LABEL[locale]);
       });
     });
   }

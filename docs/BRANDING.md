@@ -42,7 +42,7 @@ Two families, both loaded via `@expo-google-fonts` and mapped through `frontend/
 
 Import from `theme/typography.ts` — never hardcode font family strings in components.
 
-**Lobby tile type (#4006).** Title 16 pt / 20, description 12 pt / 16 (up to 3 lines), Play button 13 pt in sentence case with 0.2 letter-spacing; minimum 11 pt, and tile text scales with the system font size up to `LOBBY_MAX_FONT_SCALE` (1.5). Values live in `frontend/src/components/home/lobbyColumns.ts`.
+**Lobby tile type (#4006).** Title 16 pt / 20, description 12 pt / 16 (up to 4 lines), Play button 13 pt in sentence case with 0.2 letter-spacing; minimum 11 pt, and tile text scales with the system font size up to `LOBBY_MAX_FONT_SCALE` (1.5). Values live in `frontend/src/components/home/lobbyColumns.ts`.
 
 Load fonts **per weight, by subpath** (`import { Manrope_400Regular } from "@expo-google-fonts/manrope/400Regular"` in `App.tsx`), never from the package barrel (`@expo-google-fonts/manrope`). The barrel `require`s every weight's `.ttf`, so Metro would package all 12 (about 648 KB more, #3839). Adding a weight means adding its subpath import, its `useFonts` key and its `typography.ts` entry; `src/__tests__/fontImports.test.ts` fails on a barrel import or a family name that is styled but not loaded.
 

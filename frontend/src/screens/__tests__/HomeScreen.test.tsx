@@ -10,7 +10,7 @@ import type { StatsResponse } from "../../api/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
 import i18n from "../../i18n/i18n";
-import { LOBBY_MAX_FONT_SCALE } from "../../components/home/lobbyColumns";
+import { LOBBY_MAX_FONT_SCALE, lobbyTileTextSizing } from "../../components/home/lobbyColumns";
 
 // Render gradients as a host element so tests can read their colours and style (#4005).
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
@@ -861,10 +861,10 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
     const short = getByText("Guess the five-letter word in six tries.");
     const long = getByText("Pour colors bottle to bottle — sort them all to win.");
     const flat = [short, long].map((el) => StyleSheet.flatten(el.props.style));
-    // 16 pt line height x 3 lines at the default font scale.
+    // 16 pt line height x 4 lines at the default font scale.
     expect(flat[0].minHeight).toBe(flat[1].minHeight);
-    expect(flat[0].minHeight).toBe(48);
-    for (const el of [short, long]) expect(el.props.numberOfLines).toBe(3);
+    expect(flat[0].minHeight).toBe(64);
+    for (const el of [short, long]) expect(el.props.numberOfLines).toBe(4);
   });
 });
 
@@ -957,22 +957,29 @@ describe("HomeScreen — tile type (#4006)", () => {
   });
 
   it.each([
-    // [system font scale, expected title lines, title min height, description min height]
-    [1, 1, 20, 48],
-    // At 1.5x the title may wrap to two lines instead of truncating.
-    [1.5, 2, 60, 72],
+    // [system font scale, title lines, title min height, description lines, description min height]
+    [1, 1, 20, 4, 64],
+    // At 1.5x the title may wrap to two lines and the title may wrap; descriptions reserve four lines at every scale.
+    [1.5, 2, 60, 4, 96],
     // The cap holds: a 3x system scale reserves no more than 1.5x.
-    [3, 2, 60, 72],
+    [3, 2, 60, 4, 96],
   ])(
     "reserves title and description room that grows with font scale %s, up to the cap",
-    async (fontScale, titleLines, titleMin, descMin) => {
+    async (fontScale, titleLines, titleMin, descLines, descMin) => {
       mockWindow.fontScale = fontScale;
       const r = await renderScreen(390);
       const t = r.getByText("Yacht");
       const d = r.getByText("Guess the five-letter word in six tries.");
       expect(t.props.numberOfLines).toBe(titleLines);
+      expect(d.props.numberOfLines).toBe(descLines);
       expect(StyleSheet.flatten(t.props.style).minHeight).toBe(titleMin);
       expect(StyleSheet.flatten(d.props.style).minHeight).toBe(descMin);
     }
   );
+
+  it("rounds reserved heights up to whole points", () => {
+    const s = lobbyTileTextSizing(1.15);
+    expect(Number.isInteger(s.titleMinHeight)).toBe(true);
+    expect(s.descriptionMinHeight).toBe(Math.ceil(16 * 4 * 1.15));
+  });
 });
