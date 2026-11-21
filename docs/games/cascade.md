@@ -41,7 +41,7 @@ There are **12 fixed tiers** (0-11, #3960) and two piece sets, **Fruits** and **
 | 10   | Watermelon    | Sun       | 80.3   | 79.1  | 0.37    | 1024  | no        |
 | 11   | Pumpkin       | Milky Way | 98.0   | 96.5  | 0.34    | 2048  | no        |
 
-(#3964: the Fruits Lychee, Lime, Plum and Pomegranate have their own art; the Cosmos Moon is still the #3920 recipe until #3963. See [Piece progression](cascade-decisions.md#piece-progression).)
+(#3964: the Fruits Lychee, Lime, Plum and Pomegranate have their own art; the Cosmos Moon is the owner-approved #3920 drawing back at tier 1, #3963. See [Piece progression](cascade-decisions.md#piece-progression).)
 
 Radii are world units (the bin is 400 x 600; its inner width is 360). This table is a copy of `frontend/src/game/cascade/tiers.ts`, the only place a tier's radius, score, density, droppable flag and name keys are defined; `tiers.test.ts` fails if another module defines one. How the radii, densities and drawn radii were chosen: [Piece progression](cascade-decisions.md#piece-progression).
 
