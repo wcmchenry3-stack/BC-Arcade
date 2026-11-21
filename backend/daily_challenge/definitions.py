@@ -12,7 +12,7 @@ Goals are per game
 ------------------
 There is no one measurement that fits every game, so each game owns three goals
 (easy / medium / hard) worded in its own terms — moves, pairs, highest tile,
-chips, guesses. A ``Goal`` carries ``game_type`` + ``kind`` + ``target`` (never
+chips, guesses. Daily Word's three slots all hold its one ``completed`` goal. A ``Goal`` carries ``game_type`` + ``kind`` + ``target`` (never
 display copy — the client builds that in its own i18n namespace) and an
 ``evaluate(facts)`` predicate. ``facts`` is one finished game's measures: the
 result block the game reported on ``PATCH /games/{id}/complete`` (merged into
@@ -51,6 +51,9 @@ decided per request from ``game_types.is_premium`` + entitlements (service layer
 #2454) — never from a list in this module. Premium-only goal specs are
 post-launch (#2458), so today the two pools hold the same games and both slates
 pick identically.
+
+Daily Word's goal is always "complete today's word" (``completed``, win or lose);
+the easy / medium / hard rotation applies to the other two games (#3991).
 
 Rules the pick enforces (all tested): Daily Word is always present; the other two
 games differ from each other and from the previous day's two; at most one goal
@@ -260,14 +263,16 @@ def goal_from_spec(spec: Mapping[str, Any]) -> Goal:
     raise ValueError(f"cannot rebuild a goal of kind {kind!r}")
 
 
+_DAILY_WORD_GOAL = _completed("daily_word", "easy")
+
 # Easy / medium / hard per game. Every game's *easy* goal must not require a win
 # (the pick falls back to it) — tests enforce that. All numbers: tune post-launch.
 FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
-    "daily_word": (
-        _completed("daily_word", "easy"),
-        _won("daily_word", "medium"),
-        _won_within("daily_word", "guesses_used", 4, "hard"),
-    ),
+    # Daily Word's goal is always "complete today's word" (win or lose, #3991),
+    # so it is the same goal in all three slots and never takes the day's one
+    # win-dependent slot. Days frozen before #3991 may hold its old ``won`` /
+    # ``won_guesses_used_at_most`` specs; ``goal_from_spec`` still rebuilds them.
+    "daily_word": (_DAILY_WORD_GOAL, _DAILY_WORD_GOAL, _DAILY_WORD_GOAL),
     "twenty48": (
         _at_least("twenty48", "final_score", 500, "easy"),
         _at_least("twenty48", "highest_tile", 512, "medium"),
@@ -416,8 +421,9 @@ def pick_template(day: date, slate: Slate, salt: int, sort_catalog: bool = False
     # Consecutive goals get consecutive tiers, so a day mixes difficulty.
     picked = [pool[game][(ordinal + salt + i) % len(TIERS)] for i, game in enumerate(games)]
     final = list(picked)
-    # At most one win goal a day; who keeps it rotates by day so it is not always
-    # Daily Word's. Any other win goal falls back to that game's easy goal.
+    # At most one win goal a day; who keeps it rotates by day between the two
+    # rotating games (Daily Word's goal is never a win, #3991). Any other win
+    # goal falls back to that game's easy goal.
     win_taken = False
     for i in range(GOALS_PER_DAY):
         idx = (ordinal + i) % GOALS_PER_DAY

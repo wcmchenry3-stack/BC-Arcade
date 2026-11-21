@@ -8,18 +8,20 @@ This document is the current product/system source of truth. The implementation 
 
 Each challenge has exactly three goals:
 
-1. Daily Word.
+1. Daily Word. Its goal is always "complete today's word" (win or lose); it never asks for a win or a guess limit.
 2. A goal from one other eligible game.
 3. A goal from a different eligible game.
 
 The two rotating non-Daily-Word games do not repeat either of the previous day's two rotating games.
 
-Each game owns three goal definitions:
+Each game other than Daily Word owns three goal definitions (Daily Word has the one "complete" goal in every slot):
 - easy;
 - medium;
 - hard.
 
-The selected tiers rotate by day, so a challenge mixes difficulty instead of always choosing the same tier for the same slot.
+The selected tiers rotate by day for the other two games, so a challenge mixes difficulty instead of always choosing the same tier for the same slot. Because Daily Word is never win-dependent, it does not use up the day's one win-dependent slot, so either of the other two games can hold it.
+
+Days already frozen before this rule (#3991) keep their stored goals. An old Daily Word "win" or "win within 4 guesses" goal still rebuilds from its stored spec and is evaluated as before, so past streak days do not change.
 
 At most one selected goal per day is allowed to be luck/win-dependent. If a second selected goal would require a win, it falls back to that game's easy goal, which is required to be non-win-dependent.
 
