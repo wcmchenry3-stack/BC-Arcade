@@ -8,7 +8,7 @@
  *   - Held dies append ", held" to their accessible name
  *   - The Roll button accessible name reflects the remaining roll count
  *   - Score rows carry the correct pattern depending on state
- *     (not available / potential score N / scored N)
+ *     (not available / open, would score N / scored, N)
  *   - The axe-core WCAG 2.2 AA audit finds no critical/serious violations
  */
 
@@ -117,14 +117,14 @@ test.describe("Yacht — accessibility labels (#185)", () => {
     ).toBeVisible();
   });
 
-  test("score row shows 'potential score N, double-tap to score' after rolling", async ({
+  test("score row shows 'open, would score N, double-tap to score' after rolling", async ({
     page,
   }) => {
     await page.getByRole("button", { name: /Roll/i }).click();
     // At least Chance should show a potential score (it's always available)
     await expect(
       page.getByRole("button", {
-        name: /Chance: potential score \d+, double-tap to score/,
+        name: /Chance: open, would score \d+, double-tap to score/,
       }),
     ).toBeVisible();
   });
@@ -133,10 +133,10 @@ test.describe("Yacht — accessibility labels (#185)", () => {
     page,
   }) => {
     await page.getByRole("button", { name: /Roll/i }).click();
-    await page.getByRole("button", { name: /Chance: potential score/ }).click();
+    await page.getByRole("button", { name: /Chance: open, would score/ }).click();
 
     await expect(
-      page.getByRole("button", { name: /Chance: scored \d+/ }),
+      page.getByRole("button", { name: /Chance: scored, \d+/ }),
     ).toBeVisible();
   });
 

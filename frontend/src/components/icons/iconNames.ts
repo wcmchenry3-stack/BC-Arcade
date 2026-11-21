@@ -20,6 +20,7 @@ export const MATERIAL_ICON_NAMES = [
   "arrow-upward",
   "backspace",
   "call-split",
+  "check",
   "check-box",
   "check-box-outline-blank",
   "chevron-left",

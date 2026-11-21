@@ -65,11 +65,14 @@ export function CountUpText({
   reduceMotion,
   style,
   testID,
+  maxFontSizeMultiplier,
 }: {
   value: number;
   reduceMotion: boolean;
   style?: StyleProp<TextStyle>;
   testID?: string;
+  /** Caps Dynamic Type on the number (#3968). */
+  maxFontSizeMultiplier?: number;
 }) {
   const [shown, setShown] = useState(value);
   const shownRef = useRef(value);
@@ -104,7 +107,12 @@ export function CountUpText({
   }, [value, reduceMotion]);
 
   return (
-    <Text style={style} testID={testID} accessibilityLabel={String(value)}>
+    <Text
+      style={style}
+      testID={testID}
+      accessibilityLabel={String(value)}
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
+    >
       {reduceMotion ? value : shown}
     </Text>
   );

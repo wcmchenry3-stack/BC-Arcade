@@ -9,7 +9,18 @@ import FruitGlyph from "./FruitGlyph";
 /** Each tab shows its set's first piece (Cherry, Pluto), drawn as on the board (#3698). */
 const TAB_GLYPH_SIZE = 18;
 
-function ThemeSelector() {
+interface Props {
+  /**
+   * Called with the tapped set's id (never the active one). When given, the screen decides
+   * whether to switch (it confirms first mid-game, #3970); without it a tap switches at once.
+   */
+  onRequestSelect?: (id: string) => void;
+}
+
+// A tab is ~28px tall; the touch target grows to the 44pt guideline without changing the layout. Vertical only: tabs are adjacent, so horizontal slop would overlap.
+const TAB_HIT_SLOP = { top: 8, bottom: 8 } as const;
+
+function ThemeSelector({ onRequestSelect }: Props) {
   const { t } = useTranslation("cascade");
   const { activeFruitSet, setFruitSetById } = useFruitSet();
   const { colors } = useTheme();
@@ -25,7 +36,11 @@ function ThemeSelector() {
         return (
           <Pressable
             key={set.id}
-            onPress={() => setFruitSetById(set.id)}
+            onPress={() => {
+              if (active) return; // the active set: nothing to switch
+              (onRequestSelect ?? setFruitSetById)(set.id);
+            }}
+            hitSlop={TAB_HIT_SLOP}
             accessibilityRole="radio"
             accessibilityState={{ checked: active }}
             aria-checked={active}
@@ -45,7 +60,7 @@ function ThemeSelector() {
   );
 }
 
-// Memoized (#2960): it takes no props and re-renders only when the fruit set or theme changes.
+// Memoized (#2960): it re-renders only when the fruit set, theme or `onRequestSelect` changes.
 export default memo(ThemeSelector);
 
 const styles = StyleSheet.create({

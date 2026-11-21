@@ -15,13 +15,15 @@ import type { DrawMode } from "../../game/solitaire/types";
 
 export default function PreGameModal({
   onChoose,
+  onHome,
 }: {
   readonly onChoose: (mode: DrawMode) => void;
+  readonly onHome?: () => void;
 }) {
   const { t } = useTranslation("solitaire");
 
   return (
-    <ModalCard visible title={t("drawMode.title")} body={t("drawMode.body")}>
+    <ModalCard visible title={t("drawMode.title")} body={t("drawMode.body")} onHome={onHome}>
       <ModalActions>
         <ModalPrimaryButton
           testID="solitaire-draw-1"
