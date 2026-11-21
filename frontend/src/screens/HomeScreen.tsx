@@ -32,6 +32,9 @@ import { newGame as newYachtGame } from "../game/yacht/engine";
 import { loadGame as loadYachtGame } from "../game/yacht/storage";
 import { isAiTurnPending } from "../game/yacht/vsTurn";
 import { useTheme } from "../theme/ThemeContext";
+import { useSoundSettings } from "../game/_shared/SoundContext";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
+import type { GameType } from "../api/vocab";
 import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
@@ -57,6 +60,8 @@ import yachtTile from "../../assets/home/yacht-tile.webp";
 // Hidden games' tile images: never imported here, or a store build would package them (#4011).
 import { HIDDEN_GAME_TILE_ART } from "../components/home/hiddenGameTileArt";
 import CascadeTileIcon from "../components/cascade/CascadeTileIcon";
+import { tileAccent } from "../components/home/tileAccents";
+import { tilePressHaptic } from "../components/home/tileHaptic";
 import {
   lobbyColumns,
   lobbyTileTextSizing,
@@ -79,7 +84,7 @@ type GameCardIcon =
 
 type GameCard = GameCardIcon & {
   key: string;
-  slug: string;
+  slug: GameType;
   title: string;
   /** Accessibility label of the tile, e.g. "Play Yacht". Lives on the entry, never keyed by title. */
   playLabel: string;
@@ -104,7 +109,10 @@ export default function HomeScreen() {
     "sort",
     "daily_word",
   ]);
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const { muted } = useSoundSettings();
+  // Reduce Motion drops the press scale and keeps the dim (#4007).
+  const reduceMotion = useReduceMotion();
   const { canPlay } = useEntitlementGate();
   const insets = useSafeAreaInsets();
   // A locked premium tile opens the paywall modal (#841). It is on the root
@@ -361,27 +369,28 @@ export default function HomeScreen() {
   // Store builds hide the premium games entirely (#2390) — see gameVisibility.ts.
   const games = allGames.filter((game) => isGameVisible(game.slug));
 
-  // Cycle through BC Arcade accent colors for the gradient top border on each card.
-  const cardGradients: [string, string][] = [
-    [colors.tertiary, colors.secondary],
-    [colors.secondary, colors.accent],
-    [colors.accent, colors.accentBright],
-    [colors.accentBright, colors.tertiary],
-  ];
-
-  function renderCard({ item, index }: { item: GameCard; index: number }) {
-    const gradient = cardGradients[index % cardGradients.length] ?? [
-      colors.secondary,
-      colors.accent,
-    ];
-    const [gradStart, gradEnd] = gradient;
+  function renderCard({ item }: { item: GameCard }) {
+    // Fixed per game, never by position (#4007).
+    const accent = tileAccent(item.slug, colors, theme);
+    const [gradStart, gradEnd] = accent.stops;
     const isLocked = !canPlay(item.slug);
 
     return (
       <View style={[styles.cardWrapper, numColumns === 1 && styles.cardWrapperFull]}>
         <Pressable
-          style={[styles.card, { backgroundColor: colors.surfaceHigh }]}
-          onPress={isLocked ? () => openPaywall(item.slug) : item.action}
+          style={({ pressed }) => [
+            styles.card,
+            { backgroundColor: colors.surfaceHigh },
+            // Resolved by Pressable on the UI side of the press: no state, no animation loop.
+            pressed && (reduceMotion ? styles.cardPressedStill : styles.cardPressed),
+          ]}
+          // The haptic is on tap, not touch-down: a finger that starts a scroll on a tile
+          // grants the Pressable the responder first and must not buzz (#4007).
+          onPress={() => {
+            tilePressHaptic(muted);
+            if (isLocked) openPaywall(item.slug);
+            else item.action();
+          }}
           accessibilityRole="button"
           accessibilityLabel={
             isLocked ? t("common:home.locked.cardLabel", { title: item.title }) : item.playLabel
@@ -477,7 +486,7 @@ export default function HomeScreen() {
               testID={`game-btn-${item.slug}`}
             >
               <Text
-                style={[styles.playBtnText, { color: colors.textOnAccent }]}
+                style={[styles.playBtnText, { color: accent.label }]}
                 maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
               >
                 {t("common:play")}
@@ -544,17 +553,15 @@ export default function HomeScreen() {
         <ConnectedOfflineBanner />
         <DailyChallengeCard />
         {numColumns === 1
-          ? games.map((item, index) => (
-              <React.Fragment key={item.key}>{renderCard({ item, index })}</React.Fragment>
+          ? games.map((item) => (
+              <React.Fragment key={item.key}>{renderCard({ item })}</React.Fragment>
             ))
           : Array.from({ length: Math.ceil(games.length / numColumns) }, (_, rowIndex) => {
               const rowGames = games.slice(rowIndex * numColumns, (rowIndex + 1) * numColumns);
               return (
                 <View key={rowIndex} style={styles.row}>
-                  {rowGames.map((item, colIndex) => (
-                    <React.Fragment key={item.key}>
-                      {renderCard({ item, index: rowIndex * numColumns + colIndex })}
-                    </React.Fragment>
+                  {rowGames.map((item) => (
+                    <React.Fragment key={item.key}>{renderCard({ item })}</React.Fragment>
                   ))}
                   {/* Pad a short last row so every tile keeps the column width (#4005). */}
                   {Array.from({ length: numColumns - rowGames.length }, (_, i) => (
@@ -622,6 +629,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 12,
     gap: 8,
+  },
+  // Press feedback (#4007): dim and shrink a little; Reduce Motion keeps the dim only.
+  cardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
+  },
+  cardPressedStill: {
+    opacity: 0.85,
   },
   gradientBorder: {
     width: "100%",
