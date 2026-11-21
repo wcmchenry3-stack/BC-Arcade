@@ -175,9 +175,11 @@ class plus_hours(FunctionElement):
     Postgres adds an interval to the timestamp. SQLite stores ``DateTime`` as
     text, and the ORM writes it as ``'YYYY-MM-DD HH:MM:SS.ffffff'``; the
     default body builds exactly that, so text comparisons against ORM-written
-    timestamps order correctly: date math on the whole seconds (SQLite's own
-    ``%f`` has only milliseconds), then the original microseconds, padded for
-    a value stored without a fraction.
+    timestamps order correctly: date math on the whole seconds only (the
+    first 19 characters, so SQLite never rounds a fraction of .9995 s or more
+    up to the next second, and its own ``%f`` has only milliseconds), then the
+    original microseconds appended, padded for a value stored without a
+    fraction.
     """
 
     type = DateTime(timezone=True)
@@ -210,7 +212,9 @@ def _plus_hours_postgresql(element: plus_hours, compiler: Any, **kw: Any) -> str
 def _plus_hours_sqlite(element: plus_hours, compiler: Any, **kw: Any) -> str:
     column = compiler.process(element.column, **kw)
     modifier = _quoted(compiler, f"+{element.hours} hours")
-    whole_seconds = f"strftime('%Y-%m-%d %H:%M:%S', {column}, {modifier})"
+    # Date math on the first 19 characters only (whole seconds): given the
+    # fraction, SQLite rounds .9995 s and up to the next second first.
+    whole_seconds = f"strftime('%Y-%m-%d %H:%M:%S', substr({column}, 1, 19), {modifier})"
     # From the 21st character on: the digits after the seconds' '.', or ''
     # for a value stored without a fraction. Padded to six digits.
     fraction = f"substr(substr({column}, 21) || '000000', 1, 6)"

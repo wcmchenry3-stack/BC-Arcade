@@ -355,14 +355,54 @@ Notes:
 
 ### What this changes in today's goal pool
 
-- **Daily Word:** drop the "win" and "win in 4 guesses" goals (§4).
+- **Daily Word:** drop the "win" and "win in 4 guesses" goals (§4). _Shipped (#3991)._
 - **Solitaire / FreeCell:** "make 10 moves" and "make 5 moves" are not really easy goals. These games have no
   loss, so a finished row only exists for a win, and these goals already require one. They also wrongly mark
   Solitaire's win as luck-dependent: the code comment says "Klondike deals are not always winnable", but the deal
-  bank is provably solvable.
+  bank is provably solvable. _Shipped (#3993)._
 - **Yacht:** the comment "abandoned games count with their score so far" is out of date: abandons are filtered.
-- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels".
+  _Fixed (#3993)._
+- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Deferred
+  to #4028; the shared template keeps them (see "Shipped" below)._
 - **Blackjack:** the pending hand-count goals are dropped (§7a).
+
+### Shipped for the free games (#3993, #3994)
+
+The personal pick is live (`backend/daily_challenge/personal.py`, `history.py`; contract in
+[DAILY-CHALLENGE.md §2a, §3a](DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)). What shipped, and where it differs
+from the tables above:
+
+- **Pool fixes, as proposed.** Solitaire / FreeCell lose "make 10 / 5 moves" and their wins are no longer flagged
+  luck-dependent (provably solvable deals); the stale Solitaire and Yacht comments are fixed. The shared template
+  keeps three tiers each: win / win in at most 150 (FreeCell 130) / at most 120 (100) moves.
+- **Bottle Sort personal goals deferred to #4028** (a relative "new levels" goal kind). "N new levels" pinned for today+1 and
+  today+2 at today's first open could already be met by today's solves, so Sort has no personal goals and is not
+  eligible for a personal pick. It keeps its absolute targets (3/8/15 and 10/30/60) on shared-template days.
+- **Cold start uses the pool's easy-tier goal where §12's "Finish a game" can't be evaluated.** 2048 cold start is
+  score 500+ and Yacht's is score 100+ (a Yacht or 2048 "finish" has no fact the existing kinds read, and a
+  `final_score_at_least 1` would read as "score 1+"). Sudoku's cold start is "solve a puzzle": the difficulty is in
+  the metadata, but no existing kind asks for one, so "Solve an Easy puzzle" would need a new kind and copy.
+- **2048 "Make the 2048 tile" is a personal tile target** (`highest_tile_at_least`, the nearest power of two to the
+  stretched median, capped at the best tile, floor 128), not a fixed 2048. It is not flagged luck-dependent.
+- **2048 "Finish a game" and Yacht "Finish a game" are not offered** (not evaluable with existing kinds). Yacht has
+  one goal type, the personal score.
+- **Yacht "Beat the computer" is not built**: the vs result is stored (`vs_result`) but there is no `goal.yacht.won`
+  copy in the app, so it would need a new kind in every locale.
+- **Sudoku's "usual difficulty or one higher" and "at most _target_ errors" are one goal**: score at least _T_
+  (`final_score` = difficulty base minus 10 per error, so a higher target asks for a harder puzzle or fewer errors).
+- **Bottle Sort's stars goal is not built** (it would need a `stars_at_least` kind and copy).
+- **Step-down is per (game, goal type).** Only days whose goal was a personal target and on which the game was
+  played count as misses.
+- **Goals already shown never change** (§13 item 5): a day an install could have been served unpinned (no game in
+  some 48 h window since the day could first be asked for) is pinned as the shared template, so a new install's
+  cached `/upcoming` days and a lapsed install's comeback day keep the goals the device shows. Exceptions:
+  automatic storage-guard pauses, the app's `/today` fallback and kill-switch periods (DAILY-CHALLENGE.md §1).
+- **The variety guard is strict at 3+ games with affinity**, so with exactly 3 or 4 games it sets the rotation more
+  than affinity does. §6's "unless the player only plays one or two games" is the exception as written.
+- **Discovery** (`discovery_candidates`) and its rest rule are in place for #3995: 3 ignored offers within 30 days
+  rest a game for 30 days after the last one.
+- Dials shipped: `DAILY_CHALLENGE_STRETCH_PCT` (12), `DAILY_CHALLENGE_AFFINITY_DAYS` (14),
+  `DAILY_CHALLENGE_HISTORY_GAMES` (10).
 
 ### Data needed per measure (input to step 3)
 
@@ -439,8 +479,10 @@ Server env vars, read lazily like the existing daily-challenge settings:
   template (today's behaviour with the Daily Word fix), and no assignment rows are written.
 - Shipped in #3992: `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default `STREAK_LOOKBACK_DAYS` + 1, 61; refused below
   that) and `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (48).
-- Proposed for later stories: `DAILY_CHALLENGE_STRETCH_PCT` (start 12), `DAILY_CHALLENGE_DISCOVERY_SHARE` (start
-  0.5), `DAILY_CHALLENGE_BONUS_ENABLED` (start on).
+- Shipped in #3993/#3994: `DAILY_CHALLENGE_STRETCH_PCT` (12), `DAILY_CHALLENGE_AFFINITY_DAYS` (14) and
+  `DAILY_CHALLENGE_HISTORY_GAMES` (10).
+- Proposed for later stories: `DAILY_CHALLENGE_DISCOVERY_SHARE` (start 0.5), `DAILY_CHALLENGE_BONUS_ENABLED` (start
+  on).
 
 None of these touch the device, so the `/games/catalog` dial carrier isn't needed.
 

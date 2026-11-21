@@ -99,7 +99,7 @@ def test_plus_hours_compiles_per_dialect() -> None:
     assert "completed_at=(games.started_at + INTERVAL '24 hours')" in _sql(stmt, _PG)
     lite = _sql(stmt, _SQLITE)
     # Whole seconds through strftime, then the ORM's six-digit fraction.
-    assert "strftime('%Y-%m-%d %H:%M:%S', games.started_at, '+24 hours')" in lite
+    assert "strftime('%Y-%m-%d %H:%M:%S', substr(games.started_at, 1, 19), '+24 hours')" in lite
     assert "substr(substr(games.started_at, 21) || '000000', 1, 6)" in lite
 
 
@@ -247,6 +247,25 @@ async def test_plus_hours_moves_a_timestamp_with_its_microseconds() -> None:
     got = await _values(sid, Game.completed_at)
     assert _utc(got[gid][0]) == _STARTED + timedelta(hours=50)
     assert _utc(got[whole][0]) == _STARTED.replace(microsecond=0) + timedelta(hours=50)
+
+
+async def test_plus_hours_never_rounds_a_fraction_up_a_second() -> None:
+    """SQLite rounds a stored fraction of .9995 s or more up to the next second inside
+    ``strftime(..., '+N hours')``; the date math must use the whole seconds only."""
+    sid = str(uuid.uuid4())
+    started = datetime(2026, 11, 17, 12, 59, 59, 999999, tzinfo=UTC)
+    gid = await _add(sid, {}, started_at=started)
+    factory = get_session_factory()
+    async with factory() as db:
+        await db.execute(
+            update(Game)
+            .where(Game.session_id == sid)
+            .values(completed_at=plus_hours(Game.started_at, 48))
+            .execution_options(synchronize_session=False)
+        )
+        await db.commit()
+    got = await _values(sid, Game.completed_at)
+    assert _utc(got[gid][0]) == started + timedelta(hours=48)
 
 
 async def test_the_sweep_cut_off_is_started_at_plus_24_hours_on_this_dialect() -> None:
