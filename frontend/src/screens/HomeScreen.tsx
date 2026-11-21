@@ -51,7 +51,7 @@ import starSwarmTile from "../../assets/home/starswarm-tile.webp";
 import CascadeTileIcon from "../components/cascade/CascadeTileIcon";
 import { lobbyColumns, TILE_ICON_ZONE } from "../components/home/lobbyColumns";
 
-// A tile's icon is an emoji, or a generated image drawn at the emoji's footprint (#3599), or
+// A tile's icon is an emoji, or a generated 56 pt image (#3599), or
 // Cascade's code-drawn piece (#3698), which shows the emoji until it is ready (and on web).
 type GameCardIcon =
   | { emoji: string; image?: undefined; drawn?: boolean }
@@ -526,6 +526,7 @@ export default function HomeScreen() {
                       style={styles.cardWrapper}
                       accessible={false}
                       importantForAccessibility="no-hide-descendants"
+                      accessibilityElementsHidden
                       pointerEvents="none"
                     />
                   ))}

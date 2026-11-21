@@ -103,8 +103,10 @@ test.describe("Lobby — responsive layout", () => {
     await context.close();
   });
 
-  // #4005: every tile in a row has the same width and height (locked/unlocked borders,
-  // spacer cells for a short last row), at a phone and a tablet width.
+  // #4005: every tile in a row has the same width and height, at a phone and a tablet width.
+  // Cascade and Star Swarm are left locked so rows mix locked and unlocked tiles: before
+  // #4005 a locked tile was 2 pt taller. (The web build shows all 12 games, which fill every
+  // row at 2, 3 and 4 columns, so spacer cells are covered by HomeScreen.test.tsx instead.)
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 1024, height: 768 },
@@ -114,11 +116,14 @@ test.describe("Lobby — responsive layout", () => {
     }) => {
       const context = await browser.newContext({ viewport });
       const page = await context.newPage();
-      await installEntitlementsMock(page);
+      await installEntitlementsMock(page, ["blackjack", "hearts", "mahjong"]);
       await page.goto("/");
       await expect(page.getByTestId("game-tile-yacht")).toBeVisible({
         timeout: 10000,
       });
+      await expect(
+        page.getByRole("button", { name: /Cascade.*Locked/ }),
+      ).toBeVisible();
 
       const tiles = page.locator("[data-testid^='game-tile-']");
       const count = await tiles.count();

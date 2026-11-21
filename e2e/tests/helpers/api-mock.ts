@@ -19,7 +19,10 @@ const API_BASE = "http://localhost:8000";
  * Must be called before page.goto("/") so the route is registered when the
  * EntitlementProvider mounts.
  */
-export async function installEntitlementsMock(page: Page): Promise<void> {
+export async function installEntitlementsMock(
+  page: Page,
+  entitledGames: string[] = ["blackjack", "cascade", "hearts", "starswarm", "mahjong"],
+): Promise<void> {
   const b64url = (s: string): string =>
     Buffer.from(s)
       .toString("base64")
@@ -31,7 +34,7 @@ export async function installEntitlementsMock(page: Page): Promise<void> {
   const payload = b64url(
     JSON.stringify({
       sub: "e2e-test",
-      entitled_games: ["blackjack", "cascade", "hearts", "starswarm", "mahjong"],
+      entitled_games: entitledGames,
       iat: 1000000000,
       exp: 9999999999,
     }),

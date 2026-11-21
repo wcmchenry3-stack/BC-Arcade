@@ -190,7 +190,7 @@ describe("HomeScreen — game cards", () => {
       expect(icon.type).not.toBe("Text");
       expect(icon.props.source).toBeTruthy();
       const style = StyleSheet.flatten(icon.props.style);
-      expect([style.width, style.height]).toEqual([56, 56]); // the emoji's footprint
+      expect([style.width, style.height]).toEqual([56, 56]); // fits the 68 pt icon zone
       expect(queryByText("👾")).toBeNull();
     });
 
@@ -748,6 +748,7 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
     };
     expect(spacer.props.accessible).toBe(false);
     expect(spacer.props.importantForAccessibility).toBe("no-hide-descendants");
+    expect(spacer.props.accessibilityElementsHidden).toBe(true);
     expect(spacer.props.pointerEvents).toBe("none");
     // Its row holds one real tile plus the spacer.
     const kids = spacer.parent.children;
