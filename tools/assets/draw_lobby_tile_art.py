@@ -1,14 +1,19 @@
-"""Deterministic lobby tile art: a gameplay vignette per game (#4011, #4004; style decided in #4010).
+"""Deterministic lobby tile art: a gameplay vignette per game (#4011, #4012; style decided in #4010).
 
 Each lobby tile shows a small drawn scene of the game being played, drawn straight on the tile:
 transparent background, no badge or frame, and a mid-grey outline (`OUTLINE`) so it reads on the
 dark card (`surfaceHigh` #25252c) and on the light one (#fff8e8). No emoji. The colours are the
-games' own (`frontend/src/theme/theme.*.ts`, the Yacht dice in `ThemeContext.tsx`).
+games' own (`frontend/src/theme/theme.*.ts`; the Yacht dice and the playing cards in
+`ThemeContext.tsx`).
 
     sort       two flasks in a row; a third, lifted and tipped, pours pink into the middle one
     yacht      all five dice: four landed on fives in a row, the fifth tumbling in
     twenty48   two 1024 tiles sliding together on a slice of the board, toward 2048
     sudoku     one 3x3 box: given digits, and a digit just placed in the selected cell
+    solitaire  two Klondike columns, face-up runs over face-down cards, and a six dropping on
+    freecell   the row of four free cells (one holding a card) over two cascades; a card rises
+               into the last cell
+    daily_word the six-row guessing grid in hit / near / miss colours, no letters (13 locales)
 
 Usage:
     python tools/assets/draw_lobby_tile_art.py [--out DIR] [--sheet] [name ...]
@@ -25,9 +30,10 @@ The art is authored in a 168-unit box (the approved Sort composition's box) and 
 `TILE_PX` = 192 px, 3x the 64 pt display size (`cardArt` in `HomeScreen.tsx`). Each WebP's byte
 size is printed; `BUDGET_BYTES` per tile is the owner's budget.
 
-The digits (2048 tiles, Sudoku) are Space Grotesk Bold outlines, the face the games draw their
-numbers in (SIL Open Font License 1.1, see `lobby_numerals.OFL.txt`). They are extracted once into
-`lobby_numerals.json`, so drawing needs neither the font nor fontTools. `extract` takes
+The digits (2048 tiles, Sudoku, the card ranks) are Space Grotesk Bold outlines, the face the games
+draw their numbers and the BC decks their indices in (SIL Open Font License 1.1, see
+`lobby_numerals.OFL.txt`). They are extracted once into `lobby_numerals.json`, so drawing needs
+neither the font nor fontTools. `extract` takes
 `frontend/node_modules/@expo-google-fonts/space-grotesk/700Bold/SpaceGrotesk_700Bold.ttf` (after
 `cd frontend && npm ci`) and needs fontTools.
 
@@ -544,6 +550,228 @@ def sudoku_scene(c: TileCanvas) -> None:
 
 
 # --------------------------------------------------------------------------------------------
+# Playing cards (Solitaire, FreeCell): ThemeContext `cardFace` / `cardInk` / `cardRedSuit` and
+# the teal back `cardBack`. Laid out in canvas pixels and unrotated. Every card outline costs
+# ~300 B of WebP, so each scene shows only the few cards that tell its game; the cards sit on
+# the half pixel with a 3 px corner (measured ~100 B a card cheaper than whole pixels and 5 px).
+
+CARD_FACE = hexrgb("#ffffff")  # cardFace
+CARD_INK = hexrgb("#0e0e13")  # cardInk: ranks and black suits
+CARD_RED = hexrgb("#d32f2f")  # CARD_RED_SUIT (theme.cards.ts)
+CARD_BACK = hexrgb("#00737e")  # cardBack: the BC teal field inside the white margin
+RED_SUITS = frozenset("HD")
+
+CARD_R = 3  # corner radius (px)
+CARD_SNAP = 0.5  # cards sit on the half pixel (px)
+CARD_MARGIN = 3  # a face-down card's white margin around the teal field (px)
+CARD_INDEX = 11  # the index's centre: this far in from the card's side and down from its top (px)
+CARD_RANK_CAP = 13  # the rank's cap height (px)
+CARD_SUIT_PX = 12  # the suit pip beside it (px)
+
+
+def is_red(face: str) -> bool:
+    return face[-1] in RED_SUITS
+
+
+def _heart(cx: float, cy: float, s: float) -> list[Point]:
+    """A heart `s` px wide centred on (cx, cy): the classic parametric curve."""
+    out = []
+    for i in range(24):
+        t = 2 * math.pi * i / 24
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        out.append((cx + x * s / 32, cy - (y + 2.5) * s / 32))
+    return out
+
+
+def suit(c: TileCanvas, kind: str, cx: float, cy: float, s: float) -> None:
+    """A suit pip `s` px across centred on (cx, cy), in canvas pixels: H, D, S or C."""
+    col = CARD_RED if kind in RED_SUITS else CARD_INK
+    h = s / 2
+    stem = [(cx, cy), (cx + h * 0.42, cy + h * 1.05), (cx - h * 0.42, cy + h * 1.05)]
+    if kind == "H":
+        c.polygon(_heart(cx, cy, s), col)
+    elif kind == "D":
+        c.polygon(
+            [(cx, cy - h * 1.2), (cx + h * 0.85, cy), (cx, cy + h * 1.2), (cx - h * 0.85, cy)], col
+        )
+    elif kind == "S":
+        c.polygon([(x, 2 * cy - y - h * 0.3) for x, y in _heart(cx, cy, s)], col)
+        c.polygon(stem, col)
+    else:
+        r = s * 0.25
+        for dx, dy in ((0, -h * 0.5), (-h * 0.52, h * 0.2), (h * 0.52, h * 0.2)):
+            c.ellipse(cx + dx, cy + dy, r, r, col)
+        c.polygon(stem, col)
+
+
+def card(c: TileCanvas, x: int, y: int, w: int, h: int, face: str | None) -> None:
+    """A card whose top-left corner is pixel (x, y). `face` is rank + suit ("7H"), or None for a
+    face-down card. A face shows its index only (the rank, the suit beside it): a cascade shows
+    each card's top strip, and the index is what a player reads there."""
+    cx, cy = x + CARD_SNAP + w / 2, y + CARD_SNAP + h / 2
+    body = rounded_rect(cx, cy, w, h, CARD_R)
+    c.polygon(body, CARD_FACE)
+    if face is None:
+        inner = rounded_rect(cx, cy, w - 2 * CARD_MARGIN, h - 2 * CARD_MARGIN, CARD_R - 1)
+        c.polygon(inner, CARD_BACK)
+    else:
+        ink = CARD_RED if is_red(face) else CARD_INK
+        ix, iy = x + CARD_SNAP + CARD_INDEX, y + CARD_SNAP + CARD_INDEX
+        text(c, face[:-1], ix / K, iy / K, CARD_RANK_CAP / K, ink)
+        suit(c, face[-1], x + CARD_SNAP + w - CARD_INDEX, iy, CARD_SUIT_PX)
+    c.outline(body)
+
+
+def cascade(
+    c: TileCanvas, x: int, y: int, size: tuple[int, int], down: int, faces: Sequence[str], step: int
+) -> int:
+    """A tableau column from the top: `down` face-down cards DOWN_STEP apart, then `faces` face
+    up, `step` apart. Returns the top y of its last card."""
+    w, h = size
+    for _ in range(down):
+        card(c, x, y, w, h, None)
+        y += DOWN_STEP
+    for i, f in enumerate(faces):
+        if i:
+            y += step
+        card(c, x, y, w, h, f)
+    return y
+
+
+DOWN_STEP = 9  # px between face-down cards in a Klondike column
+
+
+def trail(c: TileCanvas, marks: Sequence[tuple[Point, Point]]) -> None:
+    """Motion marks given in canvas pixels."""
+    motion_marks(c, [((a[0] / K, a[1] / K), (b[0] / K, b[1] / K)) for a, b in marks])
+
+
+# --------------------------------------------------------------------------------------------
+# Solitaire (Klondike): two tableau columns, each a face-up run over its face-down cards, red
+# and black alternating down the run, and a black six dropping onto the red seven.
+
+SOL_SIZE, SOL_STEP = (50, 70), 24  # card size, and the face-up overlap (px)
+SOL_COLUMNS = [  # left x, top y, face-down count, the face-up run from the top
+    (20, 10, 1, ["9H", "8S", "7D"]),
+    (78, 10, 2, ["8C", "7H"]),
+]
+SOL_MOVING = "6S"  # onto the right column's 7H: black on red, one rank down
+SOL_MOVING_AT = (118, 100)  # its top-left corner (px): just short of its place, down and right
+
+
+def solitaire_scene(c: TileCanvas) -> None:
+    w, h = SOL_SIZE
+    for x, y, down, faces in SOL_COLUMNS:
+        cascade(c, x, y, SOL_SIZE, down, faces, SOL_STEP)
+    mx, my = SOL_MOVING_AT
+    trail(c, [((mx + w + 3, my + dy), (mx + w + 13, my + dy + 6)) for dy in (40, 54)])
+    card(c, mx, my, w, h, SOL_MOVING)
+
+
+# --------------------------------------------------------------------------------------------
+# FreeCell: the row of four free cells along the top, one holding a card and the rest empty
+# (dashed, as on the felt), over cascades dealt all face up; a card rises off the cascades into
+# the last free cell.
+
+FC_SIZE, FC_STEP = (38, 54), 20  # card size, and the cascade overlap (px)
+FC_PITCH = FC_SIZE[0] + 6  # free cells and cascades share the columns
+FC_X0, FC_CELLS_Y, FC_CASCADES_Y = 11, 10, 86
+FC_CELLS: list[str | None] = ["4S", None, None, None]  # the free cells, left to right
+FC_CASCADES: dict[int, list[str]] = {0: ["7C", "4D"], 1: ["8D", "7S"]}  # column -> cards
+FC_MOVING = "7H"  # every card in the scene is a different one of the deck
+FC_TARGET = 3  # the free cell it is rising into
+FC_MOVING_Y = 36  # its top (px): already over the cell's lower half
+FC_TRAIL = ((10, 20), (28, 20))  # the rising card's motion marks: x in, length (px)
+FC_DASH, FC_DASH_GAP = 6, 4  # the empty cell's dashed outline (px)
+
+
+def dashes(pts: Sequence[Point], dash: float, gap: float) -> list[list[Point]]:
+    """A closed path cut into dashes `dash` long, `gap` apart (its own units)."""
+    out: list[list[Point]] = []
+    cur: list[Point] = []
+    on, left = True, dash
+    n = len(pts)
+    for i in range(n):
+        a, b = pts[i], pts[(i + 1) % n]
+        seg = math.dist(a, b)
+        t = 0.0
+        while seg - t > 1e-9:
+            step = min(left, seg - t)
+            p0 = (a[0] + (b[0] - a[0]) * t / seg, a[1] + (b[1] - a[1]) * t / seg)
+            t += step
+            p1 = (a[0] + (b[0] - a[0]) * t / seg, a[1] + (b[1] - a[1]) * t / seg)
+            if on:
+                cur = cur or [p0]
+                cur.append(p1)
+            left -= step
+            if left <= 1e-9:
+                if on:
+                    out.append(cur)
+                    cur = []
+                on, left = not on, (gap if on else dash)
+    if cur:
+        out.append(cur)
+    return out
+
+
+def free_cell(c: TileCanvas, x: int, y: int) -> None:
+    """An empty free cell: the felt's dashed outline. The felt's 4% white fill is left out: it
+    does not show on the lobby card, and it doubled the cell's bytes."""
+    w, h = FC_SIZE
+    body = rounded_rect(x + CARD_SNAP + w / 2, y + CARD_SNAP + h / 2, w, h, CARD_R)
+    for d in dashes(body, FC_DASH, FC_DASH_GAP):
+        c.stroke(d, OUTLINE_W, OUTLINE, closed=False)
+
+
+def freecell_scene(c: TileCanvas) -> None:
+    w, h = FC_SIZE
+    for i, f in enumerate(FC_CELLS):
+        x = FC_X0 + i * FC_PITCH
+        if f is None:
+            free_cell(c, x, FC_CELLS_Y)
+        else:
+            card(c, x, FC_CELLS_Y, w, h, f)
+    for col, faces in FC_CASCADES.items():
+        cascade(c, FC_X0 + col * FC_PITCH, FC_CASCADES_Y, FC_SIZE, 0, faces, FC_STEP)
+    mx, my = FC_X0 + FC_TARGET * FC_PITCH, FC_MOVING_Y
+    trail(c, [((mx + dx, my + h + 6), (mx + dx, my + h + 6 + ln)) for dx, ln in FC_TRAIL])
+    card(c, mx, my, w, h, FC_MOVING)
+
+
+# --------------------------------------------------------------------------------------------
+# Daily Word: the whole guessing grid, six guesses of five letters. No letters: the lobby is
+# shown in 13 languages and a real word would be English, so the tiles carry only the game's
+# colours. Three scored guesses, the fourth being revealed tile by tile (one mid-flip, squashed
+# top to bottom as WordTile turns, then one still to turn), and two empty rows to play.
+
+DW_CORRECT = hexrgb("#538d4e")  # DAILYWORD_CORRECT
+DW_PRESENT = hexrgb("#8c7100")  # DAILYWORD_PRESENT
+DW_ABSENT = hexrgb("#3a3a3c")  # DAILYWORD_ABSENT
+DW_TILE, DW_GAP, DW_R = 25, 4, 4  # px; the game's 4 pt radius
+DW_X0, DW_Y0 = 26, 11  # the grid's top-left corner (px)
+# Each row: "c" correct, "p" present, "a" absent, "f" flipping (to correct), "-" unscored.
+DW_ROWS = ["apaaa", "acpap", "ccacp", "cccf-", "-----", "-----"]
+DW_COLOURS = {"c": DW_CORRECT, "p": DW_PRESENT, "a": DW_ABSENT, "f": DW_CORRECT}
+DW_FLIP = 0.4  # the flipping tile's height, as a fraction: halfway through its turn
+
+
+def dailyword_scene(c: TileCanvas) -> None:
+    for r, row in enumerate(DW_ROWS):
+        for col, st in enumerate(row):
+            x = DW_X0 + col * (DW_TILE + DW_GAP)
+            y = DW_Y0 + r * (DW_TILE + DW_GAP)
+            cx, cy = x + DW_TILE / 2, y + DW_TILE / 2
+            h = DW_TILE * (DW_FLIP if st == "f" else 1.0)
+            body = rounded_rect(cx, cy, DW_TILE, h, min(DW_R, h / 2))
+            if st != "-":
+                c.polygon(body, DW_COLOURS[st])
+                sheen = rounded_rect(cx - 2, cy - h / 2 + 3.5, DW_TILE - 12, 2.4, 1.2)
+                c.polygon(sheen, HIGHLIGHT)
+            c.outline(body)
+
+
+# --------------------------------------------------------------------------------------------
 # Registry and output
 
 SCENES: dict[str, Callable[[TileCanvas], None]] = {
@@ -551,6 +779,9 @@ SCENES: dict[str, Callable[[TileCanvas], None]] = {
     "yacht": yacht_scene,
     "twenty48": twenty48_scene,
     "sudoku": sudoku_scene,
+    "solitaire": solitaire_scene,
+    "freecell": freecell_scene,
+    "daily_word": dailyword_scene,
 }
 
 
