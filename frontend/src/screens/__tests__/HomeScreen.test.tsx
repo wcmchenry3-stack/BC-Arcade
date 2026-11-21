@@ -11,6 +11,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
 import i18n from "../../i18n/i18n";
 import { LOBBY_MAX_FONT_SCALE, lobbyTileTextSizing } from "../../components/home/lobbyColumns";
+import type { TileStatus } from "../../game/_shared/lobbyStatus";
+import { __resetPersonalBestForTests, recordResult } from "../../game/_shared/personalBest";
+import { newGame as newTwenty48 } from "../../game/twenty48/engine";
+import { saveGame as saveTwenty48 } from "../../game/twenty48/storage";
+import { dealGame as dealFreeCell } from "../../game/freecell/engine";
+import { saveGame as saveFreeCell } from "../../game/freecell/storage";
 
 // Render gradients as a host element so tests can read their colours and style (#4005).
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
@@ -89,6 +95,19 @@ const mockWarmTodayMeta = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/daily_word/todayMeta", () => ({
   warmTodayMeta: () => mockWarmTodayMeta(),
 }));
+
+// The tile statuses (#4008) are read from local storage by the real hook. The status-display tests
+// set `mockTileStatuses` to put exact statuses on tiles instead; unset (the default), the real
+// hook and readers run.
+let mockTileStatuses: Record<string, TileStatus | undefined> | null = null;
+jest.mock("../../hooks/useLobbyTileStatus", () => {
+  const actual = jest.requireActual("../../hooks/useLobbyTileStatus");
+  return {
+    ...actual,
+    useLobbyTileStatus: (...args: unknown[]) =>
+      mockTileStatuses ?? actual.useLobbyTileStatus(...args),
+  };
+});
 
 // Connectivity — online by default; tests flip `isOnline`.
 const mockNetwork = { isOnline: true, isInitialized: true };
@@ -1012,5 +1031,175 @@ describe("HomeScreen — tile type (#4006)", () => {
     const s = lobbyTileTextSizing(1.15);
     expect(Number.isInteger(s.titleMinHeight)).toBe(true);
     expect(s.descriptionMinHeight).toBe(Math.ceil(16 * 5 * 1.15));
+  });
+});
+
+describe("HomeScreen — tile status from local data (#4008)", () => {
+  const TWENTY48_DESC = "Slide and merge tiles to reach 2048.";
+
+  async function settle() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+
+  beforeEach(() => {
+    mockTileStatuses = null;
+    __resetPersonalBestForTests();
+  });
+  afterEach(() => {
+    mockTileStatuses = null;
+    mockWindow.fontScale = 1;
+    __forceStoreBuildForTests(false);
+  });
+
+  it("shows Resume for a saved game: the button, the label, the status in place of the description", async () => {
+    await saveTwenty48({ ...newTwenty48(), score: 44 });
+    const r = await renderScreen();
+    // Screen readers hear the status in the label, which still starts with the Play label.
+    const tile = await r.findByLabelText("Play 2048 — in progress, tap to resume");
+    expect(r.getByTestId("game-status-twenty48").props.children).toBe("In progress");
+    expect(r.queryByText(TWENTY48_DESC)).toBeNull();
+    expect(within(r.getByTestId("game-btn-twenty48")).getByText("Resume")).toBeTruthy();
+
+    // Tapping opens the game, which restores the save exactly as it always did.
+    fireEvent.press(tile);
+    expect(mockNavigate).toHaveBeenCalledWith("Twenty48");
+  });
+
+  it("renders the grid with the normal description while a read has not landed", async () => {
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    getItem.mockImplementation((key: string) =>
+      key === "twenty48_game_v2" ? new Promise(() => undefined) : Promise.resolve(null)
+    );
+    try {
+      const r = await renderScreen();
+      await settle();
+      expect(r.getByLabelText("Play 2048")).toBeTruthy();
+      expect(r.getByText(TWENTY48_DESC)).toBeTruthy();
+      expect(r.getByLabelText("Play Yacht")).toBeTruthy();
+    } finally {
+      // Put the in-memory store back (jest.setup.ts): mockReset drops this implementation.
+      getItem.mockReset();
+      (AsyncStorage as unknown as { __restoreDefaults: () => void }).__restoreDefaults();
+    }
+  });
+
+  it("keeps Play and the description on a tile with no save, and a tap starts a new game", async () => {
+    const r = await renderScreen();
+    await settle();
+    expect(r.queryByTestId("game-status-twenty48")).toBeNull();
+    expect(r.getByText(TWENTY48_DESC)).toBeTruthy();
+    expect(within(r.getByTestId("game-btn-twenty48")).getByText("Play")).toBeTruthy();
+    fireEvent.press(r.getByLabelText("Play 2048"));
+    expect(mockNavigate).toHaveBeenCalledWith("Twenty48");
+  });
+
+  it("shows the best moves of a FreeCell with a best and no game in progress", async () => {
+    await recordResult("freecell", 1234);
+    await saveFreeCell(dealFreeCell(5));
+    const r = await renderScreen();
+    const status = await r.findByTestId("game-status-freecell");
+    expect(status.props.children).toBe("Best moves: 1,234");
+    expect(r.getByLabelText("Play FreeCell").props.accessibilityValue).toEqual({
+      text: "Best moves: 1,234",
+    });
+  });
+
+  it("formats each best in its game's unit for the locale, in the muted colour", async () => {
+    mockTileStatuses = {
+      twenty48: { kind: "best", value: 12345, unit: "score" },
+      solitaire: { kind: "best", value: 754_000, unit: "time" },
+      freecell: { kind: "best", value: 88, unit: "moves" },
+    };
+    const { getByTestId } = await renderScreen();
+    expect(getByTestId("game-status-twenty48").props.children).toBe("Best 12,345");
+    expect(getByTestId("game-status-solitaire").props.children).toBe("Best 12:34");
+    expect(getByTestId("game-status-freecell").props.children).toBe("Best moves: 88");
+    const muted = StyleSheet.flatten(getByTestId("game-status-twenty48").props.style).color;
+    expect(muted).toBe(StyleSheet.flatten(getByTestId("game-status-freecell").props.style).color);
+  });
+
+  it("shows Done today for Daily Word in the tertiary colour, and Resume in the accent colour", async () => {
+    mockTileStatuses = { daily_word: { kind: "doneToday" }, yacht: { kind: "resume" } };
+    const { getByTestId, getByLabelText } = await renderScreen();
+    const done = getByTestId("game-status-daily_word");
+    expect(done.props.children).toBe("Done today");
+    expect(getByLabelText("Play Daily Word").props.accessibilityValue).toEqual({
+      text: "Done today",
+    });
+    const resume = getByTestId("game-status-yacht");
+    expect(StyleSheet.flatten(resume.props.style).color).not.toBe(
+      StyleSheet.flatten(done.props.style).color
+    );
+    expect(getByLabelText("Play Yacht — in progress, tap to resume")).toBeTruthy();
+    // Daily Word has no Resume: its button still says Play.
+    expect(within(getByTestId("game-btn-daily_word")).getByText("Play")).toBeTruthy();
+  });
+
+  it("the status takes the description's reserved lines: the tile height is unchanged", async () => {
+    mockWindow.fontScale = 1.5;
+    const plain = await renderScreen();
+    const without = plain.getByText(TWENTY48_DESC);
+    const reserved = [
+      without.props.numberOfLines,
+      StyleSheet.flatten(without.props.style).minHeight,
+    ];
+    await plain.unmount();
+
+    mockTileStatuses = { twenty48: { kind: "resume" } };
+    const withStatus = (await renderScreen()).getByTestId("game-status-twenty48");
+    expect([
+      withStatus.props.numberOfLines,
+      StyleSheet.flatten(withStatus.props.style).minHeight,
+    ]).toEqual(reserved);
+    expect(reserved).toEqual([
+      lobbyTileTextSizing(1.5).descriptionLines,
+      lobbyTileTextSizing(1.5).descriptionMinHeight,
+    ]);
+    expect(withStatus.props.maxFontSizeMultiplier).toBe(LOBBY_MAX_FONT_SCALE);
+  });
+
+  it("gives a locked tile no status", async () => {
+    mockTileStatuses = { twenty48: { kind: "resume" } };
+    mockCanPlay.mockImplementation((slug: string) => slug !== "twenty48");
+    const r = await renderScreen();
+    expect(r.queryByTestId("game-status-twenty48")).toBeNull();
+    expect(r.queryByLabelText(/in progress/)).toBeNull();
+    expect(r.getByText(TWENTY48_DESC)).toBeTruthy();
+  });
+
+  it("in a store build reads no hidden game's storage", async () => {
+    __forceStoreBuildForTests(true);
+    const r = await renderScreen();
+    await settle();
+    expect(r.queryByTestId("game-tile-cascade")).toBeNull();
+    const keys = (AsyncStorage.getItem as jest.Mock).mock.calls.map(([key]) => String(key));
+    expect(keys.filter((k) => /cascade|starswarm|mahjong|hearts|blackjack/.test(k))).toEqual([]);
+    // It did read a visible game's save.
+    expect(keys).toContain("twenty48_game_v2");
+  });
+
+  it("reads again when Home regains focus, and writes nothing", async () => {
+    await renderScreen();
+    await settle();
+    const focus = mockAddListener.mock.calls.filter(([event]) => event === "focus");
+    expect(focus.length).toBeGreaterThan(0);
+    await saveTwenty48({ ...newTwenty48(), score: 8 });
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (AsyncStorage.getItem as jest.Mock).mockClear();
+    await act(async () => {
+      focus.forEach(([, cb]) => cb());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    // It read the save again, and wrote no game, best or board key (Home's own keys aside).
+    const read = (AsyncStorage.getItem as jest.Mock).mock.calls.map(([key]) => String(key));
+    expect(read).toContain("twenty48_game_v2");
+    const written = (AsyncStorage.setItem as jest.Mock).mock.calls.map(([key]) => String(key));
+    expect(
+      written.filter((k) =>
+        /twenty48|solitaire|freecell|sudoku|yacht|personal_best|daily_word/.test(k)
+      )
+    ).toEqual([]);
   });
 });

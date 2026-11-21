@@ -494,6 +494,60 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "home.resume.buttonLabel": {
+    "component": "HomeScreen",
+    "description": "Button label on a home-screen game tile whose game has a saved game that tapping continues.",
+    "tone": "action",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "home.resume.cardLabel": {
+    "component": "HomeScreen",
+    "description": "Accessibility label of a home-screen game tile that continues a saved game. {{label}} is the tile's normal label (Play Yacht).",
+    "tone": "functional",
+    "characterLimit": 90,
+    "placeholders": ["{{title}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "home.status.inProgress": {
+    "component": "HomeScreen",
+    "description": "Status line replacing a game tile's description when a saved game can be resumed. Must fit the tile's three-line description slot.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "home.status.doneToday": {
+    "component": "HomeScreen",
+    "description": "Status line on the Daily Word tile once today's puzzle is finished, won or lost. Must fit the description slot.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "home.status.best": {
+    "component": "HomeScreen",
+    "description": "Status line on a game tile with the player's personal best score or time. {{value}} is already formatted for the locale (1,450 or 4:12).",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "home.status.bestMoves": {
+    "component": "HomeScreen",
+    "description": "Status line on a game tile with the player's best (fewest) move count. {{value}} is a number already formatted for the locale.",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "deleteData.label": {
     "component": "SettingsScreen",
     "description": "Row label in Settings for permanently deleting the player's data.",

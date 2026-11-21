@@ -8,6 +8,8 @@
  *      on foreground and remembered for an offline Stats screen (#2635).
  *   3. Daily — the Daily Challenge card, and today's Daily Word cached for offline (#2925).
  *   4. Resume — Yacht opens its saved game, including a VS game mid computer turn (#2203).
+ *   5. Tile status — Resume, Done today or a personal best replaces a tile's description, read
+ *      from local storage after first paint (`useLobbyTileStatus`, #4008).
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -30,7 +32,7 @@ import * as Sentry from "@sentry/react-native";
 import type { HomeStackParamList, RootStackParamList } from "../types/navigation";
 import { newGame as newYachtGame } from "../game/yacht/engine";
 import { loadGame as loadYachtGame } from "../game/yacht/storage";
-import { isAiTurnPending } from "../game/yacht/vsTurn";
+import { isResumable as isYachtResumable } from "../game/yacht/lobbyStatus";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
@@ -47,6 +49,10 @@ import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { getLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
+import { useLobbyTileStatus } from "../hooks/useLobbyTileStatus";
+import type { TileStatus } from "../game/_shared/lobbyStatus";
+import { formatMs } from "../game/_shared/formatMs";
+import { formatNumber } from "../api/statsDisplay";
 import sortTile from "../../assets/home/sort-tile.webp";
 import sudokuTile from "../../assets/home/sudoku-tile.webp";
 import twenty48Tile from "../../assets/home/twenty48-tile.webp";
@@ -221,13 +227,9 @@ export default function HomeScreen() {
 
   async function startYacht() {
     const saved = await loadYachtGame();
-    // Resume an unfinished game, including a VS game where only the
-    // computer's last turn is left (#2203).
-    const resumable =
-      saved &&
-      (!saved.state.game_over ||
-        (!!saved.aiDifficulty && !!saved.aiState && isAiTurnPending(saved.state, saved.aiState)));
-    if (saved && resumable) {
+    // Resume an unfinished game, including a VS game where only the computer's last turn is
+    // left (#2203). The same rule gives the tile its "Resume" (game/yacht/lobbyStatus.ts).
+    if (isYachtResumable(saved)) {
       navigation.navigate("Game", {
         initialState: saved.state,
         aiDifficulty: saved.aiDifficulty ?? undefined,
@@ -356,6 +358,43 @@ export default function HomeScreen() {
   // Store builds hide the premium games entirely (#2390) — see gameVisibility.ts.
   const games = allGames.filter((game) => isGameVisible(game.slug));
 
+  // Each tile's status from local saves and bests (#4008). Only the games this build shows are
+  // read; the grid never waits on it.
+  const tileStatus = useLobbyTileStatus(
+    games.map((game) => game.slug),
+    navigation
+  );
+
+  function statusText(status: TileStatus): string {
+    switch (status.kind) {
+      case "resume":
+        return t("common:home.status.inProgress");
+      case "doneToday":
+        return t("common:home.status.doneToday");
+      case "best":
+        if (status.unit === "moves") {
+          return t("common:home.status.bestMoves", { value: formatNumber(t, status.value) });
+        }
+        return t("common:home.status.best", {
+          value: status.unit === "time" ? formatMs(status.value) : formatNumber(t, status.value),
+        });
+    }
+  }
+
+  function tileLabel(item: GameCard, isLocked: boolean, status: TileStatus | undefined): string {
+    if (isLocked) return t("common:home.locked.cardLabel", { title: item.title });
+    if (status?.kind === "resume") {
+      return t("common:home.resume.cardLabel", { label: item.playLabel });
+    }
+    return item.playLabel;
+  }
+
+  function statusColor(status: TileStatus): string {
+    if (status.kind === "resume") return colors.accentText;
+    if (status.kind === "doneToday") return colors.tertiaryText;
+    return colors.textMuted;
+  }
+
   // Cycle through BC Arcade accent colors for the gradient top border on each card.
   const cardGradients: [string, string][] = [
     [colors.tertiary, colors.secondary],
@@ -371,6 +410,10 @@ export default function HomeScreen() {
     ];
     const [gradStart, gradEnd] = gradient;
     const isLocked = !canPlay(item.slug);
+    // A locked tile can't be played, so it shows no status. Otherwise the status takes the
+    // description's slot, which keeps its reserved lines, so the rows stay equal (#4008).
+    const status = isLocked ? undefined : tileStatus[item.slug];
+    const statusLabel = status ? statusText(status) : undefined;
 
     return (
       <View style={[styles.cardWrapper, numColumns === 1 && styles.cardWrapperFull]}>
@@ -378,8 +421,10 @@ export default function HomeScreen() {
           style={[styles.card, { backgroundColor: colors.surfaceHigh }]}
           onPress={isLocked ? () => openPaywall(item.slug) : item.action}
           accessibilityRole="button"
-          accessibilityLabel={
-            isLocked ? t("common:home.locked.cardLabel", { title: item.title }) : item.playLabel
+          accessibilityLabel={tileLabel(item, isLocked, status)}
+          // Resume says its status in the label; Done today and Best are the tile's value.
+          accessibilityValue={
+            statusLabel && status?.kind !== "resume" ? { text: statusLabel } : undefined
           }
           accessibilityHint={item.description}
           testID={`game-tile-${item.slug}`}
@@ -437,16 +482,20 @@ export default function HomeScreen() {
             {item.title}
           </Text>
 
-          {/* Description */}
+          {/* Description, or the status that replaces it (#4008) */}
           <Text
             style={[
               styles.cardDesc,
-              { color: colors.textMuted, minHeight: textSizing.descriptionMinHeight },
+              {
+                color: status ? statusColor(status) : colors.textMuted,
+                minHeight: textSizing.descriptionMinHeight,
+              },
             ]}
             numberOfLines={textSizing.descriptionLines}
             maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+            testID={status ? `game-status-${item.slug}` : undefined}
           >
-            {item.description}
+            {statusLabel ?? item.description}
           </Text>
 
           {/* Play / Unlock button */}
@@ -474,7 +523,7 @@ export default function HomeScreen() {
                 style={[styles.playBtnText, { color: colors.textOnAccent }]}
                 maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
               >
-                {t("common:play")}
+                {status?.kind === "resume" ? t("common:home.resume.buttonLabel") : t("common:play")}
               </Text>
             </LinearGradient>
           )}

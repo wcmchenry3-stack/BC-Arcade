@@ -1298,6 +1298,26 @@ instead of truncating and tiles in a row stay equal. The button reads `common:pl
 ("Play"); the tile's accessibility label is the game's `game.playLabel`, kept on the
 `GameCard` entry rather than keyed by translated title.
 
+**Lobby tile status (#4008).** A tile can show one status line from this device's storage, in the
+description's slot (so it keeps the reserved lines and rows stay equal): **Resume** ("In progress",
+accent text, and the button reads "Resume", the label adds ", in progress, tap to resume") over
+**Done today** (Daily Word, tertiary text) over **Best** (muted, in the game's own unit: a score, a
+`m:ss` time for Solitaire, "Best moves" for FreeCell). A locked tile shows none. Each game
+contributes a `getLobbyStatus()` in `game/<name>/lobbyStatus.ts`, listed in
+`components/home/lobbyStatusReaders.ts`; `useLobbyTileStatus` runs them all in one `Promise.all`
+after first paint (`setTimeout(0)`), on mount and on Home's `focus` only, and the grid never waits
+on them. The resume rule lives in the game's `lobbyStatus.ts` (`isResumable`); Yacht's is also what
+`startYacht` uses, so the tile and the tap agree (#2203). The others' screens always reopen a stored
+game, so their rule only decides the label: a game in progress is one that is not over and has had a
+move. Shown for: Yacht, 2048, Solitaire, FreeCell, Sudoku (Resume), Daily Word (Done today), and Best for
+Yacht, 2048, Solitaire, FreeCell. **Not listed:** Sort (its mid-level save is continued from the
+level grid's Continue button, and its bests are one per level) and the hidden games (their storage
+is never imported or read, so a store bundle holds none of it); Sudoku shows no best (one per mode and
+difficulty). The reads are silent: a save that cannot be read, parsed or checked reads as no status
+and is left as stored (no removal, no Sentry event, unlike the game's own `loadGame`). The only
+possible write is the shared personal best's one-time move of a pre-#3757 save (`personalBest.ts`),
+which the game screen does too. Keys read: `docs/DATA-INVENTORY.md` §3.
+
 ### 10.8 How the free/premium split is decided
 
 The split is **criteria-driven, not quota-driven.** The original 6/6 was an
