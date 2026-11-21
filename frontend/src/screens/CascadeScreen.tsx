@@ -47,6 +47,8 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useReportAppOverlay } from "../hooks/appOverlay";
+import { ConfirmModal } from "../components/shared/ConfirmModal";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { useCascadeClock } from "../game/cascade/useCascadeClock";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
@@ -98,7 +100,7 @@ function CascadeGame() {
   const { t } = useTranslation(["cascade", "common"]);
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { activeFruitSet } = useFruitSet();
+  const { activeFruitSet, setFruitSetById } = useFruitSet();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "Cascade">>();
 
   const [devPanelOpen, setDevPanelOpen] = useState(false);
@@ -275,6 +277,7 @@ function CascadeGame() {
       setCelebrationReady(false);
       celebrationClock.set(-1);
       setQueueVersion((v) => v + 1);
+      piecesRef.current = []; // a switch tapped before the next frame sees a fresh board
       publishBoard(NO_PIECES);
       clearCascadeGame().catch(() => {});
       lastSaveTimeRef.current = 0;
@@ -307,6 +310,25 @@ function CascadeGame() {
     prevFruitSetId.current = activeFruitSet.id;
     startNewGame(activeFruitSet.id);
   }, [activeFruitSet.id, startNewGame]);
+
+  // A piece-set switch waiting on the player's confirm (#3970): the set to switch to, or null.
+  const [pendingSetId, setPendingSetId] = useState<string | null>(null);
+  // The confirm is a native Modal over the board: report it, so the clock and loop pause under it.
+  useReportAppOverlay(pendingSetId !== null);
+  const requestFruitSet = useCallback(
+    (id: string) => {
+      if (id === activeFruitSetRef.current.id) return;
+      // A game in progress (a piece on the board, not won or over) is lost by the switch: ask.
+      if (piecesRef.current.length > 0 && !gameOverRef.current) setPendingSetId(id);
+      else setFruitSetById(id);
+    },
+    [setFruitSetById]
+  );
+  const confirmFruitSet = useCallback(() => {
+    if (pendingSetId !== null) setFruitSetById(pendingSetId); // the reset effect starts the new game
+    setPendingSetId(null);
+  }, [pendingSetId, setFruitSetById]);
+  const cancelFruitSet = useCallback(() => setPendingSetId(null), []);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -689,7 +711,7 @@ function CascadeGame() {
       <>
         <ScoreDisplay store={scoreStore}>{preview}</ScoreDisplay>
 
-        <ThemeSelector />
+        <ThemeSelector onRequestSelect={requestFruitSet} />
 
         <View style={styles.canvasWrapper} onLayout={onLayout}>
           {scale > 0 && (
@@ -750,6 +772,18 @@ function CascadeGame() {
           onHome={goHome}
         />
       </>
+
+      <ConfirmModal
+        visible={pendingSetId !== null}
+        title={t("cascade:theme.switchConfirm.title")}
+        body={t("cascade:theme.switchConfirm.body")}
+        confirmLabel={t("cascade:theme.switchConfirm.confirm")}
+        cancelLabel={t("cascade:theme.switchConfirm.cancel")}
+        cancelFirst
+        onConfirm={confirmFruitSet}
+        onCancel={cancelFruitSet}
+        testID="cascade-switch-confirm"
+      />
 
       <CascadeDevPanel
         enabled={__DEV__}

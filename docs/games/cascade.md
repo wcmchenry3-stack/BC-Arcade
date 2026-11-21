@@ -24,7 +24,7 @@ Cascade is a physics piece-drop game in the Suika family. Pieces fall into a bin
 
 ### 2. The ladder and the merge rules
 
-There are **11 fixed tiers** (0-10) and two piece sets, **Fruits** and **Cosmos**, with the same rules and different art, names and sounds. The player picks the set with the toggle under the score; it can be switched mid-game, which abandons the game and starts a new one.
+There are **11 fixed tiers** (0-10) and two piece sets, **Fruits** and **Cosmos**, with the same rules and different art, names and sounds. The player picks the set with the toggle under the score. Switching it mid-game (a piece on the board, not won or over) asks first: a "Switch piece set?" confirm (Keep playing / Switch and start new game) leaves the game untouched until the player confirms, and the confirmed switch abandons the game and starts a new one. On a fresh or finished board it switches at once, and tapping the set already active does nothing (#3970).
 
 | Tier | Fruits        | Cosmos    | Radius | Drawn | Density | Score | Droppable |
 | ---- | ------------- | --------- | ------ | ----- | ------- | ----- | --------- |
@@ -117,7 +117,7 @@ Everything is drawn in code on the board's Skia Picture on the UI thread; nothin
 - **Autosave.** The board (each piece's tier and position), score, queue, `playedMs` and the replay log's place (`replay`, #3858) are saved to AsyncStorage (`cascade_game_v7`, `SavedState` v7) at most every 2 s after drops and merges, and in full when another screen covers the board or the app goes to the background. Velocities are not saved.
 - **Resume.** On open, a saved game with at least one piece is restored at rest, the play clock continues from `playedMs` (the time the app was closed does not count), the session a killed app left open is continued (#2654), and drops are refused for 60 frames (1 s at 60 Hz) while the pile settles; the lid's merge grace applies once. Nothing is saved or restored for a game that has been won or lost: the save is cleared at the win and at the game over, so a relaunch starts a new game.
 - **Old saves.** A present but invalid or older-version save is discarded, never migrated and never falls back to an older one; its key is removed. History: [Persistence](cascade-decisions.md#persistence-storagets).
-- **New game / abandon.** Restart (the shell's New Game, Play Again) and switching Fruits / Cosmos start a fresh game and clear the save; they end the session as `abandoned` with the score so far. Leaving the screen records `abandoned` once a piece has been dropped (an unplayed game is discarded without a row). Abandoned rows never rank or count toward Best.
+- **New game / abandon.** Restart (the shell's New Game, Play Again) and a confirmed switch of Fruits / Cosmos start a fresh game and clear the save; they end the session as `abandoned` with the score so far. A mid-game switch is confirmed first (#3970): while the dialog is open it is an app overlay, so the play clock and loop pause, and Cancel leaves the board, score, queue, clock, save and selected set unchanged and records nothing; a fresh or finished game switches with no dialog. Leaving the screen records `abandoned` once a piece has been dropped (an unplayed game is discarded without a row). Abandoned rows never rank or count toward Best.
 - A game that was never started (no piece dropped) posts nothing; the session row is created at the first drop (`markStarted`).
 
 ### 10. Backend session and result contract
