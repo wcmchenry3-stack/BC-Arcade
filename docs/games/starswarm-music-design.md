@@ -32,7 +32,16 @@ The track is rebuilt from code: `python tools/assets/build_starswarm_bgm.py OUT.
 about a minute, byte-identical to the shipped file under CI's ffmpeg (Ubuntu 24.04, ffmpeg 6.1.1)
 with the pinned numpy, scipy and soundfile. `--check` rebuilds and compares the SHA-256;
 `--stages DIR` also keeps the bed, intro and full mix renders and the cue sheet for listening.
-`tools/assets/tests/starswarm_bgm_test.py` rebuilds it in CI and fails if the decoded audio moves.
+`tools/assets/tests/starswarm_bgm_test.py` rebuilds it in CI and checks it two ways (#4027). The build
+encodes MP3 three times and libmp3lame is chaotic: the same code and packages gave MP3s that differed
+by 2e-3 relative RMS on two CI runners, with the same sound. So the test pins the encoder-free stages
+tightly (1e-6 relative): the un-encoded bed, each layer's phrase, and the arrangement laid over the
+un-encoded bed, summarised as per-5 s-window RMS and peak in
+`tools/assets/starswarm_bgm/reference_fingerprint.json` (about 6 KB; no audio is stored). A changed cue
+level (even 0.09 dB), window, duck, fade, pitch or layer fails it. The final shipped MP3 is checked
+loosely (same length, relative RMS under 1.5e-2, every 10 s window within 0.02 dB of the shipped
+track), which tolerates encoder differences between machines but still catches a wholesale change.
+The thresholds and their evidence are in the test file.
 
 The approved track draws on six rounds. Each layer was copied out of its round with the arithmetic
 unchanged, minus the parts the final track never used:
@@ -64,7 +73,14 @@ Things to know before changing it:
 - **Changing the music:** edit a layer or a cue, rebuild with `--stages`, listen, then replace
   `frontend/assets/sounds/starswarm-bgm.mp3` and update its SHA-256 and size here, in
   `SOUND_CREDITS.md`, in `scripts/check_large_files.py` and in `EXPECTED_SHA256` in
-  `frontend/src/__tests__/starswarmBgm.test.ts`. The starting points and the time map below
+  `frontend/src/__tests__/starswarmBgm.test.ts`. Also run
+  `python tools/assets/build_starswarm_bgm.py --write-fingerprint` and commit the updated
+  `tools/assets/starswarm_bgm/reference_fingerprint.json`: without it the CI fingerprint test fails
+  on purpose. Do it after replacing the MP3: the file records the shipped MP3's SHA-256
+  (`shipped_sha256`, checked by a test), and `--write-fingerprint` refuses to change the stages while
+  the shipped MP3 is unchanged, so a recipe edit cannot be blessed by refreshing alone. `--force`
+  overrides that only when you have deliberately decided the shipped MP3 stays as is. (A refresh that moves nothing audible, such as a refactor, should leave the file
+  unchanged: check `git diff` shows no change.) The starting points and the time map below
   are tied to the current cues.
 
 The recipe was recovered on 2026-11-21 from the round archive in git history (commit `356d7ed^`,
