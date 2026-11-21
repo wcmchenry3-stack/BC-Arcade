@@ -315,8 +315,13 @@ def test_premium_pool_is_a_superset_of_the_free_pool() -> None:
 @pytest.mark.parametrize("game", sorted(PREMIUM_GOAL_POOL))
 def test_each_game_has_easy_medium_hard_goals(game: str) -> None:
     goals = PREMIUM_GOAL_POOL[game]
-    assert [g.tier for g in goals] == list(TIERS)
     assert all(g.game_type == game for g in goals)
+    if game == ALWAYS_PRESENT:
+        # #3991: Daily Word's goal is always "complete", in all three slots.
+        assert {g.id for g in goals} == {"daily_word:completed"}
+        assert len(goals) == len(TIERS)
+        return
+    assert [g.tier for g in goals] == list(TIERS)
     assert len({g.id for g in goals}) == 3
     for g in goals:
         assert g.kind and not g.kind.startswith("_")
@@ -331,8 +336,6 @@ def test_every_games_easy_goal_needs_no_win(game: str) -> None:
 
 # The luck-dependent goals, spelled out so a new one is a deliberate edit here.
 _LUCK_DEPENDENT = {
-    "daily_word:won",
-    "daily_word:won_guesses_used_at_most:4",
     "solitaire:won",
     "solitaire:won_moves_at_most:120",
     "freecell:won",
@@ -386,7 +389,6 @@ def test_win_limits_are_above_the_physical_minimum() -> None:
     minimum = {
         ("solitaire", "won_moves_at_most"): 52,  # 52 cards to the foundations
         ("freecell", "won_moves_at_most"): 52,
-        ("daily_word", "won_guesses_used_at_most"): 1,
     }
     for goals in PREMIUM_GOAL_POOL.values():
         for g in goals:
@@ -413,12 +415,12 @@ _EVALUATION_CASES = [
     # daily_word
     ("daily_word", _EASY, {"is_complete": True, "won": False}, True),
     ("daily_word", _EASY, {"is_complete": False}, False),
+    # #3991: every tier slot is the same "complete" goal (a loss still counts).
     ("daily_word", _MEDIUM, {"is_complete": True, "won": True, "guesses_used": 6}, True),
-    ("daily_word", _MEDIUM, {"is_complete": True, "won": False, "guesses_used": 6}, False),
-    ("daily_word", _HARD, {"won": True, "guesses_used": 4}, True),
-    ("daily_word", _HARD, {"won": True, "guesses_used": 5}, False),
-    ("daily_word", _HARD, {"won": False, "guesses_used": 2}, False),
-    ("daily_word", _HARD, {"won": True}, False),
+    ("daily_word", _MEDIUM, {"is_complete": True, "won": False, "guesses_used": 6}, True),
+    ("daily_word", _MEDIUM, {"is_complete": False, "won": True}, False),
+    ("daily_word", _HARD, {"is_complete": True, "won": False, "guesses_used": 6}, True),
+    ("daily_word", _HARD, {"won": True, "guesses_used": 2}, False),
     # twenty48 — final_score / highest_tile, abandoned or not
     ("twenty48", _EASY, {"final_score": 500}, True),
     ("twenty48", _EASY, {"final_score": 499}, False),
@@ -1248,6 +1250,60 @@ def test_a_day_frozen_with_the_old_goals_keeps_them_after_the_flip(sort_edition)
     assert sort_goal.evaluate({"final_score": old_target - 1}) is False
     # The same day computed fresh now differs: it is a new, unfrozen day.
     assert [g.target for g in template_for(day).goals if g.game_type == "sort"] != [old_target]
+
+
+# ---------------------------------------------------------------------------
+# Daily Word's goal is always "complete" (#3991)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("slate", _SLATES)
+@pytest.mark.parametrize("salt", [0, 1, 7, 12345, 2**31])
+def test_daily_word_goal_is_always_completed(slate: str, salt: int) -> None:
+    for day in _days(730):
+        template = pick_template(day, slate, salt)
+        word = template.goals[0]
+        assert (word.game_type, word.kind, word.target) == ("daily_word", "completed", None)
+        assert word.is_win is False
+        # The pick rules still hold: one win goal at most, no repeat vs the day before.
+        assert sum(g.is_win for g in template.goals) <= 1
+        assert len({g.game_type for g in template.goals}) == GOALS_PER_DAY
+        previous = pick_template(day - timedelta(days=1), slate, salt)
+        assert {g.game_type for g in template.goals[1:]}.isdisjoint(
+            g.game_type for g in previous.goals[1:]
+        )
+
+
+def test_daily_word_no_longer_holds_the_win_slot() -> None:
+    # Over two years the win-dependent goal must come up for the other games.
+    win_games = {
+        g.game_type for day in _days(730) for g in pick_template(day, "free", 0).goals if g.is_win
+    }
+    assert win_games and "daily_word" not in win_games
+
+
+def test_a_day_frozen_with_an_old_daily_word_win_goal_still_replays() -> None:
+    old_specs = [
+        {"game_type": "daily_word", "kind": "won", "target": None, "tier": "medium"},
+        {
+            "game_type": "daily_word",
+            "kind": "won_guesses_used_at_most",
+            "target": 4,
+            "tier": "hard",
+        },
+    ]
+    won_in_4 = {"is_complete": True, "won": True, "guesses_used": 4}
+    won_in_5 = {"is_complete": True, "won": True, "guesses_used": 5}
+    lost = {"is_complete": True, "won": False, "guesses_used": 6}
+    won, within = (goal_from_spec(spec) for spec in old_specs)
+    assert won.is_win and within.is_win
+    assert (won.id, within.id) == ("daily_word:won", "daily_word:won_guesses_used_at_most:4")
+    assert [won.evaluate(f) for f in (won_in_4, won_in_5, lost)] == [True, True, False]
+    assert [within.evaluate(f) for f in (won_in_4, won_in_5, lost)] == [True, False, False]
+    # Neither is in the live pool any more, yet both rebuild (and round-trip).
+    live = {g.id for g in FREE_GOAL_POOL["daily_word"]}
+    assert won.id not in live and within.id not in live
+    assert [goal_to_spec(g) for g in (won, within)] == old_specs
 
 
 # ---------------------------------------------------------------------------
