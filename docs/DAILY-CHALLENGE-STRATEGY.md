@@ -28,9 +28,9 @@ From [`PRODUCT.md`](PRODUCT.md), and they bind this design:
 - **No purchase prompts that exploit a streak.** A free player never sees a goal for a premium game they don't own,
   and never sees "buy X to keep your streak".
 - **Free games stay complete.** Challenges never unlock or gate content.
-- **"Never build: advanced analytics beyond error reporting."** This is in tension with the "deep analytics" idea.
-  The personalization below uses only first-party results we already store for gameplay. Anything beyond that is an
-  owner decision (see §10). It must not slip in through this feature.
+- **Analytics (PRODUCT.md, updated with this proposal).** First-party gameplay data may be used inside the app: to
+  personalize features like Daily Challenge, and in aggregate to decide what to improve in the games. It is never
+  sold, never used for marketing or ads outside the app, and never used to build profiles of identifiable people.
 
 ## 3. What the research says (short version)
 
@@ -110,9 +110,13 @@ Rules:
 
 ### Eligible games
 
-A player's **eligible set** = free games + premium games **they own**. A free player only ever sees free games.
-This replaces today's "premium slate only if you own every premium game named" rule with one per-player list, so a
-player who owns one premium game gets it, without either pool needing to change.
+**Premium is one purchase that unlocks every premium game** (owner, 2026-11-21). So there are two kinds of player:
+
+- **Free player:** eligible games = the free games. They never see a goal for a premium game.
+- **Premium player:** eligible games = every game.
+
+This replaces today's per-template "owns every premium game named" check with one flag. Note: `docs/IAP.md` still
+describes one product per game with no bundle; it needs reconciling with this decision, outside this proposal.
 
 ### Focus on what they play (core slots)
 
@@ -134,13 +138,14 @@ player who owns one premium game gets it, without either pool needing to change.
   rests for 30 days. This is the "if they're not into Sudoku, stop showing Sudoku" rule.
 - Otherwise the bonus slot is a slightly bigger personal stretch in a favourite game.
 
-### Premium owners: free vs premium mix
+### Premium players: free vs premium mix
 
-- **Don't weight by price, weight by play.** A premium game they play a lot naturally shows up often; one they
-  bought and never touch is a discovery candidate, not a forced core goal.
-- **A light floor for what they paid for.** If a player owns a premium game, it appears somewhere on the card
-  (core or bonus) at least about twice a week. That makes the purchase feel seen without crowding out their free
-  favourites.
+- **Pick by play, not by price.** A premium player's core goals come from the games they actually play, free or
+  premium. A premium game they play a lot shows up often.
+- **Unplayed premium games surface through the bonus slot.** A premium game the player hasn't tried is a discovery
+  candidate, with the same "rest it after 3 ignores" rule. That shows what they paid for without forcing it.
+- **No extra quota** (an earlier draft had "a premium game at least twice a week"). Dropped as unnecessary given the
+  bonus slot. It can come back as a dial if premium players turn out to see their premium games too rarely.
 - Daily Word stays the anchor for everyone.
 
 **Starting split (all dials):** core slots about 100% "games you play", bonus slot about 50% discovery and 50%
@@ -274,12 +279,13 @@ The CLAUDE.md order applies: cost, then performance, then data. A first look:
 1. ~~Streak rule.~~ **Decided (owner, 2026-11-21):** keep 2 of 3 core goals.
 2. ~~Bonus slot.~~ **Decided (owner, 2026-11-21):** show the bonus goal every day; completing it gives nothing beyond
    its checkmark (a reward can be revisited later).
-3. **"Advanced analytics" rule.** PRODUCT.md says never build analytics beyond error reporting. Confirm that using
-   first-party game results for personalization and the small §8 metrics is in bounds, and that "deep analytics" is
-   a separate, later decision.
-4. **Premium floor.** Is "an owned premium game appears ~2×/week" right, or should premium games get no special
-   treatment at all?
-5. **Ship order.** Ship "Daily Word = complete only" now as a quick win, ahead of the rest? (Recommended.)
+3. ~~Analytics rule.~~ **Decided (owner, 2026-11-21):** in bounds. First-party data is used inside the app to
+   personalize features and improve the games; it is not sold, not used for outside marketing, and not used to
+   profile identifiable people. PRODUCT.md is updated to say this.
+4. ~~Premium floor.~~ **Decided (owner, 2026-11-21):** premium unlocks every premium game, so a player is either free
+   or premium. No extra quota; premium games are picked by play, and unplayed ones surface in the bonus slot.
+5. ~~Ship order.~~ **Decided (owner, 2026-11-21):** all of this ships before go-live. "Daily Word = complete only" can
+   be the first story, since it's small, but it's not a separate release.
 
 ## 11. Next steps
 
