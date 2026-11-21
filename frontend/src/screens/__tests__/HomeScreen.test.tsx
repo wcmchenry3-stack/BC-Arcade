@@ -1014,3 +1014,48 @@ describe("HomeScreen — tile type (#4006)", () => {
     expect(s.descriptionMinHeight).toBe(Math.ceil(16 * 5 * 1.15));
   });
 });
+
+describe("HomeScreen — fixed tile order, Daily Word first (#4009)", () => {
+  afterEach(() => __forceStoreBuildForTests(false));
+
+  const tileOrder = (getAllByTestId: (id: RegExp) => { props: { testID: string } }[]) =>
+    getAllByTestId(/^game-tile-/).map((el) => el.props.testID.replace("game-tile-", ""));
+
+  it("store build: Daily Word first, the rest in their existing order", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(390);
+    expect(tileOrder(getAllByTestId)).toEqual([
+      "daily_word",
+      "yacht",
+      "twenty48",
+      "solitaire",
+      "freecell",
+      "sudoku",
+      "sort",
+    ]);
+  });
+
+  it("all games: Daily Word first, hidden games keep their relative slots", async () => {
+    const { getAllByTestId } = await renderScreen(390);
+    expect(tileOrder(getAllByTestId)).toEqual([
+      "daily_word",
+      "yacht",
+      "cascade",
+      "blackjack",
+      "twenty48",
+      "solitaire",
+      "freecell",
+      "hearts",
+      "sudoku",
+      "starswarm",
+      "mahjong",
+      "sort",
+    ]);
+  });
+
+  it("the single-column path uses the same order", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(300);
+    expect(tileOrder(getAllByTestId)[0]).toBe("daily_word");
+  });
+});
