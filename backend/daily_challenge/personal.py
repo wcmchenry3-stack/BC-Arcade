@@ -14,7 +14,7 @@ The day's three core goals
 
 Bottle Sort has no personal goals for now: "solve N new levels" pinned for today+1 and
 today+2 at the first open of today could already be met by today's own solves, so it
-is deferred to an owner decision. Sort still appears on shared-template days.
+is deferred to #4028. Sort still appears on shared-template days.
 
 Every goal is one of the existing kinds with an absolute target (``final_score_at_least``,
 ``highest_tile_at_least``, ``won``, ``won_moves_at_most``, ``solved``), so installed app

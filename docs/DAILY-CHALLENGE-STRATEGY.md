@@ -363,7 +363,7 @@ Notes:
 - **Yacht:** the comment "abandoned games count with their score so far" is out of date: abandons are filtered.
   _Fixed (#3993)._
 - **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Deferred
-  to the owner decision issue; the shared template keeps them (see "Shipped" below)._
+  to #4028; the shared template keeps them (see "Shipped" below)._
 - **Blackjack:** the pending hand-count goals are dropped (§7a).
 
 ### Shipped for the free games (#3993, #3994)
@@ -375,7 +375,7 @@ from the tables above:
 - **Pool fixes, as proposed.** Solitaire / FreeCell lose "make 10 / 5 moves" and their wins are no longer flagged
   luck-dependent (provably solvable deals); the stale Solitaire and Yacht comments are fixed. The shared template
   keeps three tiers each: win / win in at most 150 (FreeCell 130) / at most 120 (100) moves.
-- **Bottle Sort personal goals deferred to the owner decision issue.** "N new levels" pinned for today+1 and
+- **Bottle Sort personal goals deferred to #4028** (a relative "new levels" goal kind). "N new levels" pinned for today+1 and
   today+2 at today's first open could already be met by today's solves, so Sort has no personal goals and is not
   eligible for a personal pick. It keeps its absolute targets (3/8/15 and 10/30/60) on shared-template days.
 - **Cold start uses the pool's easy-tier goal where §12's "Finish a game" can't be evaluated.** 2048 cold start is

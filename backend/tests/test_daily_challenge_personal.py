@@ -916,18 +916,38 @@ async def test_one_personal_pick_is_four_queries() -> None:
 
 
 @needs_db
-async def test_upcoming_reads_the_history_once_for_three_days(client: TestClient) -> None:
+async def test_upcoming_reads_the_history_once_for_three_days(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sid = str(uuid.uuid4())
     today = local_day(0).date
     await _seed_2048(sid, today)
     await _add(sid, "yacht", datetime.now(UTC) - timedelta(minutes=1), final_score=150)
+    loads: list[tuple[date, date | None]] = []
+    real_load = history_mod.load_install_history
+
+    async def counting_load(db, sid_, day, tz=0, **kw):
+        loads.append((day, kw.get("through")))
+        return await real_load(db, sid_, day, tz, **kw)
+
+    monkeypatch.setattr(history_mod, "load_install_history", counting_load)
     statements, stop = _count_statements()
     try:
         body = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
     finally:
         stop()
-    # assignment SELECT, recent-play EXISTS, 4 history queries, the INSERT.
-    assert len(statements) == 7, statements
+    # One history read for all three days. Counted by what each statement is, not
+    # by total, so a dialect's extra statements (Postgres' storage-guard SAVEPOINT
+    # and size query) do not matter.
+    assert loads == [(today, today + timedelta(days=2))]
+    lowered = [s.lower() for s in statements]
+    assert sum("row_number" in s for s in lowered) == 1  # query 2
+    assert sum("lag(" in s for s in lowered) == 1  # query 4
+    assert sum("insert into daily_challenge_assignments" in s for s in lowered) == 1
+    reads = [
+        s for s in lowered if s.lstrip().startswith("select") and "daily_challenge_assignments" in s
+    ]
+    assert len(reads) == 2, reads  # get_or_pin's lookup + the history's pinned rows
     days = [d["goals"] for d in body["days"]]
     # Today, +1 and +2 see each other: no game in two consecutive days' core slots
     # needs 3+ games; with two, a (game, goal type) still never repeats within 3 days.
@@ -1394,3 +1414,23 @@ async def test_a_sort_heavy_install_never_gets_a_personal_sort_goal(client: Test
     assert all(g["game_type"] != "sort" for day in body["days"] for g in day["goals"])
     async with get_session_factory()() as db:
         assert "sort" not in await service.eligible_games(db, sid)
+
+
+@needs_db
+async def test_a_gap_one_microsecond_over_the_window_counts() -> None:
+    """Round 3: SQLite rounded a .999999 s fraction up inside plus_hours, so this 48 h
+    + 1 us gap went uncounted. The day (opens 11-18 10:00) was servable unpinned."""
+    sid = str(uuid.uuid4())
+    created = [
+        datetime(2026, 11, 16, 10, tzinfo=UTC),
+        datetime(2026, 11, 17, 12, 59, 59, 999999, tzinfo=UTC),
+        datetime(2026, 11, 19, 13, tzinfo=UTC),
+    ]
+    for c in created:
+        await _add(sid, "twenty48", c, final_score=1, created_at=c)
+    now = datetime(2026, 11, 20, 12, tzinfo=UTC)
+    async with get_session_factory()() as db:
+        result = await history_mod._creations(db, sid, [_DAY], 48 * _H, now)
+    assert result[_DAY].gaps == 1
+    assert result[_DAY].first == created[0] and result[_DAY].latest == created[-1]
+    assert not await _pinnable(created, now)

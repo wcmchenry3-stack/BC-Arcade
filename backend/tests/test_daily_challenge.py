@@ -470,7 +470,6 @@ _EVALUATION_CASES = [
     ("twenty48", _MEDIUM, {"highest_tile": 256, "final_score": 9000}, False),
     ("twenty48", _HARD, {"final_score": 2500}, True),
     ("twenty48", _HARD, {"final_score": 2499}, False),
-    # solitaire
     # solitaire (#3993: the win is the easy goal; "make 10 moves" is gone)
     ("solitaire", _EASY, {"won": True, "moves": 300}, True),
     ("solitaire", _EASY, {"won": False, "moves": 300}, False),
