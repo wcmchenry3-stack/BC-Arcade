@@ -1338,7 +1338,7 @@ Since #3578 the sound effects of Sort, 2048, Yacht, Daily Word, Sudoku and Mahjo
 
 ## Cascade: synthesized sounds, one set per piece set (#3702)
 
-Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/assets/synth_cascade_sfx.py` (no samples, no third-party audio): one set of 21 per piece set, switched with the Fruits / Cosmos toggle. Fruits plays "Juicy pops", Cosmos "Starlight glass" (owner picks, 2026-11-16). They replaced the three Kenney Digital Audio files (`cascade-fruit-merge.ogg`, `cascade-combo.ogg`, `cascade-game-over.ogg`), deleted in #3702. The reasoning behind each sound is in `docs/games/cascade-sound-design.md`.
+Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/assets/synth_cascade_sfx.py` (no samples, no third-party audio): one set of 22 per piece set, switched with the Fruits / Cosmos toggle. Fruits plays "Juicy pops", Cosmos "Starlight glass" (owner picks, 2026-11-16). They replaced the three Kenney Digital Audio files (`cascade-fruit-merge.ogg`, `cascade-combo.ogg`, `cascade-game-over.ogg`), deleted in #3702. The reasoning behind each sound is in `docs/games/cascade-sound-design.md`.
 
 ### cascade-fruits-drop.ogg
 
@@ -1350,7 +1350,7 @@ Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/as
 
 ### cascade-fruits-land-light.ogg
 
-- **Event:** Cascade, Fruits pieces: a piece's first contact, tiers 0-4 (volume rises with the tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Event:** Cascade, Fruits pieces: a piece's first contact, tiers 0-5 (volume rises with the tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-land-light`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
@@ -1358,7 +1358,7 @@ Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/as
 
 ### cascade-fruits-land-heavy.ogg
 
-- **Event:** Cascade, Fruits pieces: a piece's first contact, tiers 5-10 (volume rises with the tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
+- **Event:** Cascade, Fruits pieces: a piece's first contact, tiers 6-11 (volume rises with the tier) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-land-heavy`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
@@ -1452,6 +1452,14 @@ Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/as
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.60 s juicy pop: a bubble an octave up, then a Karplus-Strong plucked string at G6 (a G4 pentatonic ladder); a fizz of 14 tiny bubbles (1.5-3.2 kHz); an octave pluck.
 
+### cascade-fruits-merge-t11.ogg
+
+- **Event:** Cascade, Fruits pieces: the winning merge (tier 11, the capstone), played with the win chord at the same instant (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`; `soundPacer.win`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3966), "Juicy pops". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-fruits-merge-t11`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.75 s: the tier-10 juicy pop (a bubble, a G6 Karplus-Strong pluck, a fizz of tiny bubbles, an octave pluck) with D7 and G7 plucks strummed in 35-65 ms after it, and 14 more tiny bubbles (2.2-4.2 kHz) over the first 0.4 s; 2.5 dB above its ladder level (owner option C).
+
 ### cascade-fruits-chain-1.ogg
 
 - **Event:** Cascade, Fruits pieces: chain step 1 of a drop's chain (steps paced 80 ms apart) (`CASCADE_SOUNDS.fruits`, played by `useCascadeSounds`)
@@ -1518,7 +1526,7 @@ Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/as
 
 ### cascade-cosmos-land-light.ogg
 
-- **Event:** Cascade, Cosmos pieces: a piece's first contact, tiers 0-4 (volume rises with the tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Event:** Cascade, Cosmos pieces: a piece's first contact, tiers 0-5 (volume rises with the tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-land-light`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
@@ -1526,7 +1534,7 @@ Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/as
 
 ### cascade-cosmos-land-heavy.ogg
 
-- **Event:** Cascade, Cosmos pieces: a piece's first contact, tiers 5-10 (volume rises with the tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
+- **Event:** Cascade, Cosmos pieces: a piece's first contact, tiers 6-11 (volume rises with the tier) (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`)
 - **Source:** Original sound, synthesized in-house for BC Arcade (#3702), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
 - **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-land-heavy`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
@@ -1619,6 +1627,14 @@ Since #3702 Cascade's sounds are **original, synthesized in-house** by `tools/as
 - **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t10`), fixed seeds, so the decoded audio is reproducible.
 - **License / rights:** Owned by the project. No attribution required; commercial use OK.
 - **Recipe:** 0.67 s: a soft glass tick and a glass bell at C7 (a C5 pentatonic ladder) over a sub sine an octave below that drops an octave, its level growing with the tier (a planet's weight); a slow-beating shimmer an octave up (two sines 4 Hz apart).
+
+### cascade-cosmos-merge-t11.ogg
+
+- **Event:** Cascade, Cosmos pieces: the winning merge (tier 11, the capstone), played with the win chord at the same instant (`CASCADE_SOUNDS.cosmos`, played by `useCascadeSounds`; `soundPacer.win`)
+- **Source:** Original sound, synthesized in-house for BC Arcade (#3966), "Starlight glass". No samples or third-party audio: built from oscillators, noise, envelopes and filters.
+- **Generator:** `tools/assets/synth_cascade_sfx.py` (`python tools/assets/synth_cascade_sfx.py frontend/assets/sounds cascade-cosmos-merge-t11`), fixed seeds, so the decoded audio is reproducible.
+- **License / rights:** Owned by the project. No attribution required; commercial use OK.
+- **Recipe:** 0.82 s: the tier-10 glass bell at C7 over its sub, with G7 and C8 bells added 30 and 60 ms in and a slow-beating shimmer on C8 (two sines 5 Hz apart): a bright C7 + G7 + C8 chord with an octave shimmer (owner option C).
 
 ### cascade-cosmos-chain-1.ogg
 

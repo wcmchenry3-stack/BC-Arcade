@@ -19,8 +19,11 @@ import { MOTION } from "../motion";
 const SOURCE = fs.readFileSync(path.join(__dirname, "../sounds.ts"), "utf8");
 const SOUNDS_DIR = path.join(__dirname, "../../../../assets/sounds");
 
-/** The owner raised Cascade's sound budget from 120 KB to about 345 KB on #3702 (both sets). */
-const SOUND_BUDGET_BYTES = 350 * 1024;
+/**
+ * The owner raised Cascade's sound budget from 120 KB to about 345 KB on #3702 (both sets), then
+ * to 360 KiB for the two merge-t11 files (#3966, 2026-11-21).
+ */
+const SOUND_BUDGET_BYTES = 360 * 1024;
 
 /** set -> sound name -> file, read from the registry's source (Jest maps every .ogg to one stub). */
 function registryFiles(): Record<string, Record<string, string>> {
@@ -44,16 +47,14 @@ describe("Cascade sound registry (#3702)", () => {
     (set) => {
       expect(Object.keys(files[set]!).sort()).toEqual([...CASCADE_SOUND_NAMES].sort());
       for (const name of CASCADE_SOUND_NAMES) {
-        // TEMP(#3962): merge-t11 plays the t10 file until #3966 synthesises its own.
-        const file = name === "merge-t11" ? "merge-t10" : name;
-        expect(files[set]![name]).toBe(`cascade-${set}-${file}.ogg`);
+        expect(files[set]![name]).toBe(`cascade-${set}-${name}.ogg`);
       }
     }
   );
 
   it("every registered file exists, and every Cascade file on disk is registered", () => {
-    // TEMP(#3962): merge-t11 shares the t10 file, so a file may be registered twice.
-    const registered = [...new Set(Object.values(files).flatMap((f) => Object.values(f)))];
+    const registered = Object.values(files).flatMap((f) => Object.values(f));
+    expect(new Set(registered).size).toBe(registered.length); // 44, all distinct
     for (const f of registered) expect(fs.existsSync(path.join(SOUNDS_DIR, f))).toBe(true);
     const onDisk = fs.readdirSync(SOUNDS_DIR).filter((f) => f.startsWith("cascade-"));
     expect(onDisk.sort()).toEqual([...registered].sort());
@@ -73,6 +74,11 @@ describe("Cascade sound registry (#3702)", () => {
       .filter((f) => f.startsWith("cascade-"))
       .reduce((sum, f) => sum + fs.statSync(path.join(SOUNDS_DIR, f)).size, 0);
     expect(bytes).toBeLessThanOrEqual(SOUND_BUDGET_BYTES);
+  });
+
+  it("merge-t11 is lazy: 14 lazy sounds, 22 players at most (#3966)", () => {
+    expect(LAZY_CASCADE_SOUNDS.has("merge-t11")).toBe(true);
+    expect(LAZY_CASCADE_SOUNDS.size).toBe(14);
   });
 
   it("the sounds of every turn are eager (8); the rarer ones lazy or pre-warmed", () => {
@@ -97,10 +103,10 @@ describe("which file an event plays", () => {
     expect(soundSetFor("unknown")).toBe("fruits");
   });
 
-  it("land: light for tiers 0-4, heavy for 5-11, louder with the tier", () => {
+  it("land: light for tiers 0-5, heavy for 6-11, louder with the tier", () => {
     expect(landSound(0)).toEqual({ name: "land-light", volume: MOTION.sound.landVolume0 });
-    expect(landSound(4).name).toBe("land-light");
-    expect(landSound(5).name).toBe("land-heavy");
+    expect(landSound(5).name).toBe("land-light");
+    expect(landSound(6).name).toBe("land-heavy");
     expect(landSound(11)).toEqual({ name: "land-heavy", volume: 1 });
     for (let t = 1; t <= 11; t++) {
       expect(landSound(t).volume).toBeGreaterThan(landSound(t - 1).volume);

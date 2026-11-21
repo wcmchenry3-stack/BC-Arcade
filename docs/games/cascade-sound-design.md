@@ -21,15 +21,16 @@ The house rules (see [arcade-sound-design.md](arcade-sound-design.md#direction-f
 
 **Levels**, the same for both sets so a skin switch never jumps, matched to the shipped sounds (2048's spawn −27, its merge −22, Mahjong's match −20.5, 2048's win −16 and game over −21, in dB over the loudest 50 ms):
 
-| Sound              | Level (dB)                   | Why                                                                                  |
-| ------------------ | ---------------------------- | ------------------------------------------------------------------------------------ |
-| drop               | −27                          | every turn: the quietest, like 2048's spawn                                          |
-| land light / heavy | −26 / −23                    | the player adds 0.6 → 1 volume by tier                                               |
-| merge t0 … t10     | −23 → −18 (+0.5 dB per tier) | a bigger merge is a bigger reward (the old file was about −6 before its tier volume) |
-| chain 1 … 4        | −22 → −19                    | rising with the chain                                                                |
-| danger             | −26                          | it repeats: a nudge, not an alarm; 0.45 → 1 volume by ratio                          |
-| win                | −15                          | the top of the ladder, like Yacht's win                                              |
-| game over          | −21                          | gentle, like 2048's game over                                                        |
+| Sound              | Level (dB)                   | Why                                                                                                                                            |
+| ------------------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| drop               | −27                          | every turn: the quietest, like 2048's spawn                                                                                                    |
+| land light / heavy | −26 / −23                    | the player adds 0.6 → 1 volume by tier                                                                                                         |
+| merge t0 … t10     | −23 → −18 (+0.5 dB per tier) | a bigger merge is a bigger reward (the old file was about −6 before its tier volume)                                                           |
+| merge t11          | −17.5 (Fruits +2.5 more)     | the capstone, the top of the ladder; Fruits' spread-out strum reads about 3 dB quieter by LUFS, so it is trimmed up (peak stays under −1 dBFS) |
+| chain 1 … 4        | −22 → −19                    | rising with the chain                                                                                                                          |
+| danger             | −26                          | it repeats: a nudge, not an alarm; 0.45 → 1 volume by ratio                                                                                    |
+| win                | −15                          | the top of the ladder, like Yacht's win                                                                                                        |
+| game over          | −21                          | gentle, like 2048's game over                                                                                                                  |
 
 ## Round 1: three sets (2026-11-16)
 
@@ -55,9 +56,18 @@ All "space", distinct from Fruits' bubbles and plucks, at the same loudness and 
 
 ## What shipped
 
-- **Two sets of 21 files** (`cascade-fruits-*`, `cascade-cosmos-*`): drop, land light and heavy, merge t0 … t10, chain 1 … 4, danger, win, game over. (The plan said 20 per set; drop + 2 + 11 + 4 + danger + win + game over is 21.) The recipes are the approved clips' exactly: the generator's output decodes identically to the audition files.
-- **Size:** 345,258 B (Fruits 182,373, Cosmos 162,885) at 44.1 kHz mono q5. The owner raised Cascade's sound budget from 120 KB to about 345 KB; `frontend/src/game/cascade/__tests__/sounds.test.ts` caps it at 350 KiB. The three Kenney files (29,360 B) are deleted.
+- **Two sets of 22 files** (`cascade-fruits-*`, `cascade-cosmos-*`): drop, land light and heavy, merge t0 … t11, chain 1 … 4, danger, win, game over. (The plan said 20 per set; drop + 2 + 12 + 4 + danger + win + game over is 22: t11 came with the 12-tier ladder, #3966.) The recipes are the approved clips' exactly: the generator's output decodes identically to the audition files.
+- **Size:** 365,174 B (Fruits 193,033, Cosmos 172,141) at 44.1 kHz mono q5; the two merge-t11 files are 10,660 B and 9,256 B. The owner raised Cascade's sound budget from 120 KB to about 345 KB, then to 360 KiB (368,640 B) for t11 (#3966); `frontend/src/game/cascade/__tests__/sounds.test.ts` caps it at 360 KiB. The three Kenney files (29,360 B) are deleted.
 - **Timing.** Merges (0.35-0.67 s) end inside the merge's 620 ms confetti; the chain steps (≤ 0.2 s) sit on the 80 ms steps; each danger tick (≤ 0.3 s) is shorter than the fastest blink period (340 ms), so ticks never overlap; the win's chord is at 2.1 s and the game over's at 1.0 s from when they start, which is the winning merge and the game over. `tools/assets/tests/synth_cascade_sfx_test.py` reads these numbers from `motion.ts` and `celebration.ts`.
+
+## The capstone merge, merge-t11 (#3966)
+
+The 12-tier ladder (#3962) needed a twelfth merge sound. The owner heard three proposals (A: an extra step from the same ladder, B: an even diatonic re-spread of all 12 tiers, C: a new capstone file after the unchanged t0-t10) and picked **C**: t0-t10 stay byte for byte as approved on #3702, and t11 is its own file per set, a capstone built on the t10 note.
+
+- **Fruits, 0.75 s.** The t10 juicy pop with D7 and G7 plucks strummed in 35 and 65 ms after it and 14 more tiny bubbles (2.2-4.2 kHz) over the first 0.4 s. Level −17.5 dB like the ladder's next step, then +2.5 dB (the strum reads about 3 dB quieter by LUFS).
+- **Cosmos, 0.82 s.** The t10 bell at C7 with G7 and C8 bells 30 and 60 ms in (a C7 + G7 + C8 chord), an octave shimmer on C8 (two sines 5 Hz apart) and the t10's deeper sub. Level −17.5 dB.
+- **Wiring.** The winning merge never reaches `sounds.merge` (the celebration replaces the burst and pulse). `soundPacer.win()` plays `merge-t11` and the win chord at the same instant, so the capstone's merge sound and the win's run start together, and the chord still lands at the card (2.1 s). Under Reduce Motion the win file starts 0.5 s in and `merge-t11` still starts at 0. The player is lazy and pre-warmed with the win's once a tier-10 piece is on the board.
+- **Heavy landings.** `heavyLandTier` moved from 5 to 6 with the extra tier: tiers 0-5 land light, 6-11 heavy, the same six largest pieces as before.
 
 ## Deviations from the brief, and known limits
 

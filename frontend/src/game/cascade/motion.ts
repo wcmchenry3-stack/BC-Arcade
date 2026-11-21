@@ -162,10 +162,11 @@ export const MOTION = {
     /** Landing volume: `landVolume0` at tier 0, rising to 1 at the capstone. */
     landVolume0: 0.6,
     /**
-     * Tiers from here up land with the heavy file. Not shifted for the 12-tier ladder yet: deferred
-     * to #3966 (the sound pass).
+     * Tiers from here up land with the heavy file (tiers 0-5 land light, 6-11 heavy). Owner
+     * approved 6 for the 12-tier ladder (#3966): the same six largest pieces stay heavy. A device
+     * listen can revert it with this one number. Haptics keep their own thresholds (#3979).
      */
-    heavyLandTier: 5,
+    heavyLandTier: 6,
     /** Danger tick volume: `dangerVolume0` as the count starts, rising to 1 at its end. */
     dangerVolume0: 0.45,
     /** At most this many merges (a chain link's merge and step are one) wait; more are dropped. */
