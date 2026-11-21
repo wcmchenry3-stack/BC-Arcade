@@ -2,7 +2,7 @@
  * Cascade haptics (#3701, owner pick: B's map plus C's danger warning).
  *
  *   - land: Light (Medium for tier 7 and up); landings closer than `landGapMs` are dropped;
- *   - merge: Medium (tiers 0-4), Heavy (5-7), Heavy twice `doubleGapMs` apart (8-11);
+ *   - merge: Medium (tiers 0-4), Heavy (5-7), Heavy twice `doubleGapMs` apart (8-10: the capstone's winning merge has no merge pulse);
  *     The thresholds are per PIECE (owner pick #3701) and every piece above tier 1 moved up a tier
  *     when the ladder grew to 12 (#3962), so each was shifted by one: the same piece feels as it did
  *     before; the new tier-1 and tier-2 pieces take the lighter neighbouring feel;

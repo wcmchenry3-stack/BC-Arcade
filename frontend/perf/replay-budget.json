@@ -92,7 +92,7 @@
     },
     "twenty48": {
       "max": 40,
-      "_measured": 26
+      "_measured": 34
     },
     "hearts": {
       "max": 113,
@@ -120,7 +120,7 @@
     },
     "cascade": {
       "max": 39,
-      "_measured": 34
+      "_measured": 26
     }
   }
 }
