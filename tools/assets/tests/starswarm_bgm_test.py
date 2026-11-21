@@ -104,11 +104,17 @@ def test_shepard_falls_by_rate_octaves_per_second():
     assert abs(np.log2(a / b) - rate * gap) < 0.03, (a, b)
 
 
-def test_check_refuses_to_overwrite_the_shipped_file():
+def test_check_refuses_to_overwrite_the_shipped_file(monkeypatch):
+    # Without the guard, --check would render over the shipped file and then compare it with
+    # itself (always "identical"). Stub the build so a regression fails at once, untouched.
+    def must_not_build(*_args, **_kwargs):
+        pytest.fail("--check built over SHIPPED")
+
+    monkeypatch.setattr(build_starswarm_bgm, "build", must_not_build)
     before = build_starswarm_bgm.SHIPPED.read_bytes()
-    # The guard runs before any rendering, so this returns at once instead of building the track.
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exc:
         build_starswarm_bgm.main(["--check", str(build_starswarm_bgm.SHIPPED)])
+    assert exc.value.code == 2  # argparse's ap.error
     assert build_starswarm_bgm.SHIPPED.read_bytes() == before
 
 
