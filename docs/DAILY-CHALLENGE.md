@@ -286,7 +286,7 @@ python scripts/daily_challenge_metrics.py --since 2026-11-01 --until 2026-11-14
 python scripts/daily_challenge_metrics.py --json                            # machine use
 ```
 
-It reads `DATABASE_URL` like the app (`backend/.env` or the environment). Point it at a read replica or run it off-peak; it makes about `3 x ceil(installs / 500)` queries and holds one 500-install chunk in memory, so a 60-day window on a 10k-DAU database is roughly 180 queries and tens of MB.
+It reads `DATABASE_URL` like the app (`backend/.env` or the environment). Point it at a read replica or run it off-peak; it makes `3 x ceil(installs / 500) + 1` queries (the last is the empty id page that ends the loop) and holds one 500-install chunk in memory, so a 60-day window on a 10k-DAU database is roughly 181 queries and tens of MB.
 
 What it reports, over the pinned install-days in the window:
 
@@ -299,7 +299,7 @@ What it reports, over the pinned install-days in the window:
 
 Goals are rebuilt with `goal_from_spec` and scored with `evaluate_goal`, so the semantics (abandoned games never count) are the live ones.
 
-**Approximation.** A pinned row keeps the install's local _date_ but not its UTC offset, so every install is bucketed with one offset (`--tz-offset-minutes`, default 0, i.e. UTC days) through the same `local_day_of` window the service uses. A game near local midnight for an install far from that offset can land on the neighbouring day. Fine for a tuning read; do not use it for per-player questions. Today is excluded by default (the window ends yesterday) because it is unfinished.
+**Approximation.** A pinned row keeps the install's local _date_ but not its UTC offset, so every install is bucketed with one offset (`--tz-offset-minutes`, default 0, i.e. UTC days) through the same `local_day_of` window the service uses. A game near local midnight for an install far from that offset can land on the neighbouring day. Fine for a tuning read; do not use it for per-player questions. Today is excluded by default (the window ends yesterday) because it is unfinished, and a day counts for next-day return only once the day after it has ended (so the newest two days are left out). Installs are matched by canonical lowercase session id while `games.session_id` is stored as sent; real clients send lowercase, so the query does not handle other casings.
 
 **Reading it** (docs/DAILY-CHALLENGE-STRATEGY.md section 8):
 
@@ -307,4 +307,4 @@ Goals are rebuilt with `goal_from_spec` and scored with `evaluate_goal`, so the 
 - **2 of 3 share near 100%** means 2 of 3 may be too easy; a low share means too hard.
 - **Bonus discovery** low means lower the discovery share; **next-day return** is the retention signal to watch, with no target yet.
 
-**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (arrives with #3995) controls how often the bonus suggests a game the player does not usually play. Re-run after a few days on the new value; one dial change at a time.
+**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (arrives with #3993) moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (arrives with #3995) controls how often the bonus suggests a game the player does not usually play. Re-run after a few days on the new value; one dial change at a time.

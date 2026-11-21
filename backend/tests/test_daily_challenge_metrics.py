@@ -309,3 +309,55 @@ async def test_cli_json_and_text_and_default_window() -> None:
 def test_cli_rejects_a_bad_window() -> None:
     assert _cli("--since", "not-a-date").returncode == 2
     assert _cli("--since", "2024-03-05", "--until", "2024-03-01").returncode == 2
+
+
+async def test_yesterday_is_not_matured_for_next_day_return() -> None:
+    sid = _new_install()
+    today = _NOW.date()
+    for day in (today - timedelta(days=2), today - timedelta(days=1)):
+        await _pin(sid, day)
+        await _play(sid, "twenty48", _at(day), final_score=600)
+        await _play(sid, "sort", _at(day), final_score=12)
+    # No game today: yesterday's next day (today) has not ended, so it is not counted.
+    yesterday = await _collect(today - timedelta(days=1), today - timedelta(days=1))
+    assert yesterday["qualifying_days"]["qualified"] == 1
+    assert yesterday["next_day_return"] == {"qualified_days": 0, "returned": 0, "share": None}
+    # The day before it is matured, and the install did play yesterday.
+    both = await _collect(today - timedelta(days=2), today - timedelta(days=1))
+    assert both["next_day_return"] == {"qualified_days": 1, "returned": 1, "share": 1.0}
+
+
+async def test_an_unreadable_bonus_skips_only_the_bonus_metric() -> None:
+    sid = _new_install()
+    await _pin(sid, D1, bonus="not json")
+    await _play(sid, "twenty48", _at(D1), final_score=600)
+    await _play(sid, "sort", _at(D1), final_score=12)
+    report = await _collect(D1, D1)
+    assert report["skipped_bonus"] == 1 and report["skipped_rows"] == 0
+    assert report["bonus_discovery"] == {"available": False}
+    assert report["install_days"] == 1
+    assert report["core_total"]["met"] == 2  # core goals still scored
+    assert report["qualifying_days"]["qualified"] == 1
+
+
+async def test_several_chunks_cost_three_selects_each_plus_the_empty_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(metrics, "CHUNK_INSTALLS", 2)
+    for _ in range(5):
+        await _pin(_new_install(), D1)
+    seen: list[str] = []
+
+    def record(_conn, _cursor, statement, *_rest) -> None:
+        seen.append(statement.lstrip().upper())
+
+    async with get_session_factory()() as db:
+        sync_engine = db.sync_session.get_bind()
+        event.listen(sync_engine, "before_cursor_execute", record)
+        try:
+            report = await metrics.collect(db, D1, D1, 0, _NOW)
+        finally:
+            event.remove(sync_engine, "before_cursor_execute", record)
+    assert report["install_days"] == 5
+    assert len(seen) == 3 * 3 + 1  # 5 installs at chunk size 2 = 3 chunks
+    assert all(stmt.startswith("SELECT") for stmt in seen)

@@ -40,9 +40,9 @@ does (``settings.Settings``, ``backend/.env``, the environment).
 
 Cost: per chunk of ``CHUNK_INSTALLS`` installs, three SELECTs (the next page of
 install ids, their pinned rows, their games), so the query count is
-``3 * ceil(installs / CHUNK_INSTALLS)``, never one per install or day, and only one
+``3 * ceil(installs / CHUNK_INSTALLS) + 1`` (the loop ends on an empty id page), never one per install or day, and only one
 chunk is in memory at a time. Rough size at 10k DAU over 60 days: ~30k distinct
-installs -> ~60 chunks, ~180 queries; ~600k pinned rows and a few million games
+installs -> ~60 chunks, ~181 queries; ~600k pinned rows and a few million games
 streamed through, tens of MB resident (one chunk), about a minute against a
 replica. Run it off-peak, ideally on a read replica, and narrow ``--since``.
 
@@ -100,6 +100,7 @@ class _Totals:
     bonus_days: int = 0
     bonus_played: int = 0
     skipped_rows: int = 0
+    skipped_bonus: int = 0
 
 
 def _rate(num: int, den: int) -> float | None:
@@ -122,10 +123,15 @@ def _score_install(
     for day, (goals_text, bonus_text) in pinned.items():
         try:
             goals = decode_goals(goals_text)
-            bonus_type = None if bonus_text is None else json.loads(bonus_text)[0]
         except (ValueError, KeyError, TypeError, IndexError):
             totals.skipped_rows += 1
             continue
+        bonus_type = None
+        if bonus_text is not None:
+            try:
+                bonus_type = json.loads(bonus_text)[0]
+            except (ValueError, KeyError, TypeError, IndexError):
+                totals.skipped_bonus += 1
         ended = games.get(day, [])
         played_types = {name for name, _ in ended}
         totals.install_days += 1
@@ -163,7 +169,7 @@ async def _collect(
         DailyChallengeAssignment.local_date >= since,
         DailyChallengeAssignment.local_date <= until,
     )
-    last_matured_day = min(until, today - timedelta(days=1))
+    last_matured_day = min(until, today - timedelta(days=2))
     after: uuid.UUID | None = None
     while True:
         page = select(DailyChallengeAssignment.session_id).where(*in_window).distinct()
@@ -241,6 +247,7 @@ def _report(totals: _Totals, since: date, until: date, tz_offset_minutes: int) -
         "install_days": totals.install_days,
         "install_days_played": totals.install_days_played,
         "skipped_rows": totals.skipped_rows,
+        "skipped_bonus": totals.skipped_bonus,
         "core_goals": goals,
         "core_total": {
             "assigned": assigned,
@@ -280,6 +287,8 @@ def render(report: dict[str, Any]) -> str:
             f"with a finished game: {report['install_days_played']}"
         ),
     ]
+    if report["skipped_bonus"]:
+        lines.append(f"unreadable bonus (bonus metric skipped): {report['skipped_bonus']}")
     if report["skipped_rows"]:
         lines.append(f"skipped undecodable rows: {report['skipped_rows']}")
     lines += ["", "Core goal completion (target band 65-75% among those who played)"]
