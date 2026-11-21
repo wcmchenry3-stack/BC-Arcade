@@ -27,10 +27,10 @@ function ActiveSet() {
   return <Text>{`active:${activeFruitSet.id}`}</Text>;
 }
 
-async function mount() {
+async function mount(onRequestSelect?: (id: string) => void) {
   return render(
     <FruitSetProvider>
-      <ThemeSelector />
+      <ThemeSelector onRequestSelect={onRequestSelect} />
       <ActiveSet />
     </FruitSetProvider>
   );
@@ -81,5 +81,40 @@ describe("Cascade ThemeSelector", () => {
     await mount();
     await waitFor(() => expect(radio("Cosmos theme")).toBeChecked());
     expect(AsyncStorage.setItem).toHaveBeenLastCalledWith(STORAGE_KEY, "cosmos");
+  });
+
+  describe("with onRequestSelect (#3970)", () => {
+    it("asks the screen instead of switching, so the set only changes when it says so", async () => {
+      const onRequestSelect = jest.fn();
+      await mount(onRequestSelect);
+      await fireEvent.press(radio("Cosmos theme"));
+      expect(onRequestSelect).toHaveBeenCalledWith("cosmos");
+      expect(radio("Fruits theme")).toBeChecked();
+      expect(screen.getByText("active:fruits")).toBeTruthy();
+      expect(AsyncStorage.setItem).not.toHaveBeenCalledWith(STORAGE_KEY, "cosmos");
+    });
+
+    it("does not ask for the active set", async () => {
+      const onRequestSelect = jest.fn();
+      await mount(onRequestSelect);
+      await fireEvent.press(radio("Fruits theme"));
+      expect(onRequestSelect).not.toHaveBeenCalled();
+    });
+  });
+
+  it("pressing the active set without a handler changes nothing", async () => {
+    await mount();
+    await fireEvent.press(radio("Fruits theme"));
+    expect(screen.getByText("active:fruits")).toBeTruthy();
+    expect(AsyncStorage.setItem).not.toHaveBeenCalledWith(STORAGE_KEY, "cosmos");
+  });
+
+  it("grows each tab's touch target with hitSlop, to the 44pt guideline", async () => {
+    await mount();
+    for (const label of ["Fruits theme", "Cosmos theme"]) {
+      const slop = radio(label).props.hitSlop;
+      expect(slop.top + slop.bottom + 28).toBeGreaterThanOrEqual(44);
+      expect(slop.left + slop.right).toBeGreaterThan(0);
+    }
   });
 });
