@@ -389,4 +389,4 @@ Goals are rebuilt with `goal_from_spec` and scored with `evaluate_goal`, so the 
 - **2 of 3 share near 100%** means 2 of 3 may be too easy; a low share means too hard.
 - **Bonus discovery** low means lower the discovery share; **next-day return** is the retention signal to watch, with no target yet.
 
-**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (arrives with #3993) moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (arrives with #3995) controls how often the bonus suggests a game the player does not usually play. Re-run after a few days on the new value; one dial change at a time.
+**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (live since #3993, default 12, 0–50; see §2a) moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (arrives with #3995) controls how often the bonus suggests a game the player does not usually play. Re-run after a few days on the new value; one dial change at a time.
