@@ -6,7 +6,7 @@ dark card (`surfaceHigh` #25252c) and on the light one (#fff8e8). No emoji. The 
 games' own (`frontend/src/theme/theme.*.ts`, the Yacht dice in `ThemeContext.tsx`).
 
     sort       two flasks in a row; a third, lifted and tipped, pours pink into the middle one
-    yacht      two dice landed on fives, a third still tumbling in with motion marks
+    yacht      all five dice: four landed on fives in a row, the fifth tumbling in
     twenty48   two 1024 tiles sliding together on a slice of the board, toward 2048
     sudoku     one 3x3 box: given digits, and a digit just placed in the selected cell
 
@@ -422,15 +422,41 @@ def motion_marks(c: TileCanvas, marks: Sequence[tuple[Point, Point]]) -> None:
         c.stroke(P([a, b]), OUTLINE_W * 1.1, MOTION, closed=False)
 
 
+# The landed row, in canvas pixels: whole-pixel dice on a whole-pixel pitch keep their edges
+# sharp and cheap to encode (the row cost ~500 B more off the pixel grid).
+YACHT_DIE_PX, YACHT_GAP_PX = 32, 4  # four landed dice, a 4 px gap between them
+YACHT_ROW_X_PX, YACHT_ROW_Y_PX = 24, 120  # the row's top-left corner
+YACHT_LANDED = 4  # plus one tumbling: Yacht is played with five dice (owner, #4011)
+
+
+def yacht_landed_centres() -> list[Point]:
+    """The landed dice's centres, in authoring units."""
+    half = YACHT_DIE_PX / 2
+    return [
+        (
+            (YACHT_ROW_X_PX + i * (YACHT_DIE_PX + YACHT_GAP_PX) + half) / K,
+            (YACHT_ROW_Y_PX + half) / K,
+        )
+        for i in range(YACHT_LANDED)
+    ]
+
+
+YACHT_TUMBLE = (96, 50)  # the fifth die's centre (authoring units), still in the air
+
+
 def yacht_scene(c: TileCanvas) -> None:
-    """Two dice landed on fives, square to the table; the third, still tumbling in from the top
-    left, shows a five too: a Yacht in the making. Landed dice stay unrotated: a turned die
-    edge costs ~400 B of WebP each."""
-    # The tumbling die comes in from the top left: marks trail behind it.
-    motion_marks(c, [((28, 38), (48, 31)), ((24, 56), (46, 49)), ((35, 72), (53, 64))])
-    die(c, 88, 48, 40, 28, 5)
-    die(c, 51, 126, 43, 0, 5)
-    die(c, 117, 126, 43, 0, 5)
+    """All five dice: four landed in a row on fives, square to the table, and the fifth still
+    tumbling in from the top left, a five too: a Yacht in the making. Landed dice stay
+    unrotated: a turned die edge costs ~400 B of WebP each."""
+    tx, ty = YACHT_TUMBLE
+    # Motion marks trail the tumbling die.
+    marks = [((tx - 50, ty - 6), (tx - 32, ty - 12)), ((tx - 54, ty + 10), (tx - 34, ty + 4))]
+    marks.append(((tx - 44, ty + 24), (tx - 28, ty + 17)))
+    motion_marks(c, marks)
+    size = YACHT_DIE_PX / K
+    die(c, tx, ty, size, 28, 5)
+    for x, y in yacht_landed_centres():
+        die(c, x, y, size, 0, 5)
 
 
 # --------------------------------------------------------------------------------------------

@@ -17,10 +17,10 @@ const TILES: Record<string, number> = {
   "starswarm-tile.webp": TILE_BUDGET, // 2,698 (#3599; redrawn in #4013)
   "sudoku-tile.webp": TILE_BUDGET, // 2,578
   "twenty48-tile.webp": TILE_BUDGET, // 3,052
-  "yacht-tile.webp": TILE_BUDGET, // 3,264
+  "yacht-tile.webp": TILE_BUDGET, // 3,198 (five dice)
 };
 
-/** All the tiles together: 14,622 B measured, about 2.5% headroom. */
+/** All the tiles together: 14,556 B measured, about 3% headroom. */
 const TOTAL_BUDGET = 15000;
 
 const tileFiles = () =>

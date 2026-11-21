@@ -231,7 +231,7 @@ export default function HomeScreen() {
     {
       key: "yacht",
       slug: "yacht",
-      image: yachtTile, // dice landing on fives, one still tumbling
+      image: yachtTile, // five dice: four landed on fives, one still tumbling
       title: t("yacht:game.title"),
       description: t("yacht:game.description"),
       action: startYacht,

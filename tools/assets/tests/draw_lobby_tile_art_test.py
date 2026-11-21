@@ -4,6 +4,7 @@ pytest suite for draw_lobby_tile_art.py (#4011, #4004): the lobby tiles' gamepla
 Renders the real scenes (they are small), but writes only into tmp_path.
 """
 
+import itertools
 import re
 import subprocess
 import sys
@@ -27,7 +28,7 @@ NAMES = ["sort", "yacht", "twenty48", "sudoku"]
 # The owner's budget is 3,400 B per tile (#4010). Measured 2026-11-21 at quality 82 / alpha
 # quality 70 with the pinned Pillow (bytes in the comments); the budget is the hard cap, not
 # measured + headroom, so a libwebp change that crosses it is a design question, not a bump.
-MEASURED = {"sort": 3030, "yacht": 3264, "twenty48": 3052, "sudoku": 2578}
+MEASURED = {"sort": 3030, "yacht": 3198, "twenty48": 3052, "sudoku": 2578}
 
 
 def test_the_scenes_are_the_four_tiles_of_this_story():
@@ -204,6 +205,37 @@ def test_sort_pours_pink_into_the_middle_neck():
     x = round(art.SORT_MID_X * k)
     y = round((neck_top + 6) * k)  # just inside the middle flask's mouth
     assert np.abs(im[y, x, :3] - pink).max() <= 12 and im[y, x, 3] == 255
+
+
+# --------------------------------------------------------------------------------------------
+# Yacht: all five dice (owner, #4011)
+
+
+def _die_faces(im: np.ndarray) -> int:
+    """Counts the dice: connected regions of the die face colour, big enough to be a face (the
+    rest are a few anti-aliased pixels at the rounded corners)."""
+    from scipy import ndimage
+
+    face = np.array([0xFB, 0xF4, 0xE2])
+    mask = (np.abs(im[..., :3].astype(int) - face).max(-1) <= 6) & (im[..., 3] == 255)
+    labels, _ = ndimage.label(mask)
+    return int((np.bincount(labels.ravel())[1:] >= 200).sum())
+
+
+def test_yacht_shows_all_five_dice():
+    assert len(art.yacht_landed_centres()) + 1 == 5  # four landed, one tumbling
+    assert _die_faces(np.asarray(art.render("yacht"))) == 5
+
+
+def test_yacht_landed_dice_sit_in_one_row_on_the_pixel_grid_below_the_tumbling_one():
+    centres = art.yacht_landed_centres()
+    assert len({round(y, 6) for _, y in centres}) == 1  # one baseline
+    xs = [x for x, _ in centres]
+    pitch = (art.YACHT_DIE_PX + art.YACHT_GAP_PX) / art.K
+    assert all(abs(b - a - pitch) < 1e-9 for a, b in itertools.pairwise(xs))  # even, no overlap
+    for px in (art.YACHT_DIE_PX, art.YACHT_GAP_PX, art.YACHT_ROW_X_PX, art.YACHT_ROW_Y_PX):
+        assert isinstance(px, int)  # whole pixels
+    assert art.YACHT_TUMBLE[1] < centres[0][1] - art.YACHT_DIE_PX / art.K  # above the row
 
 
 # --------------------------------------------------------------------------------------------
