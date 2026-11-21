@@ -54,14 +54,12 @@ import yachtTile from "../../assets/home/yacht-tile.webp";
 // Hidden games' tile images: never imported here, or a store build would package them (#4011).
 import { HIDDEN_GAME_TILE_ART } from "../components/home/hiddenGameTileArt";
 import CascadeTileIcon from "../components/cascade/CascadeTileIcon";
-
-/** Below this viewport width the grid collapses to a single column. */
-const SINGLE_COL_BREAKPOINT = 360;
+import { lobbyColumns, TILE_ICON_ZONE } from "../components/home/lobbyColumns";
 
 // A tile's icon is an emoji, or a generated image, or Cascade's code-drawn piece (#3698), which
 // shows the emoji until it is ready (and on web). Images are gameplay scenes drawn by
-// tools/assets/draw_lobby_tile_art.py (#4011), shown at `cardArt`; a `badge` image is Star
-// Swarm's hex badge (#3599), kept at the emoji's footprint until #4013 redraws it.
+// tools/assets/draw_lobby_tile_art.py (#4011), shown at `cardArt` (64 pt, inside the 68 pt
+// TILE_ICON_ZONE); a `badge` image is Star Swarm's hex badge (#3599), 56 pt until #4013 redraws it.
 type GameCardIcon =
   | { emoji: string; image?: undefined; drawn?: boolean; badge?: undefined }
   | { image: ImageSourcePropType; emoji?: undefined; drawn?: undefined; badge?: boolean };
@@ -104,7 +102,7 @@ export default function HomeScreen() {
   };
   const { width } = useWindowDimensions();
 
-  const numColumns = width < SINGLE_COL_BREAKPOINT ? 1 : 2;
+  const numColumns = lobbyColumns(width);
 
   useEffect(() => {
     if (APP_START_MS > 0) {
@@ -433,7 +431,10 @@ export default function HomeScreen() {
 
           {/* Play / Unlock button */}
           {isLocked ? (
-            <View style={[styles.playBtn, styles.playBtnLocked, { borderColor: colors.border }]}>
+            <View
+              style={[styles.playBtn, { borderColor: colors.border }]}
+              testID={`game-btn-${item.slug}`}
+            >
               <Text style={[styles.playBtnText, { color: colors.textMuted }]}>
                 {t("common:home.locked.buttonLabel")}
               </Text>
@@ -443,7 +444,8 @@ export default function HomeScreen() {
               colors={[gradStart, gradEnd]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.playBtn}
+              style={[styles.playBtn, styles.playBtnUnlocked]}
+              testID={`game-btn-${item.slug}`}
             >
               <Text style={[styles.playBtnText, { color: colors.textOnAccent }]}>
                 {playLabels[item.title] ?? t("common:play", "Play")}
@@ -513,17 +515,30 @@ export default function HomeScreen() {
           ? games.map((item, index) => (
               <React.Fragment key={item.key}>{renderCard({ item, index })}</React.Fragment>
             ))
-          : Array.from({ length: Math.ceil(games.length / numColumns) }, (_, rowIndex) => (
-              <View key={rowIndex} style={styles.row}>
-                {games
-                  .slice(rowIndex * numColumns, rowIndex * numColumns + numColumns)
-                  .map((item, colIndex) => (
+          : Array.from({ length: Math.ceil(games.length / numColumns) }, (_, rowIndex) => {
+              const rowGames = games.slice(rowIndex * numColumns, (rowIndex + 1) * numColumns);
+              return (
+                <View key={rowIndex} style={styles.row}>
+                  {rowGames.map((item, colIndex) => (
                     <React.Fragment key={item.key}>
                       {renderCard({ item, index: rowIndex * numColumns + colIndex })}
                     </React.Fragment>
                   ))}
-              </View>
-            ))}
+                  {/* Pad a short last row so every tile keeps the column width (#4005). */}
+                  {Array.from({ length: numColumns - rowGames.length }, (_, i) => (
+                    <View
+                      key={`spacer-${i}`}
+                      testID="lobby-spacer"
+                      style={styles.cardWrapper}
+                      accessible={false}
+                      importantForAccessibility="no-hide-descendants"
+                      accessibilityElementsHidden
+                      pointerEvents="none"
+                    />
+                  ))}
+                </View>
+              );
+            })}
       </ScrollView>
     </View>
   );
@@ -581,14 +596,14 @@ const styles = StyleSheet.create({
     height: 3,
   },
   emojiZone: {
-    height: 88,
+    height: TILE_ICON_ZONE,
     alignItems: "center",
     justifyContent: "center",
   },
   cardEmoji: {
-    fontSize: 48,
+    fontSize: 44,
   },
-  // The footprint of a 48 pt emoji glyph inside the 88 pt emojiZone
+  // Fits inside the 68 pt TILE_ICON_ZONE with a 6 pt margin each side
   cardImage: {
     width: 56,
     height: 56,
@@ -620,6 +635,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginHorizontal: 12,
     paddingVertical: 8,
+    borderWidth: 1,
     borderRadius: 20,
     alignSelf: "stretch",
     alignItems: "center",
@@ -630,8 +646,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1,
   },
-  playBtnLocked: {
-    borderWidth: 1,
+  // Both buttons carry a 1 pt border so locked and unlocked tiles measure the same (#4005).
+  playBtnUnlocked: {
+    borderColor: "transparent",
   },
   lockBadge: {
     position: "absolute",

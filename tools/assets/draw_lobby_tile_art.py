@@ -68,7 +68,7 @@ HERE = Path(__file__).resolve().parent
 DIGITS_FILE = HERE / "lobby_numerals.json"
 FONT_NAME = "Space Grotesk Bold (@expo-google-fonts/space-grotesk 0.4.1, SpaceGrotesk_700Bold.ttf)"
 
-DISPLAY_PT = 64  # HomeScreen's `cardArt`; fits the 88 pt `emojiZone` and #4005's 68 pt zone
+DISPLAY_PT = 64  # HomeScreen's `cardArt`, inside the 68 pt TILE_ICON_ZONE (#4005)
 SCALE = 3  # authored at 3x the display size
 TILE_PX = DISPLAY_PT * SCALE  # 192
 BOX = 168  # authoring units across the tile

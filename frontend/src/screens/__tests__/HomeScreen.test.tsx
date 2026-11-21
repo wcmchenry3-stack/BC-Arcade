@@ -2,7 +2,6 @@ import { AppState, StyleSheet } from "react-native";
 import React from "react";
 import { Alert } from "react-native";
 import { act, render, renderHook, fireEvent, waitFor } from "@testing-library/react-native";
-import * as ReactNative from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -10,6 +9,18 @@ import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { StatsResponse } from "../../api/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
+
+// Render gradients as a host element so tests can read their colours and style (#4005).
+jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
+
+// The window the screen sees. react-native's useWindowDimensions reads this module; a
+// jest.spyOn on the `react-native` namespace never reached HomeScreen (width stayed at
+// jest's 750 default), so the width-based tests were not exercising their widths (#4005).
+const mockWindow = { width: 390, height: 844, scale: 2, fontScale: 1 };
+jest.mock("react-native/Libraries/Utilities/useWindowDimensions", () => ({
+  __esModule: true,
+  default: () => mockWindow,
+}));
 
 // ---------------------------------------------------------------------------
 // Mock entitlements — default: all games entitled (canPlay always true)
@@ -120,12 +131,7 @@ const testInsets = {
 };
 
 async function renderScreen(windowWidth = 390) {
-  jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
-    width: windowWidth,
-    height: 844,
-    scale: 2,
-    fontScale: 1,
-  });
+  mockWindow.width = windowWidth;
   return await render(
     <SafeAreaProvider initialMetrics={testInsets}>
       <ThemeProvider>
@@ -184,7 +190,7 @@ describe("HomeScreen — game cards", () => {
       expect(icon.type).not.toBe("Text");
       expect(icon.props.source).toBeTruthy();
       const style = StyleSheet.flatten(icon.props.style);
-      expect([style.width, style.height]).toEqual([56, 56]); // the emoji's footprint
+      expect([style.width, style.height]).toEqual([56, 56]); // fits the 68 pt icon zone
       expect(queryByText("👾")).toBeNull();
     });
 
@@ -751,5 +757,141 @@ describe("HomeScreen — locked game UI (#1054)", () => {
     expect(getByLabelText("Play Yacht")).toBeTruthy();
     expect(getByLabelText("Play Cascade")).toBeTruthy();
     expect(getByLabelText("Play Sudoku")).toBeTruthy();
+  });
+});
+
+describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
+  afterEach(() => {
+    __forceStoreBuildForTests(false);
+  });
+
+  const hidden = { includeHiddenElements: true };
+
+  it("pads a one-tile last row with a spacer at 2 columns (7 store games)", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(390);
+    const spacers = getAllByTestId("lobby-spacer", hidden);
+    expect(spacers).toHaveLength(1);
+    const spacer = spacers[0] as unknown as {
+      props: Record<string, unknown>;
+      parent: { children: { props: { testID?: string } }[] };
+    };
+    expect(spacer.props.accessible).toBe(false);
+    expect(spacer.props.importantForAccessibility).toBe("no-hide-descendants");
+    expect(spacer.props.accessibilityElementsHidden).toBe(true);
+    expect(spacer.props.pointerEvents).toBe("none");
+    // Its row holds one real tile plus the spacer.
+    const kids = spacer.parent.children;
+    expect(kids).toHaveLength(2);
+  });
+
+  it("gives every tile the column width: the spacer uses the same wrapper style", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId, getByTestId } = await renderScreen(390);
+    const spacer = getAllByTestId("lobby-spacer", hidden)[0];
+    const tileWrapper = getByTestId("game-tile-daily_word").parent;
+    expect(StyleSheet.flatten(spacer.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
+    expect(StyleSheet.flatten(tileWrapper?.props.style)).toEqual(
+      expect.objectContaining({ flex: 1 })
+    );
+  });
+
+  it("pads with two spacers at 3 columns (7 games)", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(834);
+    expect(getAllByTestId("lobby-spacer", hidden)).toHaveLength(2);
+  });
+
+  it("pads with one spacer at 4 columns (7 games)", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(1024);
+    expect(getAllByTestId("lobby-spacer", hidden)).toHaveLength(1);
+  });
+
+  it("renders no spacer when the grid is full (12 games at 4 columns)", async () => {
+    const { queryAllByTestId, getAllByTestId } = await renderScreen(1024);
+    expect(getAllByTestId(/^game-tile-/)).toHaveLength(12);
+    expect(queryAllByTestId("lobby-spacer", hidden)).toHaveLength(0);
+  });
+
+  it("renders no spacer in the single-column path", async () => {
+    __forceStoreBuildForTests(true);
+    const { queryAllByTestId } = await renderScreen(320);
+    expect(queryAllByTestId("lobby-spacer", hidden)).toHaveLength(0);
+  });
+
+  it("spacers carry no game-tile testID and are not buttons", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId, getAllByRole } = await renderScreen(390);
+    expect(getAllByTestId(/^game-tile-/)).toHaveLength(7);
+    expect(
+      getAllByRole("button").filter((b) => /^Play /.test(b.props.accessibilityLabel))
+    ).toHaveLength(7);
+  });
+
+  it("spacers do not shift the gradient index of real tiles", async () => {
+    __forceStoreBuildForTests(true);
+    const { toJSON } = await renderScreen(390);
+    // The Play button of each tile, in tile order, wears the same gradient as its top border.
+    type Json = {
+      type: string;
+      props: { colors?: string[]; testID?: string };
+      children?: (Json | string)[] | null;
+    };
+    const grads: Json[] = [];
+    const walk = (n: Json | string | null | (Json | string)[]) => {
+      if (n == null || typeof n === "string") return;
+      if (Array.isArray(n)) return n.forEach(walk);
+      if (n.type === "LinearGradient" && n.props.testID?.startsWith("game-btn-")) grads.push(n);
+      n.children?.forEach(walk);
+    };
+    walk(toJSON() as Json | Json[] | null);
+    expect(grads).toHaveLength(7);
+    const cols = Array.from({ length: 7 }, (_, i) => grads[i].props.colors as string[]);
+    // 4-colour cycle: index 6 matches index 2, index 4 matches index 0.
+    expect(cols[6]).toEqual(cols[2]);
+    expect(cols[4]).toEqual(cols[0]);
+    expect(cols[6]).not.toEqual(cols[3]);
+  });
+
+  it("locked and unlocked play buttons resolve to the same border width and padding", async () => {
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const { getByTestId } = await renderScreen(390);
+    const locked = StyleSheet.flatten(getByTestId("game-btn-cascade").props.style);
+    const unlocked = StyleSheet.flatten(getByTestId("game-btn-yacht").props.style);
+    expect(locked.borderWidth).toBe(1);
+    expect(unlocked.borderWidth).toBe(1);
+    expect(unlocked.borderColor).toBe("transparent");
+    expect(locked.paddingVertical).toBe(unlocked.paddingVertical);
+  });
+
+  it("compacts the icon zone to TILE_ICON_ZONE (68) and the emoji to 44", async () => {
+    const { getByTestId } = await renderScreen(390);
+    // Solitaire still shows an emoji glyph; Yacht is tile art since #4011.
+    const icon = getByTestId("game-icon-solitaire");
+    expect(StyleSheet.flatten(icon.props.style).fontSize).toBe(44);
+    const zone = icon.parent;
+    expect(StyleSheet.flatten(zone?.props.style).height).toBe(68);
+  });
+
+  it("keeps the Star Swarm image inside the icon zone", async () => {
+    const { getByTestId } = await renderScreen(390);
+    const style = StyleSheet.flatten(getByTestId("game-icon-starswarm").props.style);
+    expect(style.height).toBeLessThanOrEqual(68);
+  });
+
+  it("uses 3 columns at 834 pt: first row holds three tiles", async () => {
+    const { getByTestId } = await renderScreen(834);
+    expect(getByTestId("game-tile-yacht").parent?.parent?.children).toHaveLength(3);
+  });
+
+  it("keeps title and description heights fixed so short and long copy tile alike (#431)", async () => {
+    const { getByText } = await renderScreen(390);
+    const short = getByText("Guess the five-letter word in six tries.");
+    const long = getByText("Pour colors bottle to bottle — sort them all to win.");
+    for (const el of [short, long]) {
+      expect(StyleSheet.flatten(el.props.style).height).toBe(28);
+      expect(el.props.numberOfLines).toBe(2);
+    }
   });
 });
