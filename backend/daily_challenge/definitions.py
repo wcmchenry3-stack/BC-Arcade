@@ -11,8 +11,8 @@ A day's actual pick is frozen the first time it is requested (``schedule.py``,
 Goals are per game
 ------------------
 There is no one measurement that fits every game, so each game owns three goals
-(easy / medium / hard; Daily Word's three are the one ``completed`` goal) worded in its own terms — moves, pairs, highest tile,
-chips, guesses. A ``Goal`` carries ``game_type`` + ``kind`` + ``target`` (never
+(easy / medium / hard) worded in its own terms — moves, pairs, highest tile,
+chips, guesses. Daily Word's three slots all hold its one ``completed`` goal. A ``Goal`` carries ``game_type`` + ``kind`` + ``target`` (never
 display copy — the client builds that in its own i18n namespace) and an
 ``evaluate(facts)`` predicate. ``facts`` is one finished game's measures: the
 result block the game reported on ``PATCH /games/{id}/complete`` (merged into
@@ -421,8 +421,9 @@ def pick_template(day: date, slate: Slate, salt: int, sort_catalog: bool = False
     # Consecutive goals get consecutive tiers, so a day mixes difficulty.
     picked = [pool[game][(ordinal + salt + i) % len(TIERS)] for i, game in enumerate(games)]
     final = list(picked)
-    # At most one win goal a day; who keeps it rotates by day so it is not always
-    # Daily Word's. Any other win goal falls back to that game's easy goal.
+    # At most one win goal a day; who keeps it rotates by day between the two
+    # rotating games (Daily Word's goal is never a win, #3991). Any other win
+    # goal falls back to that game's easy goal.
     win_taken = False
     for i in range(GOALS_PER_DAY):
         idx = (ordinal + i) % GOALS_PER_DAY

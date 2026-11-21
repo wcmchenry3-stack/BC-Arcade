@@ -320,6 +320,8 @@ def test_each_game_has_easy_medium_hard_goals(game: str) -> None:
         # #3991: Daily Word's goal is always "complete", in all three slots.
         assert {g.id for g in goals} == {"daily_word:completed"}
         assert len(goals) == len(TIERS)
+        assert goals[0] is goals[1] is goals[2]
+        assert goals[0].target is None and not goals[0].is_win
         return
     assert [g.tier for g in goals] == list(TIERS)
     assert len({g.id for g in goals}) == 3
