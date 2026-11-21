@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from cascade.models import CascadeResult
+from cascade.models import MAX_TIER, CascadeResult
 from cascade.module import module as cascade_module
 from cascade.time_bonus import BONUS_MAX, BONUS_RULE, MIN_WIN_MS, PAR_TIME_MS, time_bonus
 from db.base import get_session_factory
@@ -52,7 +52,7 @@ APP_BLOCK: dict[str, Any] = {
     "theme": "fruits",
     "total_drops": 188,
     "total_merges": 170,
-    "max_tier": 10,
+    "max_tier": 11,
     "won": True,
     "outcome": "win",
 }
@@ -193,11 +193,20 @@ def test_a_block_from_before_3700_gets_no_server_bonus_fields() -> None:
 
 @pytest.mark.parametrize(
     "field,value",
-    [("max_tier", 11), ("max_tier", -1), ("merge_score", -5), ("merge_score", "lots")],
+    [("max_tier", 12), ("max_tier", -1), ("merge_score", -5), ("merge_score", "lots")],
 )
 def test_a_malformed_app_field_is_rejected(field: str, value: Any) -> None:
     with pytest.raises(ValidationError):
         _validate({**APP_BLOCK, field: value}, "win", 211_000)
+
+
+def test_the_capstone_tier_is_the_highest_max_tier() -> None:
+    """#3975: the 12-tier ladder's capstone is tier 11; a tier-12 ``max_tier`` is rejected."""
+    assert MAX_TIER == 11
+    assert _validate({**APP_BLOCK, "max_tier": 11}, "win", 211_000)["max_tier"] == 11
+    assert _validate({**APP_BLOCK, "max_tier": 10}, "loss", 211_000)["max_tier"] == 10
+    with pytest.raises(ValidationError):
+        _validate({**APP_BLOCK, "max_tier": MAX_TIER + 1}, "win", 211_000)
 
 
 def test_a_malformed_server_field_from_the_app_is_dropped_not_rejected() -> None:
@@ -340,7 +349,7 @@ async def test_complete_stores_the_server_score_and_block(client: TestClient) ->
     assert row.game_metadata["bonus_rule"] == BONUS_RULE
     assert row.game_metadata["final_score"] == 8_000 + 8_278
     assert row.game_metadata["won"] is True
-    assert row.game_metadata["max_tier"] == 10
+    assert row.game_metadata["max_tier"] == 11
 
 
 @_live

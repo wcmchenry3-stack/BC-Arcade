@@ -21,6 +21,7 @@ import pytest
 
 from cascade import events as cascade_events
 from cascade.events import MAX_DROP_BYTES, MAX_MERGE_BYTES, validate_replay_event
+from cascade.models import MAX_TIER
 from cascade.module import module as cascade_module
 from cascade.replay import merge_points, read, render
 from games.engine_version import CURRENT_ENGINE_VERSIONS
@@ -144,7 +145,7 @@ def test_a_game_with_its_tail_missing_says_the_merges_disagree() -> None:
 
 def test_a_bad_event_is_counted_not_guessed() -> None:
     game = _game()
-    game["events"][0]["data"]["d"][0][2] = 10  # the capstone is never dropped
+    game["events"][0]["data"]["d"][0][2] = 11  # the capstone is never dropped
     story = read(_pairs(game))
     assert story.invalid == 1
 
@@ -239,7 +240,7 @@ def test_valid_shapes(data: dict[str, Any]) -> None:
     ("name", "data", "reason"),
     [
         ("drop", _drop(d=[]), "invalid"),
-        ("drop", _drop(d=[[10, 2000, 10]]), "invalid"),  # the capstone is never dropped
+        ("drop", _drop(d=[[10, 2000, 11]]), "invalid"),  # the capstone is never dropped
         ("drop", _drop(d=[[10, 4001, 3]]), "invalid"),  # past the bin
         ("drop", _drop(d=[[10, 2000.0, 3]]), "invalid"),
         ("drop", _drop(d=[[10, 2000, True]]), "invalid"),
@@ -254,7 +255,7 @@ def test_valid_shapes(data: dict[str, Any]) -> None:
         ("drop", _drop(d=[[10, 2000, 3]] * 32, pad="x" * 700), "oversize"),
         ("merge", _merge(m=[]), "invalid"),
         ("merge", _merge(m=[[12, 3, 0]]), "invalid"),  # chains count from 1
-        ("merge", _merge(m=[[12, 10, 1]]), "invalid"),  # nothing above the capstone
+        ("merge", _merge(m=[[12, 11, 1]]), "invalid"),  # nothing above the capstone
         ("merge", _merge(part=0), "invalid"),
         ("merge", _merge(part=2, parts=2), "invalid"),
         ("merge", {"from_tier": 3, "to_tier": 4, "x": 1.5, "y": 2.5, "score_after": 8}, "invalid"),
@@ -286,4 +287,18 @@ def test_lifecycle_events_are_stored_as_sent() -> None:
 
 
 def test_merge_points_double_per_tier() -> None:
-    assert [merge_points(t) for t in range(10)] == [2**n for n in range(1, 11)]
+    assert [merge_points(t) for t in range(11)] == [2**n for n in range(1, 12)]
+    # The winning merge (two tier-10 pieces) makes the capstone, worth 2048 (#3960).
+    assert merge_points(MAX_TIER - 1) == 2_048
+
+
+def test_the_12_tier_ladder_boundaries(sent: list) -> None:
+    """#3975: a merge from tier 10 (the win) is valid; nothing merges from or drops the capstone."""
+    assert MAX_TIER == 11
+    assert validate_replay_event("merge", _merge(m=[[12, 10, 1]])) == _merge(m=[[12, 10, 1]])
+    assert validate_replay_event("drop", _drop(d=[[10, 2000, 5]])) == _drop(d=[[10, 2000, 5]])
+    assert validate_replay_event("merge", _merge(m=[[12, 11, 1]])) is None
+    assert validate_replay_event("merge", _merge(m=[[12, 12, 1]])) is None
+    assert validate_replay_event("drop", _drop(d=[[10, 2000, 11]])) is None
+    assert validate_replay_event("drop", _drop(d=[[10, 2000, 12]])) is None
+    assert sent  # the rejects are reported, never raised

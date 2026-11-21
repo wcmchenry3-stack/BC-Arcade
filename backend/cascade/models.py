@@ -8,8 +8,9 @@ from cascade.time_bonus import BONUS_RULE, time_bonus
 from games.metadata import LegacyPlayerName
 from int_bounds import INT32_MAX, Int32, NonNegInt32
 
-MAX_TIER = 10
-"""The capstone's tier (``MAX_TIER`` in ``frontend/src/game/cascade/tiers.ts``)."""
+MAX_TIER = 11
+"""The capstone's tier (``CAPSTONE_TIER`` in ``frontend/src/game/cascade/tiers.ts``; 11 on the
+12-tier ladder, #3960 / #3975)."""
 
 # Written by the server only: whatever the app sends for them is replaced.
 SERVER_KEYS = ("time_bonus", "bonus_rule")
@@ -31,7 +32,7 @@ class CascadeResult(BaseModel):
     """The result block sent on ``PATCH /games/{id}/complete`` (#3700).
 
     Sent by the app (``frontend/src/game/cascade/resultBlock.ts``):
-    ``merge_score`` (the merge points), ``max_tier`` (highest tier made, 10 on a
+    ``merge_score`` (the merge points), ``max_tier`` (highest tier made, 11 on a
     win), ``won`` / ``outcome``, and the keys sent before #3700: ``final_score``,
     ``duration_ms``, ``theme`` (the fruit set id), ``total_drops`` and
     ``total_merges``.

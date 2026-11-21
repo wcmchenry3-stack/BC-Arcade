@@ -70,7 +70,8 @@ OVERFLOW_TICKS = 180
 """The lid's count ends the game at this many fixed steps (``OVERFLOW_TICKS_THRESHOLD``)."""
 
 Step = Annotated[StrictInt, Field(ge=0, le=INT32_MAX)]
-# Two tier-9 pieces make the capstone (tier 10): a merge is from 0..9, a drop is never the capstone.
+# Two tier-10 pieces make the capstone (tier 11, #3960): a merge is from 0..10, a drop is never the
+# capstone.
 Tier = Annotated[StrictInt, Field(ge=0, lt=MAX_TIER)]
 XTenths = Annotated[StrictInt, Field(ge=0, le=X_TENTHS_MAX)]
 Peak = Annotated[StrictInt, Field(ge=1, le=OVERFLOW_TICKS)]
