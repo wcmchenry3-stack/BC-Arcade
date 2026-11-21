@@ -93,8 +93,7 @@ describe("tileAccents (#4007)", () => {
     expect(COLUMNS).toEqual([1, 2, 3, 4]);
   });
 
-  // The intended final order, Daily Word first (#4009, PR #4018). HomeScreen on this branch
-  // still has Daily Word last until #4018 is merged in; the mapping does not depend on it.
+  // The lobby order, Daily Word first (#4009).
   it("no touching tiles share a pair in the store lobby on a phone (1 and 2 columns)", () => {
     for (const cols of COLUMNS.filter((c) => c <= 2)) expect(conflicts(STORE, cols)).toEqual([]);
   });
@@ -105,15 +104,15 @@ describe("tileAccents (#4007)", () => {
 
   // With 4 pairs it is impossible to have none at every width: across the four layouts the
   // first five store tiles (daily_word, yacht, twenty48, solitaire, freecell) all touch one
-  // another, a K5. The search for the best mapping (zero at 1 and 2 columns first) leaves the
-  // least possible on tablets: exactly one store pair each at 3 and 4 columns. Pinned, so a
-  // change can only improve it.
-  it("tablet layouts keep the known minimum of conflicts", () => {
-    expect(conflicts(STORE, 3)).toEqual([["yacht", "freecell"]]);
-    expect(conflicts(STORE, 4)).toEqual([["twenty48", "sort"]]);
-    // Internal 12-game lobby: 4 touching pairs at 3 columns, 1 at 4 columns.
-    expect(conflicts(INTERNAL, 3)).toHaveLength(4);
-    expect(conflicts(INTERNAL, 4)).toHaveLength(1);
+  // another, a K5. The chosen mapping (zero at 1 and 2 columns first) is a Pareto-minimal
+  // trade-off on tablets, one store pair each at 3 and 4 columns (owner accepted, #4007);
+  // (0,3) and (2,0) are the other minimal splits. Bounded, so a change can only improve it.
+  it("tablet layouts stay within the accepted conflicts", () => {
+    expect(conflicts(STORE, 3).length).toBeLessThanOrEqual(1);
+    expect(conflicts(STORE, 4).length).toBeLessThanOrEqual(1);
+    // Internal 12-game lobby: at most 4 touching pairs at 3 columns, 1 at 4 columns.
+    expect(conflicts(INTERNAL, 3).length).toBeLessThanOrEqual(4);
+    expect(conflicts(INTERNAL, 4).length).toBeLessThanOrEqual(1);
   });
 
   it("uses theme tokens only", () => {

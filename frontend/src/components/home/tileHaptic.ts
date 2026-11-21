@@ -7,5 +7,11 @@ import * as Haptics from "expo-haptics";
  */
 export function tilePressHaptic(muted: boolean): void {
   if (muted || Platform.OS === "web") return;
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+  // It runs before the tile's navigation in the same handler: a synchronous throw from the native
+  // module must not block opening the game, so both kinds of failure are swallowed.
+  try {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+  } catch {
+    // no haptic engine; the tap still navigates
+  }
 }

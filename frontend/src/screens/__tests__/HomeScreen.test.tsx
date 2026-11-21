@@ -1154,6 +1154,16 @@ describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
     expect(mockNavigate).toHaveBeenCalledWith("Solitaire");
   });
 
+  it("a haptic that throws synchronously never blocks navigation", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    (Haptics.impactAsync as jest.Mock).mockImplementationOnce(() => {
+      throw new Error("native module missing");
+    });
+    const { getByLabelText } = await renderScreen(390);
+    await fireEvent.press(getByLabelText("Play Solitaire"));
+    expect(mockNavigate).toHaveBeenCalledWith("Solitaire");
+  });
+
   it("still runs the tile action and opens the paywall on a locked tile", async () => {
     jest.replaceProperty(Platform, "OS", "ios");
     mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
