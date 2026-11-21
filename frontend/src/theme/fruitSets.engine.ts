@@ -5,7 +5,6 @@ export interface FruitDefinition {
   name: string;
   /** `<set>.<key>`: the piece name is `cascade:pieces.<i18nKey>` (keys from `game/cascade/tiers.ts`). */
   i18nKey: string;
-  emoji: string;
   color: string;
 }
 

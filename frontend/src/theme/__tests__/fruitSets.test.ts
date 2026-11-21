@@ -27,10 +27,9 @@ describe("fruitSets structure", () => {
         expect(tiers).toEqual(ALL_TIERS);
       });
 
-      it("every fruit has a non-empty name, emoji, and color", () => {
+      it("every fruit has a non-empty name and color", () => {
         for (const fruit of set.fruits) {
           expect(fruit.name.length).toBeGreaterThan(0);
-          expect(fruit.emoji.length).toBeGreaterThan(0);
           expect(fruit.color.length).toBeGreaterThan(0);
         }
       });
@@ -79,6 +78,7 @@ describe("fruitSets structure", () => {
       "Watermelon",
       "Pumpkin",
     ]);
-    expect(FRUIT_SETS["fruits"]?.fruits[6]?.emoji).toBe("🍏");
+    // No stand-in emoji on any piece (owner, #3964).
+    expect(FRUIT_SETS["fruits"]?.fruits[6]).not.toHaveProperty("emoji");
   });
 });

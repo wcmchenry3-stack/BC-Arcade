@@ -159,7 +159,6 @@ export default function CascadeDevPanel({
           <Text style={[styles.tierLabel, { color: colors.text }]}>
             {fruit.tier} · {fruit.name}
           </Text>
-          <Text style={[styles.tierMeta, { color: colors.textMuted }]}>{fruit.emoji}</Text>
         </View>
       ))}
 
