@@ -5,7 +5,9 @@ Renders the real scenes (they are small), but writes only into tmp_path.
 """
 
 import itertools
+import json
 import re
+import string
 import subprocess
 import sys
 from pathlib import Path
@@ -33,9 +35,9 @@ MEASURED = {
     "yacht": 3198,
     "twenty48": 3052,
     "sudoku": 2578,
-    "solitaire": 3348,  # #4012
-    "freecell": 3238,
-    "daily_word": 3100,
+    "solitaire": 2916,  # #4012, the owner's round-2 picks
+    "freecell": 3276,
+    "daily_word": 3352,
 }
 
 
@@ -266,11 +268,17 @@ def _rgb(colour) -> list[int]:
     return [round(v * 255) for v in colour[:3]]
 
 
+RANKS = ["A", *[str(n) for n in range(2, 11)], "J", "Q", "K"]
+
+
+def _value(face: str) -> int:
+    return RANKS.index(face[:-1]) + 1
+
+
 def _cards(name: str) -> list[str]:
     if name == "solitaire":
-        return [f for *_, faces in art.SOL_COLUMNS for f in faces] + [art.SOL_MOVING]
-    cells = [f for f in art.FC_CELLS if f]
-    return cells + [f for faces in art.FC_CASCADES.values() for f in faces] + [art.FC_MOVING]
+        return [*art.SOL_WASTE, *art.SOL_COLUMN, art.SOL_MOVING]
+    return [f for faces in art.FC_CASCADES for f in faces]
 
 
 @pytest.mark.parametrize("name", ["solitaire", "freecell"])
@@ -278,7 +286,7 @@ def test_every_card_is_a_real_card_drawn_once(name):
     cards = _cards(name)
     assert len(set(cards)) == len(cards)  # one deck
     for f in cards:
-        assert f[:-1] in [str(n) for n in range(2, 10)] and f[-1] in "SHDC", f
+        assert f[:-1] in RANKS and f[-1] in "SHDC", f
 
 
 @pytest.mark.parametrize("name", ["solitaire", "freecell"])
@@ -289,7 +297,7 @@ def test_card_scenes_show_red_and_black_suits(name):
 
 
 def test_card_draws_its_index_in_the_suit_colour():
-    for face, ink in (("7H", art.CARD_RED), ("7S", art.CARD_INK)):
+    for face, ink in (("7H", art.CARD_RED), ("7S", art.CARD_INK), ("10D", art.CARD_RED)):
         c = art.TileCanvas()
         art.card(c, 40, 40, 50, 70, face)
         im = np.asarray(c.image())
@@ -299,47 +307,19 @@ def test_card_draws_its_index_in_the_suit_colour():
         assert _mask(top, _rgb(other)).sum() == 0, face
 
 
-# --------------------------------------------------------------------------------------------
-# Solitaire (Klondike, #4012)
-
-
-def test_solitaire_runs_alternate_red_and_black_and_descend():
-    for *_, faces in art.SOL_COLUMNS:
-        assert len(faces) >= 2
-        for a, b in itertools.pairwise(faces):
-            assert art.is_red(a) != art.is_red(b), (a, b)
-            assert int(a[:-1]) - int(b[:-1]) == 1, (a, b)
-
-
-def test_solitaire_moving_card_drops_onto_the_seven_of_hearts():
-    """The 6S is a legal move onto the right column's 7H (black on red, one rank down), and it
-    is drawn there: over or just past the 7H's column, not the left column's 7D."""
-    mv = art.SOL_MOVING
-    assert mv == "6S"
-    (tx, ty, tdown, tfaces), (ox, *_) = (
-        next(col for col in art.SOL_COLUMNS if col[3][-1] == "7H"),
-        next(col for col in art.SOL_COLUMNS if col[3][-1] == "7D"),
-    )
-    target = tfaces[-1]
-    assert art.is_red(target) != art.is_red(mv) and int(target[:-1]) - int(mv[:-1]) == 1
-    w, _ = art.SOL_SIZE
-    mx, my = art.SOL_MOVING_AT
-    # Horizontally it overlaps the 7H's column and not the 7D's.
-    assert mx < tx + w and mx + w > tx
-    assert mx >= ox + w
-    # Vertically it hangs just below the 7H, where it lands: within one card height of its place.
-    landing = ty + tdown * art.DOWN_STEP + (len(tfaces) - 1) * art.SOL_STEP + art.SOL_STEP
-    assert landing <= my <= landing + art.SOL_SIZE[1] // 2
+@pytest.mark.parametrize("face", ["AH", "10S", "JC", "QD", "KS"])
+def test_card_draws_every_real_rank(face):
+    art.card(art.TileCanvas(), 40, 40, 50, 70, face)
 
 
 @pytest.mark.parametrize(
     ("face", "message"),
     [
-        ("AH", "rank must be 2-9"),
-        ("10S", "rank must be 2-9"),
-        ("KD", "rank must be 2-9"),
+        ("1H", "rank must be one of"),
+        ("11S", "rank must be one of"),
+        ("ZD", "rank must be one of"),
         ("7X", "suit must be one of"),
-        ("7", "rank must be 2-9"),
+        ("7", "rank must be one of"),
     ],
 )
 def test_card_rejects_faces_it_cannot_draw(face, message):
@@ -347,88 +327,96 @@ def test_card_rejects_faces_it_cannot_draw(face, message):
         art.card(art.TileCanvas(), 40, 40, 50, 70, face)
 
 
-def test_solitaire_columns_sit_on_face_down_cards():
-    """Klondike's tell, and what sets the tile apart from FreeCell: each column's run sits on
-    face-down cards, whose teal backs show above it."""
-    assert all(down >= 1 for _, _, down, _ in art.SOL_COLUMNS)
-    im = np.asarray(art.render("solitaire"))
-    back = _mask(im, _rgb(art.CARD_BACK))
-    for x, y, down, _ in art.SOL_COLUMNS:
-        strip = back[y : y + down * art.DOWN_STEP + 4, x : x + art.SOL_SIZE[0]]
-        assert strip.sum() > 40 * down, (x, strip.sum())
-
-
-def test_solitaire_alternates_colours_down_the_drawn_columns():
-    """The rank colours down each column, read from the pixels, alternate red and black."""
-    im = np.asarray(art.render("solitaire"))
-    red, ink = _mask(im, _rgb(art.CARD_RED)), _mask(im, _rgb(art.CARD_INK))
-    for x, y, down, faces in art.SOL_COLUMNS:
-        top = y + down * art.DOWN_STEP
-        seen = []
-        for i in range(len(faces)):
-            y0 = top + i * art.SOL_STEP
-            box = (slice(y0 + 2, y0 + 2 * art.CARD_INDEX), slice(x + 2, x + art.SOL_SIZE[0] - 2))
-            seen.append("r" if red[box].sum() > ink[box].sum() else "k")
-        assert seen == ["r" if art.is_red(f) else "k" for f in faces]
-        assert all(a != b for a, b in itertools.pairwise(seen))
+def test_pip_card_rejects_unknown_suits():
+    with pytest.raises(ValueError, match="suit must be one of"):
+        art.pip_card(art.TileCanvas(), 40, 40, 19, 30, "7X")
 
 
 # --------------------------------------------------------------------------------------------
-# FreeCell (#4012): its free cells must tell it apart from Solitaire at a glance
+# Solitaire (Klondike; the owner's pick B, #4012): stock, waste, a card moving off the waste
 
 
-def test_freecell_has_four_free_cells_some_holding_a_card():
-    assert len(art.FC_CELLS) == 4
-    assert any(art.FC_CELLS) and None in art.FC_CELLS
-    assert art.FC_CELLS[art.FC_TARGET] is None  # the moving card goes into an empty cell
+def test_solitaire_column_alternates_and_descends_over_a_face_down_card():
+    assert art.SOL_COLUMN_DOWN >= 1
+    for a, b in itertools.pairwise(art.SOL_COLUMN):
+        assert art.is_red(a) != art.is_red(b), (a, b)
+        assert _value(a) - _value(b) == 1, (a, b)
 
 
-def test_freecell_free_cells_are_drawn_across_the_top_above_the_cascades():
-    im = np.asarray(art.render("freecell"))
-    w, h = art.FC_SIZE
-    grey = _mask(im, [0x8A, 0x8A, 0x98], tol=4)
-    white = _mask(im, _rgb(art.CARD_FACE), tol=2)
-    for i, f in enumerate(art.FC_CELLS):
-        x, y = art.FC_X0 + i * art.FC_PITCH, art.FC_CELLS_Y
-        left_edge = grey[y + 8 : y + 24, x - 1 : x + 3]  # above any moving card
-        assert left_edge.sum() > 6, i
-        inside = white[y + 8 : y + 24, x + 6 : x + w - 6]
-        if f is None and i != art.FC_TARGET:
-            assert inside.sum() == 0, i  # an empty cell: open
-        elif f is not None:
-            assert inside.mean() > 0.5, i
-    assert art.FC_CELLS_Y + h < art.FC_CASCADES_Y  # the row sits above the cascades
+def test_solitaire_moving_card_is_the_wastes_and_a_legal_move_onto_the_column():
+    """The 7S came off the waste (Klondike's draw pile) and goes onto the 8H at the column's foot:
+    black on red, one rank down. It is drawn between the two: right of the column, below the
+    waste, lower than the waste's top and higher than where it lands."""
+    mv, target = art.SOL_MOVING, art.SOL_COLUMN[-1]
+    assert art.is_red(mv) != art.is_red(target) and _value(target) - _value(mv) == 1
+    w, _ = art.SOL_SIZE
+    mx, my = art.SOL_MOVING_AT
+    cx, cy = art.SOL_COLUMN_AT
+    landing = cy + art.SOL_COLUMN_DOWN * art.DOWN_STEP + len(art.SOL_COLUMN) * art.SOL_STEP
+    wx, wy = art.SOL_WASTE_AT
+    assert cx < mx < cx + w  # overlapping the column, offset to its right
+    assert wy < my < landing
+    assert mx >= wx + (len(art.SOL_WASTE) - 1) * art.SOL_WASTE_FAN  # past the waste's fan
 
 
-def test_freecell_empty_cells_are_dashed():
-    dash = art.dashes(
-        art.rounded_rect(0, 0, *art.FC_SIZE, art.CARD_R), art.FC_DASH, art.FC_DASH_GAP
-    )
-    perimeter = 2 * sum(art.FC_SIZE)
-    assert len(dash) >= perimeter / (art.FC_DASH + art.FC_DASH_GAP) - 2
-    im = np.asarray(art.render("freecell"))
-    x = art.FC_X0 + 2 * art.FC_PITCH  # an empty cell that no card covers
-    col = im[art.FC_CELLS_Y + 6 : art.FC_CELLS_Y + art.FC_SIZE[1] - 6, round(x + art.CARD_SNAP), 3]
-    runs = np.diff((col > 128).astype(int))
-    assert (runs == 1).sum() >= 3  # broken into dashes down its left side
+def test_solitaire_shows_the_stock_face_down():
+    """Klondike's tell, and what sets the tile apart from FreeCell: the stock's teal backs, and
+    the face-down card under the column's run."""
+    im = np.asarray(art.render("solitaire"))
+    back = _mask(im, _rgb(art.CARD_BACK))
+    sx, sy = art.SOL_STOCK_AT
+    w, h = art.SOL_SIZE
+    assert back[sy : sy + h, sx : sx + w].mean() > 0.5  # the stock's top card
+    cx, cy = art.SOL_COLUMN_AT
+    assert back[cy : cy + art.DOWN_STEP, cx : cx + w].sum() > 40  # under the run
 
 
-def test_freecell_cascades_are_dealt_face_up_with_no_backs():
+def test_solitaire_waste_is_fanned_face_up_beside_the_stock():
+    w, _ = art.SOL_SIZE
+    assert art.SOL_WASTE_AT[0] > art.SOL_STOCK_AT[0] + w  # its own pile
+    assert 0 < art.SOL_WASTE_FAN < w  # overlapping, each index showing
+    im = np.asarray(art.render("solitaire"))
+    wx, wy = art.SOL_WASTE_AT
+    strip = (slice(wy + 2, wy + 2 * art.CARD_INDEX), slice(wx + 2, wx + art.SOL_WASTE_FAN))
+    ink = _rgb(art.CARD_RED if art.is_red(art.SOL_WASTE[0]) else art.CARD_INK)
+    assert _mask(im, ink)[strip].sum() > 20  # the first waste card's rank shows under the fan
+
+
+# --------------------------------------------------------------------------------------------
+# FreeCell (the owner's pick B, #4012): the deal, eight cascades all face up
+
+
+def test_freecell_deals_eight_cascades_of_uneven_length():
+    assert len(art.FC_CASCADES) == 8
+    lengths = [len(f) for f in art.FC_CASCADES]
+    assert min(lengths) >= 2 and len(set(lengths)) > 1
+
+
+def test_freecell_cards_are_all_face_up_with_no_backs():
     im = np.asarray(art.render("freecell"))
     assert _mask(im, _rgb(art.CARD_BACK)).sum() == 0
-    assert all(len(f) >= 2 for f in art.FC_CASCADES.values())
 
 
-def test_freecell_moving_card_rises_into_its_cell():
-    w, h = art.FC_SIZE
-    x = art.FC_X0 + art.FC_TARGET * art.FC_PITCH
-    assert art.FC_CELLS_Y < art.FC_MOVING_Y < art.FC_CELLS_Y + h  # overlapping the cell
+def test_freecell_draws_eight_columns_side_by_side():
+    """Eight separate columns of cards across the tile: eight white card faces, each edged in
+    the outline grey, along a row through the first cards."""
     im = np.asarray(art.render("freecell"))
-    red = _mask(im, _rgb(art.CARD_RED))
-    y = art.FC_MOVING_Y
-    assert red[y : y + 2 * art.CARD_INDEX, x : x + w].sum() > 40  # its index shows
-    # Its motion marks trail below it, over no cascade.
-    assert art.FC_TARGET not in art.FC_CASCADES
+    y = art.FC_TOP + art.FC_SIZE[1] - 6
+    white = _mask(im, _rgb(art.CARD_FACE), tol=2)[y].astype(int)
+    assert (np.diff(white) == 1).sum() == 8
+
+
+def test_freecell_each_card_shows_its_suit_colour():
+    im = np.asarray(art.render("freecell"))
+    red, ink = _mask(im, _rgb(art.CARD_RED)), _mask(im, _rgb(art.CARD_INK))
+    w, _ = art.FC_SIZE
+    x0 = (art.TILE_PX - (8 * art.FC_PITCH - (art.FC_PITCH - w))) // 2
+    for i, faces in enumerate(art.FC_CASCADES):
+        for j, f in enumerate(faces):
+            x, y = x0 + i * art.FC_PITCH, art.FC_TOP + j * art.FC_STEP
+            box = (slice(y + 2, y + 2 * art.FC_PIP_Y - 1), slice(x + 2, x + w - 2))
+            want, other = (red, ink) if art.is_red(f) else (ink, red)
+            assert want[box].sum() > 5 and other[box].sum() == 0, f
 
 
 def test_solitaire_and_freecell_tiles_differ_at_a_glance():
@@ -442,7 +430,7 @@ def test_solitaire_and_freecell_tiles_differ_at_a_glance():
 
 
 # --------------------------------------------------------------------------------------------
-# Daily Word (#4012): the guessing grid, language-neutral
+# Daily Word (the owner's pick A, #4012): real guesses, scored as the game scores them
 
 
 def test_dailyword_colours_are_the_games():
@@ -450,31 +438,51 @@ def test_dailyword_colours_are_the_games():
     assert f'DAILYWORD_CORRECT = "{_hex(art.DW_CORRECT)}"' in src
     assert f'DAILYWORD_PRESENT = "{_hex(art.DW_PRESENT)}"' in src
     assert f'DAILYWORD_ABSENT = "{_hex(art.DW_ABSENT)}"' in src
+    assert f'DAILYWORD_LETTER_TEXT = "{_hex(art.DW_LETTER)}"' in src
 
 
-def test_dailyword_is_the_six_by_five_grid_with_hit_near_and_miss():
-    assert len(art.DW_ROWS) == 6 and all(len(r) == 5 for r in art.DW_ROWS)
-    marks = "".join(art.DW_ROWS)
-    assert set(marks) == {"c", "p", "a", "f", "-"}
+@pytest.mark.parametrize(
+    ("guess", "answer", "marks"),
+    [
+        ("PIANO", "FINAL", "acppa"),
+        ("FOCAL", "FINAL", "caacc"),
+        ("FINAL", "FINAL", "ccccc"),
+        ("CANAL", "FINAL", "aaccc"),  # the second A is green, so the first one is grey
+        ("LLAMA", "FINAL", "papaa"),  # one L and one A left over: only the first of each is yellow
+    ],
+)
+def test_dailyword_scores_like_the_game(guess, answer, marks):
+    assert art.score(guess, answer) == marks
+
+
+def test_dailyword_words_are_answers_in_every_language_the_game_plays():
+    words = REPO / "backend/daily_word/words"
+    for lang in ("en", "es", "fr"):
+        answers = set((words / f"answers_{lang}.txt").read_text(encoding="utf-8").split())
+        for w in [*art.DW_GUESSES, art.DW_ANSWER]:
+            assert w.lower() in answers, (lang, w)
+
+
+def test_dailyword_guesses_end_solved_and_use_hit_near_and_miss():
+    assert art.DW_GUESSES[-1] == art.DW_ANSWER
+    marks = "".join(art.score(g, art.DW_ANSWER) for g in art.DW_GUESSES[:-1])
+    assert set(marks) == {"c", "p", "a"}
     im = np.asarray(art.render("daily_word"))
     for colour in (art.DW_CORRECT, art.DW_PRESENT, art.DW_ABSENT):
         assert _mask(im, _rgb(colour), tol=6).sum() > 300, colour
-    # Scored rows come first, then the row being revealed, then the empty ones.
-    scored = [r for r in art.DW_ROWS if "-" not in r]
-    assert art.DW_ROWS[: len(scored)] == scored and art.DW_ROWS[-1] == "-----"
 
 
-def test_dailyword_has_no_letters(monkeypatch):
-    """Language-neutral (the lobby is in 13 locales): the scene draws no glyphs at all."""
-    calls = []
-    monkeypatch.setattr(art, "text", lambda *a, **_: calls.append(a))
+def test_dailyword_draws_every_letter_in_white(monkeypatch):
+    drawn = []
+    real = art.text
+    monkeypatch.setattr(art, "text", lambda c, s, *a: (drawn.append(s), real(c, s, *a)))
     im = np.asarray(art.render("daily_word"))
-    assert calls == []
-    assert _mask(im, [255, 255, 255], tol=8).sum() == 0  # no white letter ink on any tile
+    assert "".join(drawn) == "".join(art.DW_GUESSES)
+    assert _mask(im, _rgb(art.DW_LETTER), tol=8).sum() > 600
 
 
 # --------------------------------------------------------------------------------------------
-# Digits: Space Grotesk Bold outlines, extracted once with their licence
+# Digits and letters: Space Grotesk Bold outlines, extracted once with their licence
 
 
 def test_numerals_cover_0_to_9_with_the_ofl_licence():
@@ -483,6 +491,32 @@ def test_numerals_cover_0_to_9_with_the_ofl_licence():
     assert "Open Font License" in doc["license"]
     ofl = (SCRIPT.parent / "lobby_numerals.OFL.txt").read_text(encoding="utf-8")
     assert "Space Grotesk" in ofl and "SIL OPEN FONT LICENSE" in ofl.upper()
+
+
+def test_letters_cover_a_to_z_in_the_same_font():
+    letters = json.loads(art.LETTERS_FILE.read_text(encoding="utf-8"))
+    assert sorted(letters["glyphs"]) == list(string.ascii_uppercase)
+    assert letters["font"] == art.digits()["font"] and "Open Font License" in letters["license"]
+    assert letters["capHeight"] == art.digits()["capHeight"]
+    assert set(art.glyphs()["glyphs"]) == set("0123456789" + string.ascii_uppercase)
+
+
+def test_extract_reproduces_the_shipped_outlines(tmp_path, monkeypatch):
+    """`extract` rewrites both outline files byte for byte from the font (needs fontTools and
+    the font from `npm ci`; skipped without them)."""
+    pytest.importorskip("fontTools")
+    font = (
+        REPO
+        / "frontend/node_modules/@expo-google-fonts/space-grotesk/700Bold/SpaceGrotesk_700Bold.ttf"
+    )
+    if not font.exists():
+        pytest.skip("Space Grotesk not installed (cd frontend && npm ci)")
+    digits, letters = tmp_path / "n.json", tmp_path / "g.json"
+    monkeypatch.setattr(art, "DIGITS_FILE", digits)
+    monkeypatch.setattr(art, "LETTERS_FILE", letters)
+    art.extract(font)
+    assert digits.read_bytes() == (SCRIPT.parent / "lobby_numerals.json").read_bytes()
+    assert letters.read_bytes() == (SCRIPT.parent / "lobby_glyphs.json").read_bytes()
 
 
 def test_counters_are_cut_out_of_the_digits():

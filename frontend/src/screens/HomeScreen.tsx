@@ -248,7 +248,7 @@ export default function HomeScreen() {
     {
       key: "daily_word",
       slug: "daily_word",
-      image: dailyWordTile, // the guessing grid in hit / near / miss colours, no letters
+      image: dailyWordTile, // PIANO, FOCAL, then FINAL solved (answers in the en, es and fr lists)
       title: t("daily_word:game.title"),
       playLabel: t("daily_word:game.playLabel"),
       description: t("daily_word:game.description"),
@@ -294,7 +294,7 @@ export default function HomeScreen() {
     {
       key: "solitaire",
       slug: "solitaire",
-      image: solitaireTile, // two Klondike columns, a six dropping onto a seven
+      image: solitaireTile, // stock and waste, the waste's 7♠ moving onto an 8♥
       title: t("solitaire:game.title"),
       playLabel: t("solitaire:game.playLabel"),
       description: t("solitaire:game.description"),
@@ -303,7 +303,7 @@ export default function HomeScreen() {
     {
       key: "freecell",
       slug: "freecell",
-      image: freecellTile, // the four free cells, a card rising into one
+      image: freecellTile, // the deal: eight cascades, every card face up
       title: t("freecell:game.title"),
       playLabel: t("freecell:game.playLabel"),
       description: t("freecell:game.description"),

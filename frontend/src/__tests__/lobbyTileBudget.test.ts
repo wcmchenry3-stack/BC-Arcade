@@ -13,9 +13,9 @@ const TILE_BUDGET = 3400; // bytes per tile (owner, #4010)
 
 /** Every lobby tile image and its cap. Measured 2026-11-21 (bytes in the comments). */
 const TILES: Record<string, number> = {
-  "daily_word-tile.webp": TILE_BUDGET, // 3,100 (#4012)
-  "freecell-tile.webp": TILE_BUDGET, // 3,238 (#4012)
-  "solitaire-tile.webp": TILE_BUDGET, // 3,348 (#4012)
+  "daily_word-tile.webp": TILE_BUDGET, // 3,352 (#4012)
+  "freecell-tile.webp": TILE_BUDGET, // 3,276 (#4012)
+  "solitaire-tile.webp": TILE_BUDGET, // 2,916 (#4012)
   "sort-tile.webp": TILE_BUDGET, // 3,030
   "starswarm-tile.webp": TILE_BUDGET, // 2,698 (#3599; redrawn in #4013)
   "sudoku-tile.webp": TILE_BUDGET, // 2,578
@@ -23,7 +23,7 @@ const TILES: Record<string, number> = {
   "yacht-tile.webp": TILE_BUDGET, // 3,198 (five dice)
 };
 
-/** All the tiles together: 24,242 B measured (14,556 B before #4012's three), about 3% headroom. */
+/** All the tiles together: 24,100 B measured (14,556 B before #4012's three), about 3% headroom. */
 const TOTAL_BUDGET = 25000;
 
 const tileFiles = () =>
