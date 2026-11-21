@@ -203,6 +203,23 @@ Rules:
 
 ---
 
+## Lobby tile accents and press feedback (#4007)
+
+Each game has one fixed accent pair, which fills the tile's top stripe and its Play button. It is chosen by game (`frontend/src/components/home/tileAccents.ts`), never by position, so hiding a game or reordering the lobby recolours nothing. Touching means next to each other in a row, or one above the other. On phones (1 and 2 columns) no two touching tiles share a pair, in the 7-tile store lobby or the 12-game one. Four pairs cannot avoid it at every width (across 1 to 4 columns the first five store tiles all touch each other), so tablets keep the proven minimum: store, one pair at 3 columns (Yacht, FreeCell) and one at 4 (2048, Sort Puzzle); 12-game lobby, four at 3 columns and one at 4. `tileAccents.test.ts` pins this, with column counts read from `lobbyColumns`. A new game must be added to `TILE_ACCENT_PAIR` (a `Record<GameType, ...>`, so it fails to compile otherwise).
+
+| Pair | Stops (left to right)      | Games                         |
+| ---- | -------------------------- | ----------------------------- |
+| 0    | `tertiary`, `secondary`    | Daily Word, Sudoku, Blackjack |
+| 1    | `secondary`, `accent`      | Yacht, FreeCell, Star Swarm   |
+| 2    | `accent`, `accentBright`   | Solitaire, Cascade, Mahjong   |
+| 3    | `accentBright`, `tertiary` | 2048, Sort Puzzle, Hearts     |
+
+**Label ink** is `textOnAccent` (`#0e0e13`) on every pair in both themes, at 4.5:1 or more on both stops (`tileAccents.test.ts`): dark 7.2 to 16.1, light 6.7 to 9.2. In light, `secondary` `#a34fc4` is only 4.1:1 under that ink (white is 4.7 on it but 2.1 to 2.7 on the teal and lime stops), so the light tile fill uses the dark theme's `secondary` `#d674ff` (7.2:1) in its place.
+
+**Press feedback.** A pressed tile (locked ones too) drops to opacity 0.85 and scale 0.97, through Pressable's `style` callback: no state and no animation loop in JS. With Reduce Motion on (`useReduceMotion`) it dims only. A light haptic fires on tap (`onPress`), not on touch-down, because a finger that starts a scroll on a tile gets the Pressable's responder first and must not buzz; it fires on iOS and Android, not on web, and not when "Sound effects" is off in Settings (the app has no separate haptics setting). The helper is `components/home/tileHaptic.ts`.
+
+---
+
 ## Stitch-as-basis rule
 
 The Stitch zip is the **structural basis** for a screen's redesign — layout, component hierarchy, spacing, and interaction intent — not just a source of colors and fonts to paint onto the existing implementation. Earlier we made the mistake of reskinning existing screens with BC Arcade tokens while keeping their old layouts; that's not the goal.
