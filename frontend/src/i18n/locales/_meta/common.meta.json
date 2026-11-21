@@ -508,7 +508,7 @@
     "description": "Accessibility label of a home-screen game tile that continues a saved game. {{label}} is the tile's normal label (Play Yacht).",
     "tone": "functional",
     "characterLimit": 90,
-    "placeholders": ["{{title}}"],
+    "placeholders": ["{{label}}"],
     "doNotTranslate": [],
     "notes": null
   },

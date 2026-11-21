@@ -1313,10 +1313,7 @@ move. Shown for: Yacht, 2048, Solitaire, FreeCell, Sudoku (Resume), Daily Word (
 Yacht, 2048, Solitaire, FreeCell. **Not listed:** Sort (its mid-level save is continued from the
 level grid's Continue button, and its bests are one per level) and the hidden games (their storage
 is never imported or read, so a store bundle holds none of it); Sudoku shows no best (one per mode and
-difficulty). The reads are silent: a save that cannot be read, parsed or checked reads as no status
-and is left as stored (no removal, no Sentry event, unlike the game's own `loadGame`). The only
-possible write is the shared personal best's one-time move of a pre-#3757 save (`personalBest.ts`),
-which the game screen does too. Keys read: `docs/DATA-INVENTORY.md` §3.
+difficulty). The reads are silent and write-free: a save or best that cannot be read, parsed or checked reads as no status and is left as stored (no removal, no Sentry event, and an older-format best is not moved in: the best comes from `peekBests`, not `getBest`). They run on mount, on Home's `focus` and when the app returns to the foreground, so "Done today" is derived again against the current date. Keys read: `docs/DATA-INVENTORY.md` §3.
 
 ### 10.8 How the free/premium split is decided
 

@@ -5,12 +5,16 @@
  * or the player's personal best. Each game contributes a small `getLobbyStatus()` next to its
  * storage module; `useLobbyTileStatus` batches them after first paint.
  *
- * Cost: reads only. About one AsyncStorage key per visible game per Home focus (the personal best
- * is held in memory after its first read), 0 bytes written, 0 network, 0 Sentry events. A save that
- * can't be read or parsed reads as no status and is left exactly as stored: unlike a game's own
- * `loadGame`, nothing here removes or reports a corrupt payload.
+ * Cost: reads only, on Home's mount, focus and return to the foreground. Per visible game: its save
+ * (one `getItem`) and its best, one `getMany` of the best's record plus its older keys (none once
+ * the best is held in memory, which happens only when a record exists). 0 bytes written, 0
+ * removals, 0 network, 0 Sentry events: a save or best that can't be read or parsed reads as no
+ * status and is left exactly as stored. Unlike a game's own `loadGame` or `getBest`, nothing here
+ * removes, moves in or reports a corrupt or older payload (`peekBests`).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { DEFAULT_VARIANT, peekBests, type PersonalBestGame } from "./personalBest";
 
 /** How a personal best is written: a score, a time (ms), or a move count. */
 export type BestUnit = "score" | "time" | "moves";
@@ -55,4 +59,13 @@ export async function readSavedGame<T>(
 /** A personal best as a status, or none when the game has no best on record. */
 export function bestStatus(value: number, unit: BestUnit): TileStatus | undefined {
   return value > 0 ? { kind: "best", value, unit } : undefined;
+}
+
+/** The player's best for `game` (default variant) as a status, read without side effects. */
+export async function peekBestStatus(
+  game: PersonalBestGame,
+  unit: BestUnit
+): Promise<TileStatus | undefined> {
+  const bests = await peekBests(game);
+  return bestStatus(bests?.[DEFAULT_VARIANT] ?? 0, unit);
 }

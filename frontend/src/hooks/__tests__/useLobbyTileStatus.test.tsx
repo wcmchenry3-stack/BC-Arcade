@@ -1,3 +1,4 @@
+import { AppState } from "react-native";
 import { act, renderHook } from "@testing-library/react-native";
 
 import type { TileStatus } from "../../game/_shared/lobbyStatus";
@@ -7,6 +8,7 @@ import { useLobbyTileStatus } from "../useLobbyTileStatus";
 
 const resume: TileStatus = { kind: "resume" };
 const best: TileStatus = { kind: "best", value: 10, unit: "score" };
+const done: TileStatus = { kind: "doneToday" };
 
 function makeNav() {
   const listeners: Array<() => void> = [];
@@ -104,6 +106,36 @@ describe("useLobbyTileStatus (#4008)", () => {
     await flushReads();
     expect(yacht).toHaveBeenCalledTimes(2);
     expect(result.current).toEqual({ yacht: resume });
+  });
+
+  it("reads again, deferred, when the app returns to the foreground, and not for other states", async () => {
+    let onChange: (s: string) => void = () => undefined;
+    const remove = jest.fn();
+    const spy = jest.spyOn(AppState, "addEventListener").mockImplementation((_e, cb) => {
+      onChange = cb as (s: string) => void;
+      return { remove } as unknown as ReturnType<typeof AppState.addEventListener>;
+    });
+    const yacht = jest.fn().mockResolvedValueOnce(done).mockResolvedValueOnce(undefined);
+    const { navigation } = makeNav();
+    const { result, unmount } = await renderHook(() =>
+      useLobbyTileStatus(["yacht"], navigation, { yacht })
+    );
+    await flushReads();
+    expect(result.current.yacht).toEqual(done);
+
+    await act(async () => onChange("background"));
+    await flushReads();
+    expect(yacht).toHaveBeenCalledTimes(1);
+
+    await act(async () => onChange("active"));
+    expect(yacht).toHaveBeenCalledTimes(1); // deferred, like the first read
+    await flushReads();
+    expect(yacht).toHaveBeenCalledTimes(2);
+    expect(result.current.yacht).toBeUndefined();
+
+    await unmount();
+    expect(remove).toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("shares one read between the mount and the focus that follows it", async () => {

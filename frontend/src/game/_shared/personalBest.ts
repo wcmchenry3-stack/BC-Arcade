@@ -283,6 +283,41 @@ async function load(game: PersonalBestGame): Promise<Loaded> {
   return { bests: merged, readable: true };
 }
 
+/**
+ * The bests for `game` as `load` would see them, without any side effect (#4008, the lobby): the
+ * in-memory copy when there is one, else the stored record merged with an older save, read in one
+ * `getMany` and parsed and checked exactly as `load` does. It never writes, removes, caches or
+ * reports: an older save is not moved in, a corrupt record is not deleted, and nothing goes to
+ * Sentry. `null` when storage can't be read, or the record is in a format this build doesn't know.
+ * Never rejects.
+ */
+export async function peekBests(game: PersonalBestGame): Promise<Bests | null> {
+  const cached = cache.get(game);
+  if (cached) return cached;
+  const spec = PERSONAL_BEST_GAMES[game];
+  const key = storageKey(game);
+  const legacyKeys = spec.legacy?.keys ?? [];
+  try {
+    const stored = await AsyncStorage.getMany([
+      key,
+      ...legacyKeys,
+      ...(spec.legacy?.context ?? []),
+    ]);
+    let current: Bests = {};
+    const raw = stored[key];
+    if (raw != null) {
+      const parsed = parseRecord(spec, raw);
+      if (parsed.kind === "unknown") return null;
+      if (parsed.kind === "ok") current = parsed.bests;
+    }
+    if (!spec.legacy || !legacyKeys.some((k) => stored[k] != null)) return current;
+    const imported = readLegacy(spec, spec.legacy, stored);
+    return imported === null ? current : mergeBests(game, current, imported);
+  } catch {
+    return null;
+  }
+}
+
 /** Every stored best for `game`, by variant. Never rejects: none on failure. */
 export function getBests(game: PersonalBestGame): Promise<Bests> {
   return inOrder(game, async () => (await load(game)).bests);

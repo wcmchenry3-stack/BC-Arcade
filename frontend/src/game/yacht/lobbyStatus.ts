@@ -4,8 +4,7 @@
  * `isResumable` is the one rule for "resume vs new". HomeScreen's tap (`startYacht`) and the
  * tile's "Resume" status both use it, so the tile never offers a Resume that a tap would not give.
  */
-import { getBest } from "../_shared/personalBest";
-import { bestStatus, pickStatus, readSavedGame, type TileStatus } from "../_shared/lobbyStatus";
+import { peekBestStatus, pickStatus, readSavedGame, type TileStatus } from "../_shared/lobbyStatus";
 import { isSavedGame, YACHT_GAME_KEY, type SavedGame } from "./storage";
 import { isAiTurnPending } from "./vsTurn";
 
@@ -24,10 +23,7 @@ export function isResumable(saved: SavedGame | null): saved is SavedGame {
 export async function getLobbyStatus(): Promise<TileStatus | undefined> {
   const [saved, best] = await Promise.all([
     readSavedGame(YACHT_GAME_KEY, isSavedGame),
-    getBest("yacht"),
+    peekBestStatus("yacht", "score"),
   ]);
-  return pickStatus([
-    isResumable(saved) ? { kind: "resume" } : undefined,
-    bestStatus(best, "score"),
-  ]);
+  return pickStatus([isResumable(saved) ? { kind: "resume" } : undefined, best]);
 }

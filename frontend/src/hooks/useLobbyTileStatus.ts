@@ -4,12 +4,13 @@
  *
  * Cost and timing: the reads start after first paint (`setTimeout(0)`, like
  * `prefetchLobbyGameScreens`), run together (one `Promise.all`, a few keys), and run again only
- * when Home gains focus. Nothing waits on them: the grid renders at once and a tile gains its
+ * when Home gains focus or the app returns to the foreground. Nothing waits on them: the grid renders at once and a tile gains its
  * status when its read lands. No network, no writes, no Sentry. A reader that fails or finds
  * nothing leaves its tile without a status, and a slug without a reader (a hidden game, or one
  * with no status) is never read.
  */
 import { useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 
 import type { TileStatus } from "../game/_shared/lobbyStatus";
 import { LOBBY_STATUS_READERS } from "../components/home/lobbyStatusReaders";
@@ -49,8 +50,10 @@ export function useLobbyTileStatus(
   const slugKey = visibleSlugs.join(",");
 
   const navigationRef = useRef(navigation);
+  const readersRef = useRef(readers);
   useEffect(() => {
     navigationRef.current = navigation;
+    readersRef.current = readers;
   });
   const generation = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,11 +66,12 @@ export function useLobbyTileStatus(
       timer.current = setTimeout(() => {
         timer.current = null;
         const mine = ++generation.current;
-        const wanted = slugs.filter((slug) => readers[slug] !== undefined);
+        const current = readersRef.current;
+        const wanted = slugs.filter((slug) => current[slug] !== undefined);
         void Promise.all(
           wanted.map((slug) =>
             Promise.resolve()
-              .then(() => readers[slug]?.())
+              .then(() => current[slug]?.())
               .catch(() => undefined)
           )
         ).then((results) => {
@@ -82,13 +86,19 @@ export function useLobbyTileStatus(
     };
     run();
     const unsubscribe = navigationRef.current.addListener("focus", run);
+    // Back from the background: a day may have passed, so "Done today" is derived again against
+    // the current date key (the reader computes it at read time). Same deferred, shared run.
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") run();
+    });
     return () => {
       unsubscribe();
+      appState?.remove();
       generation.current += 1;
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
     };
-  }, [slugKey, readers]);
+  }, [slugKey]);
 
   return statuses;
 }

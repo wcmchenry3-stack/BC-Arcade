@@ -4,8 +4,7 @@
  * The screen always reopens a stored game; the tile offers "Resume" only for one with a move made
  * (an undo step or a score) that is not complete.
  */
-import { getBest } from "../_shared/personalBest";
-import { bestStatus, pickStatus, readSavedGame, type TileStatus } from "../_shared/lobbyStatus";
+import { peekBestStatus, pickStatus, readSavedGame, type TileStatus } from "../_shared/lobbyStatus";
 import { isSavedGame, SOLITAIRE_GAME_KEY } from "./storage";
 import type { SolitaireState } from "./types";
 
@@ -18,10 +17,10 @@ export function isResumable(
 export async function getLobbyStatus(): Promise<TileStatus | undefined> {
   const [saved, best] = await Promise.all([
     readSavedGame(SOLITAIRE_GAME_KEY, isSavedGame),
-    getBest("solitaire"),
+    peekBestStatus("solitaire", "time"),
   ]);
   return pickStatus([
     isResumable(saved as SolitaireState | null) ? { kind: "resume" } : undefined,
-    bestStatus(best, "time"),
+    best,
   ]);
 }

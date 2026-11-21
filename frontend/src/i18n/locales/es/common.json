@@ -57,7 +57,7 @@
   "home.resume.buttonLabel": "Reanudar",
   "home.resume.cardLabel": "{{label}} — en curso, toca para reanudar",
   "home.status.inProgress": "En curso",
-  "home.status.doneToday": "Hecho hoy",
+  "home.status.doneToday": "Completado hoy",
   "home.status.best": "Mejor {{value}}",
   "home.status.bestMoves": "Mejores movimientos: {{value}}",
   "deleteData.label": "Eliminar mis datos",

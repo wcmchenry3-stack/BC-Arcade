@@ -51,6 +51,25 @@ describe("daily_word getLobbyStatus (#4008)", () => {
     expect(await getLobbyStatus()).toBeUndefined();
   });
 
+  it("lapses overnight: once the date key moves to tomorrow, yesterday's finished board is not Done today", async () => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate", "setTimeout"] });
+    try {
+      jest.setSystemTime(new Date("2026-11-21T12:00:00Z"));
+      await cacheToday("2026-11-21:en:1");
+      await saveState({
+        ...initialState("2026-11-21:en:1", 5, "en"),
+        is_complete: true,
+        won: true,
+      });
+      expect(await getLobbyStatus()).toEqual({ kind: "doneToday" });
+      jest.setSystemTime(new Date("2026-11-22T12:00:00Z"));
+      // Tomorrow's meta is not cached (yet): no status, even though yesterday's board is stored.
+      expect(await getLobbyStatus()).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("reads only: a corrupt board is left stored and nothing is reported or written", async () => {
     await cacheToday();
     await AsyncStorage.setItem(`daily_word_board_${PUZZLE}`, "{bad");
