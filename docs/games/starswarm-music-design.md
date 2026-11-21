@@ -76,7 +76,10 @@ Things to know before changing it:
   `frontend/src/__tests__/starswarmBgm.test.ts`. Also run
   `python tools/assets/build_starswarm_bgm.py --write-fingerprint` and commit the updated
   `tools/assets/starswarm_bgm/reference_fingerprint.json`: without it the CI fingerprint test fails
-  on purpose. (A refresh that moves nothing audible, such as a refactor, should leave the file
+  on purpose. Do it after replacing the MP3: the file records the shipped MP3's SHA-256
+  (`shipped_sha256`, checked by a test), and `--write-fingerprint` refuses to change the stages while
+  the shipped MP3 is unchanged, so a recipe edit cannot be blessed by refreshing alone. `--force`
+  overrides that only when you have deliberately decided the shipped MP3 stays as is. (A refresh that moves nothing audible, such as a refactor, should leave the file
   unchanged: check `git diff` shows no change.) The starting points and the time map below
   are tied to the current cues.
 

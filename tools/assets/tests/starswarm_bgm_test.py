@@ -54,8 +54,10 @@ LOOP_SCRIPT_DOCS = (
 # different bed or gain, truncation), which moves relative RMS to 1e-1 or more. A single cue
 # (0.5 dB louder on one 17 s window) moves relative RMS less than the noise does, which is why that
 # is the fingerprint's job; the loudness windows below catch it from the final file too.
-# WINDOW_DB_TOLERANCE is 20x the worst noise (0.0009 dB) and below a 0.5 dB cue change on one
-# window (about 0.05 dB over the 10 s that contains it).
+# WINDOW_DB_TOLERANCE is 20x the worst noise (0.0009 dB). A cue made 0.5 dB louder moves the
+# window holding it by only 0.028-0.044 dB (measured), so this check has about 1.4x margin at
+# 0.5 dB and does not see smaller cue changes: the fingerprint is the primary level guard, and
+# this is a coarse backstop on the shipped file.
 RMS_TOLERANCE = 1.5e-2
 WINDOW_S = 10
 WINDOW_DB_TOLERANCE = 0.02
@@ -198,7 +200,7 @@ def test_recipe_rebuilds_the_shipped_track(rebuild):
     err = np.sqrt(np.mean((fresh - shipped) ** 2) / np.mean(shipped**2))
     assert err < RMS_TOLERANCE, f"rebuild differs from the shipped track: relative RMS {err:.2e}"
     w = WINDOW_S * SR * 2  # interleaved stereo samples
-    for k in range(0, len(shipped) - w + 1, w):
+    for k in range(0, len(shipped), w):  # the last window may be shorter
         a, r = fresh[k : k + w], shipped[k : k + w]
         db = 20 * np.log10(np.sqrt(np.mean(a**2)) / np.sqrt(np.mean(r**2)))
         assert abs(db) < WINDOW_DB_TOLERANCE, f"{k // w * WINDOW_S}s window is {db:+.3f} dB"
@@ -237,11 +239,48 @@ def test_fingerprint_catches_a_moved_window_or_length():
 
 def test_reference_fingerprint_is_compact_and_covers_every_stage():
     ref = fingerprint.load()
-    assert set(ref) == {"window_s", "bed", "dry_mix", "phrases"}
+    assert set(ref) == {"window_s", "bed", "dry_mix", "phrases", "shipped_sha256"}
     assert set(ref["phrases"]) == set(arrange.LAYERS)
     assert ref["bed"]["samples"] == arrange.DUR * SR
     assert ref["dry_mix"]["samples"] == arrange.DUR * SR
     assert fingerprint.REFERENCE.stat().st_size < 16_384  # a fingerprint, not audio
+
+
+def test_reference_fingerprint_belongs_to_the_shipped_track():
+    # Refreshing the reference without replacing the MP3 would bless a recipe change the shipped
+    # track lacks; --write-fingerprint records the hash so this catches a stale pairing.
+    assert fingerprint.load()["shipped_sha256"] == build_starswarm_bgm.sha256(
+        build_starswarm_bgm.SHIPPED
+    ), "the shipped MP3 changed without --write-fingerprint (or the reference was edited alone)"
+
+
+def test_write_fingerprint_refuses_a_silent_refresh():
+    committed = {**_fp(1.0), "shipped_sha256": "a" * 64}
+    moved = _fp(1.1)
+    # The fingerprint moved and the shipped MP3 did not: refuse.
+    assert fingerprint.refuse_reason(moved, committed, "a" * 64)
+    # The documented order (MP3 replaced first, so its hash differs): allowed.
+    assert fingerprint.refuse_reason(moved, committed, "b" * 64) is None
+    # Nothing moved, or no reference yet: allowed.
+    assert fingerprint.refuse_reason(_fp(1.0), committed, "a" * 64) is None
+    assert fingerprint.refuse_reason(moved, None, "a" * 64) is None
+
+
+def test_write_fingerprint_cli_refuses_unless_forced(tmp_path, monkeypatch):
+    ref = tmp_path / "ref.json"
+    sha = build_starswarm_bgm.sha256(build_starswarm_bgm.SHIPPED)
+    fingerprint.write({**_fp(1.0), "shipped_sha256": sha}, ref)
+    monkeypatch.setattr(fingerprint, "REFERENCE", ref)
+    monkeypatch.setattr(build_starswarm_bgm, "build", lambda *_a, **_k: _fp(1.1))
+    assert build_starswarm_bgm.main(["--write-fingerprint"]) == 1
+    assert fingerprint.load(ref)["bed"] == _fp(1.0)["bed"]
+    assert build_starswarm_bgm.main(["--write-fingerprint", "--force"]) == 0
+    assert fingerprint.load(ref)["bed"] == _fp(1.1)["bed"]
+
+
+def _fp(level: float) -> dict:
+    stage = fingerprint.summarise(_toy_stage(0.7 * level))
+    return {"window_s": 5, "bed": stage, "dry_mix": stage, "phrases": {"rise": stage}}
 
 
 def test_documented_loop_script_hash_is_current():

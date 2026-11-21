@@ -15,7 +15,11 @@ Usage:
   python tools/assets/build_starswarm_bgm.py --check                  # rebuild; compare with the
                                                                       # shipped file
   python tools/assets/build_starswarm_bgm.py --write-fingerprint      # refresh the reference
-                                                                      # the CI test compares to
+                                                                      # the CI test compares to;
+                                                                      # refuses if the shipped MP3
+                                                                      # is unchanged (--force: only
+                                                                      # when you have deliberately
+                                                                      # decided it stays as is)
 
 Changing the music: edit a layer or a cue in `starswarm_bgm/`, rebuild, listen, then replace the
 shipped file, run --write-fingerprint, and update the shipped file's SHA-256 and size
@@ -81,11 +85,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="rebuild and rewrite starswarm_bgm/reference_fingerprint.json (after a recipe change)",
     )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="with --write-fingerprint: overwrite even though the shipped MP3 is unchanged "
+        "(only when you have deliberately decided the shipped MP3 stays as is)",
+    )
     ap.add_argument("--check", action="store_true", help="compare a rebuild with the shipped file")
     args = ap.parse_args(argv)
     if args.write_fingerprint:
         fp = build(None, args.stages, with_fingerprint=True)
-        fingerprint.write(fp)
+        shipped = sha256(SHIPPED)
+        committed = (
+            fingerprint.load(fingerprint.REFERENCE) if fingerprint.REFERENCE.exists() else None
+        )
+        why = fingerprint.refuse_reason(fp, committed, shipped)
+        if why and not args.force:
+            print(f"refusing to write {fingerprint.REFERENCE.name}: {why}", file=sys.stderr)
+            return 1
+        fingerprint.write({**fp, "shipped_sha256": shipped}, fingerprint.REFERENCE)
         print(f"wrote {fingerprint.REFERENCE} ({fingerprint.REFERENCE.stat().st_size} bytes)")
         return 0
     if not args.check and not args.out_mp3:
