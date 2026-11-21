@@ -13,6 +13,8 @@ slate ``resolve_slate`` chooses, so what a player sees does not change.
 
 Bounds (CLAUDE.md priority 1, docs/DATA-INVENTORY.md):
 
+* **Played installs only.** A session with no ``games`` row is served the pick and
+  nothing is stored (``get_or_pin``), so rows cannot be minted with made-up ids.
 * **Days ahead.** Only today..today+``MAX_DAYS_AHEAD`` (the requesting client's
   local calendar) are ever pinned; ``get_or_pin`` refuses any other day.
 * **Retention.** ``daily_challenge.retention`` deletes rows older than
@@ -34,12 +36,12 @@ from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from daily_challenge.definitions import Goal, Slate, Template, goal_from_spec
 from db.dialect import dialect_insert
-from db.models import DailyChallengeAssignment
+from db.models import DailyChallengeAssignment, Game
 from settings import Settings
 
 # Today plus this many days ahead may be pinned: /upcoming's offline window.
@@ -167,6 +169,15 @@ async def read_assignments(
 Pick = Callable[[date], Awaitable[Assignment]]
 
 
+async def _has_played(session: AsyncSession, session_id: str) -> bool:
+    """True if the session has at least one ``games`` row (indexed on session_id).
+    Run only when some requested day is not pinned yet, so a pinned day's read
+    stays one SELECT."""
+    return bool(
+        (await session.execute(select(exists().where(Game.session_id == session_id)))).scalar()
+    )
+
+
 async def get_or_pin(
     session: AsyncSession,
     session_id: str,
@@ -181,6 +192,11 @@ async def get_or_pin(
     one INSERT ... ON CONFLICT DO NOTHING stores them. A day a concurrent request
     pinned first is skipped by the insert and read back (one more SELECT), so two
     first requests can never leave two different assignments: the stored row wins.
+
+    Only a session that has played pins: before inserting, one EXISTS on
+    ``games.session_id`` (skipped when every day is already pinned). A session
+    with no game rows gets ``pick``'s result and nothing is written, so a made-up
+    session id cannot create assignment rows without first creating game rows.
 
     Every day must be pinnable relative to ``today`` (the caller's local date);
     anything else raises ``ValueError``, so no route can pin past today+2.
@@ -209,6 +225,13 @@ async def get_or_pin(
         return result
 
     fresh = {d: await pick(d) for d in missing}
+    if not await _has_played(session, session_id):
+        # The write ceiling: a session with no game rows (a new install, or an id
+        # made up to fill the table) is served the pick and nothing is stored.
+        # Pinning starts on the first request after its first game has synced, so
+        # assignment rows can only grow as fast as (rate-limited, capped) games.
+        result.update(fresh)
+        return result
     # Same pattern as schedule.get_or_create_templates (#3013): no IntegrityError,
     # no rollback, no retry. Rows go in date order so two overlapping batches take
     # their row locks in the same order on Postgres.

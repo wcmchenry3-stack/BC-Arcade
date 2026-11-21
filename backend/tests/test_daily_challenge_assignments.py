@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 
 from daily_challenge import assignments, retention, service
 from daily_challenge.assignments import (
@@ -87,6 +87,13 @@ async def _pin(sid: str, day: date, goals=_PERSONAL, **extra) -> None:
         await db.commit()
 
 
+async def _played() -> str:
+    """A session with one finished game: only such a session pins (the write ceiling)."""
+    sid = str(uuid.uuid4())
+    await _play_twenty48(sid, date(2026, 10, 1))
+    return sid
+
+
 def _ids(goals: list[dict]) -> list[str]:
     return [g["id"] for g in goals]
 
@@ -152,7 +159,7 @@ async def test_status_pins_today_once_and_returns_the_same_row(
         return await real(db, sid, day)
 
     monkeypatch.setattr(service, "pick_for_install", counting)
-    sid = str(uuid.uuid4())
+    sid = await _played()
     first = client.get("/daily-challenge/status", headers=_headers(sid)).json()
     rows = await _rows(sid)
     assert [r.local_date for r in rows] == [local_day(0).date]
@@ -205,7 +212,7 @@ async def test_status_pins_the_slate_resolve_slate_chooses(
         lambda _day, slate="free": premium if slate == "premium" else _SHARED,
     )
     monkeypatch.setattr(service, "resolve_slate", premium_slate)
-    sid = str(uuid.uuid4())
+    sid = await _played()
     async with get_session_factory()() as db:
         status = await service.get_status_for_session(db, session_id=sid, tz_offset_minutes=0)
     assert (status.slate, status.template) == ("premium", premium)
@@ -217,7 +224,7 @@ async def test_status_pins_the_slate_resolve_slate_chooses(
 async def test_upcoming_with_a_session_pins_three_days_for_that_install(
     client: TestClient,
 ) -> None:
-    sid = str(uuid.uuid4())
+    sid = await _played()
     first = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
     today = local_day(0).date
     assert [d["challenge_id"] for d in first["days"]] == [
@@ -243,6 +250,82 @@ async def test_upcoming_without_a_session_pins_nothing(client: TestClient) -> No
     assert await _rows() == []
 
 
+@needs_db
+async def test_a_session_that_has_not_played_is_served_the_pick_and_pins_nothing(
+    client: TestClient,
+) -> None:
+    sid = str(uuid.uuid4())
+    status = client.get("/daily-challenge/status", headers=_headers(sid)).json()
+    up = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    assert status["template_id"] == _SHARED.id
+    assert up == client.get("/daily-challenge/upcoming").json()
+    assert await _rows() == []
+    # Its first game syncs: the next request pins.
+    await _play_twenty48(sid, date(2026, 10, 1))
+    client.get("/daily-challenge/status", headers=_headers(sid))
+    assert [r.local_date for r in await _rows(sid)] == [local_day(0).date]
+
+
+def _record_statements(db):
+    statements: list[str] = []
+    engine = db.sync_session.get_bind()
+
+    def record(_conn, _cursor, statement, *_rest) -> None:
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    return statements, lambda: event.remove(engine, "before_cursor_execute", record)
+
+
+@needs_db
+async def test_a_pinned_day_is_one_select_and_never_checks_games() -> None:
+    sid = await _played()
+    today = local_day(0).date
+
+    async def pick(day: date) -> Assignment:
+        return Assignment(_SHARED)
+
+    async with get_session_factory()() as db:
+        statements, stop = _record_statements(db)
+        try:
+            await assignments.get_or_pin(db, sid, [today], today=today, pick=pick)
+            first = len(statements)
+            await assignments.get_or_pin(db, sid, [today], today=today, pick=pick)
+        finally:
+            stop()
+    later = statements[first:]
+    assert len(later) == 1 and "daily_challenge_assignments" in later[0], later
+    # The first (pinning) call: select, EXISTS on games, insert.
+    assert first == 3 and "games" in statements[1], statements[:first]
+
+
+@needs_db
+async def test_the_streak_of_an_install_with_no_pins_is_the_shared_replay() -> None:
+    sid = str(uuid.uuid4())
+    for n in (1, 2):
+        day = _YESTERDAY - timedelta(days=n - 1)
+        await _play_twenty48(sid, day)
+        async with get_session_factory()() as db:
+            gt_id = (
+                await db.execute(select(GameType.id).where(GameType.name == "sort"))
+            ).scalar_one()
+            when = datetime(day.year, day.month, day.day, 13, tzinfo=UTC)
+            db.add(
+                Game(
+                    session_id=sid,
+                    game_type_id=gt_id,
+                    started_at=when - timedelta(minutes=5),
+                    completed_at=when,
+                    outcome="completed",
+                    final_score=5,
+                    game_metadata={},
+                )
+            )
+            await db.commit()
+    assert await _rows(sid) == []
+    assert await _streak(sid) == 2  # twenty48 + sort meet 2 of the shared goals each day
+
+
 # ---------------------------------------------------------------------------
 # Concurrent first requests
 # ---------------------------------------------------------------------------
@@ -252,7 +335,7 @@ async def test_upcoming_without_a_session_pins_nothing(client: TestClient) -> No
 async def test_a_rival_pin_between_read_and_insert_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     """Simulates two first requests: the rival commits its row after our SELECT found
     none and before our INSERT. Ours is skipped and the rival's row is served."""
-    sid = str(uuid.uuid4())
+    sid = await _played()
     today = local_day(0).date
 
     async def pick_while_a_rival_pins(day: date) -> Assignment:
@@ -270,7 +353,7 @@ async def test_a_rival_pin_between_read_and_insert_wins(monkeypatch: pytest.Monk
 
 @needs_db
 async def test_a_partial_rival_pin_keeps_both_sides(monkeypatch: pytest.MonkeyPatch) -> None:
-    sid = str(uuid.uuid4())
+    sid = await _played()
     today = local_day(0).date
     tomorrow = today + timedelta(days=1)
 
@@ -291,7 +374,7 @@ async def test_a_skipped_pin_that_cannot_be_read_back_is_an_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The guard for a non-READ-COMMITTED isolation level: never serve an unstored pick."""
-    sid = str(uuid.uuid4())
+    sid = await _played()
     today = local_day(0).date
 
     async def pick_and_vanish(day: date) -> Assignment:
@@ -305,7 +388,7 @@ async def test_a_skipped_pin_that_cannot_be_read_back_is_an_error(
         async def execute(stmt, *a, **k):
             nonlocal calls
             calls += 1
-            if calls == 3:  # the re-read after the skipped insert sees nothing
+            if calls == 4:  # select, EXISTS, insert, then the re-read sees nothing
                 stmt = stmt.where(DailyChallengeAssignment.local_date < date(2000, 1, 1))
             return await real_execute(stmt, *a, **k)
 
@@ -344,7 +427,7 @@ def test_only_three_days_are_pinnable() -> None:
 
 @needs_db
 async def test_upcoming_from_every_timezone_stays_within_the_window(client: TestClient) -> None:
-    sid = str(uuid.uuid4())
+    sid = await _played()
     for tz in (-840, 0, 840):
         client.get(
             "/daily-challenge/upcoming", headers=_headers(sid), params={"tz_offset_minutes": tz}
@@ -367,7 +450,7 @@ async def test_kill_switch_off_serves_the_shared_template_and_writes_nothing(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _kill_switch_off(monkeypatch)
-    sid = str(uuid.uuid4())
+    sid = await _played()
     status = client.get("/daily-challenge/status", headers=_headers(sid)).json()
     up = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
     assert status["template_id"] == _SHARED.id
@@ -581,7 +664,7 @@ def test_the_retention_job_is_off_without_a_database(monkeypatch: pytest.MonkeyP
 
 @needs_db
 async def test_delete_me_removes_the_installs_assignments(client: TestClient) -> None:
-    sid, other = str(uuid.uuid4()), str(uuid.uuid4())
+    sid, other = await _played(), await _played()
     client.get("/daily-challenge/upcoming", headers=_headers(sid))
     client.get("/daily-challenge/upcoming", headers=_headers(other))
     assert len(await _rows(sid)) == 3

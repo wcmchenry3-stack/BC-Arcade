@@ -9,7 +9,7 @@ needs a (session, local date) stores that install's goals here, and every later
 read (and the streak's replay of that day) returns them unchanged. See
 daily_challenge/assignments.py and docs/DAILY-CHALLENGE.md §4.
 
-Compact by design (~200 B a row with its primary-key index, see
+Compact by design (~250 B a row with its primary-key index, measured; see
 docs/DATA-INVENTORY.md): a native uuid session id, the goals as compact JSON
 text, and nullable columns that are NULL in the common case. Pruned daily after
 DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS (daily_challenge/retention.py).
