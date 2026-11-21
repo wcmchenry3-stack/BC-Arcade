@@ -1278,6 +1278,15 @@ environment variables — never add the flag there). `frontend/metro.config.js`
 keys Metro's cache on `EXPO_PUBLIC_*` values so a stale transform from a
 test-hooks build can never be reused by a store build on any platform.
 
+**Lobby grid (#4005).** `lobbyColumns(width)` in
+`frontend/src/components/home/lobbyColumns.ts` picks the Home tile columns from the
+window width: `< 360` → 1, `< 700` → 2, `< 1000` → 3, otherwise 4 (rotation and split
+view recompute through `useWindowDimensions`). A short last row is padded with
+invisible spacer cells (`testID="lobby-spacer"`, hidden from accessibility) so every
+tile keeps the column width. The tile icon slot is `TILE_ICON_ZONE` (68 pt) from the same
+module; art drawn in it (emoji 44 pt, Star Swarm image and Cascade icon 56 pt) must fit.
+Locked and unlocked Play buttons both carry a 1 pt border so tiles are the same height.
+
 ### 10.8 How the free/premium split is decided
 
 The split is **criteria-driven, not quota-driven.** The original 6/6 was an
