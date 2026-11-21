@@ -1,10 +1,11 @@
-import { AppState, StyleSheet } from "react-native";
+import { AccessibilityInfo, AppState, Platform, StyleSheet } from "react-native";
+import * as Haptics from "expo-haptics";
 import React from "react";
 import { Alert } from "react-native";
 import { act, render, renderHook, fireEvent, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
-import { ThemeProvider } from "../../theme/ThemeContext";
+import { ThemeProvider, dark } from "../../theme/ThemeContext";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { StatsResponse } from "../../api/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -18,6 +19,11 @@ import { saveGame as saveTwenty48 } from "../../game/twenty48/storage";
 import { SORT_CATALOG_VERSION } from "../../game/sort/catalog";
 import { dealGame as dealFreeCell } from "../../game/freecell/engine";
 import { saveGame as saveFreeCell } from "../../game/freecell/storage";
+
+jest.mock("expo-haptics", () => ({
+  impactAsync: jest.fn(() => Promise.resolve()),
+  ImpactFeedbackStyle: { Light: "light" },
+}));
 
 // Render gradients as a host element so tests can read their colours and style (#4005).
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
@@ -851,29 +857,59 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
     ).toHaveLength(7);
   });
 
-  it("spacers do not shift the gradient index of real tiles", async () => {
+  it("a tile's gradient belongs to its game, not to its position (#4007)", async () => {
     __forceStoreBuildForTests(true);
     const { toJSON } = await renderScreen(390);
-    // The Play button of each tile, in tile order, wears the same gradient as its top border.
+    // The Play button of each tile wears the same gradient as its top border.
     type Json = {
       type: string;
       props: { colors?: string[]; testID?: string };
       children?: (Json | string)[] | null;
     };
-    const grads: Json[] = [];
+    const grads: Record<string, string[]> = {};
     const walk = (n: Json | string | null | (Json | string)[]) => {
       if (n == null || typeof n === "string") return;
       if (Array.isArray(n)) return n.forEach(walk);
-      if (n.type === "LinearGradient" && n.props.testID?.startsWith("game-btn-")) grads.push(n);
+      if (n.type === "LinearGradient" && n.props.testID?.startsWith("game-btn-"))
+        grads[n.props.testID.slice("game-btn-".length)] = n.props.colors as string[];
       n.children?.forEach(walk);
     };
     walk(toJSON() as Json | Json[] | null);
-    expect(grads).toHaveLength(7);
-    const cols = Array.from({ length: 7 }, (_, i) => grads[i].props.colors as string[]);
-    // 4-colour cycle: index 6 matches index 2, index 4 matches index 0.
-    expect(cols[6]).toEqual(cols[2]);
-    expect(cols[4]).toEqual(cols[0]);
-    expect(cols[6]).not.toEqual(cols[3]);
+    expect(Object.keys(grads)).toHaveLength(7);
+    // Sudoku and Sort sit 6th and 7th here; they keep their own pair, not the 2nd and 3rd of
+    // the old 4-colour cycle.
+    expect(grads.sudoku).toEqual([dark.tertiary, dark.secondary]);
+    expect(grads.yacht).toEqual([dark.secondary, dark.accent]);
+    expect(grads.solitaire).toEqual([dark.accent, dark.accentBright]);
+    expect(grads.sort).toEqual([dark.accentBright, dark.tertiary]);
+  });
+
+  it("every game keeps the same stops in the store build and in the all-games build (#4007)", async () => {
+    type Json = {
+      type: string;
+      props: { colors?: string[]; testID?: string };
+      children?: (Json | string)[] | null;
+    };
+    const stopsBySlug = async (store: boolean) => {
+      __forceStoreBuildForTests(store);
+      const { toJSON, unmount } = await renderScreen(390);
+      const out: Record<string, string[]> = {};
+      const walk = (n: Json | string | null | (Json | string)[]) => {
+        if (n == null || typeof n === "string") return;
+        if (Array.isArray(n)) return n.forEach(walk);
+        if (n.type === "LinearGradient" && n.props.testID?.startsWith("game-btn-"))
+          out[n.props.testID.slice("game-btn-".length)] = n.props.colors as string[];
+        n.children?.forEach(walk);
+      };
+      walk(toJSON() as Json | Json[] | null);
+      await unmount();
+      return out;
+    };
+    const store = await stopsBySlug(true);
+    const all = await stopsBySlug(false);
+    expect(Object.keys(store)).toHaveLength(7);
+    expect(Object.keys(all)).toHaveLength(12);
+    for (const slug of Object.keys(store)) expect(all[slug]).toEqual(store[slug]);
   });
 
   it("locked and unlocked play buttons resolve to the same border width and padding", async () => {
@@ -1242,6 +1278,130 @@ describe("HomeScreen — tile status from local data (#4008)", () => {
         /twenty48|solitaire|freecell|sudoku|yacht|personal_best|daily_word/.test(k)
       )
     ).toEqual([]);
+  });
+});
+
+describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  // A real touch: Pressable shows its pressed state from the responder grant, after
+  // Pressability's short highlight delay, not from the onPressIn prop alone.
+  const touch = { nativeEvent: { touches: [], changedTouches: [], target: 1 }, persist: () => {} };
+  const holdDown = async (el: Parameters<typeof fireEvent>[0]) => {
+    await fireEvent(el, "responderGrant", touch);
+    await act(async () => {
+      jest.advanceTimersByTime(200);
+    });
+  };
+
+  const tileStyle = (el: { props: { style?: unknown } }) =>
+    StyleSheet.flatten(el.props.style as never) as { opacity?: number; transform?: unknown[] };
+
+  it("dims to 0.85 and scales to 0.97 while pressed", async () => {
+    const { getByTestId } = await renderScreen(390);
+    expect(tileStyle(getByTestId("game-tile-yacht")).opacity).toBeUndefined();
+    await holdDown(getByTestId("game-tile-yacht"));
+    const pressed = tileStyle(getByTestId("game-tile-yacht"));
+    expect(pressed.opacity).toBe(0.85);
+    expect(pressed.transform).toEqual([{ scale: 0.97 }]);
+  });
+
+  it("gives a locked tile the same feedback", async () => {
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const { getByTestId } = await renderScreen(390);
+    await holdDown(getByTestId("game-tile-cascade"));
+    const style = tileStyle(getByTestId("game-tile-cascade"));
+    expect(style.opacity).toBe(0.85);
+    expect(style.transform).toEqual([{ scale: 0.97 }]);
+  });
+
+  it("under Reduce Motion dims but does not scale", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    const { getByTestId } = await renderScreen(390);
+    await act(async () => {});
+    await holdDown(getByTestId("game-tile-yacht"));
+    const style = tileStyle(getByTestId("game-tile-yacht"));
+    expect(style.opacity).toBe(0.85);
+    expect(style.transform).toBeUndefined();
+  });
+
+  it.each(["ios", "android"] as const)("taps a light haptic once on a tap on %s", async (os) => {
+    jest.replaceProperty(Platform, "OS", os);
+    const { getByTestId } = await renderScreen(390);
+    await fireEvent(getByTestId("game-tile-yacht"), "pressIn");
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    await fireEvent.press(getByTestId("game-tile-yacht"));
+    expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+  });
+
+  it("taps no haptic when a touch-down is taken over by a scroll", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    const { getByTestId } = await renderScreen(390);
+    await holdDown(getByTestId("game-tile-yacht"));
+    await fireEvent(getByTestId("game-tile-yacht"), "responderTerminate", touch);
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("taps no haptic on web", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    const { getByTestId } = await renderScreen(390);
+    await fireEvent.press(getByTestId("game-tile-yacht"));
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalled();
+  });
+
+  it("taps no haptic when sound effects are muted", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    await AsyncStorage.setItem("settings.soundMuted", "true");
+    const { SoundProvider } = jest.requireActual("../../game/_shared/SoundContext");
+    const { getByTestId } = await render(
+      <SafeAreaProvider initialMetrics={testInsets}>
+        <SoundProvider>
+          <ThemeProvider>
+            <HomeScreen />
+          </ThemeProvider>
+        </SoundProvider>
+      </SafeAreaProvider>
+    );
+    await act(async () => {});
+    await fireEvent.press(getByTestId("game-tile-yacht"));
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+  });
+
+  it("a rejected haptic never breaks the tile", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    (Haptics.impactAsync as jest.Mock).mockRejectedValueOnce(new Error("no engine"));
+    const { getByLabelText } = await renderScreen(390);
+    await fireEvent.press(getByLabelText("Play Solitaire"));
+    expect(mockNavigate).toHaveBeenCalledWith("Solitaire");
+  });
+
+  it("a haptic that throws synchronously never blocks navigation", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    (Haptics.impactAsync as jest.Mock).mockImplementationOnce(() => {
+      throw new Error("native module missing");
+    });
+    const { getByLabelText } = await renderScreen(390);
+    await fireEvent.press(getByLabelText("Play Solitaire"));
+    expect(mockNavigate).toHaveBeenCalledWith("Solitaire");
+  });
+
+  it("still runs the tile action and opens the paywall on a locked tile", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const { getByTestId } = await renderScreen(390);
+    await fireEvent.press(getByTestId("game-tile-sudoku"));
+    expect(mockNavigate).toHaveBeenCalledWith("Sudoku");
+    await fireEvent.press(getByTestId("game-tile-cascade"));
+    expect(mockNavigate).toHaveBeenCalledWith("Paywall", { gameSlug: "cascade" });
   });
 });
 
