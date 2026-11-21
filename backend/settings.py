@@ -221,8 +221,9 @@ class Settings(BaseSettings):
     # writes no daily_challenge_assignments rows.
     daily_challenge_personalized: bool = Field(default=True, alias="DAILY_CHALLENGE_PERSONALIZED")
     # How long a pinned assignment is kept (daily_challenge.retention). Unset means
-    # STREAK_LOOKBACK_DAYS, so the streak can read every pinned day it looks back over;
-    # a smaller value is rejected (see _assignment_retention_covers_the_streak).
+    # STREAK_LOOKBACK_DAYS + 1, so the streak can read every pinned day it looks back
+    # over in any timezone; a smaller value is rejected
+    # (see _assignment_retention_covers_the_streak).
     daily_challenge_assignment_retention_days: int | None = Field(
         default=None, alias="DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", ge=1, le=365
     )
@@ -339,10 +340,13 @@ class Settings(BaseSettings):
     def _assignment_retention_covers_the_streak(self) -> Settings:
         # A pinned day pruned inside the streak window would be re-scored on the shared
         # template, so a past streak day could flip from met to missed (#3992).
+        # One more day than the lookback: the prune cuts on the UTC date, and a client
+        # west of UTC is a local day behind it.
         retention = self.daily_challenge_assignment_retention_days
-        if retention is not None and retention < self.streak_lookback_days:
+        if retention is not None and retention < self.streak_lookback_days + 1:
             raise ValueError(
-                "DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS must be at least STREAK_LOOKBACK_DAYS"
+                "DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS must be at least "
+                "STREAK_LOOKBACK_DAYS + 1"
             )
         return self
 

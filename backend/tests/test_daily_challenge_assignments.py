@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event, func, select
+from sqlalchemy import event, func, select, text
 
 from daily_challenge import assignments, retention, service
 from daily_challenge.assignments import (
@@ -127,10 +127,10 @@ def test_the_retention_default_follows_the_streak_lookback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(assignments, "_settings", None)
-    assert assignments.retention_days() == 60
+    assert assignments.retention_days() == 61  # STREAK_LOOKBACK_DAYS + 1
     monkeypatch.setenv("STREAK_LOOKBACK_DAYS", "30")
     monkeypatch.setattr(assignments, "_settings", None)
-    assert assignments.retention_days() == 30
+    assert assignments.retention_days() == 31
     monkeypatch.setenv("DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", "45")
     monkeypatch.setattr(assignments, "_settings", None)
     assert assignments.retention_days() == 45
@@ -602,6 +602,7 @@ async def test_prune_keeps_the_retention_window_and_removes_older_rows() -> None
     now = datetime(2026, 11, 21, 12, tzinfo=UTC)
     sid = str(uuid.uuid4())
     retention_window = assignments.retention_days()
+    assert retention_window == 61  # the streak's oldest day (60 back) plus a day of margin
     ages = [retention_window - 1, retention_window, retention_window + 1, retention_window + 30]
     for age in ages:
         await _pin(sid, now.date() - timedelta(days=age))
@@ -685,11 +686,12 @@ async def test_delete_me_removes_the_installs_assignments(client: TestClient) ->
 def test_retention_below_the_streak_lookback_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     """A pinned day pruned inside the streak window would re-score a past streak day."""
     monkeypatch.setenv("STREAK_LOOKBACK_DAYS", "60")
-    monkeypatch.setenv("DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", "59")
-    with pytest.raises(ValueError, match="at least STREAK_LOOKBACK_DAYS"):
-        Settings()
-    monkeypatch.setenv("DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", "60")
-    assert Settings().daily_challenge_assignment_retention_days == 60
+    for too_short in ("59", "60"):  # 60: the UTC-date prune would cut a west-of-UTC day
+        monkeypatch.setenv("DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", too_short)
+        with pytest.raises(ValueError, match=r"at least STREAK_LOOKBACK_DAYS \+ 1"):
+            Settings()
+    monkeypatch.setenv("DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", "61")
+    assert Settings().daily_challenge_assignment_retention_days == 61
 
 
 def test_the_recent_play_window_defaults_to_48_hours(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -902,3 +904,74 @@ async def test_an_unreadable_storage_size_fails_safe(
     warnings = [rec for rec in caplog.records if rec.name == "daily_challenge.assignments"]
     assert len(warnings) == 1 and warnings[0].levelname == "WARNING"
     assert replay_storage._cached_size is None
+
+
+# ---------------------------------------------------------------------------
+# A failing size reading: remembered for SIZE_FAILURE_TTL, and never fails /status
+# ---------------------------------------------------------------------------
+
+
+@needs_db
+async def test_a_failed_size_reading_is_remembered_for_the_failure_window(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    measured: list[int] = []
+
+    async def broken(_db):
+        measured.append(1)
+        raise TimeoutError("statement timeout")
+
+    monkeypatch.setattr(replay_storage, "measure_storage", broken)
+    sid = await _played()
+    now = datetime.now(UTC)
+    with caplog.at_level("WARNING", logger="daily_challenge.assignments"):
+        async with get_session_factory()() as db:
+            assert await assignments.may_pin(db, sid, now) is False
+            later = now + assignments.SIZE_FAILURE_TTL - timedelta(seconds=1)
+            assert await assignments.may_pin(db, sid, later) is False
+            assert len(measured) == 1  # no second size query inside the window
+            assert len(_warnings(caplog)) == 1  # one warning per failure window
+            after = now + assignments.SIZE_FAILURE_TTL
+            assert await assignments.may_pin(db, sid, after) is False
+            assert len(measured) == 2  # measured again once the window ended
+            assert len(_warnings(caplog)) == 2
+    assert replay_storage._cached_size is None
+    # Once the size reads again, pinning resumes.
+    monkeypatch.setattr(replay_storage, "measure_storage", lambda _db: _none())
+    async with get_session_factory()() as db:
+        after_recovery = after + assignments.SIZE_FAILURE_TTL
+        assert await assignments.may_pin(db, sid, after_recovery) is True
+
+
+def _warnings(caplog: pytest.LogCaptureFixture) -> list:
+    return [r for r in caplog.records if r.name == "daily_challenge.assignments"]
+
+
+async def _none() -> None:
+    return None
+
+
+@needs_db
+async def test_invalid_size_sql_rolls_back_to_its_savepoint(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A size query that fails *in the database* (not just in Python) leaves the
+    request's transaction usable: /status answers, nothing is pinned, and a later
+    statement in the same session runs."""
+
+    async def invalid_sql(db):
+        await db.execute(text("SELECT * FROM no_such_table"))
+
+    monkeypatch.setattr(replay_storage, "measure_storage", invalid_sql)
+    sid = await _played()
+    r = client.get("/daily-challenge/status", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    assert r.json()["template_id"] == _SHARED.id
+    assert await _rows() == []
+
+    assignments._size_failed_until = None  # measure again, now in a session we hold
+    async with get_session_factory()() as db:
+        assert await assignments.may_pin(db, sid) is False
+        assert (await db.execute(text("SELECT 42"))).scalar() == 42
+        status = await service.get_status_for_session(db, session_id=sid, tz_offset_minutes=0)
+    assert status.template == _SHARED

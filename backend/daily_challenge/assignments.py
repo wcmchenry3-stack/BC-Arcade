@@ -15,8 +15,11 @@ Bounds (CLAUDE.md priority 1, docs/DATA-INVENTORY.md):
 
 * **Write ceiling** (``may_pin``). A day is pinned only for an install with a
   ``games`` row created in the last ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``
-  (default 48), and never while the database is over the replay storage budget's
-  90 % point. So rows are written at most 3 per install per day of recent play: a
+  (default 48), and never while storage is over budget: the fuller of replay
+  events vs ``REPLAY_STORAGE_BUDGET_MB`` and the whole database vs
+  ``DATABASE_PLAN_MB``, at the replay recorder's 90 % turn-down point
+  (``replay_storage.read_budget``). An unreadable size counts as over budget for
+  ``SIZE_FAILURE_TTL``. So rows are written at most 3 per install per day of recent play: a
   made-up session must keep creating game rows to keep pinning, and assignment rows
   stay a small multiple of fresh ``games`` rows. Those game rows (rate-limited, but
   kept until Delete My Data) remain the larger existing exposure; this table adds
@@ -24,13 +27,17 @@ Bounds (CLAUDE.md priority 1, docs/DATA-INVENTORY.md):
 * **Days ahead.** Only today..today+``MAX_DAYS_AHEAD`` (the requesting client's
   local calendar) are ever pinned; ``get_or_pin`` refuses any other day.
 * **Retention.** ``daily_challenge.retention`` deletes rows older than
-  ``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` (default ``STREAK_LOOKBACK_DAYS``).
+  ``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` (default and minimum
+  ``STREAK_LOOKBACK_DAYS`` + 1: one day of margin, because the prune uses the UTC
+  date and a client west of UTC is a day behind).
 * **Kill switch.** ``DAILY_CHALLENGE_PERSONALIZED=false``: ``get_or_pin`` returns
-  the pick unstored and ``read_assignments`` reads nothing, so every install gets
+  ``shared(days)`` (the shared templates) and ``read_assignments`` reads nothing, so every install gets
   the shared frozen template exactly as before this table existed, and no row is
   written. Rows already stored are left for retention (or ``DELETE /me``).
 
-Both env vars are read lazily through this module's ``_settings`` (like
+The three env vars (``DAILY_CHALLENGE_PERSONALIZED``,
+``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS``, ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``)
+are read lazily through this module's ``_settings`` (like
 ``streak.lookback_days``), so a change needs a restart, not an app release.
 """
 
@@ -73,9 +80,10 @@ def personalized_on() -> bool:
 
 
 def retention_days() -> int:
-    """``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS``, defaulting to ``STREAK_LOOKBACK_DAYS``."""
+    """``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS``, defaulting to
+    ``STREAK_LOOKBACK_DAYS`` + 1 (the settings refuse anything smaller)."""
     s = _get_settings()
-    return s.daily_challenge_assignment_retention_days or s.streak_lookback_days
+    return s.daily_challenge_assignment_retention_days or s.streak_lookback_days + 1
 
 
 @dataclass(frozen=True)
@@ -187,26 +195,45 @@ def recent_play_window() -> timedelta:
     return timedelta(hours=_get_settings().daily_challenge_pin_recent_play_hours)
 
 
-async def _over_budget_or_unknown(session: AsyncSession) -> bool:
-    """``replay_storage.storage_over_budget``, failing safe: if the size reading
-    raises (a DB error, a statement timeout), the answer is "do not pin" for this
-    request, logged once at WARNING, and nothing is cached, so the next pin attempt
-    measures again. A SAVEPOINT keeps a failed size query from aborting the
-    request's transaction, so /status still answers."""
+# A failed size reading is remembered as "over budget" for this long, so a failing or
+# timing-out size query is not re-run (and logged) on every unpinned request.
+SIZE_FAILURE_TTL = timedelta(minutes=10)
+_size_failed_until: datetime | None = None
+
+
+async def _over_budget_or_unknown(session: AsyncSession, now: datetime | None = None) -> bool:
+    """``replay_storage.storage_over_budget``, failing safe.
+
+    If the size reading raises (a DB error, a statement timeout), the answer is "do
+    not pin" (over budget) for ``SIZE_FAILURE_TTL``: one WARNING per failure window,
+    no size query until it ends, and nothing stored as a size reading. A SAVEPOINT
+    keeps a failed size query from aborting the request's transaction, so /status
+    still answers."""
+    global _size_failed_until
+    now = now or datetime.now(UTC)
+    if _size_failed_until is not None and now < _size_failed_until:
+        return True
     try:
         async with session.begin_nested():
             return await replay_storage.storage_over_budget(session)
     except Exception:
-        logger.warning("daily_challenge: storage size unreadable; not pinning", exc_info=True)
+        _size_failed_until = now + SIZE_FAILURE_TTL
+        logger.warning(
+            "daily_challenge: storage size unreadable; not pinning for %d min",
+            SIZE_FAILURE_TTL.total_seconds() // 60,
+            exc_info=True,
+        )
         return True
 
 
 async def may_pin(session: AsyncSession, session_id: str, now: datetime | None = None) -> bool:
     """The write ceiling: may this install pin new days right now?
 
-    * **Storage budget.** Not while the database is at or over the replay budget's
-      90 % point (``replay_storage.storage_over_budget``: the cached size reading,
-      at most one size query an hour per process).
+    * **Storage budget.** Not while storage is over budget: the fuller of replay
+      events vs ``REPLAY_STORAGE_BUDGET_MB`` and the whole database vs
+      ``DATABASE_PLAN_MB``, at the replay recorder's 90 % turn-down point
+      (``replay_storage.storage_over_budget``: the cached size reading, at most one
+      size query an hour per process; an unreadable size counts as over budget).
     * **Recent play.** Only if the session has a ``games`` row created (server time,
       not client-reported) within ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``. One
       EXISTS on the ``games_session_created_idx`` (session_id, created_at) index.
@@ -214,7 +241,7 @@ async def may_pin(session: AsyncSession, session_id: str, now: datetime | None =
     Run only when some requested day is not pinned yet, so a pinned day's read
     stays one SELECT.
     """
-    if await _over_budget_or_unknown(session):
+    if await _over_budget_or_unknown(session, now):
         return False
     since = (now or datetime.now(UTC)) - recent_play_window()
     return bool(

@@ -4,12 +4,13 @@ One row per install per local day served (``assignments.get_or_pin``). A row's
 only readers are the day's own ``/status`` / ``/upcoming`` and the streak, which
 looks back ``STREAK_LOOKBACK_DAYS``; an older row is never read, so it is deleted
 once its ``local_date`` is more than ``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS``
-(default ``STREAK_LOOKBACK_DAYS``, 60) before today in UTC. A day pruned by
-mistake is harmless: the streak replays it from the shared frozen template.
+(default and minimum ``STREAK_LOOKBACK_DAYS`` + 1, so 61) before today in UTC. A
+day pruned by mistake is harmless: the streak replays it from the shared frozen
+template.
 
-The cutoff is UTC's date, so for a client far west of UTC the oldest day of its
-streak window can be pruned up to a day early; that day then falls back to the
-shared template (identical until #3993/#3994 personalise the pick).
+The cutoff is UTC's date, and a client west of UTC is up to a local day behind it.
+The one extra day of retention covers that, so the oldest day of any client's
+streak window is never pruned early.
 
 Deleted in batches of ``PRUNE_BATCH_SIZE``, each its own statement and commit,
 like ``daily_word.retention`` (#3302), so no single DELETE comes near the 5 s

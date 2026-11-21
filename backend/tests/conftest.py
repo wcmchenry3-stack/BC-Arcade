@@ -216,15 +216,18 @@ def _reset_process_caches():
     those tables directly, or backdates rows, must not see an earlier test's
     snapshot.
     """
+    from daily_challenge import assignments
     from games import catalog_cache, replay_storage, sweep_gate
 
     catalog_cache.invalidate()
     sweep_gate.clear()
     replay_storage._cached_size = None
+    assignments._size_failed_until = None
     yield
     catalog_cache.invalidate()
     sweep_gate.clear()
     replay_storage._cached_size = None
+    assignments._size_failed_until = None
 
 
 @pytest.fixture(autouse=True)
