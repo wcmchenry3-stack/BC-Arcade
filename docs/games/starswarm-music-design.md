@@ -26,11 +26,58 @@ The owner built the track over 46 rounds of procedural synthesis. Full detail is
 - **Round 46: the seven-minute signature mix, the approved track** (owner: "this is a winner",
   2026-11-12), shipped with one loop edit (below).
 
+## The recipe (`tools/assets/starswarm_bgm/`)
+
+The track is rebuilt from code: `python tools/assets/build_starswarm_bgm.py OUT.mp3` renders it in
+about a minute, byte-identical to the shipped file under CI's ffmpeg (Ubuntu 24.04, ffmpeg 6.1.1)
+with the pinned numpy, scipy and soundfile. `--check` rebuilds and compares the SHA-256;
+`--stages DIR` also keeps the bed, intro and full mix renders and the cue sheet for listening.
+`tools/assets/tests/starswarm_bgm_test.py` rebuilds it in CI and fails if the decoded audio moves.
+
+The approved track draws on six rounds. Each layer was copied out of its round with the arithmetic
+unchanged, minus the parts the final track never used:
+
+| Module       | What it makes                                                     | From                      |
+| ------------ | ----------------------------------------------------------------- | ------------------------- |
+| `bed.py`     | the 420 s ambient foundation (7 harmonic regions)                 | Round 44                  |
+| `rise.py`    | astronomical rise                                                 | Round 20 `rise()`         |
+| `robots.py`  | robotic signals                                                   | Round 20 `signals()`      |
+| `choirs.py`  | Gathering Swarm Chorus, Electromagnetic Choir                     | Round 18 `build()`        |
+| `organ.py`   | distant organ colour                                              | Round 19 `haunting()`     |
+| `shepard.py` | descending Shepard tone                                           | Round 46 (approved in 40) |
+| `arrange.py` | the cue sheets: where each layer plays, its level, duck and pitch | Rounds 45 and 46          |
+| loop edit    | `make_starswarm_bgm_loop.py` (below)                              | 2026-11-12                |
+
+Things to know before changing it:
+
+- **The build keeps two MP3 round trips on purpose.** The rounds handed work on as MP3s: the Round 44
+  bed was saved as MP3 before Rounds 45 and 46 decoded it, and the Round 45 intro was saved as MP3
+  before Round 46 decoded its first two minutes. Those encodes are part of the approved sound, so
+  `arrange.build()` repeats them. Dropping them would sound the same to a listener but would no
+  longer match the shipped file.
+- **Rounds 18 to 20 were auditions over a Round 17 backing track.** Rounds 45 and 46 replaced that
+  backing with silence and kept only the synthesized sound, so the backing (and Round 17) is not
+  part of the recipe. Round 19's `astronomical()` and `lurking()` were never used and were dropped.
+- **Float order matters.** The mix is a running float sum, and the bed's random generator is shared
+  by its regions in order. Keep cues in time order, and treat any refactor of a layer as a change
+  to verify (`--check`), not a tidy-up.
+- **Changing the music:** edit a layer or a cue, rebuild with `--stages`, listen, then replace
+  `frontend/assets/sounds/starswarm-bgm.mp3` and update its SHA-256 and size here, in
+  `SOUND_CREDITS.md` and in `scripts/check_large_files.py`. The starting points and the time map below
+  are tied to the current cues.
+
+The recipe was recovered on 2026-11-21 from the round archive in git history (commit `356d7ed^`,
+`docs/games/starswarm-music/`). Rerunning the original Round 44, 45 and 46 scripts reproduced the
+archived renders sample for sample and, through the loop edit, the shipped file byte for byte;
+`build_starswarm_bgm.py` reproduces the same bytes. The archived MP3s differ from fresh renders only
+in the ffmpeg version tag in the header (ChatGPT's workspace ran a newer ffmpeg); the audio is identical.
+
 ## Archive and fingerprints
 
 Every round's generator script and render was archived in `docs/games/starswarm-music/` (#3675, #3734, #3762).
 That 128 MB archive (which also held the four Pixabay reference tracks) was **removed from the repo in the asset
-audit**; the owner keeps it outside the repo. Paths in the table below are relative to that external archive.
+audit**; the owner keeps it outside the repo, and it is still in git history (`git show 356d7ed^:docs/games/starswarm-music/...`).
+The recipe above makes it unnecessary for rebuilding. Paths in the table below are relative to that archive.
 
 | Item              | File                                                               | SHA-256                                                            |
 | ----------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
@@ -51,7 +98,8 @@ sha256sum /tmp/starswarm-bgm.mp3   # 85950430fbfaf0ed9c6425e7b79ee238a44fd6be40c
 ```
 
 Reproduced on 2026-11-12 with the local ffmpeg/libmp3lame; a different encoder build may produce
-different bytes from the same audio.
+different bytes from the same audio. Without the archive, `build_starswarm_bgm.py` makes the same
+file from the recipe (above).
 
 ## The loop edit
 

@@ -9,3 +9,5 @@ colour-science==0.4.7
 fonttools==4.68.0
 pytest==9.2.0
 pyyaml==6.0.3
+# The Star Swarm music recipe writes its bed as a 16-bit WAV with libsndfile, as Round 44 did.
+soundfile==0.14.0
