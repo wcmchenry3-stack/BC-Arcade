@@ -467,6 +467,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "play": {
+    "component": "HomeScreen",
+    "description": "Short verb on the button of every unlocked game tile on the home screen (#4006). Not the accessibility label, which is each game's game.playLabel.",
+    "tone": "action",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Imperative verb 'Play' as a button label. Sentence case, no game name."
+  },
   "home.locked.buttonLabel": {
     "component": "HomeScreen",
     "description": "Button label on a locked, coming-soon game card on the home screen.",

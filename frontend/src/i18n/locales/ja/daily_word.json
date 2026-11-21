@@ -1,6 +1,6 @@
 {
   "game.title": "デイリーワード",
-  "game.description": "5文字の単語を6回のチャンスで当てよう。毎日新しいパズルが登場。",
+  "game.description": "5文字の単語を6回で当てよう。毎日新しいパズル。",
   "game.playLabel": "デイリーワードをプレイ",
   "hud.guessesLeft_one": "残り{{count}}回",
   "hud.guessesLeft_other": "残り{{count}}回",
