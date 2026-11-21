@@ -37,6 +37,7 @@ Both env vars are read lazily through this module's ``_settings`` (like
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -50,6 +51,8 @@ from db.dialect import dialect_insert
 from db.models import DailyChallengeAssignment, Game
 from games import replay_storage
 from settings import Settings
+
+logger = logging.getLogger(__name__)
 
 # Today plus this many days ahead may be pinned: /upcoming's offline window.
 MAX_DAYS_AHEAD = 2
@@ -184,6 +187,20 @@ def recent_play_window() -> timedelta:
     return timedelta(hours=_get_settings().daily_challenge_pin_recent_play_hours)
 
 
+async def _over_budget_or_unknown(session: AsyncSession) -> bool:
+    """``replay_storage.storage_over_budget``, failing safe: if the size reading
+    raises (a DB error, a statement timeout), the answer is "do not pin" for this
+    request, logged once at WARNING, and nothing is cached, so the next pin attempt
+    measures again. A SAVEPOINT keeps a failed size query from aborting the
+    request's transaction, so /status still answers."""
+    try:
+        async with session.begin_nested():
+            return await replay_storage.storage_over_budget(session)
+    except Exception:
+        logger.warning("daily_challenge: storage size unreadable; not pinning", exc_info=True)
+        return True
+
+
 async def may_pin(session: AsyncSession, session_id: str, now: datetime | None = None) -> bool:
     """The write ceiling: may this install pin new days right now?
 
@@ -197,7 +214,7 @@ async def may_pin(session: AsyncSession, session_id: str, now: datetime | None =
     Run only when some requested day is not pinned yet, so a pinned day's read
     stays one SELECT.
     """
-    if await replay_storage.storage_over_budget(session):
+    if await _over_budget_or_unknown(session):
         return False
     since = (now or datetime.now(UTC)) - recent_play_window()
     return bool(

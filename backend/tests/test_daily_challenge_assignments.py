@@ -880,3 +880,25 @@ async def test_an_ineligible_installs_upcoming_is_one_batched_template_read(
     # assignment SELECT, recent-play EXISTS, one batched daily_challenge_days SELECT.
     assert len(statements) == 3, statements
     assert sum("daily_challenge_days" in s for s in statements) == 1
+
+
+@needs_db
+async def test_an_unreadable_storage_size_fails_safe(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The size query raising never fails /status: shared template, no row, one warning,
+    and no reading cached."""
+    sid = await _played()
+
+    async def broken(_db):
+        raise TimeoutError("statement timeout")
+
+    monkeypatch.setattr(replay_storage, "measure_storage", broken)
+    with caplog.at_level("WARNING", logger="daily_challenge.assignments"):
+        r = client.get("/daily-challenge/status", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    assert r.json()["template_id"] == _SHARED.id
+    assert await _rows() == []
+    warnings = [rec for rec in caplog.records if rec.name == "daily_challenge.assignments"]
+    assert len(warnings) == 1 and warnings[0].levelname == "WARNING"
+    assert replay_storage._cached_size is None
