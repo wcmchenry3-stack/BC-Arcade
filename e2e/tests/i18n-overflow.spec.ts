@@ -408,7 +408,7 @@ for (const locale of LOCALES) {
 /**
  * Lobby tiles (#4006): 16/12/13 pt type with three-line descriptions must not be truncated or
  * spill, in all 13 locales, at 359 pt (the one-column
- * layout just below the 360 breakpoint) and 390 pt (two columns). The "clamp" detector flags a
+ * layout just below the 360 breakpoint), 360 pt (the narrowest two-column tile) and 390 pt. The "clamp" detector flags a
  * description that needs more than its three lines; "clip" flags a title that truncates.
  */
 const LOBBY_PLAY_LABEL = {
@@ -429,7 +429,7 @@ const LOBBY_PLAY_LABEL = {
 const LOBBY_LOCALES = Object.keys(
   LOBBY_PLAY_LABEL,
 ) as (keyof typeof LOBBY_PLAY_LABEL)[];
-const LOBBY_WIDTHS = [359, 390] as const;
+const LOBBY_WIDTHS = [359, 360, 390] as const;
 
 for (const locale of LOBBY_LOCALES) {
   for (const width of LOBBY_WIDTHS) {

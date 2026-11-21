@@ -959,10 +959,10 @@ describe("HomeScreen — tile type (#4006)", () => {
   it.each([
     // [system font scale, title lines, title min height, description lines, description min height]
     [1, 1, 20, 3, 48],
-    // At 1.5x the title may wrap to two lines and the title may wrap and descriptions reserve four lines.
-    [1.5, 2, 60, 4, 96],
+    // At 1.5x the title may wrap to two lines and descriptions reserve five lines.
+    [1.5, 2, 60, 5, 120],
     // The cap holds: a 3x system scale reserves no more than 1.5x.
-    [3, 2, 60, 4, 96],
+    [3, 2, 60, 5, 120],
   ])(
     "reserves title and description room that grows with font scale %s, up to the cap",
     async (fontScale, titleLines, titleMin, descLines, descMin) => {
@@ -980,6 +980,6 @@ describe("HomeScreen — tile type (#4006)", () => {
   it("rounds reserved heights up to whole points", () => {
     const s = lobbyTileTextSizing(1.15);
     expect(Number.isInteger(s.titleMinHeight)).toBe(true);
-    expect(s.descriptionMinHeight).toBe(Math.ceil(16 * 4 * 1.15));
+    expect(s.descriptionMinHeight).toBe(Math.ceil(16 * 5 * 1.15));
   });
 });
