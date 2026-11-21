@@ -9,6 +9,7 @@ file (docs/games/starswarm-music-design.md). Locally the rebuild skips without f
 soundfile; under CI (`CI` set) it fails instead. The other tests need only numpy and scipy.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -26,6 +27,13 @@ import itertools
 import build_starswarm_bgm
 from starswarm_bgm import arrange, shepard
 from starswarm_bgm.common import SR
+
+REPO = Path(__file__).resolve().parents[3]
+LOOP_SCRIPT = REPO / "tools/assets/make_starswarm_bgm_loop.py"
+LOOP_SCRIPT_DOCS = (
+    REPO / "docs/games/starswarm-music-design.md",
+    REPO / "frontend/assets/sounds/SOUND_CREDITS.md",
+)
 
 TOLERANCE = 1e-4  # relative RMS error of the decoded rebuild against the decoded shipped track
 
@@ -134,3 +142,13 @@ def test_recipe_rebuilds_the_shipped_track(tmp_path):
     assert err < TOLERANCE, f"rebuild differs from the shipped track: relative RMS {err:.2e}"
     cues = json.loads((tmp_path / "stages" / "cues.json").read_text())
     assert cues == arrange.cue_sheet()
+
+
+def test_documented_loop_script_hash_is_current():
+    digest = hashlib.sha256(LOOP_SCRIPT.read_bytes()).hexdigest()
+    for doc in LOOP_SCRIPT_DOCS:
+        assert digest in doc.read_text(encoding="utf-8"), (
+            f"{doc.relative_to(REPO)} records a stale SHA-256 for tools/assets/"
+            f"make_starswarm_bgm_loop.py; update it to {digest} (the hash must be refreshed "
+            "whenever the loop script changes, even a docstring edit)"
+        )

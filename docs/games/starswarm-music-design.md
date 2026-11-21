@@ -83,7 +83,7 @@ The recipe above makes it unnecessary for rebuilding. Paths in the table below a
 | ----------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
 | Source render     | `Rounds/Round_46/starswarm-round46-seven-minute-signature-mix.mp3` | `29b0a1604e458fa1b0cb92d0502c283b836d1b1f9b2a63a3f012fd3c815f442a` |
 | Generator         | `Rounds/Round_46/starswarm_round46_full_orchestration.py`          | `777de55dbf1eff9fbe8f85c3bcfa6b9be96dfce03a59bbd32d2839e874702e4f` |
-| Loop edit script  | `tools/assets/make_starswarm_bgm_loop.py`                          | `6e054c25581d6b04f2ec29ed826a04488a2b3363b20ed1b23dbce3d58d02680e` |
+| Loop edit script  | `tools/assets/make_starswarm_bgm_loop.py`                          | `80f54bc9b021ea115bca7357491c2f49b27d9c42be1805132503b9ed2f69a9da` |
 | **Shipped track** | `frontend/assets/sounds/starswarm-bgm.mp3`                         | `85950430fbfaf0ed9c6425e7b79ee238a44fd6be40c99de934709f661a13426c` |
 
 The source render is 420.048 s, 24 kHz stereo, 128 kbps, 6,721,196 B, -24.0 LUFS, with baked-in
