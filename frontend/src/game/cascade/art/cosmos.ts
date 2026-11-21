@@ -74,7 +74,7 @@ function ring(
   c.restore();
 }
 
-/** The Moon, Cosmos tier 1 again (#3960; it was retired by #3920). TEMP(#3962): the recipe is the old one, #3963 owns the final art. */
+/** The Moon, Cosmos tier 1 again (#3960; retired by #3920): the owner-approved #3920 drawing, unchanged (#3963). */
 const moon: PieceArt = {
   body(pen) {
     pen.body(T.moon);
