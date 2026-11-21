@@ -48,7 +48,6 @@ from daily_challenge.definitions import (
     Template,
     game_facts,
     local_day,
-    sort_catalog_goals_on,
     template_for,
 )
 from daily_challenge.history import InstallHistory
@@ -269,7 +268,6 @@ async def pick_for_install(
                 day,
                 ctx.eligible,
                 session_id=session_id,
-                catalog_on=sort_catalog_goals_on(),
             )
         except ValueError:
             # Fewer than two goals to offer (every eligible game disabled, say): the

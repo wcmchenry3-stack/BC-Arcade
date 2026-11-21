@@ -18,15 +18,17 @@ once for its three days):
    1 names (the step-down days and bonus days), so a miss or an ignored bonus is
    judged on that day's full play.
 3. **Per-day counts and bests**: one grouped row per game type, with the finished
-   games and the best ``final_score`` of each local day of the affinity window
-   (``CASE`` aggregates, any dialect), the best ``final_score`` before that window,
-   and the best ``final_score`` ever before each served day (Sort's highest level
-   solved, and the cap for score goals).
-4. **Game creation times** (any ``games`` row, as ``assignments.may_pin`` reads them)
-   from the earliest instant a served day could have been requested, minus
-   ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``: whether the install could have been
-   served that day unpinned before (``InstallHistory.always_pinnable``). Skipped when
-   every served day is a new-install day anyway.
+   games of each local day of the affinity window (``CASE`` sums, any dialect) and the
+   best ``final_score`` ever before each served day (the cap for score goals).
+4. **Game creation summary**: one aggregate row over the install's ``games`` rows (any
+   row, as ``assignments.may_pin`` reads them) created since the earliest instant a
+   served day could have been requested, minus ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``.
+   ``LAG()`` over ``created_at`` gives, per served day, the first creation in that
+   day's window and the number of gaps longer than the pin window, plus the latest
+   creation: whether the install could have been served that day unpinned before
+   (``InstallHistory.always_pinnable``). One row however many games, so an install
+   creating many games cannot make it read more. Skipped when every served day is a
+   new-install day anyway.
 
 Queries 2 and 3 filter ``not_abandoned()`` and ``not_dev_affected()`` (a run a
 dev-panel action touched never counts, #3510), and only read the games with goal
@@ -39,7 +41,6 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from itertools import pairwise
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,6 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from daily_challenge import assignments, personal
 from daily_challenge.assignments import MAX_DAYS_AHEAD, Assignment
 from daily_challenge.definitions import Facts, Goal, game_facts, local_day_of
+from db.jsonx import plus_hours
 from db.models import Game, GameType
 from games.filters import not_abandoned, not_dev_affected
 
@@ -64,6 +66,17 @@ def request_opens(day: date) -> datetime:
     client that changed time zone is covered too."""
     opening = day - timedelta(days=MAX_DAYS_AHEAD)
     return datetime(opening.year, opening.month, opening.day, tzinfo=UTC) - _MAX_EAST
+
+
+@dataclass(frozen=True)
+class Creations:
+    """Query 4 for one served day: the install's first game created at or after
+    ``request_opens(day)`` - the pin window, how many gaps longer than the window lie
+    between consecutive creations since, and the latest creation."""
+
+    first: datetime | None
+    gaps: int
+    latest: datetime | None
 
 
 @dataclass(frozen=True)
@@ -90,15 +103,11 @@ class InstallHistory:
     daily_counts: dict[str, dict[date, int]] = field(default_factory=dict)
     # Best final_score ever before each served day, per game type.
     best_scores: dict[date, dict[str, int]] = field(default_factory=dict)
-    # Best final_score per (game type, local day), over the affinity window, and the
-    # best before that window (Sort's per-day standings).
-    daily_best: dict[str, dict[date, int]] = field(default_factory=dict)
-    best_before_window: dict[str, int] = field(default_factory=dict)
     # Pinned assignments by local date; the pick adds the days it picks.
     pinned: dict[date, Assignment] = field(default_factory=dict)
-    # Server-side creation times of the install's games (query 4), ascending, and the
-    # write ceiling's window. None: not read (hand-built histories in pure tests).
-    created: list[datetime] | None = None
+    # Query 4 per served day, and the write ceiling's window. None: not read
+    # (hand-built histories in pure tests), treated as always pinnable.
+    creations: dict[date, Creations] | None = None
     pin_window: timedelta = timedelta(hours=48)
     now: datetime | None = None
 
@@ -117,19 +126,22 @@ class InstallHistory:
         (a cached ``/upcoming``, a ``/status`` read before its first game synced), and
         the pick must be that same shared template.
 
-        Not covered: a day served unpinned only because storage was over budget, or
-        while the kill switch was off. Those days switch to personal goals when
-        pinning resumes (an operator action, not player-driven)."""
-        if self.created is None:
+        Not covered: a day served unpinned only because ``may_pin``'s storage guard
+        paused pinning. That pause is automatic, not only an operator's: storage
+        crossing the replay recorder's 90 % turn-down point, or a failed size reading
+        (remembered for ``assignments.SIZE_FAILURE_TTL``, 10 minutes). Once the guard
+        lets pinning resume, a day served unpinned during the pause can be pinned with
+        personal goals. Also not covered: days served while the kill switch was off.
+        No state records either pause (by design)."""
+        if self.creations is None:
             return True
-        opens = request_opens(day)
-        times = [c for c in self.created if c >= opens - self.pin_window]
-        if not times or times[0] >= opens:
+        summary = self.creations.get(day)
+        if summary is None or summary.first is None or summary.latest is None:
             return False
-        if any(b - a > self.pin_window for a, b in pairwise(times)):
+        if summary.first >= request_opens(day) or summary.gaps:
             return False
         now = self.now or datetime.now(UTC)
-        return now - times[-1] <= self.pin_window
+        return now - summary.latest <= self.pin_window
 
     def _start(self, day: date) -> datetime:
         return local_day_of(day, self.tz_offset_minutes).start_utc
@@ -175,26 +187,6 @@ class InstallHistory:
 
     def best_final_score(self, game: str, day: date) -> int:
         return self.best_scores.get(day, {}).get(game, 0)
-
-    def sort_new_levels_per_day(self, day: date) -> list[int]:
-        """New Sort levels solved on each local day of play in the affinity window
-        before ``day``: that day's best ``final_score`` (the standing after its last
-        solve) minus the best before it. From per-day maxima (query 3), not from
-        single rows, so a player solving 10 levels a day reads as 10 a day."""
-        dates = [day - timedelta(days=back) for back in range(self.affinity_window, 0, -1)]
-        maxima = self.daily_best.get("sort", {})
-        running = max(
-            [self.best_before_window.get("sort", 0)]
-            + [v for d, v in maxima.items() if d < dates[0]]
-        )
-        out: list[int] = []
-        for d in dates:
-            best = maxima.get(d)
-            if best is None:
-                continue
-            out.append(max(0, best - running))
-            running = max(running, best)
-        return out
 
 
 def _aware(value: datetime) -> datetime:
@@ -326,8 +318,8 @@ async def load_install_history(
         )
     history.games = dict(by_game)
 
-    # 3. Per local day of the affinity window: finished games and best final_score;
-    # the best before that window; the best before each served day.
+    # 3. Finished games per local day of the affinity window; the best final_score
+    # before each served day.
     count_days = [
         through - timedelta(days=back) for back in range(1, window + (through - day).days + 1)
     ]
@@ -336,30 +328,18 @@ async def load_install_history(
     def in_window(w):
         return and_(Game.completed_at >= w.start_utc, Game.completed_at < w.end_utc)
 
-    columns = (
-        [func.sum(case((in_window(w), 1), else_=0)) for w in count_windows]
-        + [func.max(case((in_window(w), Game.final_score), else_=None)) for w in count_windows]
-        + [
-            func.max(
-                case(
-                    (Game.completed_at < count_windows[-1].start_utc, Game.final_score),
-                    else_=None,
-                )
+    columns = [func.sum(case((in_window(w), 1), else_=0)) for w in count_windows] + [
+        func.max(
+            case(
+                (
+                    Game.completed_at < local_day_of(d, tz_offset_minutes).start_utc,
+                    Game.final_score,
+                ),
+                else_=None,
             )
-        ]
-        + [
-            func.max(
-                case(
-                    (
-                        Game.completed_at < local_day_of(d, tz_offset_minutes).start_utc,
-                        Game.final_score,
-                    ),
-                    else_=None,
-                )
-            )
-            for d in served
-        ]
-    )
+        )
+        for d in served
+    ]
     agg = (
         await session.execute(
             select(GameType.name, *columns)
@@ -377,34 +357,69 @@ async def load_install_history(
     ).all()
     n = len(count_days)
     for name, *values in agg:
-        counts, day_bests = values[:n], values[n : 2 * n]
-        before_window, bests = values[2 * n], values[2 * n + 1 :]
+        counts, bests = values[:n], values[n:]
         history.daily_counts[name] = {
             d: int(c) for d, c in zip(count_days, counts, strict=True) if c
         }
-        history.daily_best[name] = {
-            d: int(b) for d, b in zip(count_days, day_bests, strict=True) if b is not None
-        }
-        if before_window is not None:
-            history.best_before_window[name] = int(before_window)
         for d, best in zip(served, bests, strict=True):
             if best is not None:
                 history.best_scores.setdefault(d, {})[name] = int(best)
 
-    # 4. Game creation times, for always_pinnable (skipped if every day is new anyway).
-    history.created = []
+    # 4. One aggregate row over game creations (skipped if every day is new anyway).
+    history.creations = {}
     if not all(personal.is_new_install(history, d) for d in served):
-        since = request_opens(day) - history.pin_window
-        created = (
-            await session.execute(
-                select(Game.created_at)
-                .where(
-                    Game.session_id == session_id,
-                    Game.created_at >= since,
-                    Game.created_at < now,
-                )
-                .order_by(Game.created_at)
-            )
-        ).scalars()
-        history.created = [_aware(c) for c in created]
+        history.creations = await _creations(session, session_id, served, history.pin_window, now)
     return history
+
+
+def _as_datetime(value: datetime | None) -> datetime | None:
+    """An aggregate over a ``DateTime`` column, UTC-aware (SQLite returns it naive)."""
+    return None if value is None else _aware(value)
+
+
+async def _creations(
+    session: AsyncSession,
+    session_id: str,
+    served: list[date],
+    window: timedelta,
+    now: datetime,
+) -> dict[date, Creations]:
+    """Query 4: one row, whatever the number of games (see the module docstring)."""
+    hours = int(window.total_seconds() // 3600)
+    sinces = [request_opens(d) - window for d in served]
+    inner = (
+        select(
+            Game.created_at.label("created"),
+            func.lag(Game.created_at).over(order_by=Game.created_at).label("prev"),
+        )
+        .where(
+            Game.session_id == session_id,
+            Game.created_at >= sinces[0],
+            Game.created_at < now,
+        )
+        .subquery()
+    )
+    columns = []
+    for since in sinces:
+        columns.append(func.min(case((inner.c.created >= since, inner.c.created), else_=None)))
+        columns.append(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            inner.c.prev >= since,
+                            inner.c.created > plus_hours(inner.c.prev, hours),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            )
+        )
+    columns.append(func.max(inner.c.created))
+    row = (await session.execute(select(*columns))).one()
+    latest = _as_datetime(row[-1])
+    return {
+        d: Creations(first=_as_datetime(row[2 * i]), gaps=int(row[2 * i + 1] or 0), latest=latest)
+        for i, d in enumerate(served)
+    }

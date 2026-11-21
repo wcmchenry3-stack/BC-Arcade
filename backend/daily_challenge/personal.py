@@ -10,7 +10,11 @@ The day's three core goals
 --------------------------
 1. Daily Word ``completed`` (always).
 2. and 3. Two goals chosen by **affinity** (``choose_core``), each with a personal
-   **target** (``personal_target`` / ``sort_new_levels``).
+   **target** (``personal_target``).
+
+Bottle Sort has no personal goals for now: "solve N new levels" pinned for today+1 and
+today+2 at the first open of today could already be met by today's own solves, so it
+is deferred to an owner decision. Sort still appears on shared-template days.
 
 Every goal is one of the existing kinds with an absolute target (``final_score_at_least``,
 ``highest_tile_at_least``, ``won``, ``won_moves_at_most``, ``solved``), so installed app
@@ -36,12 +40,11 @@ games of that game before the day starts:
   the floor wins over the cap for a player whose best is below it;
 * **stepped down** after two consecutive misses: when, on the last two pinned days that
   held this (game, goal type) as a personal target, the game was played and the goal
-  missed, the stretch is applied the other way (a tile target halves, Sort asks one
-  level fewer). Shared-template days and days the game was not played never count.
+  missed, the stretch is applied the other way (a tile target halves).
+  Shared-template days and days the game was not played never count.
 
 A game with fewer than ``MIN_FINISHED_GAMES`` finished games gets its cold-start goal
-(``GameSpec.cold_start``). Bottle Sort's goal is "solve N new levels", pinned as
-``final_score_at_least`` = the highest level solved before the day + N.
+(``GameSpec.cold_type`` / ``cold_target``).
 
 Selection (``choose_core``)
 ---------------------------
@@ -82,7 +85,6 @@ from daily_challenge.definitions import (
     goal_from_spec,
 )
 from settings import Settings
-from sort.catalog import LEVEL_COUNT
 
 if TYPE_CHECKING:
     from daily_challenge.assignments import Assignment
@@ -90,10 +92,6 @@ if TYPE_CHECKING:
 
 # A game (and an install) needs this many finished games for a personal target.
 MIN_FINISHED_GAMES = 3
-# Builds from before the 120-level catalog top out at 23 (SORT_CATALOG_EDITION_ENFORCED).
-LEGACY_SORT_LEVELS = 23
-# "Solve N new levels": N is 1-3.
-MIN_NEW_LEVELS, MAX_NEW_LEVELS = 1, 3
 # A (game, goal type) does not repeat within this many days (today included).
 NO_REPEAT_DAYS = 3
 # Discovery rest rule (#3995 uses it): a game offered as the bonus and not played that
@@ -231,11 +229,6 @@ GAME_SPECS: dict[str, GameSpec] = {
         ),
         cold_type="win",
     ),
-    "sort": GameSpec(
-        "sort",
-        (GoalType("sort", "levels", "progress", "final_score_at_least", "final_score"),),
-        cold_type="levels",
-    ),
     "sudoku": GameSpec(
         "sudoku",
         (
@@ -340,33 +333,6 @@ def personal_target(
     return max(min(target, best_cap), floor)
 
 
-def sort_new_levels(per_day_new: Sequence[int], *, pct: int, stepped_down: bool = False) -> int:
-    """N for "solve N new levels": the median of the new levels solved per day of
-    play, stretched, 1-3; one fewer after two misses. No days yet: 1."""
-    if per_day_new:
-        n = math.floor(statistics.median(per_day_new) * (1 + pct / 100) + 0.5)
-    else:
-        n = MIN_NEW_LEVELS
-    if stepped_down:
-        n -= 1
-    return max(MIN_NEW_LEVELS, min(MAX_NEW_LEVELS, n))
-
-
-def sort_level_cap(catalog_on: bool) -> int:
-    """The highest level a Sort goal may ask for: the catalog's last level, or 23
-    while ``SORT_CATALOG_EDITION_ENFORCED`` is off (older builds stop there)."""
-    return LEVEL_COUNT if catalog_on else LEGACY_SORT_LEVELS
-
-
-def sort_target(highest: int, n: int, *, catalog_on: bool) -> int | None:
-    """The level to reach: ``highest`` (solved before the day) + ``n``, capped at the
-    catalog. None once the player has solved the last level: no Sort goal."""
-    cap = sort_level_cap(catalog_on)
-    if highest >= cap:
-        return None
-    return min(highest + n, cap)
-
-
 # ---------------------------------------------------------------------------
 # Options for one game on one day
 # ---------------------------------------------------------------------------
@@ -450,26 +416,13 @@ def stepped_down(history: InstallHistory, game: str, type_name: str) -> bool:
     return True
 
 
-def options_for(
-    game: str, history: InstallHistory, day: date, *, pct: int, catalog_on: bool
-) -> list[Option]:
+def options_for(game: str, history: InstallHistory, day: date, *, pct: int) -> list[Option]:
     """The goals ``game`` can offer on ``day``: its cold-start goal with fewer than
     ``MIN_FINISHED_GAMES`` finished games, else every type that has the data."""
     spec = GAME_SPECS[game]
     recent = history.recent_facts(game, day, history_games())
     goals: list[tuple[GoalType, int | None]] = []
-    if game == "sort":
-        n = MIN_NEW_LEVELS
-        if len(recent) >= MIN_FINISHED_GAMES:
-            n = sort_new_levels(
-                history.sort_new_levels_per_day(day),
-                pct=pct,
-                stepped_down=stepped_down(history, game, "levels"),
-            )
-        target = sort_target(history.best_final_score(game, day), n, catalog_on=catalog_on)
-        if target is not None:
-            goals.append((spec.type("levels"), target))
-    elif len(recent) < MIN_FINISHED_GAMES:
+    if len(recent) < MIN_FINISHED_GAMES:
         goals.append((spec.type(spec.cold_type), spec.cold_target))
     else:
         for gtype in spec.types:
@@ -527,7 +480,6 @@ def choose_core(
     eligible: Sequence[str],
     *,
     session_id: str,
-    catalog_on: bool,
     salt: int = SALT,
     pct: int | None = None,
 ) -> tuple[Goal, Goal, Goal]:
@@ -540,7 +492,7 @@ def choose_core(
         opt
         for game in sorted(eligible)
         if game in GAME_SPECS
-        for opt in options_for(game, history, day, pct=pct, catalog_on=catalog_on)
+        for opt in options_for(game, history, day, pct=pct)
     ]
     with_affinity = {o.game_type for o in options if affinity.get(o.game_type, 0) > 0}
     guard = len(with_affinity) >= 3

@@ -362,8 +362,8 @@ Notes:
   bank is provably solvable. _Shipped (#3993)._
 - **Yacht:** the comment "abandoned games count with their score so far" is out of date: abandons are filtered.
   _Fixed (#3993)._
-- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Shipped for
-  the personal pick (#3993); the shared template keeps them (see "Shipped" below)._
+- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Deferred
+  to the owner decision issue; the shared template keeps them (see "Shipped" below)._
 - **Blackjack:** the pending hand-count goals are dropped (§7a).
 
 ### Shipped for the free games (#3993, #3994)
@@ -375,8 +375,9 @@ from the tables above:
 - **Pool fixes, as proposed.** Solitaire / FreeCell lose "make 10 / 5 moves" and their wins are no longer flagged
   luck-dependent (provably solvable deals); the stale Solitaire and Yacht comments are fixed. The shared template
   keeps three tiers each: win / win in at most 150 (FreeCell 130) / at most 120 (100) moves.
-- **Bottle Sort's absolute targets stay in the shared template** (3/8/15 and 10/30/60), because that template is
-  the same for every install and is what a new install sees. "N new levels" is the personal goal.
+- **Bottle Sort personal goals deferred to the owner decision issue.** "N new levels" pinned for today+1 and
+  today+2 at today's first open could already be met by today's solves, so Sort has no personal goals and is not
+  eligible for a personal pick. It keeps its absolute targets (3/8/15 and 10/30/60) on shared-template days.
 - **Cold start uses the pool's easy-tier goal where §12's "Finish a game" can't be evaluated.** 2048 cold start is
   score 500+ and Yacht's is score 100+ (a Yacht or 2048 "finish" has no fact the existing kinds read, and a
   `final_score_at_least 1` would read as "score 1+"). Sudoku's cold start is "solve a puzzle": the difficulty is in
@@ -389,14 +390,13 @@ from the tables above:
   copy in the app, so it would need a new kind in every locale.
 - **Sudoku's "usual difficulty or one higher" and "at most _target_ errors" are one goal**: score at least _T_
   (`final_score` = difficulty base minus 10 per error, so a higher target asks for a harder puzzle or fewer errors).
-- **Bottle Sort's stars goal is not built** (it would need a `stars_at_least` kind and copy). A player who has
-  solved level 120 (or 23 while `SORT_CATALOG_EDITION_ENFORCED` is off) gets their goals from another game.
-- **Step-down is per (game, goal type)** and also applies to Sort (one level fewer). Only days whose goal was a
-  personal target and on which the game was played count as misses.
+- **Bottle Sort's stars goal is not built** (it would need a `stars_at_least` kind and copy).
+- **Step-down is per (game, goal type).** Only days whose goal was a personal target and on which the game was
+  played count as misses.
 - **Goals already shown never change** (§13 item 5): a day an install could have been served unpinned (no game in
   some 48 h window since the day could first be asked for) is pinned as the shared template, so a new install's
-  cached `/upcoming` days and a lapsed install's comeback day keep the goals the device shows.
-- **Bottle Sort's pace** is each day's best `final_score` minus the best before it, over the affinity window.
+  cached `/upcoming` days and a lapsed install's comeback day keep the goals the device shows. Exceptions:
+  automatic storage-guard pauses, the app's `/today` fallback and kill-switch periods (DAILY-CHALLENGE.md §1).
 - **The variety guard is strict at 3+ games with affinity**, so with exactly 3 or 4 games it sets the rotation more
   than affinity does. §6's "unless the player only plays one or two games" is the exception as written.
 - **Discovery** (`discovery_candidates`) and its rest rule are in place for #3995: 3 ignored offers within 30 days

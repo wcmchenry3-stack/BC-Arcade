@@ -49,8 +49,6 @@ from daily_challenge.personal import (
     is_new_install,
     options_for,
     personal_target,
-    sort_new_levels,
-    sort_target,
 )
 from daily_challenge.streak import compute_streak
 from db.base import get_engine, get_session_factory
@@ -106,11 +104,6 @@ def _history(
         if d < day and isinstance(score, int):
             best = h.best_scores.setdefault(day, {})
             best[game] = max(best.get(game, 0), score)
-            if d >= day - timedelta(days=window):
-                bests = h.daily_best.setdefault(game, {})
-                bests[d] = max(bests.get(d, 0), score)
-            else:
-                h.best_before_window[game] = max(h.best_before_window.get(game, 0), score)
     h.pinned = dict(pinned or {})
     return h
 
@@ -141,7 +134,7 @@ def _win(moves: int) -> dict:
 
 
 def _core(h: InstallHistory, day: date = _DAY, sid: str = "s", eligible=_FREE, **kw):
-    return choose_core(h, day, eligible, session_id=sid, catalog_on=True, **kw)
+    return choose_core(h, day, eligible, session_id=sid, **kw)
 
 
 # ---------------------------------------------------------------------------
@@ -199,81 +192,12 @@ def test_personal_target_needs_values() -> None:
         personal_target(_type("yacht", "score"), [], best=1, pct=12)
 
 
-@pytest.mark.parametrize(
-    "per_day,stepped,expected",
-    [([], False, 1), ([2, 2, 3], False, 2), ([3, 3, 3], False, 3), ([5, 9], False, 3)]
-    + [([0, 0, 1], False, 1), ([2, 2, 2], True, 1), ([1], True, 1)],
-)
-def test_sort_new_levels(per_day: list[int], stepped: bool, expected: int) -> None:
-    assert sort_new_levels(per_day, pct=12, stepped_down=stepped) == expected
-
-
-@pytest.mark.parametrize(
-    "highest,n,catalog_on,expected",
-    [
-        (21, 2, True, 23),
-        (0, 1, True, 1),
-        (119, 3, True, 120),  # capped at the catalog's last level
-        (120, 1, True, None),  # catalog finished: no Sort goal
-        (22, 3, False, 23),  # switch off: never past 23 (older builds stop there)
-        (23, 1, False, None),
-        (40, 1, False, None),
-    ],
-)
-def test_sort_target(highest: int, n: int, catalog_on: bool, expected: int | None) -> None:
-    assert sort_target(highest, n, catalog_on=catalog_on) == expected
-
-
-def _sort_history(levels_by_day: dict[date, list[int]], day: date = _DAY) -> InstallHistory:
-    plays = [
-        ("sort", d, {"won": True, "final_score": lvl})
-        for d, lvls in levels_by_day.items()
-        for lvl in lvls
-    ]
-    return _history(day, plays)
-
-
-def test_bottle_sort_asks_for_new_levels_from_its_recent_pace() -> None:
-    days = _days_before(_DAY, 4)[::-1]
-    # Two new levels a day: 10 -> 12 -> 14 -> 16.
-    h = _sort_history({days[0]: [10], days[1]: [11, 12], days[2]: [13, 14], days[3]: [15, 16]})
-    [option] = options_for("sort", h, _DAY, pct=12, catalog_on=True)
-    assert option.goal == _at_least("sort", "final_score", 18, "medium")  # 16 + 2
-
-
-def test_bottle_sort_cold_start_is_one_new_level() -> None:
-    h = _sort_history({_DAY - timedelta(days=1): [7, 7]})
-    [option] = options_for("sort", h, _DAY, pct=12, catalog_on=True)
-    assert option.goal.target == 8
-
-
-def test_bottle_sort_stops_at_120_and_at_23_while_the_catalog_switch_is_off() -> None:
-    days = _days_before(_DAY, 4)[::-1]
-    near_end = _sort_history({days[0]: [114], days[1]: [116], days[2]: [118], days[3]: [119]})
-    [option] = options_for("sort", near_end, _DAY, pct=12, catalog_on=True)
-    assert option.goal.target == 120
-    done = _sort_history({days[0]: [118], days[1]: [119], days[2]: [120], days[3]: [120]})
-    assert options_for("sort", done, _DAY, pct=12, catalog_on=True) == []
-    legacy = _sort_history({days[0]: [16], days[1]: [18], days[2]: [20], days[3]: [22]})
-    [option] = options_for("sort", legacy, _DAY, pct=12, catalog_on=False)
-    assert option.goal.target == 23
-    assert options_for("sort", legacy, _DAY, pct=12, catalog_on=True)[0].goal.target == 24
-
-
-def test_a_sort_player_who_finished_the_catalog_gets_another_game() -> None:
-    days = _days_before(_DAY, 5)
-    plays = [("sort", d, {"won": True, "final_score": 120}) for d in days]
-    core = _core(_history(_DAY, plays))
-    assert all(g.game_type != "sort" for g in core)
-
-
 def test_cold_start_goals_per_game() -> None:
     h = _history(_DAY, [(g, _DAY - timedelta(days=1), _score(10)) for g in _FREE])
-    got = {g: [o.goal.id for o in options_for(g, h, _DAY, pct=12, catalog_on=True)] for g in _FREE}
+    got = {g: [o.goal.id for o in options_for(g, h, _DAY, pct=12)] for g in _FREE}
     assert got == {
         "freecell": ["freecell:won"],
         "solitaire": ["solitaire:won"],
-        "sort": ["sort:final_score_at_least:11"],
         "sudoku": ["sudoku:solved"],
         "twenty48": ["twenty48:final_score_at_least:500"],
         "yacht": ["yacht:final_score_at_least:100"],
@@ -290,11 +214,10 @@ def test_an_experienced_players_goals_per_game() -> None:
         + _plays("yacht", [_score(s) for s in (150, 160, 170)], days)
     )
     h = _history(_DAY, plays)
-    got = {g: [o.goal.id for o in options_for(g, h, _DAY, pct=12, catalog_on=True)] for g in _FREE}
+    got = {g: [o.goal.id for o in options_for(g, h, _DAY, pct=12)] for g in _FREE}
     assert got == {
         "freecell": ["freecell:won", "freecell:won_moves_at_most:80"],
         "solitaire": ["solitaire:won", "solitaire:won_moves_at_most:95"],
-        "sort": ["sort:final_score_at_least:1"],
         "sudoku": ["sudoku:solved", "sudoku:final_score_at_least:200"],
         "twenty48": ["twenty48:final_score_at_least:1350", "twenty48:highest_tile_at_least:512"],
         "yacht": ["yacht:final_score_at_least:170"],
@@ -308,7 +231,7 @@ def test_only_the_latest_history_games_are_read(monkeypatch: pytest.MonkeyPatch)
     plays += [("yacht", days[0], _score(150)) for _ in range(3)]
     monkeypatch.setenv("DAILY_CHALLENGE_HISTORY_GAMES", "3")
     monkeypatch.setattr(personal, "_settings", None)
-    [option] = options_for("yacht", _history(_DAY, plays), _DAY, pct=0, catalog_on=True)
+    [option] = options_for("yacht", _history(_DAY, plays), _DAY, pct=0)
     assert option.goal.target == 150  # the median of the latest 3 only
 
 
@@ -349,7 +272,7 @@ def _miss_history(met: Sequence[bool]) -> InstallHistory:
 def test_step_down_after_two_consecutive_misses(met: list[bool], stepped: bool) -> None:
     h = _miss_history(met)
     assert personal.stepped_down(h, "yacht", "score") is stepped
-    [option] = options_for("yacht", h, _DAY, pct=12, catalog_on=True)
+    [option] = options_for("yacht", h, _DAY, pct=12)
     # median 200: 224 -> 225 normally, 176 -> 175 stepped down.
     assert option.goal.target == (175 if stepped else 225)
 
@@ -372,7 +295,6 @@ _GAME_FACTS = {
     "freecell": st.builds(_win, st.integers(52, 300)),
     "sudoku": st.builds(lambda s: {"won": True, "final_score": s}, st.integers(0, 300)),
     "yacht": st.builds(_score, st.integers(0, 375)),
-    "sort": st.builds(lambda s: {"won": True, "final_score": s}, st.integers(0, 120)),
 }
 
 
@@ -392,19 +314,10 @@ def test_property_targets_are_bounded_and_progress_is_never_already_done(
     plays: list[Play], pct: int, sid: uuid.UUID
 ) -> None:
     h = _history(_DAY, plays)
-    best_level = max((f["final_score"] for g, _d, f in plays if g == "sort"), default=0)
     for game in _FREE:
-        for option in options_for(game, h, _DAY, pct=pct, catalog_on=True):
+        for option in options_for(game, h, _DAY, pct=pct):
             goal = option.goal
             pre_day = [f for g, _d, f in plays if g == game]
-            if game == "sort":
-                # A level goal is above every level solved before the day, so no game
-                # from before the day (nor a replay today reporting the same standing)
-                # meets it.
-                assert goal.target is not None and goal.target > best_level
-                assert goal.target <= best_level + 3
-                assert not any(goal.evaluate(f) for f in pre_day)
-                continue
             gtype = GAME_SPECS[game].type(goal_type_name(goal))
             if not gtype.personal or len(pre_day) < 3:
                 continue
@@ -420,6 +333,7 @@ def test_property_targets_are_bounded_and_progress_is_never_already_done(
         core = _core(h, sid=str(sid), pct=pct)
         assert core[0] == _DW and len(core) == 3
         assert sum(g.is_win for g in core) <= 1
+        assert all(g.game_type != "sort" for g in core)
 
 
 # ---------------------------------------------------------------------------
@@ -541,9 +455,7 @@ def test_a_one_game_player_with_one_goal_type_gets_a_cold_start_second_game() ->
     core = _core(h)
     assert core[1].game_type == "yacht" or core[2].game_type == "yacht"
     other = next(g for g in core[1:] if g.game_type != "yacht")
-    assert other.id in {
-        o.goal.id for o in options_for(other.game_type, h, _DAY, pct=12, catalog_on=True)
-    }
+    assert other.id in {o.goal.id for o in options_for(other.game_type, h, _DAY, pct=12)}
 
 
 def test_at_most_one_win_dependent_goal_a_day(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -629,7 +541,7 @@ def _with_bonus(game: str) -> Assignment:
 
 def test_discovery_candidates_are_eligible_games_not_played_in_the_window() -> None:
     h = _history(_DAY, _profile_plays({"twenty48": 1, "yacht": 1}, _DAY))
-    assert discovery_candidates(h, _FREE, _DAY) == ["freecell", "solitaire", "sort", "sudoku"]
+    assert discovery_candidates(h, _FREE, _DAY) == ["freecell", "solitaire", "sudoku"]
     assert discovery_candidates(h, ["yacht", "sudoku"], _DAY) == ["sudoku"]
 
 
@@ -823,8 +735,8 @@ async def test_the_loader_reads_what_the_pure_tests_build() -> None:
         ],
     )
     assert (
-        {o.goal.id for o in options_for("twenty48", h, today, pct=12, catalog_on=True)}
-        == {o.goal.id for o in options_for("twenty48", expected, today, pct=12, catalog_on=True)}
+        {o.goal.id for o in options_for("twenty48", h, today, pct=12)}
+        == {o.goal.id for o in options_for("twenty48", expected, today, pct=12)}
         == _EXPECTED_2048
     )
 
@@ -846,21 +758,14 @@ async def test_a_batch_history_serves_each_day_with_its_own_cutoff() -> None:
     sid = str(uuid.uuid4())
     today = _DAY
     for back in (1, 2, 3):
-        await _add(
-            sid,
-            "sort",
-            _noon(today - timedelta(days=back)),
-            final_score=10 - back,
-            metadata={"won": True},
-        )
-    await _add(sid, "sort", _noon(today), final_score=12, metadata={"won": True})
+        await _add(sid, "yacht", _noon(today - timedelta(days=back)), final_score=100 + back)
+    await _add(sid, "yacht", _noon(today), final_score=300)
     async with get_session_factory()() as db:
         h = await load_install_history(db, sid, today, through=today + timedelta(days=2))
-    assert h.best_final_score("sort", today) == 9
-    assert h.best_final_score("sort", today + timedelta(days=1)) == 12
-    # Today's levels count for tomorrow's target: never already met before it starts.
-    tomorrow = options_for("sort", h, today + timedelta(days=1), pct=12, catalog_on=True)
-    assert tomorrow[0].goal.target > 12
+    assert h.best_final_score("yacht", today) == 103
+    assert h.best_final_score("yacht", today + timedelta(days=1)) == 300
+    assert len(h.recent_facts("yacht", today, 10)) == 3
+    assert len(h.recent_facts("yacht", today + timedelta(days=1), 10)) == 4
 
 
 async def _pin_row(sid: str, day: date, goals: Sequence[Goal], bonus: Goal | None = None):
@@ -929,7 +834,7 @@ async def test_the_loader_probes_the_last_two_days_of_each_stretch_goal() -> Non
     assert all(h.played_on("yacht", d) for d in old)
     assert personal.stepped_down(h, "yacht", "score")
     # The step-down: 200 x 0.88 = 176 -> 175.
-    assert options_for("yacht", h, today, pct=12, catalog_on=True)[0].goal.target == 175
+    assert options_for("yacht", h, today, pct=12)[0].goal.target == 175
 
 
 @needs_db
@@ -1207,8 +1112,7 @@ def test_a_goal_type_without_three_values_is_not_offered() -> None:
     plays += _plays("solitaire", [_win(100), _win(110), {"won": False, "moves": 50}], days)
     h = _history(_DAY, plays)
     got = {
-        g: [o.type_name for o in options_for(g, h, _DAY, pct=12, catalog_on=True)]
-        for g in ("twenty48", "solitaire")
+        g: [o.type_name for o in options_for(g, h, _DAY, pct=12)] for g in ("twenty48", "solitaire")
     }
     assert got == {"twenty48": ["score"], "solitaire": ["win"]}
 
@@ -1239,46 +1143,79 @@ def test_a_kind_no_spec_names_is_its_own_goal_type() -> None:
 _H = timedelta(hours=1)
 
 
-def _pinnable_history(day: date, created: list[datetime], now: datetime) -> InstallHistory:
-    h = _history(day, [])
-    h.created, h.now = sorted(created), now
-    return h
-
-
 def test_request_opens_covers_every_timezone_two_days_ahead() -> None:
     # Local Nov 19 begins at 10:00 UTC Nov 18 at +14:00, the earliest anywhere.
     assert history_mod.request_opens(_DAY) == datetime(2026, 11, 18, 10, tzinfo=UTC)
 
 
-def test_always_pinnable_needs_play_in_every_window_since_the_day_could_be_asked_for() -> None:
+def test_serves_shared_for_a_day_that_could_have_been_served_unpinned() -> None:
+    h = _history(_DAY, _profile_plays({"twenty48": 2}, _DAY))
+    assert not personal.serves_shared(h, _DAY)
+    first = datetime(2026, 11, 21, 1, tzinfo=UTC)  # after the day could be asked for
+    h.creations = {_DAY: history_mod.Creations(first=first, gaps=0, latest=first)}
+    h.now = first + _H
+    assert personal.serves_shared(h, _DAY)
+
+
+async def _pinnable(created: list[datetime], now: datetime, day: date = _DAY) -> bool:
+    """Query 4 over games created at ``created``, then ``always_pinnable(day)``."""
+    sid = str(uuid.uuid4())
+    for c in created:
+        await _add(sid, "twenty48", c, final_score=1, created_at=c)
+    async with get_session_factory()() as db:
+        h = await load_install_history(db, sid, day, now=now)
+    # Query 4 only runs for a day that is not a new-install day; force it.
+    async with get_session_factory()() as db:
+        h.creations = await history_mod._creations(db, sid, [day], h.pin_window, now)
+    return h.always_pinnable(day)
+
+
+@needs_db
+async def test_always_pinnable_needs_play_in_every_window_since_the_day_could_be_asked_for() -> (
+    None
+):
     opens = history_mod.request_opens(_DAY)
     now = datetime(2026, 11, 21, 12, tzinfo=UTC)
     daily = [opens - 40 * _H + i * 24 * _H for i in range(5)]  # every 24 h from before
-    assert _pinnable_history(_DAY, daily, now).always_pinnable(_DAY)
+    assert await _pinnable(daily, now)
     # The first game only after the day opened: a device may hold shared goals.
-    assert not _pinnable_history(_DAY, daily[2:], now).always_pinnable(_DAY)
+    assert not await _pinnable(daily[2:], now)
     # A gap longer than the 48 h window since then: served unpinned in between.
-    gap = [daily[0], daily[0] + 49 * _H, now - _H]
-    assert not _pinnable_history(_DAY, gap, now).always_pinnable(_DAY)
+    assert not await _pinnable([daily[0], daily[0] + 49 * _H, now - _H], now)
     # Exactly 48 h apart is still covered.
-    edge = [opens - _H, opens + 47 * _H, now - _H]
-    assert _pinnable_history(_DAY, edge, now).always_pinnable(_DAY)
+    assert await _pinnable([opens - _H, opens + 47 * _H, now - _H], now)
     # A gap long before the day could be asked for does not matter.
-    old_gap = [opens - 30 * 24 * _H, *daily]
-    assert _pinnable_history(_DAY, old_gap, now).always_pinnable(_DAY)
+    assert await _pinnable([opens - 30 * 24 * _H, *daily], now)
     # No game in the last 48 h (may_pin would refuse anyway).
-    assert not _pinnable_history(_DAY, daily[:2], now).always_pinnable(_DAY)
+    assert not await _pinnable(daily[:2], now)
+    # No game at all.
+    assert not await _pinnable([], now)
     # Not read (hand-built histories): treated as pinnable.
     assert _history(_DAY, []).always_pinnable(_DAY)
 
 
-def test_serves_shared_for_a_day_that_could_have_been_served_unpinned() -> None:
-    h = _history(_DAY, _profile_plays({"twenty48": 2}, _DAY))
-    assert not personal.serves_shared(h, _DAY)
-    h.created, h.now = [datetime(2026, 11, 21, 1, tzinfo=UTC)], datetime(
-        2026, 11, 21, 2, tzinfo=UTC
-    )
-    assert personal.serves_shared(h, _DAY)
+@needs_db
+async def test_query_4_is_one_row_however_many_games(client: TestClient) -> None:
+    sid = str(uuid.uuid4())
+    now = datetime.now(UTC)
+    for i in range(300):
+        c = now - timedelta(minutes=i + 1)
+        await _add(sid, "yacht", c, final_score=1, created_at=c)
+    statements: list[str] = []
+    engine = get_engine().sync_engine
+
+    def after(_conn, cursor, statement, *_rest) -> None:
+        statements.append(statement)
+
+    event.listen(engine, "after_cursor_execute", after)
+    try:
+        async with get_session_factory()() as db:
+            result = await history_mod._creations(db, sid, [local_day(0).date], 2 * 24 * _H, now)
+    finally:
+        event.remove(engine, "after_cursor_execute", after)
+    assert len(statements) == 1 and "lag" in statements[0].lower()
+    summary = next(iter(result.values()))
+    assert summary.gaps == 0 and summary.latest is not None
 
 
 async def _status_ids(client: TestClient, sid: str) -> list[str]:
@@ -1373,37 +1310,6 @@ async def test_continuous_play_still_gets_personal_goals_for_all_three_days(
 # ---------------------------------------------------------------------------
 
 
-def test_a_heavy_sort_player_gets_three_new_levels() -> None:
-    days = _days_before(_DAY, 6)[::-1]
-    plays = [
-        ("sort", d, {"won": True, "final_score": 10 * i + lvl})
-        for i, d in enumerate(days)
-        for lvl in range(1, 11)
-    ]
-    h = _history(_DAY, plays)
-    assert h.sort_new_levels_per_day(_DAY) == [10] * 6
-    [option] = options_for("sort", h, _DAY, pct=12, catalog_on=True)
-    assert option.goal.target == 63  # 60 + 3
-
-
-@needs_db
-async def test_the_loader_reads_a_heavy_sort_players_pace_from_daily_standings() -> None:
-    sid = str(uuid.uuid4())
-    for i, back in enumerate(range(6, 0, -1)):
-        for lvl in range(1, 11):
-            await _add(
-                sid,
-                "sort",
-                _noon(_DAY - timedelta(days=back)) + timedelta(minutes=lvl),
-                final_score=10 * i + lvl,
-                metadata={"won": True},
-            )
-    async with get_session_factory()() as db:
-        h = await load_install_history(db, sid, _DAY)
-    assert h.sort_new_levels_per_day(_DAY) == [10] * 6
-    assert options_for("sort", h, _DAY, pct=12, catalog_on=True)[0].goal.target == 63
-
-
 @needs_db
 async def test_a_days_own_games_never_push_out_the_history_before_it() -> None:
     """Codex P2: /upcoming loads today..today+2. 25 games of one type today must not
@@ -1454,3 +1360,37 @@ def test_a_day_the_game_was_not_played_is_no_miss() -> None:
     assert not personal.stepped_down(h, "yacht", "score")
     plays.append(("yacht", days[3], _score(200)))
     assert personal.stepped_down(_history(_DAY, plays, pinned), "yacht", "score")
+
+
+# ---------------------------------------------------------------------------
+# Review round 2: Bottle Sort personal goals are deferred to an owner decision
+# ---------------------------------------------------------------------------
+
+
+def test_no_personal_pick_ever_contains_a_sort_goal() -> None:
+    assert "sort" not in GAME_SPECS
+    h = _history(_DAY, _profile_plays({"sort": 10, "yacht": 1}, _DAY))
+    for i in range(100):
+        core = _core(h, sid=f"s{i}", eligible=[*_FREE, "sort"])
+        assert all(g.game_type != "sort" for g in core)
+
+
+@needs_db
+async def test_a_sort_heavy_install_never_gets_a_personal_sort_goal(client: TestClient) -> None:
+    sid = str(uuid.uuid4())
+    today = local_day(0).date
+    await _seed_2048(sid, today)
+    for back in range(1, 6):
+        for lvl in range(10):
+            await _add(
+                sid,
+                "sort",
+                _noon(today - timedelta(days=back)) + timedelta(minutes=lvl),
+                final_score=10 * (6 - back) + lvl,
+                metadata={"won": True},
+            )
+    body = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
+    assert len(await _rows_for(sid)) == 3
+    assert all(g["game_type"] != "sort" for day in body["days"] for g in day["goals"])
+    async with get_session_factory()() as db:
+        assert "sort" not in await service.eligible_games(db, sid)
