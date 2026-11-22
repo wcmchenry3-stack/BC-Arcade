@@ -6,5 +6,9 @@
 import type { HiddenGameTileArt } from "./hiddenGameTileArt";
 
 export const HIDDEN_GAME_TILE_ART: HiddenGameTileArt = {
+  blackjack: {},
+  cascade: {},
+  hearts: {},
+  mahjong: {},
   starswarm: {},
 };

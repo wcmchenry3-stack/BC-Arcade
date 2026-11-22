@@ -374,6 +374,14 @@ generator's tests hold a **byte budget per recipe**, so a recipe can't grow unno
   (about +778 B, can be layered on A); C, A + B with the Grunt drawn at 26 gpx (about +922 B, needs
   a per-tier art scale in `render/enemies.ts`).
 
+- **2026-11-22 (#4013), the lobby tile redrawn (owner pick B).** The hex badge is retired:
+  `home_tile_badge` and `ICON_RECIPES` are gone from `draw_starswarm_art.py`. The tile is now
+  an open scene drawn by `tools/assets/draw_lobby_tile_art.py` (scene `starswarm`) from these
+  sprites: three `grunt_wasp` Grunts in a V diving on the P1 Arrow (`compose_ship`, second gun),
+  192 px at 3x the 64 pt `cardArt`, 3,202 B. The sprites keep their own rims and armour
+  outline (the scene is `OUTLINE_EXEMPT` from the lobby's shared grey outline). The tile file
+  is not under `assets/starswarm/`, so the sprite totals above are unchanged.
+
 - **2026-11-11 (#3599), the home tile icon (owner pick I3).** The Wasp Grunt in a hex badge
   replaces the 👾 emoji on the Star Swarm home tile, on native and web. Recipe `home-tile-badge`
   (`ICON_RECIPES`, left off the sprite contact sheet): a 168 px square (3x the 56 px the tile
