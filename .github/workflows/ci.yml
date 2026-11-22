@@ -485,6 +485,8 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-python.yml@main
     with:
       working-directory: backend
+      shard-count: 3 # #4061: sharded; merged coverage enforced against coverage-threshold
+      coverage-threshold: 96 # keep in step with pyproject.toml --cov-fail-under
     secrets: inherit
 
   # The request-hardening and access-control tests (`security` pytest marker, #3445)
@@ -644,6 +646,7 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-frontend.yml@main
     with:
       working-directory: frontend
+      shard-count: 3 # #4061: merged coverage enforced against package.json coverageThreshold
     secrets: inherit
 
   cve-python:
