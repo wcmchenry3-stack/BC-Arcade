@@ -7,8 +7,10 @@ and failed on another with 2.08e-3). So the recipe is checked in two layers:
 
 1. `test_recipe_matches_the_reference_fingerprint` pins the encoder-free stages (the un-encoded bed,
    each layer's phrase, and the arrangement laid over the un-encoded bed) against
-   `starswarm_bgm/reference_fingerprint.json` at 1e-6 relative. Float noise moves them by about
-   1e-12, a changed cue level, window, duck, fade, pitch or layer by orders of magnitude more.
+   `starswarm_bgm/reference_fingerprint.json` (window RMS at 1e-5, peaks at 1e-4 relative).
+   numpy's CPU-specific SIMD kernels move them a little between machines (peaks up to 2.6e-6,
+   RMS up to 7.7e-7; measured in `starswarm_bgm/fingerprint.py`); a changed cue level, window,
+   duck, fade, pitch or layer moves them by more than ten times the tolerance.
 2. `test_recipe_rebuilds_the_shipped_track` compares the final MP3 with the shipped one at a
    tolerance that allows encoder differences between machines: same length, relative RMS and
    per-window loudness (justified at the constants below).
@@ -18,6 +20,7 @@ rebuild skips without ffmpeg or soundfile; under CI (`CI` set) it fails instead.
 need only numpy and scipy.
 """
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -177,14 +180,23 @@ def rebuild(tmp_path_factory):
         pytest.skip(problem)
     root = tmp_path_factory.mktemp("bgm")
     out = root / "starswarm-bgm.mp3"
-    fp = build_starswarm_bgm.build(
-        out, stages=root / "stages", log=lambda *_: None, with_fingerprint=True
-    )
-    return out, root / "stages", fp
+    built = []  # the rendered Stages, so a test can re-mix them without rendering again
+
+    def keep(*args, **kwargs):
+        built.append(real(*args, **kwargs))
+        return built[-1]
+
+    real = arrange.build_stages
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(arrange, "build_stages", keep)
+        fp = build_starswarm_bgm.build(
+            out, stages=root / "stages", log=lambda *_: None, with_fingerprint=True
+        )
+    return out, root / "stages", fp, built[0]
 
 
 def test_recipe_matches_the_reference_fingerprint(rebuild):
-    _, _, fp = rebuild
+    _, _, fp, _ = rebuild
     problems = fingerprint.differences(fp, fingerprint.load())
     assert not problems, (
         "the encoder-free stages moved; if the music change is intended, run "
@@ -194,7 +206,7 @@ def test_recipe_matches_the_reference_fingerprint(rebuild):
 
 
 def test_recipe_rebuilds_the_shipped_track(rebuild):
-    out, stages, _ = rebuild
+    out, stages, _, _ = rebuild
     fresh, shipped = _decode(out), _decode(build_starswarm_bgm.SHIPPED)
     assert len(fresh) == len(shipped)
     err = np.sqrt(np.mean((fresh - shipped) ** 2) / np.mean(shipped**2))
@@ -222,12 +234,46 @@ def _toy_stage(level: float) -> np.ndarray:
 def test_fingerprint_catches_a_changed_cue_level_but_not_float_noise():
     want = fingerprint.summarise(_toy_stage(0.7))
     assert not fingerprint.differences(fingerprint.summarise(_toy_stage(0.7)), want)
-    # Float noise (a ulp-level difference between machines) is inside the tolerance.
-    noisy = _toy_stage(0.7) * (1 + 1e-12)
+    # Cross-machine noise, at 3x the worst measured (fingerprint.py): every sample scaled by
+    # 2.3e-6 and the peak sample by a further 7.8e-6 (#4026 failed CI on a 2.6e-6 peak at the
+    # old 1e-6 tolerance).
+    noisy = _toy_stage(0.7) * (1 + 3 * 7.7e-7)
+    k = np.unravel_index(np.argmax(np.abs(noisy)), noisy.shape)
+    noisy[k] *= 1 + 3 * 2.6e-6
     assert not fingerprint.differences(fingerprint.summarise(noisy), want)
     # A 0.1 dB change to one cue is far outside it.
     louder = fingerprint.summarise(_toy_stage(0.7 * 10 ** (0.1 / 20)))
     assert fingerprint.differences(louder, want)
+
+
+def test_peaks_get_the_looser_tolerance_and_windows_the_tighter():
+    # Between the two tolerances (1e-5 < 5e-5 < 1e-4): passes as a peak, fails as an RMS window.
+    want = fingerprint.summarise(_toy_stage(0.7))
+    peak_moved = {**want, "peak": want["peak"] * (1 + 5e-5)}
+    assert not fingerprint.differences(peak_moved, want)
+    rms_moved = {**want, "rms": [[v * (1 + 5e-5) for v in ch] for ch in want["rms"]]}
+    problems = fingerprint.differences(rms_moved, want)
+    assert problems and all(".rms[" in p for p in problems)
+
+
+def test_fingerprint_catches_the_smallest_real_cue_change(rebuild):
+    # The real recipe, not a toy: the quiet distant-organ cue is the one whose level moves the
+    # dry mix least (1.55e-4 at +0.1 dB, measured), so it is the margin that matters.
+    _, _, fp, stages = rebuild
+    dry_bed = np.ascontiguousarray(stages.bed_pcm.T)
+    organs = [(k, c) for k, c in enumerate(arrange.MAIN_CUES) if getattr(c, "layer", "") == "organ"]
+    assert len(organs) == 1, "expected one organ cue in MAIN_CUES; update this test"
+    k, organ = organs[0]
+    # Control: the unchanged re-mix matches, so a difference below can only be the 0.1 dB.
+    same = arrange.mix_full(dry_bed, arrange.mix_intro(dry_bed, stages.phrases), stages.phrases)
+    assert not fingerprint.differences(fingerprint.summarise(same), fp["dry_mix"])
+    louder = dataclasses.replace(organ, level=organ.level * 10 ** (0.1 / 20))
+    cues = [*arrange.MAIN_CUES[:k], louder, *arrange.MAIN_CUES[k + 1 :]]
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(arrange, "MAIN_CUES", cues)
+        mix = arrange.mix_full(dry_bed, arrange.mix_intro(dry_bed, stages.phrases), stages.phrases)
+    problems = fingerprint.differences(fingerprint.summarise(mix), fp["dry_mix"])
+    assert problems, "a 0.1 dB change to the organ cue went unnoticed"
 
 
 def test_fingerprint_catches_a_moved_window_or_length():
