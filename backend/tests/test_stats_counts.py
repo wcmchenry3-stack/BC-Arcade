@@ -14,8 +14,10 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
+from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from db.base import get_session_factory
 from db.models import Game, GameType
+from games import stats_columns
 from games.progression import compute_progression
 from games.stats import get_stats_for_session, win_streaks
 from games.stats_columns import MAX_TIME_PLAYED_PER_GAME_MS
@@ -340,16 +342,39 @@ async def test_qualifying_outcomes_apply_to_a_score_board(
 
 
 async def test_a_malformed_metadata_metric_is_ignored() -> None:
-    # Sort has no result_model, so any result block is stored as sent.
+    # Rows inserted directly, past SortResult's checks: malformed stored values are ignored.
     sid = _sid()
     await _add(sid, "sort", at=0, metadata={"level_reached": "twelve"})
     await _add(sid, "sort", at=1, metadata={"level_reached": True})
-    await _add(sid, "sort", at=2, metadata={"level_reached": 7})
+    await _add(sid, "sort", at=2, metadata={"level_reached": 7, "catalog_version": 1})
     await _add(sid, "sort", at=3, metadata={})
 
     s = await _game(sid, "sort")
     assert s.best_value == 7
     assert s.best_label_key == "level"
+
+
+async def test_sort_best_counts_only_the_current_catalog(sort_edition) -> None:
+    """The board reset (#2761), switched on: a level from the random levels before
+    the catalog (no catalog_version) or another catalog is no one's best."""
+    sort_edition(True)
+    sid = _sid()
+    await _add(sid, "sort", at=0, metadata={"level_reached": 23})
+    await _add(sid, "sort", at=1, metadata={"level_reached": 30, "catalog_version": 2})
+    s = await _game(sid, "sort")
+    assert s.best_value is None
+    await _add(sid, "sort", at=2, metadata={"level_reached": 4, "catalog_version": 1})
+    s = await _game(sid, "sort")
+    assert s.best_value == 4
+    assert s.sessions == 3
+
+
+async def test_sort_best_counts_every_row_until_the_reset_is_switched_on(sort_edition) -> None:
+    sort_edition(False)
+    sid = _sid()
+    await _add(sid, "sort", at=0, metadata={"level_reached": 23})
+    await _add(sid, "sort", at=1, metadata={"level_reached": 4, "catalog_version": 1})
+    assert (await _game(sid, "sort")).best_value == 23
 
 
 async def test_best_value_is_null_without_the_metric() -> None:
@@ -569,3 +594,124 @@ async def test_stats_me_blackjack_chips_are_in_extras_only(
     assert {"played", "best", "avg"}.isdisjoint(bj)
     assert bj["best_value"] == 2400
     assert bj["best_label_key"] == "chips"
+
+
+# ---------------------------------------------------------------------------
+# best_win_ms (#3927)
+# ---------------------------------------------------------------------------
+
+_FLOOR = CASCADE_MIN_WIN_MS
+
+
+async def test_best_win_ms_is_null_without_wins() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="loss", duration_ms=_FLOOR + 1)
+    assert (await _game(sid, "cascade")).best_win_ms is None
+
+
+async def test_best_win_ms_one_win() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=90_000)
+    assert (await _game(sid, "cascade")).best_win_ms == 90_000
+
+
+async def test_best_win_ms_is_the_minimum_over_wins() -> None:
+    sid = _sid()
+    for i, ms in enumerate((200_000, 75_000, 130_000)):
+        await _add(sid, "cascade", at=i, outcome="win", duration_ms=ms)
+    assert (await _game(sid, "cascade")).best_win_ms == 75_000
+
+
+async def test_best_win_ms_ignores_wins_under_the_floor() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=1_000)
+    await _add(sid, "cascade", at=1, outcome="win", duration_ms=_FLOOR - 1)
+    await _add(sid, "cascade", at=2, outcome="win", duration_ms=None)
+    assert (await _game(sid, "cascade")).best_win_ms is None
+    await _add(sid, "cascade", at=3, outcome="win", duration_ms=_FLOOR)
+    assert (await _game(sid, "cascade")).best_win_ms == _FLOOR
+
+
+async def test_best_win_ms_ignores_faster_losses() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="loss", duration_ms=_FLOOR + 5)
+    await _add(sid, "cascade", at=1, outcome="win", duration_ms=100_000)
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_is_null_for_other_games() -> None:
+    sid = _sid()
+    await _add(sid, "mahjong", at=0, outcome="win", duration_ms=100_000)
+    await _add(sid, "cascade", at=1, outcome="win", duration_ms=100_000)
+    stats = await _stats(sid)
+    assert stats.by_game["mahjong"].best_win_ms is None
+    assert stats.by_game["cascade"].best_win_ms == 100_000
+
+
+async def test_best_win_ms_ignores_abandoned_rows() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="abandoned", duration_ms=_FLOOR + 1)
+    await _add(sid, "cascade", at=1, outcome="win", duration_ms=100_000)
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_ignores_an_unfinished_row() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=100_000)
+    factory = get_session_factory()
+    async with factory() as db:
+        gt_id = (
+            await db.execute(select(GameType.id).where(GameType.name == "cascade"))
+        ).scalar_one()
+        db.add(
+            Game(
+                session_id=sid,
+                game_type_id=gt_id,
+                started_at=_T0,
+                completed_at=None,
+                outcome="win",
+                duration_ms=_FLOOR + 1,
+                game_metadata={},
+            )
+        )
+        await db.commit()
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_ignores_a_dev_affected_run() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=100_000)
+    await _add(
+        sid,
+        "cascade",
+        at=1,
+        outcome="win",
+        duration_ms=_FLOOR + 1,
+        metadata={"dev_affected": True},
+    )
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_ignores_another_sessions_win() -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=100_000)
+    await _add(_sid(), "cascade", at=1, outcome="win", duration_ms=_FLOOR + 1)
+    assert (await _game(sid, "cascade")).best_win_ms == 100_000
+
+
+async def test_best_win_ms_with_no_opted_in_games_is_null(monkeypatch) -> None:
+    monkeypatch.setattr(stats_columns, "_BEST_WIN_FLOORS_MS", {})
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=100_000)
+    assert (await _game(sid, "cascade")).best_win_ms is None
+
+
+async def test_stats_me_returns_best_win_ms(client: TestClient) -> None:
+    sid = _sid()
+    await _add(sid, "cascade", at=0, outcome="win", duration_ms=150_000)
+    await _add(sid, "cascade", at=1, outcome="win", duration_ms=80_000)
+    await _add(sid, "cascade", at=2, outcome="win", duration_ms=1_000)
+    await _add(sid, "mahjong", at=3, outcome="win", duration_ms=100_000)
+    by_game = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]
+    assert by_game["cascade"]["best_win_ms"] == 80_000
+    assert by_game["mahjong"]["best_win_ms"] is None

@@ -7,6 +7,7 @@
  *
  * `hudCues` is the two values that move every frame — the mission-complete fade and the power-up
  * bar. They go to Reanimated shared values driving animated styles, never through React state.
+ * (#3598: the bar is ten segments; `litBarWidth` in hudStyle.ts turns the fraction into them.)
  *
  * Pure and React-free, so the split is unit-tested.
  */
@@ -41,6 +42,8 @@ export interface HudState {
   readonly gameOver: boolean;
   /** #3187: last enemy down, pickups still on screen — tell the player to collect them. */
   readonly collectPowerUps: boolean;
+  /** #3568: last enemy down, only a rock holds the wave — tell the player to crack it. */
+  readonly crackAsteroids: boolean;
   /** The active duration power-up, for the indicator label and colour (its bar is a cue). */
   readonly powerUp: "shield" | "lightning" | null;
 }
@@ -59,6 +62,18 @@ export interface HudExtras {
  */
 export function showCollectPowerUpsCue(state: StarSwarmState): boolean {
   return state.phase === "ClearAwaitingPickups" && state.powerUps.length > 0;
+}
+
+/**
+ * #3568: the wait is held with no pickup out and at least one LARGE rock on screen — the only kind
+ * that can drop salvage (`settleRocks`), so the "crack it" cue shows only then. The pickup cue wins
+ * whenever a pickup is out; a wait held only by small rocks (a cracked rock's children) shows no
+ * cue. Derived from existing state like the collect cue: a phase compare and a loop, no allocation.
+ */
+export function showCrackAsteroidsCue(state: StarSwarmState): boolean {
+  if (state.phase !== "ClearAwaitingPickups" || state.powerUps.length > 0) return false;
+  for (const a of state.asteroids) if (a.kind === "large") return true;
+  return false;
 }
 
 /** The event-driven half of the HUD — the exact conditions the render used to evaluate inline. */
@@ -80,6 +95,7 @@ export function deriveHud(state: StarSwarmState, extras: HudExtras): HudState {
     bossWave: isBossWave(state.wave) && state.phase === "SwoopIn" && !countdown,
     gameOver: state.phase === "GameOver",
     collectPowerUps: showCollectPowerUpsCue(state),
+    crackAsteroids: showCrackAsteroidsCue(state),
     powerUp: pu === "shield" || pu === "lightning" ? pu : null,
   };
 }
@@ -103,6 +119,7 @@ export function sameHud(a: HudState, b: HudState): boolean {
     a.bossWave === b.bossWave &&
     a.gameOver === b.gameOver &&
     a.collectPowerUps === b.collectPowerUps &&
+    a.crackAsteroids === b.crackAsteroids &&
     a.powerUp === b.powerUp
   );
 }
@@ -123,9 +140,6 @@ export function hudCues(state: StarSwarmState): HudCues {
       : 0,
   };
 }
-
-/** Full width of the power-up bar, in dp; the cue fraction scales it. */
-export const POWERUP_BAR_WIDTH = 60;
 
 /** What `publishHud` writes the per-frame cues to — Reanimated shared values in the app. */
 export interface CueSinks {

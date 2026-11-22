@@ -328,6 +328,35 @@ export const MAHJONG_SESSION_MAX_BYTES = 20 * 1024;
 export const MAHJONG_MAX_UNITS = 20;
 
 /**
+ * Sort (#3384, epic #3383): the cap on one `moves` event's JSON length. A chunk is
+ * up to 25 actions, each a number tuple: the longest honest one is a pour or a
+ * hint between bottles 15 and 14, `[0,15,14],` (10 characters), so a worst honest
+ * chunk with the recorder's envelope measures 281 B (replay.test.ts). 1 KB never bites it
+ * and still bounds a bad one (a chunk over it is split on `m`, not dropped). The
+ * backend's `MAX_MOVES_BYTES` holds the same figure.
+ */
+export const SORT_MOVES_MAX_BYTES = 1024;
+
+/**
+ * Sort (#3384): the most a level's `moves` events add up to on the device (JSON
+ * lengths), the byte half of the cost bound (SORT_MAX_UNITS below is the row
+ * half). The row cap allows 300 actions at 10 B, about 3 KB, plus 12 envelopes
+ * of ~60 B; 8 KB leaves headroom and stops a runaway at a clean prefix (cost
+ * before data).
+ */
+export const SORT_SESSION_MAX_BYTES = 8 * 1024;
+
+/**
+ * Sort (#3384): the most `moves` events (recorder units) a level records, the
+ * row-count half of the cost bound (each stored row costs about 200 B beyond its
+ * JSON). 12 rows of 25 actions is 300 actions; the longest level's par is 63, so
+ * an honest level, with undos and hints, is a few rows. Counted by the unit
+ * number, which the save carries, so a resume does not reset it. Worst case,
+ * stored: 12 x (1,024 + 200) B, about 15 KB a level.
+ */
+export const SORT_MAX_UNITS = 12;
+
+/**
  * Hearts (#3283): the cap on one event's JSON length, per replay type. The worst
  * honest event (hand 60, a 10-digit `t_ms`) is 232 B (`hand_opened`) / 264 B (`hand_played`)
  * (frontend and backend tests pin both), so each cap leaves a third
@@ -381,6 +410,41 @@ export const SUDOKU_ENTRIES_MAX_BYTES = 512;
  * (daily_word/guess_event.py) holds the same figure.
  */
 export const DAILY_WORD_GUESS_MAX_BYTES = 384;
+
+/**
+ * Cascade (#3858): the cap on one `drop` event's JSON length. A unit is up to
+ * `CASCADE_DROPS_PER_UNIT` (30 since #3967) drops, each `[step, x_tenths, tier]` (`[36000,3800,5],`
+ * is 15), plus up to `CASCADE_MAX_DANGER` danger moments `[start, peak]` (`[36000,180],` is 12) and
+ * the envelope: a widest honest event is about 950 (6-digit steps), so 1 KB never bites one and still bounds a bad
+ * one. Never split: an event over it is dropped and reported. The backend's `MAX_DROP_BYTES`
+ * (cascade/events.py) holds the same figure.
+ */
+export const CASCADE_DROP_MAX_BYTES = 1024;
+
+/**
+ * Cascade (#3858): the cap on one `merge` event's JSON length, split on `m` when over it. A
+ * merge is `[step, tierFrom, chain]` (`[36000,9,12],` is 13); a unit of 30 drops makes about 27
+ * merges (the sim's skilled bot, about 0.9 a drop), about 400 B with the envelope. The backend's
+ * `MAX_MERGE_BYTES` holds the same figure.
+ */
+export const CASCADE_MERGE_MAX_BYTES = 1024;
+
+/**
+ * Cascade (#3858): the most one recorder session's events add up to (JSON length). A typical
+ * 3-4 minute game is 4-6 KB, a 10-minute one about 11 KB (docs/games/cascade-decisions.md#replay-recording-3858),
+ * so this is about half an hour of play; past it the rest of the session is dropped (a clean
+ * prefix), reported once, and counted in the game_ended replay summary (`x`).
+ */
+export const CASCADE_SESSION_MAX_BYTES = 32 * 1024;
+
+/**
+ * Cascade (#3858): the most units (a `drop` and a `merge` row each) a game records, the
+ * row-count half of the cost bound (each stored row costs about 200 B beyond its JSON). 32 units
+ * of 30 drops is 960 drops, about 30 minutes (#3967; 48 units of 20 before, the same ceiling); a background flush cuts a unit short, so this also
+ * bounds a player who backgrounds the app after every drop. Counted by the unit number, which the
+ * save carries, so a resume does not reset it. The backend's `CASCADE_CAP` is sized from it.
+ */
+export const CASCADE_MAX_UNITS = 32;
 
 /** The caps of a game with no entry in `gameRecordingConfigs`. */
 export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
@@ -502,11 +566,14 @@ export const gameEventRegistry = {
     },
   },
   cascade: {
+    sessionMaxBytes: CASCADE_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
-      drop: { tier: Priority.REPLAY },
-      merge: { tier: Priority.REPLAY },
+      // #3858: one of each per unit of up to 30 drops (game/cascade/replay.ts): the drops and
+      // the danger moments; the merges, split on `m` if oversized.
+      drop: { tier: Priority.REPLAY, maxBytes: CASCADE_DROP_MAX_BYTES },
+      merge: { tier: Priority.REPLAY, maxBytes: CASCADE_MERGE_MAX_BYTES, chunkField: "m" },
     },
   },
   solitaire: {
@@ -579,9 +646,12 @@ export const gameEventRegistry = {
     },
   },
   sort: {
+    sessionMaxBytes: SORT_SESSION_MAX_BYTES,
     events: {
       game_started: { tier: Priority.LIFECYCLE },
       game_ended: { tier: Priority.LIFECYCLE },
+      // Up to ACTIONS_PER_CHUNK (game/sort/replay.ts) pours, undos, hints and rewinds per event
+      moves: { tier: Priority.REPLAY, maxBytes: SORT_MOVES_MAX_BYTES, chunkField: "m" },
     },
   },
   daily_word: {

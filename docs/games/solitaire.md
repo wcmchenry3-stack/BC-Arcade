@@ -29,9 +29,13 @@ Before a new deal the player chooses:
 
 Draw-1 and Draw-3 share one public leaderboard.
 
+The draw-mode modal covers the header's back arrow, so a labelled "Lobby" chip floats over the scrim near that spot (mirrored in right-to-left) (`ModalCard`'s `onHome`, #3969). It returns to the lobby without dealing a game.
+
+**Test builds** (`EXPO_PUBLIC_TEST_HOOKS=1`) always deal each draw mode's first seed-bank entry, and on native skip the picker and deal draw-1; the test-only button `solitaire-test-deal-draw3` (native) and `globalThis.__solitaire_deal(drawMode)` (web) deal the fixed draw-3 game instead (`game/solitaire/testHooks.ts`, #3532; see `docs/TESTING.md`).
+
 Live deals come from `frontend/src/game/solitaire/seeds.json`, a bank of **provably solvable** seeds generated offline by `backend/scripts/gen_solitaire_seeds.py`. A seed reproduces the same deal deterministically.
 
-**Recorded deal (#3281).** The `game_started` event data carries `seed`, `seed_index` (its place in the draw mode's bank), `draw_mode` and `engine_version` (`ENGINE_VERSION` in `engine.ts`, bumped when a deal change would break a recorded seed), under 100 bytes (asserted in `dealSeed.test.ts`). `dealGame(draw_mode, seed)` rebuilds the opening from them. The screen draws the seed with `drawDealSeed` and passes it to `dealGame`. A saved game does not store its seed, so a restored game that opens a fresh session sends only `draw_mode` and `engine_version`.
+**Recorded deal (#3281).** The `game_started` event data carries `seed`, `seed_index` (its place in the draw mode's bank), `draw_mode` and `engine_version` (`ENGINE_VERSION` in `engine.ts`, bumped when a rule change would make a recorded game replay differently, see [replay compatibility](../TESTING.md#replay-compatibility-and-sunset)), under 100 bytes (asserted in `dealSeed.test.ts`). `dealGame(draw_mode, seed)` rebuilds the opening from them. The screen draws the seed with `drawDealSeed` and passes it to `dealGame`. A saved game does not store its seed, so a restored game that opens a fresh session sends only `draw_mode` and `engine_version`.
 
 ### Recycling the stock
 
@@ -64,6 +68,25 @@ The top card of:
 can move to its matching foundation when legal.
 
 A top foundation card can also be moved back to tableau when it fits; that retreat costs points.
+
+## Felt table layout (#3606)
+
+The board sits on a rounded green **felt** (shared `FeltTable`, `theme.table.ts` tokens, light and dark) between a one-line stat line and the tab bar: stock, waste and the four foundations on top, the seven tableau columns below. FreeCell reuses the felt, the stat line and the geometry helper (#3607).
+
+- **Stat line.** One centred line under the header, "MOVES 12 · SCORE 45 · TIME 2:14" (shared `TableStatLine`): Manrope capital labels, Space Grotesk values. The time is the game's own play clock (`PlayClockText`), so it freezes while the game is paused. It replaces the old Score / Moves row; screen readers still hear "Moves: 12" and "Score: 45".
+- **Card size.** Cards are as wide as the 7 columns allow, with 4 dp gaps and 12 dp padding inside the felt. The felt is what the screen's chrome leaves: the window less the header, the stat line, the tab bar and a 6 dp side gutter. The screen measures it with `onLayout`; until then it uses the same chrome constants (`estimateFeltSize`).
+- **Dynamic overlap** (`game/_shared/cards/tableLayout.ts`, pure and unit-tested). Face-down cards step 0.2 of the card height. Face-up cards step up to 0.72 of it while columns are short, so the centre pip shows; the step is one value for the whole board and tightens as the tallest column grows. The tallest legal column (6 face-down + 13 face-up) always fits, compressed in this order, and the table never scrolls (a scroll would fight the drag):
+  1. the cards narrow (never under 36 dp wide) until a 24 dp face-up stripe fits;
+  2. the face-down step shortens, down to 8 dp;
+  3. the face-up stripe goes below 24 dp, down to 18 dp (`MIN_COVERED_STRIPE`, the rank's height). Under 24 dp a covered face-up card draws a compact corner index (#3622): the suit beside the rank on one line, sized to fit the stripe, so at 18 dp both the rank and the suit (and its red/black colour, even on Neon's white rank) are readable on every deck. `TableauColumn` picks it from each card's real stripe (`compactIndexFor`, `decks/cornerIndex.ts`) and passes it as `compactIndex` through `CardView` / `SelectableCard` and the drag ghost to the deck's face; the top card, uncompressed columns, the waste and the foundations keep the stacked index. Arcade, Parlor and Synthwave keep their bigger stacked index while it fits the stripe (`bcStackedIndexFits`); below it their compact row stays above the top pips and the court frame. The 18 dp stripe holds at 375 x 667 and up at font scale 1; a smaller felt (360 x 640 with 3-button navigation, or a large font scale) gets the fitted step, which may be under 18 dp.
+
+  At 375 x 667 the board is compressed to step 3 (36 dp cards, 8 dp face-down, a stripe of about 20 dp); at 390 x 844 and 430 x 932 a 24 dp stripe or more fits with no step compressed. The geometry also keeps the bottom band clear and subtracts the felt's 1 dp rim.
+
+- **Selection.** The selected card or run lifts 6 dp with an accent glow. With Reduce Motion on there is no lift or pop; the glow stays as a static highlight (`SelectableCard`'s `reduceMotion`).
+- **Targets.** While something is selected, each legal destination (`game/solitaire/targets.ts`, built on `validateMove`) gets a green outline (`bonus` token) and the accessibility hint "Can move here". The Hint highlight is unchanged and still draws on top.
+- **Empty columns** show a faint "K" marker, because only a King can go there.
+- **Bottom band.** The selection label and the Auto-Complete pill (the shared `components/shared/AutoCompleteButton.tsx`, also used by FreeCell, #3566) share a band at the bottom of the felt (at least 44 dp; it wraps and is measured like the stat line), and the tableau area ends above it, so neither covers a column's last cards.
+- **Accessibility.** A legal destination's top card carries the hint "Can move here" (an empty slot carries it itself); the green outline is not announced. The screen reads Reduce Motion once and passes it to every pile.
 
 ## Input
 
@@ -101,7 +124,8 @@ Undo restores the board and score snapshot from before the previous state-changi
 - history cap: **50** snapshots;
 - timer continues according to the current presence state rather than rewinding to an old clock;
 - the move count (stock draws, card moves, auto-complete steps; hints do not count) is stored in the saved game as an optional `moves` field, so a resumed game keeps it (old saves without it count from 0); Undo decrements it (floored at 0);
-- unavailable while auto-complete is running.
+- unavailable while auto-complete is running;
+- the cards fly back, with card place on their landing (#3572, [Motion and sound timing](#motion-and-sound-timing-3572)).
 
 ## Auto-complete
 
@@ -123,6 +147,8 @@ Auto-complete performs real game moves one step at a time, so:
 - normal scoring applies;
 - normal move counting applies;
 - the game timer/session behaves as if those moves were made normally.
+
+The steps stay 120 ms apart; each card flies 220 ms to its foundation, and the riffle, the win and the result card wait for the last landing (#3572, [Motion and sound timing](#motion-and-sound-timing-3572)).
 
 ## Scoring
 
@@ -231,12 +257,61 @@ A seeded 298-action game over the real GameEventClient → EventStore → AsyncS
 | Stored on the server (jsonb + overhead) | 75,399 B             | **5,850 B**  |
 | `fetch` calls while the game was played | n/a                  | **0**        |
 
+## Motion and sound timing (#3572)
+
+Cards move instead of snapping, and each sound lands on its card's contact or turn. The owner picked direction **A. Brisk** (design audition, 2026-11-09); the reasoning is in the [sound design log](arcade-sound-design.md#solitaire-card-motion-timed-to-the-sounds-3572). Every value is a named constant: the ones shared with FreeCell (#3573: the tap, run, drop and Auto-Complete flights, the sound peaks and the cue table) in `frontend/src/components/cards/cardMotion.ts`, Solitaire's own (the reveal, the draws, the recycle) in `frontend/src/components/solitaire/solitaireMotion.ts`.
+
+| Moment              | Motion                                                                                                       | Sound                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tap-move, 1 card    | 200 ms flight, out-cubic                                                                                     | card place 40 ms before contact (160 ms)                                                                                                                |
+| Tap-move, a run     | 220 ms per card, 15 ms apart down the run                                                                    | multi-card move, its 237 ms peak on the last card's contact                                                                                             |
+| Drop                | 110 ms settle from where the ghost was let go (finger − grab − `GHOST_LIFT`); no flight from the old slot    | card place on contact (70 ms); a dropped run plays card place too, not the multi-card move                                                              |
+| Reveal              | the uncovered card turns over in 140 ms, starting as the moved card lands                                    | card flip, its 28 ms peak on the turn's edge-on point                                                                                                   |
+| Draw 1              | 200 ms slide from the stock to the waste, turning on the way                                                 | card flip on the edge-on point (72 ms)                                                                                                                  |
+| Draw 3              | the same, the three cards 36 ms apart                                                                        | the fan, its first hit (27 ms) on the first card's edge-on point (73 ms)                                                                                |
+| Recycle             | the waste slides back to the stock in 220 ms, turning face down                                              | the riffle's settle, its 77 ms peak on contact (143 ms)                                                                                                 |
+| Undo                | the cards fly back (a tap-move's flight; a run's for two or more cards); a re-covered card turns at once     | card place on the landing                                                                                                                               |
+| Auto-Complete       | the steps stay 120 ms apart (the JS timer is unchanged); each card flies 220 ms, so about two are in the air | the riffle plays until the last card lands; its settle (77 ms peak) and the win on that last contact                                                    |
+| Input during motion | no lock: a new action re-targets a card in flight from where, and with the face, it is shown                 | cues of other actions already scheduled still play; the earlier action of a card moved again goes quiet (its cues and its pending turns are called off) |
+| Reduce Motion       | nothing flies or turns                                                                                       | every cue at the instant of the action                                                                                                                  |
+
+The win (its cascade, then the result card) waits for the winning card's landing, and the board is still meanwhile: no selection, move, draw, drag or Undo, and no invalid-move sound (a won game is over).
+
+How it works:
+
+- **The engine stays instant.** An action commits its state at once (score, timer, moves, replay recording and saves are unchanged); the screen then plans the motion by comparing every card's slot before and after it (`planMotion`). A card flies when it changed pile and is drawn where it lands; a card that stayed but turned over turns in place.
+- **Positions come from the table geometry** (`tableLayout`: the column x, the face-down and face-up steps, the foundation, stock and waste slots), never from a measurement. A drop's start is the ghost's offset from where it was picked up, which `DraggableCard` hands to the drop zone (`DropOffset`).
+- **The flight layer** (`frontend/src/components/cards/cardFlights.tsx`, shared with FreeCell since #3573; a flight's testID is `card-flight-<suit>-<rank>`) is the board's last child, so a card in flight draws above every pile. Each flight is one linear Reanimated timing on the UI thread, eased and turned in a worklet; JS sees one launch per action and one landing per card, never a frame. While a card is in flight its real view stays in its pile (label, testID, touch target), transparent: only the view inside its gesture view (`TransparentFace`), since iOS and Android skip a nearly transparent view when they hit-test, so the card can still be tapped or dragged mid-flight. A foundation draws the card under its top meanwhile, and the waste its collapsed fan; the stock hides its back only while every card in it is flying in, and keeps its count.
+- **Landings** come back from the UI thread through `runOnJS`, with a JS backstop 250 ms after the flight's end (`FLIGHT_BACKSTOP_MS`), so a card is never left hidden and the result card is never left waiting.
+- **Sound cues** are timed from the action's own clock (`cueTimes`), not from the landing callback. Every pending cue and hold (the riffle, the result card) is cancelled on a new deal, on leaving the game (the clock's pause) and on unmount; a cue due while the player is away is not played, and the riffle's hold ending while away stops the loop without its settle. Reduce Motion turned on mid-flight lands every card at once. A card moved again mid-flight (a re-target, an Undo) calls its earlier action off: that action's cues are cancelled, and a turn it planned is planned again from the face shown, so an Undo before a reveal's turn leaves the card face down, with no flip.
+- **Nothing replays.** Flights come only from actions; the flight store is empty at mount (a restore) and emptied on every deal.
+
 ## Implementation
 
 - Engine: `frontend/src/game/solitaire/engine.ts`
+- Motion: `frontend/src/components/solitaire/solitaireMotion.ts` (Solitaire's planner and its own constants), over the stack shared with FreeCell (#3573) in `frontend/src/components/cards/`: `cardMotion.ts` (shared constants, cues and the planners' core), `cardFlights.tsx` (flight store and layer), `launchMotion.ts`, `useCueClock.ts`, `FoundationUnderTop.tsx`
 - Screen: [`frontend/src/screens/SolitaireScreen.tsx`](../../frontend/src/screens/SolitaireScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
+- Felt table: `frontend/src/components/shared/FeltTable.tsx`, `TableStatLine.tsx`; geometry `frontend/src/game/_shared/cards/tableLayout.ts`; targets `frontend/src/game/solitaire/targets.ts`; tokens `frontend/src/theme/theme.table.ts`
 - Seed bank: `frontend/src/game/solitaire/seeds.json`
 - Seed generator/solver: `backend/scripts/gen_solitaire_seeds.py`
 - Storage: `frontend/src/game/solitaire/storage.ts`
 - Replay recording: `frontend/src/game/solitaire/replay.ts`, `frontend/src/game/_shared/cards/moveLog.ts`
 - Backend descriptor: `backend/solitaire/module.py` (the `moves` validator is in `backend/solitaire/models.py`)
+
+## Sound
+
+Registry: `frontend/src/game/solitaire/sounds.ts` (`SOLITAIRE_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the card and puzzle games (#3563); the reasoning behind each is in the [arcade sound design log](arcade-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/SolitaireScreen.tsx`. A completed suit has no sound and no effect: the card lands like any other (dropped in #3563 and #3567).
+
+| Key                                                                                           | File                                                                           | Plays when                                                                                                                                                                                                                                 | Volume |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| `solitaire.cardPlace` / `solitaire.cardPlace2` / `solitaire.cardPlace3`                       | `card-place-1/2/3.ogg` (shared with FreeCell, Hearts; synthesized)             | a card lands, 40 ms before its contact (`useSoundVariants`: one of three, at random, never the same twice in a row); a dropped run; an Undo's landing; silent for cards moved by Auto-Complete                                             | 1.0    |
+| `solitaire.autoCompleteStart` / `solitaire.autoCompleteLoop` / `solitaire.autoCompleteSettle` | `riffle-start/loop/settle.ogg` (shared by Solitaire and FreeCell; synthesized) | Auto-Complete (`useAutoCompleteRiffle`): start + loop as the run begins, loop until the last card lands, settle on that contact when the board is solved; a run cut short just stops. The settle also plays on a recycle's contact (#3572) | 1.0    |
+| `solitaire.cardFlip` / `solitaire.cardFlip2` / `solitaire.cardFlip3`                          | `card-flip-1/2/3.ogg` (synthesized)                                            | a Draw-1 card's turn, or the turn of a face-down card revealed by a move, its peak on the edge-on point (`useSoundVariants`); silent for stock draws made by Auto-Complete                                                                 | 1.0    |
+| `solitaire.cardFan` / `solitaire.cardFan2` / `solitaire.cardFan3`                             | `card-fan-1/2/3.ogg` (synthesized)                                             | a Draw-3 stock draw that turns more than one card (engine event `cardFan`) (`useSoundVariants`); silent during Auto-Complete                                                                                                               | 1.0    |
+| `solitaire.invalidMove`                                                                       | `card-invalid-move.ogg` (shared with FreeCell)                                 | an illegal tap or a refused drop, except during Auto-Complete                                                                                                                                                                              | 1.0    |
+| `solitaire.multiCardMove`                                                                     | `card-multi-move.ogg` (shared with FreeCell; synthesized)                      | a run of two or more cards tapped tableau to tableau (engine event `multiCardMove`), instead of card place, its peak on the last contact; a dropped run plays card place; silent during Auto-Complete                                      | 1.0    |
+| `solitaire.gameWin`                                                                           | `card-game-won.ogg` (shared with FreeCell, Hearts)                             | the game is won, on the winning card's contact; after Auto-Complete, with the riffle's settle                                                                                                                                              | 1.0    |
+
+**Lobby tile status (#4008).** The lobby reads the saved game read-only (`SOLITAIRE_GAME_KEY`, `isSavedGame` exported from `storage.ts`) and shows **Resume** for a game that is not complete and has had a move, otherwise the best time (`m:ss`). See [ARCHITECTURE §10.7](../ARCHITECTURE.md).

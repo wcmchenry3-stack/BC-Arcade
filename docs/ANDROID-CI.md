@@ -184,6 +184,10 @@ false` (expo-audio) and `androidForegroundService: false`,
 - iOS: the committed `Info.plist` has no `UIBackgroundModes`; nothing to change.
   A future `prebuild` also no longer adds `audio`.
 
+## Screen orientation (#3603)
+
+`MainActivity` declares `android:screenOrientation="portrait"`: phones run portrait only, and `app.json` sets `"orientation": "portrait"` so a regenerated `expo prebuild` manifest matches the committed one. Android 16 (target SDK 36+) ignores orientation locks on large screens (smallest width 600dp and up), so tablets may still rotate. The policy, and the iOS side, is in [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md#orientation-3603).
+
 ## Key Gradle files
 
 | File                                                        | Purpose                                                 |
@@ -239,16 +243,18 @@ and the Play Store/App Store release paths untouched:
   `react { }` config (mirrors the existing `enableBundleCompression` property
   pattern in the same file) that clears `debuggableVariants` so the debug variant
   bundles like a release build would.
-- **iOS**: `mobile-smoke-ios.yml` writes `unset SKIP_BUNDLING` to
-  `frontend/ios/.xcode.env.local` before the build step. That file is gitignored
-  (`frontend/ios/.gitignore`) and is sourced a _second_ time by the build phase
-  **after** it sets `SKIP_BUNDLING=1` — the phase's own script comments document
-  this as the intended local-override point — so it only ever affects CI, never a
-  developer's local Xcode/Simulator build. A "Verify JS bundle was embedded" step
-  right after the build fails loudly if this override ever silently breaks (e.g. a
-  future edit to the build phase script), since `mobile-smoke-ios.yml` doesn't run
-  on `pull_request` yet (blocked by #2347) and so wouldn't otherwise get routine
-  exercise.
+- **iOS**: `mobile-smoke-ios.yml` does **not** use a Debug build (#2347). Forcing
+  the bundle into a Debug simulator build (`unset SKIP_BUNDLING` plus
+  `FORCE_BUNDLING=1` in `.xcode.env.local`) does embed it, but it is a _dev_
+  bundle (`dev=true`), and its devtools bootstrap RedBoxes when loaded from a file:
+  "Cannot create devtools websocket connections in embedded environments". The
+  workflow instead builds the simulator app in **Release**
+  (`-configuration Release -sdk iphonesimulator`, unsigned), which embeds a
+  production bundle and leaves out expo-dev-client, so the app opens straight to
+  the home screen and the "Load embedded bundle" tap below no-ops. Nothing in
+  `frontend/ios/` changes, so local and Xcode Cloud builds are unaffected. A
+  "Verify JS bundle was embedded" step right after the build still fails loudly if
+  the bundle is missing.
 - **Both platforms**: `EXDevClientEmbeddedBundle` is statically declared `true` in
   `AndroidManifest.xml` / `Info.plist`. It's a no-op without an embedded bundle
   asset (condition 2 above), so this is safe outside CI too.
@@ -257,9 +263,9 @@ and the Play Store/App Store release paths untouched:
   non-CI run) right after the launcher screen appears, before proceeding to the
   real app's "Choose a game" home screen.
 
-Two more expo-dev-menu flags are needed on top of the above, both discovered by
+Three more expo-dev-menu flags are needed on top of the above, both discovered by
 running actual Maestro CI and reading the failure screenshots — each one
-covers the real home screen with a different first-run overlay, so both native
+covers or intercepts the real app with a different dev-menu overlay, so both native
 configs declare them statically (default is the opposite in both cases):
 
 - `EXDevMenuIsOnboardingFinished` — `true` (default `false`). Without it,
@@ -272,6 +278,15 @@ configs declare them statically (default is the opposite in both cases):
   loaded" — i.e. on every fresh JS bundle load, not just the first ever. Harmless
   outside CI: motion/touch/key-command gestures still open the menu manually,
   this only suppresses the automatic pop-up.
+- `EXDevMenuShowFloatingActionButton` — `false` (default `true`, #3532). The
+  dev menu's movable "Tools" button is drawn over the app (same window,
+  `z = max`) and starts at the top-right corner just below the status bar, on
+  top of the header's ⋯ button (`nav-menu`). A Maestro `tapOn: nav-menu`
+  (freecell/drag-large.yaml) hit the button instead and opened the dev-menu
+  sheet, so Maestro saw only the sheet. Harmless outside CI: shake,
+  three-finger long press and the menu key still open the dev menu. Set in
+  `Info.plist` too: iOS places its button the same way
+  (`DevMenuFABView.defaultPosition`).
 
 Since Maestro clears app state before each flow (`_shared/launch.yaml`), every
 CI run hits both of these fresh — a real fresh install only hits them once (or

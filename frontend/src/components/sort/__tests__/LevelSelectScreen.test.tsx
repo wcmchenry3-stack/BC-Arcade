@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import LevelSelectScreen from "../LevelSelectScreen";
-import type { LevelData } from "../../../game/sort/api";
+import type { CatalogLevel, LevelData } from "../../../game/sort/catalog";
 import type { SortProgress } from "../../../game/sort/storage";
 
 function withTheme(children: React.ReactNode) {
@@ -186,5 +186,84 @@ describe("LevelSelectScreen", () => {
       )
     );
     expect(queryByRole("button")).toBeNull();
+  });
+});
+
+describe("LevelSelectScreen — stars and chapters (#3687)", () => {
+  // Par 10 on every level: 3 stars up to 10 moves, 2 up to 13, 1 beyond.
+  const CATALOG: CatalogLevel[] = Array.from({ length: 45 }, (_, i) => ({
+    id: i + 1,
+    par: 10,
+    bottles: [["red", "red", "red", "red"], []],
+  }));
+
+  async function renderGrid(
+    bestMoves: Record<string, number>,
+    unlockedLevel = 45,
+    levels: readonly CatalogLevel[] = CATALOG
+  ) {
+    return await render(
+      withTheme(
+        <LevelSelectScreen
+          levels={levels}
+          progress={mkProgress({ unlockedLevel })}
+          bestMoves={bestMoves}
+          onSelectLevel={jest.fn()}
+          onContinue={jest.fn()}
+        />
+      )
+    );
+  }
+
+  it("shows each solved level's best stars, filled and outlined", async () => {
+    const r = await renderGrid({ "1": 10, "2": 13, "3": 14 });
+    expect(r.getAllByTestId(/^sort-level-1-stars-\d-filled$/, { hidden: true })).toHaveLength(3);
+    expect(r.queryAllByTestId(/^sort-level-1-stars-\d-empty$/, { hidden: true })).toHaveLength(0);
+    expect(r.getAllByTestId(/^sort-level-2-stars-\d-filled$/, { hidden: true })).toHaveLength(2);
+    expect(r.getAllByTestId(/^sort-level-2-stars-\d-empty$/, { hidden: true })).toHaveLength(1);
+    expect(r.getAllByTestId(/^sort-level-3-stars-\d-filled$/, { hidden: true })).toHaveLength(1);
+    expect(r.getAllByTestId(/^sort-level-3-stars-\d-empty$/, { hidden: true })).toHaveLength(2);
+  });
+
+  it("shows three empty outlines on an unlocked level not solved yet", async () => {
+    const r = await renderGrid({ "1": 10 });
+    expect(r.queryAllByTestId(/^sort-level-4-stars-\d-filled$/, { hidden: true })).toHaveLength(0);
+    expect(r.getAllByTestId(/^sort-level-4-stars-\d-empty$/, { hidden: true })).toHaveLength(3);
+  });
+
+  it("leaves a locked tile as it was: no stars, the locked label", async () => {
+    const r = await renderGrid({ "1": 10 }, 2);
+    expect(r.queryByTestId("sort-level-3-stars")).toBeNull();
+    expect(r.getByLabelText("Level 3, locked").props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it("puts the stars in the tile's screen-reader label", async () => {
+    const r = await renderGrid({ "1": 10, "2": 13, "3": 14 });
+    expect(r.getByLabelText("Level 1, 3 of 3 stars")).toBeTruthy();
+    expect(r.getByLabelText("Level 2, 2 of 3 stars")).toBeTruthy();
+    expect(r.getByLabelText("Level 3, 1 of 3 stars")).toBeTruthy();
+    // Not solved yet: the label is as before.
+    expect(r.getByLabelText("Level 4")).toBeTruthy();
+  });
+
+  it("hides the decorative stars from screen readers (the tile's label carries them)", async () => {
+    const r = await renderGrid({ "1": 10 });
+    expect(
+      r.getByTestId("sort-level-1-stars", { hidden: true }).props.accessibilityElementsHidden
+    ).toBe(true);
+  });
+
+  it("groups the levels under chapter headers of 20", async () => {
+    const r = await renderGrid({});
+    const headers = r.getAllByRole("header");
+    expect(headers.map((h) => h.props.children)).toEqual(["Chapter 1", "Chapter 2", "Chapter 3"]);
+    expect(r.getByTestId("sort-chapter-2")).toBeTruthy();
+  });
+
+  it("has no stars without a par or without best moves", async () => {
+    const noPar = CATALOG.map(({ id, bottles }) => ({ id, bottles }));
+    const r = await renderGrid({ "1": 3 }, 45, noPar);
+    expect(r.queryAllByTestId(/^sort-level-1-stars-\d-filled$/, { hidden: true })).toHaveLength(0);
+    expect(r.getByLabelText("Level 1")).toBeTruthy();
   });
 });

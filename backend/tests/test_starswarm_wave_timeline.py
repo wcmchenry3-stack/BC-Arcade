@@ -469,7 +469,7 @@ async def _stored(gid: str) -> list[GameEvent]:
 
 
 def _wave_completed() -> dict[str, Any]:
-    path = Path(__file__).parent / "fixtures" / "starswarm_wave_stats_v1.json"
+    path = Path(__file__).parent / "fixtures" / "starswarm_wave_stats_v2.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 

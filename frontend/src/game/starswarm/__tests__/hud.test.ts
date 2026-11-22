@@ -149,7 +149,7 @@ describe("sameHud", () => {
     const a = deriveHud(quiet(), NONE);
     expect(sameHud(a, { ...a })).toBe(true);
     const keys = Object.keys(a) as (keyof HudState)[];
-    expect(keys).toHaveLength(15);
+    expect(keys).toHaveLength(16); // #3568: crackAsteroids
     for (const k of keys) {
       const v = a[k];
       const changed =

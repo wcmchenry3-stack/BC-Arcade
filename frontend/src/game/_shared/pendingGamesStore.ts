@@ -53,6 +53,12 @@ import type { ReplayMode, ReplayUpgradeReason } from "./replayDial";
 import { NO_GAME } from "./sessionTags";
 
 const STORAGE_KEY = "pending_games_v1";
+/**
+ * Reserved `adoptOrphan` match key: the orphan's own game id must equal this
+ * value (not a metadata field). For a screen that saved the id with its board
+ * and must continue exactly that session (#3876).
+ */
+export const ORPHAN_GAME_ID_KEY = "$gameId";
 /** How long a failed coalesced counter write waits before its one retry. */
 const COUNTER_RETRY_DELAY_MS = 250;
 /** Most game ids a multi-game write failure report lists (#3338). */
@@ -561,7 +567,14 @@ export class PendingGamesStore {
     let bestAt = -Infinity;
     for (const [id, game] of this.previousProcessOpenGames()) {
       if (game.gameType !== gameType || !game.started || !isOrphanResumable(game, now)) continue;
-      if (match && !Object.entries(match).every(([k, v]) => game.metadata?.[k] === v)) continue;
+      if (
+        match &&
+        !Object.entries(match).every(([k, v]) =>
+          k === ORPHAN_GAME_ID_KEY ? id === v : game.metadata?.[k] === v
+        )
+      ) {
+        continue;
+      }
       const at = game.lastEventAt ?? game.startedAt;
       if (at > bestAt) {
         bestAt = at;

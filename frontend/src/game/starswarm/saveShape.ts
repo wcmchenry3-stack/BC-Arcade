@@ -16,6 +16,7 @@
 
 import type {
   Asteroid,
+  BankablePowerUp,
   BuddyShip,
   Bullet,
   CarrierBeam,
@@ -38,12 +39,15 @@ import {
   emptyWaveStats,
   isWaveStats,
   loadoutOf,
+  withSavedDeathPhase,
+  withSavedHitsByTier,
+  withSavedGunsPeak,
   type WaveRout,
   type WaveStats,
   type WaveStatsWire,
 } from "./engine/waveStats";
-import { DIFFICULTY_TIERS } from "./engine/tuning";
-import { ENEMY_TIERS, HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
+import { DIFFICULTY_TIERS, REINFORCE_BAY_OPEN_MS } from "./engine/tuning";
+import { DEATH_PHASES, ENEMY_TIERS, HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
 import { NO_OVERFLOW, wavesBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
 import { restoreTimelineFields } from "./timelineSave";
 import { SHOTS_FIRED, countShipsSpawned } from "./engine/waveCounters";
@@ -108,7 +112,10 @@ const ENEMY: KeySpec<Enemy> = {
   attentionMs: "required",
 };
 
-const BULLET: KeySpec<Bullet> = {
+// #3710: `tier` is left out of the spec (and so of SAVE_FINGERPRINT) on purpose, like PowerUp's
+// `source`: adding it would drop every paused run. It only labels the per-wave hit stats; a save
+// may carry it or not (fitsBullet), and a bullet without one is counted in no tier.
+const BULLET: KeySpec<Omit<Bullet, "tier">> = {
   id: "required",
   x: "required",
   y: "required",
@@ -125,6 +132,7 @@ const BULLET: KeySpec<Bullet> = {
   armorPiercing: "optional", // #2845
   source: "optional",
   target: "optional",
+  postClear: "optional", // #3568
 };
 
 // #2843
@@ -150,7 +158,12 @@ const PLAYER: KeySpec<Player> = {
   hullFlashTimer: "required",
 };
 
-const EXPLOSION: KeySpec<Explosion> = {
+// #3597: `kind` is left out of the spec (and so of SAVE_FINGERPRINT) on purpose, like PowerUp's
+// `source`: adding it would drop every paused run. It only sizes the drawing; a save may carry it
+// or not (fitsExplosion), and the renderer draws an absent or unknown one as a "pop". #3596's
+// `srcId` (the broken rock's id, which picks the dust's palette) is left out the same way; an
+// absent or non-numeric one draws the default brown dust.
+const EXPLOSION: KeySpec<Omit<Explosion, "kind" | "srcId">> = {
   id: "required",
   x: "required",
   y: "required",
@@ -267,7 +280,12 @@ type AddedStateKey =
   | "closedTimelines"
   | "closedTimelinesLens"
   | "closedTimelinesBytes"
-  | "closedTimelinesOverflow";
+  | "closedTimelinesOverflow"
+  | "devAffected"
+  | "endContext"
+  | "bankedPowerUp"
+  | "carrierBayOpen"
+  | "lightningPulseX";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
@@ -282,6 +300,19 @@ const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   closedTimelinesLens: "optional",
   closedTimelinesBytes: "optional",
   closedTimelinesOverflow: "optional",
+  devAffected: "optional", // #3510: restored by restoreDevAffected
+  endContext: "optional", // #3534: a finished run is never saved, so never restored
+  // #3512: play state, but its absence means "nothing banked" — exactly how a save from before
+  // banking played — so it stays out of the fingerprint and old saves keep loading. Restored by
+  // restoreBankedPowerUp (anything but a bankable type reads as nothing banked).
+  bankedPowerUp: "optional",
+  // #3561: play state, but absent reads as "bay closed" (a save from before the telegraph); kept
+  // out of the fingerprint so old saves load. Restored by restoreCarrierBayOpen.
+  carrierBayOpen: "optional",
+  // #3709: play state, but absent reads as "no previous pulse" (the next pulse uses the beam's
+  // instant overlap); kept out of the fingerprint so old saves load. Always dropped on restore:
+  // the finger is somewhere else on resume, so the first pulse must not sweep from the saved x.
+  lightningPulseX: "optional",
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -338,7 +369,11 @@ const STATE: KeySpec<Omit<StarSwarmState, AddedStateKey>> = {
   scoreLedger: "required",
 };
 
+const fitsExplosion = (e: unknown) =>
+  fits(e, { ...EXPLOSION, kind: "optional", srcId: "optional" });
+
 // An unknown `source` (another build's) doesn't reject the save: restore reads it as "kill".
+const fitsBullet = (b: unknown) => fits(b, { ...BULLET, tier: "optional" });
 const fitsPowerUp = (p: unknown) => fits(p, { ...POWER_UP, source: "optional" });
 
 const hasSource = (p: { readonly source?: unknown }) =>
@@ -417,10 +452,10 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
   return (
     fits(v.player, PLAYER) &&
     allFit(v.enemies, fitsEnemy) &&
-    allFit(v.playerBullets, (b) => fits(b, BULLET)) &&
-    allFit(v.enemyBullets, (b) => fits(b, BULLET)) &&
+    allFit(v.playerBullets, fitsBullet) &&
+    allFit(v.enemyBullets, fitsBullet) &&
     allFit(v.carrierBeams, (b) => fits(b, CARRIER_BEAM)) &&
-    allFit(v.explosions, (e) => fits(e, EXPLOSION)) &&
+    allFit(v.explosions, fitsExplosion) &&
     allFit(v.powerUps, fitsPowerUp) &&
     allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && Array.isArray(b.hitRockIds)) &&
     allFit(v.asteroids, (a) => fits(a, ASTEROID)) &&
@@ -482,12 +517,16 @@ const fitsRout = (v: unknown): boolean =>
   (v.atMs === null || isIntCount(v.atMs)) &&
   [v.grunts, v.caught, v.escaped].every(isIntCount);
 
-/** `damage`: a death cause (null or a HIT_CAUSES value) and otherwise only counts. */
+/**
+ * `damage`: a death cause (null or a HIT_CAUSES value), #3535 a death phase when set (a
+ * DEATH_PHASES value; absent on the wire otherwise), and otherwise only counts.
+ */
 function fitsDamage(v: unknown): boolean {
   if (!isObject(v) || !("deathCause" in v)) return false;
-  const { deathCause, ...counts } = v;
+  const { deathCause, deathPhase, ...counts } = v;
   return (
     (deathCause === null || (HIT_CAUSES as readonly unknown[]).includes(deathCause)) &&
+    (!("deathPhase" in v) || (DEATH_PHASES as readonly unknown[]).includes(deathPhase)) &&
     countsOnly(counts, isIntCount)
   );
 }
@@ -554,10 +593,16 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   // fresh stats still count every pickup already falling as spawned, so they balance
   // #3248: and the ships of the wave and the shots in flight, when the stats don't count them yet
   // (withRosterSpawns)
-  const waveStatsAsSaved = isWaveStats(saved.waveStats);
+  // #3510: a save from before `pacing.gunsPeak` keeps its wave's stats, the field filled in;
+  // #3535: likewise one from before `damage.deathPhase` (null: a saved run hasn't died)
+  // #3710: and one from before `damage.hitsByTier` (zeros: nothing was tiered before)
+  const savedWaveStats = withSavedHitsByTier(
+    withSavedDeathPhase(withSavedGunsPeak(saved.waveStats, saved.player.guns))
+  );
+  const waveStatsAsSaved = isWaveStats(savedWaveStats);
   const waveStats = withRosterSpawns(
     waveStatsAsSaved
-      ? countSpawned(saved.waveStats as WaveStats, unsourced)
+      ? countSpawned(savedWaveStats as WaveStats, unsourced)
       : countSpawned(emptyWaveStats(loadoutOf(saved.player)), powerUps),
     saved.enemies,
     saved.playerBullets
@@ -583,7 +628,44 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
     closedWavesOverflow: isOverflow(saved.closedWavesOverflow)
       ? saved.closedWavesOverflow
       : NO_OVERFLOW,
+    devAffected: restoreDevAffected(saved.devAffected, waveStats, closedWaves),
+    bankedPowerUp: restoreBankedPowerUp(saved.bankedPowerUp), // #3512
+    carrierBayOpen: restoreCarrierBayOpen(saved.carrierBayOpen), // #3561
+    endContext: undefined, // #3534: a finished run is never saved; a live one has not ended
+    lightningPulseX: undefined, // #3709: the first pulse after a resume uses the instant overlap
   };
+}
+
+/** #3561: the bay-open timer as saved, clamped to the telegraph's length; anything else is closed. */
+function restoreCarrierBayOpen(saved: unknown): number {
+  return typeof saved === "number" && Number.isFinite(saved) && saved > 0
+    ? Math.min(saved, REINFORCE_BAY_OPEN_MS)
+    : 0;
+}
+
+const BANKABLE: readonly unknown[] = [
+  "shield",
+  "lightning",
+  "buddy",
+  "bomb",
+] satisfies readonly BankablePowerUp[];
+
+/** #3512: the banked power-up as saved; a save from before banking (or a stray value) has none. */
+function restoreBankedPowerUp(saved: unknown): BankablePowerUp | null {
+  return BANKABLE.includes(saved) ? (saved as BankablePowerUp) : null;
+}
+
+/**
+ * #3510: the run's dev flag across a pause: as saved when it is a boolean `true`; otherwise
+ * (false, or a save from before the flag) still set when the restored wave or any restored closed
+ * wave is flagged `dev`, since only a dev-panel action flags one. It never clears on a restore.
+ */
+function restoreDevAffected(
+  saved: unknown,
+  waveStats: WaveStats,
+  closedWaves: readonly WaveStatsWire[]
+): boolean {
+  return saved === true || waveStats.dev || closedWaves.some((w) => w.dev);
 }
 
 /**

@@ -12,20 +12,28 @@
  *      recorder; moves go in chunks, #3286), one session per game; the
  *      2048 win completes it and Keep Playing is untracked (#2631); a restored game resumes
  *      its session (#2654).
- *   5. Result + leaderboard (#2513, #2633) — the shared GameResultModal; "new best" from
- *      `bestOf`; ranked via `useGameLeaderboard`.
+ *   5. Result + leaderboard (#2513, #2633) — the shared GameResultModal; "new best" from the
+ *      shared personal best (#3757); ranked via `useGameLeaderboard`.
  *   6. Audio — engine events play the 2048 and game-over sounds.
  */
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, Platform, AccessibilityInfo } from "react-native";
+import React, { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
+import {
+  View,
+  StyleSheet,
+  Platform,
+  AccessibilityInfo,
+  LayoutChangeEvent,
+  Text,
+} from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
+import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
-import { bestOf } from "../game/_shared/bestOf";
+import { clockElapsedMs } from "../game/_shared/playClock";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
@@ -37,16 +45,18 @@ import {
   move as engineMove,
   pauseGame,
   resumeGame,
+  suggestMove,
   Direction,
 } from "../game/twenty48/engine";
-import {
-  saveGame,
-  loadGame,
-  clearGame,
-  saveBestScore,
-  loadBestScore,
-} from "../game/twenty48/storage";
+import { saveGame, loadGame, clearGame } from "../game/twenty48/storage";
+import { getBest, judgeResult, recordResult } from "../game/_shared/personalBest";
 import Grid from "../components/twenty48/Grid";
+import { useTwenty48Beat } from "../components/twenty48/useTwenty48Beat";
+import { MOVE_LOCK_MS } from "../game/twenty48/motion";
+import { SWIPE_THRESHOLD_PX, createMoveQueue, createSwipeTracker } from "../game/twenty48/input";
+import HintOverlay, { hintText } from "../components/twenty48/HintOverlay";
+import GameActionBar from "../components/shared/GameActionBar";
+import { useTransientToast } from "../components/shared/useTransientToast";
 import ScoreBoard from "../components/twenty48/ScoreBoard";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
@@ -59,11 +69,13 @@ import {
   guardRecording,
   moveTuple,
   savedPosition,
+  startedData,
   withRecorded,
 } from "../game/twenty48/replay";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useSound } from "../game/_shared/useSound";
-import { TWENTY48_SOUNDS } from "../game/twenty48/sounds";
+import { TWENTY48_SOUNDS, TWENTY48_TILE_MERGE, TWENTY48_TILE_SPAWN } from "../game/twenty48/sounds";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
 
 function flattenBoard(board: number[][]): number[] {
   return board.flat();
@@ -73,13 +85,20 @@ function highestTile(board: number[][]): number {
   return Math.max(0, ...board.flat());
 }
 
-function computeDurationMs(s: Twenty48State): number {
-  return s.accumulatedMs + (s.startedAt !== null ? Date.now() - s.startedAt : 0);
+/** The play time to report: never negative or non-finite, whatever the device clock did (#3738). */
+export function computeDurationMs(s: Twenty48State, now: number = monotonicNow()): number {
+  const ms = clockElapsedMs(s, now);
+  return Number.isFinite(ms) ? Math.max(0, ms) : 0;
 }
 
-const SWIPE_THRESHOLD = 30;
-/** How long (ms) to hold the move lock — matches slide animation duration. */
-const MOVE_LOCK_MS = 120;
+/** How long (ms) a hint, or the "no hint" message, stays up: the same 2 s as the other games. */
+const HINT_MS = 2000;
+/** The action bar under the board (Hint, New Game). */
+const ACTION_BAR_H = 64;
+/** The board keeps this much clear above and below it in the free height. */
+const BOARD_V_MARGIN = 8;
+/** Below this measured height the area is not laid out yet: the board keeps its width cap. */
+const MIN_BOARD = 120;
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Twenty48">;
@@ -89,7 +108,6 @@ export default function Twenty48Screen({ navigation }: Props) {
   const { t } = useTranslation(["twenty48", "common"]);
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
 
   // The best score as the mount load read it, for the restore below.
   const loadedBestRef = useRef(0);
@@ -97,7 +115,7 @@ export default function Twenty48Screen({ navigation }: Props) {
   // back (a fresh deal is saved at once instead).
   const restoredRef = useRef<Twenty48State | null>(null);
   // The saved game (usePersistedGameState, #3109), loaded with the best score
-  // on mount. The best score is the only local figure kept: the result card's
+  // on mount (the shared personal best, #3757). The best score is the only local figure kept: the result card's
   // "New best" badge compares with it. The old `twenty48_stats_v1` counters are
   // no longer read or written (#2636); the Stats screen reads the server.
   // Every change is saved once the load has landed, with the one-shot events
@@ -107,7 +125,7 @@ export default function Twenty48Screen({ navigation }: Props) {
   // the progress snapshot and New Game. The restore is below.
   const game = usePersistedGameState<Twenty48State>({
     load: async () => {
-      const [saved, best] = await Promise.all([loadGame(), loadBestScore()]);
+      const [saved, best] = await Promise.all([loadGame(), getBest("twenty48")]);
       loadedBestRef.current = best;
       return saved;
     },
@@ -124,16 +142,40 @@ export default function Twenty48Screen({ navigation }: Props) {
   // score, so "New Best" compares against this instead (#2513).
   const [bestAtGameStart, setBestAtGameStart] = useState(0);
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
+  // The hint (#3688): the suggested swipe, shown for 2 s and cleared by a swipe; with no move to
+  // suggest, a 2 s "no hint" message, as in Mahjong (useTransientToast, #2981). A hint changes no
+  // state of the game and is not recorded: the replay's move format (docs/games/twenty48.md) has
+  // no slot for it, and 2048 scores no cost for one.
+  const [hintDirection, setHintDirection] = useState<Direction | null>(null);
+  const { visible: hintVisible, show: showHint, hide: hideHint } = useTransientToast(HINT_MS);
+  const { visible: noHintVisible, show: showNoHint, hide: hideNoHint } = useTransientToast(HINT_MS);
+  // The free height for the board, measured: the board is centred in it and capped to it.
+  const [boardAreaHeight, setBoardAreaHeight] = useState<number | null>(null);
+  const onBoardAreaLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = Math.round(e.nativeEvent.layout.height);
+    setBoardAreaHeight((prev) => (prev === h ? prev : h));
+  }, []);
 
   /** Blocks new moves while the slide animation plays. */
   const movingRef = useRef(false);
-  /** One queued move — fires immediately after the current animation ends. */
-  const pendingMove = useRef<Direction | null>(null);
+  // The move lock's timer: cleared by New Game and on unmount, so an old move's lock can't end a
+  // new move's early or run a queued move on a board that is gone (#3725 review).
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Up to `MOVE_QUEUE_DEPTH` moves made during the lock: each fires as the one before it ends
+   * (#3689).
+   */
+  const [moveQueue] = useState(createMoveQueue);
+  // The end-of-game beat: holds the result card while the 2048 tile forms or the stuck board
+  // dims (#3689). Started in the move handler that ends the game, so the hold and the ended
+  // board land in one render.
+  const { beat, start: startBeat, clear: clearBeat } = useTwenty48Beat();
   /** Guards against double-counting a win within a single game session. */
   const winRecordedRef = useRef(false);
 
-  const { play: playTileMerge } = useSound("twenty48.tileMerge", TWENTY48_SOUNDS, 0.3);
-  const { play: playTileSpawn } = useSound("twenty48.tileSpawn", TWENTY48_SOUNDS, 0.2);
+  // Levels are set in the files (#3578): the spawn, on every swipe, is the quietest sound.
+  const { play: playTileMerge } = useSoundVariants(TWENTY48_TILE_MERGE, TWENTY48_SOUNDS);
+  const { play: playTileSpawn } = useSoundVariants(TWENTY48_TILE_SPAWN, TWENTY48_SOUNDS);
   const { play: playWin2048 } = useSound("twenty48.win2048", TWENTY48_SOUNDS);
   const { play: playGameOverSound } = useSound("twenty48.gameOver", TWENTY48_SOUNDS);
 
@@ -151,6 +193,12 @@ export default function Twenty48Screen({ navigation }: Props) {
   // `game_ended` follows.
   const flushMovesRef = useRef<() => void>(() => undefined);
   useEffect(() => () => flushMovesRef.current(), []);
+  useEffect(
+    () => () => {
+      if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+    },
+    []
+  );
   const {
     start: syncStart,
     resume: syncResume,
@@ -277,11 +325,15 @@ export default function Twenty48Screen({ navigation }: Props) {
     { onComplete: () => clearSavedGame(), onAlreadyComplete: () => clearSavedGame() }
   );
 
+  // The tiles a restored save opens with: their flags are the last move's, not a new one (#3578).
+  const restoredTilesRef = useRef<Twenty48State["tiles"] | null>(null);
+
   // Mount: resume the saved game, or deal fresh in its place.
   useGameRestored(game, (saved) => {
     // loadGame restarts a saved mid-game's clock from now (#2750): the time
     // played before the app was closed is kept, the time it was closed isn't.
     const next = adoptLoaded(saved ?? newGame());
+    if (saved) restoredTilesRef.current = next.tiles;
     setState(next);
     // A load landing while the player is away is paused (`adoptLoaded`), and a
     // paused board is saved, as it always was.
@@ -306,7 +358,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       const resumed = !!saved && syncResume();
       if (resumed) moveLog.reset(...savedPosition(saved));
       if (!resumed) {
-        syncStart({ initial_board: flattenBoard(next.board) });
+        syncStart(startedData(flattenBoard(next.board)));
         // Resuming a saved mid-game means the player already started — mark it.
         if (saved) syncMarkStarted();
       }
@@ -322,14 +374,16 @@ export default function Twenty48Screen({ navigation }: Props) {
     if (!state) return;
     if (state.score > bestScore) {
       setBestScore(state.score);
-      saveBestScore(state.score);
+      void recordResult("twenty48", state.score);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.score]); // intentional: only re-run when score changes, not on every state update
 
-  // Fire tile sounds from isMerge/isNew flags on the render layer.
+  // Fire tile sounds from isMerge/isNew flags on the render layer. A restored save keeps its last
+  // move's flags, so the tiles a saved game opens with are skipped: reopening a game must not
+  // replay that move's sounds (#3578). A fresh deal still plays its spawn.
   useEffect(() => {
-    if (!state) return;
+    if (!state || state.tiles === restoredTilesRef.current) return;
     const hasMerge = state.tiles.some((t) => t.isMerge);
     const hasSpawn = state.tiles.some((t) => t.isNew && !t.isMerge);
     if (hasMerge) playTileMerge();
@@ -367,8 +421,10 @@ export default function Twenty48Screen({ navigation }: Props) {
         moved = engineMove(currentState, direction);
       } catch {
         // "no effect" or game over — release lock immediately.
+        // The board is unchanged, so a move waiting behind this one is still a fair move.
         movingRef.current = false;
-        pendingMove.current = null;
+        const waiting = moveQueue.shift();
+        if (waiting) executeMove(waiting, currentState);
         return;
       }
       // Moves after the win (Keep Playing) belong to no session: not recorded.
@@ -398,48 +454,79 @@ export default function Twenty48Screen({ navigation }: Props) {
       else if (next.game_over && !next.has_won) finishSession(next, "loss");
       // The card shows the win even when this move also left no moves.
       if (justWon && next.game_over) setWonOnLastMove(true);
-      // Hold the lock for the slide animation duration, then fire any queued move.
-      setTimeout(() => {
+      // The card waits for the beat: the 2048 tile forming, or the stuck board dimming. Set in
+      // this same handler as `setState(next)`, so the board and the hold render together.
+      if (justWon) startBeat("win");
+      else if (next.game_over) startBeat("gameOver");
+      // Hold the lock for the slide animation duration, then fire the next queued move.
+      lockTimerRef.current = setTimeout(() => {
+        lockTimerRef.current = null;
         movingRef.current = false;
-        // A move queued during the winning move would play behind the win
+        // Moves queued during the winning move would play behind the win
         // card (handleMove's guard only sees moves made after it shows): drop
-        // it. One queued before the player left is dropped too (#2735,
+        // them. Those queued before the player left are dropped too (#2735,
         // #2750): another screen covers the board or the app is in the
-        // background by the time this fires, and applying it would restart
+        // background by the time this fires, and applying one would restart
         // the paused clock.
-        const queued = justWon || awayRef.current ? null : pendingMove.current;
-        pendingMove.current = null;
-        if (queued) {
-          setState((s) => {
-            if (s) executeMove(queued, s);
-            return s;
-          });
+        if (justWon || awayRef.current) {
+          moveQueue.clear();
+          return;
         }
+        // The committed board, read when the lock ends. The move runs here, not inside a
+        // `setState` updater: an updater must be pure (React may call it twice) and this move
+        // records and saves.
+        const queued = moveQueue.shift();
+        if (!queued) return;
+        const latest = stateRef.current;
+        if (!latest || latest.game_over) {
+          moveQueue.clear();
+          return;
+        }
+        executeMove(queued, latest);
       }, MOVE_LOCK_MS);
     },
-    [finishSession, moveLog, syncMarkStarted, awayRef, matchPresence, setState]
+    [
+      finishSession,
+      moveLog,
+      moveQueue,
+      syncMarkStarted,
+      awayRef,
+      matchPresence,
+      setState,
+      startBeat,
+      stateRef,
+    ]
   );
 
   const handleMove = useCallback(
     (direction: Direction) => {
+      // Any swipe, or arrow key, ends the hint (#3688).
+      hideHint();
+      hideNoHint();
       if (!state || state.game_over) return;
       // The win card is up: no moves behind it until Keep Playing / Play Again
       // (on web the keyboard would otherwise keep playing under the card).
       if (state.has_won && !winDismissed) return;
       if (movingRef.current) {
-        pendingMove.current = direction;
+        // Kept for after the slide; a third quick swipe is dropped.
+        moveQueue.push(direction);
         return;
       }
       executeMove(direction, state);
     },
-    [state, winDismissed, executeMove]
+    [state, winDismissed, executeMove, hideHint, hideNoHint, moveQueue]
   );
 
   const resetGame = useCallback(() => {
+    if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+    lockTimerRef.current = null;
     movingRef.current = false;
     lastMoveTilesRef.current = null;
-    pendingMove.current = null;
+    moveQueue.clear();
+    clearBeat();
     winRecordedRef.current = false;
+    hideHint();
+    hideNoHint();
     resetGameOver();
     setWinDismissed(false);
     setWonOnLastMove(false);
@@ -455,10 +542,22 @@ export default function Twenty48Screen({ navigation }: Props) {
     // The new game's log counts from 0.
     flushMoves();
     moveLog.reset();
-    syncStart({ initial_board: flattenBoard(next.board) });
+    syncStart(startedData(flattenBoard(next.board)));
     setState(next);
     moveCountRef.current = 0;
-  }, [syncStart, flushMoves, moveLog, resetLeaderboard, resetGameOver, stateRef, setState]);
+  }, [
+    syncStart,
+    flushMoves,
+    moveLog,
+    resetLeaderboard,
+    resetGameOver,
+    stateRef,
+    setState,
+    hideHint,
+    hideNoHint,
+    moveQueue,
+    clearBeat,
+  ]);
 
   const handleNewGamePress = useCallback(() => {
     // Only a game still in progress is lost: after the 2048 win its session
@@ -509,25 +608,27 @@ export default function Twenty48Screen({ navigation }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleMove]);
 
-  // Blur filter for ambient glow blobs — web only (native uses opacity alone).
-  const glowBlur = Platform.OS === "web" ? ({ filter: "blur(80px)" } as object) : undefined;
-
-  const swipeGesture = Gesture.Pan()
-    .minDistance(SWIPE_THRESHOLD)
-    .onEnd((e) => {
-      const { translationX, translationY } = e;
-      const absX = Math.abs(translationX);
-      const absY = Math.abs(translationY);
-      if (absX < SWIPE_THRESHOLD && absY < SWIPE_THRESHOLD) return;
-      let direction: Direction;
-      if (absX > absY) {
-        direction = translationX > 0 ? "right" : "left";
-      } else {
-        direction = translationY > 0 ? "down" : "up";
-      }
-      handleMove(direction);
-    })
-    .runOnJS(true);
+  // A swipe is a move the moment the finger has travelled the threshold, once per gesture (#3689),
+  // not when it lifts. The gesture is built once and calls the latest handler, so a move landing
+  // mid-drag doesn't rebuild it.
+  const [swipeTracker] = useState(createSwipeTracker);
+  const handleMoveRef = useRef(handleMove);
+  useLayoutEffect(() => {
+    handleMoveRef.current = handleMove;
+  }, [handleMove]);
+  const swipeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(SWIPE_THRESHOLD_PX)
+        .onBegin(() => swipeTracker.reset())
+        .onUpdate((e) => {
+          const direction = swipeTracker.update(e.translationX, e.translationY);
+          if (direction) handleMoveRef.current(direction);
+        })
+        .onFinalize(() => swipeTracker.reset())
+        .runOnJS(true),
+    [swipeTracker]
+  );
 
   // The session already finished at the win: Keep Playing only hides the
   // card, and the rest of the game is untracked (#2631).
@@ -535,9 +636,31 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   // The win card, until Keep Playing. When the 2048 move also left no moves,
   // it is still the win card, just without Keep Playing (#2631).
-  const showWinOverlay = !!state?.has_won && !winDismissed && (!state.game_over || wonOnLastMove);
-  const showGameOverOverlay = !!state?.game_over && !showWinOverlay;
+  // Both cards wait for the end-of-game beat (`beat`, #3689); a game restored finished has none.
+  const winCard = !!state?.has_won && !winDismissed && (!state.game_over || wonOnLastMove);
+  const showWinOverlay = winCard && !beat;
+  const showGameOverOverlay = !!state?.game_over && !winCard && !beat;
   const canKeepPlaying = showWinOverlay && !state?.game_over;
+
+  // Hint: the engine picks the swipe (the one that merges the most); a stuck board has none.
+  const handleHint = useCallback(() => {
+    // Mid-move (a slide or a queued swipe still to apply), the board is about to change: a
+    // suggestion now would be for the wrong board (#3715 review).
+    if (!state || movingRef.current) return;
+    const direction = suggestMove(state.board);
+    if (!direction) {
+      hideHint();
+      showNoHint();
+      return;
+    }
+    hideNoHint();
+    setHintDirection(direction);
+    showHint();
+    AccessibilityInfo.announceForAccessibility(
+      t("twenty48:a11y.hint", { move: hintText(t, direction, false) })
+    );
+  }, [state, showHint, hideHint, showNoHint, hideNoHint, t]);
+  const hintDisabled = !state || winCard || state.game_over;
 
   return (
     <GameShell
@@ -548,60 +671,80 @@ export default function Twenty48Screen({ navigation }: Props) {
       onOpenLeaderboard={openLeaderboard}
       loading={!state && loading}
       gutter={16}
-      style={{
-        paddingBottom: Math.max(insets.bottom, 16),
-        alignItems: "center",
-      }}
+      style={{ paddingBottom: 16 }}
     >
-      {/* Score + New Game */}
-      <View style={styles.scoreRow}>
-        {state && (
-          <View style={styles.scoreBoardWrap}>
-            <ScoreBoard score={state.score} bestScore={bestScore} scoreDelta={state.scoreDelta} />
-          </View>
-        )}
-        <Pressable
-          style={[styles.newGameBtn, { backgroundColor: colors.accent }]}
-          onPress={handleNewGamePress}
-          accessibilityRole="button"
-          accessibilityLabel={t("twenty48:actions.newGameLabel")}
-        >
-          <Text style={[styles.newGameBtnText, { color: colors.textOnAccent }]} numberOfLines={1}>
-            {t("twenty48:actions.newGame")}
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Swipe hint */}
-      <Text style={[styles.hint, { color: colors.textMuted }]}>{t("twenty48:swipe.hint")}</Text>
-      {Platform.OS === "web" && (
-        <Text style={[styles.hint, { color: colors.textMuted }]}>
-          {t("twenty48:controls.keyboardHint")}
-        </Text>
-      )}
-
-      {/* Board */}
+      {/* The whole play area takes swipes (#3688), not just the board. */}
       <GestureDetector gesture={swipeGesture}>
-        <View testID="twenty48-board" style={styles.boardContainer}>
-          {/* Ambient glow blobs — decorative, placed behind the grid */}
-          <View
-            style={[styles.glowTopLeft, { backgroundColor: colors.accent }, glowBlur]}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            pointerEvents="none"
+        <View style={styles.playArea} testID="twenty48-play-area">
+          {/* One slim row: Score, Best, Highest Tile, Time. */}
+          {state && (
+            <View style={styles.statsRow}>
+              <ScoreBoard score={state.score} bestScore={bestScore} scoreDelta={state.scoreDelta} />
+              <StatsBento state={state} />
+            </View>
+          )}
+
+          {/* The board, centred in the free height. */}
+          <View style={styles.boardArea} onLayout={onBoardAreaLayout} testID="twenty48-board-area">
+            {noHintVisible && (
+              <Text
+                style={[styles.noHintToast, { color: colors.accentText }]}
+                accessibilityLiveRegion="polite"
+                testID="twenty48-no-hint-toast"
+              >
+                {t("twenty48:action.noHint")}
+              </Text>
+            )}
+            <View testID="twenty48-board" style={styles.boardContainer}>
+              {state && (
+                <Grid
+                  tiles={state.tiles}
+                  beat={beat}
+                  stuck={state.game_over}
+                  maxSize={
+                    // A first or transient layout can measure ~0: use the width cap until the
+                    // area is a usable height, never a zero or negative board (#3715 review).
+                    boardAreaHeight === null || boardAreaHeight - 2 * BOARD_V_MARGIN < MIN_BOARD
+                      ? undefined
+                      : boardAreaHeight - 2 * BOARD_V_MARGIN
+                  }
+                />
+              )}
+              {hintVisible && hintDirection && (
+                <HintOverlay direction={hintDirection} showKey={Platform.OS === "web"} />
+              )}
+            </View>
+          </View>
+
+          {/* Hint and New Game, in thumb reach under the board (shared with Mahjong). */}
+          <GameActionBar
+            testID="twenty48-action-bar"
+            height={ACTION_BAR_H}
+            actions={[
+              {
+                key: "hint",
+                icon: "lightbulb",
+                label: t("twenty48:action.hint"),
+                accessibilityLabel: t("twenty48:action.hintLabel"),
+                color: colors.bonus,
+                labelColor: colors.bonusText, // the icon keeps the 3:1 green; the label needs AA
+                disabled: hintDisabled,
+                onPress: handleHint,
+                testID: "twenty48-hint-button",
+              },
+              {
+                key: "newGame",
+                icon: "refresh",
+                label: t("twenty48:actions.newGame"),
+                accessibilityLabel: t("twenty48:actions.newGameLabel"),
+                color: colors.accentText,
+                onPress: handleNewGamePress,
+                testID: "twenty48-new-game-button",
+              },
+            ]}
           />
-          <View
-            style={[styles.glowBottomRight, { backgroundColor: colors.secondary }, glowBlur]}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            pointerEvents="none"
-          />
-          {state && <Grid tiles={state.tiles} />}
         </View>
       </GestureDetector>
-
-      {/* Stats bento — Highest Tile + Time Played */}
-      {state && <StatsBento state={state} />}
 
       {/* End-of-game result card (#2513): the 2048 win (Keep Playing) or no moves. */}
       <GameResultModal
@@ -613,7 +756,8 @@ export default function Twenty48Screen({ navigation }: Props) {
         subtitle={canKeepPlaying ? t("twenty48:win.body") : tResult("subtitle.noMoves")}
         hero={{ kind: "score", label: tResult("stat.score"), value: state?.score ?? 0 }}
         isNewBest={
-          !!state?.game_over && bestOf(bestAtGameStart, state?.score ?? 0, false).isNewBest
+          !!state?.game_over &&
+          judgeResult("twenty48", bestAtGameStart, state?.score ?? 0).isNewBest
         }
         stats={
           state
@@ -654,55 +798,36 @@ export default function Twenty48Screen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  scoreRow: {
+  playArea: {
+    flex: 1,
+    alignSelf: "stretch",
+  },
+  statsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 8,
+    gap: 8,
+    alignSelf: "center",
     width: "100%",
     maxWidth: 360,
+    marginTop: 8,
   },
-  scoreBoardWrap: {
+  boardArea: {
     flex: 1,
-    minWidth: 0,
-  },
-  newGameBtn: {
-    flexShrink: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    minHeight: 44,
+    alignItems: "center",
     justifyContent: "center",
-  },
-  newGameBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  hint: {
-    fontSize: 12,
-    marginBottom: 12,
   },
   boardContainer: {
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
   },
-  glowTopLeft: {
+  noHintToast: {
+    // Over the board area and never takes a touch meant for the swipe under it.
     position: "absolute",
-    width: 192,
-    height: 192,
-    top: -24,
-    left: -24,
-    borderRadius: 96,
-    opacity: 0.1,
-  },
-  glowBottomRight: {
-    position: "absolute",
-    width: 192,
-    height: 192,
-    bottom: -24,
-    right: -24,
-    borderRadius: 96,
-    opacity: 0.1,
+    pointerEvents: "none",
+    top: 4,
+    zIndex: 3,
+    fontFamily: typography.heading,
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
 });

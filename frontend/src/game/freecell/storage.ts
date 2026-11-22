@@ -1,25 +1,60 @@
 import type { FreeCellState } from "./types";
-import { createJsonSlot, createRecord } from "../_shared/storageSlot";
+import type { PlayClock } from "../_shared/playClock";
+import { createJsonSlot } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "freecell.storage";
 
+export const FREECELL_GAME_KEY = "freecell_game";
+
 /**
- * The fewest moves in a win on this device, for the "new best" badge. The play and win counters
- * this record once held were never shown (the Stats screen reads the server, #2636): they are
- * dropped on the next save, as Solitaire's and Sudoku's were.
+ * `state` without its one-shot `events`: a save holds the game only, so a restore
+ * never replays the last move's sound or motion (#3826, as Solitaire's #3093).
  */
-export interface FreeCellStats {
-  bestMoves: number;
+function withoutEvents(state: FreeCellState): FreeCellState {
+  if (!("events" in state)) return state;
+  const { events: _events, ...game } = state;
+  return game;
 }
 
 function stripNestedUndo(state: FreeCellState): FreeCellState {
   return {
-    ...state,
-    undoStack: state.undoStack.map((snapshot) => ({ ...snapshot, undoStack: [] })),
+    ...withoutEvents(state),
+    // A snapshot's clock is never restored (an undo keeps the running clock, #3607).
+    undoStack: state.undoStack.map(({ clock: _clock, ...snapshot }) => ({
+      ...snapshot,
+      undoStack: [],
+    })),
   };
 }
 
-function isSavedGame(p: unknown): p is FreeCellState {
+/** A well-formed play clock (#3607): a number or null start, a finite banked time. */
+function isPlayClock(c: unknown): c is PlayClock {
+  if (c === null || typeof c !== "object") return false;
+  const { startedAt, accumulatedMs, paused } = c as Record<string, unknown>;
+  return (
+    (startedAt === null || (typeof startedAt === "number" && Number.isFinite(startedAt))) &&
+    typeof accumulatedMs === "number" &&
+    Number.isFinite(accumulatedMs) &&
+    (paused === undefined || typeof paused === "boolean")
+  );
+}
+
+/**
+ * A saved game with a malformed `clock` loads without it, as "not started", rather
+ * than as a corrupt save: the clock is only the stat line's TIME (#3607). A negative
+ * banked time (a device clock set back) is clamped to 0 and the clock kept.
+ */
+function dropBadClock(stored: unknown): unknown {
+  if (stored === null || typeof stored !== "object") return stored;
+  // Saves written before #3826 still carry the last move's events.
+  const { events: _events, ...parsed } = stored as Record<string, unknown>;
+  if (!("clock" in parsed)) return parsed;
+  const { clock, ...rest } = parsed;
+  if (!isPlayClock(clock)) return rest;
+  return clock.accumulatedMs < 0 ? { ...rest, clock: { ...clock, accumulatedMs: 0 } } : parsed;
+}
+
+export function isSavedGame(p: unknown): p is FreeCellState {
   const parsed = p as Partial<FreeCellState>;
   return !(
     parsed._v !== 1 ||
@@ -40,22 +75,13 @@ export const {
   load: loadGame,
   clear: clearGame,
 } = createJsonSlot<FreeCellState>({
-  key: "freecell_game",
+  key: FREECELL_GAME_KEY,
   subsystem: SUBSYSTEM,
   isValid: isSavedGame,
+  migrate: dropBadClock,
   beforeSave: stripNestedUndo,
 });
 
-export const { load: loadStats, save: saveStats } = createRecord<FreeCellStats>({
-  key: "freecell_stats_v1",
-  subsystem: SUBSYSTEM,
-  ops: { load: "loadStats", save: "saveStats" },
-  fallback: () => ({ bestMoves: 0 }),
-  read: (raw) => {
-    const parsed = JSON.parse(raw);
-    return {
-      bestMoves: typeof parsed.bestMoves === "number" ? parsed.bestMoves : 0,
-    };
-  },
-  write: (stats) => JSON.stringify(stats),
-});
+// The fewest moves in a win on this device, for the "new best" badge, is the shared personal best
+// (`game/_shared/personalBest.ts`, #3757); its old record `freecell_stats_v1` is moved in there on
+// the first read.

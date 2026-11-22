@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "새 게임 시작",
   "newGame.confirm.cancel": "취소",
   "settings.soundEffects": "음향 효과",
+  "settings.dragDebugOverlay": "드래그 디버그 오버레이",
+  "settings.dragDebugOverlay.description": "개발자용: 드래그하는 동안 손가락 위치, 예상 카드 영역, 드래그 검사 결과를 표시합니다.",
   "clearLogs.label": "로컬 로그 삭제",
   "clearLogs.description": "동기화되지 않은 대기 중인 이벤트와 버그 로그를 삭제합니다.",
   "clearLogs.button": "삭제",
@@ -49,8 +51,15 @@
   "overflow.abandon.body": "새 게임을 시작하면 이번 라운드의 진행 상황이 사라집니다. 통계 기록에는 영향을 주지 않습니다.",
   "overflow.abandon.keepPlaying": "계속하기",
   "overflow.abandon.startNew": "새로 시작",
+  "play": "플레이",
   "home.locked.buttonLabel": "잠금 해제",
   "home.locked.cardLabel": "{{title}} — 잠김, 탭하여 잠금 해제",
+  "home.resume.buttonLabel": "이어하기",
+  "home.resume.cardLabel": "{{label}} — 진행 중, 탭하여 이어하기",
+  "home.status.inProgress": "진행 중",
+  "home.status.doneToday": "오늘 완료",
+  "home.status.best": "최고 {{value}}",
+  "home.status.bestMoves": "최고 이동 수: {{value}}",
   "deleteData.label": "내 데이터 삭제",
   "deleteData.description": "이 기기와 연결된 모든 게임 기록과 통계를 영구적으로 삭제합니다.",
   "deleteData.button": "삭제",
@@ -103,5 +112,6 @@
   "locked.back": "로비로 돌아가기",
   "locked.back_label": "로비로 돌아가기",
   "offline.windowExhausted": "연결한 지 3일이 지났습니다. 최신 퍼즐을 받으려면 인터넷에 연결하세요.",
-  "offline.windowExhaustedStreak": "연속 기록을 이어가려면 연결하세요."
+  "offline.windowExhaustedStreak": "연속 기록을 이어가려면 연결하세요.",
+  "action.autoComplete": "자동 완료"
 }

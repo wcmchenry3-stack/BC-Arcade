@@ -25,6 +25,17 @@ export function advanceMs(state: StarSwarmState, ms: number, input = NO_INPUT): 
   return s;
 }
 
+/**
+ * #3561: tick through a due reinforcement batch — the tick that opens the Carrier's bay (when a
+ * launch is possible), then the bay-open telegraph out to the launch. Returns the state on the
+ * launch tick (or the first tick if the bay never opened).
+ */
+export function reinforceTick(state: StarSwarmState, input = NO_INPUT, dtMs = 16): StarSwarmState {
+  let s = tick(state, dtMs, input);
+  for (let i = 0; i < 100 && s.carrierBayOpen > 0; i++) s = tick(s, dtMs, input);
+  return s;
+}
+
 /** #2842: tick through a wave's extraction until the next wave opens (or the game ends). */
 export function runExtraction(state: StarSwarmState, input = NO_INPUT): StarSwarmState {
   let s = state;

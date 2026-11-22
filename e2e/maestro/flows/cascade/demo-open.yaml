@@ -1,0 +1,16 @@
+appId: com.buffingchi.games
+# Cascade demo flow (#3705). Tagged `demo`: the per-PR and weekly smoke runs
+# pass --exclude-tags=demo, and only the `flows: cascade-demo` dispatch runs
+# it (docs/MAESTRO.md, "Cascade demo flows"). It records a video and takes a
+# named screenshot, both uploaded as the maestro-<platform>-media artifact.
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: cascade-demo-open
+- runFlow: ../_shared/open-cascade.yaml
+# Let the board's first frames and the piece preview render.
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: cascade-demo-open
+- stopRecording

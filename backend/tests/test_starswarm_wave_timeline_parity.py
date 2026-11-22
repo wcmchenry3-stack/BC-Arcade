@@ -17,7 +17,7 @@ from starswarm import models, timeline
 _DIR = Path(__file__).parent / "fixtures"
 _FIXTURE = json.loads((_DIR / "starswarm_wave_timeline_v1.json").read_text(encoding="utf-8"))
 _WAVE_REGISTRIES = json.loads(
-    (_DIR / "starswarm_wave_stats_v1_registries.json").read_text(encoding="utf-8")
+    (_DIR / "starswarm_wave_stats_v2_registries.json").read_text(encoding="utf-8")
 )["registries"]
 
 _BACKEND_REGISTRIES = {

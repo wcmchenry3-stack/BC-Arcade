@@ -26,26 +26,8 @@
     "doNotTranslate": ["Blackjack"],
     "notes": null
   },
-  "chips.display": {
-    "component": "BettingPanel",
-    "description": "Displays the player's current chip count.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": ["{{chips}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "chips.accessibilityLabel": {
-    "component": "BettingPanel",
-    "description": "Screen reader label for chip count.",
-    "tone": "functional",
-    "characterLimit": 40,
-    "placeholders": ["{{chips}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "bet.label": {
-    "component": "BettingPanel",
+    "component": "BettingCircle",
     "description": "Label above the bet amount input.",
     "tone": "neutral",
     "characterLimit": 10,
@@ -53,26 +35,8 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "bet.decreaseLabel": {
-    "component": "BettingPanel",
-    "description": "Accessibility label for the decrease bet button (−10).",
-    "tone": "functional",
-    "characterLimit": 30,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "bet.increaseLabel": {
-    "component": "BettingPanel",
-    "description": "Accessibility label for the increase bet button (+10).",
-    "tone": "functional",
-    "characterLimit": 30,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "bet.accessibilityLabel": {
-    "component": "BettingPanel",
+    "component": "BettingCircle",
     "description": "Screen reader label for the current bet stepper value.",
     "tone": "functional",
     "characterLimit": 40,
@@ -81,7 +45,7 @@
     "notes": null
   },
   "actions.deal": {
-    "component": "BettingPanel",
+    "component": "TableDock",
     "description": "Button label to deal cards and start a hand.",
     "tone": "action",
     "characterLimit": 10,
@@ -90,7 +54,7 @@
     "notes": null
   },
   "actions.dealLabel": {
-    "component": "BettingPanel",
+    "component": "TableDock",
     "description": "Accessibility label for the Deal button.",
     "tone": "functional",
     "characterLimit": 50,
@@ -188,44 +152,8 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "actions.nextHand": {
-    "component": "BlackjackScreen",
-    "description": "Button label to start the next hand after result.",
-    "tone": "action",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "actions.nextHandLabel": {
-    "component": "BlackjackScreen",
-    "description": "Accessibility label for the Next Hand button.",
-    "tone": "functional",
-    "characterLimit": 40,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "actions.quit": {
-    "component": "BlackjackScreen",
-    "description": "Button label to quit the game and return home.",
-    "tone": "neutral",
-    "characterLimit": 8,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "actions.quitLabel": {
-    "component": "BlackjackScreen",
-    "description": "Accessibility label for the Quit button.",
-    "tone": "functional",
-    "characterLimit": 40,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "hand.player": {
-    "component": "HandDisplay",
+    "component": "TableFelt",
     "description": "Label above the player's hand of cards.",
     "tone": "neutral",
     "characterLimit": 12,
@@ -234,7 +162,7 @@
     "notes": null
   },
   "hand.dealer": {
-    "component": "HandDisplay",
+    "component": "TableFelt",
     "description": "Label above the dealer's hand of cards.",
     "tone": "neutral",
     "characterLimit": 14,
@@ -243,7 +171,7 @@
     "notes": null
   },
   "hand.playerHand": {
-    "component": "BlackjackTable",
+    "component": "TableFelt",
     "description": "Label above each player hand when the hand has been split into multiple hands.",
     "tone": "neutral",
     "characterLimit": 24,
@@ -251,39 +179,12 @@
     "doNotTranslate": [],
     "notes": "The limit counts the raw {{number}} placeholder."
   },
-  "hand.activeIndicator": {
-    "component": "BlackjackTable",
-    "description": "Indicator shown under the hand currently being played when a split is active.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "Keep the ● bullet or replace it with the locale's usual 'in progress' marker."
-  },
   "hand.value": {
-    "component": "HandDisplay",
+    "component": "TableFelt",
     "description": "Displays the numeric value of a hard hand.",
     "tone": "neutral",
     "characterLimit": 16,
     "placeholders": ["{{value}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "hand.softValue": {
-    "component": "HandDisplay",
-    "description": "Displays the numeric value of a soft hand (at least one Ace counted as 11).",
-    "tone": "neutral",
-    "characterLimit": 16,
-    "placeholders": ["{{value}}"],
-    "doNotTranslate": [],
-    "notes": "Prefix with the locale word for 'soft' (flexible/low). E.g. 'Soft 17' means Ace+6. Renders as e.g. 'Souple 17'; the limit counts the raw {{value}}."
-  },
-  "hand.valueHidden": {
-    "component": "HandDisplay",
-    "description": "Shown when dealer's hand value is hidden (hole card concealed).",
-    "tone": "neutral",
-    "characterLimit": 12,
-    "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
@@ -350,6 +251,24 @@
     "doNotTranslate": ["Blackjack"],
     "notes": null
   },
+  "outcome.blackjackNatural": {
+    "component": "ResultBanner",
+    "description": "Result banner on the table when the player's natural blackjack wins; says it pays 3 to 2 (#3621).",
+    "tone": "celebratory",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": ["Blackjack", "3:2"],
+    "notes": "Keep the ratio written as 3:2."
+  },
+  "outcome.blackjackNaturalLabel": {
+    "component": "ResultBanner",
+    "description": "Screen-reader label for the table's \"Blackjack! 3:2\" banner: says the 3:2 payout in words, so it is not read as \"3 colon 2\" (#3621).",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": ["Blackjack"],
+    "notes": "Spoken, not shown. Use the natural way to say a 3-to-2 payout in the language."
+  },
   "outcome.win": {
     "component": "ResultBanner",
     "description": "Result banner when player wins.",
@@ -413,35 +332,62 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "phase.betting": {
-    "component": "BlackjackScreen",
-    "description": "Phase indicator shown to the player during the betting phase.",
-    "tone": "instructional",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "phase.player": {
-    "component": "BlackjackScreen",
-    "description": "Phase indicator shown during the player's turn.",
-    "tone": "instructional",
-    "characterLimit": 14,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "phase.result": {
-    "component": "BlackjackScreen",
-    "description": "Phase indicator shown after the round is resolved.",
+  "tag.win": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag, shown on the hand after the round (\"WIN\"; drawn in capitals).",
     "tone": "neutral",
-    "characterLimit": 14,
+    "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "Must fit a split hand's one-line result label with the total and a 3-digit payout (#3782): about 60 px drawn in capitals (German VERLUST, 7 Latin capitals, fits). Russian uses Минус for lose. Measure again (tableGeometry.test.ts) after a change."
+  },
+  "tag.lose": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag when it lost (\"LOSE\"; drawn in capitals).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "See tag.win: about 60 px drawn in capitals (#3782)."
+  },
+  "tag.push": {
+    "component": "TableFelt",
+    "description": "A split hand's own result tag when it tied the dealer (\"PUSH\"; drawn in capitals).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "See tag.win: about 60 px drawn in capitals (#3782)."
+  },
+  "result.splitWon": {
+    "component": "ResultBanner",
+    "description": "Split round summary under the dealer: how many hands won, e.g. \"Won: 1\". Joined with the losses and pushes by \" · \".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
+  },
+  "result.splitLost": {
+    "component": "ResultBanner",
+    "description": "Split round summary: how many hands lost, e.g. \"Lost: 2\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
+  },
+  "result.splitPush": {
+    "component": "ResultBanner",
+    "description": "Split round summary: how many hands tied the dealer, e.g. \"Push: 1\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{count}}"],
+    "doNotTranslate": [],
+    "notes": "A label and a number, so no plural forms are needed."
   },
   "gameOver.title": {
-    "component": "GameOverModal",
+    "component": "BlackjackTableScreen (GameResultModal)",
     "description": "Title of the game-over modal when the player runs out of chips.",
     "tone": "sympathetic",
     "characterLimit": 16,
@@ -449,35 +395,8 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "header.brandName": {
-    "component": "HudSidebar",
-    "description": "Brand wordmark intended for a Blackjack table header showing the app name.",
-    "tone": "neutral",
-    "characterLimit": 14,
-    "placeholders": [],
-    "doNotTranslate": ["BC Arcade"],
-    "notes": "Currently unused in the app; reserved for a future table header. Do not translate the app name."
-  },
-  "header.bankrollLabel": {
-    "component": "HudSidebar",
-    "description": "Label for the player's chip bankroll, intended for a Blackjack table header.",
-    "tone": "neutral",
-    "characterLimit": 14,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "Currently unused in the app; reserved for a future table header."
-  },
-  "header.bankrollAccessibilityLabel": {
-    "component": "HudSidebar",
-    "description": "Accessibility label for the bankroll display, intended for a future Blackjack table header.",
-    "tone": "functional",
-    "characterLimit": 45,
-    "placeholders": ["{{chips}}"],
-    "doNotTranslate": [],
-    "notes": "Currently unused in the app; the limit counts the raw {{chips}} placeholder."
-  },
   "betting.clearBet": {
-    "component": "BettingPanel",
+    "component": "TableDock",
     "description": "Button label to clear the current bet back to zero.",
     "tone": "action",
     "characterLimit": 12,
@@ -486,7 +405,7 @@
     "notes": null
   },
   "betting.clearBetLabel": {
-    "component": "BettingPanel",
+    "component": "TableDock",
     "description": "Accessibility label for the Clear bet button.",
     "tone": "functional",
     "characterLimit": 55,
@@ -495,7 +414,7 @@
     "notes": null
   },
   "betting.tableLimits": {
-    "component": "BettingPanel",
+    "component": "BlackjackTableScreen",
     "description": "Heading above the table's minimum and maximum bet range.",
     "tone": "neutral",
     "characterLimit": 24,
@@ -504,7 +423,7 @@
     "notes": null
   },
   "betting.tableLimitsRange": {
-    "component": "BettingPanel",
+    "component": "BlackjackTableScreen",
     "description": "Displays the table's minimum and maximum bet in chips.",
     "tone": "neutral",
     "characterLimit": 32,
@@ -540,7 +459,7 @@
     "notes": null
   },
   "rules.title": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Heading for the collapsible table rules panel.",
     "tone": "neutral",
     "characterLimit": 26,
@@ -549,7 +468,7 @@
     "notes": null
   },
   "rules.toggleLabel": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the button that expands or collapses the table rules panel.",
     "tone": "functional",
     "characterLimit": 42,
@@ -558,7 +477,7 @@
     "notes": null
   },
   "rules.dealerSoft17": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Row label for the dealer's soft-17 rule setting.",
     "tone": "neutral",
     "characterLimit": 26,
@@ -567,7 +486,7 @@
     "notes": null
   },
   "rules.s17": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Abbreviation for \"dealer stands on soft 17\", shown on a segmented control.",
     "tone": "neutral",
     "characterLimit": 8,
@@ -576,7 +495,7 @@
     "notes": "Standard blackjack rule abbreviation; keep it short and recognizable."
   },
   "rules.h17": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Abbreviation for \"dealer hits on soft 17\", shown on a segmented control.",
     "tone": "neutral",
     "characterLimit": 8,
@@ -585,7 +504,7 @@
     "notes": "Standard blackjack rule abbreviation; keep it short and recognizable."
   },
   "rules.s17Label": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the S17 (dealer stands on soft 17) rule option.",
     "tone": "functional",
     "characterLimit": 45,
@@ -594,7 +513,7 @@
     "notes": null
   },
   "rules.h17Label": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the H17 (dealer hits on soft 17) rule option.",
     "tone": "functional",
     "characterLimit": 45,
@@ -603,7 +522,7 @@
     "notes": null
   },
   "rules.deckCount": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Row label for the number of decks shuffled into the shoe.",
     "tone": "neutral",
     "characterLimit": 14,
@@ -612,7 +531,7 @@
     "notes": null
   },
   "rules.decreaseDeckLabel": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the button that decreases the deck count.",
     "tone": "functional",
     "characterLimit": 38,
@@ -621,7 +540,7 @@
     "notes": null
   },
   "rules.increaseDeckLabel": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the button that increases the deck count.",
     "tone": "functional",
     "characterLimit": 38,
@@ -630,7 +549,7 @@
     "notes": null
   },
   "rules.penetration": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Row label for the shoe penetration percentage setting.",
     "tone": "neutral",
     "characterLimit": 20,
@@ -639,7 +558,7 @@
     "notes": null
   },
   "rules.decreasePenetrationLabel": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the button that decreases shoe penetration.",
     "tone": "functional",
     "characterLimit": 34,
@@ -648,7 +567,7 @@
     "notes": null
   },
   "rules.increasePenetrationLabel": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the button that increases shoe penetration.",
     "tone": "functional",
     "characterLimit": 34,
@@ -657,7 +576,7 @@
     "notes": null
   },
   "rules.soft17TooltipLabel": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the info button that opens the dealer soft-17 rule tooltip.",
     "tone": "functional",
     "characterLimit": 45,
@@ -666,7 +585,7 @@
     "notes": null
   },
   "rules.decksTooltipLabel": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the info button that opens the deck-count tooltip.",
     "tone": "functional",
     "characterLimit": 42,
@@ -675,7 +594,7 @@
     "notes": null
   },
   "rules.penetrationTooltipLabel": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Accessibility label for the info button that opens the penetration tooltip.",
     "tone": "functional",
     "characterLimit": 42,
@@ -684,7 +603,7 @@
     "notes": null
   },
   "rules.soft17Tooltip": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Explanatory tooltip text describing the S17/H17 dealer rule and its effect on the odds.",
     "tone": "instructional",
     "characterLimit": 170,
@@ -693,7 +612,7 @@
     "notes": null
   },
   "rules.decksTooltip": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Explanatory tooltip text describing how deck count affects the house edge and card counting.",
     "tone": "instructional",
     "characterLimit": 160,
@@ -702,13 +621,31 @@
     "notes": null
   },
   "rules.penetrationTooltip": {
-    "component": "BettingPanel",
+    "component": "TableRules",
     "description": "Explanatory tooltip text describing shoe penetration and its effect on variance.",
     "tone": "instructional",
     "characterLimit": 190,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "rules.standardTitle": {
+    "component": "TableRules",
+    "description": "Heading for the fixed rules every table plays by, under the adjustable ones.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "rules.standard": {
+    "component": "TableRules",
+    "description": "The fixed rules (#3741): a blackjack (natural) pays 3:2; the dealer checks for blackjack when showing an Ace or a ten-value card, and a dealer blackjack ends the hand for the original bet only (a push against the player's blackjack); a blackjack beats any other 21.",
+    "tone": "instructional",
+    "characterLimit": 320,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Keep 3:2 as written. 'Blackjack' as each locale already writes it in this namespace."
   },
   "score.heroLabel": {
     "component": "BlackjackScorecard",
@@ -806,6 +743,15 @@
     "tone": "functional",
     "characterLimit": 60,
     "placeholders": ["{{chips}}", "{{goal}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hud.chipsAccessibilityLabel": {
+    "component": "HudSidebar",
+    "description": "Accessibility label for the chip total in the HUD when the run has no goal (after Keep Playing).",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -971,15 +917,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "phase.victory": {
-    "component": "BlackjackScreen",
-    "description": "Phase indicator shown when the player reaches their run's chip goal.",
-    "tone": "celebratory",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "victory.subtitle": {
     "component": "BlackjackVictoryScreen",
     "description": "Subtitle on the victory screen naming the table just completed.",
@@ -1051,6 +988,24 @@
     "placeholders": ["{{chips}}"],
     "doNotTranslate": [],
     "notes": null
+  },
+  "hud.milestone": {
+    "component": "HudSidebar",
+    "description": "Short chip in the HUD strip announcing a chip milestone; the full sentence is milestone.toast, which a screen reader announces.",
+    "tone": "celebratory",
+    "characterLimit": 24,
+    "placeholders": ["{{chips}}"],
+    "doNotTranslate": [],
+    "notes": "Must fit one line at 320 px beside the chips and goal; keep it short."
+  },
+  "hud.comeback": {
+    "component": "HudSidebar",
+    "description": "Short chip in the HUD strip announcing a comeback; the full sentence is comeback.banner, and the accessibility label is comeback.bannerAccessibilityLabel.",
+    "tone": "celebratory",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Must fit one line at 320 px beside the chips and goal; keep it short."
   },
   "hud.winStreakAccessibilityLabel": {
     "component": "HudSidebar",
@@ -1314,7 +1269,7 @@
     "notes": null
   },
   "stats.viewStats": {
-    "component": "BlackjackBettingScreen",
+    "component": "BlackjackTableScreen",
     "description": "Link label that opens the run statistics screen.",
     "tone": "functional",
     "characterLimit": 30,
@@ -1323,7 +1278,7 @@
     "notes": null
   },
   "stats.viewStatsLabel": {
-    "component": "BlackjackBettingScreen/TableSelectPanel",
+    "component": "TableSelectPanel",
     "description": "Accessibility label for the link that opens the run statistics screen.",
     "tone": "functional",
     "characterLimit": 45,
@@ -1350,7 +1305,7 @@
     "notes": "Short past-tense label, e.g. 'Last played'."
   },
   "a11y.dealerScore": {
-    "component": "ScorePill (accessibility)",
+    "component": "TableFelt (accessibility)",
     "description": "Screen-reader label for the dealer's visible hand total.",
     "tone": "functional",
     "characterLimit": 40,
@@ -1359,7 +1314,7 @@
     "notes": ""
   },
   "a11y.dealerScoreHidden": {
-    "component": "ScorePill (accessibility)",
+    "component": "TableFelt (accessibility)",
     "description": "Screen-reader label for the dealer's total while the hole card is face down.",
     "tone": "functional",
     "characterLimit": 40,
@@ -1368,12 +1323,129 @@
     "notes": ""
   },
   "a11y.playerScore": {
-    "component": "ScorePill (accessibility)",
+    "component": "TableFelt (accessibility)",
     "description": "Screen-reader label for the player's hand total.",
     "tone": "functional",
     "characterLimit": 40,
     "placeholders": ["{{score}}"],
     "doNotTranslate": [],
     "notes": ""
+  },
+  "actions.change": {
+    "component": "TableDock",
+    "description": "Dock button after a hand: clear the bet and pick a new one.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short: shares a row with Rebet and 2×."
+  },
+  "actions.changeLabel": {
+    "component": "TableDock",
+    "description": "Accessibility label for the Change button.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "actions.rebet": {
+    "component": "TableDock",
+    "description": "Dock button after a hand: deal again with the same bet. The amount is shown beside it.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short: shares a row with Change and 2×."
+  },
+  "actions.rebetLabel": {
+    "component": "TableDock",
+    "description": "Accessibility label for the Rebet button.",
+    "tone": "functional",
+    "characterLimit": 70,
+    "placeholders": ["amount"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "actions.doubleBet": {
+    "component": "TableDock",
+    "description": "Dock button after a hand: deal again with double the last bet. The amount is shown beside it.",
+    "tone": "functional",
+    "characterLimit": 4,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A symbol: 2 times. Keep it as is unless your script writes it differently."
+  },
+  "actions.doubleBetLabel": {
+    "component": "TableDock",
+    "description": "Accessibility label for the 2× button.",
+    "tone": "functional",
+    "characterLimit": 80,
+    "placeholders": ["amount"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.dealerBusts": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the dealer went over 21.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": ["value"],
+    "doNotTranslate": [],
+    "notes": "value is the dealer's total, e.g. 22."
+  },
+  "result.playerBusts": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the player went over 21.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["value"],
+    "doNotTranslate": [],
+    "notes": "value is the player's total."
+  },
+  "result.versus": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the two totals compared.",
+    "tone": "neutral",
+    "characterLimit": 50,
+    "placeholders": ["player", "dealer"],
+    "doNotTranslate": [],
+    "notes": "player and dealer are hand totals, e.g. 18 against the dealer's 20."
+  },
+  "result.dealerHas": {
+    "component": "TableFelt",
+    "description": "Result detail after a split: the dealer's final total.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["value"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "result.dealerBlackjack": {
+    "component": "TableFelt",
+    "description": "Result detail under the result banner: the dealer's two-card 21 (a natural, found by its peek) beat the player.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "'Blackjack' as each locale already writes it in this namespace."
+  },
+  "result.bothBlackjack": {
+    "component": "TableFelt",
+    "description": "Result detail under the Push banner: the player and the dealer both have a two-card 21 (a natural).",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "'Blackjack' as each locale already writes it in this namespace."
+  },
+  "a11y.handBet": {
+    "component": "TableFelt",
+    "description": "Accessibility label part for a hand's bet.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["amount"],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

@@ -56,12 +56,10 @@ export const ALLOWLIST = [
   { path: "components/dev/", reason: "dev panel shell" },
   { path: "components/mahjong/MahjongDevPanel.tsx", reason: "dev panel" },
   { path: "components/starswarm/StarSwarmDevPanel.tsx", reason: "dev panel" },
+  { path: "components/cascade/CascadeDevPanel.tsx", reason: "dev panel" },
   { path: "components/daily_word/DailyWordDevPanel.tsx", reason: "dev panel" },
   { path: "components/yacht/YachtDevPanel.tsx", reason: "dev panel" },
   { path: "components/starswarm/FrameStatsReadout.tsx", reason: "dev-only frame-time readout" },
-  // Cascade's palette moved to the Cascade rework epic (#3033).
-  { path: "screens/CascadeScreen.tsx", reason: "Cascade, #3033" },
-  { path: "game/cascade/", reason: "Cascade, #3033" },
   // Colour-math helpers: they build a colour from computed channels, they are not a colour.
   {
     path: "game/starswarm/render/color.ts",

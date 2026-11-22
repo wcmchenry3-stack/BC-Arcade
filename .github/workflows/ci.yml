@@ -39,7 +39,7 @@ jobs:
       # Keep in lockstep with backend/requirements-dev.txt (the reusable workflow's
       # default ruff is older and would disagree with the local pin). black's default
       # (26.5.1) already matches requirements-dev.txt.
-      ruff-version: "0.17.1"
+      ruff-version: "0.17.5"
     secrets: inherit
 
   # Static analysis (SAST) for backend Python (#3443): Bandit, medium severity and above.
@@ -72,7 +72,7 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: tools
-      ruff-version: "0.17.1"
+      ruff-version: "0.17.5"
     secrets: inherit
 
   # Unit tests for the Python asset tools (not collected by the backend suite).
@@ -80,7 +80,7 @@ jobs:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Test tools (pytest)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # #3672: pinned so the ffmpeg/libvorbis build the sound tests decode with is stable
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -91,6 +91,9 @@ jobs:
           cache-dependency-path: tools/assets/requirements.txt
       - name: Install tools requirements
         run: pip install -r tools/assets/requirements.txt
+      # The sound tests encode and decode Ogg Vorbis (#3672); without ffmpeg they would skip or fail.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: pytest
         working-directory: tools
         run: python -m pytest
@@ -104,8 +107,9 @@ jobs:
     secrets: inherit
 
   # Repo hygiene (#3113): the former conflict-markers, forbidden-terms and
-  # large-file-guard jobs, one step each. Each check step runs even if an earlier
-  # one failed, so every failure shows under its own step name in a single run.
+  # large-file-guard jobs, one step each, plus the replay fixture version guard
+  # (#3911). Each check step runs even if an earlier one failed, so every failure
+  # shows under its own step name in a single run.
   repo-hygiene:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
@@ -169,6 +173,22 @@ jobs:
       - name: Large tracked file guard (over 5 MiB)
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: python3 scripts/check_large_files.py
+      # #3911: a pinned replay fixture (or a test's hard-coded replay result) may not change
+      # without the game's engine_version bump. Stdlib-only; manifest .github/replay-fixtures.json;
+      # docs/CI-CHECKS.md#replay-fixture-version-guard-3911. PRs into dev and pushes to dev diff
+      # against the base commit (one shallow fetch); main runs the manifest rules only, since every
+      # change reached it through a dev PR that ran the diff.
+      - name: Replay fixture version guard
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ (github.event_name == 'pull_request' && github.base_ref == 'dev' && github.event.pull_request.base.sha) || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && github.event.before) || '' }}
+        run: |
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            python3 scripts/check_replay_fixture_versions.py --static
+          else
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            python3 scripts/check_replay_fixture_versions.py --base "$BASE_SHA"
+          fi
 
   # === Tier 1: Substantive fast checks (need lint + secret-scan) ===========
 
@@ -499,7 +519,7 @@ jobs:
   test-postgres:
     name: Test backend on Postgres (advisory)
     needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # #3514: ubuntu-latest (26.04) has no Postgres 17 cluster
     continue-on-error: true
     defaults:
       run:
@@ -613,7 +633,8 @@ jobs:
         env:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
         run: >-
-          python -m pytest tests/test_jsonx.py tests/test_replay_storage_pg.py -v --no-cov
+          python -m pytest tests/test_jsonx.py tests/test_replay_storage_pg.py
+          tests/test_daily_challenge_sort_pg.py -v --no-cov
           -o asyncio_default_fixture_loop_scope=session
           -o asyncio_default_test_loop_scope=session
 
@@ -693,7 +714,7 @@ jobs:
   e2e:
     name: Playwright E2E
     needs: [test-python, test-frontend, detect-e2e-scope]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # #3514: Playwright 1.58 does not support ubuntu26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -864,6 +885,8 @@ jobs:
       #            build. Lowering it now would only fail the premium launch; the guard against
       #            drift on today's store bundle is the warn threshold below, and the
       #            all-games ceiling is enforced by the next step.
+      #   8.25 MiB — all-games ceiling only (#3791, 2026-11-13); store stays 8 MiB. Temporary:
+      #            #3820 cuts the all-games JS and lowers it back to 8 MiB.
       # JS warn threshold: 6.0 MiB (6,291,456 B) = ~8% above today's 5.55 MiB store bundle. Warn
       #   only. Was 6.75 MiB (~8% above 6.24 MiB) until #3150 dropped the non-launch locales.
       # Packaged-assets hard limit: 4 MiB (4,194,304 B) = ~23% above today's 3.25 MiB store
@@ -881,13 +904,18 @@ jobs:
             --max-js 8388608 \
             --warn-js 6291456 \
             --max-assets 4194304 \
+            --warn-assets 3932160 \
             --forbid-hidden-assets \
             --forbid-hidden-locales \
             --sources \
             --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
         id: size
       # Premium ceiling: the same entry with the hidden games kept (pre-launch API URL).
-      # Same 8 MiB limit; this is the number that predicts the premium store build.
+      # This is the number that predicts the premium store build. 8.25 MiB (8,650,752 B) since
+      # #3791 (2026-11-13): dev's all-games bundle reached 8,379,013 B and the Bottle Sort sound
+      # set's asset-registry entries put it 711 B over 8 MiB. Owner decision: raise it here only
+      # (the store-config limit stays 8 MiB) and win the headroom back in #3820, which lowers
+      # this back to 8388608.
       - name: All-games JS ceiling (pre-launch config)
         env:
           EXPO_PUBLIC_API_URL: https://dev-games-api.buffingchi.com
@@ -903,7 +931,7 @@ jobs:
           node scripts/size-report.mjs \
             --bundle dist/all/index.android.bundle \
             --assets dist/all/assets \
-            --max-js 8388608 | tee -a "$GITHUB_STEP_SUMMARY"
+            --max-js 8650752 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Check bundle size (bundlesize)
         run: npx bundlesize
         continue-on-error: true
@@ -915,6 +943,7 @@ jobs:
           BUNDLE_SIZE_BYTES: ${{ steps.size.outputs.js_bytes }}
           ASSET_BYTES: ${{ steps.size.outputs.asset_bytes }}
           ASSET_FILES: ${{ steps.size.outputs.asset_files }}
+          SIZE_STATUS: ${{ steps.size.outputs.status }}
         run: |
           # Store-bundle JS baseline: 2026-10-10, after #3150 (was 6,544,825 after #2830 + #2832).
           BASELINE_BYTES=5818990
@@ -926,13 +955,20 @@ jobs:
           else
             DELTA_STR="$(awk "BEGIN {printf \"%.0f\", $DELTA_BYTES / 1024}") KB"
           fi
+          # status=warn means a warn line was crossed (JS 6.0 MiB or assets 3.75 MiB); the hard limits fail the step before this one.
+          WARN_NOTE=""
+          if [ "$SIZE_STATUS" = "warn" ]; then
+            WARN_NOTE=":warning: **Warning:** a size warn line was crossed (JS 6.0 MiB or packaged assets 3.75 MiB). CI still passes; see the Size budgets step and PERFORMANCE.md for the owner-decision rule."
+          fi
           COMMENT="<!-- bundle-size -->
           ### Bundle size report (store config)
           | | Size | Limit |
           |---|---|---|
           | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.0 MiB warn |
           | Delta vs 5.55 MiB store baseline (2026-10-10) | ${DELTA_STR} | |
-          | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard |
+          | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard, 3.75 MiB warn |
+
+          ${WARN_NOTE}
 
           _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games and non-launch locales excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
           # Find this report's own comment (marker, or the heading on reports posted before

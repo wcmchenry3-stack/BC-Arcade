@@ -1,0 +1,13 @@
+import { ENGINE_VERSION } from "../engine";
+import { startedData } from "../replay";
+
+describe("twenty48 engine_version in game_started (#3909)", () => {
+  it("is a positive integer, starting at 1", () => {
+    expect(Number.isInteger(ENGINE_VERSION)).toBe(true);
+    expect(ENGINE_VERSION).toBe(1);
+  });
+
+  it("is the value the game_started data records", () => {
+    expect(startedData(new Array(16).fill(0)).engine_version).toBe(ENGINE_VERSION);
+  });
+});

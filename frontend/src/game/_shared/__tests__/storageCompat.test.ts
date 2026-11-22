@@ -24,6 +24,27 @@
  * unchanged). "read fails" keeps the old key, because the first read is now
  * the migration's read of the old slot, and "bad puzzle id" seeds the old slot.
  *
+ * Sort's level cache (`@sort/levels_cache`) is gone (#2761): the levels ship
+ * in the app, so its four recorded scenarios were removed with it.
+ *
+ * Cascade's save moved to the 12-tier ladder (#3695): its recorded scenarios were edited by hand
+ * to the new key, `cascade_game_v4`, and `"version":4` (the bytes and results are otherwise
+ * unchanged). Discarding an old `cascade_game_v3` save is tested in `cascade/__tests__/storage.test.ts`.
+ * #3697 (the lively ladder on planck.js) moved it again, to `cascade_game_v5` and `"version":5`,
+ * edited by hand the same way; discarding a v4 save is tested in the same file. #3904 (the
+ * constant-ratio ladder, radii 5-98) moved it to `cascade_game_v6` and `"version":6` the same
+ * way; discarding a v5 save is tested in `cascade/__tests__/storage.test.ts`. #3920 (the 11-tier
+ * ladder) moved it to `cascade_game_v7` and `"version":7` the same way; discarding a v6 save is
+ * tested in the same file. #3960 (the 12-tier ladder) moved it to `cascade_game_v8` and
+ * `"version":8` the same way; discarding a v7 save is tested in `cascade/__tests__/storage.test.ts`.
+ *
+ * The best scores moved to the shared personal best (#3757, `personalBest.ts`): the scenarios of
+ * each game's old best-score record were removed with it (Cascade, FreeCell, Mahjong, Solitaire,
+ * Sudoku, 2048). Reading those old bytes is tested in `personalBest.test.ts`, which moves them in.
+ * Sort's best moves followed (#3821): its five best-moves scenarios were removed the same way, and
+ * their recorded bytes are the old-format fixtures of `sort/__tests__/bestMovesMigration.test.ts`.
+ * "sort: clear" seeds its old bests (the same bytes) instead of writing them through the module.
+ *
  * Do not re-record the fixture from the current modules: it is the record of
  * the old behaviour.
  */
@@ -34,7 +55,7 @@ import fixture from "./__fixtures__/storageCompat.json";
 
 import * as blackjack from "../../blackjack/storage";
 import * as blackjackEngine from "../../blackjack/engine";
-import * as cascade from "../../cascade/storage2";
+import * as cascade from "../../cascade/storage";
 import * as dailyWord from "../../daily_word/storage";
 import { initialState as dailyWordInitial } from "../../daily_word/engine";
 import * as freecell from "../../freecell/storage";
@@ -163,7 +184,7 @@ function yachtState() {
 }
 
 const cascadeSave = {
-  version: 3 as const,
+  version: 8 as const,
   pieces: [
     { tier: 0, x: 10.5, y: 20.25 },
     { tier: 3, x: 140, y: 300 },
@@ -198,7 +219,7 @@ const GAME_MODULES: Record<string, GameModule> = {
     clear: () => blackjack.clearGame(),
   },
   cascade: {
-    key: "cascade_game_v3",
+    key: "cascade_game_v8",
     save: () => cascade.saveGame(cascadeSave),
     load: () => cascade.loadGame(),
     clear: () => cascade.clearGame(),
@@ -309,38 +330,12 @@ Object.assign(scenarios, {
     run: blackjack.loadGame,
   },
   "cascade: save without playedMs": {
-    seed: { cascade_game_v3: JSON.stringify({ ...cascadeSave, playedMs: undefined }) },
+    seed: { cascade_game_v8: JSON.stringify({ ...cascadeSave, playedMs: undefined }) },
     run: cascade.loadGame,
   },
-  "cascade: best score": {
-    run: async () => {
-      await cascade.saveBestScore(1234.9);
-      return cascade.loadBestScore();
-    },
-  },
-  "cascade: best score junk": { seed: { cascade_best_score: "abc" }, run: cascade.loadBestScore },
-  "cascade: best score read fails": { fail: ["getItem"], run: cascade.loadBestScore },
-  "cascade: best score write fails": { fail: ["setItem"], run: () => cascade.saveBestScore(5) },
   "daily_word: bad puzzle id": {
     seed: { daily_word_state_v1: JSON.stringify({ _v: 1, puzzle_id: "today", rows: [] }) },
     run: () => dailyWord.loadState("2026-10-07:en"),
-  },
-  "freecell: stats": {
-    run: async () => {
-      await freecell.saveStats({ bestMoves: 80 });
-      return freecell.loadStats();
-    },
-  },
-  "freecell: stats partial": {
-    seed: { freecell_stats_v1: '{"gamesWon":4,"bestMoves":"x"}' },
-    run: freecell.loadStats,
-  },
-  "freecell: stats none": { run: freecell.loadStats },
-  "freecell: stats corrupt": { seed: { freecell_stats_v1: "{x" }, run: freecell.loadStats },
-  "freecell: stats null": { seed: { freecell_stats_v1: "null" }, run: freecell.loadStats },
-  "freecell: stats write fails": {
-    fail: ["setItem"],
-    run: () => freecell.saveStats({ bestMoves: 1 }),
   },
   "hearts: v2 save with an old persona": {
     seed: {
@@ -393,25 +388,6 @@ Object.assign(scenarios, {
     },
     run: laterLoad(mahjong.loadGame),
   },
-  "mahjong: stats": {
-    run: async () => {
-      await mahjong.saveStats({ bestTimeMsByLayout: { turtle: 300_000 } });
-      return mahjong.loadStats();
-    },
-  },
-  "mahjong: stats pre-#2747": {
-    seed: {
-      mahjong_stats_v1:
-        '{"bestScore":5,"bestTimeMs":1000,"bestTimeMsByLayout":{"turtle":1,"fort":"x","pyramid":400000}}',
-    },
-    run: mahjong.loadStats,
-  },
-  "mahjong: stats none": { run: mahjong.loadStats },
-  "mahjong: stats corrupt": { seed: { mahjong_stats_v1: "{x" }, run: mahjong.loadStats },
-  "mahjong: stats write fails": {
-    fail: ["setItem"],
-    run: () => mahjong.saveStats({ bestTimeMsByLayout: {} }),
-  },
   "mahjong: progress": {
     run: async () => {
       await mahjong.saveProgress({
@@ -442,26 +418,6 @@ Object.assign(scenarios, {
     },
     run: laterLoad(solitaire.loadGame),
   },
-  "solitaire: stats": {
-    run: async () => {
-      await solitaire.saveStats({ bestTimeMs: 99_000 });
-      return solitaire.loadStats();
-    },
-  },
-  "solitaire: stats with old counters": {
-    seed: { solitaire_stats_v1: '{"bestTimeMs":5000,"bestMoves":80,"gamesPlayed":4}' },
-    run: async () => {
-      const stats = await solitaire.loadStats();
-      await solitaire.saveStats(stats);
-      return stats;
-    },
-  },
-  "solitaire: stats null": { seed: { solitaire_stats_v1: "null" }, run: solitaire.loadStats },
-  "solitaire: stats corrupt": { seed: { solitaire_stats_v1: "{x" }, run: solitaire.loadStats },
-  "solitaire: stats write fails": {
-    fail: ["setItem"],
-    run: () => solitaire.saveStats({ bestTimeMs: 1 }),
-  },
   "sudoku: save without variant": {
     seed: {
       sudoku_game: (() => {
@@ -486,27 +442,6 @@ Object.assign(scenarios, {
     },
     run: sudoku.loadGame,
   },
-  "sudoku: stats": {
-    run: async () => {
-      const stats = {
-        classic: { easy: { bestTimeS: 100 }, medium: { bestTimeS: 0 }, hard: { bestTimeS: 0 } },
-        mini: { easy: { bestTimeS: 40 }, medium: { bestTimeS: 0 }, hard: { bestTimeS: 9 } },
-      };
-      await sudoku.saveStats(stats);
-      return sudoku.loadStats();
-    },
-  },
-  "sudoku: stats pre-#748 flat": {
-    seed: { sudoku_stats_v1: '{"easy":{"bestTimeS":50,"gamesSolved":3},"hard":null}' },
-    run: sudoku.loadStats,
-  },
-  "sudoku: stats none": { run: sudoku.loadStats },
-  "sudoku: stats corrupt": { seed: { sudoku_stats_v1: "{x" }, run: sudoku.loadStats },
-  "sudoku: stats null": { seed: { sudoku_stats_v1: "null" }, run: sudoku.loadStats },
-  "sudoku: stats write fails": {
-    fail: ["setItem"],
-    run: () => sudoku.saveStats(sudoku.EMPTY_SUDOKU_STATS),
-  },
   "twenty48: save without tiles (pre-#570)": {
     seed: {
       twenty48_game_v2: JSON.stringify({
@@ -527,18 +462,6 @@ Object.assign(scenarios, {
       return { loaded, next: twenty48Engine.move(loaded as never, "right").tiles };
     },
   },
-  "twenty48: best score": {
-    run: async () => {
-      await twenty48.saveBestScore(2048);
-      return twenty48.loadBestScore();
-    },
-  },
-  "twenty48: best score junk": {
-    seed: { twenty48_best_score_v1: "abc" },
-    run: twenty48.loadBestScore,
-  },
-  "twenty48: best score read fails": { fail: ["getItem"], run: twenty48.loadBestScore },
-  "twenty48: best score write fails": { fail: ["setItem"], run: () => twenty48.saveBestScore(8) },
   "yacht: bad finished-game id": {
     seed: {
       yacht_game_v2: JSON.stringify({
@@ -551,7 +474,7 @@ Object.assign(scenarios, {
     run: yacht.loadGame,
   },
   "yacht: solo save": { run: () => yacht.saveGame(yachtState()) },
-  // Sort: saved progress, cache and bests keep their bytes and load the same.
+  // Sort: saved progress and bests keep their bytes and load the same.
   "sort: progress": {
     run: async () => {
       await sort.saveProgress({
@@ -569,27 +492,11 @@ Object.assign(scenarios, {
     },
   },
   "sort: progress none": { run: sort.loadProgress },
-  "sort: levels cache": {
-    run: async () => {
-      await sort.saveLevelsCache({ levels: [{ id: 1, bottles: [["red"], []] }] } as never);
-      return sort.loadLevelsCache();
-    },
-  },
-  "sort: levels cache none": { run: sort.loadLevelsCache },
-  "sort: best moves": {
-    run: async () => {
-      await sort.saveBestMoves({ "1": 8, "2": 11 });
-      return sort.loadBestMoves();
-    },
-  },
-  "sort: best moves filtered": {
-    seed: { "@sort/best_moves": '{"1":5,"2":"x","3":-1}' },
-    run: sort.loadBestMoves,
-  },
   "sort: clear": {
+    // The old bests are seeded in the bytes the old `saveBestMoves` wrote (#3821: the app now
+    // writes them to the shared personal best); clearing the game must still leave them alone.
+    seed: { "@sort/best_moves": '{"1":8}' },
     run: async () => {
-      await sort.saveBestMoves({ "1": 8 });
-      await sort.saveProgress({ unlockedLevel: 2, currentLevelId: null, currentState: null });
       return sort.clearGame();
     },
   },
@@ -600,27 +507,6 @@ Object.assign(scenarios, {
     compare: "result",
   },
   "sort: progress read fails": { fail: ["getItem"], run: sort.loadProgress, compare: "result" },
-  "sort: levels cache corrupt": {
-    seed: { "@sort/levels_cache": "oops" },
-    run: sort.loadLevelsCache,
-    compare: "result",
-  },
-  "sort: levels cache read fails": {
-    fail: ["getItem"],
-    run: sort.loadLevelsCache,
-    compare: "result",
-  },
-  "sort: best moves corrupt": {
-    seed: { "@sort/best_moves": "{x" },
-    run: sort.loadBestMoves,
-    compare: "result",
-  },
-  "sort: best moves read fails": { fail: ["getItem"], run: sort.loadBestMoves, compare: "result" },
-  "sort: best moves write fails": {
-    fail: ["setItem"],
-    run: () => sort.saveBestMoves({ "1": 2 }),
-    compare: "result",
-  },
 } satisfies Record<string, Scenario>);
 
 // --- harness ----------------------------------------------------------------
@@ -664,7 +550,7 @@ async function observe(s: Scenario): Promise<Observation> {
 
 beforeEach(() => {
   jest.restoreAllMocks();
-  jest.spyOn(Date, "now").mockImplementation(() => now);
+  jest.spyOn(performance, "now").mockImplementation(() => now);
 });
 
 const recorded = fixture as Record<string, Observation>;

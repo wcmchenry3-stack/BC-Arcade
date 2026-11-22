@@ -39,6 +39,7 @@ function freshHandle() {
     triggerPowerUp: jest.fn(),
     throwAsteroid: jest.fn(),
     killEscorts: jest.fn(),
+    markDevAffected: jest.fn(), // #3510
   };
 }
 

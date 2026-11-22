@@ -521,6 +521,23 @@ describe("per-wave stats in a save (#3245)", () => {
     expect(SAVE_FINGERPRINT).not.toContain("lastClosedWave");
   });
 
+  it("#3561: the bay-open timer survives a pause; a save without it (or with junk) reads as shut", () => {
+    expect(SAVE_FINGERPRINT).not.toContain("carrierBayOpen");
+    const s = JSON.parse(JSON.stringify(run())) as Record<string, unknown>;
+    const restore = (v: unknown) => {
+      const saved = { ...s, carrierBayOpen: v };
+      expect(fitsSaveShape(saved)).toBe(true);
+      return restoreSavedState(saved as unknown as StarSwarmState).carrierBayOpen;
+    };
+    expect(restore(250)).toBe(250);
+    expect(restore(99_999)).toBe(400); // clamped to the telegraph's length
+    expect(restore(-5)).toBe(0);
+    expect(restore("open")).toBe(0);
+    const { carrierBayOpen: _omit, ...older } = s;
+    expect(fitsSaveShape(older)).toBe(true);
+    expect(restoreSavedState(older as unknown as StarSwarmState).carrierBayOpen).toBe(0);
+  });
+
   it("a state with a top-level key this build doesn't know still doesn't fit", () => {
     const s = JSON.parse(JSON.stringify(run())) as Record<string, unknown>;
     expect(fitsSaveShape({ ...s, waveStatz: {} })).toBe(false);

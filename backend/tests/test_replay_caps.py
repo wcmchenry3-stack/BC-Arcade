@@ -88,7 +88,7 @@ def test_cap_for_uses_the_override_or_the_default() -> None:
     assert cap_for("starswarm") == STARSWARM_CAP
     assert cap_for("twenty48") == TWENTY48_CAP == ReplayCap(2_000, 690_000)
     assert cap_for("blackjack") == BLACKJACK_CAP == ReplayCap(2_000, 560_000)
-    assert cap_for("cascade") == CASCADE_CAP == ReplayCap(3_000, 900_000)
+    assert cap_for("cascade") == CASCADE_CAP == ReplayCap(128, 80 * 1024)  # measured, #3858
     assert cap_for("yacht") == DEFAULT_CAP
     assert cap_for(None) == DEFAULT_CAP
 
@@ -1172,13 +1172,13 @@ def _compact(value: Any) -> int:
 
 
 def _swarm_wave_fixture() -> dict[str, Any]:
-    return json.loads((_FIXTURES / "starswarm_wave_stats_v1.json").read_text(encoding="utf-8"))
+    return json.loads((_FIXTURES / "starswarm_wave_stats_v2.json").read_text(encoding="utf-8"))
 
 
 def _swarm_small_wave(i: int) -> dict[str, Any]:
     """The smallest valid sparse wave plus a real ``pacing`` section (~270 B)."""
     return {
-        "v": 1,
+        "v": 2,
         "wave": i + 1,
         "difficulty": "Ensign",
         "outcome": "cleared",

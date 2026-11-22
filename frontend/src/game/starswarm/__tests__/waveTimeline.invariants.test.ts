@@ -112,9 +112,12 @@ describe.each(DIFFICULTY_TIERS.map((d) => [d]))("invariants at %s", (difficulty)
 });
 
 it("the runs reach damaged cleared waves and deaths (the invariants don't pass on nothing)", () => {
-  const run = seededRun("Commander", true);
-  expect(run.end.closedTimelines.some((t) => t.outcome === "cleared")).toBe(true);
-  const all = run.end.closedTimelines.flatMap((t) => t.e.map((e) => e[1]));
+  // Across every seeded tier together, so one run's trajectory shifting (e.g. #3562 moved which
+  // tier reaches a HULL_HIT) can't make the guard vacuous or force a hand-picked tier swap.
+  const runs = DIFFICULTY_TIERS.map((d) => seededRun(d as DifficultyTier, true));
+  const closed = runs.flatMap((r) => r.end.closedTimelines);
+  expect(closed.some((t) => t.outcome === "cleared")).toBe(true);
+  const all = closed.flatMap((t) => t.e.map((e) => e[1]));
   for (const code of [TL.PHASE, TL.HULL_HIT, TL.LIFE_LOST, TL.WAVE_CLEARED, TL.CARRIER_STAGE]) {
     expect(all).toContain(code);
   }

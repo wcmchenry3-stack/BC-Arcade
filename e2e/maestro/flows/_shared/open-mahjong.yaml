@@ -1,0 +1,20 @@
+appId: com.buffingchi.games
+---
+# Subflow (#3801): open Mahjong from Home, pick the Turtle layout and wait for
+# the board. Used by the Mahjong demo flows (mahjong/demo-*.yaml). The caller
+# runs launch.yaml first and starts its recording after that, so each video
+# begins on Home and shows the game opening. Same steps as mahjong/smoke.yaml.
+- runFlow:
+    file: navigate-to.yaml
+    env:
+      gameSlug: "mahjong"
+      screenLabel: "Mahjong Solitaire"
+# Layout select only shows when no saved game is in progress; skip if resuming.
+# `optional: true` alone is enough, see "Timeouts" in e2e/maestro/README.md.
+- tapOn:
+    id: "mahjong-layout-turtle"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "mahjong-board-viewport"
+    timeout: 15000

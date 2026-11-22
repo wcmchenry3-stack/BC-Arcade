@@ -351,12 +351,10 @@ export function applyMove(state: FreeCellState, move: Move): FreeCellState {
       const tableau = replaceAt(state.tableau, move.fromCol, newSrc);
       const newPile: readonly Card[] = [...state.foundations[card.suit], card];
       const foundations = withFoundation(state.foundations, card.suit, newPile);
-      const tfEvents: GameEvent[] = [{ type: "cardPlace" }];
-      if (newPile.length === 13) tfEvents.push({ type: "foundationComplete", suit: card.suit });
       return finalizeAfterMove(
         state,
         { _v: 1, tableau, freeCells: state.freeCells, foundations, moveCount: state.moveCount + 1 },
-        tfEvents
+        [{ type: "cardPlace" }]
       );
     }
     case "freecell-to-tableau": {
@@ -384,12 +382,10 @@ export function applyMove(state: FreeCellState, move: Move): FreeCellState {
       const freeCells = replaceAt(state.freeCells, move.fromCell, null) as FreeCells;
       const newPile: readonly Card[] = [...state.foundations[card.suit], card];
       const foundations = withFoundation(state.foundations, card.suit, newPile);
-      const ffEvents: GameEvent[] = [{ type: "cardPlace" }];
-      if (newPile.length === 13) ffEvents.push({ type: "foundationComplete", suit: card.suit });
       return finalizeAfterMove(
         state,
         { _v: 1, tableau: state.tableau, freeCells, foundations, moveCount: state.moveCount + 1 },
-        ffEvents
+        [{ type: "cardPlace" }]
       );
     }
     case "foundation-to-tableau": {

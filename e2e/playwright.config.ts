@@ -11,6 +11,7 @@ import { join } from "path";
  *   yacht       — yacht-*.spec.ts
  *   blackjack   — blackjack-*.spec.ts
  *   twenty48    — twenty48-*.spec.ts
+ *   cascade     — cascade-*.spec.ts
  *   mahjong     — mahjong-*.spec.ts
  *   freecell    — freecell-*.spec.ts
  *   hearts      — hearts-*.spec.ts
@@ -18,7 +19,8 @@ import { join } from "path";
  *   sudoku      — sudoku-*.spec.ts
  *   sort        — sort-*.spec.ts
  *   daily_word  — daily-word-*.spec.ts
- *   cross       — accessibility.spec.ts, ui-preferences.spec.ts, i18n-overflow.spec.ts
+ *   cross       — accessibility.spec.ts, ui-preferences.spec.ts, i18n-overflow.spec.ts,
+ *                 lobby-responsive.spec.ts
  *   logs-budget — logs-*.spec.ts (#373 acceptance gate, CPU-throttled to
  *                  approximate mid-tier mobile device performance)
  *
@@ -66,6 +68,9 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      // Cascade draws through Skia's web runtime (CanvasKit), which its route loads when the screen
+      // opens (#2960). cascade-smoke.spec.ts: CanvasKit loading (and only for Cascade), drop, merge,
+      // game over, and the load error with Retry.
       name: "cascade",
       testMatch: "cascade-*.spec.ts",
       use: { ...devices["Desktop Chrome"] },
@@ -116,6 +121,10 @@ export default defineConfig({
         "accessibility.spec.ts",
         "ui-preferences.spec.ts",
         "i18n-overflow.spec.ts",
+        // #4005: was matched by no project, so CI never ran it.
+        "lobby-responsive.spec.ts",
+        // #4006: lobby descriptions fit their reserved lines at the 1.5x font cap.
+        "lobby-tile-text-fit.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },

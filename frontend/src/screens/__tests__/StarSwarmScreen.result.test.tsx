@@ -1,13 +1,15 @@
+import { AccessibilityInfo } from "react-native";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 import i18n from "i18next";
 import EsStarswarm from "../../i18n/locales/es/starswarm.json";
 import { difficultyMultiplier } from "../../game/starswarm/engine";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { getBest, storageKey } from "../../game/_shared/personalBest";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 import type { ScoreLedger } from "../../game/starswarm/scoreLedger";
-import type { StarSwarmState } from "../../game/starswarm/types";
+import type { RunEndContext, StarSwarmState } from "../../game/starswarm/types";
 import { canvas, resetHarness } from "./helpers/starSwarmMocks";
 import { renderScreen, startRun } from "./helpers/starSwarmHarness";
 
@@ -73,7 +75,11 @@ jest.mock("../../game/_shared/gameEventClient", () => {
 });
 
 /** What the canvas's getState() returns: just the fields the result reads. */
-function setEngineState(state: { difficulty: string; scoreLedger?: ScoreLedger }) {
+function setEngineState(state: {
+  difficulty: string;
+  scoreLedger?: ScoreLedger;
+  endContext?: RunEndContext | null;
+}) {
   canvas.state = state as unknown as StarSwarmState;
 }
 
@@ -146,14 +152,32 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(within(screen.getByTestId("starswarm-result")).getByText("New best")).toBeTruthy();
   });
 
+  it("reads the best from the shared personal best and records a new one there (#3757)", async () => {
+    await AsyncStorage.setItem(storageKey("starswarm"), JSON.stringify({ v: 1, b: { _: 3000 } }));
+    await renderScreen();
+    await startRun();
+    await endRun(4200, 7);
+    expect(within(screen.getByTestId("starswarm-result")).getByText("New best")).toBeTruthy();
+    await waitFor(async () => expect(await getBest("starswarm")).toBe(4200));
+  });
+
+  it("writes no best for a run that doesn't beat it (#3757)", async () => {
+    await AsyncStorage.setItem(storageKey("starswarm"), JSON.stringify({ v: 1, b: { _: 9000 } }));
+    await renderScreen();
+    await startRun();
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    setItem.mockClear();
+    await endRun(4200, 7);
+    expect(within(screen.getByTestId("starswarm-result")).getByText("9,000")).toBeTruthy();
+    expect(setItem).not.toHaveBeenCalledWith(storageKey("starswarm"), expect.anything());
+  });
+
   it("saves the first run as the best, but it is not a new best (#2977)", async () => {
     await renderScreen();
     await startRun();
     await endRun(4200, 7);
     expect(within(screen.getByTestId("starswarm-result")).queryByText("New best")).toBeNull();
-    await waitFor(async () =>
-      expect(await AsyncStorage.getItem("starswarm.bestScore")).toBe("4200")
-    );
+    await waitFor(async () => expect(await getBest("starswarm")).toBe(4200));
   });
 
   // #2626: the named session row is the leaderboard entry; the card only reads its rank.
@@ -337,6 +361,21 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     });
   });
 
+  it("Play Again saves a ship tapped in the picker (#3600)", async () => {
+    await renderScreen();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-ship-p2"));
+    });
+    await startRun();
+    await AsyncStorage.removeItem("starswarm.ship");
+    await endRun(4200, 7);
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Play Again" }));
+    });
+    expect(canvas.props.ship).toBe("p2");
+    await waitFor(async () => expect(await AsyncStorage.getItem("starswarm.ship")).toBe("p2"));
+  });
+
   it("Play Again starts a new run at the same difficulty", async () => {
     await renderScreen();
     await startRun();
@@ -466,5 +505,81 @@ describe("StarSwarmScreen — ⋯ menu (#2635)", () => {
       await fireEvent.press(screen.getByText("Stats"));
     });
     expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "starswarm" });
+  });
+});
+
+describe("StarSwarmScreen — how the run ended (#3534)", () => {
+  async function endWith(endContext: RunEndContext | null | undefined) {
+    await renderScreen();
+    await startRun();
+    setEngineState({ difficulty: "Captain", endContext });
+    await endRun(4200, 7);
+    return within(screen.getByTestId("starswarm-result"));
+  }
+
+  it.each([
+    ["bullet", "Hit by enemy fire"],
+    ["rock", "Hit by an asteroid"],
+    ["beam", "Hit by a Carrier beam"],
+    ["ram", "Rammed by an enemy"],
+  ] as const)("%s: the card says '%s', with no second line mid-combat", async (cause, line) => {
+    const card = await endWith({ cause, phase: "Playing" });
+    expect(card.getByText(line)).toBeTruthy();
+    expect(card.queryByText("after the last enemy fell")).toBeNull();
+    expect(card.getByText("Reached wave 7")).toBeTruthy();
+    expect(card.getByRole("button", { name: "Play Again" })).toBeTruthy();
+    expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
+  });
+
+  it.each(["ClearAwaitingPickups", "Extraction"] as const)(
+    "a lethal beam in %s adds 'after the last enemy fell'",
+    async (phase) => {
+      const card = await endWith({ cause: "beam", phase });
+      expect(card.getByText("Hit by a Carrier beam")).toBeTruthy();
+      expect(card.getByText("after the last enemy fell")).toBeTruthy();
+    }
+  );
+
+  it.each([null, undefined])(
+    "an unknown cause (%s) leaves the card as it was: no line",
+    async (unknown) => {
+      const card = await endWith(unknown);
+      expect(card.queryByTestId("starswarm-result-end-note")).toBeNull();
+      expect(card.queryByText(/^Hit by|^Rammed by/)).toBeNull();
+      expect(card.getByText("Reached wave 7")).toBeTruthy();
+    }
+  );
+
+  it("announces the cause with the card", async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+    await endWith({ cause: "beam", phase: "Extraction" });
+    const spoken = announce.mock.calls.map((c) => c[0]).join(" | ");
+    expect(spoken).toContain("Hit by a Carrier beam");
+    expect(spoken).toContain("after the last enemy fell");
+    announce.mockRestore();
+  });
+
+  it("has a line in Spanish", async () => {
+    await act(async () => {
+      i18n.addResourceBundle("es", "starswarm", EsStarswarm);
+      await i18n.changeLanguage("es");
+    });
+    try {
+      const card = await endWith({ cause: "ram", phase: "Playing" });
+      expect(card.getByText(EsStarswarm["result.end.ram"])).toBeTruthy();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
+  });
+
+  it("still records the run once: sendClosedWaves / syncComplete (completeGame) fire once", async () => {
+    await endWith({ cause: "beam", phase: "Extraction" });
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(JSON.stringify([summary, eventData])).not.toContain("endContext");
   });
 });

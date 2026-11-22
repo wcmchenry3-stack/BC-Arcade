@@ -2,7 +2,6 @@ import React, { useCallback } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HomeStackParamList } from "../types/navigation";
 import { LAYOUTS } from "../game/mahjong/layouts/registry";
 import type { LayoutMeta } from "../game/mahjong/types";
@@ -11,7 +10,6 @@ import { useTheme } from "../theme/ThemeContext";
 
 export default function MahjongLayoutInspectorScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
   const renderItem = useCallback(
@@ -39,7 +37,7 @@ export default function MahjongLayoutInspectorScreen() {
       requireBack
       onBack={() => navigation.goBack()}
       gutter={null}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      style={{ paddingBottom: 16 }}
     >
       <FlatList
         data={LAYOUTS}

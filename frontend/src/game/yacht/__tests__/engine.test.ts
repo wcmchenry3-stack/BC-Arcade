@@ -803,6 +803,27 @@ describe("score — straight events", () => {
   });
 });
 
+describe("score — scored and fullHouse events (#3578)", () => {
+  it("every score emits scored first, with its category and points", () => {
+    const next = score(makeGame([1, 2, 3, 4, 6], 1), "chance");
+    expect(next.events?.[0]).toEqual({ type: "scored", category: "chance", value: 16 });
+  });
+
+  it("a 0 is scored too", () => {
+    const next = score(makeGame([1, 2, 3, 4, 6], 1), "yacht");
+    expect(next.events).toEqual([{ type: "scored", category: "yacht", value: 0 }]);
+  });
+
+  it("emits fullHouse when scoring full_house for 25, not for 0", () => {
+    expect(score(makeGame([2, 2, 3, 3, 3], 1), "full_house").events).toContainEqual({
+      type: "fullHouse",
+    });
+    expect(score(makeGame([1, 2, 3, 3, 3], 1), "full_house").events).not.toContainEqual({
+      type: "fullHouse",
+    });
+  });
+});
+
 describe("score — upperBonus event", () => {
   it("emits upperBonus exactly once when upper total first reaches 63", () => {
     // Fill upper scores so total is 60 (3+6+9+12+15+15 = 60 — just below 63)

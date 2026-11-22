@@ -23,10 +23,24 @@ Ordering a board
 ----------------
 1. ``metric`` in ``direction`` (``desc``: higher is better; ``asc``: lower is
    better).
-2. ``tiebreak``, when set, e.g. ``("total_moves", "asc")``. No board sets one
-   today: Sort's was dropped because its levels are random per request (#2746).
+2. ``tiebreak``, when set, e.g. Sort's ``("total_moves", "asc")``: dropped in
+   #2746 while its levels were random per request, back since every player
+   gets the same fixed levels (#2761).
 3. ``FINAL_TIEBREAK``: ``received_at asc`` (the entry the server got first wins). It is
    always applied last and is never declared on a board.
+
+Resetting a board
+-----------------
+``edition``, when set, is ``(metadata key, integer)``: only rows whose
+metadata holds exactly that integer under that key rank, or count as the
+per-game "best" in stats. Raising the integer resets the board without a
+migration or a delete: older rows stay stored (history, XP, stats totals) but
+stop ranking. Sort uses it for its level catalog (#2761): the app sends
+``catalog_version`` with every scored solve, so rows from the random levels
+before the catalog, and from app builds that still play them, never rank
+against the catalog's levels. ``edition_switch`` can tie the edition to a
+server switch, so the reset waits until the app builds that send the edition
+are live (``games.boards.editions``).
 
 Where values live
 -----------------
@@ -144,6 +158,14 @@ class BoardDefinition(BaseModel):
         ``False`` for games with no leaderboard (Blackjack, Daily Word). Their
         ``metric``, ``direction``, ``label_key`` and ``qualifying_outcomes``
         still describe the per-game "best" shown in stats.
+    edition:
+        Optional ``(metadata key, value)``: only rows whose metadata holds
+        the integer ``value`` under that key rank or count as a "best" (see
+        "Resetting a board" above). ``None``: every row may rank.
+    edition_switch:
+        Optional name of a boolean ``Settings`` field that turns ``edition``
+        on: while it is false the edition is ignored and every row ranks
+        (``games.boards.editions``). ``None``: the edition always applies.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -160,6 +182,8 @@ class BoardDefinition(BaseModel):
     partition_max_values: tuple[tuple[str, str, int], ...] = ()
     qualifying_outcomes: tuple[str, ...] | None = None
     enabled: bool = True
+    edition: tuple[str, int] | None = None
+    edition_switch: str | None = None
 
     @model_validator(mode="after")
     def _check_consistency(self) -> BoardDefinition:  # noqa: C901, PLR0912  # see #2951
@@ -168,6 +192,7 @@ class BoardDefinition(BaseModel):
             # key in a JSON path and accepts identifiers only. Fail here, at definition
             # time, not at request time inside the cached stats expression (#2996).
             raise ValueError(f"metadata metric must be an identifier, not {self.metric!r}")
+        self._check_edition()
         if len(set(self.partitions)) != len(self.partitions):
             raise ValueError(f"duplicate partition keys: {self.partitions}")
 
@@ -225,6 +250,33 @@ class BoardDefinition(BaseModel):
             if bad:
                 raise ValueError(f"qualifying_outcomes {bad} are not countable GameOutcomes")
         return self
+
+    def _check_edition(self) -> None:
+        """``edition``'s key is read like a metadata metric (an identifier, and not
+        a partition key); its value must fit the ``metadata_count`` read."""
+        if self.edition is None:
+            if self.edition_switch is not None:
+                raise ValueError("edition_switch needs an edition")
+            return
+        if self.edition_switch is not None and not self.edition_switch.isidentifier():
+            raise ValueError(f"edition_switch must be an identifier: {self.edition_switch!r}")
+        key, value = self.edition
+        if not key.isidentifier() or key in self.partitions:
+            raise ValueError(f"edition key must be an identifier, not a partition: {key!r}")
+        if not 0 <= value <= MAX_BOARD_VALUE:
+            raise ValueError(f"edition value {value} is outside 0..{MAX_BOARD_VALUE}")
+
+    def in_edition(self, metadata: Mapping[str, Any] | None) -> bool:
+        """Whether a row with *metadata* is in the board's current ``edition``.
+
+        Mirrors ``games.boards.sql.edition_matches``: only an integer equal to
+        the edition's value matches (a bool or a string never does).
+        """
+        if self.edition is None:
+            return True
+        key, value = self.edition
+        held = (metadata or {}).get(key)
+        return isinstance(held, int) and not isinstance(held, bool) and held == value
 
     def partition_default(self, key: str) -> str | None:
         """The value assumed for partition *key* when a row lacks it, or ``None``."""

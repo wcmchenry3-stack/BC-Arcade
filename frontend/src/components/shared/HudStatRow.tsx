@@ -22,6 +22,8 @@ export interface HudTextStat extends HudStatBase {
   muted?: boolean;
   /** Bold weight, for a title-like first item. */
   bold?: boolean;
+  /** Render in the theme's `errorText` colour (Sudoku's error count once it is above 0, #3773). Wins over `muted`. */
+  error?: boolean;
   /** Screen-reader label. Defaults to `text`. */
   accessibilityLabel?: string;
   testID?: string;
@@ -38,6 +40,7 @@ export interface HudCustomStat extends HudStatBase {
   muted?: boolean;
   text?: never;
   bold?: never;
+  error?: never;
   accessibilityLabel?: never;
   testID?: never;
 }
@@ -66,7 +69,10 @@ export function HudStatRow({ stats, size = "md", style, testID }: HudStatRowProp
       {stats.map((s) => {
         const textStyle = [
           styles.text,
-          { fontSize, color: s.muted ? colors.textMuted : colors.text },
+          {
+            fontSize,
+            color: s.error === true ? colors.errorText : s.muted ? colors.textMuted : colors.text,
+          },
           s.bold && styles.bold,
         ];
         if (s.render !== undefined) {

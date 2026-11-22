@@ -1,0 +1,21 @@
+appId: com.buffingchi.games
+---
+# Warm-up (#3677): mobile-smoke-ios.yml runs this once, before the per-game
+# loop, and not as a test: it has no report, and _shared/ is never a flow
+# directory, so detect-maestro-scope's full-suite list and the job summary
+# never see it.
+#
+# Why: the first flow of every iOS run was the slowest by far (blackjack/smoke
+# took 1m31s to 3m05s, against 50s to 1m45s for cascade/smoke right after it,
+# in every full run from 2026-11-03 to 2026-11-09), and in run 42629193406 it
+# failed: one tap's screenshot took about 10 s, and navigate-to.yaml's 10 s
+# `screenLabel` wait got too few hierarchy polls. The failure-time hierarchy
+# already showed the Blackjack screen (its header and table picker), so the
+# screen did mount. The cost was the cold simulator (first app launch, first
+# JS bundle load, the XCTest driver's first hierarchy and screenshot
+# queries), not Blackjack.
+#
+# This pays that cost once, outside every game's flow: launch the app with
+# clean state, as each flow does, and wait for the real Home grid. It opens no
+# game, so a game screen that is really slow to mount still fails its own flow.
+- runFlow: launch.yaml

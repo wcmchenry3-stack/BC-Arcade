@@ -51,7 +51,9 @@ for (const [file, { size }] of Object.entries(result.files)) {
 
 // JSON modules: `__d(function(...){m.exports={...}},...)` / `...exports=[...]`.
 function classify(body) {
-  if (/"ab-testing":|"10k":/.test(body)) return "JSON: icon glyph maps (@expo/vector-icons)";
+  // Full @expo/vector-icons maps ("ab-testing", "10k") or the app's subset maps (#3843).
+  if (/"ab-testing":|"10k":|"account-remove-outline":|"arrow-back":/.test(body))
+    return "JSON: icon glyph maps";
   if (/^\{easy:\["/.test(body)) return "JSON: puzzle banks";
   if (/^\{("?[\w.-]+"?:"|title:)/.test(body)) return "JSON: translations (13 locales)";
   return "JSON: other data";

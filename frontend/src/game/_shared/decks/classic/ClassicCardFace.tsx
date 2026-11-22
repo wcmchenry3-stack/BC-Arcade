@@ -16,9 +16,11 @@ export default function ClassicCardFace({
   faceDown,
   cardBg,
   cardBgBack,
+  cardBackInk,
   border,
   textColor,
   redSuitColor,
+  compactIndex,
 }: CardFaceProps) {
   return (
     <SvgCardFace
@@ -27,15 +29,17 @@ export default function ClassicCardFace({
       width={width}
       height={height}
       faceDown={faceDown}
+      compactIndex={compactIndex}
       radius={6}
       glyphs={CLASSIC_GLYPHS}
       palette={{
         face: cardBg,
-        back: cardBgBack,
         border,
         faceBorder: border,
-        backGrid: border,
-        backGridOpacity: 0.25,
+        backRim: cardBg,
+        backField: cardBgBack,
+        backLine: cardBackInk,
+        backAccent: cardBackInk,
         blackSuit: textColor,
         redSuit: redSuitColor,
       }}

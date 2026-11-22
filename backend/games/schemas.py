@@ -196,6 +196,10 @@ class GameTypeStatsResponse(BaseModel):
       that is ``None``; Daily Word counts wins only). ``best_label_key`` is
       the board's ``label_key`` (``"score"``, ``"moves"``, …) saying what the
       number is. ``null`` value when no qualifying row carries the metric.
+    - ``best_win_ms`` (#3927): the fastest ``win``'s ``duration_ms``, for the
+      games that opt in (Cascade, ignoring wins under its 20 s floor). ``null``
+      when the game does not report it or the player has no plausible win.
+      Older clients ignore it.
     - ``extras``: game-specific figures from ``stats_shape()``, e.g.
       Blackjack's ``best_chips`` and ``current_chips``.
 
@@ -214,6 +218,7 @@ class GameTypeStatsResponse(BaseModel):
     time_played_ms: int = 0
     best_value: int | float | None = None
     best_label_key: str | None = None
+    best_win_ms: int | None = None
     extras: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -295,6 +300,14 @@ class ClientSentryDialOut(BaseModel):
     sample_rate: float = Field(ge=0, le=1)
 
 
+class PersonalBestSeedDialOut(BaseModel):
+    """The personal-best seed switch (#3802): read by the app with the replay dial."""
+
+    # PERSONAL_BEST_SEED_ENABLED (env): false stops the app seeding its local best.
+    enabled: bool
+
+
 class CatalogResponse(BaseModel):
     items: list[GameTypeOut]
     client_sentry: ClientSentryDialOut
+    personal_best_seed: PersonalBestSeedDialOut

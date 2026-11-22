@@ -81,7 +81,9 @@ test.describe("FreeCell — error paths", () => {
     await page.getByLabel("4 of Spades").click();
 
     // Move counter must remain at 0 — illegal move was rejected
-    await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Moves: 0", { exact: true })).toBeVisible({
+      timeout: 3_000,
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -98,7 +100,7 @@ test.describe("FreeCell — error paths", () => {
     await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
       timeout: 5_000,
     });
-    await expect(page.getByText(/Moves:\s*\d+/)).toBeVisible({
+    await expect(page.getByLabel(/^Moves: \d+$/)).toBeVisible({
       timeout: 5_000,
     });
   });
@@ -119,13 +121,17 @@ test.describe("FreeCell — error paths", () => {
     // 2♠ ambiguous → selection; 4♠ is invalid (same colour) → counter stays 0.
     await page.getByLabel("2 of Spades").click();
     await page.getByLabel("4 of Spades").click();
-    await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Moves: 0", { exact: true })).toBeVisible({
+      timeout: 3_000,
+    });
 
     // 2♠ remains selected — tap a valid destination to confirm recovery.
     await page.getByLabel("3 of Hearts").click();
 
     // Move counter increments — game recovered from the failed attempt
-    await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({
+      timeout: 3_000,
+    });
   });
 
   test("corrupted freecell_game localStorage — fresh game loads", async ({
@@ -147,6 +153,8 @@ test.describe("FreeCell — error paths", () => {
     await expect(page.getByLabel("FreeCell board").first()).toBeVisible({
       timeout: 5_000,
     });
-    await expect(page.getByText(/Moves:\s*0/)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel("Moves: 0", { exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

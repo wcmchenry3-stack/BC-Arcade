@@ -1,7 +1,11 @@
 """App-wide streak — consecutive days with at least 2 of 3 daily goals met (#2456).
 
-The challenge for any past day is *replayed*: for each day walked back, look up that
-day's frozen template (``schedule.get_or_create_templates``, #2493) and evaluate it
+The challenge for any past day is *replayed*: for each day walked back, take the
+install's pinned assignment for that day (``daily_challenge_assignments``, #3992) when
+it has one, else that day's shared frozen template
+(``schedule.get_or_create_templates``, #2493: days before pinning existed, days pruned
+by retention, or every day while ``DAILY_CHALLENGE_PERSONALIZED`` is off), and evaluate
+its core goals (never the bonus)
 against the session's own ``games`` rows in that day's local window — the same
 ``local_day_of`` / ``evaluate_goal`` the live challenge uses, so there is no second
 definition of a day or of a goal. A day nobody has ever requested before (rare — only
@@ -14,19 +18,25 @@ failed, just not finished yet. It stops at the first day with fewer than 2.
 
 Cost: the lookback is capped at ``STREAK_LOOKBACK_DAYS`` and the player's games are read with
 ONE windowed query, grouped by local day in Python, rather than a query per day. Each
-slate's frozen templates for the window come from one more query each (schedule.py's
+install's pinned assignments for the window come from one more (none while the kill
+switch is off), and each slate's frozen templates from one more each (schedule.py's
 batch form) — a second only when some day's free and premium templates differ, which
 until #2458 they never do — plus the session's entitlements (one more) in that same
-case. The query count is fixed regardless of ``STREAK_LOOKBACK_DAYS``, not one per day. The
+case. A pinned day with a relative goal (Bottle Sort "solve N new levels", #4028) is
+scored against the install's best Sort level before that day started: one aggregate for
+the best before the window (only when some pinned day holds such a goal), then a running
+max over the window's own rows (``_day_starts``). The query count is fixed regardless of
+``STREAK_LOOKBACK_DAYS``, not one per day. The
 streak never exceeds ``STREAK_LOOKBACK_DAYS``: a value equal to it means "at least that many",
 so a client renders it as "60+" (a true 60 and a true 200 look the same — that is the
 cap, not a bug).
 
 Accepted approximations (documented, not silent):
-- **Current entitlements are used for every past day**, not the ones the session had
-  then. Invisible while the two pools are identical; once #2458 gives the premium pool
-  games of its own, buying (or losing) a premium game re-scores the whole window under
-  the other slate, and can break or extend a streak with goals the player never saw.
+- **Current entitlements are used for every unpinned past day**, not the ones the
+  session had then. A pinned day (#3992) keeps the slate it was served with. Invisible
+  while the two pools are identical; once #2458 gives the premium pool games of its own,
+  buying (or losing) a premium game re-scores the unpinned days of the window under the
+  other slate (days before #3992, pruned days, days an install could not pin).
 - **One UTC offset for the whole window.** The client sends its offset *today*
   (``tz_offset_minutes``, as for every other route here); a daylight-saving change
   inside the 60 days moves a game finished within an hour of local midnight onto the
@@ -40,24 +50,33 @@ Accepted approximations (documented, not silent):
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from daily_challenge import schedule
+from daily_challenge import assignments, personal, schedule
 from daily_challenge.definitions import (
     GOAL_POOLS,
+    DayStart,
     Template,
     game_facts,
     local_day,
     local_day_of,
+    relative_games,
     template_for,
 )
-from daily_challenge.service import EndedGame, evaluate_template, slate_for_games
+from daily_challenge.service import (
+    EndedGame,
+    day_start_bests,
+    evaluate_template,
+    running_day_starts,
+    slate_for_games,
+)
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import is_dev_override_active
-from games.filters import not_abandoned
+from games.filters import not_abandoned, not_dev_affected
 from settings import Settings
 
 # A day counts if at least this many of its goals are met.
@@ -92,7 +111,9 @@ async def compute_streak(
     lookback = lookback_days()
     today = local_day(tz_offset_minutes, utc_now)
     oldest = local_day_of(today.date - timedelta(days=lookback), tz_offset_minutes)
-    spec_games = {game for pool in GOAL_POOLS.values() for game in pool}
+    # Every game a pinned day may name: the pools' games, and the premium games'
+    # personal goals (#3996) that no pool lists.
+    spec_games = {game for pool in GOAL_POOLS.values() for game in pool} | set(personal.GAME_SPECS)
 
     # One query for the whole window …
     rows = (
@@ -114,6 +135,8 @@ async def compute_streak(
                 # Same rule as service.py — an abandoned game never earns a
                 # streak day (#2468 / #2472).
                 not_abandoned(),
+                # A run a dev-panel action touched never counts (#3510, #3996).
+                not_dev_affected(),
             )
         )
     ).all()
@@ -145,20 +168,25 @@ async def compute_streak(
         premium_templates = free_templates
         premium_all, owned = set(), set()
     override = is_dev_override_active()
+    # The install's pinned days (#3992) in the window — one query, whatever the
+    # lookback. A pinned day is scored on exactly the goals that install was served.
+    pinned = await assignments.read_assignments(session, session_id, days[-1], days[0])
+    day_starts = await _day_starts(session, session_id, pinned, by_day, days, oldest.start_utc)
 
     def qualifies(day: date) -> bool:
         free = free_templates[day]
         premium = premium_templates[day]
-        if premium == free:
-            template: Template = free  # the slate is moot
+        if day in pinned:
+            # Core goals only: the bonus (#3995) never counts toward the streak.
+            template: Template = pinned[day].template
+        elif premium == free:
+            template = free  # the slate is moot
         else:
             named = {goal.game_type for goal in premium.goals} & premium_all
             slate = slate_for_games(named, named & owned, override)
             template = premium if slate == "premium" else free
-        met = sum(
-            1 for status in evaluate_template(template, by_day.get(day, [])) if status.completed
-        )
-        return met >= GOALS_TO_QUALIFY
+        statuses = evaluate_template(template, by_day.get(day, []), day_starts.get(day))
+        return sum(1 for status in statuses if status.completed) >= GOALS_TO_QUALIFY
 
     # Newest first. Today is optional: if it has not qualified yet it is not a break —
     # the run simply ends yesterday — but any earlier day that fails ends it.
@@ -169,6 +197,26 @@ async def compute_streak(
         elif i > 0:
             break
     return min(streak, lookback)
+
+
+async def _day_starts(
+    session: AsyncSession,
+    session_id: str,
+    pinned: Mapping[date, assignments.Assignment],
+    by_day: Mapping[date, list[EndedGame]],
+    days: list[date],
+    window_start: datetime,
+) -> dict[date, DayStart]:
+    """The day-start bests (per game and Sort edition) for the days of the window when a
+    pinned day holds a relative goal (Sort "new levels", #4028). The bests before the
+    window are one aggregate (none when no pinned day holds such a goal; shared templates
+    never do); each later day's is a running max over the window's own rows, already read
+    (``service.running_day_starts``). No query per day."""
+    games = relative_games(g for a in pinned.values() for g in a.template.goals)
+    before = await day_start_bests(session, session_id, games, window_start)
+    if before is None:
+        return {}
+    return running_day_starts(before, by_day, days)
 
 
 async def _premium_and_owned(session: AsyncSession, session_id: str) -> tuple[set[str], set[str]]:

@@ -21,7 +21,6 @@ from sort.generate_levels import (
     COLORS_3,
     COLORS_9,
     COLORS_14,
-    LEVEL_SPECS,
     LevelGenerationError,
     _solved,
     deal_level,
@@ -30,16 +29,17 @@ from sort.generate_levels import (
 # The reference pour simulator is a CLI under backend/scripts (#2972).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import sort_build_catalog as build
 from sort_verify_levels import is_solution
 
-_CONFIGS = sorted({(len(colors), n_empty) for _, colors, n_empty in LEVEL_SPECS})
-_COLORS_BY_SIZE = {len(colors): colors for _, colors, _ in LEVEL_SPECS}
+# Every (colours, empty bottles) spec the catalog is dealt from.
+_CONFIGS = sorted(set(build.level_specs()))
 _N_SAMPLES = 5
 
 
 @pytest.mark.parametrize(("n_colors", "n_empty"), _CONFIGS, ids=lambda v: str(v))
 def test_deals_are_well_formed_non_trivial_and_proven(n_colors: int, n_empty: int) -> None:
-    colors = _COLORS_BY_SIZE[n_colors]
+    colors = COLORS_14[:n_colors]
     rng = random.Random(1576)
     for _ in range(_N_SAMPLES):
         state = deal_level(colors, n_empty, rng)
@@ -91,14 +91,6 @@ def test_no_proof_within_max_attempts_raises_and_logs(
         deal_level(COLORS_14, 2, random.Random(0), max_attempts=7)
     assert calls == 7
     assert "no provably solvable deal in 7 attempts" in caplog.text
-
-
-def test_build_levels_raises_rather_than_serve_an_unproven_level(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(generate_levels, "solve", lambda state, budget: Result(False, 1))
-    with pytest.raises(LevelGenerationError, match="3 colors, 2 empty"):
-        generate_levels.build_levels(0)
 
 
 def test_trivial_deals_are_never_returned() -> None:

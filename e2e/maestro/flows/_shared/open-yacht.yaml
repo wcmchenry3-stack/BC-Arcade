@@ -1,0 +1,28 @@
+appId: com.buffingchi.games
+---
+# Subflow: open Yacht from Home, pick a mode, and assert the game screen.
+# Caller must set: ${yachtMode} (testID of the mode button: "yacht-mode-solo"
+#                               or "yacht-mode-vs")
+#
+# Every flow starts from a fresh install (launch.yaml's clearState), so Yacht
+# always opens its "Choose Mode" picker (GameScreen.tsx: `difficultyChosen` is
+# false for a fresh game with no aiDifficulty param). The picker is a
+# ModalCard, i.e. a React Native <Modal>, which on Android is a separate
+# window: while it is up Maestro cannot see the "Yacht" header behind it, so
+# navigate-to.yaml's title wait timed out in home/navigation, yacht/smoke and
+# yacht/ai-turn (#2373, run 35941201883). A longer timeout would not help.
+# So answer the picker first, then check the title.
+- runFlow:
+    file: tap-game-tile.yaml
+    env:
+      gameSlug: "yacht"
+- extendedWaitUntil:
+    visible:
+      id: "${yachtMode}"
+    timeout: 10000
+- tapOn:
+    id: "${yachtMode}"
+- extendedWaitUntil:
+    visible:
+      text: "Yacht"
+    timeout: 10000

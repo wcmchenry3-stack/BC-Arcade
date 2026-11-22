@@ -5,11 +5,12 @@
  * Controls.edgeDrag.test.tsx.
  */
 import React from "react";
-import { Platform } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
 
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../Controls";
+import { typography } from "../../../theme/typography";
 import type { GameCanvasHandle } from "../GameCanvas";
 import { CANVAS_H, CANVAS_W, PLAYER_W } from "../../../game/starswarm/engine";
 import { detectedGesture } from "../../../test-utils/mockScreenDeps";
@@ -84,6 +85,18 @@ describe("Star Swarm Controls — pause card", () => {
     expect(cb.onNewGame).toHaveBeenCalledTimes(1);
     expect(screen.getByText("RESUME")).toBeTruthy();
     expect(screen.getByText("NEW GAME")).toBeTruthy();
+  });
+
+  it("#3598: the overlay is in the brand fonts, the title glowing in the accent", async () => {
+    await mount({ isPaused: true });
+    const style = (text: string) => StyleSheet.flatten(screen.getByText(text).props.style);
+    expect(style("PAUSED").fontFamily).toBe(typography.heading);
+    expect(style("PAUSED").textShadowColor).toBe(style("PAUSED").color);
+    expect(style("RESUME").fontFamily).toBe(typography.label);
+    expect(style("NEW GAME").fontFamily).toBe(typography.bodyMedium);
+    // the family is the weight: no synthetic bold on top of it
+    for (const t of ["PAUSED", "RESUME"]) expect(style(t).fontWeight).toBeUndefined();
+    expect(style("NEW GAME").fontWeight).toBe("normal");
   });
 });
 

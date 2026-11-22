@@ -1,4 +1,5 @@
 import { createSeededRng } from "../_shared/seededRng";
+import { STAR_FAR_RGB, STAR_MID_RGB, STAR_NEAR_RGB } from "./render/palette";
 
 export interface Star {
   id: number;
@@ -11,6 +12,8 @@ export interface Star {
   opacity: number;
   /** Downward scroll speed in px/ms. */
   speed: number;
+  /** #3597: the star's tint (0xRRGGBB) — by depth, a depth cue alongside size and brightness. */
+  rgb: number;
 }
 
 /**
@@ -29,11 +32,12 @@ export interface StarfieldState {
   readonly elapsedMs: number;
 }
 
-// Three depth layers: far (slow/dim/tiny), mid, near (fast/bright/large).
+// Three depth layers: far (slow/dim/tiny, pale violet), mid (pale teal), near (fast/bright/large,
+// cool white). #3597: the tints pick up the nebula's two colours, so the far stars sit in it.
 const LAYERS = [
-  { count: 50, speed: 0.02, r: 0.6, opacity: 0.35 },
-  { count: 30, speed: 0.05, r: 1.0, opacity: 0.65 },
-  { count: 15, speed: 0.1, r: 1.4, opacity: 1.0 },
+  { count: 50, speed: 0.02, r: 0.6, opacity: 0.35, rgb: STAR_FAR_RGB },
+  { count: 30, speed: 0.05, r: 1.0, opacity: 0.65, rgb: STAR_MID_RGB },
+  { count: 15, speed: 0.1, r: 1.4, opacity: 1.0, rgb: STAR_NEAR_RGB },
 ] as const;
 
 export function initStarfield(width: number, height: number, seed = 42): StarfieldState {
@@ -49,6 +53,7 @@ export function initStarfield(width: number, height: number, seed = 42): Starfie
         r: layer.r,
         opacity: layer.opacity,
         speed: layer.speed,
+        rgb: layer.rgb,
       });
     }
   }

@@ -13,6 +13,11 @@ import { PurchaseProvider } from "../../purchases/PurchaseProvider";
 import { createFakePurchaseAdapter, fakeProducts } from "../../purchases/fakeAdapter";
 import type { FakePurchaseAdapter, FakePurchaseConfig } from "../../purchases/fakeAdapter";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, TERMS_OF_SERVICE_URL } from "../../config/legal";
+import {
+  DISABLED_GAMES,
+  HIDDEN_GAMES,
+  __forceStoreBuildForTests,
+} from "../../entitlements/gameVisibility";
 
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
@@ -445,5 +450,158 @@ describe("PaywallScreen restore", () => {
     adapter.restore = () => Promise.reject(new Error("boom"));
     await fireEvent.press(screen.getByTestId("paywall-restore"));
     await waitFor(() => expect(screen.getByTestId("paywall-restore-error")).toBeTruthy());
+  });
+});
+
+describe("PaywallScreen in a store build: Cascade and disabled games", () => {
+  // Simulates the premium unhide (#2875): HIDDEN_GAMES emptied for one test.
+  const savedHidden = [...HIDDEN_GAMES];
+  function unhidePremium(): void {
+    (HIDDEN_GAMES as Set<string>).clear();
+  }
+  /** Disables Cascade for one test, as #3001 did until its rework shipped (#3703). */
+  function disableCascade(): void {
+    (DISABLED_GAMES as Set<string>).add("cascade");
+  }
+
+  const savedDisabled = [...DISABLED_GAMES];
+
+  afterEach(() => {
+    __forceStoreBuildForTests(false);
+    for (const slug of savedHidden) (HIDDEN_GAMES as Set<string>).add(slug);
+    (DISABLED_GAMES as Set<string>).clear();
+    for (const slug of savedDisabled) (DISABLED_GAMES as Set<string>).add(slug);
+  });
+
+  it("sells Cascade in a store build once the premium games are unhidden (#3703)", async () => {
+    __forceStoreBuildForTests(true);
+    unhidePremium();
+    mockParams = { gameSlug: "cascade" };
+    await renderPaywall();
+    expect(adapter.calls.getProducts).toEqual([["cascade"]]);
+    expect(screen.getByTestId("paywall-buy")).toBeEnabled();
+    await fireEvent.press(screen.getByTestId("paywall-buy"));
+    expect(adapter.calls.purchase).toEqual(["cascade"]);
+  });
+
+  it("offers no Cascade purchase in a store build before the premium unhide", async () => {
+    __forceStoreBuildForTests(true);
+    mockParams = { gameSlug: "cascade" };
+    await renderPaywall();
+    expect(screen.getByTestId("paywall-invalid")).toBeTruthy();
+    expect(adapter.calls.getProducts).toEqual([]);
+  });
+
+  it("offers no purchase for a disabled game in a store build and never asks the store", async () => {
+    __forceStoreBuildForTests(true);
+    unhidePremium();
+    disableCascade();
+    mockParams = { gameSlug: "cascade" };
+    await renderPaywall();
+    expect(screen.getByTestId("paywall-invalid")).toBeTruthy();
+    expect(screen.queryByTestId("paywall-buy")).toBeNull();
+    expect(adapter.calls.getProducts).toEqual([]);
+    expect(adapter.calls.purchase).toEqual([]);
+  });
+
+  it("still sells an ordinary premium game in a store build once it is unhidden", async () => {
+    __forceStoreBuildForTests(true);
+    unhidePremium();
+    disableCascade();
+    mockParams = { gameSlug: "hearts" };
+    await renderPaywall();
+    expect(adapter.calls.getProducts).toEqual([["hearts"]]);
+    expect(screen.getByTestId("paywall-buy")).toBeEnabled();
+    await fireEvent.press(screen.getByTestId("paywall-buy"));
+    expect(adapter.calls.purchase).toEqual(["hearts"]);
+  });
+
+  it("still sells an ordinary premium game in an internal build", async () => {
+    mockParams = { gameSlug: "hearts" };
+    await renderPaywall();
+    expect(adapter.calls.getProducts).toEqual([["hearts"]]);
+    expect(screen.getByTestId("paywall-buy")).toBeEnabled();
+  });
+});
+
+describe("PaywallScreen for a visible game whose product is held back", () => {
+  // `STORE_SLUGS` is built when PaywallScreen loads, so the catalog mock needs a
+  // fresh module registry: PaywallScreen, React and the providers all come from it.
+  // Its Testing Library is the `pure` entry, which registers no hooks; cleanup is below.
+  let isolated!: {
+    React: typeof import("react");
+    rtl: typeof import("@testing-library/react-native/pure");
+    Paywall: typeof import("../PaywallScreen").default;
+    SafeArea: typeof import("react-native-safe-area-context");
+    Theme: typeof import("../../theme/ThemeContext");
+    Purchases: typeof import("../../purchases/PurchaseProvider");
+    fake: typeof import("../../purchases/fakeAdapter");
+    visibility: typeof import("../../entitlements/gameVisibility");
+  };
+
+  beforeAll(() => {
+    const actualCatalog = jest.requireActual("../../entitlements/premiumProducts.json") as {
+      productIdPrefix: string;
+      products: { gameSlug: string; productId: string; enabled?: boolean }[];
+    };
+    jest.isolateModules(() => {
+      jest.doMock("../../entitlements/premiumProducts.json", () => ({
+        ...actualCatalog,
+        products: actualCatalog.products.map((p) =>
+          p.gameSlug === "hearts" ? { ...p, enabled: false } : p
+        ),
+      }));
+      isolated = {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        React: require("react"),
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        rtl: require("@testing-library/react-native/pure"),
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        Paywall: require("../PaywallScreen").default,
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        SafeArea: require("react-native-safe-area-context"),
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        Theme: require("../../theme/ThemeContext"),
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        Purchases: require("../../purchases/PurchaseProvider"),
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        fake: require("../../purchases/fakeAdapter"),
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        visibility: require("../../entitlements/gameVisibility"),
+      };
+    });
+    jest.dontMock("../../entitlements/premiumProducts.json");
+  });
+
+  afterEach(() => {
+    isolated.rtl.cleanup();
+    isolated.visibility.__forceStoreBuildForTests(false);
+  });
+
+  it("shows the unavailable state in a store build and never asks the store", async () => {
+    const { React: R, rtl, Paywall, SafeArea, Theme, Purchases, fake, visibility } = isolated;
+    // Hearts stays visible (a store build with the premium games unhidden, not
+    // disabled); only its product is held back.
+    visibility.__forceStoreBuildForTests(true);
+    (visibility.HIDDEN_GAMES as Set<string>).clear();
+    expect(visibility.isGameVisible("hearts")).toBe(true);
+    mockParams = { gameSlug: "hearts" };
+    const held = fake.createFakePurchaseAdapter();
+    await rtl.render(
+      R.createElement(
+        SafeArea.SafeAreaProvider,
+        { initialMetrics: insets },
+        R.createElement(
+          Theme.ThemeProvider,
+          null,
+          R.createElement(Purchases.PurchaseProvider, { adapter: held }, R.createElement(Paywall))
+        )
+      )
+    );
+    await rtl.act(async () => {});
+    expect(rtl.screen.getByTestId("paywall-invalid")).toBeTruthy();
+    expect(rtl.screen.queryByTestId("paywall-buy")).toBeNull();
+    expect(held.calls.getProducts).toEqual([]);
+    expect(held.calls.purchase).toEqual([]);
   });
 });

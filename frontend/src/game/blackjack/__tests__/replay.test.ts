@@ -19,10 +19,12 @@ import {
   placeBet,
   split,
   stand,
+  standOnTwentyOne,
   type Card,
   type EngineState,
 } from "../engine";
 import {
+  autoStands,
   encodeCard,
   handResolvedData,
   logAction,
@@ -30,6 +32,7 @@ import {
   openRoundLog,
   resumedRoundLog,
   roundPlayedData,
+  type RecordedAction,
 } from "../replay";
 
 const SUITS: Record<string, string> = { S: "♠", H: "♥", D: "♦", C: "♣" };
@@ -182,6 +185,30 @@ describe("the round log", () => {
     expect(data).not.toHaveProperty("r");
   });
 
+  it("a dealer natural found by the peek (#3741): the deal and the chips before it, no actions, no dealer play", () => {
+    const game = gameWith(["TS", "KC", "8H", "AD"]);
+    const settled = placeBet(game, 10);
+    expect(settled.outcome).toBe("lose");
+    const log = openRoundLog(game, settled);
+    logDealer(log, game, settled);
+    expect(roundPlayedData(log)).toEqual({
+      b: [10, 100],
+      p: ["TS", "8H"],
+      d: ["KC", "AD"],
+      sh: 312,
+      rem: 100,
+    });
+    expect(
+      handResolvedData(0, settled.outcome!, settled.payout, settled.chips, settled.player_hand)
+    ).toEqual({
+      i: 0,
+      o: "lose",
+      p: -10,
+      ch: 90,
+      c: ["TS", "8H"],
+    });
+  });
+
   it("a round found mid-hand after a kill has no deal and is marked resumed", () => {
     const s = { ...placeBet(gameWith(["8S", "6C", "8H", "TD"]), 10), round: 7 };
     expect(roundPlayedData(resumedRoundLog(s))).toEqual({
@@ -201,6 +228,172 @@ describe("the round log", () => {
       ch: 80,
       c: ["TS", "6D", "KH"],
     });
+  });
+});
+
+describe("21 stands on its own (#3764): logged as the Stand a tap makes", () => {
+  /** The round's log after each of `steps` from the deal, as the game context logs it. */
+  function played(dealt: EngineState, steps: [(s: EngineState) => EngineState, RecordedAction][]) {
+    const log = openRoundLog(gameWith([]), dealt);
+    let s = dealt;
+    for (const [fn, action] of steps) {
+      const next = fn(s);
+      logAction(log, s, next, action);
+      if (next.phase !== "player") logDealer(log, s, next);
+      s = next;
+    }
+    return { log, s };
+  }
+
+  it("a single hand hit to 21: the hit, the stand, then the dealer's play", () => {
+    // 7+4 hits a T (21); dealer T+6 draws a 2 (18). The same entries a hit and a tapped Stand
+    // made before #3764, so a reader cannot tell them apart (and need not).
+    const dealt = placeBet(gameWith(["7S", "TC", "4H", "6D", "TD", "2H"]), 10);
+    const { log, s } = played(dealt, [[hit, "hit"]]);
+    expect(s.phase).toBe("result");
+    expect(roundPlayedData(log)).toEqual({
+      b: [10, 100],
+      p: ["7S", "4H"],
+      d: ["TC", "6D"],
+      sh: 312,
+      rem: 102,
+      a: [
+        ["h", 0, "TD"],
+        ["s", 0],
+      ],
+      dl: { d: ["2H"], t: 18 },
+    });
+  });
+
+  it("a hit below 21 logs no stand", () => {
+    const dealt = placeBet(gameWith(["7S", "TC", "4H", "6D", "9D"]), 10);
+    expect(played(dealt, [[hit, "hit"]]).log.a).toEqual([["h", 0, "9D"]]);
+  });
+
+  it("a split hand hit to 21: the hit, then the stand for that hand", () => {
+    // 8s split: 8+3 and 8+2. Hand 1 hits a K (21); play moves to hand 2.
+    const dealt = placeBet(gameWith(["8S", "6C", "8H", "9D", "3D", "2C", "KC"]), 10);
+    const { log, s } = played(dealt, [
+      [split, "split"],
+      [hit, "hit"],
+    ]);
+    expect(s.active_hand_index).toBe(1);
+    expect(log.a.slice(1)).toEqual([
+      ["h", 0, "KC"],
+      ["s", 0],
+    ]);
+  });
+
+  it("a split hand dealt 21 is stood after the split; one dealt 21 later, after the action that reached it", () => {
+    // 10s split: T+A (21) and T+7. The split stands hand 1 at once.
+    const first = placeBet(gameWith(["TS", "6C", "TH", "9D", "AD", "7C"]), 10);
+    expect(played(first, [[split, "split"]]).log.a).toEqual([
+      [
+        "p",
+        0,
+        [
+          ["TS", "AD"],
+          ["TH", "7C"],
+        ],
+      ],
+      ["s", 0],
+    ]);
+    // 10s split: T+7 and T+A (21). The Stand on hand 1 passes hand 2 over: the dealer plays.
+    const second = placeBet(gameWith(["TS", "6C", "TH", "9D", "7D", "AC", "2H"]), 10);
+    const { log, s } = played(second, [
+      [split, "split"],
+      [stand, "stand"],
+    ]);
+    expect(s.phase).toBe("result");
+    expect(log.a.slice(1)).toEqual([
+      ["s", 0],
+      ["s", 1],
+    ]);
+    expect(log.dl).toEqual({ d: ["2H"], t: 17 });
+  });
+
+  it("a split double to 21 logs the double only: the double ends its hand, no stand after it", () => {
+    // 8s split: 8+3 and 8+2. Hand 1 doubles a K (21); play moves to hand 2.
+    const dealt = placeBet(gameWith(["8S", "6C", "8H", "9D", "3D", "2C", "KC"]), 10);
+    const { log, s } = played(dealt, [
+      [split, "split"],
+      [doubleDown, "double"],
+    ]);
+    expect(s.active_hand_index).toBe(1);
+    expect(log.a.slice(1)).toEqual([["d", 0, "KC"]]);
+  });
+
+  it("several stands from one action are logged in table order", () => {
+    // 10s split, both hands dealt an Ace: the split stands hand 1, then hand 2; the dealer plays.
+    const dealt = placeBet(gameWith(["TS", "6C", "TH", "9D", "AD", "AC", "2H"]), 10);
+    const { log, s } = played(dealt, [[split, "split"]]);
+    expect(s.phase).toBe("result");
+    expect(log.a).toEqual([
+      [
+        "p",
+        0,
+        [
+          ["TS", "AD"],
+          ["TH", "AC"],
+        ],
+      ],
+      ["s", 0],
+      ["s", 1],
+    ]);
+  });
+
+  it("split aces log no stand, even on 21", () => {
+    const dealt = placeBet(gameWith(["AS", "6C", "AH", "9D", "KD", "5C", "2H"]), 10);
+    const { log, s } = played(dealt, [[split, "split"]]);
+    expect(s.phase).toBe("result");
+    expect(log.a).toHaveLength(1);
+    expect(log.a[0]![0]).toBe("p");
+  });
+
+  it("a save on 21 from before #3764, stood on load: the resumed round logs the stand and the dealer", () => {
+    const saved: EngineState = {
+      ...placeBet(gameWith(["7S", "TC", "4H", "6D"]), 10),
+      round: 3,
+    };
+    const on21: EngineState = {
+      ...saved,
+      player_hand: [...saved.player_hand, card("TD")],
+      deck: [...saved.deck, card("2H")],
+    };
+    const next = standOnTwentyOne(on21);
+    const log = resumedRoundLog(on21);
+    logAction(log, on21, next, "stand");
+    logDealer(log, on21, next);
+    expect(roundPlayedData(log)).toEqual({
+      b: [10, 100],
+      d: ["TC", "6D"],
+      sh: 312,
+      rem: 101,
+      a: [["s", 0]],
+      dl: { d: ["2H"], t: 18 },
+      r: 1,
+    });
+  });
+
+  it("autoStands names only the hands the engine stood", () => {
+    const dealt = placeBet(gameWith(["7S", "TC", "4H", "6D", "TD", "2H"]), 10);
+    expect(autoStands(dealt, hit(dealt), "hit")).toEqual([0]);
+    expect(autoStands(dealt, stand(dealt), "stand")).toEqual([]);
+    expect(autoStands(dealt, doubleDown(dealt), "double")).toEqual([]);
+  });
+
+  it("the widest single-hand round, 20 hits and the stand on 21, is under the cap", () => {
+    const aces = (n: number) => Array.from({ length: n }, () => "AS");
+    const widest = {
+      b: [2_000_000_000, 2_000_000_000],
+      p: aces(2),
+      d: aces(2),
+      sh: 832,
+      rem: 832,
+      a: [...aces(20).map((c) => ["h", 0, c]), ["s", 0]],
+      dl: { d: aces(22), t: 26, b: 1 },
+    };
+    expect(size(widest)).toBeLessThanOrEqual(BLACKJACK_EVENT_MAX_BYTES);
   });
 });
 

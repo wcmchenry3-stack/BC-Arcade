@@ -19,6 +19,8 @@
     // metro/storeBundle.js resolves hidden premium screens to it in store
     // bundles (#2830); nothing imports it by name.
     "src/screens/StoreBuildExcludedScreen.tsx!",
+    // ...and the hidden games' lobby tile art to this image-free stand-in (#4011).
+    "src/components/home/hiddenGameTileArt.store.ts!",
     // build-yacht-oracle.ts imports these through a ../../frontend/... path
     // that knip 6 no longer follows from an out-of-workspace entry.
     "tooling/yacht/oracleBuild/solver.ts",
@@ -35,6 +37,12 @@
     "!src/game/_shared/simRandom.ts!",
     "!src/game/yacht/oracle/regret.ts!",
     "!src/game/yacht/oracle/regretAggregate.ts!",
+    // The Cascade sim harness (#2893): used by its tests, tools/sim/simulate-cascade.ts and the
+    // cascade-sim-gate workflow, never by the app.
+    "!src/game/cascade/sim/**!",
+    // Cascade's replay rebuild (#3858): a best-effort re-simulation read by its tests (the golden
+    // replay) and by tooling, never by the app.
+    "!src/game/cascade/rebuild.ts!",
     "scripts/*.{js,mjs}",
     "tooling/**/*.ts",
     "../tools/sim/*.ts",
@@ -42,12 +50,6 @@
   ],
   "ignore": [
     "src/screens/__dev__/**",
-    // Cascade is retired/hidden and kept for the revival epic (#3033). Its
-    // files below are only reachable from the cascade screen, which is not an
-    // entry, so knip reports them.
-    "src/components/cascade/GameCanvas.tsx",
-    "src/game/cascade/scoring.ts",
-    "src/game/cascade/types.ts",
     // Loaded with a lazy `require("./oracleTable.generated")` in oracle.ts and
     // written by tools/generators/build-yacht-oracle.ts; knip does not follow
     // the lazy require.
@@ -71,11 +73,17 @@
   // tsx runs tools/sim and tools/generators (`npx --prefix frontend tsx tools/sim/...`).
   "ignoreDependencies": [
     "tsx",
+    // babel-preset-expo: named by babel.config.js; installed as an expo
+    // dependency. knip 6.45 reports it as unlisted.
+    "babel-preset-expo",
+    // expo-dev-client / react-native-audio-api: native dependencies. The
+    // former is the dev-build runtime; the latter is an app.json config
+    // plugin imported only by a __dev__ screen. knip 6.45 stopped crediting
+    // them under --production.
+    "expo-dev-client",
+    "react-native-audio-api",
     // @eslint/js: required by eslint.config.js, installed as an eslint dependency
     "@eslint/js",
-    // poly-decomp: optional runtime peer of matter-js (Cascade physics, #3033);
-    // matter-js loads it itself, so the app never imports it.
-    "poly-decomp",
     // expo-system-ui: inferred by knip's Expo plugin from app.json
     // (userInterfaceStyle). It is intentionally not installed (native
     // projects are committed), so nothing imports it.

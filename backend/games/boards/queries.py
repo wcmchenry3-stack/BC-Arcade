@@ -21,6 +21,7 @@ from sqlalchemy.orm import selectinload
 from db.models import Game
 from games import catalog_cache
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
+from games.boards.editions import row_in_edition
 from games.boards.limits import is_count
 from games.boards.partitions import metric_cap, row_partition
 from games.boards.sql import (
@@ -32,7 +33,7 @@ from games.boards.sql import (
     tiebreak_expr,
 )
 from games.boards.types import BestRow, BoardEntry, GameRank, LeaderboardError, Standing
-from games.filters import is_swept
+from games.filters import is_dev_affected, is_swept
 from games.ranking import compute_rank
 from games.registry import get_module
 from players.names import display_name_of, session_has_display_name
@@ -219,8 +220,13 @@ def _unrankable_reason(board: BoardDefinition, game: Game) -> str | None:
         return f"Game has no {board.metric}."
     if game.outcome == GameOutcome.ABANDONED.value:
         return "Abandoned games are not ranked."
+    if is_dev_affected(game.game_metadata):
+        return "Runs touched by the dev panel are not ranked."  # #3510
     if board.qualifying_outcomes is not None and game.outcome not in board.qualifying_outcomes:
         return "This game's outcome is not ranked."
+    if not row_in_edition(board, game.game_metadata):
+        # e.g. a Sort solve on the random levels from before the catalog (#2761).
+        return "This game is from an earlier edition of the board."
     partition = row_partition(board, game.game_metadata or {})
     if any(v is None for v in partition.values()):
         # e.g. a Mahjong clear from before #2627 records no layout, and the

@@ -21,10 +21,23 @@ export function alphaOf(c: PackedColor): number {
   return ((c >>> 24) & 255) / 255;
 }
 
-/** A packed colour as a CSS `rgba()` string — for the 2D-context (web) replay only. */
+/** Distinct CSS strings kept before the cache starts over (fading alphas add a few per frame). */
+const CSS_CACHE_MAX = 1024;
+const cssCache = new Map<PackedColor, string>();
+
+/**
+ * A packed colour as a CSS `rgba()` string — for the 2D-context (web) replay only. #3597: each
+ * distinct colour is formatted once and kept, so replaying the same ops builds no new strings.
+ */
 export function cssColor(c: PackedColor): string {
-  const a = Math.round(alphaOf(c) * 1000) / 1000;
-  return `rgba(${(c >>> 16) & 255},${(c >>> 8) & 255},${c & 255},${a})`;
+  let css = cssCache.get(c);
+  if (css === undefined) {
+    const a = Math.round(alphaOf(c) * 1000) / 1000;
+    css = `rgba(${(c >>> 16) & 255},${(c >>> 8) & 255},${c & 255},${a})`;
+    if (cssCache.size >= CSS_CACHE_MAX) cssCache.clear();
+    cssCache.set(c, css);
+  }
+  return css;
 }
 
 /** A 0xRRGGBB colour as a fully opaque packed 0xFFRRGGBB. */

@@ -1,0 +1,510 @@
+/**
+ * The physics of #3697 (planck.js 1.4.2, the owner's "3 lively" tuning): grow-in, the merge gap,
+ * chain reach, per-tier density, the win (making the capstone, #3920), no teleports, and replays
+ * (the same frame deltas replay the same board, at 60 and at 120 Hz; 60 and 120 Hz are not
+ * bit-identical to each other).
+ */
+import type { Body, Fixture } from "planck";
+import { CascadeEngine, type EngineEvent, type StepResult } from "../engine";
+import { setPositionPx } from "../physicsWorld";
+import { CAPSTONE_TIER, TIERS, tierRadius } from "../tiers";
+import {
+  CHAIN_REACH_PX,
+  FIXED_STEP_MS,
+  FLOOR_THICKNESS,
+  GROW_IN_STEPS,
+  MAX_SPAWN_VELOCITY,
+  MERGE_GAP_PX,
+  PX_PER_M,
+  WALL_THICKNESS,
+  WORLD_HEIGHT,
+  WORLD_WIDTH,
+} from "../constants";
+
+const HZ60 = 1000 / 60;
+const HZ120 = 1000 / 120;
+const FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;
+
+function run(engine: CascadeEngine, n: number, frameMs = HZ60): StepResult[] {
+  const out: StepResult[] = [];
+  for (let i = 0; i < n && !engine.getState().gameOver; i++) out.push(engine.step(frameMs));
+  return out;
+}
+const events = (rs: StepResult[]): EngineEvent[] => rs.flatMap((r) => r.events);
+const merges = (rs: StepResult[]) =>
+  events(rs).filter((e): e is Extract<EngineEvent, { type: "merge" }> => e.type === "merge");
+
+/** Two `tier` pieces touching (1 px overlap) on the floor, centred on x. */
+function pair(tier: number, x = 200): { tier: number; x: number; y: number }[] {
+  const r = tierRadius(tier);
+  return [
+    { tier, x: x - r + 0.5, y: FLOOR_TOP - r },
+    { tier, x: x + r - 0.5, y: FLOOR_TOP - r },
+  ];
+}
+
+describe("grow-in", () => {
+  it("a merged piece starts at its parents' size and grows to its own over GROW_IN_STEPS", () => {
+    const engine = new CascadeEngine({});
+    engine.restore(pair(4), 0);
+    expect(merges(run(engine, 1))).toHaveLength(1);
+    const scales: number[] = [];
+    for (let i = 0; i <= GROW_IN_STEPS; i++) {
+      scales.push(engine.getState().pieces[0]!.scale);
+      engine.step(HZ60);
+    }
+    expect(scales[0]).toBeCloseTo(tierRadius(4) / tierRadius(5), 9);
+    for (let i = 1; i < scales.length; i++)
+      expect(scales[i]!).toBeGreaterThanOrEqual(scales[i - 1]!);
+    expect(scales[GROW_IN_STEPS]).toBe(1);
+    expect(engine.getState().pieces[0]!.scale).toBe(1);
+  });
+
+  it.each([0, 3, 6, 9])(
+    "a tier-%i merge under a piece resting on both parents kicks no neighbour faster than 1.5 px/step",
+    (tier) => {
+      // The piece in the valley on top of the pair overlaps the merged piece at once (it is made
+      // at the parents' midpoint). planck resolves that overlap by position, and the grow-in eases
+      // the rest: no velocity spike reaches the neighbours (the lid counts a piece as settled
+      // under 8 px/step; a merged piece's own spawn velocity is capped at MAX_SPAWN_VELOCITY).
+      const r = tierRadius(tier);
+      // Neighbours: one in the valley on top, one on the floor each side; no tier repeats.
+      const top = tier + 2;
+      const rt = tierRadius(top);
+      const valleyY = FLOOR_TOP - r - Math.sqrt((r + rt) ** 2 - (r - 0.5) ** 2) - 0.3;
+      const [left, right] = tier === 0 ? [3, 4] : [0, 1];
+      const rl = tierRadius(left);
+      const rr = tierRadius(right);
+      const engine = new CascadeEngine({});
+      engine.restore(
+        [
+          ...pair(tier),
+          { tier: top, x: 200, y: valleyY },
+          { tier: left, x: 200 - 2 * r - rl, y: FLOOR_TOP - rl },
+          { tier: right, x: 200 + 2 * r + rr, y: FLOOR_TOP - rr },
+        ],
+        0
+      );
+      const results: StepResult[] = [];
+      let maxNeighbour = 0;
+      for (let i = 0; i < 30; i++) {
+        results.push(engine.step(HZ60));
+        for (const p of engine.getState().pieces) {
+          if (p.tier === tier + 1) continue;
+          maxNeighbour = Math.max(maxNeighbour, Math.hypot(p.vx, p.vy));
+        }
+      }
+      expect(merges(results).map((m) => m.result)).toEqual([tier + 1]);
+      expect(maxNeighbour).toBeLessThan(1.5);
+      expect(maxNeighbour).toBeLessThan(MAX_SPAWN_VELOCITY);
+    }
+  );
+
+  it("a merge against a wall is made where its full size is inside the wall", () => {
+    const engine = new CascadeEngine({});
+    const t = 6;
+    const r = tierRadius(t);
+    engine.restore(
+      [
+        { tier: t, x: WALL_THICKNESS + r, y: FLOOR_TOP - r },
+        { tier: t, x: WALL_THICKNESS + 3 * r - 1, y: FLOOR_TOP - r },
+      ],
+      0
+    );
+    const first = merges(run(engine, 1));
+    expect(first).toHaveLength(1);
+    expect(first[0]!.x - tierRadius(t + 1)).toBeGreaterThanOrEqual(WALL_THICKNESS);
+    const results = run(engine, 30);
+    const piece = engine.getState().pieces[0]!;
+    expect(piece.tier).toBe(t + 1);
+    expect(piece.x - tierRadius(t + 1)).toBeGreaterThanOrEqual(WALL_THICKNESS - 0.5);
+    expect(events(results).some((e) => e.type === "guardRailFired")).toBe(false);
+  });
+});
+
+describe("the merge gap and chain reach", () => {
+  /** Two `tier` pieces on the floor whose circles are `gap` px apart. */
+  function apart(tier: number, gap: number) {
+    const r = tierRadius(tier);
+    return [
+      { tier, x: 200 - r - gap / 2, y: FLOOR_TOP - r },
+      { tier, x: 200 + r + gap / 2, y: FLOOR_TOP - r },
+    ];
+  }
+
+  it(`merges two same-tier pieces resting under ${MERGE_GAP_PX} px apart, not ones further`, () => {
+    const near = new CascadeEngine({});
+    near.restore(apart(3, MERGE_GAP_PX - 0.25), 0);
+    expect(merges(run(near, 1))).toHaveLength(1);
+
+    const far = new CascadeEngine({});
+    far.restore(apart(3, MERGE_GAP_PX + 1), 0);
+    expect(merges(run(far, 60))).toHaveLength(0);
+    expect(far.getState().pieces).toHaveLength(2);
+  });
+
+  it("a merge product touching a same-tier piece at full size merges again within 150 ms", () => {
+    // Two tier-1 pieces touching on the floor and a tier 2 resting in the valley on top of them.
+    // Their product (a tier 2 made at their midpoint, on the floor) touches it at full size,
+    // though it starts at its parents' radius.
+    const r1 = tierRadius(1);
+    const r2 = tierRadius(2);
+    const half = r1 - 0.5;
+    const engine = new CascadeEngine({});
+    engine.restore(
+      [
+        ...pair(1),
+        { tier: 2, x: 200, y: FLOOR_TOP - r1 - Math.sqrt((r1 + r2) ** 2 - half ** 2) - 0.5 },
+      ],
+      0
+    );
+    const results = run(engine, Math.ceil(150 / FIXED_STEP_MS));
+    const ms = merges(results);
+    expect(ms.map((m) => m.result)).toEqual([2, 3]);
+    // The second merge consumed the first's product, one step later.
+    expect(ms[1]!.parentIds).toContain(ms[0]!.id);
+    const steps = results.findIndex((r) => r.events.includes(ms[1]!)) + 1;
+    expect(steps * FIXED_STEP_MS).toBeLessThan(150);
+    expect(steps).toBeLessThanOrEqual(2);
+  });
+
+  describe(`chain reach (${CHAIN_REACH_PX} px at full size, from a piece still growing in)`, () => {
+    /**
+     * Two tier-7 pieces touching on the floor merge on step 1 into a tier 8 that starts at their
+     * radius (#3920: 51.5 px, 12 px short of its own 63.8), at their midpoint, on the floor. A second
+     * tier 8 hangs straight above it, its circle `extra` px beyond touching the product's FULL
+     * circle at the start (it falls about 2 px in two steps). While the product is still small its
+     * CURRENT circle is not within MERGE_GAP_PX of that piece, so only chain reach (or the
+     * product growing in, a few steps later) can merge them.
+     */
+    function chainAt(extra: number): CascadeEngine {
+      const full = tierRadius(8);
+      const engine = new CascadeEngine({});
+      engine.restore(
+        [...pair(7), { tier: 8, x: 200, y: FLOOR_TOP - full - (2 * full + extra) }],
+        0
+      );
+      return engine;
+    }
+    /** The 1-based step each merge happened on, over `n` steps. */
+    function mergeSteps(engine: CascadeEngine, n: number): number[] {
+      return run(engine, n).flatMap((r, i) => (merges([r]).length > 0 ? [i + 1] : []));
+    }
+
+    it("merges a same-tier piece the full circle reaches, the step after the product appears", () => {
+      // 3 px beyond touching at full size, inside the 2 px reach after the ~2 px fall. Without chain
+      // reach it merges on step 4 (checked with CHAIN_REACH_PX = 0).
+      expect(mergeSteps(chainAt(3), 6)).toEqual([1, 2]);
+    });
+
+    it("leaves a same-tier piece beyond the reach alone in the first steps of the grow-in", () => {
+      expect(mergeSteps(chainAt(5), 2)).toEqual([1]);
+    });
+
+    /**
+     * #3920: chain reach is also checked where the product is made. The solver can shove a product
+     * made at its parents' size on top of a third piece several px in its first step (up to 12 px
+     * in the sim on the 11.5-98 ladder), out of reach of the piece it was made touching: the chain
+     * was lost. Here the shove is done by hand, 40 px sideways after the merge step.
+     */
+    function shovedAfterMerge(extra: number): number[] {
+      const engine = chainAt(extra);
+      const steps = mergeSteps(engine, 1);
+      type Internals = { _pieces: Map<number, { tier: number; body: Body }> };
+      const product = Array.from((engine as unknown as Internals)._pieces.values()).find(
+        (p) => p.tier === 8 && p.body.getPosition().y * PX_PER_M > FLOOR_TOP - tierRadius(8) - 20
+      )!;
+      const at = product.body.getPosition();
+      setPositionPx(product.body, at.x * PX_PER_M + 40, at.y * PX_PER_M);
+      return [...steps, ...mergeSteps(engine, 2).map((s) => s + 1)];
+    }
+
+    it("merges the next step with a piece the full circle reached where it was made, though shoved away (#3920)", () => {
+      expect(shovedAfterMerge(1)).toEqual([1, 2]);
+    });
+
+    it("does not reach a piece that was out of reach where it was made, once shoved (#3920)", () => {
+      expect(shovedAfterMerge(5)).toEqual([1]);
+    });
+  });
+});
+
+describe("density per tier", () => {
+  type Internals = { _pieces: Map<number, { fixture: Fixture }> };
+
+  it("gives every tier the ladder's density, so mass grows as r^1.5", () => {
+    const engine = new CascadeEngine({});
+    engine.restore(
+      TIERS.map((t, i) => ({
+        tier: t.tier,
+        x: 60 + (i % 4) * 90,
+        y: 100 + Math.floor(i / 4) * 140,
+      })),
+      0
+    );
+    const masses = Array.from((engine as unknown as Internals)._pieces.values(), (p) => {
+      const f = p.fixture;
+      return { tier: (f.getUserData() as { tier: number }).tier, mass: f.getBody().getMass(), f };
+    });
+    for (const { tier, f } of masses) expect(f.getDensity()).toBe(TIERS[tier]!.density);
+    const m = (tier: number) => masses.find((x) => x.tier === tier)!.mass;
+    const ratio = m(CAPSTONE_TIER) / m(0);
+    expect(ratio).toBeCloseTo((tierRadius(CAPSTONE_TIER) / tierRadius(0)) ** 1.5, 6);
+    // #3967: 26.6 : 1 on the 11-98 ladder (#3920: 24.9 : 1 on 11.5-98; 87 : 1 on #3904's 5-98; 73 : 1 at one density for
+    // every tier). Flattening it cost the win rate more than it helped the overlap (#3904):
+    // docs/games/cascade-decisions.md#physics.
+    expect(ratio).toBeCloseTo(26.6, 1);
+    engine.destroy();
+  });
+});
+
+describe("the win: making the capstone (#3920, #3960; #3699 builds on it)", () => {
+  const CAPSTONE_SCORE = TIERS[CAPSTONE_TIER]!.score;
+  /** The tier whose merge makes the capstone. */
+  const PRE = CAPSTONE_TIER - 1;
+
+  it("two touching tier-10 pieces merge into the capstone: merge, its own score, then one win there", () => {
+    const engine = new CascadeEngine({});
+    engine.restore(pair(PRE), 100);
+    const step = engine.step(HZ60).events;
+    expect(step.map((e) => e.type)).toEqual(["merge", "score", "win"]);
+    const merge = step[0] as Extract<EngineEvent, { type: "merge" }>;
+    expect(merge.result).toBe(CAPSTONE_TIER);
+    // The capstone merge's normal score, no extra.
+    expect(step[1]).toEqual({ type: "score", delta: CAPSTONE_SCORE, total: 100 + CAPSTONE_SCORE });
+    expect(step[2]).toEqual({ type: "win", x: merge.x, y: merge.y, id: merge.id });
+    expect(merge.x).toBeCloseTo(200, 0);
+    expect(merge.y).toBeCloseTo(FLOOR_TOP - tierRadius(CAPSTONE_TIER), 0);
+    const pieces = engine.getState().pieces;
+    expect(pieces.map((p) => [p.tier, p.id])).toEqual([[CAPSTONE_TIER, merge.id]]);
+    expect(engine.hasWon()).toBe(true);
+  });
+
+  it("two tier-10 pieces resting within the merge gap (no contact) also make the capstone and win", () => {
+    const engine = new CascadeEngine({});
+    const r = tierRadius(PRE);
+    const gap = MERGE_GAP_PX / 2;
+    engine.restore(
+      [
+        { tier: PRE, x: 200 - r - gap / 2, y: FLOOR_TOP - r },
+        { tier: PRE, x: 200 + r + gap / 2, y: FLOOR_TOP - r },
+      ],
+      0
+    );
+    const evs = events(run(engine, 2));
+    expect(evs.filter((e) => e.type === "win")).toHaveLength(1);
+    expect(evs.filter((e) => e.type === "merge")).toHaveLength(1);
+  });
+
+  it("ends the play: no drops and no merges after the win, the score is final; the physics still steps", () => {
+    const engine = new CascadeEngine({});
+    const r0 = tierRadius(0);
+    // Two tier 10s, and two cherries off to the side, one 20 px above the other: the top one
+    // lands on the bottom one after the win, which would merge them in play.
+    const lowY = FLOOR_TOP - r0;
+    const highY = lowY - 2 * r0 - 20;
+    engine.restore(
+      [...pair(PRE, 170), { tier: 0, x: 360, y: lowY }, { tier: 0, x: 360, y: highY }],
+      0
+    );
+    expect(engine.step(HZ60).events.some((e) => e.type === "win")).toBe(true);
+    expect(engine.canDrop()).toBe(false);
+    engine.drop(0, 200);
+    expect(engine.getState().pieces).toHaveLength(3);
+    expect(events(run(engine, 300))).toEqual([]);
+    expect(engine.getState().gameOver).toBe(false);
+    expect(engine.getState().score).toBe(CAPSTONE_SCORE);
+    // The cherries did not merge; the top one fell onto the other.
+    const cherries = engine.getState().pieces.filter((p) => p.tier === 0);
+    expect(cherries).toHaveLength(2);
+    expect(Math.min(...cherries.map((c) => c.y))).toBeGreaterThan(highY + 10);
+    // The capstone grew in to its full size.
+    const capstone = engine.getState().pieces.find((p) => p.tier === CAPSTONE_TIER)!;
+    expect(capstone.scale ?? 1).toBe(1);
+  });
+
+  it("a tier 10 still growing in makes the capstone with a tier 10 its full circle reaches (chain reach)", () => {
+    // Two tier 9s on the floor make a tier 10 at their radius (66.4, not 80.7); a second tier 10
+    // hangs above, 3 px beyond touching the product's full circle.
+    const full = tierRadius(PRE);
+    const engine = new CascadeEngine({});
+    engine.restore(
+      [...pair(PRE - 1), { tier: PRE, x: 200, y: FLOOR_TOP - full - (2 * full + 3) }],
+      0
+    );
+    const rs = run(engine, 3);
+    const steps = rs.flatMap((r, i) => (r.events.some((e) => e.type === "win") ? [i + 1] : []));
+    expect(steps).toEqual([2]);
+    expect(merges(rs).map((m) => m.result)).toEqual([PRE, CAPSTONE_TIER]);
+  });
+
+  it("two capstones never merge and are not a win (the pair win of #3904 is gone)", () => {
+    // Only the dev panel or a restore can put two on the board: touching, by contact and gap.
+    const engine = new CascadeEngine({});
+    engine.restore(pair(CAPSTONE_TIER), 0);
+    const evs = events(run(engine, 120));
+    expect(evs.filter((e) => e.type === "merge" || e.type === "win" || e.type === "score")).toEqual(
+      []
+    );
+    expect(engine.hasWon()).toBe(false);
+    expect(engine.canDrop()).toBe(true);
+    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER, CAPSTONE_TIER]);
+  });
+
+  it("restore() starts a new game after a win", () => {
+    const engine = new CascadeEngine({});
+    engine.restore(pair(PRE), 0);
+    engine.step(HZ60);
+    expect(engine.hasWon()).toBe(true);
+    engine.restore([], 0);
+    expect(engine.hasWon()).toBe(false);
+    expect(engine.canDrop()).toBe(true);
+  });
+
+  it("no merge below the one that makes the capstone emits a win", () => {
+    for (let tier = 0; tier < PRE; tier++) {
+      const engine = new CascadeEngine({});
+      engine.restore(pair(tier), 0);
+      const evs = events(run(engine, 2));
+      expect(evs.some((e) => e.type === "merge")).toBe(true);
+      expect(evs.some((e) => e.type === "win")).toBe(false);
+      expect(engine.hasWon()).toBe(false);
+    }
+  });
+});
+
+describe("drops at the edge of the bin", () => {
+  it("place the piece against the wall, never inside it", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(5, WALL_THICKNESS);
+    engine.drop(4, WORLD_WIDTH - WALL_THICKNESS);
+    const [left, right] = engine.getState().pieces;
+    expect(left!.x).toBe(WALL_THICKNESS + tierRadius(5));
+    expect(right!.x).toBe(WORLD_WIDTH - WALL_THICKNESS - tierRadius(4));
+  });
+});
+
+describe("a drop x that is not a number", () => {
+  it("is ignored, so the world never takes NaN (the web drop bug)", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(2, Number.NaN);
+    engine.drop(2, Number.POSITIVE_INFINITY);
+    expect(engine.getState().pieces).toHaveLength(0);
+    expect(engine.canDrop()).toBe(true);
+    engine.drop(2, 200);
+    for (let i = 0; i < 120; i++) engine.step(1000 / 60);
+    const [piece] = engine.getState().pieces;
+    expect(Number.isFinite(piece!.x) && Number.isFinite(piece!.y)).toBe(true);
+  });
+});
+
+describe("no teleports in normal play", () => {
+  it("a crowded bin of drops at random spots never fires the guard rail", () => {
+    const engine = new CascadeEngine({});
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const all: EngineEvent[] = [];
+    for (let i = 0; i < 150 && !engine.getState().gameOver; i++) {
+      engine.drop(
+        Math.floor(rand() * 6),
+        WALL_THICKNESS + rand() * (WORLD_WIDTH - 2 * WALL_THICKNESS)
+      );
+      all.push(...events(run(engine, 12)));
+    }
+    expect(all.filter((e) => e.type === "merge").length).toBeGreaterThan(20);
+    expect(all.some((e) => e.type === "guardRailFired")).toBe(false);
+  });
+});
+
+describe("replays (#3858): the same frame deltas replay the same board", () => {
+  /**
+   * Drops every 40th frame, fed at a frame rate. (Across frame rates the rules run the same
+   * fixed steps, so a game plays the same up to frame-boundary rounding: `engine.lid.test.ts`.)
+   */
+  function play(frameMs: number): string {
+    const engine = new CascadeEngine({});
+    const frames = Math.round(20_000 / frameMs);
+    const xs = [120, 250, 180, 310, 90, 220];
+    let drop = 0;
+    for (let f = 0; f < frames; f++) {
+      if (f % 40 === 0 && engine.canDrop()) {
+        engine.drop(drop % 6, xs[drop % xs.length]!);
+        drop++;
+      }
+      engine.step(frameMs);
+    }
+    const s = engine.getState();
+    return JSON.stringify({ score: s.score, pieces: s.pieces });
+  }
+
+  it("the same drops stepped by the same frame deltas replay the same board, at 60 and at 120 Hz, bit for bit", () => {
+    expect(play(HZ60)).toEqual(play(HZ60));
+    expect(play(HZ120)).toEqual(play(HZ120));
+  });
+
+  it("piece ids start at 1 for every engine", () => {
+    const a = new CascadeEngine({});
+    a.drop(0, 200);
+    const b = new CascadeEngine({});
+    b.drop(0, 200);
+    expect(a.getState().pieces[0]!.id).toBe(1);
+    expect(b.getState().pieces[0]!.id).toBe(1);
+  });
+});
+
+describe("drop nudge: the same drop x does not stack into a column", () => {
+  const DROP_X = 200;
+
+  // Merges are off (the bench switch) so a tumbling pile can't merge itself away: 8 pieces stay.
+  function dropColumn(seed?: number): CascadeEngine {
+    const engine = new CascadeEngine({
+      bench: { noMerges: true },
+      ...(seed === undefined ? {} : { seed }),
+    });
+    for (let i = 0; i < 8; i++) {
+      engine.drop(i % 2 === 0 ? 1 : 3, DROP_X);
+      run(engine, 40);
+    }
+    run(engine, 60 * 10);
+    return engine;
+  }
+
+  it("no merges, and the pile is not a single vertical column", () => {
+    const engine = dropColumn();
+    const pieces = engine.getState().pieces;
+    expect(pieces).toHaveLength(8);
+    const spread = pieces.map((p) => Math.abs(p.x - DROP_X) - tierRadius(p.tier) / 2);
+    expect(Math.max(...spread)).toBeGreaterThan(0);
+  });
+
+  it("the pile is well below the height of a column of 8 stacked pieces", () => {
+    const pieces = dropColumn().getState().pieces;
+    const stacked = pieces.reduce((sum, p) => sum + 2 * tierRadius(p.tier), 0);
+    const top = Math.min(...pieces.map((p) => p.y - tierRadius(p.tier)));
+    expect(FLOOR_TOP - top).toBeLessThan(stacked * 0.85);
+  });
+
+  it("the nudge is sub-pixel, and the wall clamp still holds after it", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(0, DROP_X);
+    expect(Math.abs(engine.getState().pieces[0]!.x - DROP_X)).toBeLessThanOrEqual(0.4);
+    const r = tierRadius(3);
+    for (let i = 0; i < 20; i++) {
+      const e = new CascadeEngine({ seed: i });
+      e.drop(3, 0);
+      expect(e.getState().pieces[0]!.x).toBe(WALL_THICKNESS + r);
+      const f = new CascadeEngine({ seed: i });
+      f.drop(3, 10_000);
+      expect(f.getState().pieces[0]!.x).toBe(WORLD_WIDTH - WALL_THICKNESS - r);
+    }
+  });
+
+  it("the same seed and drops replay the same board; another seed nudges differently", () => {
+    const board = (e: CascadeEngine) => JSON.stringify(e.getState().pieces);
+    expect(board(dropColumn(7))).toEqual(board(dropColumn(7)));
+    expect(board(dropColumn(7))).not.toEqual(board(dropColumn(8)));
+  });
+});

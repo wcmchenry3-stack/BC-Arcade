@@ -3,6 +3,7 @@ import type {
   ASTEROID_KINDS,
   CARRIER_STAGES,
   ENEMY_TIERS,
+  HitCause,
   POWERUP_SOURCES,
   POWERUP_TYPES,
 } from "./engine/registries";
@@ -33,6 +34,11 @@ export type CarrierStage = (typeof CARRIER_STAGES)[number];
 /** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
  * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
 export type PowerUpType = (typeof POWERUP_TYPES)[number]; // #3245: see engine/registries.ts
+/**
+ * #3512: the ordinary power-ups — the ones that can be banked when collected after a wave's last
+ * kill (Shield, Lightning, Buddy, Smart Bomb). Salvage and hull plating are ladders, never banked.
+ */
+export type BankablePowerUp = Exclude<PowerUpType, "salvage" | "hull">;
 /** #3246: where a pickup came from (see engine/registries.ts). */
 export type PowerUpSource = (typeof POWERUP_SOURCES)[number];
 
@@ -86,6 +92,12 @@ export type GamePhase =
   | "ClearAwaitingPickups"
   | "Extraction" // #2842: last enemy down — the AI flies the ship out through surviving hazards
   | "GameOver";
+
+/** #3534: the lethal hit — what killed the ship and the phase it landed in. */
+export interface RunEndContext {
+  readonly cause: HitCause;
+  readonly phase: GamePhase;
+}
 
 /** #2842: the AI's hold on the player ship between the wave's last kill and the next wave. */
 export interface Extraction {
@@ -282,14 +294,31 @@ export interface Bullet {
   readonly flak?: boolean;
   /**
    * #2845: goes through the escorted Carrier's force field. A separate concept from `piercing`
-   * (multi-hit through ordinary hulls): Lightning shots are both; Buddy's burst is piercing only,
+   * (multi-hit through ordinary hulls). Since #3562 Lightning is a beam (always armor-piercing), so
+   * this is set only on charged bolts restored from older saves; Buddy's burst is piercing only,
    * so the armored Carrier's field stops it.
    */
   readonly armorPiercing?: boolean;
-  /** #2845: a player-owned shot Buddy fired (allied with the player, never hits it). */
-  readonly source?: "buddy";
+  /**
+   * #2845: "buddy" is a player-owned shot Buddy fired (allied with the player, never hits it).
+   * #3594: "carrier" is one of the Carrier's twin lasers (render-only: drawn as hive-pink orbs).
+   * A save carries it like any `source` (no fingerprint change); an older build ignores it.
+   */
+  readonly source?: "buddy" | "carrier";
+  /**
+   * #3568: fired in the pickup wait, after the last kill. It was never added to `shotsFired`, so
+   * it is not added to `shotsOnRocks` either (keeps shotsOnRocks <= shotsFired).
+   */
+  readonly postClear?: true;
   /** #2845: an enemy shot aimed at Buddy — it replaced a player-directed shot (finite capacity). */
   readonly target?: "buddy";
+  /**
+   * #3710: the tier of the ship that fired this enemy shot — a label for the per-wave
+   * `damage.hitsByTier` stats, never read by play. Absent on a player shot and on a shot restored
+   * from a save before #3710. Left out of the save spec like `PowerUp.source` (no fingerprint
+   * change) and out of the golden hash (`sha()`).
+   */
+  readonly tier?: EnemyTier;
 }
 
 export interface Player {
@@ -310,6 +339,12 @@ export interface Player {
   readonly hullFlashTimer: number;
 }
 
+/**
+ * #3597: how big a blast is drawn — a Grunt's pop, an Elite / Guardian / ship burst, the
+ * Carrier's blast, or a rock breaking into dust and gravel. Render-only: play never reads it.
+ */
+export type ExplosionKind = "pop" | "burst" | "blast" | "rock";
+
 export interface Explosion {
   readonly id: number;
   readonly x: number;
@@ -318,6 +353,14 @@ export interface Explosion {
   readonly frame: number;
   /** ms until next frame advance. */
   readonly frameTimer: number;
+  /** #3597: the blast's size; absent means "pop" (and an older save has none). */
+  readonly kind?: ExplosionKind;
+  /**
+   * #3596: for a `rock` explosion, the id of the rock that broke, so its dust is drawn in that
+   * rock's palette. Render-only like `kind`; absent (an older save, any other kind) draws the
+   * default brown dust.
+   */
+  readonly srcId?: number;
 }
 
 export interface PowerUp {
@@ -428,6 +471,12 @@ export interface StarSwarmState {
   readonly reinforceTimer: number;
   /** #2485: grunts launched by the Carrier this wave — capped at half the wave's grunt slots. */
   readonly reinforcedThisWave: number;
+  /**
+   * #3561: ms left in the Carrier's bay-open telegraph (0 = bay closed). A batch is pending while
+   * it counts down; the Grunts launch from the bay when it reaches 0, and the batch is cancelled
+   * (no Grunts, `reinforcedThisWave` untouched) if the Carrier is gone first.
+   */
+  readonly carrierBayOpen: number;
   /** #2843: released Carrier beams in flight (see CarrierBeam). */
   readonly carrierBeams: readonly CarrierBeam[];
   /**
@@ -460,7 +509,7 @@ export interface StarSwarmState {
   readonly formationSwayDir: 1 | -1;
   /** How many bonus lives have been awarded so far (prevents re-awarding at same multiple). */
   readonly bonusLivesAwarded: number;
-  /** ms remaining for the slow-motion window after a bonus life is awarded (#1078); 0 when inactive. */
+  /** @deprecated #3511: slow-mo removed. Always 0; kept only so old saves still load. */
   readonly bonusLifeSlowMoTimer: number;
   /** Non-Guardian enemy count at wave start; used for Guardian dive eligibility (#978). */
   readonly startingNonLeaderCount: number;
@@ -542,6 +591,34 @@ export interface StarSwarmState {
   readonly closedTimelinesBytes: number;
   /** #3392: the closed timelines not kept, by reason (see engine/waveTimeline.ts). */
   readonly closedTimelinesOverflow: ClosedTimelinesOverflow;
+  /**
+   * #3510: a dev-panel action touched this run — a dev New Game, or anything that flags a wave
+   * `dev` (`markWaveDev`). Latched for the run: never cleared, carried across waves, saved with
+   * a paused run. Sent once, as `dev_affected` on the run's completion; the server keeps such a
+   * run but leaves it off the leaderboards and stats.
+   */
+  readonly devAffected: boolean;
+  /**
+   * #3534: how the run ended, for the game-over card only: the cause of the hit that took the
+   * last life and the phase it landed in. Client-only (never in WaveStats or any event), never
+   * saved (a finished run isn't); a same-tick bonus life that rescues the ship clears it.
+   */
+  readonly endContext?: RunEndContext | null;
+  /**
+   * #3512: an ordinary power-up collected after the wave's last kill (the pickup wait, or an
+   * extraction yield): banked instead of applied, and applied on the next wave's first combat
+   * tick (the SwoopIn → Playing transition). At most one; a second replaces it. Kept through a
+   * lost life and a pause (saved with a paused run); dropped with the run. Null when none.
+   */
+  readonly bankedPowerUp: BankablePowerUp | null;
+  /**
+   * #3709: the ship's x at the last Lightning pulse, while the beam has stayed on with the trigger
+   * held since. The next pulse sweeps each beam from there to the ship's x now (see
+   * engine/lightningBeam.ts). Absent before a beam's first pulse, and whenever the beam is off or
+   * the trigger released; set only then, so the key never enters a state without Lightning. A
+   * restore drops it (the first pulse after a resume uses the beam's instant overlap).
+   */
+  readonly lightningPulseX?: number;
 }
 
 /** Input snapshot consumed by each `tick` call. */

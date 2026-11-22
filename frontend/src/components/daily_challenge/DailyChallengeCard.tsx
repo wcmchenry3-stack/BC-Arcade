@@ -57,6 +57,64 @@ function WindowExhaustedMessage() {
   );
 }
 
+/**
+ * The bonus row (#3995): a dashed divider, a small "Bonus" label and one chip. Quieter
+ * than a core chip (dashed outline, no accent fill); done, it is a solid green outline
+ * with a filled star. The glyph and label are hidden from screen readers: the chip's
+ * label says it is an optional bonus and its state.
+ */
+function BonusRow({ goal, label }: { goal: ChallengeGoal; label: string }) {
+  const { t } = useTranslation("daily_challenge");
+  const { colors } = useTheme();
+  return (
+    <View style={styles.bonusBlock} testID="daily-challenge-bonus">
+      <View style={styles.dividerClip}>
+        <View style={[styles.divider, { borderColor: colors.border }]} />
+      </View>
+      <View style={styles.bonusRow}>
+        <Text
+          style={[styles.bonusLabel, { color: colors.textMuted }]}
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+        >
+          {t("daily_challenge:bonus.label")}
+        </Text>
+        <View
+          style={[
+            styles.chip,
+            goal.completed
+              ? { borderColor: colors.bonus }
+              : { borderColor: colors.border, borderStyle: "dashed" },
+          ]}
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel={t(
+            goal.completed ? "daily_challenge:bonus.doneA11y" : "daily_challenge:bonus.todoA11y",
+            { goal: label }
+          )}
+          testID={`daily-challenge-bonus-goal-${goal.id}`}
+        >
+          <Text
+            style={[styles.chipMark, { color: colors.bonusText }]}
+            importantForAccessibility="no"
+            accessibilityElementsHidden
+            testID={`daily-challenge-bonus-mark-${goal.id}`}
+          >
+            {goal.completed ? "★" : "☆"}
+          </Text>
+          <Text
+            style={[styles.chipText, { color: goal.completed ? colors.bonusText : colors.text }]}
+            importantForAccessibility="no"
+            accessibilityElementsHidden
+          >
+            {label}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function DailyChallengeCard() {
   const { t, i18n } = useTranslation(["daily_challenge", ...GAME_TITLE_NAMESPACES]);
   const { colors } = useTheme();
@@ -68,6 +126,9 @@ export default function DailyChallengeCard() {
   const goals = challenge?.goals.filter((goal) => isGameVisible(goal.gameSlug)) ?? [];
   // Every goal belongs to a hidden game: there is nothing playable to show.
   const nothingPlayable = challenge !== null && challenge.goals.length > 0 && goals.length === 0;
+  // The optional bonus goal (#3995), hidden the same way. It is never counted in "N of 3".
+  const bonus =
+    challenge?.bonus && isGameVisible(challenge.bonus.gameSlug) ? challenge.bonus : null;
 
   /**
    * Each game words its own goals: `goal.<gameSlug>.<kind>`. `count` drives the
@@ -95,7 +156,7 @@ export default function DailyChallengeCard() {
           <View style={styles.headerRow}>
             <Text style={[styles.title, { color: colors.text }]}>{t("daily_challenge:title")}</Text>
             <Text
-              style={[styles.progress, { color: allDone ? colors.accent : colors.textMuted }]}
+              style={[styles.progress, { color: allDone ? colors.accentText : colors.textMuted }]}
               testID="daily-challenge-progress"
             >
               {t("daily_challenge:progress", { done, total })}
@@ -151,6 +212,7 @@ export default function DailyChallengeCard() {
               );
             })}
           </View>
+          {bonus ? <BonusRow goal={bonus} label={goalLabel(bonus)} /> : null}
           {allDone ? (
             <Text style={[styles.note, { color: colors.textMuted }]}>
               {t("daily_challenge:allDone")}
@@ -271,6 +333,33 @@ const styles = StyleSheet.create({
   chipText: {
     fontFamily: typography.label,
     fontSize: 12,
+  },
+  bonusBlock: {
+    gap: 10,
+  },
+  // A 1px dashed line: Android only draws a dashed border on all four sides, so the
+  // taller dashed box is clipped to its top edge.
+  dividerClip: {
+    height: 1,
+    overflow: "hidden",
+  },
+  divider: {
+    height: 3,
+    marginHorizontal: -1,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  bonusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+  },
+  bonusLabel: {
+    fontFamily: typography.label,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   chipSkeleton: {
     width: 96,

@@ -22,7 +22,11 @@
  *     a    the actions in order, each [code, hand] plus a third item:
  *            ["h", i, "KS"]  hit, the card drawn       ["d", i, "9S"]  double, the card
  *            ["s", i]        stand                     ["p", i, [[A, new], [B, new]]]
- *          a split, the two hands it made, which take hand i's place (table order)
+ *          a split, the two hands it made, which take hand i's place (table order).
+ *          A hand that reaches 21 stands on its own (#3764): that stand is logged as
+ *          ["s", i] too, right after the action that reached 21 (a hit, or a split or
+ *          a move on that passed a split hand dealt 21; `autoStands`), so a reader
+ *          sees the same entries a hit and a tapped Stand made before
  *     dl   the dealer's play, only when it played (not when every hand busted or a
  *          natural settled on the deal): { d: cards drawn, t: final total, b?: 1 bust }
  *     r    1 on a round resumed after the app was killed mid-hand: the deal and the
@@ -51,7 +55,8 @@
  * card animations.
  */
 
-import { handValue, type Card, type EngineState } from "./engine";
+import { replayEngines } from "../_shared/replayEngine";
+import { ENGINE_VERSION, handValue, type Card, type EngineState } from "./engine";
 
 /** The action a `["h"|"s"|"d"|"p", ...]` entry records. */
 export type RecordedAction = "hit" | "stand" | "double" | "split";
@@ -168,6 +173,31 @@ export function logAction(
   } else {
     log.a.push([code, i]);
   }
+  // 21 stands on its own (#3764): logged as the Stand a tap would have made, after the action.
+  for (const j of autoStands(prev, next, action)) log.a.push([ACTION_CODE.stand, j]);
+}
+
+/**
+ * The hands the action `prev` -> `next` left on 21 and the engine stood for the player (#3764),
+ * in table order: the hand a hit took to 21, and every split hand dealt 21 that play passed over
+ * (by a split, or on its way to the next hand). Split aces are not among them: they take one card
+ * each and are passed at the split, with no stand to log.
+ */
+export function autoStands(prev: EngineState, next: EngineState, action: RecordedAction): number[] {
+  const i = prev.active_hand_index;
+  if (next.split_count === 0) {
+    return action === "hit" && handValue(next.player_hand) === 21 ? [0] : [];
+  }
+  // Every hand from the one acted on up to the next one to play (all of them once settled).
+  const end = next.phase === "player" ? next.active_hand_index : next.player_hands.length;
+  const out: number[] = [];
+  for (let j = i; j < end; j++) {
+    // A Stand or a Double ends its own hand: that is the action itself, not a stand of its own.
+    if (j === i && (action === "stand" || action === "double")) continue;
+    if (next.split_from_aces[j]) continue;
+    if (handValue(next.player_hands[j] ?? []) === 21) out.push(j);
+  }
+  return out;
 }
 
 /**
@@ -211,3 +241,20 @@ export function handResolvedData(
 ): Record<string, unknown> {
   return { i: index, o: outcome, p: payout, ch: chipsAfter, c: encodeCards(cards) };
 }
+
+/** The `game_started` data (#3909): the starting chips and the engine version. */
+export function startedData(startingChips: number): Record<string, unknown> {
+  return { starting_chips: startingChips, engine_version: ENGINE_VERSION };
+}
+
+/**
+ * Which rules replay a recorded game, by the `engine_version` in its `game_started`
+ * (#3912, `_shared/replayEngine.ts`): the hand-value rule a recorded round is read with (outcomes are read as recorded). A reader resolves the game's
+ * `game_started` data first; an `incompatible` result rebuilds nothing. It is the
+ * contract for any frontend reader of this game: none rebuilds from stored events
+ * today (this file applies single steps; the backend reads stored games), and a
+ * new one must resolve here first. An older version stays replayable by
+ * registering its frozen rules with `withLegacy`.
+ * @internal No production caller: tests use it (knip --production, #3126).
+ */
+export const REPLAY_ENGINES = replayEngines("blackjack", ENGINE_VERSION, { handValue });

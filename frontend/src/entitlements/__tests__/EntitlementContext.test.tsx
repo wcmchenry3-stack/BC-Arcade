@@ -35,6 +35,30 @@ jest.mock("../../game/blackjack/storage", () => ({ clearGame: () => mockClearBla
 jest.mock("../../game/sudoku/storage", () => ({ clearGame: () => mockClearSudoku() }));
 // cascade/storage was removed in v2 teardown (#1747); EntitlementContext uses an inline no-op.
 
+// A controllable useNetwork(): tests flip connectivity with setMockNetwork().
+// Starts as the real default context value (online, not initialized), so tests
+// that never touch it behave as if no NetworkProvider were mounted.
+type MockNetworkStatus = { isOnline: boolean; isInitialized: boolean };
+let mockNetworkStatus: MockNetworkStatus = { isOnline: true, isInitialized: false };
+const mockNetworkListeners = new Set<() => void>();
+function setMockNetwork(next: MockNetworkStatus) {
+  mockNetworkStatus = next;
+  mockNetworkListeners.forEach((l) => l());
+}
+jest.mock("../../game/_shared/NetworkContext", () => {
+  const { useSyncExternalStore } = jest.requireActual<typeof import("react")>("react");
+  return {
+    useNetwork: () =>
+      useSyncExternalStore(
+        (l: () => void) => {
+          mockNetworkListeners.add(l);
+          return () => mockNetworkListeners.delete(l);
+        },
+        () => mockNetworkStatus
+      ),
+  };
+});
+
 // ---------------------------------------------------------------------------
 // Imports after mocks
 // ---------------------------------------------------------------------------
@@ -108,6 +132,7 @@ async function renderProvider() {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockNetworkStatus = { isOnline: true, isInitialized: false };
   await AsyncStorage.clear();
   mockRequest.mockResolvedValue({
     token: makeToken(makePayload([])),
@@ -453,6 +478,368 @@ describe("refresh() and applyToken() (#841)", () => {
     await act(async () => {
       await ctx.refresh();
     });
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+});
+
+describe("refetch on reconnect after a failed first fetch (#3868)", () => {
+  const entitledResponse = () => ({
+    token: makeToken(makePayload(["hearts"])),
+    expires_at: "2099-01-01T00:00:00Z",
+  });
+
+  async function goOffline() {
+    await act(async () => setMockNetwork({ isOnline: false, isInitialized: true }));
+  }
+  async function goOnline() {
+    await act(async () => setMockNetwork({ isOnline: true, isInitialized: true }));
+    await flushAsync();
+    await flushAsync();
+  }
+
+  it("loads entitlements when the network returns after an offline launch with no cache", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(new TypeError("Network request failed"));
+    await renderProvider();
+    expect(ctx.canPlay("hearts")).toBe(false);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("retries once per reconnect while the fetch keeps failing, and stops once it succeeds", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(new TypeError("Network request failed"));
+    await renderProvider();
+
+    // A flaky reconnect: the retry also fails with a network error, so it stays armed.
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.canPlay("hearts")).toBe(false);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(ctx.canPlay("hearts")).toBe(true);
+
+    // Loaded: later reconnects make no extra request.
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not refetch on reconnect when a valid cache exists", async () => {
+    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(makePayload(["hearts"])));
+    await AsyncStorage.setItem(CACHED_AT_STORAGE_KEY, new Date().toISOString());
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(new TypeError("Network request failed"));
+    await renderProvider();
+    expect(ctx.canPlay("hearts")).toBe(true);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refetch on reconnect after a non-network failure", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(new Error("HTTP 503"));
+    await renderProvider();
+    expect(ctx.canPlay("hearts")).toBe(false);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refetch on reconnect after a successful launch fetch", async () => {
+    await renderProvider();
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refetch on reconnect once applyToken has unlocked the games", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(new TypeError("Network request failed"));
+    await renderProvider();
+    await act(async () => {
+      await ctx.applyToken(makeToken(makePayload(["hearts"])));
+    });
+
+    await goOnline();
+
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  const networkFailure = () => new TypeError("Network request failed");
+  function deferRequest() {
+    let resolve: (v: unknown) => void = () => {};
+    let reject: (e: unknown) => void = () => {};
+    mockRequest.mockReturnValueOnce(
+      new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+      })
+    );
+    return { resolve: (v: unknown) => resolve(v), reject: (e: unknown) => reject(e) };
+  }
+
+  it("a stale successful refresh does not disarm the retry armed by a newer failure", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider();
+
+    const older = deferRequest();
+    const newer = deferRequest();
+    let olderDone!: Promise<void>;
+    await act(async () => {
+      olderDone = ctx.refresh();
+    });
+    await act(async () => {
+      newer.reject(networkFailure());
+      await ctx.refresh();
+    });
+    await act(async () => {
+      older.resolve(entitledResponse());
+      await olderDone;
+    });
+    expect(ctx.canPlay("hearts")).toBe(false);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+
+    expect(mockRequest).toHaveBeenCalledTimes(4);
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("loads entitlements when the network returns while the launch fetch is in flight", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    const boot = deferRequest();
+    await renderProvider();
+
+    await goOnline(); // edge while the launch fetch is pending: not armed yet
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await act(async () => boot.reject(networkFailure()));
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("loads entitlements when the network returns while the launch cache read is in flight", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    let releaseCache: () => void = () => {};
+    const gate = new Promise<void>((r) => (releaseCache = r));
+    const realGetMany = AsyncStorage.getMany.bind(AsyncStorage);
+    const realGetManyImpl = (AsyncStorage.getMany as jest.Mock).getMockImplementation();
+    const spy = jest.spyOn(AsyncStorage, "getMany").mockImplementationOnce(async (keys) => {
+      await gate;
+      return realGetMany(keys);
+    });
+    await renderProvider();
+    expect(ctx.isLoading).toBe(true);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    await act(async () => releaseCache());
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.canPlay("hearts")).toBe(true);
+    // getMany is jest.setup.ts's jest.fn: mockRestore() would strip its store-backed
+    // implementation and leave it returning undefined for every later test.
+    spy.mockImplementation(realGetManyImpl);
+  });
+
+  it("makes at most one immediate retry when NetInfo is online but the launch fetch fails", async () => {
+    mockNetworkStatus = { isOnline: true, isInitialized: true };
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider();
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.canPlay("hearts")).toBe(false);
+  });
+
+  it("arms the retry when a foreground refresh supersedes the launch fetch and fails offline", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    const boot = deferRequest();
+    await render(
+      <EntitlementProvider>
+        <Probe />
+      </EntitlementProvider>
+    );
+    await flushAsync();
+
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    await act(async () => boot.reject(networkFailure()));
+    await flushAsync();
+    await flushAsync();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("falls back to a valid cache when a foreground refresh supersedes the launch fetch and fails offline (#3879)", async () => {
+    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(makePayload(["hearts"])));
+    await AsyncStorage.setItem(CACHED_AT_STORAGE_KEY, new Date().toISOString());
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    const boot = deferRequest();
+    await render(
+      <EntitlementProvider>
+        <Probe />
+      </EntitlementProvider>
+    );
+    await flushAsync();
+
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    await act(async () => boot.reject(networkFailure()));
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(ctx.isLoading).toBe(false);
+    expect(ctx.canPlay("hearts")).toBe(true);
+
+    // A cached unlock does not wait for the network, as after a failed launch fetch.
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on a reconnect that lands while a superseding refresh reads an empty cache (#3879)", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    deferRequest(); // the launch fetch never settles
+    let releaseCache: () => void = () => {};
+    const gate = new Promise<void>((r) => (releaseCache = r));
+    const realGetManyImpl = (AsyncStorage.getMany as jest.Mock).getMockImplementation();
+    const spy = jest.spyOn(AsyncStorage, "getMany").mockImplementationOnce(async (keys) => {
+      await gate;
+      return realGetManyImpl!(keys);
+    });
+    await render(
+      <EntitlementProvider>
+        <Probe />
+      </EntitlementProvider>
+    );
+    await flushAsync();
+
+    mockRequest.mockRejectedValueOnce(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    // Connectivity returns while the refresh is still reading the (empty) cache.
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOnline();
+    await act(async () => releaseCache());
+    await flushAsync();
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(ctx.canPlay("hearts")).toBe(true);
+    spy.mockImplementation(realGetManyImpl);
+  });
+
+  it("a refresh network failure does not replace held entitlements with the cache (#3879)", async () => {
+    mockRequest.mockResolvedValueOnce({
+      token: makeToken(makePayload(["hearts", "cascade"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await renderProvider();
+    expect(ctx.canPlay("hearts")).toBe(true);
+    expect(ctx.canPlay("cascade")).toBe(true);
+
+    // The cache now holds less than memory; a transient error must not apply it.
+    await AsyncStorage.setItem(TOKEN_STORAGE_KEY, makeToken(makePayload([])));
+    await AsyncStorage.setItem(CACHED_AT_STORAGE_KEY, new Date().toISOString());
+    mockRequest.mockRejectedValue(networkFailure());
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+    await flushAsync();
+
+    expect(ctx.canPlay("hearts")).toBe(true);
+    expect(ctx.canPlay("cascade")).toBe(true);
+  });
+
+  it("a non-network failure on a reconnect refresh disarms the retry", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider();
+
+    mockRequest.mockRejectedValue(new Error("HTTP 503"));
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not refetch when NetInfo initializes while already online", async () => {
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider(); // armed: online but not initialized, so no immediate retry
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    // A real offline → online edge afterwards still retries.
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on a second reconnect edge even if the first reconnect refresh is still pending and then fails", async () => {
+    mockNetworkStatus = { isOnline: false, isInitialized: true };
+    mockRequest.mockRejectedValue(networkFailure());
+    await renderProvider();
+
+    const first = deferRequest();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+
+    mockRequest.mockResolvedValue(entitledResponse());
+    await goOffline();
+    await goOnline();
+    expect(mockRequest).toHaveBeenCalledTimes(3);
+
+    await act(async () => first.reject(networkFailure()));
+    await flushAsync();
+    await flushAsync();
     expect(ctx.canPlay("hearts")).toBe(true);
   });
 });

@@ -177,6 +177,7 @@ describe("wave-stats contract harness (self-test, fixture registries)", () => {
     HIT_RESULTS: ["resultA"],
     KILL_METHODS: ["methodA"],
     CARRIER_STAGES: ["stageA"],
+    DEATH_PHASES: ["deathPhaseA"], // #3535
   };
   const SECTIONS = Object.keys(SECTION_REGISTRIES) as ContractSection[];
   const ADDING = "(see docs/games/starswarm.md#adding-content)";

@@ -1,10 +1,18 @@
 appId: com.buffingchi.games
 ---
 # Subflow: tap a game tile and assert the game screen loads.
-# Caller must set: ${gameSlug}    (testID suffix, e.g. "yacht")
+# Caller must set: ${gameSlug}    (testID suffix, e.g. "solitaire")
 #                  ${screenLabel} (text visible on the game screen)
-- tapOn:
-    id: "game-tile-${gameSlug}"
+#
+# Not for games that open a pre-game picker in a React Native <Modal> (Yacht's
+# mode picker, Star Swarm's difficulty picker). On Android a Modal is its own
+# window, and while it is up Maestro cannot see the screen title behind it, so
+# the `screenLabel` wait below times out (#2373). Those flows run
+# tap-game-tile.yaml, answer the picker, then check the title themselves.
+- runFlow:
+    file: tap-game-tile.yaml
+    env:
+      gameSlug: "${gameSlug}"
 - extendedWaitUntil:
     visible:
       text: "${screenLabel}"

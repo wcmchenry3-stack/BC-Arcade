@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Iniciar novo jogo",
   "newGame.confirm.cancel": "Cancelar",
   "settings.soundEffects": "Efeitos sonoros",
+  "settings.dragDebugOverlay": "Sobreposição de depuração de arrasto",
+  "settings.dragDebugOverlay.description": "Desenvolvedor: mostra o dedo, a moldura esperada da carta e o resultado da verificação do arrasto durante o arrasto.",
   "clearLogs.label": "Limpar registros locais",
   "clearLogs.description": "Apagar todos os eventos e registros de erros pendentes que ainda não foram sincronizados.",
   "clearLogs.button": "Limpar",
@@ -49,8 +51,15 @@
   "overflow.abandon.body": "Começar um novo jogo vai apagar seu progresso nesta rodada. Suas estatísticas gerais não serão afetadas.",
   "overflow.abandon.keepPlaying": "Continuar Jogando",
   "overflow.abandon.startNew": "Começar Novo",
+  "play": "Jogar",
   "home.locked.buttonLabel": "Desbloquear",
   "home.locked.cardLabel": "{{title}} — Bloqueado, toque para desbloquear",
+  "home.resume.buttonLabel": "Continuar",
+  "home.resume.cardLabel": "{{label}} — em andamento, toque para continuar",
+  "home.status.inProgress": "Em andamento",
+  "home.status.doneToday": "Feito hoje",
+  "home.status.best": "Melhor {{value}}",
+  "home.status.bestMoves": "Melhores jogadas: {{value}}",
   "deleteData.label": "Excluir meus dados",
   "deleteData.description": "Excluir permanentemente todo o histórico de jogos e estatísticas associados a este dispositivo.",
   "deleteData.button": "Excluir",
@@ -104,5 +113,6 @@
   "locked.back": "Voltar ao lobby",
   "locked.back_label": "Voltar ao lobby",
   "offline.windowExhausted": "Já se passaram 3 dias desde a sua última conexão. Conecte-se à internet para receber o quebra-cabeça mais recente.",
-  "offline.windowExhaustedStreak": "Conecte-se para manter a sua sequência."
+  "offline.windowExhaustedStreak": "Conecte-se para manter a sua sequência.",
+  "action.autoComplete": "Auto-Completar"
 }

@@ -93,7 +93,7 @@ function PimcTimingSection({ active }: { active: boolean }) {
   const ms = (x: number) => `${Math.round(x)} ms`;
   return (
     <View style={[styles.handSection, { borderColor: colors.border }]}>
-      <Text style={[styles.handTitle, { color: colors.accent }]}>
+      <Text style={[styles.handTitle, { color: colors.accentText }]}>
         PIMC engine timing ({Platform.OS})
       </Text>
       <Pressable
@@ -175,7 +175,7 @@ function CpuDecisionLog({
             <Text style={{ color: colors.text }}>
               T{trickNo} {label(play.playerIndex)} {cardStr(play.card)}{" "}
             </Text>
-            <Text style={{ color: colors.accent }}>{play.principle ?? "forced"}</Text>
+            <Text style={{ color: colors.accentText }}>{play.principle ?? "forced"}</Text>
             {play.reason ? ` ${play.reason}` : ""}
           </Text>
         ))}
@@ -199,7 +199,7 @@ function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSe
 
   return (
     <View style={[styles.handSection, { borderColor: colors.border }]}>
-      <Text style={[styles.handTitle, { color: colors.accent }]}>
+      <Text style={[styles.handTitle, { color: colors.accentText }]}>
         Hand {log.handNumber} — {passDirectionLabel(log.passDirection)}
       </Text>
 
@@ -256,7 +256,7 @@ function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSe
             })
             .join("  ")}
           {"  "}
-          <Text style={{ color: colors.accent }}>
+          <Text style={{ color: colors.accentText }}>
             → {label(trick.winnerIndex)}
             {trick.pointsWon > 0 ? ` +${trick.pointsWon}` : ""}
           </Text>
@@ -408,7 +408,7 @@ export default function HeartsDebugPanel({
           <PimcTimingSection active={visible} />
           {live && (live.tricks.length > 0 || live.pending.length > 0) && (
             <View style={[styles.handSection, { borderColor: colors.border }]}>
-              <Text style={[styles.handTitle, { color: colors.accent }]}>
+              <Text style={[styles.handTitle, { color: colors.accentText }]}>
                 Hand {live.handNumber} — in progress
               </Text>
               <CpuDecisionLog

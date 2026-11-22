@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "ابدأ لعبة جديدة",
   "newGame.confirm.cancel": "إلغاء",
   "settings.soundEffects": "المؤثرات الصوتية",
+  "settings.dragDebugOverlay": "طبقة تصحيح السحب",
+  "settings.dragDebugOverlay.description": "للمطورين: يعرض موضع الإصبع وإطار البطاقة المتوقع ونتيجة فحص السحب أثناء السحب.",
   "clearLogs.label": "مسح السجلات المحلية",
   "clearLogs.description": "حذف جميع الأحداث والتقارير التي لم تتم مزامنتها بعد.",
   "clearLogs.button": "مسح",
@@ -49,8 +51,15 @@
   "overflow.abandon.body": "بدء لعبة جديدة سيؤدي إلى فقدان تقدمك في هذه الجولة. إحصائياتك الإجمالية لن تتأثر.",
   "overflow.abandon.keepPlaying": "استمر باللعب",
   "overflow.abandon.startNew": "ابدأ جديد",
+  "play": "العب",
   "home.locked.buttonLabel": "فتح",
   "home.locked.cardLabel": "{{title}} — مقفلة، اضغط لفتحها",
+  "home.resume.buttonLabel": "استئناف",
+  "home.resume.cardLabel": "{{label}} — قيد التقدم، اضغط للاستئناف",
+  "home.status.inProgress": "قيد التقدم",
+  "home.status.doneToday": "اكتملت اليوم",
+  "home.status.best": "الأفضل {{value}}",
+  "home.status.bestMoves": "أفضل عدد حركات: {{value}}",
   "deleteData.label": "حذف بياناتي",
   "deleteData.description": "حذف جميع سجلات الألعاب والإحصائيات المرتبطة بهذا الجهاز بشكل نهائي.",
   "deleteData.button": "حذف",
@@ -107,5 +116,6 @@
   "locked.back": "العودة إلى الردهة",
   "locked.back_label": "العودة إلى الردهة",
   "offline.windowExhausted": "مرّت 3 أيام منذ آخر اتصال لك. اتصل بالإنترنت للحصول على أحدث لغز.",
-  "offline.windowExhaustedStreak": "اتصل بالإنترنت لتواصل سلسلتك."
+  "offline.windowExhaustedStreak": "اتصل بالإنترنت لتواصل سلسلتك.",
+  "action.autoComplete": "إكمال تلقائي"
 }

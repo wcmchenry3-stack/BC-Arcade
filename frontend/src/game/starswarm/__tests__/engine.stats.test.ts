@@ -35,7 +35,7 @@ import type {
   StarSwarmInput,
   StarSwarmState,
 } from "../types";
-import { advanceMs, clearWave, makeBeam } from "./helpers/engineFixtures";
+import { advanceMs, clearWave, makeBeam, reinforceTick } from "./helpers/engineFixtures";
 
 beforeEach(() => {
   seedRng(42);
@@ -201,7 +201,7 @@ describe("Run stats (#2491)", () => {
       reinforceTimer: 1,
     };
     const before = s.enemies.length;
-    s = tick(s, 16, ASIDE);
+    s = reinforceTick(s, ASIDE);
     const launched = s.enemies.length - before;
     expect(launched).toBeGreaterThanOrEqual(2);
     expect(s.runStats.reinforced).toBe(launched);

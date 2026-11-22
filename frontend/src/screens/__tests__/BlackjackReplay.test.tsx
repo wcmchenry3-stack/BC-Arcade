@@ -102,7 +102,9 @@ describe("Blackjack replay after a run ends (#2788)", () => {
       await fireEvent.press(card.getByRole("button", { name: "Play Again" }));
     });
     // Straight to the table picker: no paywall or purchase screen in between.
-    expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
+    // One table screen (#3580): the picker shows on this screen, no screen swap.
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
+    expect(nav.replace).not.toHaveBeenCalled();
     expect(nav.navigate).not.toHaveBeenCalled();
     expect(mockShellNavigate).not.toHaveBeenCalled();
   });

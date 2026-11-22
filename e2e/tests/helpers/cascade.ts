@@ -4,8 +4,10 @@
  * Requires EXPO_PUBLIC_TEST_HOOKS=1 in the frontend build (set in CI and
  * locally via `EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`).
  *
- * All window.__cascade_* hooks are registered in CascadeScreen.tsx and
- * GameCanvas.web.tsx and are no-ops / undefined in production builds.
+ * All window.__cascade_* hooks are registered by frontend/src/game/cascade/testHooks.ts
+ * and are undefined in builds without test hooks. On web Cascade draws through Skia's web
+ * runtime (CanvasKit), which the Cascade route loads when it opens (#2960); the smoke spec is
+ * `cascade-smoke.spec.ts`.
  */
 
 import { Page } from "@playwright/test";
@@ -16,6 +18,8 @@ export interface CascadeState {
   fruitCount: number;
   dangerRatio: number;
   gameOver: boolean;
+  /** The capstone was made (#3920): play has ended in a win. */
+  won: boolean;
   nextFruitTier: number;
   comboCount: number;
   fruits: Array<{
@@ -27,19 +31,33 @@ export interface CascadeState {
   }>;
 }
 
-/** Navigate from Home to Cascade and wait for the canvas to be ready. */
-export async function gotoCascade(page: Page): Promise<void> {
+/**
+ * Navigate from Home to Cascade and wait for its header, without waiting for the board: on web
+ * the route is still loading CanvasKit (`cascade-web-loading`) or showing its load error
+ * (`cascade-web-error`).
+ */
+export async function openCascade(page: Page): Promise<void> {
   await installEntitlementsMock(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Play Cascade" }).click();
   await page
     .getByRole("heading", { name: "Cascade", exact: true })
     .waitFor({ timeout: 10_000 });
-  // Matter.js engine may take a moment to initialise — wait for the canvas label
+}
+
+/** Navigate from Home to Cascade and wait for the canvas to be ready. */
+export async function gotoCascade(page: Page): Promise<void> {
+  await openCascade(page);
+  await waitForCascadeBoard(page);
+}
+
+/** Wait for the board to render and the engine to accept drops. */
+export async function waitForCascadeBoard(page: Page): Promise<void> {
+  // physics engine may take a moment to initialise — wait for the canvas label
   await page
     .getByRole("img", { name: /Cascade game/i })
     .waitFor({ timeout: 15_000 });
-  // The canvas DOM mounts before the Matter.js engine finishes async init; without
+  // The canvas DOM mounts before the physics engine finishes init; without
   // this wait the first spawnTierAt() calls can silently no-op because
   // engineRef is still null, causing flaky first-run failures (#375).
   await page.waitForFunction(
@@ -63,6 +81,7 @@ export async function getState(page: Page): Promise<CascadeState> {
         fruitCount: 0,
         dangerRatio: 0,
         gameOver: false,
+        won: false,
         nextFruitTier: 0,
         comboCount: 0,
         fruits: [] as CascadeState["fruits"],
@@ -139,5 +158,15 @@ export async function spawnTierAt(
         window as { __cascade_spawnTierAt?: (tier: number, x: number) => void }
       ).__cascade_spawnTierAt?.(t, xPos),
     [tier, x] as const,
+  );
+}
+
+/**
+ * Restore two tier-10 pieces about to merge into the capstone (#3920): the win follows within
+ * about 0.2 s, then the celebration and the win card (#3699).
+ */
+export async function setupWin(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    (window as { __cascade_setupWin?: () => void }).__cascade_setupWin?.(),
   );
 }

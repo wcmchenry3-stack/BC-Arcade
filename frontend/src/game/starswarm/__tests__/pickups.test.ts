@@ -12,6 +12,7 @@ import {
   drawPickupOps,
 } from "../render/pickups";
 import { setDebugOpKeys } from "../render/opKeys";
+import { HULL_EDGE, HULL_PLATE } from "../render/palette";
 import {
   pickupCues,
   pickupCueFrame,
@@ -22,22 +23,49 @@ import {
 import type { PowerUp, PowerUpType, StarSwarmState } from "../types";
 
 const NONE: LoadedSprites = {
-  playerShip: false,
+  p1Base: false,
+  p1Guns2: false,
+  p1Guns3: false,
+  p1Plating1: false,
+  p1Plating2: false,
+  p2Base: false,
+  p2Guns2: false,
+  p2Guns3: false,
+  p2Plating1: false,
+  p2Plating2: false,
+  p3Base: false,
+  p3Guns2: false,
+  p3Guns3: false,
+  p3Plating1: false,
+  p3Plating2: false,
   buddyShip: false,
   enemyGrunt: false,
   enemyElite: false,
   enemyGuardian: false,
   enemyCarrier: false,
-  bulletPlayer: false,
+  enemyEliteAttack: false,
+  enemyEliteHurt: false,
+  enemyGuardianPlate: false,
+  enemyGuardianCracks: false,
+  enemyGuardianPlate2: false,
+  enemyCarrierCracks: false,
+  shotPlayer: false,
+  shotBuddy: false,
+  shotEnemy: false,
+  shotFlak: false,
+  shotCarrier: false,
   puShield: true,
   puBomb: true,
   puBuddy: true,
   puLightning: true,
-  asteroid1: false,
-  asteroid2: false,
-  asteroid3: false,
-  asteroid4: false,
-  explosion: [],
+  puSalvage: false,
+  puHull: false,
+  rockLarge1: false,
+  rockLarge1Veins: false,
+  rockLarge2: false,
+  rockLarge2Veins: false,
+  rockSmall1: false,
+  rockSmall2: false,
 };
 
 function pu(id: number, type: PowerUpType, over: Partial<PowerUp> = {}): PowerUp {
@@ -77,10 +105,11 @@ describe("upgrade pickup visuals", () => {
     expect(byKey(ops, "pu-1-glyph")).toMatchObject({ k: "poly", color: 0xffffffff });
   });
 
-  it("hull: cyan hexagon with a plus glyph, distinct from the crate", () => {
+  it("hull: a steel-blue armour plate with a plus glyph, distinct from the crate (#3595)", () => {
     const ops = upgradePickupOps(pu(2, "hull") as PowerUp & { type: "hull" });
     const hex = byKey(ops, "pu-2");
-    expect(hex).toMatchObject({ k: "poly", color: PICKUP_ACCENT.hull.color });
+    expect(hex).toMatchObject({ k: "poly", color: HULL_PLATE });
+    expect(byKey(ops, "pu-2-edge")).toMatchObject({ k: "poly", color: HULL_EDGE, stroke: 1 });
     expect(hex && hex.k === "poly" && hex.points.length).toBe(12);
     expect(byKey(ops, "pu-2-glyph-h")).toBeDefined();
     expect(byKey(ops, "pu-2-glyph-v")).toBeDefined();
@@ -127,6 +156,28 @@ describe("upgrade pickup visuals", () => {
     drawPickupOps(ctx, upgradePickupOps(pu(6, "hull") as PowerUp & { type: "hull" }));
     drawPickupOps(ctx, upgradePickupOps(pu(7, "salvage") as PowerUp & { type: "salvage" }));
     expect(calls).toEqual(expect.arrayContaining(["arc", "fillRect", "lineTo", "stroke", "fill"]));
+  });
+
+  it("#3597: web replay strokes a line op as one segment", () => {
+    const calls: string[] = [];
+    const set: Record<string, unknown> = {};
+    const ctx = new Proxy(
+      {},
+      {
+        get:
+          (_t, prop: string) =>
+          (...args: unknown[]): void => {
+            calls.push(`${prop}(${args.join(",")})`);
+          },
+        set: (_t, prop: string, v: unknown) => {
+          set[prop] = v;
+          return true;
+        },
+      }
+    ) as unknown as CanvasRenderingContext2D;
+    drawPickupOps(ctx, [{ k: "line", x0: 1, y0: 2, x1: 3, y1: 4, color: 0xffffd980, stroke: 2 }]);
+    expect(calls).toEqual(["beginPath()", "moveTo(1,2)", "lineTo(3,4)", "stroke()"]);
+    expect(set.strokeStyle).toBe("rgba(255,217,128,1)");
   });
 
   it("web replay turns packed colours into CSS for the 2D context (#2963)", () => {

@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AVAILABLE_DECK_IDS, DECK_REGISTRY, DEFAULT_DECK_ID } from "./registry";
+import { isDeckSelectable } from "./deckFlag";
 import type { DeckTheme } from "./types";
 // Minimal deck is eagerly imported — it's the instant fallback while the
 // preferred deck loads, and the default in Jest (AsyncStorage returns null).
@@ -25,10 +26,13 @@ interface CardDeckContextValue {
   availableDecks: string[];
 }
 
+/** The decks this build lists: the flag-gated ones (#3577) only when BC_DECK_ENABLED is on. */
+const selectableDecks = () => AVAILABLE_DECK_IDS.filter(isDeckSelectable);
+
 const CardDeckContext = createContext<CardDeckContextValue>({
   activeDeck: MinimalDeck,
   setDeck: () => undefined,
-  availableDecks: AVAILABLE_DECK_IDS,
+  availableDecks: selectableDecks(),
 });
 
 export function CardDeckProvider({ children }: { children: React.ReactNode }) {
@@ -36,7 +40,7 @@ export function CardDeckProvider({ children }: { children: React.ReactNode }) {
   const loadingRef = useRef<string | null>(null);
 
   const loadDeck = useCallback(async (id: string) => {
-    const safeId = AVAILABLE_DECK_IDS.includes(id) ? id : DEFAULT_DECK_ID;
+    const safeId = AVAILABLE_DECK_IDS.includes(id) && isDeckSelectable(id) ? id : DEFAULT_DECK_ID;
     if (loadingRef.current === safeId) return;
     loadingRef.current = safeId;
 
@@ -58,8 +62,10 @@ export function CardDeckProvider({ children }: { children: React.ReactNode }) {
 
   const setDeck = useCallback(
     (id: string) => {
-      loadDeck(id);
-      AsyncStorage.setItem(STORAGE_KEY, id).catch(() => undefined);
+      // A gated deck in a store build resolves to the default; persist what is shown.
+      const resolved = isDeckSelectable(id) ? id : DEFAULT_DECK_ID;
+      loadDeck(resolved);
+      AsyncStorage.setItem(STORAGE_KEY, resolved).catch(() => undefined);
     },
     [loadDeck]
   );
@@ -71,9 +77,10 @@ export function CardDeckProvider({ children }: { children: React.ReactNode }) {
       .catch(() => loadDeck(DEFAULT_DECK_ID));
   }, [loadDeck]);
 
+  const availableDecks = useMemo(() => selectableDecks(), []);
   const value = useMemo(
-    () => ({ activeDeck, setDeck, availableDecks: AVAILABLE_DECK_IDS }),
-    [activeDeck, setDeck]
+    () => ({ activeDeck, setDeck, availableDecks }),
+    [activeDeck, setDeck, availableDecks]
   );
 
   return <CardDeckContext.Provider value={value}>{children}</CardDeckContext.Provider>;

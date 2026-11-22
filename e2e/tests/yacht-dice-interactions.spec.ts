@@ -116,7 +116,7 @@ test.describe("Yacht — dice hold/unhold (#182)", () => {
     ).toBeVisible();
 
     // Score Chance to end the turn
-    await page.getByRole("button", { name: /Chance: potential score/ }).click();
+    await page.getByRole("button", { name: /Chance: open, would score/ }).click();
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
     // On the new turn, die buttons are disabled (no roll yet) and not held

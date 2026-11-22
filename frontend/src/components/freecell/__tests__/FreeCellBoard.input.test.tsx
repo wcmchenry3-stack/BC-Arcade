@@ -155,3 +155,73 @@ describe("FreeCellBoard — double-tap with another card selected (#2225)", () =
     });
   });
 });
+
+describe("FreeCellBoard — a run never goes to a free cell or a foundation by tap (#3607)", () => {
+  // col 0: 4♠ 3♥ 2♠, a 3-card run; its top card 2♠ could go on A♠ in the foundation.
+  const RUN_STATE: FreeCellState = {
+    ...STATE,
+    tableau: [
+      [
+        { suit: "spades", rank: 4 },
+        { suit: "hearts", rank: 3 },
+        { suit: "spades", rank: 2 },
+      ],
+      [{ suit: "clubs", rank: 9 }],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+    ],
+    freeCells: [null, null, null, null],
+    foundations: { spades: [{ suit: "spades", rank: 1 }], hearts: [], diamonds: [], clubs: [] },
+  };
+
+  async function renderRun() {
+    const onMove = jest.fn();
+    const utils = await render(
+      <ThemeProvider>
+        <FreeCellBoard state={RUN_STATE} onMove={onMove} />
+      </ThemeProvider>
+    );
+    return { ...utils, onMove };
+  }
+
+  it("rejects a selected run tapped onto an empty free cell, keeping the selection", async () => {
+    const { getByLabelText, onMove } = await renderRun();
+    await fireEvent.press(getByLabelText("3 of Hearts"));
+    expect(getByLabelText("3 of Hearts (selected)")).toBeTruthy();
+    // No free cell is outlined for a run...
+    expect(getByLabelText("Empty free cell 1").props.accessibilityHint).toBeUndefined();
+    mockPlay.mockClear();
+    await fireEvent.press(getByLabelText("Empty free cell 1"));
+    // ...and a tap there is refused with the invalid-move feedback; nothing moves.
+    expect(onMove).not.toHaveBeenCalled();
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+    expect(getByLabelText("3 of Hearts (selected)")).toBeTruthy();
+  });
+
+  it("rejects a selected run tapped onto a foundation (its top card would be legal there)", async () => {
+    const { getByLabelText, onMove } = await renderRun();
+    await fireEvent.press(getByLabelText("3 of Hearts"));
+    mockPlay.mockClear();
+    await fireEvent.press(getByLabelText("A of Spades"));
+    expect(onMove).not.toHaveBeenCalled();
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("still moves a column's single top card onto its foundation by tap", async () => {
+    const { getByLabelText, onMove } = await renderRun();
+    await fireEvent.press(getByLabelText("2 of Spades"));
+    await fireEvent.press(getByLabelText("A of Spades"));
+    expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-foundation", fromCol: 0 });
+  });
+
+  it("still moves a column's top card by tap", async () => {
+    const { getByLabelText, onMove } = await renderRun();
+    await fireEvent.press(getByLabelText("2 of Spades"));
+    await fireEvent.press(getByLabelText("Empty free cell 2"));
+    expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-freecell", fromCol: 0, toCell: 1 });
+  });
+});

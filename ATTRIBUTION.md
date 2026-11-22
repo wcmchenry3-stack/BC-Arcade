@@ -133,13 +133,22 @@ The inflected forms in the valid lists (plurals, feminines, conjugations) are ge
 script's own rules. The answer lists are filtered by hand (`answers_blocklist_fr.txt`,
 `answers_blocklist_es.txt` and the exclusions in `backend/scripts/_romance_curation.py`).
 
-## Audio (CC BY 4.0)
+## Audio
 
-- **"Victory fanfare"** by humanoide9000 on Freesound, used as `frontend/assets/sounds/freecell-game-win.mp3` (FreeCell and Bottle Sort win sound; re-encoded to MP3)
-  - Source: https://freesound.org/people/humanoide9000/sounds/466133/
-  - License: https://creativecommons.org/licenses/by/4.0/
+No audio in the repo requires attribution. The one CC BY 4.0 sound, "Victory fanfare" by humanoide9000 on Freesound (`freecell-game-win.mp3`), was deleted in #3871.
 
-All other **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
+All **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
+Star Swarm's sound effects are original sounds synthesized in-house (generator
+`tools/assets/synth_starswarm_sfx.py`, design log `docs/games/starswarm-sound-design.md`, #3560); they
+use no third-party audio and need no credit. Its background music, `starswarm-bgm.mp3`, is an original,
+project-owned track (design log `docs/games/starswarm-music-design.md`, #3638) and needs no credit either. Per-file
+source names are in `frontend/assets/sounds/SOUND_CREDITS.md`.
+Every Star Swarm sprite (the player ship layers, Buddy, the enemies, asteroids, projectiles and
+pickups) is original art generated in-house (generator `tools/assets/draw_starswarm_art.py`, design
+log `docs/games/starswarm-art-design.md`, #3592, #3600, #3593, #3596, #3594, #3595, #3708); they use
+no third-party art and need no credit. So is its home tile icon (`frontend/assets/home/`, #3599). Its explosions, Smart Bomb flash and nebula background are drawn
+in code (#3597), with no image files. The last Kenney CC0 sprites (the power-ups) were replaced in
+#3595.
 Assets whose source or license is not yet recorded (for example the three Blackjack sounds, the
 Mahjong tiles, the Cascade art and the app icon) are **unverified**, not cleared; their attribution
 obligations are unknown until the owner confirms or replaces them. Full asset inventory and the

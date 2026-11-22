@@ -4,10 +4,8 @@
  * All tests use a seeded RNG so results are deterministic.
  */
 
+import { MAHJONG_MIN_CLEAR_MS, plausibleBestMs } from "../clearTime";
 import {
-  MAHJONG_MIN_CLEAR_MS,
-  nextBestTime,
-  plausibleBestMs,
   createGame,
   createSeededRng,
   elapsedMs,
@@ -451,7 +449,7 @@ describe("selectTile", () => {
       startedAt: 1_000,
       accumulatedMs: 500,
     };
-    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    jest.spyOn(performance, "now").mockReturnValue(61_000);
     try {
       const done = selectTile(selectTile(state, a.id), b.id);
       expect(done.isComplete).toBe(true);
@@ -477,7 +475,7 @@ describe("selectTile", () => {
       startedAt: 1_000,
       accumulatedMs: 500,
     };
-    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    jest.spyOn(performance, "now").mockReturnValue(61_000);
     try {
       const dead = selectTile(selectTile(state, a.id), b.id);
       expect(dead.isComplete).toBe(false);
@@ -967,7 +965,7 @@ describe("shuffleBoard", () => {
       startedAt: 1_000,
       accumulatedMs: 500,
     };
-    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    jest.spyOn(performance, "now").mockReturnValue(61_000);
     try {
       const dead = shuffleBoard(state);
       expect(dead.isDeadlocked).toBe(true);
@@ -1353,21 +1351,5 @@ describe("device best time (#2747)", () => {
     expect(plausibleBestMs(0)).toBe(0);
     expect(plausibleBestMs(Number.NaN)).toBe(0);
     expect(plausibleBestMs(36_000)).toBe(36_000);
-  });
-
-  it("keeps the fastest plausible clear; a first clear is a best but not a new best (#2977)", () => {
-    expect(nextBestTime(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
-    expect(nextBestTime(90_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: true });
-    expect(nextBestTime(60_000, 90_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
-    expect(nextBestTime(60_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
-  });
-
-  it("never takes a clear under the floor as a best", () => {
-    expect(nextBestTime(0, 5_000)).toEqual({ bestTimeMs: 0, isNewBest: false });
-    expect(nextBestTime(90_000, 5_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
-  });
-
-  it("ignores a stored best under the floor: a real clear replaces it but is a first best", () => {
-    expect(nextBestTime(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
   });
 });

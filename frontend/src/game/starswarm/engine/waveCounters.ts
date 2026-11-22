@@ -10,7 +10,7 @@
  * The counting rules (what each counter means, the multi-hit rule, `contact`, dev throws) are in
  * docs/games/starswarm.md#per-wave-stats.
  */
-import type { Enemy } from "../types";
+import type { Bullet, Enemy, GamePhase } from "../types";
 import {
   ASTEROID_KINDS,
   BUDDY_HIT_CAUSES,
@@ -21,6 +21,7 @@ import {
   ROCK_BREAKERS,
   type AsteroidKind,
   type BuddyHitCause,
+  type DeathPhase,
   type EnemyTier,
   type HitCause,
   type HitResult,
@@ -75,6 +76,11 @@ const DAMAGE = paths(HIT_CAUSES, (c: HitCause) =>
   paths(HIT_RESULTS, (r: HitResult): Path => ["damage", "hits", c, r])
 );
 
+/** #3710: `damage.hitsByTier[tier][result]`, the grid above by the tier that landed the hit. */
+const TIER_HITS = paths(ENEMY_TIERS, (t: EnemyTier) =>
+  paths(HIT_RESULTS, (r: HitResult): Path => ["damage", "hitsByTier", t, r])
+);
+
 // ── buddy (#3248) ─────────────────────────────────────────────────────────────────────────────
 export const BUDDY_LAUNCHED: Path = ["buddy", "launched"];
 export const BUDDY_SHOTS_DRAWN: Path = ["buddy", "shotsDrawn"];
@@ -105,21 +111,61 @@ export function countRockStrike(ws: WaveStats, tier: EnemyTier): WaveStats {
   return bumpWave(ws, ROCK_STRUCK[tier], 1);
 }
 
-/** `n` hits on the player: `damage.hits[cause][result]`, mirrored to `rocks.playerHits` for a rock. */
+/**
+ * `n` hits on the player: `damage.hits[cause][result]`, mirrored to `rocks.playerHits` for a rock
+ * and (#3710) to `damage.hitsByTier[tier][result]` when the source ship's `tier` is known. A rock
+ * has no tier, and a shot restored from a save before #3710 doesn't either (null: counted in none).
+ */
 export function countPlayerHit(
   ws: WaveStats,
   cause: HitCause,
   result: HitResult,
+  tier: EnemyTier | null,
   n = 1
 ): WaveStats {
-  const out = bumpWave(ws, DAMAGE[cause][result], n);
-  return cause === "rock" ? bumpWave(out, ROCK_PLAYER_HITS[result], n) : out;
+  let out = bumpWave(ws, DAMAGE[cause][result], n);
+  if (cause === "rock") out = bumpWave(out, ROCK_PLAYER_HITS[result], n);
+  return tier ? bumpWave(out, TIER_HITS[tier][result], n) : out;
+}
+
+/**
+ * #3710: the tier of the ship that fired an enemy shot: its stamp, else "Carrier" for a twin laser
+ * restored from a save before the stamp (`source`), else null (an older save's shot: counted in no
+ * tier). A stamp from some other build that isn't a tier is ignored.
+ */
+export function bulletTier(b: Bullet): EnemyTier | null {
+  if (b.tier !== undefined && (ENEMY_TIERS as readonly unknown[]).includes(b.tier)) return b.tier;
+  return b.source === "carrier" ? "Carrier" : null;
 }
 
 /** The cause of the hit that took the last life (`damage.deathCause`). */
 export function withDeathCause(ws: WaveStats, cause: HitCause | null): WaveStats {
   if (ws.damage.deathCause === cause) return ws;
   return { ...ws, damage: { ...ws.damage, deathCause: cause } };
+}
+
+/**
+ * #3535: the `damage.deathPhase` value for a lethal hit that landed in engine phase `phase`:
+ * combat, the pickup wait after the last kill, or the extraction. Null for any other phase (no
+ * hit can land in SwoopIn or GameOver).
+ */
+export function deathPhaseOf(phase: GamePhase): DeathPhase | null {
+  switch (phase) {
+    case "Playing":
+      return "combat";
+    case "ClearAwaitingPickups":
+      return "pickupWait";
+    case "Extraction":
+      return "extraction";
+    default:
+      return null;
+  }
+}
+
+/** #3535: when the hit that took the last life landed (`damage.deathPhase`). */
+export function withDeathPhase(ws: WaveStats, phase: DeathPhase | null): WaveStats {
+  if (ws.damage.deathPhase === phase) return ws;
+  return { ...ws, damage: { ...ws.damage, deathPhase: phase } };
 }
 
 /** Buddy's hits and losses this tick, by cause; the rock ones mirrored into `rocks`. */

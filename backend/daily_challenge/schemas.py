@@ -27,6 +27,9 @@ class ChallengeResponse(BaseModel):
     goals: list[GoalResponse]
     # UTC instant of the player's next local midnight — drives the countdown.
     resets_at: datetime
+    # The optional bonus goal (#3995): never part of ``goals``, never counted toward
+    # the streak; null on a shared-template day. Older app builds ignore the field.
+    bonus: GoalResponse | None = None
 
 
 class UpcomingChallengeResponse(BaseModel):
@@ -50,3 +53,6 @@ class ChallengeStatusResponse(BaseModel):
     total_goals: int
     # True once every goal is done.
     completed: bool
+    # As ``ChallengeResponse.bonus`` (#3995) with its own ``completed`` / ``best_score``;
+    # not counted in ``completed_goals``, ``total_goals`` or ``completed``.
+    bonus: GoalStatusResponse | None = None

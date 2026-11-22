@@ -98,21 +98,84 @@
     "doNotTranslate": ["2048"],
     "notes": ""
   },
-  "swipe.hint": {
+  "action.hint": {
+    "component": "GameActionBar",
+    "description": "Label on the hint button under the board. Shown in capitals.",
+    "tone": "action, brief",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.hintLabel": {
+    "component": "GameActionBar",
+    "description": "Accessibility label for the hint button: it suggests which way to swipe for 2 seconds.",
+    "tone": "functional, descriptive",
+    "characterLimit": 65,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.noHint": {
     "component": "Twenty48Screen",
-    "description": "Hint text shown below the score to guide the player.",
-    "tone": "instructional",
+    "description": "Short message shown for 2 seconds when no move is possible, so there is nothing to suggest.",
+    "tone": "neutral",
     "characterLimit": 30,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": ""
+    "notes": null
   },
-  "controls.keyboardHint": {
+  "hint.swipeUp": {
     "component": "Twenty48Screen",
-    "description": "Hint text under the swipe hint, shown only on web, telling the player they can also use the arrow keys.",
-    "tone": "instructional",
-    "characterLimit": 38,
+    "description": "Hint label shown with an up arrow over the board: the player should swipe up.",
+    "tone": "instructional, brief",
+    "characterLimit": 26,
     "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.swipeDown": {
+    "component": "Twenty48Screen",
+    "description": "Hint label shown with a down arrow over the board: the player should swipe down.",
+    "tone": "instructional, brief",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.swipeLeft": {
+    "component": "Twenty48Screen",
+    "description": "Hint label shown with a left arrow over the board: the player should swipe left.",
+    "tone": "instructional, brief",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.swipeRight": {
+    "component": "Twenty48Screen",
+    "description": "Hint label shown with a right arrow over the board: the player should swipe right.",
+    "tone": "instructional, brief",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "hint.orKey": {
+    "component": "Twenty48Screen",
+    "description": "Web only, after the hint label: the same move on the keyboard, key is an arrow symbol.",
+    "tone": "instructional, brief",
+    "characterLimit": 12,
+    "placeholders": ["key"],
+    "doNotTranslate": [],
+    "notes": "{{key}} is an arrow character such as a left arrow; keep it."
+  },
+  "a11y.hint": {
+    "component": "Twenty48Screen",
+    "description": "Spoken when the hint appears; move is the hint label, e.g. Swipe left.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["move"],
     "doNotTranslate": [],
     "notes": null
   },

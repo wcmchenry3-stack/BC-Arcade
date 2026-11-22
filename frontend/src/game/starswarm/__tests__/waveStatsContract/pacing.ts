@@ -12,6 +12,7 @@ import {
   untilPlaying,
 } from "../helpers/engineFixtures";
 import { field, type ContractRow, type SectionContract } from "./contract";
+import { onShip, playingWave } from "../helpers/powerUpFixtures";
 
 const run = (difficulty: StarSwarmState["difficulty"] = "Commander") =>
   initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, difficulty);
@@ -63,6 +64,26 @@ export const contract: SectionContract<"pacing"> = {
         expect(snap.pacing.start).toEqual({ lives: 3, guns: 3, hull: 2 });
         expect(snap.pacing.end.lives).toBe(0);
         expect(snap.pacing.end.hull).toBe(0);
+      },
+    },
+    {
+      // #3510: two Salvage crates take the guns from 1 to 3; the death that ends the run costs
+      // one level, so the wave closes on 2 — the high is still 3
+      id: "gunsPeak is the highest Guns level held during the wave, not just at its ends",
+      covers: [field("pacing", "gunsPeak")],
+      scenario: () => {
+        let s = playingWave();
+        for (let i = 0; i < 2; i++) {
+          s = tick({ ...s, powerUps: [onShip(s, "salvage")] }, 16, NO_INPUT);
+        }
+        if (s.player.guns !== 3) throw new Error("the crates weren't collected");
+        return diedSnapshot(s);
+      },
+      expect: (snap) => {
+        expect(snap.outcome).toBe("died");
+        expect(snap.pacing.start.guns).toBe(1);
+        expect(snap.pacing.end.guns).toBe(2);
+        expect(snap.pacing.gunsPeak).toBe(3);
       },
     },
     {

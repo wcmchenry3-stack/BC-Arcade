@@ -1,5 +1,4 @@
 import { createContext, useContext } from "react";
-import { useWindowDimensions } from "react-native";
 
 /**
  * Readable minimum card width (docs/GAMEPLAY_STANDARDS.md: `cardWidth ≥ 36px`,
@@ -34,6 +33,11 @@ export function useCardSize(): CardSizeContextValue {
   return useContext(CardSizeContext);
 }
 
+/**
+ * A card size fitted to a width. The card games now size their cards from the felt
+ * (`_shared/cards/tableLayout.ts`, #3606 / #3607).
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
+ */
 export function computeCardSize(
   availableWidth: number,
   naturalWidth: number,
@@ -52,22 +56,4 @@ export function computeCardSize(
     cardWidth: Math.round(naturalWidth * scale),
     cardHeight: Math.round(naturalHeight * scale),
   };
-}
-
-export function useResponsiveCardSize(
-  naturalWidth: number,
-  naturalHeight: number,
-  columns: number,
-  gap: number,
-  horizontalPadding = 0
-): CardSizeContextValue {
-  const { width: availableWidth } = useWindowDimensions();
-  return computeCardSize(
-    availableWidth,
-    naturalWidth,
-    naturalHeight,
-    columns,
-    gap,
-    horizontalPadding
-  );
 }

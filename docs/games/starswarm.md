@@ -4,6 +4,44 @@
 **Tier:** TBD
 **Status:** In Development (early)
 
+## Narrative Premise — Combat Pilot Perspective (provisional)
+
+> **Gameplay and soundtrack boundary:** The patrol/search imagery below is **internal emotional backstory, not a literal playable phase**. Star Swarm opens in combat with enemy formations immediately present, and fighting is effectively continuous. The BGM is a single independent composition, **not synchronized to enemy spawns, Carrier arrivals, fights, or other events**. In-game sound effects communicate those events, and BGM must work beneath them regardless of musical position. References to seeking contact or waiting describe the pilot's mission and psychology, not extended gameplay downtime or required music cue timing.
+
+Star Swarm is **not** a civilian vessel accidentally encountering a dangerous unknown. The player's ship is a **military combat craft** operating in contested space, armed and prepared to confront a **known hostile force**. Its mission is to **seek out and engage** hostile invaders, not simply explore or avoid them. The exact location and timing of an engagement can surprise the pilot, and the enemy's tactics and numbers can remain uncertain, but the enemy's existence and hostile intent are not a mystery.
+
+In the imagined wider mission the combat craft searches for contact, but **the playable run begins in an active engagement**. Enemy formations appear right away and attacks continue throughout; the ship is prepared with weapons, upgrades and potential allied support (Buddy). The dramatic emotion is **vigilant determination, readiness, courage and purposeful pursuit**, mixed with danger and uncertainty—not passive wonder or the fear of a civilian hoping to escape. This is a **working narrative direction**, not a finalized lore bible. Avoid assigning names, factions, origins, political motives, commanders or definitive backstory until deliberately designed.
+
+### Pilot's perspective — professionalism without fearlessness
+
+The protagonist's species and identity are **not established**; human-like qualities are a creative lens, not confirmation that the pilot is human. The pilot is a trained professional who believes in the mission and intends to seek out and engage the enemy, but **professional commitment does not cancel fear**. In the pilot's imagined experience, vigilance, apprehension, doubt and an awareness of mortality can coexist with practiced action. The uncertainty of combat may bring fear even when enemies are already present and the fighting is continuous. The working emotional model is the familiar wartime contrast between long periods of waiting and anxiety and brief moments of extreme danger—not a literal gameplay-time ratio or a historical statistic.
+
+The pilot is neither a helpless explorer nor a fearless, jovial action hero. Courage means proceeding **despite** anxiety. The tone is serious, restrained and grounded; triumph, when it arrives, should feel earned rather than celebratory or cartoonish. Maintain unknowns about hostile tactics, immediate encounters and the wider conflict without inventing definitive lore. This premise is **internal guidance for game and sound design**, not marketing copy or published canon.
+
+### Refined music direction — readiness, dread, and contact
+
+Support the contradiction: the pilot **wants to find** the known enemy and **dreads the moment of contact**. The music should convey purposeful combat readiness, persistent forward motion, and pressure beneath apparent control, with occasional contrasting surges. Avoid constant action rhythms, upbeat victory music, generic ominous drones and a stereotypical warrior march. Leave negative space and uncertainty while sustaining forward intent. The game's immediate combat audio remains with the existing sound-effects system; the soundtrack supplies psychological context without demanding attention.
+
+### Gameplay tempo versus pilot psychology
+
+Star Swarm's **actual gameplay has little or no downtime**: sustained shooting, successive enemy waves, tactical threats and near-continuous player engagement. The wartime contrast between waiting/anxiety and sudden danger describes the pilot's **psychological outlook**, not a request to add long quiet gameplay passages or make most of the soundtrack inert.
+
+**Belief in the mission is fundamental and positive**. The pilot accepts the task, trusts its purpose, actively seeks contact and intends to fight effectively. Anxiety and dread coexist with that conviction; they do not erase it. The target is **serious without relentless depression, adventurous without joviality, and courageous without fearlessness**. The pilot is not hesitant to do the job, even when afraid of what the job may bring.
+
+### Musical pacing references (not transcription targets)
+
+- **BG-1 and BG-2** feel comparatively fast-moving, with emphatic beginnings and frequent changes in musical foreground, energy and direction, while remaining dark and mysterious.
+- **BG-3** is slower in its apparent pacing but has **relentless, slightly swaying momentum**, with continued development rather than long inert held passages.
+- **BG-4** contributes ominous space color and an uncanny moment, but not the target level of musical movement.
+
+The score may breathe, retreat or change emphasis without losing forward propulsion. **Psychological uncertainty is not musical stagnation.** Maintain serious mission conviction and readiness beneath waves of vigilance, anxiety, suspense and danger. Music supports and leaves room for continual gameplay SFX.
+
+### Implications for background music
+
+The music should sound like an **armed patrol pressing toward an encounter with a known enemy**. It should feel mission-driven and proactive from the outset: readiness and momentum underneath dark, gritty, ominous sci-fi atmosphere. Mystery concerns **where and when the enemy will appear, how the enemy will attack, and what lies beyond the next engagement**, not whether an alien threat exists. The sound should give a call to action and willingness to engage, rather than evoke a vulnerable passenger ship hoping nothing happens.
+
+The soundtrack remains secondary to gameplay and combat SFX; it should avoid continuously scoring every threat or turning into bright heroic fanfare. Prioritize urgent-but-controlled musical phrasing, small decisive gestures, strategic withdrawals, renewed pushes, and unsettling harmonic surprises. Preserve the convincing deep-space timbre from earlier auditions without allowing it to become stagnant contemplation. See music epic #3635 and audition #3642. All soundtrack arrangements and final narrative specifics remain subject to owner review.
+
 ## Overview and Core Loop
 
 Star Swarm is a score-attack arcade shooter. The player moves horizontally near the bottom of the
@@ -27,7 +65,7 @@ extraction — see [Wave Structure](#wave-structure)).
 
 - Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately. While the wave-clear autopilot flies the ship (#2842) the drag is ignored; a drag held through it picks up from the ship's new position rather than snapping back under the finger.
 - The ship auto-fires; there is no ammunition economy.
-- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape close it and return to the paused run (#3463); with no run under the picker (cold start, a finished run) they start a run like Start.
+- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape close it and return to the paused run (#3463); with no run under the picker (cold start, a finished run) they start a run like Start. The picker covers the header, so a "Lobby" chip floats over it near the Back arrow's position (mirrored in right-to-left) (#3969): it does what the header's Back does (saves a held run, then returns to the lobby) and never starts a run.
 - New Game starts a clean run and abandons the old server session if one is open.
 - Development-only tuning controls are test aids, not player rules.
 
@@ -80,6 +118,22 @@ Progression rules include:
 
 - max simultaneous divers: 1 on waves 1–2, 2 on 3–4, 3 on 5–6, then 4;
 - dive interval shortens by wave with a difficulty-scaled floor;
+- divers launched in the same scheduler tick split up (#3632, `planDiveSplits`): ordered by
+  formation x, each aims `DIVE_SPREAD_PX` (70) from its neighbour, fanned around the player and
+  shifted as a whole to stay `DIVE_SPREAD_MARGIN_PX` (24) inside the live canvas width, and the
+  k-th waits an extra k × `DIVE_STAGGER_MS` (350) holding station before its wiggle. A waiting ship
+  holds its swayed formation position (it moves with the formation) and fires exactly as it would
+  in Formation; the final 350 ms wiggle is unchanged and does not fire. The aim point is
+  taken when the batch fires, so a later-launching ship aims at where the player was up to about a
+  second earlier (a deliberate trade-off: the fan, not the aim, is what keeps the dives apart).
+  A scheduled ship holds its dive slot until it actually launches, so the effective count against
+  `diveCap` is Diving plus Wiggling ships (#975 used to leave the wiggle out; that only worked while
+  every wiggle was a flat 350 ms); the `diveInterval` and `diveCap` values are unchanged. A lone
+  diver is unchanged. Every tier that dives from the scheduler is covered. When the straggler rule
+  is in force (≤3 non-Carrier enemies left) the batch is not split: the survivors fan nothing and
+  wait for nothing, they all wiggle at once as before. The plan draws no rng, but a changed run shifts the seeded
+  stream from then on (still deterministic). No `Enemy` field is added. Opposite opening sweeps
+  were tried and dropped;
 - enemy bullet cap starts at 3 on wave 1, adds 1 every two waves, scales with difficulty, and caps
   at 24;
 - Grunt aimed-shot chance starts at 10% on wave 1 and rises 5 percentage points per wave, with a
@@ -99,8 +153,9 @@ A bonus life is earned every:
 
 `30,000 × difficulty score multiplier` points.
 
-Awards repeat at each threshold multiple subject to the 5-life cap. A bonus-life award also grants
-800 ms of slow motion at 35% game speed and at least 600 ms of invincibility. A threshold crossed
+Awards repeat at each threshold multiple subject to the 5-life cap. A bonus-life award grants at
+least 600 ms of invincibility and the 1UP flash; it does not change game speed (the former slow
+motion was removed in #3511). A threshold crossed
 on the same tick as a lethal hit can rescue the player from Game Over.
 
 ## Temporary Power-Ups
@@ -121,8 +176,9 @@ is clear, except one rolled on the tick of the last kill itself (see
 | 0–1   |    33% |        33% |       17% |   17% |
 | 2+    |    25% |        25% |       25% |   25% |
 
-- **Lightning:** 5 seconds; faster fire, 4-damage piercing shots that are also **armor-piercing**
-  (`armorPiercing`): the one explicit exception that gets through the escorted Carrier's field.
+- **Lightning:** 5 seconds; a continuous **beam** per gun instead of shots (#3562, see
+  [Lightning beam](#lightning-beam-3562) below). It pierces the whole column, breaks rocks, and is
+  **armor-piercing**: the one explicit exception that gets through the escorted Carrier's field.
 - **Shield:** 5 seconds; absorbs incoming damage while active (the player's only, never Buddy's).
 - **Smart Bomb:** instant; clears enemy bullets/asteroids, deals 1 damage to every alive enemy,
   respects Carrier armor, and awards normal base-score credit for kills (no dive multiplier).
@@ -132,13 +188,140 @@ is clear, except one rolled on the tick of the last kill itself (see
 
 Collecting Lightning or Shield replaces the currently active duration power-up.
 
+**Banked after the last kill (#3512).** An ordinary power-up collected once the wave is clear
+(the pickup wait, including after an extraction yield hands the ship back; see
+[Wave clear](#wave-clear-pickup-wait-then-live-extraction)) is **banked, not applied**: it does
+nothing that wave and is stored as `bankedPowerUp`. It takes effect once, on the next wave's
+first combat tick (the SwoopIn → Playing transition, after the countdown and swoop-in, so
+`weaponsFree` is true): Shield and Lightning start their full 5 s, Buddy launches from the side
+as usual, and the Smart Bomb fires under its normal rules (Carrier armor, base-score credit).
+`applyBankedPowerUp` (`engine/powerups.ts`) does it; no timer runs while the power-up is banked.
+
+- At most one is banked (only one ordinary pickup is ever on screen). If a second is collected
+  anyway, the last one wins; both count as `collected`.
+- A power-up already active at the last kill is not banked: it runs on and ends at the wave
+  boundary, as before. Collections during combat apply at once, as before. Salvage and Hull
+  plating are never banked: they raise their ladders at once, as before.
+- The bank is kept through a life lost during the wait or the extraction, and through a pause or
+  an app kill (it is saved with the paused run). A run that ends before the next wave's combat
+  drops it. Drop rates are unchanged.
+- **Screen:** collecting it shows `SHIELD → NEXT WAVE` (likewise `LIGHTNING`, `BUDDY`, `BOMB`;
+  `hud.cueBanked*`) in the `GUNS +1` toast slot; applying it shows `SHIELD UP!`,
+  `LIGHTNING STRIKE!`, `BUDDY INBOUND!` or `BOMBS AWAY!` (`hud.cueApplied*`). Each is spoken once
+  (`a11y.banked*`, `a11y.applied*`). Both are read from two consecutive states in `pickupCues`
+  (`render/pickupCue.ts`), so they cost no engine state and no per-frame React commit. There is no
+  extra HUD panel.
+- **Balance sims.** The #2880 Buddy harness strips pickups each tick, so banking does not touch
+  it. The #2898 power-up economy sim is not built yet; when it is, it must count a banked
+  power-up's uptime and kills in the wave it applies in (the ownership rule under
+  [Per-wave stats](#per-wave-stats)) and model the 2× post-clear fall for its
+  collected-vs-missed rates.
+
+### Lightning beam (#3562)
+
+While Lightning is active the ship fires **one beam per gun** instead of bolts
+(`engine/lightningBeam.ts`): L1 one beam, L2 the twin pair, L3 the pair plus the spread pair,
+from the same gun layout as `playerVolley` (`GUN_LAYOUT`), so salvage still matters. A spread
+beam is a straight line at the spread pair's angle (`SPREAD_VX` against `BULLET_P_VY`, about
+14 degrees). Each beam is `BULLET_C_W` (12 px) wide, the old Lightning bolt's width, and runs from
+its gun on the ship's nose to the top of the screen (`y = 0`), or to the centre of the first
+rock on its line: rocks are cover for the beam, as they are for every shot.
+
+- **Damage timing: a pulse on the old fire clock.** The beam does not damage per frame. It
+  pulses on the Lightning fire clock, `player.shootCooldown`: a pulse lands on a tick when the
+  trigger is held, the beam is on and `max(0, shootCooldown - dt)` reaches 0, and it re-arms the
+  clock to `SUPER_SHOOT_COOLDOWN` (70 ms). That is exactly the test that fired a Lightning volley
+  before, so the cadence is unchanged (about 12 pulses a second at 60 fps; it rounds up to whole
+  frames as the bolts did), and the 5 s total with it: `SUPER_DAMAGE` (4) × the same number of
+  pulses as bolts. `tick` judges the pulse once, on the tick's starting state
+  (`lightningPulseDue`), and `tickCollisions` resolves it (`resolveLightningPulse`) right after
+  the bolts and before rocks absorb shots. A per-target timer was not used: one clock is simpler,
+  is the old cadence exactly, and needs no state. A test pins the total against the old rule
+  over a 5 s Lightning; the same scenario on the bolt engine dealt the same total to the nearer
+  ship (bolts in flight could miss a far ship that swayed away, which an instant beam cannot).
+- **Swept hit test (#3709).** A pulse damages every ship a beam **crossed since the previous
+  pulse**, not only what it overlaps at the pulse instant. The ship's x follows the finger, and
+  pulses land about 83 ms apart at 60 Hz, so an instant test let a sweep faster than about
+  480 px/s skip an Elite between two pulses (the owner swept one three or four times before it
+  died, in feedback on #3709). Each beam now slides horizontally from where it was at the last
+  pulse to where it is now, at its current width and length (`beamSweepHitsAabb`: the ship's box
+  widened by the move, which is exact). The pulse rate, the damage, piercing, the Carrier's armour
+  and the look are unchanged; a held beam behaves exactly as before.
+  - **State.** The ship's x at the last pulse is `state.lightningPulseX`, set on each pulse, kept
+    while the beam is on with the trigger held, and removed (the key itself) otherwise
+    (`withLightningPulseX`, after the collisions in `tick`). Every gun moves with the ship, so one
+    x gives every beam its span: at L3 each of the four beams sweeps its own span, the spread
+    pair at their angle.
+  - **Instant overlap** when there is no previous pulse: the beam's first pulse, after the trigger
+    is released or the beam was off (swoop-in, extraction, the dev toggle, Lightning expired or
+    banked), and after a resume: a restored save, or an in-app pause ending (both canvases call
+    `clearLightningSweep`, since arrow keys can move the ship while paused). A move longer than `LIGHTNING_SWEEP_MAX_PX` (300 px, a 3000 px/s
+    sweep over the longest pulse gap the screens produce: 3 × the 33 ms dt cap) is a jump, not a
+    sweep, and uses the instant overlap too (`lightningSweepDx`).
+  - **Rocks block at the pulse instant.** The first rock on a beam's line now stops it along the
+    whole span and alone takes the pulse; ships the span crossed beyond that height are not hit. A
+    rock the span crossed that the beam does not touch now neither blocks nor is hit. That keeps
+    rock damage as before (one rock per beam per pulse) and makes the beam's reach the one drawn.
+  - **No double hits.** A beam damages a ship at most once per pulse, however long its span. Two
+    beams whose spans both cross a ship each deal their pulse, as two held beams over it do.
+- **Hit test.** Each beam is a rectangle on its own axis (`BeamRect`: origin, unit direction,
+  length, half-width). Against a ship it is a separating-axis test against the ship's box, the
+  same box a bolt was tested against (`beamHitsAabb` in `engine/geometry.ts`; for a straight beam
+  it is exactly `aabb`). Against a rock it takes the rock's centre into the beam's own frame and
+  runs `collideCircleAABB` there (`circleAlongBeam`), which also gives the distance along the
+  beam that picks the nearest rock. A pulse deals 4 to **every** live ship its beam overlaps
+  (piercing the whole column) and 4 to the rock that stops it, with the rock's hit flash; a rock
+  a pulse breaks no longer stops the next beam. Each beam applies its own damage, so a ship
+  under both twin beams takes 8, as under a twin volley. Kills score and count as shot kills,
+  with the dive and rout multipliers, as bolts did (one shared helper, `damageShip`).
+- **Armor-piercing.** The beam goes through the escorted Carrier's field: no deflection is
+  counted.
+- **The player-bullet cap.** Lightning spawns no bullets, so the beam is outside
+  `MAX_PLAYER_BULLETS`; that cap now bounds ordinary fire and Buddy's bursts, which share it.
+- **When it is on** (`lightningBeamOn`): Lightning is active, the player may fire
+  (`playerFireAllowed`: `Playing` and `ClearAwaitingPickups`, #3568; never swoop-in, the
+  extraction or game over) and the dev panel's "Player missiles off" is not set. A banked
+  Lightning (#3512) is not active, so it has no beam until it is applied. The beam ends on the
+  tick Lightning expires or is replaced (a Shield): a pulse that came due on that tick still
+  lands, as the last bolt of a volley did, and nothing is drawn or dealt after it. In the pickup
+  wait the beam fires and breaks passing rocks; see the stats below.
+- **Stats** (`wave_completed` unchanged: no field added or re-defined). A pulse counts as one
+  volley of bolts did: in `Playing`, one `combat.shotsFired` per beam, one `combat.shotsHit` per
+  beam that damaged at least one ship (a piercing bolt was one hit however many ships it went
+  through), and one `combat.shotsOnRocks` per beam a rock stopped. Each is at most one per beam per
+  pulse, so `shotsHit <= shotsFired` and `shotsOnRocks <= shotsFired` hold. After the last kill
+  (#3568) none of the three counts, as with `Bullet.postClear`; a rock the beam breaks counts in
+  `rocks.broken.player` (and `runStats.rocksBrokenByPlayer`) whenever it breaks.
+- **State.** The beams are derived from the player, its guns and the rocks each tick, and the
+  clock is the existing `shootCooldown`; the one stored field is #3709's `lightningPulseX`. It is
+  an `ADDED_STATE` field in `saveShape.ts` (out of `SAVE_FINGERPRINT`, so paused runs from before
+  it still load) and is always dropped on restore: on a resume the finger is elsewhere, so the
+  first pulse uses the instant overlap. `clearTransientCombat` and the wave timeline are
+  unchanged. The geometry is written into a caller-owned scratch
+  (`lightningBeamAt`), so neither the engine nor the renderers allocate for it per tick or frame.
+- **Rendering** (`render/lightningBeam.ts`, `lightningBeamOps`): per beam, a soft blue glow, a
+  blue-white body (a ribbon whose edges are jagged), that ribbon's outline stroked in pale blue as
+  the edge crackle, a white-hot core and a flare on the gun (#3594 restyled it from yellow in the
+  projectile look). The crackle is re-drawn every 50 ms (`CRACKLE_MS`) from a
+  stateless hash of the Lightning timer, so it flickers without state and is the same on both
+  canvases. `buildFrame` appends the ops after the enemies and the Carrier's telegraphs and before
+  the ship; `GameCanvas.web.tsx` replays the same ops with `drawPickupOps` (the
+  `render/carrier.ts` pattern), so native and web cannot drift. A charged bolt restored from a run
+  saved mid-Lightning by an older build draws as a player bolt at its own width (#3594).
+- **Sound.** The Lightning loop (#3560) follows the beam: `updateLoops` plays it while
+  `lightningBeamOn`, so it starts with the beam, runs through the pickup wait, and stops when the
+  extraction takes the ship (Lightning itself runs on to the wave boundary, beamless) or when the
+  dev toggle turns the guns off.
+- **Balance sims.** The #2880 Buddy harness strips pickups, so Lightning never runs in it and its
+  numbers do not move (checked on #3562's PR).
+
 ## Enemy Tiers
 
 The hierarchy is **Grunt → Elite → Guardian → Carrier**. #2843 renamed the escort tier from
 "Boss" to **Guardian** everywhere: the engine's tier id (`"Guardian"`), player-facing text and
 accessibility strings, docs, tests and telemetry. Boss _waves_ keep their name (`isBossWave`,
-`phase.bossWave`, `a11y.bossWave`). The sprite file is still `enemy-boss.webp` (its asset
-credits refer to it); the code knows it as `enemyGuardian`.
+`phase.bossWave`, `a11y.bossWave`). Its sprite is `enemy/guardian.webp` (#3593 replaced the old
+Kenney `enemy-boss.webp`); the code knows it as `enemyGuardian`.
 
 | Tier     | Count / wave          | HP  | Points | Behaviour                                                                                                                                                                                                                                                                                                         |
 | -------- | --------------------- | --- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -152,13 +335,22 @@ that drive Elite/Guardian escalation (`isLeaderTier`; state `startingNonLeaderCo
 `guardianThresholdCrossed`, `guardianDeepThresholdCrossed`). `isCarrierArmored(state)` is the renderer-facing
 helper for the armor state; the screen announces `a11y.carrierExposed` when it drops.
 
+**Enemy art** (`enemy/*.webp`, drawn by `tools/assets/draw_starswarm_art.py`; design notes in
+[`starswarm-art-design.md`](starswarm-art-design.md)): Grunt G2 Wasp, Elite E2 Mantis, Guardian
+GD1 Scarab, Carrier C1 Queen (#3593). Since #3708 the Grunt is the bolder Wasp, with heavier rims,
+more solid wings, a fuller body and a wider stinger so it does not blur into the violet nebula in
+motion, and the Elite's and the Carrier's membrane wings follow it. Art only: sizes, hitboxes and
+behaviour are unchanged. The same Wasp, in a hex badge, was the Star Swarm home tile icon (#3599)
+until #4013 redrew the tile as an open scene from these sprites: three Wasps diving on the Arrow.
+
 ## Wave Structure
 
 Each wave runs through one lifecycle (#2842), with the engine phase in brackets:
 
 ```
 countdown (screen, engine frozen) → swoop-in [SwoopIn] → combat [Playing]
-  → last kill → pickup wait, only while a pickup is on screen [ClearAwaitingPickups]
+  → last kill → pickup wait, only while a pickup or an asteroid is on screen [ClearAwaitingPickups]
+     (the player's guns stay live here, #3568)
   → extraction [Extraction] → hard reset → next wave's countdown
 ```
 
@@ -168,10 +360,13 @@ A new wave opens behind the screen's 3-second countdown (`WAVE_COUNTDOWN_MS`). T
 tick during it, so nothing can happen then. The formation then swoops into place (`SwoopIn`). That is
 safe setup time, gated centrally in the engine:
 
-- **No new fire, from anyone.** `weaponsFree(state)` is true only in `Playing`. It gates player
-  fire, enemy shots (a ship that reaches its slot early holds its fire), flak, Buddy bursts, timed
-  asteroid spawns and dev-panel throws. Everything the Carrier does (beam, twin lasers,
-  reinforcements, attack runs) only runs in `Playing`.
+- **No new fire, from anyone but the player's own guns.** `weaponsFree(state)` is true only in
+  `Playing`. It gates enemy shots (a ship that reaches its slot early holds its fire), flak, Buddy
+  bursts, timed asteroid spawns and dev-panel throws. Everything the Carrier does (beam, twin
+  lasers, reinforcements, attack runs) only runs in `Playing`. The player's guns have their own
+  gate, `playerFireAllowed(state)` (#3568): `Playing` and the pickup wait (`ClearAwaitingPickups`),
+  never `SwoopIn` or `Extraction`. Fire is automatic, so the guns are live in the wait with no
+  input; the "Player missiles off" dev toggle still applies.
 - **Everyone is invulnerable.** `hazardsLive(state)` is false in `SwoopIn`, so `tick()` skips
   collision resolution entirely. No shot, rock, beam or ram damages the player or any enemy, and
   no incoming enemy can be pre-damaged.
@@ -187,9 +382,10 @@ tick the engine:
 
 1. awards the wave-clear bonus (once, ×2 on a boss wave) and raises the non-blocking MISSION
    COMPLETE banner (`beginWaveClear`);
-2. stops the player's weapons and every new arrival from off-screen: `weaponsFree` and
-   `arrivalsAllowed` are true only in `Playing`, so there is no new player or enemy fire, no
-   asteroid entry, no reinforcement and no top-spawned ordinary power-up drop;
+2. stops every enemy weapon and every new arrival from off-screen: `weaponsFree` and
+   `arrivalsAllowed` are true only in `Playing`, so there is no new enemy fire, no asteroid entry,
+   no reinforcement and no top-spawned ordinary power-up drop. The player's guns are the exception
+   (#3568): they stay live in the pickup wait, below, but not in the extraction;
 3. keeps everything already on screen **live and fair game**: player shots, enemy shots
    (including ones whose ship is dead) and asteroids keep moving and resolving. A hit still goes
    shield → hull → life, and can end the run through the normal death flow. A rock that a shot
@@ -198,34 +394,99 @@ tick the engine:
 The last kill's tick is still combat, so its own drops spawn as usual: the Carrier's hull plating,
 and an ordinary power-up if that tick's kill count triggers one (#3132).
 
-**Pickup wait (#3132).** If any pickup is on screen after the last kill, the wave does not go to
-the extraction yet. It enters `ClearAwaitingPickups`: the player keeps the ship (input flies it,
-the autopilot is off), hazards stay live and pickups can be collected. There is no autopilot
-chase and no magnet: the player collects pickups themselves. The wait ends when the pickup list is
-empty, because each pickup was collected or fell off the screen (or despawned), and the
-extraction below runs as normal. A collected salvage crate or hull plate carries into the next
-wave; a collected Shield or Lightning keeps today's reset rule (it ends at the wave boundary).
+**Pickup wait (#3132, #3568).** If any pickup or any asteroid is on screen after the last kill, the
+wave does not go to the extraction yet. It enters `ClearAwaitingPickups` (`pickupWaitHolds`): the
+player keeps the ship (input flies it, the autopilot is off), hazards stay live and pickups can be
+collected. There is no autopilot chase and no magnet: the player collects pickups themselves. The
+wait ends when the pickup list is empty, because each pickup was collected or fell off the screen
+(or despawned), **and** every asteroid that was already on screen has left it or been broken, and
+the extraction below runs as normal. A collected salvage crate or hull plate carries into the next
+wave. A Shield, Lightning, Buddy or Smart Bomb collected now is banked and takes effect on the
+next wave's first combat tick (#3512, see [Temporary Power-Ups](#temporary-power-ups)); one
+already running at the last kill still ends at the wave boundary.
 
-- **No pickup on screen at the last kill:** the extraction starts on that same tick, exactly as
-  before. No wait, no delay.
+- **Guns in the wait (#3568):** the player's guns fire in `ClearAwaitingPickups` (not in the
+  extraction, where the autopilot flies and does not fire), so a rock crossing the screen can be
+  cracked open and a large one's salvage crate collected. A Lightning still running at the last
+  kill fires its beam there too (#3562). Nothing else comes alive: enemy fire,
+  flak, Buddy bursts, timed asteroid spawns, dev-panel throws, reinforcements and Carrier actions
+  stay `Playing`-only, so no new asteroid ever enters after the last kill (`arrivalsAllowed`). A
+  large rock cracked in the wait splits into two small rocks, as always; those are already-spawned
+  material, so they hold the wait too until they leave or are broken.
+- **Accuracy stays a combat stat (#3568):** a shot fired after the last kill is not added to
+  `combat.shotsFired` (and so not to accuracy), and it is flagged (`Bullet.postClear`) so a rock it
+  hits is not added to `combat.shotsOnRocks` either: `shotsOnRocks <= shotsFired` always holds.
+  A Lightning beam pulse after the last kill likewise counts in none of the three (#3562).
+  (A shot fired in combat that lands on a rock during the wait still counts as on-target.) A rock
+  the shot breaks still counts in `rocks.broken`. The `wave_completed` wire contract is unchanged:
+  no field was added or re-defined, only what the existing counters count.
+- **Faster fall (#3512):** from the first tick after the last kill (the kill's own tick is still
+  combat), every pickup on screen falls at `POST_CLEAR_PICKUP_SPEED_MULT` × its normal speed
+  (`engine/tuning.ts`, default 2), a pickup already falling included, and its despawn timer runs
+  at the same multiple, so the wait ends sooner. That covers ordinary power-ups, salvage crates
+  and hull plates; combat-time pickups are unchanged. It is a phase branch in `tickPowerUps` with
+  no per-frame allocation. At 2× a pickup released at the top still takes ~3.5 s to reach the ship
+  line on a 640-tall canvas, longer than the ship needs to cross the screen (a reachability test
+  in `engine.bankedPowerUps.test.ts` pins that).
+
+- **No pickup and no rock on screen at the last kill:** the extraction starts on that same tick,
+  exactly as before. No wait, no delay.
 - **Salvage after the last kill:** a crate from a rock broken by an in-flight shot joins the wait.
   If it appears during the extraction while the ship still holds its lane (it has not started to
   climb), the engine hands the ship back to the player and returns to `ClearAwaitingPickups`.
   Once the ship is climbing out, the extraction runs on.
 - **Safety cap:** the wait's clock is `phaseTimer` (game time: it stops while paused). It counts
-  from the newest pickup's arrival and ends the wait at `pickupWaitMaxMs(canvasH)`: the longest
-  pickup lifetime (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s). A pickup still on screen
-  then is removed and the extraction begins. Every pickup leaves on its own well before that, so
-  the cap is only a guard against one that never would.
-- **Collect cue (#3187):** while the wait holds the cleared wave, the HUD shows a transient
-  "COLLECT THE POWER-UPS!" line (`phase.collectPowerUps`, spoken once as `a11y.collectPowerUps`,
-  which is also the text's accessibility label). It is derived, not stored:
+  from the newest pickup's arrival. Two separate bounds, so a pickup-only wait keeps its old guard:
+  with no rock on screen the wait ends at `pickupWaitMaxMs(canvasH)`, the longest pickup lifetime
+  (`powerUpDespawnMs`) plus `PICKUP_WAIT_SLACK_MS` (1 s), exactly as before #3568; while a rock is
+  on screen it ends at the larger of that and `rockWaitMaxMs(canvasW, canvasH)`, the rock bound
+  below plus the same slack. A pickup still on screen then is removed and the extraction begins; a
+  rock still on screen is left in flight and is cleared by the hard reset (below). Every pickup and
+  rock leaves on its own well before that, so the cap is only a guard against one that never would.
+  It stays a valid upper bound with the faster post-clear fall (#3512): pickups now leave sooner.
+  **Rock bound (#3568):** `rockCrossMaxMs(canvasW, canvasH)` is a proof, not a measurement. Every
+  rock is planned (`planAsteroidEntry`) at a speed of at least `ASTEROID_SPEED_MIN` (0.15 px/ms) and
+  an angle of at least `ASTEROID_MIN_ANGLE` (0.3 rad) below horizontal, starts fully off-screen,
+  and is dropped past the bottom (`ASTEROID_DESPAWN_MARGIN`) or a side (`ASTEROID_SIDE_MARGIN`).
+  Falling needs at most `py` px and sideways at most `px` px; a rock leaves by whichever comes
+  first, so the worst case is `max over angle of min(py / (s sin a), px / (s cos a - c))` at the
+  minimum speed, where `c` is the split speed (`ASTEROID_SPLIT_VX`: a child's vx is its parent's
+  plus or minus `c`, its vy is kept). The two terms cross at a closed-form angle (or the minimum
+  angle, on a flat canvas). A steep rock can have almost no sideways speed, so only the vertical
+  term bounds those. Numbers (rock bound / rock cap): 360 x 640 about 8.3 s / 9.3 s, 390 x 844 about
+  9.7 s / 10.7 s, 1024 x 768 about 14.8 s / 15.8 s (the pickup guard is 9.95 s at 640 and 12.5 s at
+  844). The old vertical-only figure was about 16.5 s at 640. A test samples real plans (and split
+  pieces) across six canvas sizes and checks each despawns inside the bound. A brute-force sweep
+  (review of #3569) found the worst legal cases within about 1-2% of the bound, so it is sound and
+  tight. While a rock is out, the wait's cap is the larger of the pickup guard and the rock cap,
+  so a stuck pickup can be held a little longer then. Pausing stops the clock, as for pickups. A salvage crate from a
+  rock cracked in the wait restarts the clock, as every arriving pickup does; crates only come from
+  large rocks, of which at most `MAX_ASTEROIDS` (2) are in flight, so this cannot chain.
+- **Crack cue (#3568):** when the wait holds with no pickup out and at least one **large** rock on
+  screen, the HUD shows a second line in the collect cue's slot, "CRACK IT FOR SALVAGE!"
+  (`phase.crackAsteroids`, spoken once as `a11y.crackAsteroids`). Only a large rock can drop
+  salvage (`settleRocks`), so a wait held only by small rocks (a cracked rock's pieces) shows no cue
+  and does not announce: the wave still waits for them, as for every asteroid. The line is spoken
+  each time it appears, so in the rare case where a pickup hides it and then leaves while a large
+  rock is still out, it is spoken again. `showCrackAsteroidsCue(state)`
+  in `render/hud.ts` is published as `HudState.crackAsteroids` through the same change-gated
+  `sameHud`. When a pickup is out the pickup cue wins and the crack line is off; the two never show
+  together. Same position (`collectCueTop`), one line (native shrinks it, web caps its `fillText`
+  width), and every locale's line is under 40 characters (`starswarmBankedPowerUps.test.ts`).
+  Derived, not stored: no engine state, save shape, network, storage or telemetry. Web draws the
+  same line on its 2D canvas.
+- **Collect cue (#3187):** while the wait holds the cleared wave for a pickup, the HUD shows a transient
+  "QUICK, GRAB 'EM — THEY CARRY OVER!" line (#3512; it was "COLLECT THE POWER-UPS!") as
+  `phase.collectPowerUps`, spoken once as `a11y.collectPowerUps` (which says power-ups collected
+  now carry over to the next wave, and is also the text's accessibility label). It is derived, not
+  stored:
   `showCollectPowerUpsCue(state)` in `render/hud.ts` is `phase === "ClearAwaitingPickups"` with a
   pickup still out, published as `HudState.collectPowerUps` through the existing change-gated
   `sameHud` commit (so a couple of React commits per wave clear, none per frame). It disappears the
   moment the wait ends (all collected, expired or the safety cap). No engine state, save shape,
-  network, storage or telemetry. It sits at 24% of the canvas height, centered: below the score row
-  and the GUNS/HULL toast, above the ship and below the top-left lives row and power-up bar (stacked under the lives, #3476, so neither sits in the ship's bottom movement band), and clear of
+  network, storage or telemetry. It sits at 24% of the canvas height, centered: below the HUD
+  columns (score and GUNS/HULL chips left, lives and power-up timer right, #3598) and the pickup
+  toast, above the ship, and clear of
   the centered MISSION COMPLETE banner. The cue says "power-ups" for every pickup kind (salvage
   crates and hull plates hold the wait too). Web draws the same line on its 2D canvas. Its top is
   `collectCueTop(height)` in `render/pickupCue.ts`: 24% of the height, floored at
@@ -235,18 +496,22 @@ wave; a collected Shield or Lightning keeps today's reset rule (it ends at the w
   between the toast zone and the centred MISSION COMPLETE banner (under ~304 px), it is placed just
   below the banner instead.
   The line is one line: native shrinks it (`adjustsFontSizeToFit`), web caps its `fillText` width.
+  Every locale's line stays under 40 characters so it is still readable shrunk on a 320 px wide
+  phone (`starswarmBankedPowerUps.test.ts`).
   The cue can re-appear, and is announced again, when an extraction yield (a salvage crate from an
   in-flight shot) hands the ship back to the pickup wait.
 - **Pause and saves:** pausing stops the ticks, so the wait and its pickups hold still. A paused run
-  saves and restores into the same wait (the phase and `phaseTimer` are part of the save).
+  saves and restores into the same wait (the phase and `phaseTimer` are part of the save). A
+  banked power-up is saved too (`bankedPowerUp`, #3512). It is optional in a save and kept out of
+  `SAVE_FINGERPRINT`, so a save from before banking still loads, with nothing banked.
 - **Screen:** the clear sound, haptic and spoken cue fire once, on the last kill. Ship drags stay
   live during the wait (they are ignored only during the extraction), and on web a hidden tab
   pauses the wait like combat. The next wave's countdown starts when the wave number changes,
   after the extraction, as before.
 
 **Extraction.** The engine then enters `Extraction`. It hands the ship to an AI autopilot
-(`isAutopilot`): input is ignored, and the screen keeps its commanded X on the ship. Manual fire
-stays off, and shots and rocks already in flight stay live. Nothing is frozen and nothing new
+(`isAutopilot`): input is ignored, and the screen keeps its commanded X on the ship. Fire stays
+off (#3568: the guns are live only in the pickup wait before it), and shots and rocks already in flight stay live. Nothing is frozen and nothing new
 enters. The #2945 pickup chase (#3026) is retired: pickups are resolved by the wait before the
 extraction begins, so the autopilot only dodges and climbs.
 
@@ -270,7 +535,9 @@ accelerates off the top of the screen, still dodging. When the ship is off-scree
   or attack-run brace still on a Carrier.
 
 Nothing from wave N can interact with wave N+1. The new wave also re-centres the ship on its lane
-and ends any active Lightning/Shield, as before. Falling pickups are normally gone by then: the
+and ends any active Lightning/Shield, as before. The one thing that crosses the boundary on
+purpose is a power-up banked during the clear (`bankedPowerUp`, #3512): `startNextWave` carries it
+into the new wave, which applies it when its combat starts. Falling pickups are normally gone by then: the
 pickup wait (#3132) holds the extraction until every pickup is collected or off screen. Only one
 that lands during the extraction's climb, or one the safety cap removed, is lost here.
 
@@ -306,6 +573,22 @@ The old Free Fire Zone / shooting-gallery bonus wave no longer exists.
 The Carrier is a staged boss encounter. Its code lives in `tickCarrier` (`engine/carrier.ts`);
 the stage is derived from the live roster (`engine/roster.ts`).
 
+### Stage looks (#3625)
+
+All code-drawn in `render/enemies.ts` (shared by native and web; they only read existing state, and
+shimmer on the effect clock `nextDiveTimer`, so a paused game stands still):
+
+- **Armoured** (a Guardian alive): a translucent pink-violet hive-shield bubble around the Carrier
+  (soft fill, a rim that breathes, six hex-cell hints drifting round it), replacing the old #2484
+  ring, plus an energy link (glow, core and a bead of light) from each _living_ Guardian in
+  formation to the bubble's rim. A dead Guardian's link is gone with it. A Guardian that dives, swoops
+  in or returns fades its link out linearly over 40 px from its formation slot (none beyond) and it
+  fades back in as the Guardian settles. The Carrier's own distance from its slot fades every link
+  the same way (#3650), so no link shows while it swoops in or flies an attack run.
+- **Exposed**: the bubble and links drop; the crack layer from #3593 is the look.
+- **Final stand** (no Guardian or non-fleeing escort left): a red glow under the sprite and a red-hot tint over it,
+  pulsing.
+
 ### Stages
 
 `carrierStage(state)` returns `protected`, `exposed`, `finalStand`, or null when no Carrier is
@@ -339,7 +622,9 @@ alive. Each stage is more aggressive than the last, and the stage only escalates
 
 - **Charge (telegraph).** For `BEAM_CHARGE_MS` (600 ms in every stage), the Carrier shudders and
   its emitter swells. A thin line shows the column the bolt will take (`carrierBeamCharge`,
-  `beamCharge` event, `a11y.carrierBeam`).
+  `beamCharge` event, `a11y.carrierBeam`). Beam, charge orb and released bolt are "searing plasma"
+  (#3625): red-orange body `#ff3a1a`, yellow-white core `#fff2b0`, orange glow `#ff8a3c`. Widths,
+  lengths and timings are unchanged; only colours and layers changed.
 - **Release.** The charge becomes an independent `CarrierBeam` in `state.carrierBeams`: a
   140 × 24 px bolt travelling straight down at 1.1 px/ms (it crosses the lane in about 0.4 s). The
   release raises the `beamFire` event (`carrierBeamJustFired`). The Carrier goes straight back to
@@ -374,7 +659,7 @@ longer applies to the Carrier.
 ### Attack run
 
 In the exposed and final-stand stages only. When its roll comes up (never while a beam charges),
-the Carrier **braces** for `ATTACK_RUN_BRACE_MS` (800 ms). It rears up 8 px, an amber ring tightens
+the Carrier **braces** for `ATTACK_RUN_BRACE_MS` (800 ms). It rears up 8 px, an orange ring (with a faint red halo) tightens
 around it and a chevron shows under it (`carrierRunBrace`, `attackRun` event,
 `a11y.carrierAttackRun`). It captures the player's X as it braces. It then flies its own heavy
 swoop (enemy phase `AttackRun`, `carrierRunPath`). This is not a Grunt dive: it leans out, sweeps
@@ -412,16 +697,66 @@ direct fire and movement can combine: a charge may start mid-run, with its usual
 - Only **vacant original Grunt slots** are refilled (`originalGruntCount(wave)` slots, taken from
   the wave's layout). The live Grunt count never exceeds the wave's original simultaneous Grunt
   population. A per-wave total cap of half the original slots (`reinforceCap`) also applies.
+- **Bay-open telegraph (#3561).** When the interval runs out and a launch is possible (a vacant
+  slot, cap room and population room), the Carrier opens its bay for `REINFORCE_BAY_OPEN_MS`
+  (400 ms, `engine/tuning.ts`) before any Grunt appears. The pending batch is
+  `state.carrierBayOpen` (ms left, 0 = shut; it counts down in `Playing` only). It is part of a
+  pause save (`ADDED_STATE` in `saveShape.ts`: a save without it reads as shut, so old saves keep
+  loading) and `buildWaveState` resets it to 0 at the wave boundary. A bay that could launch
+  nothing never opens, so the cue and sound never promise Grunts that won't come. Since #3625 the
+  glow and hatch sit on the Queen sprite's hangar bay under her abdomen (0.86 of the box down,
+  0.24 of it wide), in hive pink-violet.
+- **Cadence.** The cadence timer re-rolls when the bay _opens_ and keeps counting down through
+  the telegraph, so launch-to-launch stays the rolled interval (the gap between launches is not
+  stretched by the 400 ms). The first batch of a wave launches 400 ms after its timer first
+  expires; later launches stay on the rolled interval. A stage escalation pulls the timer in
+  (the sooner of what was pending and a fresh roll, #2843) on every eligible tick, with the bay
+  open or shut, so one that lands mid-telegraph still shortens the next gap.
+- **Attack run.** The bay only opens with the Carrier on station (`Formation` phase, no
+  brace); a batch that comes due during a brace or an attack run waits, its timer un-rolled,
+  until the Carrier is back. In turn an attack-run brace does not start while the bay is open
+  (`CarrierCtx.bayOpen`): it waits for the bay to close, at most 400 ms, so the two telegraphs
+  never overlap and the Grunts always launch from the Carrier's station.
+- **Beam charge.** The bay and the beam charge form at the same point under the Carrier, so they
+  never share it: the bay does not open during a charge (the due batch waits, un-rolled, for the
+  release), and a charge that comes due while the bay is open waits for it to close (at most
+  400 ms). Each warning is always seen on its own.
+- **Launch.** When the telegraph ends, the slots, the count (stage range) and the cap are decided
+  from the roster as it is then (unchanged rules), and each Grunt starts at the Carrier's bay, its
+  underside centre (`x`, `y + height / 2`, where the beam charge forms too). It flies
+  `bayLaunchPath` (`engine/geometry.ts`): a short drop out of the bay that swings out to
+  alternating sides (wider every third ship), then settles into the slot from above. It is
+  deterministic per launch index, with no `rng()`. The flight keeps `SWOOP_DURATION` and the
+  200 ms stagger (a Grunt waiting its turn holds the bay point). These are ordinary Grunts: they
+  can be shot and can collide at once, and the launch is not vetted against asteroids (the paths
+  are short). `reinforcedThisWave`, `runStats.reinforced` and `carrier.gruntsLaunched` count on
+  the launch tick, as before.
+- **Cancellation.** The batch is cancelled (no Grunts, `reinforcedThisWave` untouched, the timer
+  already spent) if the Carrier is gone before the telegraph ends, the same way killing the
+  Carrier mid-charge cancels an unreleased beam. The same holds if the Carrier can no longer
+  reinforce (it enters its final stand, or combat stops). **A Smart Bomb does not cancel it**:
+  the rule is "cancel only on the Carrier going away", so a bomb that clears the Grunts and
+  Elites while Guardians remain leaves the batch coming (the Carrier is still protected). A bomb
+  that leaves the Carrier alone puts it in its final stand, which cancels like any final stand.
 - Reinforcements never touch `startingNonLeaderCount`, so the 35% / ≤3 latches are unaffected once
   crossed. Killing the Carrier early is the wave's objective.
 
 ### Rendering and sound
 
 `render/carrier.ts` (`carrierOps`) holds the shared geometry: the charge telegraph, each released
-bolt (glow, core and a white-hot head) and the brace ring/chevron. The native Picture
+bolt (glow, core and a white-hot head), the brace ring/chevron and, while `carrierBayOpen` is
+counting down (#3561), the bay cue: a violet glow that swells and a pale hatch that widens on the
+Carrier's underside (`carrier-bay-glow`, `carrier-bay-hatch`; `carrierBayCue(state)` is the
+selector, null with the bay shut or the Carrier dead). The native Picture
 (`buildFrame`) appends it, and the web canvas replays the same ops, so the two cannot drift.
-Sounds: `starswarm.beamcharge` (charge and attack-run brace), `starswarm.beamfire` (release),
-`starswarm.reinforce`, and the boss-wave sting for the final stand (all reused files, #2492).
+Sounds (#3526, table in [Sound](#sound)): `starswarm.beamcharge` (the 600 ms charge, cut to
+`BEAM_CHARGE_MS`), `starswarm.attackrun` (the 800 ms brace sized to `ATTACK_RUN_BRACE_MS`, then a roar-away tail into the swoop),
+`starswarm.beamfire` (release), `starswarm.reinforce` (#3561: on the **bay-open** edge,
+`reinforcementBayJustOpened`, not the launch: the 1.35 s file's latch and "pfft" cover the 400 ms
+telegraph and its turbine spin-up, which starts about 0.18 s in, swells into the launch;
+`reinforcementsJustLaunched` stays exported but no longer drives a sound), and the boss-wave sting
+(`starswarm.bosswave`) for the final stand. `playCarrierEvent` picks one per `CarrierEvent`;
+only the final stand shares a file with another event.
 
 ## Buddy (#2845)
 
@@ -475,9 +810,11 @@ first is spent there. At 0 HP Buddy explodes and is removed (`runStats.buddyLost
 with it. The shots it already fired are separate entities and fly on.
 
 The HP bar is shared geometry (`render/buddy.ts`, `buddyOps`). It shows one pip per hit point
-above the ship: green, then amber at half, then red at a quarter. A hit flashes a ring. The native
-Picture appends it after each Buddy sprite, and the web canvas replays the same ops. The sprite
-faces its direction of travel (`facingRight`).
+above the ship: cyan, then amber at half, then red at a quarter (#3592 restyle, the generator's
+`CYAN` and `STINGER`). A hit flashes a red ring. The native Picture appends it after each Buddy
+sprite, and the web canvas replays the same ops. The sprite is `buddy-escort.webp` (B1 Escort, a
+small silver delta drone drawn by `tools/assets/draw_starswarm_art.py`); it faces its direction of
+travel (`facingRight`) and is mirrored horizontally when it flies left.
 
 ### Enemy targeting and finite capacity
 
@@ -511,9 +848,12 @@ tests hold it:
 A ship that is evading a rock has its player-directed aim degraded (#2844). A shot it diverts to
 Buddy keeps its `BUDDY_TARGETING` aim instead; the degrade's rng draws are still taken, so the
 seeded stream is the same whichever target the shot went to.
-`runStats.buddyShotsDrawn` counts the diverted shots. A counterfactual test holds the invariant:
-with the same seed, the enemy's player-directed plus Buddy-directed fire never exceeds its
-player-directed fire without Buddy.
+`runStats.buddyShotsDrawn` counts the diverted shots. Each shot at Buddy replaces a shot at the
+player: it is never an extra shot. Over a whole run, though, a Buddy on screen also changes what
+the enemy does (evasion, dive picks, aim), so total fire can drift a little either way (#3639). A
+counterfactual test, run over several seeds and Buddy ids, holds what the design promises: with
+a Buddy, fire at the player drops, and total enemy fire stays within 10% of the player-directed
+fire without Buddy.
 
 ### Evasion
 
@@ -548,6 +888,10 @@ Both still meet hostiles and rocks normally. Buddy's shots kill enemies, pierce 
 are spent on rocks. Enemy hulls do not ram Buddy: divers fly the player's lane, and ramming is a
 player-only rule.
 
+Kills by Buddy's shots score exactly as the player's own do (tier base × dive multiplier × difficulty
+multiplier, `resolvePlayerShots` in `collisions.ts`) and go to the same score. Only the wave-stats kill
+method differs: they are tallied as `buddy` (see [Combat, damage and Buddy counters](#combat-damage-and-buddy-counters-3248)).
+
 ### Carrier armor
 
 Multi-hit and armor bypass are now separate `Bullet` flags. `piercing` means multi-hit through
@@ -568,8 +912,8 @@ Every released shot is its own entity, so these trades are valid:
 
 On the wave's last kill every Buddy switches to Leaving, through the pickup wait (#3132) and the
 extraction. `weaponsFree` is false, so it fires nothing new. `hazardsLive` is true, so shots
-already in flight can still damage it. A Buddy pickup collected during the wait launches and
-stands down at once, as one collected during the extraction always has. The extraction
+already in flight can still damage it. A Buddy pickup collected during the wait (or the
+extraction) is banked (#3512): it launches when the next wave's combat starts. The extraction
 autopilot dodges shots aimed at Buddy (they are ordinary enemy shots), and Buddy and its shots are
 never hazards to the player. `clearTransientCombat` removes every Buddy and every shot either side
 fired, and `saveShape` persists Buddy's full state.
@@ -622,7 +966,8 @@ shipped tuning (the sim's `legacy (pre-#2880)` variant is the old one; `base` is
 | `BUDDY_REPLAN_MS`                   | 140       | 220                                          |
 | Notice chance, shots aimed at Buddy | 0.8       | 0.6 (`BUDDY_NOTICE_AIMED`)                   |
 
-Runs per sortie (3), finite capacity (no extra enemy fire) and determinism are unchanged. Results
+Runs per sortie (3), finite capacity (a shot at Buddy replaces a shot at the player) and
+determinism are unchanged. Results
 at 200 seeds per cell (`--preset proposal`, same seeds before and after), range over the ten
 difficulties Ensign to Fleet Admiral:
 
@@ -694,10 +1039,10 @@ to play the wave down to the launch point. The whole baseline is roughly 1 CPU-h
 Two ladders that live and die with the run. Nothing persists between runs and nothing is sold, so
 the leaderboard stays fair.
 
-| Ladder | Levels                                                            | Source                                                                              | Lost on                            |
-| ------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---------------------------------- |
-| Guns   | L1 single → L2 twin (±7 px) → L3 twin + spread pair (±0.14 px/ms) | **Salvage crate**: 40% chance from any large asteroid that breaks, whoever broke it | one level per life lost (floor L1) |
-| Hull   | 0 → 1 → 2 plating                                                 | **Hull plating**: always dropped when the Carrier dies                              | one level per hit absorbed         |
+| Ladder | Levels                                                            | Source                                                                                   | Lost on                            |
+| ------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------- |
+| Guns   | L1 single → L2 twin (±7 px) → L3 twin + spread pair (±0.14 px/ms) | **Salvage crate**: always dropped by a large asteroid broken by a shot, whoever fired it | one level per life lost (floor L1) |
+| Hull   | 0 → 1 → 2 plating                                                 | **Hull plating**: always dropped when the Carrier dies                                   | one level per hit absorbed         |
 
 - Hit order is **shield → hull → life**. Plating absorbs a shot, a rock, a Carrier beam or a ram (the
   rammer still dies), flashes a ring on the ship and grants 600 ms of grace. Lightning still
@@ -705,22 +1050,28 @@ the leaderboard stays fair.
 - `MAX_PLAYER_BULLETS` is 40 (was 20): L3 fires four bullets a volley.
 - Collecting salvage at L3 or plating at 2 does nothing (and awards no points) — but still shows
   the `GUNS MAX` / `HULL MAX` cue, so the player knows the pickup registered.
-- HUD shows `GUNS L{n} · HULL ◆◆`; the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
-- **Pickup look (#2847).** Both pickups share `render/pickups.ts` (`upgradePickupOps`), replayed by
-  the native Picture and the web canvas alike. Timed power-ups are round sprites; upgrade pickups
-  are angular, pulse a halo ring (phase from `despawnTimer`, so no clock) and carry a white glyph:
-  amber crate with an up-chevron (guns), cyan hex plate with a plus (hull). The halo and glyph mark
-  them as rewards, never rocks (grey-brown, spinning); the shape and halo keep them apart from
-  timed power-ups.
+- HUD shows two stacked chips under the score, `GUNS L{n}` and `HULL {n}` (#3598, see
+  [HUD](#hud-3598)); the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
+- **Pickup look (#2847, art #3595).** Both pickups are drawn by `render/pickups.ts`
+  (`pickupOps`), replayed by the native Picture and the web canvas alike: a generated sprite (a
+  gold crate with a white up-chevron for guns, a steel-blue armour plate with a white plus for
+  hull) over a pulsing halo ring (phase from `despawnTimer`, so no clock). The halo and glyph mark
+  them as rewards, never rocks (grey-brown, spinning); their shapes and the halo keep them apart
+  from the hexagonal timed power-up tokens. See [Pickups](#pickups-3595-epic-3590).
 - **Pickup cue (#2847).** `render/pickupCue.ts` (`pickupCues(prev, next)`) fires `GUNS +1` /
   `HULL +1` on a ladder rise, or `GUNS MAX` / `HULL MAX` when a pickup is collected at the top of
-  its ladder (spotted as a pickup that vanished onto the ship). The toast is drawn under the HUD
-  ladder line in the pickup's accent colour, pops in, drifts up and fades over `PICKUP_CUE_MS`
+  its ladder (spotted as a pickup that vanished onto the ship). The toast is drawn under the HUD's
+  centre column (`HUD_LAYOUT.pickupCueCenterY`) in the pickup's accent colour, with a glow in it, pops in, drifts up and fades over `PICKUP_CUE_MS`
   (1.3 s), and is non-modal. Native animates it on the UI thread; it is hidden from screen readers
   because `a11y.gunsUp/hullUp` already speak the change. Strings: `hud.cueGuns`, `hud.cueGunsMax`,
   `hud.cueHull`, `hud.cueHullMax`. Mechanics are untouched — the cue only reads two states.
 - Dev panel: "salvage" and "hull" buttons under Power-ups (`applyPowerUp`).
-- Sounds `starswarm.salvage`, `starswarm.hullup`, `starswarm.hullhit` reuse existing files (#2492).
+- Sounds (#3526, see [Sound](#sound)): a crate or plating is a pickup, so both play the shared pickup
+  sound (`starswarm.salvage`, `starswarm.hullup`). A gun level change adds a riff of as many shots as
+  the NEW level (`guns1`–`guns3`), on a rise (`gunsUp`) and on a fall (`gunsDown`, with the lost life)
+  alike; hull plating has no riff. A crate therefore plays pickup + riff on the same tick (the
+  pickup comes from the collection, `powerUpCollected`, so a crate at max level sounds too). Plating
+  absorbing a hit is `starswarm.hullhit`.
 
 ## Grunt Rout (#2489)
 
@@ -739,8 +1090,9 @@ they still roll to dodge rocks and can be struck by them.
 - Boss waves have no grunts, so nothing routs there. Killing the leaders last farms nothing: the
   Carrier's reinforcements only refill original grunt slots (and are capped per wave), so they
   bound how many grunts can exist, and each caught one pays double.
-- "ROUT!" banner (`phase.rout`) while any grunt is fleeing, a `starswarm.rout` sting and an
-  `a11y.rout` announcement with the count. Dev panel: "Rout off" restores the old mop-up ending.
+- "ROUT!" banner (`phase.rout`) while any grunt is fleeing, a looping `starswarm.rout` thruster
+  hum for as long as the banner shows (it starts at the rout and stops when the last fleeing grunt
+  escapes or dies; see [Sound](#sound)) and an `a11y.rout` announcement with the count. Dev panel: "Rout off" restores the old mop-up ending.
 
 ## Hazards: Errant Asteroids (#2486, #2844)
 
@@ -763,9 +1115,22 @@ third party:
   into a new wave. A large rock broken after the last kill can still drop salvage, and the wave
   waits for it (#3132).
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
-- Drawn as one of 4 Kenney meteor sprites (picked per rock, reused at both `large`/`small` sizes
-  since collision uses the radius, not the art), spinning at `spin` rad/ms; falls back to the
-  procedural rock outline while sprites load (#2573).
+- Drawn (#3596, `render/asteroids.ts`, the same ops on native and web) as one of 2 large or 2 small
+  generated rock shapes, tinted per rock into R1 basalt, R2 rust iron or R3 slate blue-grey (the
+  shape and palette hash from the rock's id; the art ships neutral and is tinted by a cached colour
+  matrix on native and prebuilt tinted canvases on web, `render/rockTint.ts`). Large rocks carry gold
+  ore veins (they can drop salvage), drawn untinted over the body; small rocks have none. The art is
+  2 × radius plus a 2 px margin and spins with `rotation` (`spin` rad/ms); collision still uses the
+  radius circle. A hit shows the shared hit-flash burst (white-hot core, orange ring, sparks) on
+  `ASTEROID_HIT_FLASH_MS`. When a large rock splits, a glowing crack opens between the two halves
+  for 220 ms of the dust explosion's clock, drawn over the dust and under the Smart Bomb flash
+  (`splitCrackOps`, part of `effectOps`); it is read from existing state (the halves are
+  consecutive small rocks whose midpoint travels from the dust along the parent's velocity), so it
+  needs no engine field. While the art loads, the procedural 9-point outline is drawn in
+  basalt with a light rim. A broken rock's dust (the `rock` explosion) is drawn in that rock's
+  palette: the explosion carries the rock's id as an optional, render-only `srcId` (kept out of the
+  save fingerprint, like `kind`), and an explosion without one (an older save) uses the default
+  brown dust.
 
 **Protected feature (#3131): do not remove or bypass.** Asteroids threaten enemies, enemies
 shoot at and avoid them, and collisions damage enemies (`rocksStrikeEnemies`, called from
@@ -775,7 +1140,16 @@ it. The #3131 fix only changes how the Carrier, Elites and Guardians _choose_ a 
 commit a move (see _Attack run_ and _Enemy AI: asteroid response_). It never changes whether a rock
 hurts them.
 
-Salvage drops are #2488.
+Salvage drops are #2488. Since #3533 a large rock broken by a shot **always** drops a Salvage crate
+(it was 40%), whoever fired it: a rock broken by an enemy shot still drops. Small rocks never drop,
+and hull-shattered (#2540) and bomb-cleared rocks (both marked shattered) never drop. The rate is
+the `Tuning.SALVAGE_DROP_CHANCE` field (default 1), so tests and the balance sim can override it.
+The random draw is now unconditional: before #3533 it ran only for large, unshattered rocks, so the
+random stream shifts for every rock break, which is why the golden fixtures changed. With 100%
+crates the post-clear pickup wait (#3132) can be longer, and a crate collected at Guns L3 only shows
+"GUNS MAX". **Telemetry shift:** `powerUps.spawned.salvage.rock`, `powerUps.collected.salvage` and
+`pacing.gunsPeak` rise from the release that ships #3533; compare cohorts across that release with
+care.
 
 ### Entry geometry (#2844)
 
@@ -799,7 +1173,7 @@ The rock is aimed through a random point in 15-85% of the width and 25-70% of th
   crosses meaningful space instead of skimming a corner;
 - leaves at least 1.5 s (`ASTEROID_MIN_REACTION_MS`) between touching the screen and being able to
   reach the player's row (`asteroidEntryMetrics`);
-- does not start overlapping any ship, including reinforcements waiting off-screen, or Buddy.
+- does not start overlapping any ship, including Grunts waiting at the Carrier's bay (#3561: reinforcements launch on screen, at the bay), or Buddy.
 
 If the random attempts all fail (common on a short landscape canvas), a deterministic fallback scans
 side-edge entries at the slowest speed over fixed angles, so a timed spawn is not dropped; it obeys
@@ -997,7 +1371,7 @@ say what happened in each wave, for tuning. They are observations only: nothing 
 them.
 
 **Model.** `state.waveStats` (`engine/waveStats.ts`) is the current wave's accumulator, in
-sections that match the `wave_completed` v1 schema pinned on epic #3244: `pacing`, `powerUps`,
+sections that match the `wave_completed` schema pinned on epic #3244 (v1; v2 since #3535): `pacing`, `powerUps`,
 `rocks`, `buddy`, `carrier`, `rout`, `combat` and `damage`, plus a `dev` flag. Every keyed table is
 dense by construction — `emptyWaveStats()` builds it from the registries, so every key is present,
 0 until counted. That also means a new registry value compiles without complaint and simply
@@ -1015,11 +1389,21 @@ returns the same object. Booleans and nullable fields (`rout.triggered`/`atMs`,
   (the screen's frozen pre-wave countdown isn't ticked, so it isn't counted).
 - `pacing.start` is the ship's loadout (lives, guns, hull) when the wave opened; the snapshot adds
   `pacing.end`, the loadout when it closed. `pacing.bonusLives` counts bonus lives granted on it.
+- `pacing.gunsPeak` (#3510) is the highest Guns level (1–3) the ship held at any point in the wave:
+  it opens at `start.guns`, rises where the guns do (a collected Salvage crate, or the dev panel's,
+  through `noteGunsPeak`; never per frame), and the close takes the higher of it and `end.guns`.
+  So `gunsPeak ≥ max(start.guns, end.guns)`, and it is above both when the ship reached a level and
+  lost it to a death in the same wave. It is what to chart for the Guns L2/L3 reach rate (waves or
+  runs with `gunsPeak ≥ 2`, `= 3`). Always sent (part of `pacing`), 13 bytes of JSON a wave
+  (`,"gunsPeak":2`); additive, so `v` stays 1. Builds before it send no `gunsPeak`, and the backend
+  (`WavePacing.gunsPeak`, optional) stores their waves without one.
 - `dev` is set when a dev-panel action touches the wave: `applyPowerUp`, `throwAsteroid` or
   `killEscorts` doing something, any dev toggle on during a tick (fire, rocks, dodge, flak, rout,
   straggler pause), or a run that opens past wave 1 (the wave jump). The dev panel's infinite
   lives is applied by the canvas, outside the engine: when it undoes a lost life the canvas flags
-  the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)).
+  the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)). Every path that
+  flags a wave also flags its **run** (`devAffected`, #3510; see
+  [Dev-affected runs](#dev-affected-runs-3510)).
 
 **Power-ups** (#3246, `waveStats.powerUps`). Every pickup carries a `source` (`PowerUp.source`,
 passed to `makePickup`), and its life is counted by type:
@@ -1038,8 +1422,18 @@ passed to `makePickup`), and its life is counted by type:
   didn't run out.
 - **Conservation:** per wave and type, `spawned = collected + missed + leftover` (asserted over
   seeded multi-wave runs in `waveStats.powerUps.test.ts`).
-- **Wave boundary.** Nothing carries across it, so there is no "carried in" case and no schema
-  field for one: `buildWaveState` starts with no pickups and no active buff. Pickups on screen at
+- **Banked power-ups (#3512).** A power-up collected after the last kill and banked is counted
+  across two waves with no field counted twice and no schema change. The wave it was **collected**
+  in owns the collect: `collected[type]` and the timeline's `PICKUP` entry (so per-wave
+  conservation still holds there). The wave it is **applied** in owns what it does: `activeMs`,
+  `expired` and `BUFF_END` for Shield and Lightning (and `shieldAbsorbed`), `buddy.launched` (and
+  `runStats.buddyLaunched`) for Buddy, and the bomb's kills, rocks and rout catches for the Smart
+  Bomb. That wave has no `collected` count or `PICKUP` entry for it, so its timeline still
+  reconciles (`PICKUP` = `collected`, `BUFF_END` = `expired`, per wave). A second banked
+  power-up replacing the first was collected too, so both are counted in `collected`; one banked
+  when the run ends is counted only as collected.
+- **Wave boundary.** Pickups never carry across it, so there is no "carried in" case and no
+  schema field for one: `buildWaveState` starts with no pickups and no active buff. Pickups on screen at
   a cleared close are `leftover` — counted where they are removed (`endPickupWait`, the #3132
   safety cap) or, failing that, at `startNextWave` just before the close; a died close counts the
   pickups on screen when the run ends. A running buff is cut off at the boundary: its ms stay in
@@ -1047,7 +1441,8 @@ passed to `makePickup`), and its life is counted by type:
   stats counts the pickups already falling as spawned.
 - **Saves.** `source` is optional in a saved pickup and kept out of `SAVE_FINGERPRINT` (the
   `POWER_UP` spec omits it), so paused runs survive; a pickup without one reads as `kill`. The
-  golden-replay hash leaves `source` out, like `waveStats`.
+  golden-replay hash leaves `source` out, like `waveStats`. (#3710 does the same for an enemy
+  bullet's `tier`.)
 - The `[StarSwarm analytics]` `__DEV__` logs are gone; the dev panel's Run stats section shows the
   current wave's table.
 
@@ -1124,10 +1519,10 @@ kept on `state.lastClosedWave`:
   the next wave opens with fresh `waveStats`.
 - **died** — when a tick's final phase is GameOver. `tickBonusLives` can revert a same-tick
   GameOver, so the close waits for the end of the tick; GameOver is terminal, so it can't close
-  twice. `damage.deathCause` holds the cause of the hit that took the last life (see the
-  combat counters below).
+  twice. `damage.deathCause` holds the cause of the hit that took the last life, and
+  `damage.deathPhase` (#3535) when it landed (see the combat counters below).
 
-The snapshot is `{v: 1, wave, difficulty, outcome, dev, pacing, score, …sections}`. `score` is read
+The snapshot is `{v: 2, wave, difficulty, outcome, dev, pacing, score, …sections}`. `score` is read
 from the score ledger, never counted twice: `pts` is that wave's ledger entry (`{}` if it scored
 nothing), `total` its sum, and `runningTotal` the run's score at the close.
 `waveJustClosed(prev, next)` returns the snapshot on the tick a wave closed (compare
@@ -1139,7 +1534,8 @@ carried across waves like the score ledger, `[]` on a new run.
 and objects left empty inside them (the backend reads a missing key as 0). `v`, `wave`,
 `difficulty`, `outcome`, `dev`, `pacing`, `score`, `rout` and `damage.deathCause` are always sent
 whole. `carrier.stageReachedMs` holds times, not counters: a stage never reached (null) is left out,
-one reached at 0 ms is sent. A payload is at most `WAVE_STATS_MAX_BYTES` (4096) serialized; the
+one reached at 0 ms is sent. `damage.deathPhase` (#3535) is sent only on a died wave; a cleared
+wave leaves it out (absent means null). A payload is at most `WAVE_STATS_MAX_BYTES` (4096) serialized; the
 worst case — every counter at 99999, every score source on the wave — measures about 3.7 KB.
 
 **Saves.** `waveStats` is saved with a paused run; `lastClosedWave` is not written to disk, and a
@@ -1148,13 +1544,21 @@ run has nothing to compare it with, so no close is reported after a restore. Bot
 observations, so they are kept out of `SAVE_FINGERPRINT` (`ADDED_STATE` in `saveShape.ts`):
 adding them didn't discard paused runs. A save without `waveStats` — or with stats that don't fit
 this build (a registry key missing or extra, a negative or non-numeric counter or time, a death
-cause outside `HIT_CAUSES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
+cause outside `HIT_CAUSES`, a death phase outside `DEATH_PHASES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
 non-negative integer) — restores with fresh stats
 seeded from the restored ship. `closedWaves` (#3251) is saved too, also in `ADDED_STATE`; it
-restores as saved when every entry looks like this build's wire form (its keys, `v` 1, a known
-difficulty and outcome, `wave` ≥ 1, only non-negative counts, waves in order), else as `[]` — an
+restores as saved when every entry looks like this build's wire form (its keys, `v` 2, a known
+difficulty and outcome, a `damage.deathPhase` only when it is a `DEATH_PHASES` value, `wave` ≥ 1, only non-negative counts, waves in order), else as `[]` — an
 older save, or one that doesn't fit, loses the waves closed before it rather than sending
-anything invalid.
+anything invalid. #3510: a saved `waveStats` from a build before `pacing.gunsPeak` is kept, not
+started over: `withSavedGunsPeak` fills the field in as the higher of the wave's `start.guns` and
+the restored ship's guns (a high reached and lost before the save is not recoverable). #3535: one
+from a build before `damage.deathPhase` is kept too, the field filled in as null by
+`withSavedDeathPhase` (exact: a saved run hasn't died). #3710: one from before `damage.hitsByTier`
+is kept as well, the table filled in as zeros by `withSavedHitsByTier` (nothing was tiered before,
+so zeros are exact); a saved `closedWaves` entry without it is valid (it is sparse). A v1 save's `closedWaves` restores as `[]`
+(the general older-save rule; the app was not live on v1). The run's
+`devAffected` is saved too (`ADDED_STATE`); see [Dev-affected runs](#dev-affected-runs-3510).
 
 ### Wave timeline diagnostics (#3391)
 
@@ -1243,7 +1647,9 @@ Details:
   the saved run itself, abandoning its session once, in `startRun`. Android's hardware Back and
   web's Escape on the picker (its `onRequestClose`) close it and return to the run it covers
   (#3463, `CLOSE_PICKER`): the run is left paused, its save and session untouched, nothing
-  abandoned; a later leave saves it as above. With no run under the picker (the cold start's, or a
+  abandoned; a later leave saves it as above. The picker's Lobby chip (`ModalCard`'s `onHome`, #3969)
+  shares the header Back's `goHome` handler, so it saves a held run and returns to the lobby;
+  it never starts a run. With no run under the picker (the cold start's, or a
   finished run's) there is nothing to return to and they start a run like Start. The header's ⋯ menu already paused and
   saved the run as it opened (#2944); the gap was a run paused with the pause button (which
   doesn't save) and then sent to the picker from the pause overlay.
@@ -1292,7 +1698,8 @@ Details:
   `died` — so the canvas (native and web) flags the wave's stats `dev` and, if that tick closed a
   wave, marks that `closedWaves` entry (and `lastClosedWave`) `dev: true` too. The reverted
   `died` entry is still sent, flagged, and so is the same wave's later `cleared` close: two
-  entries for one wave number, both `dev`. Filter on `dev` to leave them out.
+  entries for one wave number, both `dev`. Filter on `dev` to leave them out. For whole runs, use
+  the run's own flag, `games.metadata.dev_affected` ([below](#dev-affected-runs-3510)).
 - **Wave timelines (#3393).** The run's kept wave timelines (`state.closedTimelines`, the
   [diagnostics design](starswarm-diagnostics.md)) go out from the same `sendClosedWaves` call, the
   same once-per-run flag and the same open-session check, as `wave_timeline` events (registered
@@ -1311,6 +1718,93 @@ Details:
   `timeline_dropped`, `timeline_bytes`, `timeline_clean`, `timeline_dev_repeats` and
   `timeline_unrecorded`; the last three never fire it alone. Tests: `timelineRecorder.test.ts`,
   `timelineRecorder.dial.test.ts`, `timelineSave.test.ts`, `StarSwarmScreen.timeline.test.tsx`.
+
+### Dev-affected runs (#3510)
+
+A run the dev panel touched is flagged once, for the whole run, so a build that ships with dev
+tools on can't quietly put dev runs on the leaderboards or into the stats. Owner decision on #3510:
+such a run is **saved, but kept off the leaderboards, the `/stats/me` roll-ups and analytics**; one
+reaching production raises a Sentry warning; the server never rejects it.
+
+- **The flag.** `StarSwarmState.devAffected` (engine, `types.ts`) is latched — never cleared,
+  carried across waves by `startNextWave`. It is set by the dev panel's **New Game** (the screen
+  adds `devRun: true` to its `DevOptions`; the canvas opens the run with
+  `initStarSwarm(..., { devAffected: true })`, whatever the panel's options) and by every path that
+  flags a wave `dev` (`markWaveDev` sets both: dev power-ups, a thrown asteroid, killed escorts, any
+  live switch, the wave jump, the infinite-lives revert). The dev panel's own handlers also latch
+  it directly (`onDevAction` → the screen's `latchDevAffected` → the canvas's `markDevAffected`):
+  a power-up, a thrown asteroid, killed escorts, or a live switch turned on — even one the engine
+  ends up ignoring. A run started while a live switch is on counts from its start. The sound mixer
+  and the frame readout change nothing in the run and don't flag it. All of these are dev-panel
+  handlers or the existing dev branches; the frame loop does no new work.
+- **How it relates to the per-wave `dev`.** `dev` on a `wave_completed` (and `wave_timeline`) says
+  that **wave's** numbers aren't a real player's, so a per-wave analysis can drop just those waves;
+  it starts over each wave. `devAffected` says the **run** was touched anywhere, including by a dev
+  New Game whose waves are otherwise unflagged, or a dev wave the caps kept off `closedWaves`. A run
+  with any `dev` wave is always `devAffected`; the reverse need not hold.
+- **Sent once, at the run's end.** At game over the screen adds `dev_affected: true` to the
+  completion's result (`devAffectedResult`, `devAffected.ts`). A run **abandoned** by the hook — a
+  new run's restart, or leaving the screen — carries it too: the screen registers a progress
+  snapshot (`setProgressSnapshot`) that is `{ result: { dev_affected: true } }` for a flagged run,
+  so the abandon's `PATCH /complete` (and its `game_ended` event data) carry it, through the same
+  `StarSwarmResult` validation, into `games.metadata.dev_affected`. A clean run sends nothing
+  extra either way, and no new request is made (no migration: the existing JSON column).
+- **Its waves.** When a flagged run's waves are sent (`sendClosedWaves`, at game over or the
+  abandon), every `wave_completed` and `wave_timeline` goes out with `dev: true` (`asSent`), so
+  per-wave analytics drop a dev run's waves even where the engine left a wave unflagged (a dev New
+  Game's waves). `dev: true` is shorter than `dev: false`, so the caps still hold.
+- **The one gap.** A dev run killed by the OS and **never resumed** has no result: the stale-session
+  sweep closes its row as abandoned without `dev_affected`, and it sends none of its waves (as for
+  any such run). Such a row ranks nowhere (abandoned) and adds no play time (no `duration_ms`); it
+  still counts as one `/stats/me` session.
+- **Pause and resume.** `devAffected` is saved with a paused run (`ADDED_STATE`, so older saves
+  still load). A save without it (or with anything but `true`) restores as flagged when its live
+  wave or any saved closed wave is `dev`, else clean.
+- **Sentry tag.** `starswarm.dev_affected` is a per-session tag (`setGameSessionTag` in
+  `game/_shared/sessionTags.ts`): written only while the run's session is tagged, and reset to
+  `"none"` with the `game.*` tags when that session completes, is abandoned or discarded, a new one
+  starts, or the stores are cleared — so it never rides another game's events. The screen writes
+  it (`tagDevAffected`) at a run start (`"true"` / `"false"`, dev-tools builds only), on a restored
+  run (`"true"` for a flagged run in any build, `"false"` in a dev-tools build) and on the first
+  dev-panel latch (`"true"`). A store build never writes it at a run start.
+- **Server.** `StarSwarmResult.dev_affected` (optional; a non-boolean value reads as `true`, never a
+  400). `games.filters.not_dev_affected()` (only JSON `true` excludes) is in every board's
+  `board_filters` (the rank route says `not_rankable`) and in every `/stats/me` query, so a flagged
+  run adds nothing to `sessions`, `completed` (XP), `best_value` or `time_played_ms`. In production
+  (`ENVIRONMENT=production`) `StarSwarmModule.reconcile_result` sends one Sentry warning,
+  `starswarm: dev-affected run in production` (fingerprint `starswarm-dev-affected-in-production`,
+  tags `game_type`, `dev_affected`; no ids, no values), throttled to one an hour per process. The
+  pre-launch API the internal builds use is not production, so their dev runs say nothing.
+- **Analytics.** Any query over Star Swarm runs or their `wave_completed` rows should join
+  `games` and leave out `metadata->>'dev_affected' = 'true'` (and per-wave `dev` for wave-level
+  work).
+- **Store builds.** `DEV_TOOLS` (`__DEV__ || isPreLaunchApiBuild()`) gates the DEV button, the
+  panel and the canvas's dev options, so in a store build no handler can set the flag
+  (`StarSwarmScreen.devAffected.store.test.tsx`).
+- **Volume, caps, dial (epic #3273), `damage.hitsByTier` (#3710).** On the existing
+  `wave_completed`, which is a keep-list type: **never pruned** and uploaded from every session
+  whatever the replay sample rate, in the same single batch at session end (never during play;
+  counting is at hit time, a handful a wave, nothing on the frame path). Measured by
+  `waveStats.hitsByTier.test.ts` and `backend/tests/test_starswarm_hits_by_tier.py`: the worst case
+  (all 12 cells at 99,999) adds **236 B** (`,"hitsByTier":{...}` compact), a hit on one tier 34 B,
+  a typical damaged wave about 60-100 B. Estimate (assumptions, not measured in the field: 8
+  waves a run, half the waves damaged, 1,000 runs a day): about 30 B a wave, 0.25 KB a run, 0.25 MB
+  a day, about 7.5 MB a month, about 90 MB a year unpruned (18% of the 500 MB Free plan a year at
+  that volume; negligible at today's). **Cap:** the 4 KB per-wave (`WAVE_STATS_MAX_BYTES`) and 64
+  KB per-run caps are unchanged and bound it (the worst-case wave test still fits; at worst a run
+  keeps one wave fewer). **Dial:** the server env var `STARSWARM_HITS_BY_TIER` (default `true`;
+  Render env, redeploy, no app release): `false` strips `damage.hitsByTier` at
+  `validate_wave_completed` before storage, the rest of the event unchanged (the bytes still arrive
+  but are tiny and capped). `game_types.replay_enabled = false` is still the coarse switch and stops
+  the whole wave. Deploy order: **backend first** (`WaveDamage.hitsByTier`; before that the field
+  would be silently dropped as an unknown key). `gunsPeak`: 13 B a wave on the existing `wave_completed`,
+  under its 4 KB per-wave and 64 KB per-run caps, uploaded only by the on-session-end recorder and
+  turned off with the rest of the wave by the replay dial's kill switch
+  (`game_types.replay_enabled = false`). `dev_affected`: 20 B (`,"dev_affected":true`) on the
+  completion or abandon of a flagged run only (plus the same on that abandon's `game_ended`) — none
+  on a clean run, at most one per session. The Sentry warning:
+  at most 24 a day per backend process. Tests: `devAffected.test.ts`,
+  `StarSwarmScreen.devAffected*.test.tsx`, `backend/tests/test_starswarm_dev_affected.py`.
 
 ### Rock counters (#3247)
 
@@ -1361,7 +1855,8 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
   routed Grunt that escapes didn't die, and the dev panel's `killEscorts` isn't counted (its wave
   is flagged `dev`). Combinations that can't happen: Carrier × `dive` / `rout` / `ram`, and
   Elite / Guardian × `rout` (the contract rows list them as `UNREACHABLE`).
-- `combat.shotsFired` — the player's bullets as each trigger pull spawns them (`tickPlayer`);
+- `combat.shotsFired` — the player's bullets as each trigger pull spawns them (`tickPlayer`),
+  and one per Lightning beam per pulse (#3562, see [Lightning beam](#lightning-beam-3562));
   `combat.shotsHit` — those bullets that damaged a ship, once per bullet on the first ship it
   damages (a piercing shot through three ships is one hit; a shot the Carrier's field deflects is
   none), so `shotsHit ≤ shotsFired`; `combat.shotsOnRocks` — those bullets spent on rocks. Buddy's
@@ -1380,8 +1875,37 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
   projectiles that landed on that tick are spent but count no hit (a rock among them still counts
   as a `contact` break). The shield never takes a ram, so `ram` × `shield` can't happen.
   (`powerUps.shieldAbsorbed` counts bullets and rocks only, so it is Σ `shield` less the beams.)
+- `damage.hitsByTier[tier][result]` (#3710, additive on `v` 2) — the same grid by the enemy tier
+  that landed the hit (`ENEMY_TIERS` × `HIT_RESULTS`, no new vocabulary), counted beside `hits` in
+  `countPlayerHit`. **Attribution:** an enemy bullet is charged to the tier of the ship that fired
+  it (`Bullet.tier`, stamped where a shot enters play: the `fireShipShots` funnel in
+  `engine/enemies.ts`, which also covers the Carrier's twin lasers and its flak, and the fighters'
+  flak in `engine/asteroids.ts`; a restored Carrier laser with no stamp reads as Carrier through
+  its `source`); a ram to the rammer; a beam to Carrier; a rock to no one (rocks stay in
+  `hits.rock` only). The shield charges each soaked bullet to its own tier. A plate or life is one
+  hit per tick (rule above), so when several bullets land on one tick it goes to the **first in
+  array (firing) order**. A bullet restored from a save from before #3710 has no tier and is
+  counted in none. So, per result, `Σ hitsByTier + hits.rock = Σ hits` for a run made on this
+  build (`expectPairedCounters`); a run that spans the update can fall short by that one paused
+  run's pre-update bullets. `Bullet.tier` is never read by play, is left out of the save spec and
+  `SAVE_FINGERPRINT` (like pickup `source`) and out of the golden `sha()`: no hash moved. Wire:
+  sparse like every table, inside `damage` (a wave with no hits sends nothing). Surface: the dev
+  panel's Run stats "hits on you this wave, by tier" table only (no end-of-run card, no new locale
+  keys). Volume below.
 - `damage.deathCause` — the cause of the hit that took the last life, set when it lands; a
   same-tick bonus life that rescues the ship clears it again. Null on a wave closed `cleared`.
+- `damage.deathPhase` (#3535, `v` 2) — when that hit landed: `combat` (`Playing`), `pickupWait`
+  (`ClearAwaitingPickups`: the last enemy is down, pickups still falling) or `extraction`
+  (`Extraction`), from `DEATH_PHASES` in `engine/registries.ts` (`deathPhaseOf`). Written once,
+  in `tickCollisions`' `dead` branch from the same end context the game-over card reads (#3534,
+  `withDeathPhase`); cleared with `deathCause` by a same-tick bonus-life rescue (`tickBonusLives`).
+  Null on a cleared wave and left out of its wire form. So a `wave_completed` row alone says
+  whether the player died after the last kill (a beam released before the Carrier fell, a rock
+  in the pickup wait), with no timeline needed. Cost: about 20-26 B (`,"deathPhase":"combat"` is
+  22 B, `"pickupWait"` / `"extraction"` 26 B) on the one died wave of a run, nothing on cleared
+  waves. Dev only: the dev panel's infinite-lives revert (`devRevert`) undoes the GameOver but not
+  the wave's `deathCause` / `deathPhase`, so a dev-flagged wave that is later cleared can still
+  carry both. Such a wave is always `dev: true`; on a real run's cleared wave both are null.
 - `buddy.launched` — pickups collected and dev-panel launches (= `runStats.buddyLaunched`).
 - `buddy.hits[cause]` — every enemy shot, Carrier beam and rock that landed on a Buddy, the fatal
   ones included; `buddy.destroyed[cause]` — each Buddy lost, charged to the cause whose damage
@@ -1402,7 +1926,7 @@ has a test that fails until it is done:
 
 1. **Registry entry** — add the value to its array in `engine/registries.ts`. The stats tables pick
    it up on their own (at 0), so the build passes; only hand-written `Record`s keyed by that type
-   fail to compile until they list it. The values are wire vocabulary, pinned by the "hold the v1
+   fail to compile until they list it. The values are wire vocabulary, pinned by the "hold the v2
    schema's values" test in `__tests__/waveStats.test.ts`: update it in the same change.
 2. **Counter** — count it where it happens with `bumpWave` (on a hot path, hoist the path as a
    `const` tuple; see `engine/waveCounters.ts`). A power-up needs its spawn (with a `source`) and
@@ -1419,19 +1943,23 @@ has a test that fails until it is done:
    too.
 4. **Backend Literal** — add the value to its `Literal` in `backend/starswarm/models.py`
    (`StarSwarmWaveStats`, #3250), or the server logs it as unknown.
-5. **Registry fixture** — add it to `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json`.
+5. **Registry fixture** — add it to `backend/tests/fixtures/starswarm_wave_stats_v2_registries.json`.
    Two parity tests read that file (#3252): the app's `__tests__/waveStats.parity.test.ts` fails
    until it equals `registries.ts` exactly, and the backend's
    `tests/test_starswarm_wave_stats_parity.py` fails until the `Literal` sets cover it — so a value
    added on one side only fails CI, with a message naming the file to edit. Also add the value to
-   the sample payload, `backend/tests/fixtures/starswarm_wave_stats_v1.json`, in the table its
+   the sample payload, `backend/tests/fixtures/starswarm_wave_stats_v2.json`, in the table its
    registry is read from (e.g. `powerUps.collected`, `combat.spawned`, `damage.hits`): the
    backend's `test_the_fixture_has_a_key_from_every_registry` requires each of those key sets to
    equal its `Literal`.
 6. **Golden fixtures** — re-record the golden replay (`UPDATE_GOLDEN=1`, see
    `goldenReplay.test.ts`) if the change moves a counter in it
    (`__fixtures__/golden-replay-seed42.waves.json`, the replay's closed waves and leaderboard
-   result) or alters play (`golden-replay-seed42.json`), and say which in the PR.
+   result) or alters play (`golden-replay-seed42.json`), and say which in the PR. A new field on a
+   bullet, pickup or other state object that only labels the stats (like `Bullet.tier`, #3710, or a
+   pickup's `source`) stays out of the gameplay hash: strip it in `sha()`
+   (`__tests__/helpers/goldenRuns.ts`) and out of the save spec (`saveShape.ts`, `Omit` plus an
+   optional fit check), so no hash and no paused run is lost.
 7. **`v` bump — only if the shape changes.** A new value in an existing keyed table is not a shape
    change (the backend keeps unknown table keys). A new section, field or table, a rename, or a
    changed meaning is: bump `WAVE_STATS_VERSION` on both sides in the same release (see
@@ -1446,6 +1974,11 @@ has a test that fails until it is done:
    `tlCarrierDown` beside its `countKill`, and a new `GamePhase` an entry in `TIMELINE_PHASES`.
    New codes and their trigger points are listed in the
    [code table](starswarm-diagnostics.md#code-table-v1).
+9. **Sound (#3526)** — a new power-up is a pickup: give it a `starswarm.<name>` key on the shared
+   pickup file in `sounds.ts` (and a `SfxVolumes` entry plus a dev panel `MIXER` row) and call it
+   from `playPowerUpCollect`; a timed one that should hum while active is a loop, and one that
+   should mark its start, warning and end gets cues in `soundCues.ts` (see [Sound](#sound)). A new sound file needs an entry in `SOUND_CREDITS.md` or
+   `__tests__/assetCredits.test.ts` fails.
 
 ## Scoring
 
@@ -1528,7 +2061,89 @@ restores with a `"Boss"` tier id.
 - **Outcomes:** `has_winner = False`: a run ends when the ship is lost. Game over records `completed` (score-only, no win) with `final_score` and the result `{outcome, wave_reached, difficulty_tier, score_breakdown}` (#2626, #2837). Starting another run while one is open, or leaving the screen, records `abandoned` with no result and no score.
 - **Duration:** `useGameSync`'s active-play window. The screen sends no `durationMs` of its own (never `0`): the engine keeps no run clock (the per-wave `pacing.durationMs`, [above](#per-wave-stats), is for the wave stats only). The window restarts when a run begins (`beginRun`), so time on the difficulty picker is not counted.
 - **How it reaches the server:** since #2626 the run's own `useGameSync("starswarm")` session row is its leaderboard entry. The row opens when the run begins, with `difficulty_tier` as creation metadata. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each tier's board shows each named player's best run on that tier once. The legacy `POST /starswarm/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
-- **Where the player sees it:** the result card reads the run's rank on its tier's board through `lookupGameRank` (`GET /games/{id}/rank`). It asks for a display name only when the player has none. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633) on the finished run's tier, else the current tier. Stats (#2635) are in the ⋯ menu. The device keeps the best score (`game/starswarm/bestScore.ts`) for the card's "Best" and "New best". Store builds hide Star Swarm (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
+- **Where the player sees it:** the result card reads the run's rank on its tier's board through `lookupGameRank` (`GET /games/{id}/rank`). It asks for a display name only when the player has none. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633) on the finished run's tier, else the current tier. Stats (#2635) are in the ⋯ menu. The device keeps the best score for the card's "Best" and "New best": the shared personal best (#3757, `game/_shared/personalBest.ts`, key `personal_best_v1:starswarm`; the old `starswarm.bestScore` is moved in on the first read), read when the screen mounts and written only when a run beats it (a 0 score never sets one). On a reinstall it is seeded once from the server's best score across tiers (the stats the app already fetches, #3802); nothing is written to the server. Store builds hide Star Swarm (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
+
+### Game-over card: how the run ended (#3534)
+
+The shared result card (`GameResultModal`) shows one cause line under "Reached wave N", in a pill:
+bullet "Hit by enemy fire", rock "Hit by an asteroid", beam "Hit by a Carrier beam", ram "Rammed by
+an enemy" (`starswarm:result.end.<cause>`). When the lethal hit landed in `ClearAwaitingPickups` or
+`Extraction`, a smaller second line reads "after the last enemy fell" (`result.end.afterLastKill`):
+the player who killed the last enemy and then died to a beam already in flight can see why.
+
+- **Where it comes from.** `StarSwarmState.endContext` (`{ cause, phase }`) is set in
+  `assembleCollisionState` when `resolvePlayerHit` returns `dead`, from the same
+  `damage.deathCause` that `withDeathCause` just set, with the phase in effect when the lethal hit resolves; #3535 sends that phase as `damage.deathPhase` on the wire. A hit on the same tick the last enemy dies
+  therefore shows the cause without "after the last enemy fell". A same-tick
+  bonus life that rescues the ship clears it again (`tickBonusLives`, next to `withDeathCause(.., null)`).
+- **Client-only.** The object itself is not in `WaveStats`, the result sent to the server or the
+  leaderboard post; since #3535 its phase reaches `wave_completed` as `damage.deathPhase`. It is not saved: a finished run is never saved as paused.
+- **Reaching the card.** `handleGameOver` copies it from `canvasRef.current.getState()` into
+  `RunResult.end`; the screen passes it as the card's `endNote` prop (`label`, optional `note`), which
+  is also spoken in the card's `a11y.announce`. No cause (an older run, a run the dev panel ended) shows no pill. Dev only: the dev infinite-lives
+  revert can leave a stale `endContext` until the next real lethal hit.
+- **New hit cause.** Add its `result.end.<cause>` string to every locale (the template literal in
+  `StarSwarmScreen` would otherwise show a raw key).
+- **Cost.** One assignment on the lethal hit; no network, no logging, nothing per frame.
+
+## HUD (#3598)
+
+The in-game HUD, restyled in the art epic (#3590) to the owner's pick **H1-A**, the flight HUD
+redistributed across both top corners so the centre stays clear for the Carrier and its Guardians:
+
+| Position        | Content                                                                                                                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Top left        | `SCORE` caption (Manrope 700, dim) over the grouped score (`12,450`; Space Grotesk 700, white, glow).                                                                                         |
+| Under the score | The `GUNS L{n}` and `HULL {n}` chips, **stacked** (never side by side): rounded outline chips, cyan GUNS and plating-blue HULL, Manrope 700. Each grows to fit its label.                     |
+| Top centre      | `BEST` over the best score (Space Grotesk 400, dim), the difficulty line (`Lieutenant ×1.5`, Manrope 600) under it.                                                                           |
+| Top right       | `WAVE` over the wave number (Space Grotesk 700, white, glow).                                                                                                                                 |
+| Under the wave  | The lives as mini ships (the player's chosen ship, #3600), right-aligned; under them the power-up timer: the power-up's hex chip token (#3595), its name and a 10-segment bar, right-aligned. |
+| Centre          | Clear. The pickup toast, the collect / crack cues and the banners keep their slots.                                                                                                           |
+
+- **One source of truth.** `render/hudStyle.ts` holds every HUD text style (family, size, line
+  height, colour, glow), the geometry (margins, chip and icon sizes, gaps, segments) and the
+  segment maths (`segmentsLit`, `litBarWidth`). Native turns the styles into RN text styles
+  (`hudTextStyle`, glow = a text shadow with no offset, no per-frame Skia blur) and lays the three
+  columns out in `GameCanvas.tsx` (the lives and timer in `LivesIndicator` / `PowerUpIndicator`);
+  web draws the same layout with the same numbers into its 2D canvas (`components/starswarm/
+webHud.ts`). `hudStyle.test.ts` and `webHud.test.ts` pin the fonts, the layout and the parity.
+- **Fonts.** Space Grotesk for numerals and banners, Manrope for captions, chips and body
+  (`theme/typography.ts`, `docs/BRANDING.md`). Banners: MISSION COMPLETE, ROUT!, CARRIER SIGHTED,
+  "— WAVE N —", the countdown digit and 1UP are Space Grotesk with a soft glow in their role colour;
+  the pickup and banked toasts are Space Grotesk glowing in the toast's colour; the collect and
+  crack cues are Manrope 700. The pause overlay's title is Space Grotesk with the accent glow and
+  its buttons Manrope (`Controls.tsx`). The 6–7 px captions in the mock are 8 px, the HUD's floor.
+- **Web fonts.** The web canvas uses the faces `App.tsx` registers with expo-font (CSS font
+  `18px "SpaceGrotesk_700Bold", sans-serif`, no weight, since each face is already its weight).
+  Canvas text never loads a webfont on its own, and on Safari expo-font resolves before the face
+  has loaded, so the canvas calls `document.fonts.load` for every HUD font on mount
+  (`loadHudFonts`). Until a face is ready the text draws in `sans-serif`; the loop redraws every
+  frame, so the brand face takes over on the frame it lands. A face that cannot load leaves a
+  Sentry breadcrumb (no event, no cost). Web now also shows the 1UP flash native always had.
+- **Numbers (owner).** The score and the best are grouped in the app language's style, always
+  in Western digits: `formatHudNumber` in `render/hudStyle.ts` (`Intl.NumberFormat` with
+  `-u-nu-latn`, one formatter per locale, native digits mapped to 0–9 if an engine returns them,
+  hand grouping if Intl is missing). Native formats only when the HUD commits; web caches the
+  string and re-formats only when the number or the language changes. Screen readers hear
+  "SCORE 12,450". The score column is a side column's width at most
+  (`hudSideColumnWidth`), the centre column 120 px (`HUD_LAYOUT.centerMaxWidth`): the widest
+  realistic score fits, and anything wider shrinks rather than overlapping.
+- **Font scaling.** Native HUD text scales with the device setting up to `HUD_MAX_FONT_SCALE`
+  (1.3×) and stays on one line; the columns flow top-down, so a larger caption pushes the chips,
+  lives and timer down with it (nothing is measured). The countdown digit does not scale.
+- **RTL.** The HUD does not mirror in Arabic or Hebrew: it is part of the playfield, like the
+  canvas, and native runs with RTL layout off (`i18n/i18n.ts`). Only the strings are translated;
+  the score stays top left and the wave top right. Every new string is at most 10 characters
+  (`starswarmHudLabels.test.ts`), and the chips grow to fit, so nothing overlaps or clips.
+- **Accessibility.** Screen readers hear "SCORE 120", "BEST 500" and "WAVE 3" as one element each
+  (`hud.scoreValue` etc. as the group's label); the chips say GUNS and HULL in words, so no meaning
+  is carried by colour alone. Every HUD text colour is in the contrast tests
+  (`gamePalettes.test.ts`), the chips' text measured on the chip fill.
+- **Cost.** No new engine state, `HudState` field, React commit, image or font file: the lives and
+  timer reuse the ship and pickup sprites already bundled, and the HUD draws in the three brand
+  weights the app already loads.
+- **Strings:** `hud.scoreLabel`, `hud.bestLabel`, `hud.waveLabel`, `hud.powerUpShield`,
+  `hud.powerUpLightning` (new, every locale), `hud.guns`, `hud.hull`, `tier.*`.
 
 ## Pause, Backgrounding, and Resume
 
@@ -1549,11 +2164,389 @@ needed to resume safely after a cold process restart.
 
 This replaces the old, incorrect statement that Star Swarm had no local resume state.
 
+## Sound
+
+Every Star Swarm sound effect is an **original sound synthesized in-house** by
+`tools/assets/synth_starswarm_sfx.py` (#3560); none uses Kenney audio. The background music,
+`starswarm-bgm.mp3`, is one original, project-owned 6:52.7 track (Round 46, #3638), which replaced the
+four Pixabay tracks in #3638. **No third-party audio remains in Star Swarm.**
+Credits: `frontend/assets/sounds/SOUND_CREDITS.md`. Why each sound sounds the way it does (the
+owner's brief, the variants auditioned, the feedback) is in the
+[sound design log](starswarm-sound-design.md).
+The background track's provenance, starting points, originality check and playback are in the
+[music design log](starswarm-music-design.md); every round's generator and render is archived by the owner outside the repo (#3637). How it plays is under
+[Background music](#background-music) below.
+The registry is `src/game/starswarm/sounds.ts`; the hook that plays them is
+`src/hooks/useStarSwarmAudio.ts`; the screen hands the canvas the callbacks. Overhauled in #3526.
+
+### Key, file, trigger and default volume
+
+Default volumes are `DEFAULT_SFX_VOLUMES` in the hook. They are hand-tuned by ear in the dev panel
+mixer (every `SfxVolumes` key has a row there), not derived from anything. The exception is
+`bombblast`, `bonuslife` and `beamcharge` (#3763): they were lowered by about 3 dB (1.0, 0.9, 0.9 to
+0.7, 0.6, 0.6) because their pile-ups clipped the output, and `useStarSwarmAudio.mix.test.ts` bounds
+the summed volume x file peak of the known pile-ups. The mixer steps by 0.1
+(rounded to a tenth); its **Music** row (`music`, #3638) steps by 0.05, finer because the music sits
+under every effect. Relative loudness between the parts of one effect is baked into the files
+(`shield-on` is louder than the shield hum, the Buddy parts are quieter than the Shield's), so related
+keys share a default.
+
+| Key (`starswarm.`)                                                 | File                           | Trigger                                                                                                                                                                                                 | Default |
+| ------------------------------------------------------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------: |
+| `poweruplightning`, `powerupshield`, `powerupbuddy`, `powerupbomb` | `starswarm-pickup.ogg`         | An ordinary power-up is collected, banked (#3512) or not                                                                                                                                                |     0.8 |
+| `salvage`, `hullup`                                                | `starswarm-pickup.ogg`         | A salvage crate / hull plating is collected (also at the top of its ladder)                                                                                                                             |     0.8 |
+| `bombblast`                                                        | `starswarm-bombblast.ogg`      | A Smart Bomb detonates (below)                                                                                                                                                                          |     0.7 |
+| `shieldon`                                                         | `starswarm-shield-on.ogg`      | Once, on the tick the Shield becomes active (below)                                                                                                                                                     |     0.8 |
+| `shieldloop` (loop)                                                | `starswarm-shield-loop.ogg`    | While the Shield power-up is active                                                                                                                                                                     |     0.8 |
+| `shieldwarn`                                                       | `starswarm-shield-warn.ogg`    | Once per Shield, when `SHIELD_WARN_MS` (1 s) of it is left                                                                                                                                              |     0.8 |
+| `shieldoff`                                                        | `starswarm-shield-off.ogg`     | Once, when an active Shield stops in-run (expiry, Lightning, wave boundary)                                                                                                                             |     0.8 |
+| `buddyin`                                                          | `starswarm-buddy-in.ogg`       | A Buddy is launched (it starts `Entering`)                                                                                                                                                              |     0.7 |
+| `buddyloop` (loop)                                                 | `starswarm-buddy-loop.ogg`     | While any Buddy is `OnStation`                                                                                                                                                                          |     0.7 |
+| `buddyout`                                                         | `starswarm-buddy-out.ogg`      | A Buddy turns `Leaving` (peels off); not when it is shot down                                                                                                                                           |     0.7 |
+| `buddydown`                                                        | `starswarm-buddy-down.ogg`     | A Buddy is shot down (`buddyJustLost`); replaces the generic sound for its own wreck                                                                                                                    |     0.8 |
+| `lightningloop` (loop)                                             | `starswarm-lightning-loop.ogg` | While Lightning is active (replaced the per-shot laser, below)                                                                                                                                          |     0.7 |
+| `rout` (loop)                                                      | `starswarm-rout-loop.ogg`      | While any grunt is `Fleeing` (the ROUT! banner's condition)                                                                                                                                             |     0.5 |
+| `guns1`, `guns2`, `guns3` (one `guns` volume)                      | `starswarm-guns-{1,2,3}.ogg`   | `gunsUp`: the NEW level picks the file (one, two, three bright rising blips)                                                                                                                            |     0.7 |
+| `gunsdown1`, `gunsdown2` (the same `guns` volume)                  | `starswarm-gunsdown-{1,2}.ogg` | `gunsDown`: the NEW level picks the file (one or two dull falling blips), so a loss never sounds like a reward (#3560)                                                                                  |     0.7 |
+| `hullhit`                                                          | `starswarm-hullhit.ogg`        | Hull plating absorbs a hit                                                                                                                                                                              |     0.7 |
+| `beamcharge`                                                       | `starswarm-beamcharge.ogg`     | Carrier beam charge (0.60 s, fits `BEAM_CHARGE_MS`)                                                                                                                                                     |     0.6 |
+| `attackrun`                                                        | `starswarm-attackrun.ogg`      | Carrier attack-run brace (0.8 s, `ATTACK_RUN_BRACE_MS`) + 0.5 s roar-away tail                                                                                                                          |     0.9 |
+| `beamfire`                                                         | `starswarm-beamfire.ogg`       | Carrier beam released (0.9 s; a bolt crosses the lane in about 0.4 s, the rest is ring-out)                                                                                                             |     0.9 |
+| `reinforce`                                                        | `starswarm-reinforce.ogg`      | Carrier opens its bay for a reinforcement batch (#3561: the telegraph start; the Grunts launch 0.4 s later)                                                                                             |     0.6 |
+| `bosswave`                                                         | `starswarm-bosswave.ogg`       | Boss wave sighted, and the Carrier's final stand                                                                                                                                                        |     0.6 |
+| `waveclear`                                                        | `starswarm-waveclear.ogg`      | Wave cleared                                                                                                                                                                                            |     0.8 |
+| `bonuslife`                                                        | `starswarm-bonuslife.ogg`      | Bonus life                                                                                                                                                                                              |     0.6 |
+| `playerhit`                                                        | `starswarm-playerhit.ogg`      | A life is lost (not the fatal hit)                                                                                                                                                                      |     0.7 |
+| `gameover`                                                         | `starswarm-gameover.ogg`       | Game over                                                                                                                                                                                               |     0.8 |
+| `asteroidsplit` (one `asteroid` volume)                            | `starswarm-asteroid-split.ogg` | A large rock breaks (shot, bomb or contact); one sound per tick, the larger wins (below)                                                                                                                |     0.5 |
+| `asteroidsmall` (the same `asteroid` volume)                       | `starswarm-asteroid-small.ogg` | A small rock breaks, including shattering on a hull (below)                                                                                                                                             |     0.5 |
+| `explosion`                                                        | `starswarm-explosion.ogg`      | Any new explosion except rock breaks and a downed Buddy's wreck; not on a Smart Bomb tick                                                                                                               |     0.2 |
+| `bgm`                                                              | `starswarm-bgm.mp3`            | Background music: one original 6:52.7 track (6.60 MB), looped; carried over between games, opens each visit at a starting point (below). Volume `music` (`STARSWARM_BGM_VOLUME`), the mixer's Music row |    0.57 |
+
+The only intentional file shares are the pickup sound (six keys, one file) and `bosswave` (boss
+sighted and final stand). `__tests__/sounds.test.ts` pins the registry: every key resolves, the six
+pickup keys share one file, and no entry points at a deleted file.
+
+### Pickup sound vs action sound
+
+- **Pickup** = collecting the item, banked or not. Every ordinary power-up and both ladder crates play
+  the one pickup sound. The canvas reports it from `powerUpCollected(prev, next)` (the wave's
+  `collected` tally rising, for all six types), so a crate collected at the top of its ladder, which
+  fires no upgrade event, still sounds, and a banked power-up sounds when it is banked and not again when it
+  takes effect on the next wave. A dev-panel injection plays it only for Shield and Lightning (their buff rising); injected Buddy, Bomb, salvage and hull make no pickup sound (a Bomb still blasts).
+- **Action** = the effect running. Timed power-ups get a loop (Shield, Buddy, Lightning), the Smart Bomb gets
+  `bombblast`, a gun level change gets its riff. The gun and hull ladders have no timer, so they have
+  no "active" sound.
+- A salvage crate below the top plays the pickup sound (from the collection) and the gun riff
+  (`playUpgrade`, which plays no pickup itself, so there is never a double) on the same tick; both sound (owner default;
+  tune the two volumes in the dev panel).
+
+### Smart Bomb detonation
+
+`bombJustDetonated(prev, next)` (`engine/powerups.ts`) is true when `bombFlashTimer` rises, which every
+detonation sets: collection in combat (`applyBombBlast`), a banked bomb on the next wave's first combat
+tick (`applyBankedPowerUp`), and the dev panel. The canvas calls `onBombBlast` and does NOT call
+`onExplosion` that tick, so the bomb's explosions do not stack the generic sound on the blast. It is a
+field compare of two states the loop already has: no new per-frame work, no React commit.
+
+### Rock break sounds
+
+`rockBreakCount(prev, next)` and `rockBreakKind(prev, next)` (`soundCues.ts`) decide from two ticked states.
+A tick broke rocks when the sum of `waveStats.rocks.broken` rose (#3247 counts each rock once; only
+compared within one wave, so a wave boundary reports nothing). The kind is `large` when a large rock
+of `prev.asteroids` is gone from `next.asteroids` by id and was not leaving the screen (the same bounds
+`tickAsteroids` culls on, projected one 33 ms frame step), else `small` (also the fallback when the
+counter rise cannot be attributed). One sound per tick, the bigger event.
+
+Both canvases call one helper, `emitTickSounds` in `soundCues.ts`, so native and web share the rule.
+A bomb blast replaces every other explosion sound that tick. A Buddy shot down plays `onBuddyLost`.
+Its own explosion does not also play the generic one, but a kill or rock break on the same tick still
+sounds. `onExplosion` plays when the explosions spawned this tick exceed those of the rocks and Buddies
+that broke. Spawned explosions are counted by id, so explosions expiring the same tick don't hide a new
+one. `onRockBreak(kind)` plays the stone sound.
+Rocks leaving the screen make no sound. Both keys share the `asteroid` volume (dev-panel row "Asteroid break").
+
+### Shield and Buddy cues
+
+The Shield sits on the player, so its sounds are a second way (besides the HUD timer) to know when it
+is up and when it is about to drop. `soundCues.ts` holds the pure edge checks (`shieldJustOn`,
+`shieldWarnCrossed`, `shieldJustOff`, `buddyJustEntered`, `buddyJustLeft`) and `emitSoundCues(prev,
+next, emit)`, which the canvas calls on each ticked state and around a dev-panel injection (the
+tick's `prev` already includes an injection, so the injection path emits for itself) and which reports
+through `onSoundCue(cue)` (the screen's `playCue`). Allocation-free, like `updateLoops`.
+
+- **Shield on**: `activePowerUp.type` rises to `shield` (collected, a banked one applied on the next
+  wave, the dev panel, or replacing Lightning). **Warn**: `remainingMs` crosses from above to at or
+  below `SHIELD_WARN_MS` (1000, in `soundCues.ts`) while the Shield is active on both ticks, so it
+  fires once per activation and never for a Shield that ended or was replaced first (a re-collected
+  Shield restarts its time and may warn again). **Off**: an active Shield stops for any in-run reason;
+  not at game over, a new run or unmount (those just silence the loops).
+- **Buddy in**: `runStats.buddyLaunched` rises (every launch, so a re-launch cues again). **Out**: a
+  Buddy's phase becomes `Leaving`. **Down**: `buddyJustLost`, played by the screen's `handleBuddyLost`
+  with the spoken cue; the Buddy's own explosion does not also play the generic `onExplosion`
+  (`emitTickSounds`), but another kill on that tick still does.
+  The Buddy loop covers `OnStation` only (the in/out sounds cover `Entering` / `Leaving`).
+
+### Loops
+
+Shield, Buddy, Lightning and the rout are loops: `useLoopSound` in `src/game/_shared/` (a looped `expo-audio`
+player with idempotent `start` / `stop`, live volume sync, and mute stopping it).
+
+- **Conditions** (`soundLoops.ts`, `updateLoops`): `activePowerUp?.type === "shield"`;
+  any `buddyShips` entry in phase `OnStation`; any alive enemy in `Fleeing` (the `fleeingCount > 0`
+  of the ROUT! banner); Lightning's beam on, `lightningBeamOn` (#3560; #3562: the loop follows the
+  beam, so it stops when the extraction takes the ship, though Lightning runs on to the boundary).
+- **Edge-triggered.** The canvas keeps the last reported value of each condition and calls
+  `onLoopChange(loop, on)` only when it changes. The check allocates nothing and runs inside the tick
+  the loop already does, never per render: a loop costs a few native calls per run, not per frame.
+- **Stops** on pause, the difficulty picker opening over a live run (`loopsHeld`; the music keeps
+  playing over the picker by design), game over, a new run (`resetTick` clears every condition), unmount and mute.
+  **Resumes** on unpause only if its condition still holds (the canvas keeps tracking edges), and on
+  unmute while the condition holds.
+- Changing a loop's volume in the dev panel applies to the running loop.
+- The rout's one-shot handler keeps the spoken `a11y.rout` announcement; its old sting is gone.
+
+### Background music
+
+One original track, `starswarm.bgm` (`starswarm-bgm.mp3`, Round 46 with a loop edit, 6:52.7, −21.5 LUFS), played by the
+shared `useBackgroundMusic` hook with Star Swarm's options (#3638):
+
+- **Volume 0.57** (`STARSWARM_BGM_VOLUME`, the `music` key of `DEFAULT_SFX_VOLUMES`), not the shared
+  0.2: about +9 dB, which brings the quieter track level with the old tracks (about −12 LUFS). The
+  loop edit's +2.9 dB is in the file (owner option b); the game volume did not change. The dev
+  mixer's Music row tunes it live.
+- **Carry-over within a visit.** Game over pauses the music. The next game (New Game, play again, or
+  a new game from the pause screen) resumes the same player from the same position; it never picks
+  another track or restarts. Pause holds and resumes it as before.
+- **Starting points.** `src/game/starswarm/bgmCues.ts`: 0:00, 1:06.5, 2:36.5, 3:43.5, 4:50.5 (the owner's
+  Round 46 leads into the Gathering Swarm, the organ, the second rise and the choir). On leaving
+  the screen (unmount) or the app going inactive or to the background (an iOS app-switcher swipe
+  kills it from inactive), the first starting point strictly after
+  the current position is saved to AsyncStorage under `bgm.resume.starswarm` (wrapping to 0:00 after
+  4:50.5). One write per leave, never during play.
+- **Next visit.** The saved point is read once and validated (it must be one of the cues; anything
+  else, a first visit or a storage error starts at 0:00). The player seeks there on its first loaded
+  status (if none arrives within 3 s, the seek is skipped), then fades in from 0 to 0.57 over 1.5 s
+  in 10 steps. Pause, mute or game over during the fade ends it; muted, the music stays silent.
+  A resume after game over re-arms the #2923 self-heal, so a lost resume `play()` is retried.
+- **Loop.** The track loops 6:52.7 → 0:00 (`loop = true`; the file's last 3 s are an equal-power seam into its opening,
+  made by `tools/assets/make_starswarm_bgm_loop.py`).
+- **Device check pending (owner):** carry-over across 3 games, resume at the next starting point
+  after relaunch, no gap or click at the start, a seek or the loop seam, and the volume under the
+  effects, on an iOS and an Android device. Mahjong's music is unchanged (0.2, a random track per
+  game, from 0:00).
+
+### Per-shot sounds must not play during normal fire
+
+Normal fire is about 14 shots a second at the top of the ladder: a sound per shot is a stream of
+`seekTo(0)` -> `play()` bridge calls on the thread that runs the frame loop, and it is grating.
+History (#1106): the laser played on every shot and was hidden by setting its volume to 0; it was
+then gated to Lightning fire (`onLaserFire`, about 12 shots a second). #3560 retired the per-shot
+laser: Lightning now has `lightningloop`, a loop that runs while it is active, and the `laser` key,
+volume, file and `onLaserFire` plumbing are gone. #3562 turned Lightning into a continuous beam,
+and the loop plays while the beam is on. A new per-shot sound follows the same rule (a loop or nothing),
+and a sound is never "disabled" by a zero volume.
+
 ## Client-Side Engine
 
 - Location: `frontend/src/game/starswarm/engine.ts`, a barrel over the `engine/` package ([ARCHITECTURE.md §3.4](../ARCHITECTURE.md#34-star-swarm-engine-layout-2988)); determinism and the engine counters are in [§3.2](../ARCHITECTURE.md#32-determinism-rng-and-counters-2985-2999)
 - Screen: [`frontend/src/screens/StarSwarmScreen.tsx`](../../frontend/src/screens/StarSwarmScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Rendering: `@shopify/react-native-skia` on native, Canvas 2D on web (`GameCanvas.web.tsx`)
+
+### Player ship and Buddy sprites (#3592, epic #3590)
+
+The player ship is **five stacked layers** of one ship (`player/p1-{base,guns2,guns3,plating1,
+plating2}.webp`), not one image. `render/ship.ts` picks them from the held levels: `base` always,
+`guns2` at gun level 2 and up, `guns3` at 3, `plating1` at hull 1 and up, `plating2` at hull 2.
+The ship id is a parameter (`FrameOptions.ship`, default `"p1"`); the player chooses it in the
+ship picker (#3600, below). All three ships' layers (15 images, about 21 KB) are loaded up front by
+`assets.ts` and `GameCanvas.web.tsx`, in the order P1, P2, P3, so starting a run never waits on a
+ship.
+
+Each layer is 126 x 126 px: the 34 x 34 game box at 3x plus 12 px of transparent margin, so it is
+drawn into a 42 x 42 game-px rect centred on the ship (`SHIP_SPRITE_PAD`). The hitbox (`PLAYER_W`,
+`PLAYER_H`) is unchanged. Buddy's sprite has the same margin. Native emits one `ship` op carrying
+the layer keys (a shared constant list, so no per-frame array); a layer that has not loaded is
+skipped, and until the chosen ship's base layer (`p1Base`, `p2Base` or `p3Base`) loads the player is
+a cyan triangle on both platforms.
+
+**Ship picker (#3600).** Three free, purely cosmetic ships, named after birds of prey: **Falcon**
+(P1 arrow hull, the default for a new player), **Raptor** (P2, forward-swept wings) and **Osprey**
+(P3, twin booms). The pre-game modal is titled "Ready to launch". Only the
+sprite layers differ: the hitbox (`PLAYER_W`, `PLAYER_H`), `PLAYER_HURT_RADIUS`, stats and guns are
+the same, and the ship id never reaches the engine. There are no unlocks, no stat differences and no
+premium gating, and nothing is sent to the server: no telemetry, not part of the profile.
+
+- Screen: the pre-game modal (`launch.title`; `difficulty.selectTitle` is only the tier group's a11y label) shows `ShipPicker`
+  (`components/starswarm/ShipPicker.tsx`) above the difficulty picker: three tiles, each the ship's
+  base layer at 60 dp with its name under it (`ship.p1`..`ship.p3` in the `starswarm` namespace).
+  The row is a `radiogroup` (label `ship.title`); a tile is a `radio` named by the ship and
+  `accessibilityState` checked/selected. testIDs `starswarm-ship-p1`..`p3`. The tiles share the
+  width equally, names wrap to two lines or shrink, so it fits 320 px and large font scales.
+  The selected tile has an accent border (theme tokens).
+- Persistence: `game/starswarm/shipChoice.ts`, AsyncStorage key `starswarm.ship`, the
+  `lastDifficulty` pattern: never rejects, failures go to Sentry, an unknown stored value is P1.
+  The choice is restored on mount; a tap before the read lands wins. A tap applies at once (the
+  canvas behind the modal shows it); it is **saved when the run starts** (Start, Play Again, the
+  dev panel's New Game), like the difficulty, and only if the player tapped a ship (no tap, no
+  write). A restored paused run flies the saved/selected ship;
+  the ship is not stored in the pause save.
+- Canvases: both take a `ship` prop (default P1) and read it through a ref, so a new pick applies
+  from the next published frame. Native passes it to `buildFrame`; the web canvas also builds the
+  chosen ship's armour glows (`prebuildShipGlows`) when the images load and when the pick changes.
+  Glow slots are `shipId * 9 + gun * 3 + hull`, so no ship draws another's glow.
+
+**Armour outline (hull 1 and 2).** A blue (`#1fb6ff`) glow around the composed ship, thin at hull 1
+and bold at hull 2 (`ARMOUR_OUTLINE` in `render/ship.ts`; the same numbers as the generator's
+`armour_outline()` simulation). It costs no image bytes.
+
+- Native: the first time a gun and hull combination is drawn, `shipGlowImage` draws its layers
+  through a Skia image filter (dilate, tint, blur) onto a small offscreen surface and snapshots
+  it. The snapshot is kept in the draw cache (`glows`, keyed by `shipGlowKey`), so a frame draws
+  one cached image under the layers and no filter runs per frame. It waits until every layer has
+  loaded. A build that fails (no surface, or a Skia call that throws) is cached as "no glow", so
+  the ship draws without the outline instead of retrying every frame.
+- Web: `render/outlineGlow.ts` builds the same glow once per gun and hull level into an offscreen
+  canvas (dilate by drawing the silhouette at 24 offsets, tint with `source-in`, blur with
+  `shadowBlur`), then draws it under the layers with one `drawImage`. `ctx.filter` is not used
+  because not every browser supports it.
+
+**Code-drawn effects (`render/playerFx.ts`, shared by both renderers).** Shield: a soft cyan-blue
+bubble with a brighter rim and a faint hexagon. Plating flash: an armour-blue ring with a pale
+core. Lightning: an electric-blue halo with sparks that jump around the ship. Timings are as
+before. Colours are in `render/palette.ts` and mirror the generator's palette.
+
+### Enemy sprites (#3593, epic #3590)
+
+The hive is original art from `tools/assets/draw_starswarm_art.py` (design log
+[`starswarm-art-design.md`](starswarm-art-design.md)), in `frontend/assets/starswarm/enemy/`.
+`render/enemies.ts` decides what each enemy looks like, and both renderers replay its ops (native:
+`buildFrame` appends them; web: `drawEnemyOps` replays them on the 2D context), so the platforms
+match. The visuals only read existing state (tier, HP, phase, path, the Carrier's armour). No
+engine field was added, and sizes, hitboxes, HP and behaviour are unchanged.
+
+| Tier     | Sprites (bottom to top)                                                                                                                         | Code-drawn                          |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Grunt    | `grunt` (G2 Wasp)                                                                                                                               |                                     |
+| Elite    | `elite` (E2 Mantis); `elite-attack` (scythes spread) while Diving or Circling; `elite-hurt` at 1 HP (snapped scythe, wins over the attack pose) | At 1 HP, a core flickering 2 frames |
+| Guardian | `guardian` (GD1 Scarab); plus `guardian-plate` at 3 HP and below; plus `guardian-cracks` at 2 HP and below; plus `guardian-plate2` at 1 HP      | At 1 HP, smoke from two vents       |
+| Carrier  | `carrier` (C1 Queen, hangar bay under the abdomen); plus `carrier-cracks` once its armour is down (exposed and final stand)                     |                                     |
+
+- **Sprite rect.** Each image is the tier's box at 3x plus 12 px of transparent margin, so it is
+  drawn into the box grown by `ENEMY_SPRITE_PAD` (4 game px) on every side, centred on the enemy.
+  A look whose first sprite has not loaded draws the tier's base sprite; if that has not loaded
+  either, one fallback shape per tier (a dart, an arrowhead, an octagon shell, a broad hull) in the
+  shell's light violet. Damage layers that have not loaded are skipped.
+- **Banking (a lean).** Enemies lean into their sideways motion, capped at 35° (`BANK_MAX_RAD`,
+  owner review: turning fully to face the travel was too much motion). `enemyBank` takes the
+  direction of travel (the cubic's tangent at `pathT` for SwoopIn, Diving, Returning, Fleeing and
+  the Carrier's AttackRun, and the loop's tangent while Circling) and leans by `BANK_MAX_RAD`
+  times its sideways share: straight down or up is 0, straight sideways the full 35°. The sprite
+  never turns to face up, and the lean is continuous, so it never flips. Formation and Wiggling
+  face down. The lean eases in over the first `BANK_EASE_PX` (28 px) from the path's start and out
+  over the last 28 px to its end (the end points survive a rock nudge), and over `BANK_EASE_RAD`
+  at each end of a loop. The flinch tilt adds on top. Native rotates the image op about its centre
+  (`canvas.rotate`), web the same way (`ctx.rotate`).
+- **Hit flash** (same timing and radius as before, `hitFlash`): a white-hot core, a ring in the
+  crack orange and four sparks, in world space. **Flinch**: the wobble, plus two short rim-light
+  ticks either side of the ship that fade with it.
+- **Clock.** The flicker and the smoke step with `state.nextDiveTimer`, offset per enemy id, so
+  they need no clock of their own and no engine field (accepted in review). That timer counts down
+  only in the Playing phase, so the effects freeze while the game is paused and during the
+  pre-wave countdown, and jump phase when the dive timer resets after a dive is scheduled. A
+  smoke puff's age is read off the countdown in reverse, so puffs grow and fade forward in time.
+- The web-only HP pips are gone: the damage looks show HP on both platforms.
+- The Carrier's armour ring, telegraphs and beams are unchanged here; #3625 restyles them.
+
+### Projectiles (#3594, epic #3590)
+
+Every shot is one of five original sprites (`frontend/assets/starswarm/shot/`, generated by
+`tools/assets/draw_starswarm_art.py`) with its glow baked in. `render/shots.ts` (`shotOps`) picks
+it and both renderers replay the ops (native: `buildFrame` appends them; web: `drawEnemyOps`), so
+the platforms match. Friendly fire is an elongated cool bolt, danger is warm and round:
+
+| Shot                                            | Sprite             | Art box | Turns along travel |
+| ----------------------------------------------- | ------------------ | ------- | ------------------ |
+| The player's bolt (L1-L3 patterns unchanged)    | `shotPlayer` cyan  | 5 x 14  | yes (spread pair)  |
+| Buddy's bolt (`source: "buddy"`)                | `shotBuddy` mint   | 4 x 10  | yes (its fan)      |
+| An enemy shot                                   | `shotEnemy` red    | 7 x 7   | no (round)         |
+| Flak at a rock (`flak`, whoever fired it)       | `shotFlak` amber   | 5 x 8   | yes                |
+| The Carrier's twin lasers (`source: "carrier"`) | `shotCarrier` pink | 8 x 8   | no (round)         |
+
+- **One op per shot**: an image op of the art box plus `SHOT_PAD` (2 px) on every side, centred
+  on the shot, with `rotate = atan2(vx, -vy)` for a bolt or shard that does not fly straight up
+  (render-only, from the velocity the engine already stores). Native draws it with a source rect
+  cached per sprite in the draw cache, so a shot makes one rect per frame, as the plain rect it
+  replaced did. Hitboxes are unchanged: the art box is not the hitbox (a player bolt is drawn at
+  its own size, so a charged bolt from an older save keeps its width).
+- **`source: "carrier"`** is set on the Carrier's aimed twin lasers (`carrierTwinVolley`; not on
+  its flak) and read only by the renderer. `Bullet.source` was already optional in the save shape,
+  so the fingerprint does not change and an older build ignores it.
+- **Fallback** while a sprite loads: one plain shape in its body colour (`SHOT_*_RGB` in
+  `render/palette.ts`): a rect, or a circle for an orb, the same on both platforms.
+
+### Pickups (#3595, epic #3590)
+
+Every pickup is one of six original sprites (`frontend/assets/starswarm/pickup/`, generated by
+`tools/assets/draw_starswarm_art.py`, owner pick "C-hex") with a soft glow baked in.
+`render/pickups.ts` (`pickupOps`) picks it from the pickup's type and both renderers replay the
+ops (native: `buildFrame` appends them after the Buddy ships; web: `drawEnemyOps` at the same
+place), so the platforms match:
+
+| Pickup                 | Sprite        | Look                                                  |
+| ---------------------- | ------------- | ----------------------------------------------------- |
+| Shield                 | `puShield`    | Hex token, silver bevel, blue face, shield crest      |
+| Lightning              | `puLightning` | Hex token, yellow face, bolt                          |
+| Buddy                  | `puBuddy`     | Hex token, mint face, up-arrow ship                   |
+| Smart Bomb             | `puBomb`      | Hex token, orange face, round bomb with a fuse spark  |
+| Salvage crate (guns +) | `puSalvage`   | Gold crate, dark band, white up-chevron; pulsing halo |
+| Hull plating           | `puHull`      | Steel-blue armour plate, blue rim, white plus; halo   |
+
+- **One op per pickup**: an image op centred on the pickup, `fit: "fill"`, of its draw box plus
+  `PICKUP_PAD` (2 px) on every side. The four tokens draw in `PICKUP_TOKEN_SIZE` (30 px, 25% larger
+  than their 24 px hitbox, so they read as big as the crate and plate in their halo); the crate and
+  plate draw in the pickup's own 24 px box (`POWERUP_W` x `POWERUP_H`). The draw size is render-only:
+  collision still uses the 24 px box. The salvage crate and
+  hull plate also keep their code-drawn halo and ring under the sprite (two circles, #2847), so
+  they cost three ops; the timed power-ups have no halo, as before. Native draws the image with
+  the source rect cached per sprite in the draw cache, so a pickup makes one destination rect per
+  frame and no paint. Hitboxes and engine state are unchanged (render-only).
+- **Rewards, never danger**: the Bomb token is orange like enemy fire, so its silver-rimmed
+  hexagon (well over nine times the area of a 7 px enemy orb) carries the difference. The generator's
+  tests hold it: every pickup reads at 3:1 or more on `#000010`, the four tokens differ by at least
+  30 degrees of hue, every two pickups differ in hue or silhouette, and the Bomb's rim is silver
+  where the orb's is saturated red-orange.
+- **Fallback** while a sprite loads, the same on both platforms: a power-up is a hexagon (at the
+  token's 30 px draw size) in its face colour (`PICKUP_*_RGB` in `render/palette.ts`) with a silver rim; the crate and plate are
+  their code-drawn shapes (gold crate, band and chevron; steel-blue plate, blue rim and plus)
+  inside the halo.
+
+### Effects and background (#3597)
+
+Explosions, the Smart Bomb flash and the background are drawn in code; there are no explosion
+images. The design and colours are in the
+[art design log](starswarm-art-design.md#decisions-log).
+
+- **Explosions** (`render/explosions.ts`, `explosionOps`) are shared ops both canvases replay: a
+  hot core, a growing fire ring, smoke puffs and debris ticks. An explosion's `kind`
+  (`ExplosionKind`, set where it spawns: `enemyExplosion` picks it from the tier) sizes it: `pop`
+  for a Grunt (r 14), `burst` for an Elite, a Guardian, the player's ship or Buddy (r 22), `blast`
+  for the Carrier (r 40), `rock` for a broken rock (r 20, in rock colours). `kind` is
+  render-only: play never reads it, the default `pop` is left off the object, and it is kept out
+  of the save fingerprint like `PowerUp.source` (an absent or unknown one draws as a pop). Its age
+  is the existing frame clock (`EXPLOSION_FRAMES` x `EXPLOSION_FRAME_MS`, 560 ms), read smoothly
+  between frames. Ops per explosion: 4 to 7 for a pop, at most 23 for the Carrier's blast.
+- **Smart Bomb flash** (`bombFlashOps`): while `bombFlashTimer` runs (300 ms), a warm tint over
+  the screen, a shockwave ring from the ship to the far corner, and a white-hot flash at the ship
+  early on; 1 to 4 ops. `effectOps` draws every explosion and then the flash, and both canvases
+  draw it at the top of the playfield: native as the last ops of `buildFrame`, web right after its
+  rocks. (Before #3597 the web canvas drew the flash under its rocks and explosions.)
+- **Background**: the N2 teal-violet nebula (`render/nebula.ts`, a few soft radial gradients) is
+  baked once with the background fill: native records it into the backdrop Picture
+  (`recordStarfield`), web paints it into an offscreen canvas once per size and blits it each frame.
+  It does not scroll. The three star layers are tinted by depth (`Star.rgb`: far pale violet, mid
+  pale teal, near cool white). Per-frame cost: none on native (the same Picture draw as before);
+  one `drawImage` on web, in place of the old background `fillRect`.
 
 ### Native rendering pipeline (epic #2562)
 
@@ -1562,10 +2555,11 @@ The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
 on the JS thread in the canvas's RAF loop. Every
 drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, { loaded,
 width, height })` returns a flat, back-to-front display list of primitive ops (`fill`, `rect`,
-`circle`, `image`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
+`circle`, `image`, `ship`, `poly`, `line`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
 numbers, and op keys are built only for tests (#2963). Sprite-vs-fallback choices, the
 Carrier's armor ring, hit-flash bursts, the Carrier's beams and telegraphs (`render/carrier.ts`,
-shared with the web canvas), the invincibility
+shared with the web canvas), Lightning's beams (`render/lightningBeam.ts`, #3562, likewise
+shared), the invincibility
 blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
 `__tests__/frame.test.ts`. `render/drawFrame.ts` replays the ops and decides nothing (see below).
 
@@ -1573,8 +2567,8 @@ blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit
 changed, so a paused or finished game does not re-render.
 
 The background and starfield are not in the display list (#2963). The star layout is fixed for a
-canvas size, so `render/starfieldPictures.ts` records it once — the background plus one Picture
-per depth layer — and `components/starswarm/StarfieldLayers.tsx` draws them under the scene,
+canvas size, so `render/starfieldPictures.ts` records it once — the background and its nebula
+(#3597) plus one Picture per depth layer — and `components/starswarm/StarfieldLayers.tsx` draws them under the scene,
 sliding each layer by its own offset (`layerOffset`) from a scroll clock the loop writes to a
 shared value. Each layer is drawn twice, a canvas-height apart, so stars wrap at the bottom. A
 frame where only the stars move is therefore never published.
@@ -1594,7 +2588,8 @@ countdown digit and each banner's visibility, the active power-up) from each pub
 the loop calls `setHud` only when `sameHud` says a field moved, so steady play with nothing
 scored re-renders React zero times. The two cues that do move every frame, the mission-complete
 fade and the power-up bar, are shared values (`hudCues`) driving `useAnimatedStyle` on the UI
-thread. Gameplay is the Picture; the HUD is on-change React.
+thread (#3598: the bar's ten segments come from `litBarWidth`, a worklet, so a segment going out
+is not a React commit either). Gameplay is the Picture; the HUD is on-change React.
 
 The Picture is the only native renderer: phase 5 (#2567) removed the phase-2 declarative path
 and its dev switch after the side-by-side device measurement in `PERFORMANCE.md`. The web renderer (secondary platform) still
@@ -1618,7 +2613,7 @@ React commits per second over the game. See
 
 ## Accessibility
 
-Starswarm uses a Skia canvas for all rendering. Accessible text overlays for score and game state are required. See [`docs/ACCESSIBILITY.md §4`](../ACCESSIBILITY.md#4-screen-readers).
+Starswarm uses a Skia canvas for all rendering. Accessible text overlays for score and game state are required. See [`docs/ACCESSIBILITY.md §4`](../ACCESSIBILITY.md#4-screen-readers). Sound is never the only cue: the rout, a boss wave, a banked power-up, a lost Buddy and ladder changes are also spoken or drawn, and the loops (Sound, above) stop with mute.
 
 ## Entitlement
 
@@ -1645,21 +2640,26 @@ Star Swarm sends one `wave_completed` gameplay event per wave, all queued when t
 #3244; event type seeded by migration `0034`; client side:
 [Sending wave_completed](#sending-wave_completed-3251)). The backend validates it through the module's `validate_event` hook
 (`backend/starswarm/models.py`, `StarSwarmWaveStats`); a sample payload is
-`backend/tests/fixtures/starswarm_wave_stats_v1.json`, and the registry vocabulary both sides are
-checked against is `backend/tests/fixtures/starswarm_wave_stats_v1_registries.json` (#3252, see
+`backend/tests/fixtures/starswarm_wave_stats_v2.json`, and the registry vocabulary both sides are
+checked against is `backend/tests/fixtures/starswarm_wave_stats_v2_registries.json` (#3252, see
 [Adding content](#adding-content)).
 
-- **Schema version.** `v` must be `1`. A breaking change to the shape bumps `v` and the backend
-  must learn the new version in the same release; an unknown `v` is dropped.
+- **Schema version.** `v` must be `2`. A breaking change to the shape bumps `v` and the backend
+  must learn the new version in the same release; an unknown `v` is dropped. Version history:
+  `1` (#3244/#3250) the original shape; `2` (#3535) added `damage.deathPhase` (optional, one of
+  `combat` / `pickupWait` / `extraction`; an unknown value drops the event). The app was not live
+  on v1, so only v2 is accepted; the fixtures are `starswarm_wave_stats_v2*.json`.
 - **Sparse wire form.** Zero counters are omitted; a missing key means 0. The stored `data` is the
   wire form as sent (nothing is densified).
 - **Unknown keys.** Inside a keyed table (a new power-up type, say) they are kept and logged.
   Unknown top-level or section keys are dropped.
 - **Size cap.** 4096 bytes of compact JSON (`json.dumps(data, separators=(",", ":"))`).
 - **Drop.** An oversize payload or a schema violation (wrong type, negative or oversized counter,
-  missing `v`/`wave`/required section, `wave` < 1, bad `outcome`) drops that event only. It is
-  logged and sent to Sentry (field paths and error types, never values); the rest of the batch is
-  stored and the response is 2xx, so the client's queue drains.
+  missing `v`/`wave`/required section, `wave` < 1, bad `outcome`, unknown `damage.deathCause` or
+  `damage.deathPhase`) drops that event only. It is
+  logged per event (field paths and error types, never values); Sentry gets at most one report per
+  reason (`invalid` / `oversize`) per hour per process, so a build still sending v1 cannot flood it.
+  The rest of the batch is stored and the response is 2xx, so the client's queue drains.
 - **Flag.** An inconsistent but well-formed event is kept with a top-level `_flags` list:
   `score_mismatch` (`score.total` != sum of `score.pts`) or `powerup_collected_exceeds_spawned`.
   A client-sent `_flags` is discarded. Readers that ignore unknown keys are unaffected.
@@ -1702,3 +2702,7 @@ migration is additive (its downgrade deletes only `wave_timeline` rows).
   wave's `wave_completed` summary, its decoded timeline and the reconciliation between them (a sampled
   diagnostic, not a frame-by-frame or projectile replay). See
   [Reader and reconciliation](starswarm-diagnostics.md#reader-and-reconciliation-3395).
+
+## Daily Challenge (#3996)
+
+Premium players get Star Swarm goals through the personal pick ([DAILY-CHALLENGE.md §2a](../DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)); a free install never does. The game has no win, so: **finish a run** (`completed`, the cold-start goal; the run ended, an abandon does not count), **reach wave _T_** (`wave_reached_at_least`, from `wave_reached`; floor 3) and **score _T_+** (`final_score_at_least`; floor 1,000, rounded to 250). The wave and score targets use the stretched median of the last 10 runs **on the install's usual `difficulty_tier`** (the most common one, the newest on a tie; a run with none counts as `LieutenantJG`), capped at the best of those runs, and need 3 runs there. The goal itself is not tier-bound: no existing goal kind asks for a tier, so a run on an easier tier can meet it. A run with `dev_affected` never counts, for a goal, a target or the streak. The app sends `outcome: "completed"`, so `StarSwarmResult` writes `is_complete` from the completion's outcome (`backend/games/result_flags.py`).

@@ -1,6 +1,6 @@
 /**
  * Bounds for the player-adjustable table rules (`GameRules`) edited in the
- * BettingPanel's "Table Rules" section. Rules are client-side only — the
+ * table's "Table Rules" section (TableRules). Rules are client-side only — the
  * backend never receives or validates them — so these are the single source
  * of truth.
  */

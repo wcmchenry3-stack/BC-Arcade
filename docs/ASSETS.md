@@ -10,64 +10,49 @@ frontend/assets/
 ├── favicon.png         Web favicon (PNG)
 ├── logo.png            In-app logo (PNG)
 │
+├── fonts/             Subset icon fonts (MaterialIcons, MaterialCommunityIcons; generated, #3843) + CREDITS.md
+├── home/              Lobby tile images (gameplay scenes #4011, #4012, #4013; generated) + CREDITS.md
 ├── mahjong/            42 tile SVGs (rendered via react-native-svg at runtime)
-├── starswarm/          WebP sprites — player, enemies (incl. Carrier), bullets
-│   ├── CREDITS.md      Source file + pack for every sprite (Kenney CC0)
-│   ├── explosion/      20-frame fire strip (PNG)
-│   └── powerups/       Power-up PNGs + CREDITS.md
-├── cosmos-baked/       Pre-baked 512 px palette PNG sprites, Cascade celestial theme (Skia canvas)
-├── fruits-baked/       Pre-baked 512 px palette PNG sprites, Cascade fruit theme (Skia canvas)
-├── fruit-icons/        256 px WebP thumbnails, Cascade fruit theme (FruitGlyph UI)
-├── celestial-icons/    256 px WebP thumbnails, Cascade celestial theme (FruitGlyph UI)
-├── cosmos-vertices.json   Polygon hit-box data for celestial theme (pipeline only, not bundled)
-├── fruit-vertices.json    Polygon hit-box data for fruit theme (pipeline only, not bundled)
-├── svg-sprites/        generate_svg_sprites.py output (not imported, not bundled)
+├── starswarm/          WebP sprites — player layers, Buddy, enemies (incl. Carrier), rocks, shots, pickups
+│   ├── CREDITS.md      Source for every sprite (all original and generated since #3595)
+│   ├── player/         P1-P3 ship layers (base, guns2, guns3, plating1, plating2), generated
+│   ├── enemy/          The hive's sprites and damage layers, generated
+│   ├── rock/           Asteroid shapes and ore veins, generated
+│   ├── shot/           Projectiles, generated
+│   └── pickup/         Power-up tokens, salvage crate, hull plate, generated
 │
 └── sounds/             All audio (MP3 for BGM, OGG for SFX)
     └── SOUND_CREDITS.md
 ```
 
-Pipeline input directories live at the repo root. They are **tracked in version control** (force-added past the `.gitignore` entries for `fruit_images/` and `celestial_images/`), as plain files, **not Git LFS** (`.gitattributes` has no `filter=lfs` rule). They are source art for `tools/assets/bake_sprites.py` and are not in the app bundle:
+**Cascade has no image files (#3698).** Its 24 pieces (12 fruits, 12 cosmos since #3960; eight retired Fruits pieces (Peach, red Apple, Blueberry, Grape, Coconut, Fig B, Fig C, Mangosteen B) are kept as code recipes, never drawn in play; the Moon is the old recipe until #3963) are drawn in code at runtime from `frontend/src/game/cascade/art/` (Skia paths, gradients, circles and strokes; colours in `src/theme/theme.cascade.ts`), about 17 KB of minified JS for both sets before #3964 (about 24 KB after it; see the Sizes note in the Cascade decisions). The art is original to the project and code-generated: see [Cascade's art](games/cascade-decisions.md#art-3698). `src/game/cascade/__tests__/assetBudget.test.ts` fails if a Cascade image comes back to `frontend/assets/` or a Cascade source imports one; the only exception is the lobby tile `home/cascade-tile.webp` (#4013), pinned by exact path and used only by the lobby.
 
-- `fruit_images/` (~77 MB, 12 PNGs) — high-res PNG sources for the fruit theme
-- `celestial_images/` (~86 MB, 12 PNGs) — high-res PNG sources for the celestial theme
+The original high-res source art (`fruit_images/`, `celestial_images/`, 163 MB) was deleted in #3692, and the sprites made from it (`fruit-icons/`, `celestial-icons/`, `fruits-baked/`, `cosmos-baked/`), their full-resolution masters (`cascade_icon_masters/`) and the scripts that processed them (`bake_sprites.py`, `remove_backgrounds.py`, `convert_icons_to_webp.py`, `make_icon_thumbnails.py`) in #3698. Git history was not rewritten, so clone size is unchanged. `fruit_images/` and `celestial_images/` stay in `.gitignore`.
 
-A third input directory holds the **full-resolution processed icons** (background removed, WebP, up to 2048 px), moved out of `frontend/assets/` in #2833 so Metro no longer bundles them:
-
-- `cascade_icon_masters/fruit-icons/`, `cascade_icon_masters/celestial-icons/` (~10.5 MB, 24 WebPs) — input for `bake_sprites.py`, `extract_vertices.py` and `make_icon_thumbnails.py`; output of `remove_backgrounds.py`
-
-Most of the `fruit_images/` and `celestial_images/` PNGs are over 5 MiB, so `scripts/check_large_files.py` (the `Large tracked file guard` step of the CI job `repo-hygiene`, #2967) grandfathers them by exact path with a size cap. Moving them to Git LFS is tracked in #3033; that change removes the grandfathered entries. The older `frontend/assets/source-icons/` bundle stays gitignored; it and the original-resolution art are in **Google Drive** (`bc-arcade` folder):
+The older `frontend/assets/source-icons/` bundle stays gitignored; it and the original-resolution art are in **Google Drive** (`bc-arcade` folder):
 https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 ## Format rules
 
-| Format    | When to use                                                          |
-| --------- | -------------------------------------------------------------------- |
-| WebP      | Game sprites, theme thumbnails — best compression with alpha channel |
-| Baked PNG | Cascade pre-baked sprites only — Skia pipeline requires PNG          |
-| SVG       | Mahjong tiles — rendered via `react-native-svg` at runtime           |
-| MP3       | BGM (background music)                                               |
-| OGG       | SFX (short sound effects)                                            |
-
-**Why two formats per Cascade theme?** `icons` (WebP) are transparent-background images for React Native `<Image>` components. `baked` (PNG) are pre-composited, clipped sprites for single-call Skia `drawImage` — produced by `bake_sprites.py`. They are different assets, not duplicates: a baked sprite is padded to its `bakedClipR` circle (the cherry fills about a third of its canvas), so it would draw too small in a `FruitGlyph`.
+| Format | When to use                                                          |
+| ------ | -------------------------------------------------------------------- |
+| WebP   | Game sprites, theme thumbnails — best compression with alpha channel |
+| SVG    | Mahjong tiles — rendered via `react-native-svg` at runtime           |
+| MP3    | BGM (background music)                                               |
+| OGG    | SFX (short sound effects)                                            |
 
 ## Rendered sizes (#2833)
 
 Rule: a runtime image must be at least its largest rendered size in points times the device pixel ratio (3x on phones, 2x on iPads, which have the larger point sizes; take the larger product), plus a margin. Anything much bigger only costs bundle size and decode memory. Measured on the files as of #2833:
 
-| Family                                                              | Files (bundled) | Pixels                     | Drawn by                                                                  | Largest rendered size                                                             | Pixels needed                                                                                                          | Verdict                                                       |
-| ------------------------------------------------------------------- | --------------- | -------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `fruit-icons/`, `celestial-icons/`                                  | 22 (11 + 11)    | 256 px (were 1024–2816 px) | `FruitGlyph` (`<Image resizeMode="contain">`)                             | 22 pt in `NextFruitPreview`; 32 pt in the `__DEV__` tier panel                    | 32 pt × 3 = 96 px                                                                                                      | 256 px, a 2.6x margin. Downscaled from up to 2048 px          |
-| `fruits-baked/`, `cosmos-baked/`                                    | 22 (11 + 11)    | 512 px                     | `PieceRenderer` in `CascadeScreen.tsx`, Skia `<Image>` in a `scale` group | half-size = `radius × bakedClipR` world units; canvas `scale = min(w/400, h/600)` | tier 0: 116 units × ~1.06 × 3 ≈ 370 px (phone), × ~2.0 × 2 ≈ 465 px (iPad Pro 13"); tier 10: 345 units → over 1,000 px | Already at or below need. Not resized, palette-quantized only |
-| `icon.png`                                                          | app.json only   | 1024 px, 8-bit palette     | store/app icon source                                                     | —                                                                                 | 1024 px (App Store)                                                                                                    | Kept; already palette, re-encoding would grow it              |
-| `ios/.../App-Icon-1024x1024@1x.png`                                 | iOS binary      | 1024 px RGB, no alpha      | App Store icon                                                            | —                                                                                 | 1024 px, no alpha                                                                                                      | Lossless re-compress only (−2.4%)                             |
-| `starswarm/`, `mahjong/` (SVG), `logo.png`, splash/adaptive/favicon | all             | small                      | —                                                                         | —                                                                                 | —                                                                                                                      | All under 60 KB; not changed                                  |
+| Family                                                                                                                                        | Files (bundled) | Pixels                 | Drawn by               | Largest rendered size | Pixels needed       | Verdict                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ---------------------- | ---------------------- | --------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `icon.png`                                                                                                                                    | app.json only   | 1024 px, 8-bit palette | store/app icon source  | —                     | 1024 px (App Store) | Kept; already palette, re-encoding would grow it                                                                                                       |
+| `ios/.../App-Icon-1024x1024@1x.png`                                                                                                           | iOS binary      | 1024 px RGB, no alpha  | App Store icon         | —                     | 1024 px, no alpha   | Lossless re-compress only (−2.4%)                                                                                                                      |
+| `starswarm/`, `mahjong/` (SVG), `logo.png`, splash/adaptive/favicon                                                                           | all             | small                  | —                      | —                     | —                   | Star Swarm 65,376 B (63.8 KB) in 43 images after #3708; see `games/starswarm-art-design.md` (its lobby tile is a `home/` scene since #4013)            |
+| `home/<slug>-tile.webp` (Yacht, 2048, Sudoku, Sort, Solitaire, FreeCell, Daily Word; hidden: Blackjack, Hearts, Mahjong, Star Swarm, Cascade) | 12              | 192 px                 | `HomeScreen` `cardArt` | 64 pt                 | 192 px (64 pt x 3)  | Drawn at exactly 3x; each at most 3,400 B. Store tiles 21,402 B (cap 25,000), hidden tiles 14,920 B (cap 17,000), never in a store build (#4011-#4013) |
 
-The world is 400 × 600 units. The canvas takes the whole game area, so `scale` peaks around 2.0–2.3 on a 13" iPad in portrait (1376 pt tall at most, so `scale` can never pass 1376 / 600 ≈ 2.3) and around 1.06 on a 440 pt-wide phone. Baked sprites should stay at 512 px or more; a bigger bake (`HALF` in `bake_sprites.py`) would sharpen the top tiers on tablets.
-
-`pumpkin` and `milkyway` are future tiers that no `FruitSet` uses. They are not imported in `src/game/cascade/images.ts` (so they do not ship), but their files stay in the asset and master folders for the pipeline.
-
-Vertex JSONs (`*-vertices.json`) and `bakedClipR` are in normalised units (1.0 = physics radius), not pixels, so resizing any image does not change hit-boxes.
+The world is 400 × 600 units. The canvas takes the whole game area, so `scale` peaks around 2.0–2.3 on a 13" iPad in portrait (1376 pt tall at most, so `scale` can never pass 1376 / 600 ≈ 2.3) and around 1.06 on a 440 pt-wide phone. Cascade's code-drawn pieces have no fixed resolution: the board rasterises them at the board's `scale` times the device pixel ratio (`game/cascade/art/sprites.ts`), so they are sharp at every size.
 
 ## Size budgets
 
@@ -79,7 +64,12 @@ Vertex JSONs (`*-vertices.json`) and `bakedClipR` are in normalised units (1.0 =
 | App icon (PNG)    | ≤ 500 KB                    |
 | Baked PNG         | ≤ 200 KB                    |
 
-**BGM note**: all 7 BGM tracks are encoded at 128 kbps stereo (re-encoded in #1024). Long looping tracks (3–5 min) naturally exceed 2 MB at this bitrate. The budget is a target for _new_ tracks. Current files: `mahjong-bg-{1,2,3}.mp3` (2.3–4.8 MB), `starswarm-bg-{1,2,3,4}.mp3` (2.2–3.1 MB).
+**SFX size note**: every Star Swarm effect is under the 50 KB SFX budget (the largest,
+`starswarm-lightning-loop.ogg`, is about 29 KB); no Star Swarm file needs an exception.
+
+**BGM note**: the three Mahjong tracks, `mahjong-bg-{1,2,3}.mp3` (2.3–4.8 MB), are encoded at 128 kbps stereo (re-encoded in #1024). Long looping tracks (3–5 min) naturally exceed 2 MB at this bitrate. The budget is a target for _new_ tracks.
+
+**Star Swarm BGM exception (#3638)**: Star Swarm has one original 6:52.7 track, `starswarm-bgm.mp3` (Round 46 with the loop edit): 6.60 MB (6,604,461 B), MP3 24 kHz stereo 128 kbps. It is over the 2 MB per-track budget but under the 11.28 MB of the four Pixabay tracks it replaced (`starswarm-bg-1..4.mp3`, deleted in #3638), which is the epic's ceiling (#3635); `scripts/check_large_files.py` allow-lists it at its exact size. The loop edit (`tools/assets/make_starswarm_bgm_loop.py`: fades trimmed, 3 s seam, +2.9 dB, one encode) leaves it at −21.5 LUFS, so it plays at its own volume, 0.57, where Mahjong's music plays at the shared 0.2 (`useBackgroundMusic`'s `volume` option).
 
 ## Credits and attribution
 
@@ -87,36 +77,86 @@ Full rights inventory: [`docs/audits/ASSET-RIGHTS-AUDIT.md`](audits/ASSET-RIGHTS
 every shipped file, what is verified and what is not. Repeat it before each release that adds
 assets: `node frontend/scripts/list-bundled-assets.mjs` lists what code actually bundles.
 
-Source records live beside the assets: `sounds/SOUND_CREDITS.md` for audio and a `CREDITS.md` beside
-each Star Swarm sprite folder.
+Source records live beside the assets: `sounds/SOUND_CREDITS.md` for audio, a `CREDITS.md` beside
+each Star Swarm sprite folder, `home/CREDITS.md` for the home tile images, and `fonts/CREDITS.md` for the subset icon fonts. Original Star Swarm
+sprites (the three player ships' layers, Buddy, the enemies, the asteroids, the projectiles and the
+pickups, #3592, #3600, #3593, #3596, #3594, #3595, #3708) are generated by
+`tools/assets/draw_starswarm_art.py`; their rows name the recipe, and the
+design log is [`games/starswarm-art-design.md`](games/starswarm-art-design.md). Its explosions,
+Smart Bomb flash and nebula background have no image files: they are drawn in code (#3597).
 
-### Required attribution (shipped in v1.0)
+The lobby tiles of Yacht, 2048, Sudoku and Sort Puzzle (#4011, #4004), of Solitaire, FreeCell
+and Daily Word (#4012) and of the hidden premium games Blackjack, Hearts, Mahjong, Star Swarm and
+Cascade (#4013) (`home/<slug>-tile.webp`) are
+gameplay scenes generated by `tools/assets/draw_lobby_tile_art.py`: open scenes with no frame, a
+mid-grey outline (`#8a8a98`) so they read on the dark and the light card, the games' own colours,
+192 px (3x the 64 pt `cardArt` slot in `HomeScreen.tsx`) and at most 3,400 B each
+(`src/__tests__/lobbyTileBudget.test.ts`). The 2048 and Sudoku numerals, the card ranks and the
+Daily Word letters are Space Grotesk Bold outlines (SIL OFL 1.1), extracted once into
+`tools/assets/lobby_numerals.json` (0-9) and `tools/assets/lobby_glyphs.json` (A-Z) with the
+licence in `lobby_numerals.OFL.txt`. The Daily Word tile spells real guesses (PIANO, FOCAL, then
+FINAL solved), chosen because all three are answers in the English, Spanish and French word lists,
+the languages the game is played in. A full-size playing card costs ~300 B of WebP, so the
+Solitaire tile shows only the few cards that tell its game and FreeCell's small cards show a suit
+pip only. The Mahjong tile draws its red dragon from `tools/assets/mahjong_glyphs.json` (Yuji
+Syuku, SIL OFL 1.1), as the game's own faces do, and lays its tiles out as the game's slots, so its
+selected pair is free by the game's rule. The Star Swarm tile is drawn from the game's own sprites
+(`draw_starswarm_art.py`), which keep their own rims and armour outline instead of the shared grey
+(`OUTLINE_EXEMPT`); it replaces the #3599 hex badge. Cascade's tile is an image since #4013, not
+the Skia-drawn `CascadeTileIcon`. A tile for a game in `HIDDEN_GAMES` goes in
+`src/components/home/hiddenGameTileArt.ts`, never as an import in `HomeScreen.tsx`: a store bundle
+stubs that module, and `--forbid-hidden-assets` fails a store build that packages a hidden game's
+tile ([PERFORMANCE.md](PERFORMANCE.md#store-build-hidden-premium-exclusion-2830)). The budget
+test caps the store tiles (25,000 B) and the hidden ones (17,000 B) apart, reading membership from
+`gameVisibility.ts`, so a game that is unhidden moves its tile into the store total by itself.
 
-| Asset                                                  | Creator and source                                                                          | License                                                   | Credit to show                                                                                       |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `sounds/freecell-game-win.mp3` (FreeCell, Bottle Sort) | humanoide9000, "victory-fanfare", https://freesound.org/people/humanoide9000/sounds/466133/ | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | "Victory fanfare" by humanoide9000 on Freesound, CC BY 4.0. Re-encoded to MP3 (low-quality preview). |
+### Required attribution
 
-The app has no credits or licenses screen yet, so this credit is not displayed in-app. That is an
-open gap tracked in the audit (Section 6, follow-up 1); until it is closed or the sound is replaced
-with a CC0 one, this table and `ATTRIBUTION.md` are the only place the credit appears.
+None for audio or sprites. The only CC BY 4.0 file, `sounds/freecell-game-win.mp3` ("Victory fanfare" by humanoide9000 on Freesound), stopped shipping in #3661 and was deleted in #3871, so the app needs no credit screen for it. Fonts and icon fonts still carry the license notices below.
 
 ### License notices to carry with bundled fonts and icon fonts
 
-| Package                            | What ships                                             | License                                                         |
-| ---------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| `@expo-google-fonts/space-grotesk` | Space Grotesk 400, 700                                 | SIL OFL 1.1, (c) The Space Grotesk Project Authors; wrapper MIT |
-| `@expo-google-fonts/manrope`       | Manrope 400, 600, 700                                  | SIL OFL 1.1, (c) The Manrope Project Authors; wrapper MIT       |
-| `@expo/vector-icons`               | `MaterialIcons.ttf`, `MaterialCommunityIcons.ttf` only | Loader MIT; upstream icon fonts Apache 2.0                      |
+| Package                              | What ships                                                                          | License                                                         |
+| ------------------------------------ | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `@expo-google-fonts/space-grotesk`   | Space Grotesk 400, 700                                                              | SIL OFL 1.1, (c) The Space Grotesk Project Authors; wrapper MIT |
+| `@expo-google-fonts/manrope`         | Manrope 400, 600, 700                                                               | SIL OFL 1.1, (c) The Manrope Project Authors; wrapper MIT       |
+| `@expo/vector-icons`                 | The `createIconSet` loader only; no font from the package                           | Loader MIT                                                      |
+| `frontend/assets/fonts/*.subset.ttf` | Subsets of Material Icons (Google) and Material Design Icons (Pictogrammers), #3843 | Apache 2.0; notice in `frontend/assets/fonts/CREDITS.md`        |
 
 ### Everything else
 
-All other recorded audio and sprites are Kenney CC0, Freesound CC0 or the Pixabay Content License,
-none of which requires attribution. Pixabay forbids redistributing the files on their own, so they
-must stay inside the app.
+The only third-party media still shipping are the three Pixabay lo-fi Mahjong tracks (`sounds/mahjong-bg-1..3.mp3`,
+Pixabay Content License: no attribution required, but Pixabay forbids redistributing the files on their own, so they
+must stay inside the app). This is a declared exception, pinned by the allow-list in
+`tools/assets/asset_manifest.json`. Everything else is original: sound effects are synthesized in-house
+(`tools/assets/synth_*_sfx.py`, design logs under `games/`), Star Swarm's background music is an original,
+project-owned track (design log [`games/starswarm-music-design.md`](games/starswarm-music-design.md), #3638), rebuilt
+from its recipe by `tools/assets/build_starswarm_bgm.py`, sprites and Mahjong tiles are generated, and the mascot art is
+owner-attested.
 
-**Not recorded (UNVERIFIED, owner must confirm or replace):** Mahjong tile SVGs (42), Cascade fruit
-and celestial art (48), app icon, splash and logo art (5 plus 29 native derivatives), Blackjack
-`bust`/`card-deal`/`push` sounds (3), Mahjong layouts (25, authorship only). Details in the audit.
+### Where every asset comes from (`tools/assets/asset_manifest.json`)
+
+One index maps each shipped file to its kind (generated / attested / third-party), its recipe and its credits file.
+`tools/assets/tests/asset_manifest_test.py` (CI: `Test tools (pytest)`) fails if a file under `frontend/assets/` has no
+rule, if a `.ogg` has no recipe (or a recipe has no `.ogg`), or if a third-party file appears that is not on the
+allow-list. It covers `frontend/assets/`; the native launcher and splash rasters are covered by
+`gen_app_icons.py --check` instead. Adding an asset means adding it to a recipe or a manifest rule.
+
+| Asset                                                                | Recipe                                                                                                                                                         |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sounds/*.ogg` (201)                                                 | `synth_{arcade,cascade,puzzle,starswarm}_sfx.py`                                                                                                               |
+| `starswarm/**` (43)                                                  | `draw_starswarm_art.py`                                                                                                                                        |
+| `home/*-tile.webp` (12)                                              | `draw_lobby_tile_art.py` (glyphs from `lobby_numerals.json`, `lobby_glyphs.json` and `mahjong_glyphs.json`; Star Swarm's sprites from `draw_starswarm_art.py`) |
+| `mahjong/*.svg` (42)                                                 | `gen_mahjong_tiles.py`                                                                                                                                         |
+| `fonts/*.subset.ttf`                                                 | `subset_icon_fonts.py`                                                                                                                                         |
+| `splash-icon.png`, `adaptive-icon.png`, Android launcher, iOS splash | `gen_app_icons.py`                                                                                                                                             |
+| `starswarm-bgm.mp3`                                                  | `build_starswarm_bgm.py` (layers and cue sheets in `starswarm_bgm/`, then the `make_starswarm_bgm_loop.py` loop edit); pinned by `starswarm_bgm_test.py`       |
+| `icon.png`, `logo.png`, `favicon.png`, iOS AppIcon                   | none (mascot, owner-attested; only master is the iOS AppIcon PNG, back it up)                                                                                  |
+| `mahjong-bg-*.mp3`                                                   | none (third-party)                                                                                                                                             |
+| Cascade pieces                                                       | code: `src/game/cascade/art/`                                                                                                                                  |
+| Mahjong layouts (25, `src/game/mahjong/layouts/*.ts`)                | none (source files; generated by code in epic #1687, validated by the `layoutRegistry` tests)                                                                  |
+
+**Nothing is unverified.** The last open group, the 25 Mahjong layout files, is recorded as original work (see [Mahjong layout provenance](games/mahjong.md#layout-provenance)); the mascot art is owner-attested. Details in the audit.
 Do not add new assets without a source, license and download date in the matching credits file.
 
 If a CC-BY (or similar) asset is added, the license-snapshot policy in `SOUND_CREDITS.md` applies
@@ -125,9 +165,9 @@ and an in-app credit is required.
 `src/__tests__/assetCredits.test.ts` fails if a Star Swarm sprite or sound ships without a
 credits entry.
 
-The #2488 salvage/hull pickups are drawn procedurally, so they have no files yet; sprites for them
-need Kenney source files supplied from outside the build container (as errant-asteroid sprites
-were for #2573).
+The #2488 salvage crate and hull plate, drawn procedurally until then, are generated sprites
+since #3595 (`starswarm/pickup/salvage.webp`, `hull.webp`), in one family with the four power-ups;
+the procedural shapes remain only as the fallback while a sprite loads.
 
 ## Per-game asset registries
 
@@ -152,41 +192,22 @@ Adding a new shared image set: add imports + export object to `_shared/images.ts
 cd frontend && npm run prebuild      # or: node scripts/optimize-assets.js
 ```
 
-- Lossless crush of `icon.png`, `splash-icon.png`, `adaptive-icon.png`, `favicon.png`.
-- `fruits-baked/` and `cosmos-baked/`: 256-colour palette PNG with alpha (libimagequant, dithered). A file is replaced only when the result is smaller and visually lossless (PSNR at least 45 dB on premultiplied RGBA; the #2833 set scored 46.6–58.4 dB). Palette files are skipped.
+- Lossless crush of `icon.png` and `favicon.png`. (`splash-icon.png` and `adaptive-icon.png` are generated palette PNGs from `tools/assets/gen_app_icons.py` (#3935) and are not crushed, so the generator's `--check` stays exact.) (It also palette-quantized Cascade's baked sprites until they were replaced by code-drawn pieces in #3698.)
 
 The script is idempotent.
 
-## Regenerating baked Cascade sprites
+## Tweaking a generated asset
 
-Source images are in `fruit_images/` and `celestial_images/` at the repo root (tracked as plain files today; see "Directory map" above and #3033).
+The in-house sounds (`synth_starswarm_sfx.py`, `synth_arcade_sfx.py`, `synth_puzzle_sfx.py`) and the Star Swarm sprites (`draw_starswarm_art.py`) are the output of their scripts in `tools/assets/`. The splash and Android launcher art (`gen_app_icons.py`, #3935) is generated the same way from the mascot; `python tools/assets/gen_app_icons.py` rewrites them in place (palette PNGs, about 0.4 MB net over the old placeholders) and `--check` lists stale files. Tests fail when a shipped file stops matching its generator (#3672), so a change always goes through the script:
 
-```bash
-pip install Pillow
-python tools/assets/bake_sprites.py
-```
+1. Edit the recipe in the generator script.
+2. Rerun the generator for that name into a scratch folder, e.g. `python tools/assets/synth_puzzle_sfx.py /tmp/out daily-word-win` (sprites: `python tools/assets/draw_starswarm_art.py --out /tmp/out <name>`; lobby tiles: `python tools/assets/draw_lobby_tile_art.py --out /tmp/out --sheet <name>`).
+3. Listen to or look at the result, then copy it over the shipped file in `frontend/assets/`.
+4. Run `cd tools && python -m pytest`. `synth_shipped_test.py` (sounds), `draw_starswarm_art_test.py` (sprites, pixel for pixel) and `draw_lobby_tile_art_test.py` (lobby tiles, pixel for pixel) must pass. The sound test compares decoded samples, which in practice means bit-exact decoded PCM under a matched ffmpeg/libvorbis build: its 2% relative RMS tolerance only absorbs trivial float differences, it fails a 0.17 dB recipe change, and it does not survive an encoder change (a libvorbis quality change moves the decode by 2% to 18%). It needs ffmpeg with libvorbis; CI gets it from the pinned `ubuntu-24.04` runner image plus an apt install, and under CI a missing ffmpeg fails the test instead of skipping. If the test fails and you changed no recipe, the encoder build probably changed: refresh the shipped sounds with the procedure below.
 
-Reads the full-resolution icons in `cascade_icon_masters/`. Writes `fruits-baked/` and `cosmos-baked/` (truecolor PNG), updates `fruit-vertices.json` / `cosmos-vertices.json`. Then run `cd frontend && node scripts/optimize-assets.js` to quantize the new sprites (about 60% smaller), and copy the new `bakedClipR` values into `src/theme/fruitSets.ts`.
+### Pinned generator libraries
 
-## Regenerating the runtime icon thumbnails
-
-```bash
-python tools/assets/make_icon_thumbnails.py            # 256 px, Lanczos, WebP q90, alpha kept
-python tools/assets/make_icon_thumbnails.py --size 384 # if a UI ever draws icons larger than 85 pt
-```
-
-Reads `cascade_icon_masters/*-icons/`, writes `frontend/assets/fruit-icons/` and `frontend/assets/celestial-icons/`. Never put full-resolution art in `frontend/assets/`: every imported file there ships in the app.
-
-## Converting icon PNGs to WebP
-
-```bash
-python tools/assets/convert_icons_to_webp.py cascade_icon_masters/fruit-icons
-python tools/assets/convert_icons_to_webp.py cascade_icon_masters/celestial-icons
-```
-
-Then run `make_icon_thumbnails.py` (above).
-
-Do **not** run on `*-baked/` directories — Skia textures must stay PNG.
+`tools/assets/requirements.txt` pins numpy, scipy, Pillow, colour-science and pytest to exact versions, and CI's `Test tools (pytest)` job installs that file, so local, cloud and CI runs produce the same output (#3816: a cloud container with Pillow 12.3 instead of 13 failed the sprite tests, because Pillow 12's LANCZOS downscale differs). Install the file; do not rely on whatever is preinstalled. To upgrade one of them, bump the pin, regenerate **every** generated asset into scratch folders, review the diff (decoded PCM hashes for sounds, pixel diffs for sprites), and ship any changed files in the same PR. The audio encoder is the system `ffmpeg`/libvorbis, not a Python package, so it cannot be pinned there. CI takes it from the `ubuntu-24.04` runner image (pinned in `ci.yml`); a new ffmpeg/libvorbis build means regenerating the sounds, like a library bump. Dependabot watches `tools/assets/requirements.txt` for security updates only (`open-pull-requests-limit: 0` in `.github/dependabot.yml`): a version bump changes generator output, so it is never an automatic PR and always goes through this procedure.
 
 ## Adding assets for a new game
 

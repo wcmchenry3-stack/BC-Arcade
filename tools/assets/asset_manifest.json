@@ -1,0 +1,36 @@
+{
+  "_doc": "Provenance index for every asset shipped in the app (asset audit). Each rule matches files by glob (repo-relative); every file under frontend/assets/ must match exactly one rule. kind: generated = rebuilt by `recipe`; attested = owner-supplied, no recipe possible (see `why`); third-party = licensed from someone else and must be listed in `third_party_allowlist` below. Checked by tools/assets/tests/asset_manifest_test.py.",
+  "third_party_allowlist": [
+    "frontend/assets/sounds/mahjong-bg-1.mp3",
+    "frontend/assets/sounds/mahjong-bg-2.mp3",
+    "frontend/assets/sounds/mahjong-bg-3.mp3",
+    "frontend/assets/fonts/MaterialIcons.subset.ttf",
+    "frontend/assets/fonts/MaterialCommunityIcons.subset.ttf"
+  ],
+  "rules": [
+    {"glob": "frontend/assets/sounds/*.ogg", "kind": "generated", "recipe": "tools/assets/synth_{arcade,cascade,puzzle,starswarm}_sfx.py (SOUNDS tables; pinned by synth_shipped_test.py)", "credits": "frontend/assets/sounds/SOUND_CREDITS.md"},
+    {"glob": "frontend/assets/sounds/starswarm-bgm.mp3", "kind": "generated", "recipe": "tools/assets/build_starswarm_bgm.py (starswarm_bgm/ layers and cues, then tools/assets/make_starswarm_bgm_loop.py; pinned by starswarm_bgm_test.py)", "credits": "frontend/assets/sounds/SOUND_CREDITS.md"},
+    {"glob": "frontend/assets/sounds/mahjong-bg-*.mp3", "kind": "third-party", "why": "Pixabay Content License lo-fi tracks; declared exception, no attribution required, must not be redistributed on their own.", "credits": "frontend/assets/sounds/SOUND_CREDITS.md"},
+    {"glob": "frontend/assets/starswarm/**/*.webp", "kind": "generated", "recipe": "tools/assets/draw_starswarm_art.py", "credits": "frontend/assets/starswarm/CREDITS.md"},
+    {"glob": "frontend/assets/home/yacht-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (yacht)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/twenty48-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (twenty48)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/sudoku-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (sudoku)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/sort-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (sort)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/solitaire-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (solitaire)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/freecell-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (freecell)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/daily_word-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (daily_word)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/blackjack-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (blackjack)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/hearts-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (hearts)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/mahjong-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (mahjong)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/starswarm-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (starswarm)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/home/cascade-tile.webp", "kind": "generated", "recipe": "tools/assets/draw_lobby_tile_art.py (cascade)", "credits": "frontend/assets/home/CREDITS.md"},
+    {"glob": "frontend/assets/mahjong/*.svg", "kind": "generated", "recipe": "tools/assets/gen_mahjong_tiles.py", "credits": "frontend/assets/mahjong/ATTRIBUTION.md"},
+    {"glob": "frontend/assets/fonts/*.ttf", "kind": "third-party", "recipe": "tools/assets/subset_icon_fonts.py", "why": "Subsets of Material Icons / Material Design Icons (Apache 2.0).", "credits": "frontend/assets/fonts/CREDITS.md"},
+    {"glob": "frontend/assets/splash-icon.png", "kind": "generated", "recipe": "tools/assets/gen_app_icons.py", "credits": "docs/BRANDING.md"},
+    {"glob": "frontend/assets/adaptive-icon.png", "kind": "generated", "recipe": "tools/assets/gen_app_icons.py", "credits": "docs/BRANDING.md"},
+    {"glob": "frontend/assets/icon.png", "kind": "attested", "why": "The BC Arcade mascot (image-model output, owner-attested); the only master is the iOS AppIcon PNG. Back it up outside the repo.", "credits": "docs/BRANDING.md"},
+    {"glob": "frontend/assets/logo.png", "kind": "attested", "why": "Mascot art, owner-attested.", "credits": "docs/BRANDING.md"},
+    {"glob": "frontend/assets/favicon.png", "kind": "attested", "why": "Mascot art, owner-attested.", "credits": "docs/BRANDING.md"},
+    {"glob": "frontend/assets/**/*.md", "kind": "doc"}
+  ]
+}

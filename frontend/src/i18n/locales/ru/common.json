@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Начать игру",
   "newGame.confirm.cancel": "Отмена",
   "settings.soundEffects": "Звуковые эффекты",
+  "settings.dragDebugOverlay": "Отладочный оверлей перетаскивания",
+  "settings.dragDebugOverlay.description": "Для разработчиков: показывает положение пальца, ожидаемую рамку карты и результат проверки перетаскивания во время перетаскивания.",
   "clearLogs.label": "Очистить логи",
   "clearLogs.description": "Удалить все несинхронизированные события и отчёты об ошибках.",
   "clearLogs.button": "Очистить",
@@ -49,8 +51,15 @@
   "overflow.abandon.body": "Начав новую игру, вы потеряете прогресс в этом раунде. Общая статистика останется без изменений.",
   "overflow.abandon.keepPlaying": "Продолжить",
   "overflow.abandon.startNew": "Начать заново",
+  "play": "Играть",
   "home.locked.buttonLabel": "Разблокировать",
   "home.locked.cardLabel": "{{title}} — Закрыто, нажмите, чтобы открыть",
+  "home.resume.buttonLabel": "Продолжить",
+  "home.resume.cardLabel": "{{label}} — в процессе, нажмите, чтобы продолжить",
+  "home.status.inProgress": "В процессе",
+  "home.status.doneToday": "Выполнено сегодня",
+  "home.status.best": "Рекорд {{value}}",
+  "home.status.bestMoves": "Лучшие ходы: {{value}}",
   "deleteData.label": "Удалить мои данные",
   "deleteData.description": "Полностью удалить всю историю игр и статистику, связанную с этим устройством.",
   "deleteData.button": "Удалить",
@@ -105,5 +114,6 @@
   "locked.back": "Назад в лобби",
   "locked.back_label": "Вернуться в лобби",
   "offline.windowExhausted": "Вы не подключались уже 3 дня. Подключитесь к интернету, чтобы получить новую головоломку.",
-  "offline.windowExhaustedStreak": "Подключитесь, чтобы не прервать серию."
+  "offline.windowExhaustedStreak": "Подключитесь, чтобы не прервать серию.",
+  "action.autoComplete": "Автозавершение"
 }

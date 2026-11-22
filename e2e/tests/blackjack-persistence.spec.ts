@@ -42,9 +42,9 @@ test.describe("Blackjack — state persistence", () => {
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    // Result phase: outcome text and Next Hand button visible
+    // Result phase: outcome text and the result dock visible
     await expect(page.getByText("You Win!")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("Next Hand")).toBeVisible();
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible();
   });
 
   test("state is saved after dealing and restored on re-navigation", async ({
@@ -56,7 +56,7 @@ test.describe("Blackjack — state persistence", () => {
     await bj.dealButton().click();
 
     // Wait for player or result phase
-    const hitOrResult = page.getByText("Hit").or(page.getByText("Next Hand"));
+    const hitOrResult = page.getByText("Hit").or(page.getByRole("button", { name: /change bet/i }));
     await expect(hitOrResult).toBeVisible({ timeout: 5000 });
 
     const wasPlayerPhase = await page.getByText("Hit").isVisible();
@@ -73,7 +73,7 @@ test.describe("Blackjack — state persistence", () => {
     if (wasPlayerPhase) {
       await expect(page.getByText("Hit")).toBeVisible({ timeout: 5000 });
     } else {
-      await expect(page.getByText("Next Hand")).toBeVisible({
+      await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({
         timeout: 5000,
       });
     }
@@ -105,7 +105,7 @@ test.describe("Blackjack — state persistence", () => {
     await expect(page.getByText("Hit")).toBeVisible();
 
     await page.getByRole("button", { name: /stand/i }).click();
-    await expect(page.getByText("Next Hand")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({ timeout: 5000 });
 
     const stored = await page.evaluate(() =>
       localStorage.getItem("blackjack_game_v2"),
@@ -116,12 +116,12 @@ test.describe("Blackjack — state persistence", () => {
     expect(state.outcome).not.toBeNull();
   });
 
-  test("localStorage is updated to betting phase after Next Hand", async ({
+  test("localStorage is updated to betting phase after Change", async ({
     page,
   }) => {
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
-    await page.getByText("Next Hand").click();
+    await page.getByRole("button", { name: /change bet/i }).click();
 
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
@@ -155,7 +155,7 @@ test.describe("Blackjack — state persistence", () => {
 
     // After standing, chip strip shows the correct starting chip count
     await page.getByRole("button", { name: /stand/i }).click();
-    await expect(page.getByText("Next Hand")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible({ timeout: 5000 });
 
     // Chip strip should reflect outcome (win/push/lose from 750)
     await expect(page.getByText(/\d+ chips/).first()).toBeVisible();

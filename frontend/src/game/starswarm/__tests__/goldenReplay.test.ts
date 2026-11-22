@@ -23,6 +23,22 @@
  *   by 2^32 instead of 0xffffffff), which changes every draw. Re-record in that PR and say so.
  * - Any other re-record is a deliberate gameplay/balance change and must be called out in the
  *   PR description.
+ * - #3597 re-recorded the hashes only: an explosion now carries its draw size (`kind`, render-only)
+ *   in the state the hash covers. Every summary, counter and the waves fixture stayed identical.
+ * - #3596 re-recorded the hashes only (one checkpoint): a rock's dust explosion now names its rock
+ *   (`srcId`, render-only, for the dust's palette). Every summary, counter and the waves fixture
+ *   stayed identical.
+ * - #3594 re-recorded the hashes only (19 checkpoints): the Carrier's twin lasers now carry
+ *   `source: "carrier"` (render-only, they draw as pink orbs). Every summary, counter and the waves
+ *   fixture stayed identical.
+ * - #3709 re-recorded the hashes only (3 checkpoints of wave3-lieutenant-actions: ticks 1600,
+ *   1700, 1800): while Lightning's beam is on the state carries `lightningPulseX`, the ship's x at
+ *   the last pulse, for the swept hit test. The pilot's sweep (about 145 px/s) is slow enough that
+ *   the instant test already hit everything the swept one does: every summary, counter and the
+ *   waves and timelines fixtures stayed identical, and so does the state without that key.
+ * - #3710 changed no hash: an enemy bullet now carries `tier` (the shooter's, render-only, a label
+ *   for `damage.hitsByTier`), and `sha()` leaves it out like a pickup's `source`. The main fixture
+ *   and the timelines are untouched; the waves fixture gained `damage.hitsByTier` (additions only).
  *
  * Per-wave stats (#3252): each scenario's closed waves (`state.closedWaves`, the `wave_completed`
  * wire form) and its end-of-replay leaderboard result (`final_score`, `wave_reached`,

@@ -535,7 +535,7 @@ describe("game events", () => {
     expect(next.events).toContain("cardPlace" as GameEvent);
   });
 
-  it("applyMove emits foundationComplete when a suit reaches 13 cards", () => {
+  it("applyMove emits only cardPlace when a suit reaches 13 cards (no suit-complete event)", () => {
     const foundations: Foundations = {
       spades: Array.from({ length: 12 }, (_, i) => c("spades", (i + 1) as Rank)),
       hearts: [],
@@ -547,7 +547,7 @@ describe("game events", () => {
       tableau: [[c("spades", 13)], [], [], [], [], [], []],
     });
     const next = applyMove(state, { type: "tableau-to-foundation", fromCol: 0 });
-    expect(next.events).toContain("foundationComplete" as GameEvent);
+    expect(next.events).toEqual(["cardPlace"]);
   });
 
   it("applyMove emits gameWin when the last card completes all foundations", () => {
@@ -569,7 +569,20 @@ describe("game events", () => {
   it("drawFromStock emits cardFlip", () => {
     const state = mkState({ stock: [c("clubs", 5, false)] });
     const next = drawFromStock(state);
-    expect(next.events).toContain("cardFlip" as GameEvent);
+    expect(next.events).toEqual(["cardFlip"]);
+  });
+
+  it("a Draw-3 stock draw emits cardFan, also with only two cards left (#3563)", () => {
+    const three = [c("clubs", 5, false), c("clubs", 6, false), c("clubs", 7, false)];
+    expect(drawFromStock(mkState({ drawMode: 3, stock: three })).events).toEqual(["cardFan"]);
+    expect(drawFromStock(mkState({ drawMode: 3, stock: three.slice(1) })).events).toEqual([
+      "cardFan",
+    ]);
+  });
+
+  it("a Draw-3 stock draw with one card left is a single flip (#3563)", () => {
+    const state = mkState({ drawMode: 3, stock: [c("clubs", 5, false)] });
+    expect(drawFromStock(state).events).toEqual(["cardFlip"]);
   });
 
   it("events are cleared from undo snapshots so undo does not re-fire them", () => {
@@ -580,7 +593,7 @@ describe("game events", () => {
     expect(reverted.events).toBeUndefined();
   });
 
-  it("applyMove does not emit foundationComplete on subsequent moves once already won", () => {
+  it("applyMove emits no gameWin on subsequent moves once already won", () => {
     const foundations: Foundations = {
       spades: Array.from({ length: 13 }, (_, i) => c("spades", (i + 1) as Rank)),
       hearts: Array.from({ length: 13 }, (_, i) => c("hearts", (i + 1) as Rank)),
@@ -604,7 +617,7 @@ describe("game events", () => {
       tableau: [[c("spades", 13)], [], [], [], [], [], []],
     };
     const reMove = applyMove(withSpadeOnTableau, { type: "tableau-to-foundation", fromCol: 0 });
-    expect(reMove.events).not.toContain("foundationComplete" as GameEvent);
+    expect(reMove.events).toEqual(["cardPlace"]);
     expect(reMove.events).not.toContain("gameWin" as GameEvent);
   });
 });

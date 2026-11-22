@@ -56,6 +56,15 @@ export function fromWire(wire: WaveStatsWire): WaveStatsSnapshot {
  */
 export function expectPairedCounters(w: WaveStats): void {
   for (const r of HIT_RESULTS) expect(w.rocks.playerHits[r]).toBe(w.damage.hits.rock[r]);
+  // #3710: a hit is charged to a tier unless it was a rock (tierless), so per result the grid and
+  // the rocks add up to the by-cause table (a run made on this build; a bullet restored from an
+  // older save has no tier and would fall short)
+  for (const r of HIT_RESULTS) {
+    const byTier = ENEMY_TIERS.reduce((n, t) => n + w.damage.hitsByTier[t][r], 0);
+    expect(byTier + w.damage.hits.rock[r]).toBe(
+      HIT_CAUSES.reduce((n, c) => n + w.damage.hits[c][r], 0)
+    );
+  }
   expect(w.rocks.buddyHits).toBe(w.buddy.hits.rock);
   expect(w.rocks.buddyDestroyed).toBe(w.buddy.destroyed.rock);
   for (const tier of ENEMY_TIERS) {

@@ -1,0 +1,280 @@
+/**
+ * The tier ladder (#3695): one table, read by everything. These tests pin its invariants, that
+ * the engine and the renderer use its radius, and that no other module restates a per-tier
+ * radius, score or density.
+ */
+import * as fs from "fs";
+import * as path from "path";
+
+import { CascadeEngine } from "../engine";
+import { DROPPABLE_PIECE_TIERS, MAX_TIER, PIECE_DEFS } from "../pieceDefs";
+import { CAPSTONE_TIER, DROPPABLE_TIERS, TIER_COUNT, TIERS, tierRadius } from "../tiers";
+import type { Fixture } from "planck";
+import { OVERFLOW_LINE_Y, PX_PER_M, WALL_THICKNESS, WORLD_WIDTH } from "../constants";
+import { FRUIT_SETS } from "../../../theme/fruitSets";
+
+const INNER_WIDTH = WORLD_WIDTH - 2 * WALL_THICKNESS;
+
+describe("the ladder", () => {
+  // #3960 (owner decision): 12 tiers, the Moon back at tier 1 and a new tier 2.
+  it("has 12 tiers, numbered 0..11", () => {
+    expect(TIER_COUNT).toBe(12);
+    expect(TIERS).toHaveLength(12);
+    expect(TIERS.map((t) => t.tier)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(CAPSTONE_TIER).toBe(11);
+  });
+
+  it("has strictly increasing radius and score", () => {
+    for (let i = 1; i < TIERS.length; i++) {
+      expect(TIERS[i]!.radius).toBeGreaterThan(TIERS[i - 1]!.radius);
+      expect(TIERS[i]!.score).toBeGreaterThan(TIERS[i - 1]!.score);
+    }
+  });
+
+  // #3920 / #3960 (owner decision): one constant ratio for the whole ladder, unrounded, 11 to 98
+  // (R0 = 11 since #3967's balance pass, owner decision #3978; 11.5 before).
+  it("follows the documented constant-ratio series, radius(n) = 11 * (98 / 11)^(n / 11)", () => {
+    const k = (98 / 11) ** (1 / 11);
+    expect(k).toBeCloseTo(1.219968, 6);
+    TIERS.forEach((t) => expect(t.radius).toBeCloseTo(11 * k ** t.tier, 9));
+    expect(TIERS[0]!.radius).toBe(11);
+    // The capstone is exactly 98 (the table is built so, not just close to it).
+    expect(TIERS[CAPSTONE_TIER]!.radius).toBeCloseTo(98, 9);
+    expect(Math.abs(TIERS[CAPSTONE_TIER]!.radius - 98)).toBeLessThan(1e-9);
+    // Every tier-to-tier ratio is the same.
+    for (let i = 1; i < TIERS.length; i++) {
+      expect(TIERS[i]!.radius / TIERS[i - 1]!.radius).toBeCloseTo(k, 12);
+    }
+  });
+
+  it("scores double per tier (provisional until the time-bonus story, #3700)", () => {
+    TIERS.forEach((t) => expect(t.score).toBe(2 ** t.tier));
+  });
+
+  // #3697: density (r0 / r)^0.5 replaced 1 on every tier, so mass grows as r^1.5.
+  it("has the density (r0 / r)^0.5 on every tier", () => {
+    TIERS.forEach((t) => expect(t.density).toBeCloseTo((TIERS[0]!.radius / t.radius) ** 0.5, 12));
+    expect(TIERS[0]!.density).toBe(1);
+  });
+
+  // #3920 / #3960 (owner decision): tiers 0-5 drop.
+  it("drops tiers 0-5 only; the capstone is never dropped", () => {
+    expect(TIERS.filter((t) => t.droppable).map((t) => t.tier)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(DROPPABLE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(TIERS[CAPSTONE_TIER]!.droppable).toBe(false);
+  });
+
+  it("lets two tier-10 pieces sit side by side in the bin and touch, and fits the capstone", () => {
+    expect(4 * TIERS[CAPSTONE_TIER - 1]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
+    expect(2 * TIERS[CAPSTONE_TIER]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
+  });
+
+  // #3904 owner rule, kept by #3920 (the capstone is still r 98): at most 3 capstones fit under
+  // the lid. Four circles of radius r fit in the 360 x 500 room under the lid only as a zigzag
+  // column (touching the left and right walls in turn, each touching the one below), which needs
+  // 2r + 3 * sqrt((2r)^2 - (360 - 2r)^2) <= 500, so r <= 97.21. Since #3920 making one capstone
+  // is the win, so play never holds two; the geometry still pins the capstone's size.
+  it("fits at most three capstones under the lid, and never two side by side on the floor", () => {
+    const r = TIERS[CAPSTONE_TIER]!.radius;
+    expect(4 * r).toBeGreaterThan(INNER_WIDTH);
+    const roomH = 600 - 20 - OVERFLOW_LINE_Y;
+    const zigzag4 = (rr: number) =>
+      2 * rr + 3 * Math.sqrt((2 * rr) ** 2 - (INNER_WIDTH - 2 * rr) ** 2);
+    expect(zigzag4(97.2)).toBeLessThanOrEqual(roomH);
+    expect(zigzag4(r)).toBeGreaterThan(roomH);
+  });
+
+  it("spawns every droppable tier on the canvas, over the lid", () => {
+    for (const tier of DROPPABLE_TIERS) {
+      const r = tierRadius(tier);
+      const spawnTop = OVERFLOW_LINE_Y - r - 5 - r;
+      expect(spawnTop).toBeGreaterThanOrEqual(-1);
+    }
+  });
+
+  it("is what PIECE_DEFS and MAX_TIER are built from", () => {
+    expect(PIECE_DEFS).toHaveLength(TIER_COUNT);
+    expect(MAX_TIER).toBe(CAPSTONE_TIER);
+    PIECE_DEFS.forEach((def, i) => {
+      expect(def.shape).toEqual({ kind: "circle", radius: TIERS[i]!.radius });
+      expect(def.scoreValue).toBe(TIERS[i]!.score);
+      expect(def.density).toBe(TIERS[i]!.density);
+    });
+  });
+
+  it("names every tier of both sets from the ladder's keys, in the owner's order", () => {
+    expect(TIERS.map((t) => t.nameKeys.fruits)).toEqual([
+      "cherry",
+      "lychee",
+      "lime",
+      "lemon",
+      "plum",
+      "orange",
+      "apple",
+      "pomegranate",
+      "dragonfruit",
+      "pineapple",
+      "watermelon",
+      "pumpkin",
+    ]);
+    expect(TIERS.map((t) => t.nameKeys.cosmos)).toEqual([
+      "pluto",
+      "moon",
+      "mercury",
+      "mars",
+      "venus",
+      "earth",
+      "neptune",
+      "uranus",
+      "saturn",
+      "jupiter",
+      "sun",
+      "milkyWay",
+    ]);
+    // Unique per set, and the retired Blueberry / Coconut are off the live ladder (#3960).
+    expect(new Set(TIERS.map((t) => t.nameKeys.fruits)).size).toBe(12);
+    expect(new Set(TIERS.map((t) => t.nameKeys.cosmos)).size).toBe(12);
+    expect(TIERS.map((t) => t.nameKeys.fruits)).not.toContain("blueberry");
+    expect(TIERS.map((t) => t.nameKeys.fruits)).not.toContain("coconut");
+    for (const set of Object.values(FRUIT_SETS)) {
+      set.fruits.forEach((f) => {
+        const key = TIERS[f.tier]!.nameKeys[set.id as "fruits" | "cosmos"];
+        expect(f.i18nKey).toBe(`${set.id}.${key}`);
+      });
+    }
+  });
+});
+
+describe("the engine reads the ladder", () => {
+  // #3697: the engine's pieces are planck fixtures now (radius in metres, PX_PER_M px each).
+  type Internals = { _pieces: Map<number, { fixture: Fixture }> };
+  const fixtures = (e: CascadeEngine) =>
+    Array.from((e as unknown as Internals)._pieces.values(), (p) => p.fixture);
+
+  it("gives every tier a collider of exactly its ladder radius and density", () => {
+    for (const t of TIERS) {
+      const engine = new CascadeEngine({});
+      engine.restore([{ tier: t.tier, x: 200, y: 500 }], 0);
+      const [fixture] = fixtures(engine);
+      expect(fixture!.getShape().getRadius() * PX_PER_M).toBeCloseTo(t.radius, 9);
+      expect(fixture!.getDensity()).toBe(t.density);
+      engine.destroy();
+    }
+  });
+
+  it("merges two tier-10 pieces into the capstone, scores it from the ladder and emits win", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(10, 200);
+    engine.drop(10, 200);
+    const events = engine.step(16.67).events;
+    expect(events.some((e) => e.type === "merge" && e.result === CAPSTONE_TIER)).toBe(true);
+    expect(events.filter((e) => e.type === "win")).toHaveLength(1);
+    expect(engine.hasWon()).toBe(true);
+    const state = engine.getState();
+    expect(state.pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER]);
+    expect(state.score).toBe(TIERS[CAPSTONE_TIER]!.score);
+  });
+
+  // #3920: capstones never merge (no tier above), and two touching are no longer the win (#3904's
+  // pair win is gone). Only the dev panel or a restore can put two on the board.
+  it("never merges two capstones, and two touching are not a win", () => {
+    const engine = new CascadeEngine({});
+    engine.drop(CAPSTONE_TIER, 200);
+    engine.drop(CAPSTONE_TIER, 200);
+    const events: ReturnType<CascadeEngine["step"]>["events"] = [];
+    for (let i = 0; i < 60; i++) events.push(...engine.step(16.67).events);
+    expect(events.some((e) => e.type === "merge")).toBe(false);
+    expect(events.some((e) => e.type === "win")).toBe(false);
+    expect(engine.hasWon()).toBe(false);
+    expect(engine.getState().pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER, CAPSTONE_TIER]);
+  });
+});
+
+describe("drawn size = collider size", () => {
+  // The art itself is drawn at the ladder radius: art/__tests__/art.test.ts (#3698).
+  it("has no radius, score or density left on the fruit-set definitions", () => {
+    for (const set of Object.values(FRUIT_SETS)) {
+      for (const f of set.fruits) {
+        expect(f).not.toHaveProperty("radius");
+        expect(f).not.toHaveProperty("scoreValue");
+        expect(f).not.toHaveProperty("density");
+      }
+    }
+  });
+});
+
+describe("one table only", () => {
+  const SRC = path.resolve(__dirname, "../../..");
+  /** Where Cascade's tier data could creep back in. */
+  const ROOTS = ["game/cascade", "theme", "components/cascade", "screens/CascadeScreen.tsx"];
+  const ALLOWED = new Set([path.join(SRC, "game/cascade/tiers.ts")]);
+
+  function files(p: string): string[] {
+    const full = path.join(SRC, p);
+    if (fs.statSync(full).isFile()) return [full];
+    return fs.readdirSync(full, { withFileTypes: true }).flatMap((d) => {
+      if (d.name === "__tests__") return [];
+      const child = path.join(full, d.name);
+      if (d.isDirectory()) return files(path.relative(SRC, child));
+      return /\.(ts|tsx)$/.test(d.name) ? [child] : [];
+    });
+  }
+
+  // What is guarded, and the trade-off. A source scan can only ever catch the shapes we think of,
+  // so it is two layers: (1) the runtime checks below, which look at what the modules actually
+  // export; (2) these patterns: an old-style table name, a numeric `radius:` / `scoreValue:` /
+  // `score:` / `density:` property, and a numeric array literal of 3+ numbers (how a table gets
+  // written without a name, e.g. `[16, 22, 28]`). The array rule is the broad one, so it has an
+  // allow-list (`ARRAY_OK`) for legitimate arrays (transforms, fixed layout); a new entry needs a
+  // reason. It does not try to catch computed tables: those are reviewed, not scanned.
+  const FORBIDDEN = [
+    /\bRADII\b/,
+    /\bSCORE_VALUES\b/,
+    /\bTIER_(RADII|SCORES|DENSIT\w+)\b/,
+    /\b(radius|scoreValue|score|density)\s*:\s*-?\d/,
+  ];
+  const NUMERIC_ARRAY = /\[\s*-?\d+(\.\d+)?\s*(,\s*-?\d+(\.\d+)?\s*){2,}\]/;
+  /** file (relative to src) -> why a numeric array of 3+ numbers is fine there. */
+  const ARRAY_OK: Record<string, string> = {
+    "game/cascade/art/fruits.ts":
+      "drawing coordinates in unit radii (grape positions, leaves, the pineapple crown, the dragonfruit bracts, #3698); every piece is drawn at tierRadius",
+    "game/cascade/art/cosmos.ts":
+      "drawing coordinates in unit radii (blobs, bands, rings, #3698); every piece is drawn at tierRadius",
+    "game/cascade/art/pen.ts": "UNIT_BOX, the unit circle's square (#3698)",
+    "game/cascade/testHooks.ts":
+      "the demo set-ups' piles are lists of tier ids (which tiers sit side by side), not radii, scores or densities (#3719); sizes still come from tierRadius",
+  };
+
+  it("defines no per-tier radius, score or density outside tiers.ts", () => {
+    const offenders: string[] = [];
+    for (const file of ROOTS.flatMap(files)) {
+      if (ALLOWED.has(file)) continue;
+      const text = fs.readFileSync(file, "utf8");
+      const rel = path.relative(SRC, file);
+      for (const re of FORBIDDEN) {
+        if (re.test(text)) offenders.push(`${rel} matches ${re}`);
+      }
+      if (NUMERIC_ARRAY.test(text) && !(rel in ARRAY_OK)) {
+        offenders.push(`${rel} has a numeric array literal of 3+ numbers`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("exposes no per-tier radius/score/density of its own on PIECE_DEFS or the fruit sets", () => {
+    const own = /^(radius|score|scoreValue|density)$/;
+    for (const def of PIECE_DEFS) {
+      // The engine definition carries the ladder's values under these names only: scoreValue,
+      // density and shape.radius, each equal to the ladder row (checked above).
+      expect(
+        Object.keys(def).filter((k) => own.test(k) && k !== "scoreValue" && k !== "density")
+      ).toEqual([]);
+    }
+    for (const set of Object.values(FRUIT_SETS)) {
+      for (const f of set.fruits) {
+        expect(Object.keys(f).filter((k) => own.test(k))).toEqual([]);
+      }
+    }
+  });
+});

@@ -7,16 +7,25 @@ import { StyleSheet } from "react-native";
 import { render, screen, within } from "@testing-library/react-native";
 import type { TestInstance } from "test-renderer";
 
+import * as Reanimated from "react-native-reanimated";
 import NextFruitPreview from "../NextFruitPreview";
 import { FRUIT_SETS } from "../../../theme/fruitSets";
 import { dark } from "../../../theme/ThemeContext";
+import { piecePicture } from "../../../game/cascade/art/sprites";
+
+// The glyphs' Skia canvas and picture cache are stubbed (the art is tested on real Skia in
+// game/cascade/art/__tests__/art.test.ts).
+jest.mock("@shopify/react-native-skia", () => ({ Canvas: "Canvas", Picture: "Picture" }));
+jest.mock("../../../game/cascade/art/sprites", () => ({
+  piecePicture: jest.fn((set: string, tier: number, size: number) => ({ set, tier, size })),
+}));
 
 const cherry = FRUIT_SETS.fruits!.fruits[0]!;
 const grape = FRUIT_SETS.fruits!.fruits[2]!;
-const moon = { ...FRUIT_SETS.cosmos!.fruits[0]!, icon: undefined };
+const pluto = FRUIT_SETS.cosmos!.fruits[0]!;
 
 const flat = (n: TestInstance) => StyleSheet.flatten(n.props.style);
-/** The glyph frame (icon) or disc (no icon) inside a chip: its first child view. */
+/** The glyph frame inside a chip: its first child view. */
 const glyph = (chip: TestInstance) => chip.children[0] as TestInstance;
 
 describe("Cascade NextFruitPreview", () => {
@@ -56,9 +65,39 @@ describe("Cascade NextFruitPreview", () => {
     });
   });
 
-  it("falls back to a colour disc for a fruit without an icon", async () => {
-    await render(<NextFruitPreview current={moon} next={cherry} />);
-    const now = screen.getByLabelText(`Dropping next: ${moon.name}`);
-    expect(flat(glyph(now))).toMatchObject({ backgroundColor: moon.color, borderRadius: 11 });
+  it("draws each piece's code-drawn art from its own set (#3698)", async () => {
+    await render(<NextFruitPreview current={pluto} next={cherry} />);
+    expect(piecePicture).toHaveBeenCalledWith("cosmos", 0, 22);
+    expect(piecePicture).toHaveBeenCalledWith("fruits", 0, 16);
+  });
+
+  it("names the capstones from the ladder's i18n keys (#3695)", async () => {
+    // #3960: the capstone is tier 11.
+    const pumpkin = FRUIT_SETS.fruits!.fruits[11]!;
+    const milkyWay = FRUIT_SETS.cosmos!.fruits[11]!;
+    expect(pumpkin.i18nKey).toBe("fruits.pumpkin");
+    await render(<NextFruitPreview current={pumpkin} next={milkyWay} />);
+    expect(screen.getByLabelText("Dropping next: Pumpkin")).toBeTruthy();
+    expect(screen.getByLabelText("Coming up: Milky Way")).toBeTruthy();
+  });
+
+  // #3701 (review N5): the hop follows the drop count, so a drop of the same tier as the next one
+  // still hops, and a reset or restore (no new drop) does not.
+  it("hops on each drop, also when the tiers stay the same, and not without a drop", async () => {
+    const spy = jest.spyOn(Reanimated, "withTiming");
+    const view = await render(<NextFruitPreview current={cherry} next={cherry} drops={3} />);
+    expect(spy).not.toHaveBeenCalled(); // mounting is not a drop
+    await view.rerender(<NextFruitPreview current={cherry} next={cherry} drops={4} />);
+    expect(spy).toHaveBeenCalledTimes(1);
+    await view.rerender(<NextFruitPreview current={grape} next={cherry} drops={4} />);
+    expect(spy).toHaveBeenCalledTimes(1); // the queue changed without a drop: a restore
+    spy.mockRestore();
+  });
+
+  it("re-renders the next piece after a drop, keeping the chips' accessible names", async () => {
+    const view = await render(<NextFruitPreview current={cherry} next={grape} drops={0} />);
+    await view.rerender(<NextFruitPreview current={grape} next={cherry} drops={1} />);
+    expect(screen.getByLabelText(`Dropping next: ${grape.name}`)).toBeTruthy();
+    expect(screen.getByLabelText(`Coming up: ${cherry.name}`)).toBeTruthy();
   });
 });

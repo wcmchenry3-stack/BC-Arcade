@@ -15,7 +15,7 @@ import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { DragProvider, SNAP_BACK_FALLBACK_MS, useDragContext } from "../DragContext";
 import type { Bounds, DragCard, DragSource, DropHandler } from "../DragContext";
 import { DraggableCard } from "../DraggableCard";
-import { DragOverlay } from "../DragOverlay";
+import { DragGhostHost } from "../DragGhostHost";
 import { detectedGesture } from "../../../../test-utils/mockScreenDeps";
 import type { DetectorRender } from "../../../../test-utils/mockScreenDeps";
 
@@ -84,7 +84,7 @@ function Board({
         <DraggableCard testID="card-b" dragCards={cardB} dragSource={srcB}>
           <Text testID="b">9♦</Text>
         </DraggableCard>
-        <DragOverlay />
+        <DragGhostHost />
       </ThemeProvider>
     </DragProvider>
   );
@@ -348,8 +348,10 @@ describe("drag lifecycle across threads (#2772 root cause)", () => {
     svSpy = jest.spyOn(Reanimated, "useSharedValue").mockImplementation(((init: unknown) => {
       const ref = useRef<{ value: unknown } | null>(null);
       if (ref.current === null) {
-        let ui = init;
-        let cached = init;
+        // Like Reanimated's useSharedValue, a function init is a lazy initializer.
+        const initial = typeof init === "function" ? (init as () => unknown)() : init;
+        let ui = initial;
+        let cached = initial;
         let dirty = false;
         ref.current = {
           get value() {

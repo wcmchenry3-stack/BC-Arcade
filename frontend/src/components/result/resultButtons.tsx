@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text } from "react-native";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialCommunityIcons from "../icons/MaterialCommunityIcons";
 import type { Colors } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { ResultAction } from "./resultTypes";

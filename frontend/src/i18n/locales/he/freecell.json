@@ -19,8 +19,11 @@
   "score.moves": "מהלכים: {{moves}}",
   "error.supermoveRejected": "אין מספיק משבצות פנויות כדי להזיז את הערימה",
   "slot.free": "פנוי",
-  "a11y.foundationComplete": "הבסיס הושלם",
   "settings.largeCards": "קלפים גדולים",
   "a11y.scrollBoardLeft": "גלילת הלוח שמאלה",
-  "a11y.scrollBoardRight": "גלילת הלוח ימינה"
+  "a11y.scrollBoardRight": "גלילת הלוח ימינה",
+  "stat.moves": "מהלכים",
+  "stat.time": "זמן",
+  "stat.timeA11y": "זמן: {{time}}",
+  "pile.canMoveHere": "ניתן להעביר לכאן"
 }

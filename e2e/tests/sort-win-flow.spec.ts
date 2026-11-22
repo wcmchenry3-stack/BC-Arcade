@@ -17,7 +17,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { mockSortApi, injectSortProgress } from "./helpers/sort";
+import { mockSortApi, injectSortProgress, resumeSortFromLobby, CATALOG_VERSION } from "./helpers/sort";
 
 const NEAR_SOLVED = {
   unlockedLevel: 1,
@@ -105,12 +105,8 @@ async function loadNearSolvedLevel(
     ] as const);
     await page.goto("/");
   }
-  await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
-  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Continue Level 1" }).click();
-  await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
-    timeout: 5_000,
-  });
+  // The lobby tile says Resume for the saved board and opens it directly (#4008).
+  await resumeSortFromLobby(page);
   return captured;
 }
 
@@ -162,6 +158,8 @@ test.describe("Sort Puzzle — win flow", () => {
         undos: 0,
         level_reached: 1,
         total_moves: 6,
+        // The catalog its levels came from: the board ranks only this one (#2761).
+        catalog_version: CATALOG_VERSION,
       },
     });
   });
@@ -185,6 +183,31 @@ test.describe("Sort Puzzle — win flow", () => {
     });
   });
 
+  test("the card and the level grid show the solve's stars (#3687)", async ({
+    page,
+  }) => {
+    const captured = await loadNearSolvedLevel(page, "Tester");
+    await makeWinningPour(page);
+
+    // Level 1's par is 10 and the solve took 6 moves: 3 stars.
+    const card = page.getByTestId("sort-result");
+    await expect(card.getByLabel("3 of 3 stars. Moves 6, target 10.")).toBeVisible();
+    await expect(card.getByText("Moves 6 · Target 10")).toBeVisible();
+    // The completion is sent once the rank line shows, as in the test above.
+    await expect(
+      page.getByText("Saved as Tester · #3 on the leaderboard"),
+    ).toBeVisible({ timeout: 10_000 });
+    expect(captured.completions[0]).toMatchObject({ result: { stars: 3 } });
+
+    await card.getByRole("button", { name: "Change Level" }).click();
+    await expect(
+      page.getByRole("button", { name: "Level 1, 3 of 3 stars", exact: true }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByRole("heading", { name: "Chapter 1" }),
+    ).toBeVisible();
+  });
+
   test("Change Level returns to level select with the next level unlocked", async ({
     page,
   }) => {
@@ -197,7 +220,7 @@ test.describe("Sort Puzzle — win flow", () => {
       .click();
 
     await expect(
-      page.getByRole("button", { name: "Level 2" }),
+      page.getByRole("button", { name: "Level 2", exact: true }),
     ).not.toBeDisabled({
       timeout: 5_000,
     });

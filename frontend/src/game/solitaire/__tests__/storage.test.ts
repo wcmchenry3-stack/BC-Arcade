@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
-import { clearGame, loadGame, saveGame, loadStats, saveStats } from "../storage";
-import { dealGame, applyMove } from "../engine";
+import { clearGame, loadGame, saveGame } from "../storage";
+import { dealGame, applyMove, drawFromStock } from "../engine";
 import type { SolitaireState } from "../types";
 
 const GAME_KEY = "solitaire_game";
@@ -90,6 +90,19 @@ describe("solitaire storage", () => {
     expect(loaded!.tableau.length).toBe(7);
   });
 
+  it("restores a save whose stored events include the removed foundationComplete (#3567)", async () => {
+    const s = seedState();
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...s, _v: 1, events: ["cardPlace", "foundationComplete", "gameWin"] })
+    );
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect("events" in loaded!).toBe(false);
+    // The restored game plays on normally.
+    expect(drawFromStock(loaded!).events).toEqual(["cardFlip"]);
+  });
+
   it("returns null and captures a warning on a corrupt JSON payload", async () => {
     await AsyncStorage.setItem(GAME_KEY, "not-json{{");
     expect(await loadGame()).toBeNull();
@@ -145,7 +158,7 @@ describe("solitaire storage — play clock across a relaunch (#2750)", () => {
   afterEach(() => jest.restoreAllMocks());
 
   it("keeps the play before the save and drops the time until the load", async () => {
-    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(40_000);
+    const nowSpy = jest.spyOn(performance, "now").mockReturnValue(40_000);
     await saveGame({ ...seedState(), startedAt: 10_000, accumulatedMs: 5_000 });
     nowSpy.mockReturnValue(40_000 + 2 * 86_400_000);
     const loaded = await loadGame();
@@ -157,7 +170,7 @@ describe("solitaire storage — play clock across a relaunch (#2750)", () => {
     const old = { ...seedState(), startedAt: 1_000 } as Record<string, unknown>;
     delete old["accumulatedMs"];
     await AsyncStorage.setItem(GAME_KEY, JSON.stringify(old));
-    jest.spyOn(Date, "now").mockReturnValue(172_800_000);
+    jest.spyOn(performance, "now").mockReturnValue(172_800_000);
     const loaded = await loadGame();
     expect(loaded!.accumulatedMs).toBe(0);
     expect(loaded!.startedAt).toBe(172_800_000);
@@ -171,43 +184,5 @@ describe("solitaire storage — play clock across a relaunch (#2750)", () => {
     const loaded = await loadGame();
     expect(loaded!.startedAt).toBeNull();
     expect(loaded!.accumulatedMs).toBe(9_000);
-  });
-});
-
-describe("solitaire stats storage", () => {
-  beforeEach(async () => {
-    await AsyncStorage.clear();
-    (Sentry.captureException as jest.Mock).mockClear();
-  });
-
-  it("returns a zero best when nothing is saved", async () => {
-    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
-  });
-
-  it("saves and loads the best round-trip, storing only the best", async () => {
-    await saveStats({ bestTimeMs: 95000 });
-    expect(await loadStats()).toEqual({ bestTimeMs: 95000 });
-    expect(JSON.parse((await AsyncStorage.getItem("solitaire_stats_v1"))!)).toEqual({
-      bestTimeMs: 95000,
-    });
-  });
-
-  it("returns a zero best on a corrupt payload", async () => {
-    await AsyncStorage.setItem("solitaire_stats_v1", "not-json{");
-    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
-  });
-
-  // #2636: the counters are gone; an older build's record still loads.
-  it("loads the best from a record with the old counters", async () => {
-    await AsyncStorage.setItem(
-      "solitaire_stats_v1",
-      JSON.stringify({ bestTimeMs: 81000, bestMoves: 99, gamesPlayed: 12, gamesWon: 4 })
-    );
-    expect(await loadStats()).toEqual({ bestTimeMs: 81000 });
-  });
-
-  it("coerces a missing best to 0 on a partial payload", async () => {
-    await AsyncStorage.setItem("solitaire_stats_v1", JSON.stringify({ gamesPlayed: 5 }));
-    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
   });
 });

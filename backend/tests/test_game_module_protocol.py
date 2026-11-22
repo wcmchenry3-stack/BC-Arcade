@@ -51,7 +51,7 @@ def test_module_satisfies_protocol(mod) -> None:
         (mahjong_module, True),
         (solitaire_module, True),
         (sudoku_module, True),
-        (cascade_module, False),
+        (cascade_module, True),  # CascadeResult, #3700
         (daily_word_module, True),
         (hearts_module, True),
     ],
@@ -79,7 +79,8 @@ _HAS_WINNER = {
     "solitaire": False,
     "freecell": False,
     "sudoku": False,
-    "cascade": False,
+    # A capstone records win, the lid loss (#3699).
+    "cascade": True,
     "sort": False,
     # #2631: reaching 2048 records a win, a game over before it a loss.
     "twenty48": True,

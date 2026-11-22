@@ -20,3 +20,6 @@ export const DAILYWORD_ABSENT = "#3a3a3c";
 
 /** Letter on a scored tile or key. */
 export const DAILYWORD_LETTER_TEXT = "#ffffff";
+
+/** The win sparkles over the board (#3664). */
+export const DAILYWORD_SPARK = "#ffd76a";

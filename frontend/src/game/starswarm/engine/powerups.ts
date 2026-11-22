@@ -6,6 +6,7 @@
  * that applies a power-up directly (its bomb shares `applyBombBlast` with collection).
  */
 import type {
+  BankablePowerUp,
   Bullet,
   Explosion,
   GunsLevel,
@@ -18,8 +19,10 @@ import type {
 import { recordScore, type ScorePoints } from "../scoreLedger";
 import { launchBuddy } from "./buddy";
 import { applyBombBlast } from "./collisions";
+import { isWaveCleared } from "./extraction";
+import { GUN_LAYOUT } from "./lightningBeam";
 import { tlBuffEnd, tlPickup, tlPlatingUp } from "./waveTimeline";
-import { spawnExplosion } from "./entities";
+import { rockExplosion } from "./entities";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
 import { ROCK_BROKEN } from "./waveCounters";
@@ -29,23 +32,19 @@ import {
   countPickups,
   countSpawned,
   markWaveDev,
+  noteGunsPeak,
   type WaveCounterPath,
 } from "./waveStats";
 import {
   BOMB_FLASH_DURATION,
-  BULLET_C_H,
-  BULLET_C_W,
   BULLET_P_H,
   BULLET_P_VY,
   BULLET_P_W,
   DEFAULT_TUNING,
   GUNS_MAX,
   HULL_MAX,
+  POST_CLEAR_PICKUP_SPEED_MULT,
   POWERUP_DURATION,
-  SPREAD_OFFSET,
-  SPREAD_VX,
-  SUPER_DAMAGE,
-  TWIN_OFFSET,
   type Tuning,
 } from "./tuning";
 
@@ -54,29 +53,22 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * #2488: the bullets one trigger pull produces at a gun level. L1 a single shot; L2 a twin pair;
- * L3 the pair plus a spread pair drifting outward. Lightning's super-state bullets keep their
- * size, damage and piercing at every level — the ladder decides how many, lightning what kind.
+ * #2488: the bullets one trigger pull produces at a gun level, one per gun (`GUN_LAYOUT`): L1 a
+ * single shot; L2 a twin pair; L3 the pair plus a spread pair drifting outward. #3562: Lightning
+ * no longer fires bolts — it fires one beam per gun instead (`lightningBeam.ts`).
  */
-export function playerVolley(x: number, y: number, guns: GunsLevel, isSuper: boolean): Bullet[] {
-  const make = (dx: number, vx: number): Bullet => ({
+export function playerVolley(x: number, y: number, guns: GunsLevel): Bullet[] {
+  return GUN_LAYOUT[guns].map((g) => ({
     id: nextId(),
-    x: x + dx,
+    x: x + g.dx,
     y,
-    vx,
+    vx: g.vx,
     vy: BULLET_P_VY,
-    owner: "player",
-    width: isSuper ? BULLET_C_W : BULLET_P_W,
-    height: isSuper ? BULLET_C_H : BULLET_P_H,
-    damage: isSuper ? SUPER_DAMAGE : 1,
-    piercing: isSuper ? true : undefined,
-    // #2845: Lightning is the explicit armor-piercing exception — multi-hit AND through the field
-    armorPiercing: isSuper ? true : undefined,
-  });
-  if (guns === 1) return [make(0, 0)];
-  const volley = [make(-TWIN_OFFSET, 0), make(TWIN_OFFSET, 0)];
-  if (guns === 3) volley.push(make(-SPREAD_OFFSET, -SPREAD_VX), make(SPREAD_OFFSET, SPREAD_VX));
-  return volley;
+    owner: "player" as const,
+    width: BULLET_P_W,
+    height: BULLET_P_H,
+    damage: 1,
+  }));
 }
 
 /** #2488: ladder changes between two ticks, for the screen's sound and spoken cues. */
@@ -92,6 +84,34 @@ export function upgradeEvents(prev: StarSwarmState, next: StarSwarmState): Upgra
   return out;
 }
 
+/**
+ * #3526: true on the tick a Smart Bomb detonates — on collection during combat, or as the next
+ * wave's first combat tick applies a banked one (`applyBankedPowerUp`) or the dev panel injects
+ * one. Every detonation (re)arms `bombFlashTimer`, which only counts down otherwise, so a rise is
+ * the edge. The screen plays the blast sound and skips the generic explosion sound that tick.
+ */
+export function bombJustDetonated(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return next.bombFlashTimer > prev.bombFlashTimer;
+}
+
+const PICKUP_SOUND_TYPES = ["shield", "lightning", "buddy", "bomb", "salvage", "hull"] as const;
+
+/**
+ * #3526: the pickup collected between two ticks, if any (an ordinary power-up, a salvage crate or
+ * hull plating) — for the pickup sound, which plays when the item is collected, banked (#3512) or
+ * not, and at the top of a ladder (where no upgrade event fires). Reads the wave's `collected`
+ * tally, which counts each collection once; applying a banked power-up later counts nothing, so it
+ * is not announced twice. The tally restarts with each wave, so a wave change never reads as a
+ * rise. If two land on one tick the first in the list above is reported (they share one sound).
+ */
+export function powerUpCollected(prev: StarSwarmState, next: StarSwarmState): PowerUpType | null {
+  const was = prev.waveStats.powerUps.collected;
+  const now = next.waveStats.powerUps.collected;
+  if (was === now) return null;
+  for (const type of PICKUP_SOUND_TYPES) if (now[type] > was[type]) return type;
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Power-ups (#980)
 // ---------------------------------------------------------------------------
@@ -99,9 +119,11 @@ export function upgradeEvents(prev: StarSwarmState, next: StarSwarmState): Upgra
 export function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmState {
   let waveStats = state.waveStats;
   let missed: PowerUp[] | null = null; // #3246: despawned or fell off the bottom
+  // #3512: once the wave is clear, pickups fall and despawn faster (a phase branch, no allocation)
+  const fallMs = isWaveCleared(state) ? dtMs * POST_CLEAR_PICKUP_SPEED_MULT : dtMs;
   const powerUps = mapFilterKeep(
     state.powerUps,
-    (pu) => ({ ...pu, y: pu.y + pu.vy * dtMs, despawnTimer: pu.despawnTimer - dtMs }),
+    (pu) => ({ ...pu, y: pu.y + pu.vy * fallMs, despawnTimer: pu.despawnTimer - fallMs }),
     (pu) => {
       if (pu.despawnTimer > 0 && pu.y - pu.height / 2 < state.canvasH) return true;
       (missed ??= []).push(pu);
@@ -171,7 +193,8 @@ export function applyPowerUp(
     ["powerUps", "collected", type] as WaveCounterPath,
     1
   );
-  return markWaveDev({ ...next, waveStats });
+  // #3510: a dev Salvage raises the wave's Guns high like a collected one
+  return markWaveDev({ ...next, waveStats: noteGunsPeak(waveStats, next.player.guns) });
 }
 
 function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning): StarSwarmState {
@@ -191,7 +214,33 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
     const plated = state.waveTimeline && tlPlatingUp(state.waveTimeline, ms, hull); // #3392
     return { ...state, player: { ...state.player, hull }, waveTimeline: plated };
   }
+  return activatePowerUp({ ...state, waveTimeline }, type, tuning);
+}
 
+/**
+ * #3512: apply the power-up banked during the last wave's clear. Called once, on the
+ * SwoopIn → Playing transition, so it takes effect on the wave's first combat tick: Shield and
+ * Lightning start their full 5 s, Buddy launches, the Smart Bomb fires (normal rules). The
+ * collect belongs to the earlier wave (its `collected` count and PICKUP entry); what the power-up
+ * does belongs to this one (buff time, BUFF_END, Buddy launched, bomb kills), so nothing counts
+ * twice.
+ */
+export function applyBankedPowerUp(state: StarSwarmState, tuning: Tuning): StarSwarmState {
+  const type = state.bankedPowerUp;
+  if (type === null) return state;
+  return activatePowerUp({ ...state, bankedPowerUp: null }, type, tuning);
+}
+
+/**
+ * What an ordinary power-up does once it takes effect, shared by the dev panel (`injectPowerUp`)
+ * and the banked power-up (`applyBankedPowerUp`). It records no PICKUP: the caller owns that.
+ */
+function activatePowerUp(
+  state: StarSwarmState,
+  type: BankablePowerUp,
+  tuning: Tuning
+): StarSwarmState {
+  const waveTimeline = state.waveTimeline;
   if (type === "bomb") {
     const newExplosions: Explosion[] = [...state.explosions];
     const awards: ScorePoints = {}; // #2837
@@ -205,7 +254,7 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       timeline: waveTimeline, // #3392: the blast's Carrier kill follows the PICKUP
     };
     const enemies = applyBombBlast(state, state.enemies, newExplosions, drops, awards, tally);
-    for (const a of state.asteroids) newExplosions.push(spawnExplosion(a.x, a.y)); // #2486
+    for (const a of state.asteroids) newExplosions.push(rockExplosion(a)); // #2486, #3596: dust in the rock's palette
     // #3272: fleeing grunts the blast kills are caught, as in resolvePickupCollection's bomb branch
     let runStats = state.runStats;
     let waveStats = countSpawned(tally.waveStats, drops);
@@ -232,12 +281,8 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
     };
   }
 
-  if (type === "buddy") return { ...launchBuddy(state, tuning), waveTimeline }; // #2845
+  if (type === "buddy") return launchBuddy(state, tuning); // #2845
 
   // lightning or shield: replace any active duration buff
-  return {
-    ...state,
-    activePowerUp: { remainingMs: POWERUP_DURATION, type, shieldAbsorbed: 0 },
-    waveTimeline,
-  };
+  return { ...state, activePowerUp: { remainingMs: POWERUP_DURATION, type, shieldAbsorbed: 0 } };
 }

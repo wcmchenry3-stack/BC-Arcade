@@ -13,14 +13,17 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
+import { TABLE_SLOT_EDGE, TABLE_SLOT_FILL, TABLE_SLOT_MARK } from "../../theme/theme.table";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
+import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
+import { compactIndexFor } from "../../game/_shared/decks/cornerIndex";
 import type { CardGame, PileCard } from "./pileTypes";
 import HintFrame from "./HintFrame";
 
@@ -39,8 +42,17 @@ export interface TableauColumnProps<C extends PileCard> {
   readonly faceDownOffset?: number;
   /** testID of the card at `cardIndex` (Maestro drag sources, #2346). */
   readonly cardTestID: (cardIndex: number, isTop: boolean) => string;
-  /** The card's face, wrapped by the column in its `DraggableCard`. */
-  readonly renderCard: (card: C, cardIndex: number) => React.ReactNode;
+  /**
+   * The card's face, wrapped by the column in its `DraggableCard`. `compactIndex` (#3622) is
+   * the visible stripe of a covered face-up card too short for the stacked corner index; the
+   * game passes it to the card so its deck draws the suit beside the rank.
+   */
+  readonly renderCard: (
+    card: C,
+    cardIndex: number,
+    hint?: string,
+    compactIndex?: number
+  ) => React.ReactNode;
   /** Solitaire: index of the card framed as the hinted move's source. */
   readonly hintFrameIndex?: number;
   /**
@@ -51,15 +63,31 @@ export interface TableauColumnProps<C extends PileCard> {
   /** FreeCell (#3346): frame the top card of a non-empty column as the hint destination. */
   readonly hintDestinationFrame?: boolean;
 
+  /**
+   * The board sits on a felt (#3606): an empty column is a faint outline with
+   * `emptyMarker` (Solitaire's "K") instead of an opaque slot.
+   */
+  readonly onFelt?: boolean;
+  readonly emptyMarker?: string;
+
   // ── per-render state ──
   readonly pile: readonly C[];
   readonly colIndex: number;
   readonly hintDestination?: boolean;
+  /**
+   * The selected card or run can move here (#3606): a green outline on the
+   * destination, and "can move here" in its screen-reader label.
+   */
+  readonly legalTarget?: boolean;
+  /** The hint for a legal target ("Can move here"), in the game's language; the board passes it. */
+  readonly canMoveHereHint?: string;
   readonly onCardPress?: (colIndex: number, cardIndex: number) => void;
   readonly onEmptyPress?: (colIndex: number) => void;
   /** Unique drop-zone ID, e.g. "solitaire-tableau-0"; doubles as its testID. */
   readonly dropId?: string;
   readonly onDrop?: DropHandler;
+  /** The game is over (Solitaire's win, #3572): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
 }
 
 /** FreeCell hint frames (#3346): one source frame over the run, one dashed frame over the top card. */
@@ -97,13 +125,18 @@ export default function TableauColumn<C extends PileCard>({
   hintFrameIndex,
   hintRunFrom,
   hintDestinationFrame = false,
+  onFelt = false,
+  emptyMarker,
   pile,
   colIndex,
   hintDestination = false,
+  legalTarget = false,
+  canMoveHereHint,
   onCardPress,
   onEmptyPress,
   dropId,
   onDrop,
+  locked = false,
 }: TableauColumnProps<C>) {
   const { colors } = useTheme();
   const { t } = useTranslation(ns);
@@ -123,6 +156,9 @@ export default function TableauColumn<C extends PileCard>({
   const hasDrop = dropId !== undefined && onDrop !== undefined;
 
   if (pile.length === 0) {
+    const emptyLabel = t("pile.tableau.empty", { col: colIndex + 1 });
+    const marked = hintDestination || legalTarget;
+    const emptyHint = legalTarget ? canMoveHereHint : undefined;
     const empty = (
       <Pressable
         onPress={onEmptyPress ? () => onEmptyPress(colIndex) : undefined}
@@ -132,14 +168,27 @@ export default function TableauColumn<C extends PileCard>({
             borderRadius: emptyRadius,
             width: cardWidth,
             height: cardHeight,
-            borderColor: hintDestination ? colors.bonus : colors.border,
-            borderWidth: hintDestination ? hintBorderWidth : 1,
-            backgroundColor: colors.background,
+            borderColor: marked ? colors.bonus : onFelt ? TABLE_SLOT_EDGE : colors.border,
+            borderWidth: marked ? hintBorderWidth : 1,
+            backgroundColor: onFelt ? TABLE_SLOT_FILL : colors.background,
           },
         ]}
         accessibilityRole="button"
-        accessibilityLabel={t("pile.tableau.empty", { col: colIndex + 1 })}
-      />
+        accessibilityLabel={emptyLabel}
+        accessibilityHint={emptyHint}
+        testID={legalTarget ? `${dropId ?? "tableau"}-target` : undefined}
+      >
+        {emptyMarker !== undefined ? (
+          <Text
+            style={[styles.emptyMarker, { color: TABLE_SLOT_MARK, fontSize: cardWidth * 0.5 }]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            testID={`${dropId ?? "tableau"}-marker`}
+          >
+            {emptyMarker}
+          </Text>
+        ) : null}
+      </Pressable>
     );
     if (hasDrop) {
       return (
@@ -147,7 +196,10 @@ export default function TableauColumn<C extends PileCard>({
           id={dropId!}
           testID={dropId}
           onDrop={onDrop!}
-          highlightStyle={highlightStyle}
+          // Layout-neutral: this DropTarget only wraps the fixed-size empty
+          // slot (#3532). The filled column below has a fixed size, so its
+          // border is already inside its box.
+          highlightStyle={dropHighlightStyle(colors.accent, emptyRadius)}
           dimStyle={dimStyle}
         >
           {empty}
@@ -163,9 +215,36 @@ export default function TableauColumn<C extends PileCard>({
     offsets.push(acc);
     acc += card.faceUp === false ? faceDownOffset : faceUpOffset;
   }
+  // The compact corner index (#3622), from each card's real stripe: only a covered face-up
+  // card whose stripe is too short for the stacked index gets it, never the top card.
+  const compact = pile.map((card, i) =>
+    i === pile.length - 1 || card.faceUp === false
+      ? undefined
+      : compactIndexFor((offsets[i + 1] ?? 0) - (offsets[i] ?? 0))
+  );
   const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
   const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
   const pileLabel = t("pile.tableau.label", { col: colIndex + 1, count: pile.length });
+  // The hint goes on the destination's top card, the element a screen reader lands on.
+  const topHint = legalTarget ? canMoveHereHint : undefined;
+  const targetOutline = legalTarget ? (
+    <View
+      pointerEvents="none"
+      accessible={false}
+      importantForAccessibility="no"
+      testID={`${dropId ?? "tableau"}-target`}
+      style={{
+        position: "absolute",
+        left: 0,
+        top: offsets[pile.length - 1] ?? 0,
+        width: cardWidth,
+        height: cardHeight,
+        borderRadius: emptyRadius,
+        borderWidth: 3,
+        borderColor: colors.bonus,
+      }}
+    />
+  ) : null;
   const hintOverlays = (
     <HintOverlays
       offsets={offsets}
@@ -178,12 +257,16 @@ export default function TableauColumn<C extends PileCard>({
   const cards = pile.map((card, cardIndex) => {
     const isTop = cardIndex === pile.length - 1;
     const handlePress = onCardPress ? () => onCardPress(colIndex, cardIndex) : undefined;
-    const dragCards = pile.slice(cardIndex).map((c) => ({
+    // stackTop: the ghost fans the run with this pile's real offsets (#3531).
+    const runTop = offsets[cardIndex] ?? 0;
+    const dragCards = pile.slice(cardIndex).map((c, i) => ({
       suit: c.suit,
       rank: c.rank,
       faceDown: c.faceUp === false,
       width: cardWidth,
       height: cardHeight,
+      stackTop: (offsets[cardIndex + i] ?? 0) - runTop,
+      compactIndex: compact[cardIndex + i],
     }));
     // A buried card shows only a stripe; stretch its hit area down over it.
     const stripeHeight = isTop ? 0 : (offsets[cardIndex + 1] ?? 0) - (offsets[cardIndex] ?? 0);
@@ -205,10 +288,10 @@ export default function TableauColumn<C extends PileCard>({
         onTap={handlePress}
         dragCards={dragCards}
         dragSource={{ game, type: "tableau", col: colIndex, fromIndex: cardIndex }}
-        draggable={card.faceUp !== false}
+        draggable={!locked && card.faceUp !== false}
         hitSlop={hitSlop}
       >
-        {renderCard(card, cardIndex)}
+        {renderCard(card, cardIndex, isTop ? topHint : undefined, compact[cardIndex])}
       </DraggableCard>
     );
   });
@@ -226,6 +309,7 @@ export default function TableauColumn<C extends PileCard>({
         <View style={StyleSheet.absoluteFill} accessibilityLabel={pileLabel}>
           {cards}
           {hintOverlays}
+          {targetOutline}
         </View>
       </DropTarget>
     );
@@ -235,6 +319,7 @@ export default function TableauColumn<C extends PileCard>({
     <View style={containerStyle} accessibilityLabel={pileLabel}>
       {cards}
       {hintOverlays}
+      {targetOutline}
     </View>
   );
 }
@@ -243,6 +328,12 @@ const styles = StyleSheet.create({
   empty: {
     borderWidth: 1,
     borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyMarker: {
+    fontWeight: "700",
+    textAlign: "center",
   },
   cardSlot: {
     position: "absolute",

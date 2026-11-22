@@ -1,0 +1,202 @@
+/**
+ * #3934: keyboard aiming for Cascade on web. With the board focused: Left / Right move the aim one
+ * step (`MOTION.aim.keyStep`), Shift + arrow a big step (`keyStepBig`), Space or Enter drops at the
+ * aim, Escape cancels it. The first arrow starts aiming from the spawner's centre.
+ *
+ * It writes the same aim shared values as a drag (`useAimGesture`), so the board's guide, the
+ * glides and Reduce Motion are the drag's, with no drawing code of their own. The drop goes
+ * through the screen's drop path (`onDrop`, `handleTap`), so every gate applies there (the
+ * cooldown, `canDrop()`, settling, game over, away); a refused aimed drop glides the piece back,
+ * as a refused release does. Arrows move the aim while a drop is gated (as a drag may); only
+ * `enabled` (game over) silences the keys.
+ *
+ * Web only: on iOS and Android `attach` does nothing and the board is not focusable. The listeners
+ * go on the DOM node (React Native's View has no key props); `attach` is a callback ref.
+ * No haptic, and nothing per frame: a key press is a few shared-value writes on the JS thread.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
+import { AIM_STATE } from "../../game/cascade/aim";
+import { WALL_THICKNESS, WORLD_WIDTH } from "../../game/cascade/constants";
+import { SPAWNER } from "../../game/cascade/lidVisuals";
+import { MOTION } from "../../game/cascade/motion";
+import type { BoardMotionValues } from "./useBoardMotion";
+
+/** The slice of a DOM KeyboardEvent the handler reads. */
+export interface AimKeyEvent {
+  readonly key: string;
+  readonly shiftKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly altKey: boolean;
+  readonly metaKey: boolean;
+  readonly repeat?: boolean;
+  preventDefault(): void;
+}
+
+/** The slice of a DOM element `attach` uses. */
+export interface AimKeyTarget {
+  addEventListener(type: string, listener: (e: never) => void): void;
+  removeEventListener(type: string, listener: (e: never) => void): void;
+  setAttribute?(name: string, value: string): void;
+  matches?(selector: string): boolean;
+}
+
+export interface AimKeyboardOptions {
+  readonly values: BoardMotionValues;
+  readonly wake: () => void;
+  /** False while play cannot take input (game over, a win): the keys do nothing. */
+  readonly enabled: boolean;
+  /** The screen's drop path (aim-area's `drop`): the world x, and whether it was aimed. */
+  readonly onDrop: (worldX: number, aimed: boolean) => void;
+}
+
+/** The aim x one step on, kept between the walls (the drop clamps by the piece's radius). */
+export function aimKeyStepX(x: number, direction: -1 | 1, big: boolean): number {
+  const step = big ? MOTION.aim.keyStepBig : MOTION.aim.keyStep;
+  return Math.max(WALL_THICKNESS, Math.min(WORLD_WIDTH - WALL_THICKNESS, x + direction * step));
+}
+
+const HANDLED = new Set(["ArrowLeft", "ArrowRight", " ", "Enter"]);
+
+export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOptions) {
+  const { aimState, aimX, aimAt, aimFromX, pointerDown } = values;
+  // True while the keyboard owns the aim (a drag's aim is never moved by keys).
+  const keyAiming = useRef(false);
+  // The x the keyboard last wrote: a pointer that aimed since has moved `aimX` or the state.
+  const lastKeyX = useRef(Number.NaN);
+  const [focusVisible, setFocusVisible] = useState(false);
+  const cleanup = useRef<(() => void) | null>(null);
+
+  /** True while the keyboard still owns the aim: nothing else wrote it since the last key. */
+  const owns = useCallback(() => {
+    if (
+      keyAiming.current &&
+      (aimState.get() !== AIM_STATE.aiming || aimX.get() !== lastKeyX.current)
+    )
+      keyAiming.current = false; // a pointer took over (B1)
+    return keyAiming.current;
+  }, [aimState, aimX]);
+
+  const cancel = useCallback(() => {
+    if (!owns()) return false;
+    keyAiming.current = false;
+    aimFromX.set(aimX.get());
+    aimState.set(AIM_STATE.cancelled);
+    aimAt.set(Number.NaN); // the UI thread stamps "now" (useBoardMotion)
+    wake();
+    return true;
+  }, [aimAt, aimFromX, aimState, aimX, owns, wake]);
+
+  const step = useCallback(
+    (e: AimKeyEvent, mine: boolean) => {
+      const from = mine ? aimX.get() : SPAWNER.cx;
+      const next = aimKeyStepX(from, e.key === "ArrowLeft" ? -1 : 1, e.shiftKey);
+      lastKeyX.current = next;
+      aimX.set(next);
+      if (!mine) {
+        keyAiming.current = true;
+        aimState.set(AIM_STATE.aiming);
+        aimAt.set(Number.NaN);
+      }
+    },
+    [aimAt, aimState, aimX]
+  );
+
+  const handleKey = useCallback(
+    (e: AimKeyEvent): void => {
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      // Game over, or a finger / mouse owns the aim (down, or aiming): the page must not scroll
+      // under Space or the arrows, but nothing else happens.
+      const mine = owns();
+      const state = aimState.get();
+      const pointer =
+        pointerDown.get() || state === AIM_STATE.pressed || (state === AIM_STATE.aiming && !mine);
+      if (!enabled || pointer) {
+        if (HANDLED.has(e.key)) e.preventDefault();
+        return;
+      }
+      setFocusVisible(true); // a key press is keyboard use, whatever focused the board (S1)
+      switch (e.key) {
+        case "ArrowLeft":
+        case "ArrowRight": {
+          e.preventDefault();
+          step(e, mine);
+          wake();
+          return;
+        }
+        case " ":
+        case "Enter": {
+          e.preventDefault();
+          if (e.repeat) return;
+          if (mine) {
+            keyAiming.current = false;
+            const x = aimX.get();
+            // The release fades the guide; a refused drop glides back (the area's `drop`).
+            aimState.set(AIM_STATE.released);
+            aimAt.set(Number.NaN);
+            wake();
+            onDrop(x, true);
+          } else {
+            onDrop(SPAWNER.cx, false); // no aim: the middle, as the accessibility action does
+          }
+          return;
+        }
+        case "Escape":
+          if (cancel()) e.preventDefault();
+          return;
+        default:
+          return;
+      }
+    },
+    [aimAt, aimState, aimX, cancel, enabled, onDrop, owns, pointerDown, step, wake]
+  );
+
+  // The latest handler, so the DOM listener never goes stale.
+  const handler = useRef(handleKey);
+  const cancelRef = useRef(cancel);
+  useEffect(() => {
+    handler.current = handleKey;
+    cancelRef.current = cancel;
+  }, [handleKey, cancel]);
+
+  const attach = useCallback((node: unknown) => {
+    cleanup.current?.();
+    cleanup.current = null;
+    const el = node as AimKeyTarget | null;
+    if (Platform.OS !== "web" || !el || typeof el.addEventListener !== "function") return;
+    const onKeyDown = (e: AimKeyEvent) => handler.current(e);
+    const onFocus = () => {
+      // Only a keyboard focus draws the ring, not a click (`:focus-visible`).
+      let visible = true;
+      try {
+        visible = el.matches?.(":focus-visible") ?? true;
+      } catch {
+        visible = true;
+      }
+      setFocusVisible(visible);
+    };
+    const onBlur = () => {
+      setFocusVisible(false);
+      cancelRef.current(); // focus left mid-aim: the aim is abandoned, nothing drops
+    };
+    el.setAttribute?.(
+      "aria-keyshortcuts",
+      "ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Space Enter Escape"
+    );
+    el.addEventListener("keydown", onKeyDown as (e: never) => void);
+    el.addEventListener("focus", onFocus);
+    el.addEventListener("blur", onBlur);
+    cleanup.current = () => {
+      el.removeEventListener("keydown", onKeyDown as (e: never) => void);
+      el.removeEventListener("focus", onFocus);
+      el.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
+  // Game over while the keyboard aims: drop the aim.
+  useEffect(() => {
+    if (!enabled) cancel();
+  }, [enabled, cancel]);
+
+  return { attach, focusVisible, handleKey, webKeyboard: Platform.OS === "web" };
+}

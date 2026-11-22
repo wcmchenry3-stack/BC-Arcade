@@ -751,3 +751,21 @@ def test_non_dict_pacing_and_odd_flags_do_not_crash():
     _summary(events, 2)["pacing"]["start"] = 5
     text = "\n".join(replay.render(events))
     assert "[single]" in text and "wave 7 died" in text
+
+
+def test_the_died_wave_says_when_the_lethal_hit_landed():
+    """#3535: ``damage.deathPhase`` is printed under the died wave's hits; cleared waves have none."""
+    text = "\n".join(replay.render(_fixture()))
+    wave7 = text[text.index("wave 7 died") :]
+    lines = [ln.strip() for ln in wave7.splitlines()]
+    hits = lines.index("hits: bullet plating 1, rock life 1, ram life 1  deathCause: ram")
+    assert lines[hits + 1] == "deathPhase: combat"
+    assert text.count("deathPhase:") == 1
+
+
+def test_a_hostile_death_phase_is_escaped():
+    events = _fixture()
+    _summary(events, 7)["damage"]["deathPhase"] = "\x1b[2J"
+    text = "\n".join(replay.render(events))
+    assert "\x1b" not in text
+    assert "deathPhase: \\u001b[2J" in text

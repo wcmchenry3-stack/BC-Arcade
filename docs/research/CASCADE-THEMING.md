@@ -1,3 +1,9 @@
+> **Research record, not canonical.** This file is a research or design record kept for its reasoning. It does not define Cascade's rules and parts of it describe designs that no longer exist. The canonical, current specification is [`docs/games/cascade.md`](../games/cascade.md).
+
+> **Superseded by #3698.** Cascade's pieces are now drawn in code (`frontend/src/game/cascade/art/`); the sprite pipeline, the image files and the scripts this document describes are deleted. See [`docs/games/cascade.md`](../games/cascade-decisions.md#art-3698). Kept for the history only.
+
+> **Historical research, not the current contract.** Current Cascade behaviour lives in [`docs/games/cascade.md`](../games/cascade.md); the rework is tracked in epic #3033.
+
 # Cascade — New Theme Onboarding Guide
 
 This document captures everything learned building the `fruits` and `cosmos` theme sets. Follow it in order. Each phase has validation gates; do not advance past a gate until it passes.
@@ -282,8 +288,8 @@ npx jest --testPathPattern="fruitAssets|fruitVertices"
 
 | File                                                      | Purpose                                           |
 | --------------------------------------------------------- | ------------------------------------------------- |
-| `tools/assets/remove_backgrounds.py`                  | Background removal; may need a new mode per theme |
-| `tools/assets/extract_vertices.py`                    | Hull + sprite metadata extraction                 |
+| `tools/assets/remove_backgrounds.py`                      | Background removal; may need a new mode per theme |
+| `tools/assets/extract_vertices.py`                        | Hull + sprite metadata extraction                 |
 | `frontend/assets/{theme}-vertices.json`                   | Runtime vertex/sprite data                        |
 | `frontend/assets/{theme}-icons/*.png`                     | Processed PNG assets                              |
 | `frontend/src/theme/fruitSets.ts`                         | Tier definitions per theme                        |

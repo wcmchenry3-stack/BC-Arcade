@@ -1,21 +1,43 @@
 /**
- * Sort's saved progress, level cache and best moves, through the shared
- * `storageSlot` (#2987). Until #2987 every failure here was swallowed
- * unreported (or, for the writes, rejected to callers that ignored it); now
- * each is reported to Sentry under `sort.storage`, and no call rejects.
- * What is stored, and what each load returns, is unchanged.
+ * Sort's saved progress, through the shared `storageSlot` (#2987), and its
+ * best moves, through the shared personal best (#3821). Until #2987 every
+ * failure here was swallowed unreported (or, for the writes, rejected to
+ * callers that ignored it); now each is reported to Sentry (progress under
+ * `sort.storage`, bests under `personalBest`), and no call rejects.
+ *
+ * Both are numbered by the level catalog (#2761). The catalog version stored
+ * next to them, and the move from the random levels before it, belong to
+ * `catalogMigration.ts`. The levels ship in the app, so there is no longer a
+ * cache of them (`@sort/levels_cache`, which the migration removes).
  */
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
 import type { SortState } from "./types";
-import type { LevelsResponse } from "./api";
 import { bestOf } from "../_shared/bestOf";
+import { readBests, recordBests } from "../_shared/personalBest";
 import { createJsonSlot } from "../_shared/storageSlot";
 
 export interface SortProgress {
   readonly unlockedLevel: number;
   readonly currentLevelId: number | null;
   readonly currentState: SortState | null;
+  /**
+   * With a level in progress (#3386): the replay chunks handed to the recorder
+   * so far (`SortReplay.unit`), so a resumed session carries its unit numbers
+   * on (`resumeAt`). At `SORT_MAX_UNITS` the level's replay is stopped for good.
+   * Missing on saves from before replay recording: such a board is not recorded.
+   */
+  readonly replayUnit?: number;
+  /**
+   * The actions collected and not yet handed over when the board was saved
+   * (`SortReplay.pending`). Above 0 on a load, a kill lost them: the replay
+   * stops rather than carry on past the hole.
+   */
+  readonly replayPending?: number;
+  /**
+   * The recorder session the board's replay went to (#3386). A Continue carries
+   * the replay on only when the session it resumes is this one: a resume can
+   * adopt another level's killed session. Missing on older saves: not recorded.
+   */
+  readonly replayGameId?: string;
 }
 
 const SUBSYSTEM = "sort.storage";
@@ -37,33 +59,58 @@ const progressSlot = createJsonSlot<SortProgress>({
   readFailureIsError: true,
 });
 
-export const { save: saveProgress, clear: clearGame } = progressSlot;
+export const { clear: clearGame } = progressSlot;
 
-export async function loadProgress(): Promise<SortProgress> {
-  return (await progressSlot.load()) ?? DEFAULT;
+/**
+ * While true, `saveProgress` writes nothing: the stored save belongs to a
+ * catalog this build doesn't know (a newer build's, reachable only on a web
+ * rollback), so the session plays from in-memory defaults and leaves it be
+ * (#2761). Set by `migrateToCatalog`.
+ */
+let progressWritesPaused = false;
+
+export function pauseProgressWrites(paused: boolean): void {
+  progressWritesPaused = paused;
 }
 
-const levelsCacheSlot = createJsonSlot<LevelsResponse>({
-  key: "@sort/levels_cache",
-  subsystem: SUBSYSTEM,
-  isValid: (p): p is LevelsResponse => isObject(p),
-  corruptMessage: "sort.storage: corrupt levels cache, discarding",
-  readFailureIsError: true,
-});
+export async function saveProgress(progress: SortProgress): Promise<void> {
+  if (progressWritesPaused) return;
+  await progressSlot.save(progress);
+}
 
-export const { save: saveLevelsCache, load: loadLevelsCache } = levelsCacheSlot;
+const isCount = (x: unknown): x is number => typeof x === "number" && Number.isInteger(x) && x >= 0;
+
+const isGameId = (x: unknown): x is string => typeof x === "string" && x.length > 0;
+
+export async function loadProgress(): Promise<SortProgress> {
+  const loaded = await progressSlot.load();
+  if (!loaded) return DEFAULT;
+  // A replay count or game id of the wrong shape reads as missing: the board is not recorded.
+  const { replayUnit, replayPending, replayGameId, ...rest } = loaded;
+  return {
+    ...rest,
+    ...(isCount(replayUnit) ? { replayUnit } : {}),
+    ...(isCount(replayPending) ? { replayPending } : {}),
+    ...(isGameId(replayGameId) ? { replayGameId } : {}),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Best moves per level (#2512) — shown as "Best" on the result card, and
-// summed into the result's `total_moves` (#2625), which the server records but
-// no longer ranks (#2746).
+// summed into the result's `total_moves` (#2625): the leaderboard's tie-break,
+// dropped in #2746 while levels were random and back with the catalog (#2761).
 //
 // The screen keeps the bests in memory (loaded with it, merged on Retry) and
 // decides every solve from there; storage only mirrors them. Nothing reads
 // storage to decide a solve, so a failed read can never overwrite the bests.
+//
+// Stored in the shared personal best (#3821, `_shared/personalBest.ts`, game
+// `"sort"`, variant = level id): `personal_best_v1:sort`. The older
+// `@sort/best_moves` is moved in on the first read once the save is on the
+// level catalog (`catalogMigration.ts` runs first), the better value per level
+// winning, and removed only after that write lands. Failures are reported by
+// the shared module (subsystem `personalBest`).
 // ---------------------------------------------------------------------------
-
-const BEST_MOVES_KEY = "@sort/best_moves";
 
 /** Fewest moves per solved level, keyed by level id. */
 export type BestMoves = Readonly<Record<string, number>>;
@@ -73,45 +120,24 @@ function isMoveCount(value: unknown): value is number {
 }
 
 /**
- * The stored best moves (`@sort/best_moves`). `null` when storage could not
- * be read: the caller must then not write over what it can't see. A missing
- * or corrupt value reads as no bests, since nothing in it can be recovered.
+ * The stored best moves. `null` when storage could not be read (or holds a
+ * newer build's record): the caller must then not write over what it can't
+ * see. A missing or corrupt value reads as no bests, since nothing in it can
+ * be recovered. Call only after `migrateToCatalog` has returned `"current"`.
  */
-export async function loadBestMoves(): Promise<BestMoves | null> {
-  let raw: string | null;
-  try {
-    raw = await AsyncStorage.getItem(BEST_MOVES_KEY);
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op: "loadBestMoves" } });
-    return null;
-  }
-  try {
-    const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const bests: Record<string, number> = {};
-    for (const [level, moves] of Object.entries(parsed)) {
-      if (isMoveCount(moves)) bests[level] = moves;
-    }
-    return bests;
-  } catch (e) {
-    Sentry.captureMessage("sort.storage: corrupt best moves, reading as none", {
-      level: "warning",
-      tags: { subsystem: SUBSYSTEM, op: "loadBestMoves" },
-      extra: { error: String(e), key: BEST_MOVES_KEY },
-    });
-    return {};
-  }
+export function loadBestMoves(): Promise<BestMoves | null> {
+  return readBests("sort");
 }
 
-/** Replaces the stored bests with `bests`. Best-effort: resolves false on failure (reported). */
-export async function saveBestMoves(bests: BestMoves): Promise<boolean> {
-  try {
-    await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify(bests));
-    return true;
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op: "saveBestMoves" } });
-    return false;
-  }
+/**
+ * Mirrors `bests` to storage: merged into the stored bests, the fewer moves
+ * per level winning, in one write (none when nothing improves). The screen's
+ * bests already hold the stored ones, so this stores exactly them.
+ * Best-effort: resolves false when storage couldn't be read or the write
+ * failed (reported).
+ */
+export function saveBestMoves(bests: BestMoves): Promise<boolean> {
+  return recordBests("sort", bests);
 }
 
 /** Both sets of bests in one: the lower value per level wins. Pure. */
@@ -164,9 +190,9 @@ export function highestSolvedLevel(bests: BestMoves): number {
 /**
  * The result's `total_moves` (#2625): the sum of the best moves of every level
  * from 1 to `throughLevel`. `null` when one of them has no best on record
- * (progress made before #2512 kept bests), so a partial sum is never sent.
- * It was the leaderboard tie-break until #2746; the server now records it
- * without ranking it, since levels are random per request.
+ * (progress made before #2512 kept bests, or carried over from the random
+ * levels, #2761), so a partial sum is never sent. It breaks ties on level on
+ * the leaderboard (#2761).
  */
 export function totalBestMoves(bests: BestMoves, throughLevel: number): number | null {
   let total = 0;

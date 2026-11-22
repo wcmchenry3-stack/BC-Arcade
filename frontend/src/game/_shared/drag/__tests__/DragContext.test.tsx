@@ -168,6 +168,42 @@ describe("DragContext", () => {
     expect(onDrop).toHaveBeenCalledWith(dragSource, dragCards);
   });
 
+  // #3572: Solitaire settles a drop from where the ghost was let go.
+  it("endDrag hands the zone the ghost's offset when the drop carries one", async () => {
+    const onDrop = jest.fn<boolean, Parameters<DropHandler>>().mockReturnValue(true);
+
+    function StartEndTrigger() {
+      const { startDrag, endDrag, registerDropZone, updateDropZoneLayout } = useDragContext();
+      React.useEffect(() => {
+        registerDropZone("zone-off", { onDrop });
+        updateDropZoneLayout("zone-off", { x: 0, y: 0, width: 1000, height: 1000 });
+      }, [registerDropZone, updateDropZoneLayout]); // onDrop: one jest.fn for the test
+      return (
+        <>
+          <Text accessibilityLabel="start-off" onPress={() => startDrag(dragSource, dragCards)}>
+            start
+          </Text>
+          <Text accessibilityLabel="end-off" onPress={() => endDrag(500, 500, { dx: 30, dy: -40 })}>
+            end
+          </Text>
+        </>
+      );
+    }
+
+    const { getByLabelText } = await render(
+      <DragProvider>
+        <ThemeProvider>
+          <StartEndTrigger />
+        </ThemeProvider>
+      </DragProvider>
+    );
+
+    await fireEvent.press(getByLabelText("start-off"));
+    await fireEvent.press(getByLabelText("end-off"));
+
+    expect(onDrop).toHaveBeenCalledWith(dragSource, dragCards, { dx: 30, dy: -40 });
+  });
+
   it("endDrag snaps back when finger is outside all cached bounds", async () => {
     const withSpring = jest.spyOn(Reanimated, "withSpring");
 

@@ -3,12 +3,13 @@ import "./src/i18n/i18n";
 import React, { Suspense, useEffect, useRef } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFonts } from "expo-font";
-import { SpaceGrotesk_400Regular, SpaceGrotesk_700Bold } from "@expo-google-fonts/space-grotesk";
-import {
-  Manrope_400Regular,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
-} from "@expo-google-fonts/manrope";
+// Per-weight subpath imports: the package barrels require every weight's .ttf, so Metro would
+// package all of them (12 files, +648 KB). Import only the weights typography.ts uses (#3839).
+import { SpaceGrotesk_400Regular } from "@expo-google-fonts/space-grotesk/400Regular";
+import { SpaceGrotesk_700Bold } from "@expo-google-fonts/space-grotesk/700Bold";
+import { Manrope_400Regular } from "@expo-google-fonts/manrope/400Regular";
+import { Manrope_600SemiBold } from "@expo-google-fonts/manrope/600SemiBold";
+import { Manrope_700Bold } from "@expo-google-fonts/manrope/700Bold";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer, useNavigation } from "@react-navigation/native";
@@ -44,13 +45,16 @@ import { YachtScorecardProvider } from "./src/game/yacht/ScorecardContext";
 import { SessionLogger } from "./src/components/FeedbackWidget/SessionLogger";
 import { installSentryConsoleErrorCapture } from "./src/utils/sentryConsoleError";
 import {
+  SCREENSHOT_OPTIONS,
   makeDropSimulatorEvents,
   resolveSentryEnvironment,
+  shouldAttachScreenshot,
   shouldInitSentry,
   shouldTrackAppHangs,
 } from "./src/utils/sentryConfig";
 import { sentryDialAllows, sentryDialFilter } from "./src/utils/sentryDial";
 import { LazyScreens } from "./src/utils/lazyScreens";
+import { DragGhostHost } from "./src/game/_shared/drag/DragGhostHost";
 import type {
   RootStackParamList,
   HomeStackParamList,
@@ -76,6 +80,12 @@ if (!shouldInitSentry()) {
       environment,
       sendDefaultPii: false,
       enableAppHangTracking: shouldTrackAppHangs(),
+      // Screenshots for the `cards.offTable` report only (#3653). The JS integration asks
+      // `beforeScreenshot` per event; `attachScreenshot` stays off, because it would also
+      // turn on the native SDKs' screenshots for native crashes and errors, which never ask.
+      integrations: (defaults) => [...defaults, Sentry.screenshotIntegration()],
+      beforeScreenshot: (event) => shouldAttachScreenshot(event),
+      screenshot: SCREENSHOT_OPTIONS,
       beforeSend: (event) => {
         // The server's dial (#3437) runs after the simulator filter: off drops all
         // but `fatal`, a rate keeps that share. A dropped error upgrades no replay.
@@ -338,6 +348,11 @@ function AppInner() {
                           )}
                         </Stack.Navigator>
                       </NavigationContainer>
+                      {/* The card-game drag ghost (#3531): full window, above the
+                        navigator, in RNGH's coordinate origin (its native parent is
+                        the GestureHandlerRootView; no provider here renders a view).
+                        Renders nothing while no drag is active. */}
+                      <DragGhostHost />
                     </YachtScorecardProvider>
                   </HeartsRoundsProvider>
                 </BlackjackGameProvider>

@@ -114,21 +114,25 @@ async function renderScreen(nav = mockNav()) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // clearAllMocks keeps implementations and queued *Once values, so a
+  // mockResolvedValue(...) set by one test leaks into whichever test runs next
+  // (#3752). Reset loadGame to its documented default: no saved game.
+  (loadGame as jest.Mock).mockReset();
+  (loadGame as jest.Mock).mockResolvedValue(null);
   mockStartGame.mockReturnValue("game-uuid-test");
 });
 
 // ---------------------------------------------------------------------------
-// Auto-redirect to BettingScreen when phase is betting
+// #3580 — one table screen: betting is on this screen, no redirect
 // ---------------------------------------------------------------------------
 
-describe("BlackjackTableScreen — phase redirect", () => {
-  it("calls navigation.replace('BlackjackBetting') when loaded in betting phase (default)", async () => {
-    // Default loadGame returns null → newGame() → betting phase
+describe("BlackjackTableScreen — betting on the table (#3580)", () => {
+  it("shows the table picker in betting phase (default) without leaving the screen", async () => {
+    // Default loadGame returns null → newGame() → betting phase, no table yet
     const nav = mockNav();
     await renderScreen(nav);
-    await waitFor(() => {
-      expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
-    });
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 });
 
@@ -139,6 +143,12 @@ describe("BlackjackTableScreen — phase redirect", () => {
 describe("BlackjackTableScreen — player phase", () => {
   beforeEach(() => {
     (loadGame as jest.Mock).mockResolvedValue(makePlayerPhaseState());
+  });
+
+  it("shows the dev panel's DEV button in a dev build (#3576)", async () => {
+    await renderScreen();
+    await screen.findByText("Hit");
+    expect(screen.getByText("DEV")).toBeTruthy();
   });
 
   it("⋯ menu Scorecard item (#2636) opens the blackjack live view", async () => {
@@ -191,8 +201,8 @@ describe("BlackjackTableScreen — player phase", () => {
     });
     await waitFor(() => {
       const hit = screen.queryByText("Hit");
-      const nextHand = screen.queryByText("Next Hand");
-      expect(hit || nextHand).toBeTruthy();
+      const rebet = screen.queryByText("Rebet");
+      expect(hit || rebet).toBeTruthy();
     });
   });
 });
@@ -206,37 +216,41 @@ describe("BlackjackTableScreen — result phase", () => {
     (loadGame as jest.Mock).mockResolvedValue(makeResultPhaseState());
   });
 
-  it("shows Next Hand and Quit buttons in result phase", async () => {
+  it("shows the result dock (Change, Rebet, 2×) in result phase (#3580)", async () => {
     await renderScreen();
-    await screen.findByText("Next Hand");
-    expect(screen.getByText("Quit")).toBeTruthy();
+    await screen.findByText("Rebet");
+    expect(screen.getByText("Change")).toBeTruthy();
+    expect(screen.getByText("2×")).toBeTruthy();
   });
 
   it("chip balance is visible during result phase", async () => {
     (loadGame as jest.Mock).mockResolvedValue(makeResultPhaseState(true));
     await renderScreen();
-    await screen.findByText("Next Hand");
+    await screen.findByText("Rebet");
     expect(screen.queryByLabelText(/goal progress:/i)).toBeTruthy();
   });
 
-  it("Quit button calls goBack()", async () => {
+  it("the header's back button returns to the lobby (Quit is gone, #3580)", async () => {
     const nav = mockNav();
     await renderScreen(nav);
-    await screen.findByText("Next Hand");
-    await fireEvent.press(screen.getByLabelText(/quit/i));
-    expect(nav.goBack).toHaveBeenCalled();
+    await screen.findByText("Rebet");
+    expect(screen.queryByText("Quit")).toBeNull();
+    await fireEvent.press(screen.getByLabelText("Go back to home screen"));
+    expect(nav.popToTop).toHaveBeenCalled();
   });
 
-  it("Next Hand calls navigation.replace('BlackjackBetting') via phase change", async () => {
+  it("Change opens the next hand's betting on the same screen (#3580)", async () => {
+    // A run with a goal: a pushed hand at the opening stack would otherwise
+    // read as "no table picked yet" and show the table picker.
+    (loadGame as jest.Mock).mockResolvedValue(makeResultPhaseState(true));
     const nav = mockNav();
     await renderScreen(nav);
-    const nextHandBtn = await screen.findByText("Next Hand", {}, { timeout: 5000 });
+    const change = await screen.findByLabelText(/^Change bet/, {}, { timeout: 5000 });
     await act(async () => {
-      await fireEvent.press(nextHandBtn);
+      await fireEvent.press(change);
     });
-    await waitFor(() => {
-      expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
-    });
+    expect(await screen.findByText("Deal")).toBeTruthy();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 });
 
@@ -275,14 +289,16 @@ describe("BlackjackTableScreen — out of chips (#2507)", () => {
     expect(card.getByText("Win rate")).toBeTruthy();
   });
 
-  it("Play Again starts a fresh session on the betting screen, like New Game", async () => {
+  it("Play Again starts a fresh session at the table picker, like New Game", async () => {
     const nav = mockNav();
     await renderScreen(nav);
     const card = within(await screen.findByTestId("blackjack-result"));
     await act(async () => {
       await fireEvent.press(card.getByRole("button", { name: "Play Again" }));
     });
-    expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
+    // One table screen (#3580): the picker shows here; no screen swap.
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
   it("Home returns to the lobby", async () => {
@@ -297,11 +313,11 @@ describe("BlackjackTableScreen — out of chips (#2507)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #498 — New Game mid-session from TableScreen should redirect to Betting
+// #498 — New Game mid-session returns to the table picker (on this screen, #3580)
 // ---------------------------------------------------------------------------
 
-describe("BlackjackTableScreen — new game redirect (#498)", () => {
-  it("handlePlayAgain from player phase triggers navigation.replace('BlackjackBetting')", async () => {
+describe("BlackjackTableScreen — new game (#498)", () => {
+  it("handlePlayAgain from player phase shows the table picker on the same screen", async () => {
     (loadGame as jest.Mock).mockResolvedValue(makePlayerPhaseState());
     const nav = mockNav();
     await render(
@@ -313,16 +329,13 @@ describe("BlackjackTableScreen — new game redirect (#498)", () => {
       </ThemeProvider>
     );
     await screen.findByText("Hit");
-    // Sanity: we're on player phase so the effect has not redirected yet.
-    expect(nav.replace).not.toHaveBeenCalled();
 
     await act(() => {
       getCtx().handlePlayAgain();
     });
 
-    await waitFor(() => {
-      expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
-    });
+    expect(await screen.findByText("CHOOSE A TABLE")).toBeTruthy();
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 });
 
@@ -425,7 +438,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     for (const key of ["best_run_chips", "total_runs", "runs_completed", "current_table"]) {
       expect(meta).not.toHaveProperty(key);
     }
-    expect(eventData).toEqual({ starting_chips: 1000 });
+    expect(eventData).toEqual({ starting_chips: 1000, engine_version: 1 });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
     }
@@ -436,6 +449,18 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     await renderWithConsumer(dead);
     await settle();
     expect(mockStartGame).not.toHaveBeenCalled();
+  });
+
+  it("does not start or resume a session for a fresh game saved at the table picker (#3580)", async () => {
+    // The app was killed while the picker showed: a saved fresh game (no goal,
+    // limits matching no table). Relaunching shows the picker and records nothing.
+    await renderWithConsumer(engineNewGame());
+    await settle();
+    const ctx = (window as unknown as { __bj: ReturnType<typeof useBlackjackGame> }).__bj;
+    expect(ctx.tablePickPending).toBe(true);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockResumeGame).not.toHaveBeenCalled();
+    expect(mockMarkStarted).not.toHaveBeenCalled();
   });
 
   const CARD = /^[A2-9TJQK][SHDC]$/;
@@ -870,7 +895,11 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     });
 
     await waitFor(() => {
-      expect(mockStartGame).toHaveBeenCalledWith("blackjack", {}, { starting_chips: 1000 });
+      expect(mockStartGame).toHaveBeenCalledWith(
+        "blackjack",
+        {},
+        { starting_chips: 1000, engine_version: 1 }
+      );
     });
   });
 

@@ -2,6 +2,12 @@ appId: com.buffingchi.games
 ---
 # Deterministic drag-and-drop regression coverage (see #2346).
 #
+# Drag invariant (#3532): after every swipe, _shared/assert-drag-ok.yaml checks
+# the debug overlay's `drag-check: ok` line for that drag (`drag #N`), so the
+# flow fails when the dragged card leaves the finger, not only when the move
+# ends up wrong. Rejected drops (snap-back) must read `ok` too. It runs once
+# per Android/iOS swipe pair, after the platform blocks.
+#
 # Test builds (EXPO_PUBLIC_TEST_HOOKS=1) always deal seed 44 from the winnable
 # seed bank — see `isTestBuild()`/`pickSeed()` in
 # frontend/src/game/freecell/engine.ts. Seed 44 (not the bank's first entry)
@@ -11,9 +17,51 @@ appId: com.buffingchi.games
 # have one without extra setup moves. Every card below is therefore known
 # ahead of time, so each drag asserts one exact outcome.
 #
-# Fixed deal (seed 44) relevant columns, computed via `dealGame(44)`:
+# Fixed deal (seed 44) relevant columns, computed via `dealGame(44)`
+# (re-checked 2026-11-03):
 #   col0 top: K♠ (7 cards)      col1 top: 8♠ (7 cards)
 #   col3 top: 6♣, then 7♥ (7 cards)   col7 top: A♥ (6 cards)
+#
+# ── Why the swipes use screen percentages (#2366) ──────────────────────────
+# Maestro's `swipe` (v1.39.13, YamlSwipe.kt) has no element-to-element form:
+# it takes `direction`, `from:` element + `direction`, or `start`/`end`
+# coordinates. The old `from:`/`to:` pairs failed to parse, which also
+# stopped every other flow in this directory from running. `start`/`end`
+# must be literal numbers at parse time (no `${...}`), so they are derived
+# from the board layout on the CI emulator (pixel_6: 1080x2400 px at 2.625,
+# i.e. 411x914 dp; Maestro's percentages are of the full real display):
+# Felt-table layout (#3607, game/freecell/layout.ts), from the geometry:
+#   x: felt 6 dp from each side, 1 dp rim -> 397 dp inside on Android. Cards
+#      are (397 - 24 padding - 7 x 4 gap) / 8 = 43 dp wide (61 tall), board
+#      8 x 43 + 7 x 4 = 372 dp, centred -> left edge 19.5 dp; column c centre
+#      = 41 + 47c. The free cells (columns 0-3) and the foundations (columns
+#      4-7: spades, hearts, diamonds, clubs) are 0.92 of a card, 39 x 56 dp,
+#      each at its column's left edge: centre 39 + 47c.
+#   y: T (the status bar / top inset) + AppHeader 64 -> stat line 28 -> 4 dp
+#      gap -> felt, 1 dp rim, 12 dp padding -> top row at T+109 (56 dp) ->
+#      12 dp gap -> tableau at T+177. The face-up step is 0.72 of the card,
+#      43 dp, for every column here (they are far from the height limit), so
+#      card i of a column starts at T+177+43i.
+#   T: 24 dp is the assumed status bar (as in solitaire/drag.yaml), but the
+#      pre-#3607 calibration of this flow (run 41591394915, free cell 1 at
+#      y 155-212 dp under an 99 dp header + stat row) implies about 50 dp.
+#      Every Android point below is picked to land in the same element for
+#      T = 24 and T = 50 alike, and its comment gives both.
+# Drop hit-testing uses the finger position against each legal zone's bounds
+# inflated by 35% (DragContext snapRadiusFraction), so each drop point has
+# roughly +-20 dp of slack. The largest unknown is the status bar height: if
+# CI shows the drops landing short or long, the job's "Maestro failure
+# details" step (e2e/maestro/diagnose.py) prints the real bounds of every
+# freecell-/solitaire- element in the failure-time hierarchy; adjust from
+# those. Every source and target is waited on by id first, so a missing
+# element fails loudly before the swipe.
+# Outcome checks use card testIDs, not the column's "Tableau column N, M
+# cards" label: cards/TableauColumn.tsx puts that label on a plain View with
+# no other native-forcing prop, and React Native's view flattening
+# (ViewShadowNode.cpp: accessibilityLabel alone doesn't form a view) drops it
+# on Android, so Maestro never sees it (run 41582095051). A card testID
+# `freecell-col-<c>-card-<i>` exists only while the column holds that card and it isn't the top
+# one (the top card is `freecell-col-<c>-top`).
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -28,17 +76,48 @@ appId: com.buffingchi.games
 # --- tableau-to-foundation -----------------------------------------------
 # col7's top card is already an Ace at deal time (foundations start empty,
 # so any Ace is always a valid foundation move) — independent of every other
-# step below, so it's safe to run first.
+# step below, so it's safe to run first. Any foundation accepts the drop
+# (FreeCellBoard's handleDropToFoundation ignores which pile); this aims at
+# the hearts pile (2nd foundation).
+#   from col7 top (A♥, card 5, T+392..T+453): x 370 dp = 90%,
+#        y 50% = 457 dp (T=24: 416-477; T=50: 442-503)
+#   to   hearts foundation (column 5, T+109..T+165): x 274 dp = 67%,
+#        y 19% = 174 dp (T=24: 133-189; T=50: 159-215)
 - extendedWaitUntil:
     visible:
       id: "freecell-col-7-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "freecell-col-7-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "freecell-foundation-hearts"
-    duration: 600
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "90%, 50%"
+          end: "67%, 19%"
+          duration: 600
+# iOS (402x874 pt, iOS 26 sim; top inset 62 pt, derived from the pre-#3607
+#   run's board area [12,160]): felt 388 pt inside, cards 42 x 60 pt, board
+#   364 pt from x 19, column c centre 40 + 46c; top row 38 x 54 pt at y 171,
+#   tableau from y 237 with a 43 pt step. col7 top = card 5 [341,452][383,512],
+#   centre 482 -> 90%,55%; foundation-hearts (column 5) [249,171][287,225],
+#   centre (268,198) -> 67%,23%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "90%, 55%"
+          end: "67%, 23%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "1"
 - extendedWaitUntil:
     visible:
       id: "freecell-foundation-hearts-card"
@@ -49,16 +128,40 @@ appId: com.buffingchi.games
 # At game start all 4 freecell slots are always empty and every column has
 # cards, so this move is always valid — a reliable probe of the drag gesture
 # path.
+#   from col0 top (K♠, card 6, T+435..T+496): x 41 dp = 10%,
+#        y 55% = 503 dp (T=24: 459-520; T=50: 485-546)
+#   to   free cell 0 (x 19.5-58.5, T+109..T+165): x 10%, y 19%
 - extendedWaitUntil:
     visible:
       id: "freecell-col-0-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "freecell-col-0-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "freecell-slot-0"
-    duration: 600
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "10%, 55%"
+          end: "10%, 19%"
+          duration: 600
+# iOS: col-0-top (card 6) [19,495][61,555] centre (40,525) = 10%,60%;
+#   freecell-slot-0 [19,171][57,225] centre (38,198) = 10%,23%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "10%, 60%"
+          end: "10%, 23%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "2"
 - extendedWaitUntil:
     visible:
       id: "freecell-slot-0-card"
@@ -69,44 +172,109 @@ appId: com.buffingchi.games
 # col3's cards at index 5 (7♥) and 6 (6♣, top) form a valid alternating-color
 # descending run. col1's untouched top (8♠) accepts the run's head (7♥) —
 # dragging from the run's first card (index 5) carries both cards together.
+#   The grab must hit card 5's visible strip, not card 4 (whose run is not
+#   valid: that snapped back in run 41586461179). col3 card 5's strip is
+#   T+392..T+435 (T=24: 416-459; T=50: 442-485): y 49% = 448 dp sits in both.
+#   x col3 centre 182 dp = 44%.
+#   to   col1 (7 cards, T+177..T+496): x 88 dp = 21%, y 45% = 411 dp.
 - extendedWaitUntil:
     visible:
       id: "freecell-col-3-card-5"
     timeout: 3000
-- swipe:
-    from:
-      id: "freecell-col-3-card-5"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "freecell-tableau-1"
-    duration: 600
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "44%, 49%"
+          end: "21%, 45%"
+          duration: 600
+# iOS: col3 x 157-199 (centre 178 = 44%). Card 5 (7♥) shows y 452-495,
+#   centre 473 = 54%; card 4 above it (y 409-452) doesn't head a valid run.
+#   Drop inside the whole-column zone freecell-tableau-1 [65,237][107,555]:
+#   (86,437) = 21%,50%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "44%, 54%"
+          end: "21%, 50%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "3"
+- waitForAnimationToEnd
+# col1 now 9 cards (card 7 is no longer the top); col3 down to 5 (card 4 is
+# its top now, so `-card-4` is gone while `-card-3` stays).
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 2, 9 cards"
+      id: "freecell-col-1-card-7"
     timeout: 3000
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 4, 5 cards"
+      id: "freecell-col-3-card-3"
+    timeout: 3000
+- extendedWaitUntil:
+    notVisible:
+      id: "freecell-col-3-card-4"
     timeout: 3000
 - takeScreenshot: freecell-drag-supermove
 
 # --- near-miss snap radius test (existing coverage) -----------------------
-# col1's top is now 6♣ (the supermove's top card). Drag from column 1 top to
-# a position offset from freecell slot 1, ~30% outside its bounds. The snap
+# col1's top is now 6♣ (the supermove's top card). Drop it just outside free
+# cell 1, above its top edge but inside the 35% snap inflation. The snap
 # radius (default 0.35) should accept the drop even though the finger lands
-# outside the exact bounds.
+# outside the exact bounds. Slot 0 is full, so slot 1 is the closest legal zone.
+#   freecell-slot-1 is T+109..T+165 (56 dp), so its inflated zone starts
+#   0.35 x 56 = 19.6 dp above it, at T+89.
+#   from col1 top (6♣, card 8, T+521..T+582): x 88 dp = 21%,
+#        y 64% = 585 dp (T=24: 545-606; T=50: 571-632)
+#   to   free cell 1: x 86 dp = 21%, y 16% = 146 dp. With T = 50 that is
+#        13 dp above the slot, inside the 139-159 dp band (the near miss);
+#        with T = 24 it lands inside the slot (133-189), so the drop still
+#        succeeds but is not a near miss. Pinning the near miss for T = 24
+#        (13% = 119 dp) would miss the zone entirely if T is 50; recalibrate
+#        from the first CI hierarchy.
 - extendedWaitUntil:
     visible:
       id: "freecell-col-1-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "freecell-col-1-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "freecell-slot-1"
-    duration: 600
-    offsetEnd:
-      x: 30
-      y: 20
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "21%, 64%"
+          end: "21%, 16%"
+          duration: 600
+# iOS: col1 now 9 cards, top = card 8 at y 237 + 8*43 = 581-641, centre
+#   611 = 70%. freecell-slot-1 [65,171][103,225] (54 pt) inflates up to
+#   171 - 0.35*54 = 152 pt; 18% = 157 pt sits in the 152-171 band, 14 pt
+#   above the slot. x 84 = 21%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "21%, 70%"
+          end: "21%, 18%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "4"
 - extendedWaitUntil:
     visible:
       id: "freecell-slot-1-card"
@@ -117,15 +285,35 @@ appId: com.buffingchi.games
 # The 6♣ just parked in slot 1 can go right back onto col1, which now shows
 # 7♥ on top (exposed once the supermove's 6♣ was pulled off in the previous
 # step) — opposite color, descending rank.
-- swipe:
-    from:
-      id: "freecell-slot-1-card"
-    to:
-      id: "freecell-tableau-1"
-    duration: 600
+#   from free cell 1 (T+109..T+165): x 86 dp = 21%, y 19% = 174 dp
+#   to   col1 (8 cards, T+177..T+539): x 88 dp = 21%, y 45% = 411 dp
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "21%, 19%"
+          end: "21%, 45%"
+          duration: 600
+# iOS: freecell-slot-1 centre (84,198) = 21%,23%; col1 (8 cards) spans
+#   y 237-598; (86,437) = 21%,50%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "21%, 23%"
+          end: "21%, 50%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "5"
+# col1 back to 9 cards: card 7 is covered again.
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 2, 9 cards"
+      id: "freecell-col-1-card-7"
     timeout: 3000
 - extendedWaitUntil:
     notVisible:

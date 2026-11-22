@@ -21,33 +21,14 @@ import type { Grid, NoteDigit, SudokuCell, SudokuState, Variant } from "./types"
 import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 import { recomputeConflicts } from "./engine";
 import { variantConfig } from "./types";
+import {
+  SUDOKU_GAME_KEY,
+  looksValid,
+  type SerializedCell,
+  type SerializedState,
+} from "./savedShape";
 
 const SUBSYSTEM = "sudoku.storage";
-
-interface SerializedCell {
-  value: number;
-  given: boolean;
-  notes: number[];
-  isError: boolean;
-}
-
-interface SerializedState {
-  _v: 1;
-  variant?: string;
-  difficulty: string;
-  puzzle: string;
-  solution: string;
-  grid: SerializedCell[][];
-  selectedRow: number | null;
-  selectedCol: number | null;
-  notesMode: boolean;
-  errorCount: number;
-  isComplete: boolean;
-  undoStack: Array<Omit<SerializedState, "undoStack"> & { undoStack: [] }>;
-  /** Replay entries recorded so far (#3288); absent on older saves. */
-  entryCount?: number;
-  replayRows?: number;
-}
 
 function serializeCell(c: SudokuCell): SerializedCell {
   return {
@@ -123,39 +104,6 @@ function restoreSnapshot(p: Omit<SerializedState, "undoStack">): Omit<SudokuStat
   };
 }
 
-/** Minimal structural validation — enough to catch truncated payloads
- * and version bumps without pulling in a schema library. */
-function looksValid(p: unknown): p is SerializedState {
-  if (p === null || typeof p !== "object") return false;
-  const o = p as Partial<SerializedState>;
-  if (o._v !== 1) return false;
-  if (o.difficulty !== "easy" && o.difficulty !== "medium" && o.difficulty !== "hard") {
-    return false;
-  }
-  const variant = o.variant ?? "classic";
-  if (variant !== "classic" && variant !== "mini") return false;
-  const size = variant === "mini" ? 6 : 9;
-  const total = size * size;
-  if (typeof o.puzzle !== "string" || o.puzzle.length !== total) return false;
-  if (typeof o.solution !== "string" || o.solution.length !== total) return false;
-  if (!Array.isArray(o.grid) || o.grid.length !== size) return false;
-  for (const row of o.grid) {
-    if (!Array.isArray(row) || row.length !== size) return false;
-    for (const cell of row) {
-      if (cell === null || typeof cell !== "object") return false;
-      if (typeof (cell as SerializedCell).value !== "number") return false;
-      if (typeof (cell as SerializedCell).given !== "boolean") return false;
-      if (!Array.isArray((cell as SerializedCell).notes)) return false;
-      if (typeof (cell as SerializedCell).isError !== "boolean") return false;
-    }
-  }
-  if (typeof o.notesMode !== "boolean") return false;
-  if (typeof o.errorCount !== "number") return false;
-  if (typeof o.isComplete !== "boolean") return false;
-  if (!Array.isArray(o.undoStack)) return false;
-  return true;
-}
-
 function restoreState(parsed: SerializedState): SudokuState {
   return {
     ...restoreSnapshot(parsed),
@@ -182,7 +130,7 @@ export const {
   load: loadGame,
   clear: clearGame,
 } = createJsonSlot<SudokuState, SerializedState>({
-  key: "sudoku_game",
+  key: SUDOKU_GAME_KEY,
   subsystem: SUBSYSTEM,
   isValid: looksValid,
   invalidWarning: () => ({ message: "sudoku.storage: invalid payload shape, discarding" }),
@@ -193,80 +141,10 @@ export const {
   beforeSave: serializeState,
 });
 
-// ---------------------------------------------------------------------------
-// Stats persistence (#762, #748)
-// ---------------------------------------------------------------------------
-
-/**
- * The device's cached best time for one puzzle kind, for the result card's
- * best time and "New best" badge only (#2636); the player's history is the
- * Stats screen, fed by the server. Older builds also kept `gamesSolved` here:
- * a stored record with it still loads, and the next save drops it.
- */
-export interface DifficultyStats {
-  bestTimeS: number;
-}
-
-export interface VariantStats {
-  easy: DifficultyStats;
-  medium: DifficultyStats;
-  hard: DifficultyStats;
-}
-
-export interface SudokuStats {
-  classic: VariantStats;
-  mini: VariantStats;
-}
-
-const EMPTY_VARIANT_STATS: VariantStats = {
-  easy: { bestTimeS: 0 },
-  medium: { bestTimeS: 0 },
-  hard: { bestTimeS: 0 },
-};
-
-export const EMPTY_SUDOKU_STATS: SudokuStats = {
-  classic: { ...EMPTY_VARIANT_STATS },
-  mini: { ...EMPTY_VARIANT_STATS },
-};
-
-function parseDiffStats(d: unknown): DifficultyStats {
-  if (d === null || typeof d !== "object") return { bestTimeS: 0 };
-  const o = d as Partial<DifficultyStats>;
-  return { bestTimeS: typeof o.bestTimeS === "number" ? o.bestTimeS : 0 };
-}
-
-function parseVariantStats(v: unknown): VariantStats {
-  if (v === null || typeof v !== "object") return { ...EMPTY_VARIANT_STATS };
-  const o = v as Record<string, unknown>;
-  return {
-    easy: parseDiffStats(o.easy),
-    medium: parseDiffStats(o.medium),
-    hard: parseDiffStats(o.hard),
-  };
-}
-
-export const { load: loadStats, save: saveStats } = createRecord<SudokuStats>({
-  key: "sudoku_stats_v1",
-  subsystem: SUBSYSTEM,
-  ops: { load: "loadStats", save: "saveStats" },
-  fallback: () => ({ ...EMPTY_SUDOKU_STATS }),
-  read: (raw) => {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    // Migration: pre-#748 saves have flat { easy, medium, hard } — wrap as classic.
-    if ("classic" in parsed || "mini" in parsed) {
-      return {
-        classic: parseVariantStats(parsed.classic),
-        mini: parseVariantStats(parsed.mini),
-      };
-    }
-    // Old flat format → treat as classic stats.
-    return {
-      classic: parseVariantStats(parsed),
-      mini: { ...EMPTY_VARIANT_STATS },
-    };
-  },
-  write: (stats) => JSON.stringify(stats),
-});
+// The device's best time per puzzle kind (#762, #748), for the result card's best time and "New
+// best" badge, is the shared personal best (`game/_shared/personalBest.ts`, #3757, keyed
+// `sudokuVariant(mode, difficulty)`); its old record `sudoku_stats_v1` is moved in there on the
+// first read.
 
 // ---------------------------------------------------------------------------
 // "Show mistakes" preference (#2943)

@@ -1,5 +1,17 @@
 appId: com.buffingchi.games
 ---
+# Tap-to-move with a hint showing (#2205).
+#
+# Since PR #2128 a single tap on a face-up card only SELECTS it
+# (SolitaireScreen.handleTableauCardPress → setSelection); it no longer
+# auto-moves, and selecting does not clear the hint. The hint clears only when
+# a move is made (engine finalizeAfterMove sets `hint: undefined`). This flow
+# used to assert the old behaviour (hint gone after one tap), so it now checks
+# both halves: the hint survives the selecting tap, and the move clears it.
+#
+# Test builds deal the fixed draw-1 seed 2 (see solitaire/drag.yaml), whose
+# only hint at kickoff is col0's 7♦ onto col3's 8♠ (getHintMoves →
+# tableau-to-tableau fromCol 0, fromIndex 0, toCol 3).
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -10,22 +22,34 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-stock-pile"
     timeout: 8000
-# Use the Hint button to highlight a movable card, then single-tap it.
-# The smart tap path fires resolveAutoMove: unambiguous → auto-executes (move
-# counter increments); ambiguous → selection highlight. Either way the hint
-# source card is no longer highlighted after the tap.
 - tapOn:
     id: "solitaire-hint-button"
+# TableauPile gives the hinted source card testID `solitaire-hint-source`
+# for as long as the hint is active.
 - extendedWaitUntil:
     visible:
       id: "solitaire-hint-source"
     timeout: 3000
 - takeScreenshot: solitaire-tap-automove-hint-highlighted
-# Tap the hint-highlighted card — single tap exercises smart auto-move.
+# Tap 1 selects the 7♦. The hint must still be showing.
 - tapOn:
     id: "solitaire-hint-source"
-- takeScreenshot: solitaire-tap-automove-after-tap
-# After the tap the hint highlight must be gone (card moved or selected clears
-# the hint state). solitaire-hint-source only exists while hint is active.
-- assertNotVisible:
+- assertVisible:
     id: "solitaire-hint-source"
+- takeScreenshot: solitaire-tap-automove-after-select
+# Tap 2 on the hinted destination (col3's face-up 8♠, card index 3) makes
+# the move: col3 grows to 5 cards and the hint clears. Checked by card
+# testID (`solitaire-tableau-3-card-4` exists only with 5+ cards), not by the
+# "Tableau column 4, 5 cards" label, which Android's view flattening drops
+# (see solitaire/drag.yaml).
+- tapOn:
+    id: "solitaire-tableau-3-card-3"
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-3-card-4"
+    timeout: 3000
+- extendedWaitUntil:
+    notVisible:
+      id: "solitaire-hint-source"
+    timeout: 3000
+- takeScreenshot: solitaire-tap-automove-after-move

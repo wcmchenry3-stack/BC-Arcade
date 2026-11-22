@@ -106,6 +106,12 @@ def rebuild(  # noqa: C901 - one branch per op, mirrors the format
         if len(stack) > _UNDO_LIMIT:
             stack.pop(0)
 
+    def prune_peers(cell: int, digit: int) -> None:
+        # a digit or a hint leaves the notes of its row, column and box peers (#3785)
+        for other in range(len(values)):
+            if peer(cell, other):
+                notes[other].discard(digit)
+
     for event in events:
         data = event["data"]
         assert data["i"] == applied, "hole in the entries"
@@ -116,14 +122,11 @@ def rebuild(  # noqa: C901 - one branch per op, mirrors the format
                 push()
                 values[entry[1]] = entry[2]
                 notes[entry[1]].clear()
+                prune_peers(entry[1], entry[2])
                 if len(entry) == 4:
                     errors += 1
             elif op == OP_NOTE:
                 notes[entry[1]] ^= {entry[2]}
-                # the engine also trims the digit from a peer that holds it as its value
-                for other, v in enumerate(values):
-                    if v == entry[2] and peer(entry[1], other):
-                        notes[other].discard(entry[2])
             elif op == OP_ERASE:
                 push()
                 values[entry[1]] = 0
@@ -134,6 +137,7 @@ def rebuild(  # noqa: C901 - one branch per op, mirrors the format
                 push()
                 values[entry[1]] = entry[2]
                 notes[entry[1]].clear()
+                prune_peers(entry[1], entry[2])
             else:  # pragma: no cover - the validator keeps these out
                 raise AssertionError(op)
     return (

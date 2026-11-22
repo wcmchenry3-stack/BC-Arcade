@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
+import { accentAsText } from "./tableAccentText";
 import { TABLE_CONFIGS, TableConfig, isTableUnlocked } from "../../game/blackjack/tables";
 import { RunRecord } from "../../game/blackjack/storage";
 import { loadLastDifficulty } from "../../game/_shared/lastDifficulty";
@@ -63,6 +64,7 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
           const lastPlayed = playable && config.id === lastTableId;
           const prevConfig = idx > 0 ? TABLE_CONFIGS[idx - 1] : null;
           const accentColor = colors[config.accentKey];
+          const accentTextColor = accentAsText(colors, accentColor);
           const tableName = t(config.labelKey as Parameters<typeof t>[0]);
 
           return (
@@ -100,7 +102,7 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                     style={[
                       styles.cardName,
                       {
-                        color: playable ? accentColor : colors.textMuted,
+                        color: playable ? accentTextColor : colors.textMuted,
                         fontFamily: typography.heading,
                       },
                     ]}
@@ -113,7 +115,7 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                 </View>
 
                 {lastPlayed && (
-                  <Text style={[styles.lockHint, { color: accentColor }]}>
+                  <Text style={[styles.lockHint, { color: accentTextColor }]}>
                     {t("tableSelect.lastPlayed")}
                   </Text>
                 )}
@@ -148,7 +150,9 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                   <Text style={[styles.statLabel, { color: colors.textMuted }]}>
                     {t("tableSelect.goal")}
                   </Text>
-                  <Text style={[styles.statValue, { color: playable ? accentColor : colors.text }]}>
+                  <Text
+                    style={[styles.statValue, { color: playable ? accentTextColor : colors.text }]}
+                  >
                     {config.runGoal}
                   </Text>
                 </View>

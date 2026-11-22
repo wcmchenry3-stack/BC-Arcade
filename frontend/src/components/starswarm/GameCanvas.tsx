@@ -1,6 +1,5 @@
 import React, {
   forwardRef,
-  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -16,7 +15,6 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
-import type { LayoutChangeEvent } from "react-native";
 import { Canvas, Group, Picture, createPicture } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -28,7 +26,8 @@ import {
   decayMissionCompleteTimer,
   isBossWave,
   routJustStarted,
-  buddyJustLost,
+  bombJustDetonated,
+  powerUpCollected,
   fleeingCount,
   carrierJustExposed,
   throwAsteroid,
@@ -37,11 +36,12 @@ import {
   carrierBeamJustFired,
   carrierAttackRunJustStarted,
   carrierFinalStandJustStarted,
-  reinforcementsJustLaunched,
+  reinforcementBayJustOpened,
   upgradeEvents,
   waveJustCleared,
   isAutopilot,
   PLAYER_W,
+  clearLightningSweep,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
 import { devRevert } from "../../game/starswarm/waveEvents";
@@ -56,9 +56,22 @@ import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
 import StarfieldLayers from "./StarfieldLayers";
-import PowerUpIndicator, { powerUpTopBelow } from "./PowerUpIndicator";
-import LivesIndicator, { LIVES_TOP_FALLBACK, livesTopBelow } from "./LivesIndicator";
-import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
+import PowerUpIndicator from "./PowerUpIndicator";
+import LivesIndicator from "./LivesIndicator";
+import { deriveHud, hudCues, publishHud } from "../../game/starswarm/render/hud";
+import {
+  HUD_BAR_WIDTH,
+  HUD_CHIP_COLOR,
+  HUD_LAYOUT,
+  HUD_MAX_FONT_SCALE,
+  HUD_TEXT,
+  formatHudNumber,
+  gunsChipText,
+  hullChipText,
+  litBarWidth,
+} from "../../game/starswarm/render/hudStyle";
+import { hudTextStyle } from "./hudTextStyle";
+import { languageOf } from "../../i18n/languageOf";
 import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
 import type { StarfieldState } from "../../game/starswarm/starfield";
@@ -72,24 +85,26 @@ import {
   pickupCues,
   pickupCueFrame,
   pickupCueLabelKey,
+  pickupCueA11yKey,
   collectCueTop,
-  pickupCueColor,
+  cueColor,
   PICKUP_CUE_MS,
 } from "../../game/starswarm/render/pickupCue";
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
-import {
-  STARSWARM_ACCENT,
-  STARSWARM_BONUS_LIFE,
-  STARSWARM_BONUS_LIFE_GLOW,
-  STARSWARM_BOSS_WAVE,
-  STARSWARM_HUD_DIFFICULTY,
-  STARSWARM_HUD_TEXT,
-  STARSWARM_TEXT_OUTLINE,
-} from "../../theme/theme.starswarm";
+import { STARSWARM_HUD_CHIP_FILL } from "../../theme/theme.starswarm";
 import { drawFrame } from "../../game/starswarm/render/drawFrame";
 import type { DrawImages } from "../../game/starswarm/render/drawFrame";
 import { buildFrame } from "../../game/starswarm/render/frame";
 import type { DrawOp } from "../../game/starswarm/render/frame";
+import { DEFAULT_SHIP_ID } from "../../game/starswarm/render/ship";
+import type { ShipId } from "../../game/starswarm/render/ship";
+import { newLoopFlags, updateLoops, type StarSwarmLoop } from "../../game/starswarm/soundLoops";
+import {
+  emitSoundCues,
+  emitTickSounds,
+  type TickSoundSinks,
+  type StarSwarmCue,
+} from "../../game/starswarm/soundCues";
 import type {
   StarSwarmState,
   PowerUpType,
@@ -120,6 +135,11 @@ export interface DevOptions {
   flakDisabled?: boolean;
   /** Grunts never rout when the leaders die (#2489). */
   routDisabled?: boolean;
+  /**
+   * #3510: the run was started by the dev panel's New Game: it opens dev-affected
+   * (`StarSwarmState.devAffected`). The screen sets it only there, and only in DEV_TOOLS builds.
+   */
+  devRun?: boolean;
 }
 
 export interface GameCanvasHandle {
@@ -137,6 +157,12 @@ export interface GameCanvasHandle {
   throwAsteroid: () => void;
   /** Destroy every escort so the Carrier is exposed at once — dev-panel testing (#2491). */
   killEscorts: () => void;
+  /**
+   * #3510: latch the run's dev flag (`StarSwarmState.devAffected`) now — the dev panel's handlers
+   * call it, so the flag (and the screen's Sentry tag) is set on the UI path, not in the frame
+   * loop. A no-op once set.
+   */
+  markDevAffected: () => void;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
   /** #2567: the last second of frame times and React commits, or null when sampling is off. */
@@ -166,9 +192,10 @@ function publishPicture(
   inputs: FrameInputs,
   loaded: ReturnType<typeof loadedSprites>,
   width: number,
-  height: number
+  height: number,
+  ship: ShipId
 ): void {
-  frameSV.value = buildFrame(inputs.game, { loaded, width, height });
+  frameSV.value = buildFrame(inputs.game, { loaded, width, height, ship });
 }
 
 interface Props {
@@ -177,8 +204,15 @@ interface Props {
   onScoreChange?: (score: number) => void;
   onPlayerHit?: () => void;
   onWaveClear?: () => void;
-  onLaserFire?: () => void;
   onExplosion?: () => void;
+  /** #3526: a Smart Bomb detonated this tick (the generic explosion sound is skipped). */
+  onBombBlast?: () => void;
+  /** #3560: a rock broke this tick (the bigger kind wins); the generic explosion skips rock breaks. */
+  onRockBreak?: (kind: "large" | "small") => void;
+  /** #3526: a loop's condition changed (shield active, Buddy on station, grunts fleeing, Lightning active). */
+  onLoopChange?: (loop: StarSwarmLoop, on: boolean) => void;
+  /** #3560: a Shield / Buddy one-shot moment (Shield on / 1 s left / off, Buddy in / out). */
+  onSoundCue?: (cue: StarSwarmCue) => void;
   /** #2490: called once when a boss wave (the Carrier and its escorts, nothing else) begins. */
   onBossWave?: () => void;
   /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
@@ -202,6 +236,11 @@ interface Props {
   resetTick?: number;
   /** Active difficulty tier — passed from the pre-game selector (#1037). */
   difficulty?: DifficultyTier;
+  /**
+   * #3600: the player's chosen ship (cosmetic: only the sprite layers differ). Unset: the default
+   * ship. Read by the renderer only; it never reaches the engine.
+   */
+  ship?: ShipId;
   /** Dev options applied on each reset (wave, infiniteLives). Passed as prop so reset
    *  is reactive and doesn't depend on the imperative ref being non-null. */
   devOptions?: DevOptions;
@@ -218,12 +257,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
   (
     {
       highScore = 0,
+      ship = DEFAULT_SHIP_ID,
       onGameOver,
       onScoreChange,
       onPlayerHit,
       onWaveClear,
-      onLaserFire,
       onExplosion,
+      onBombBlast,
+      onRockBreak,
+      onLoopChange,
+      onSoundCue,
       onBossWave,
       onRout,
       onBuddyLost,
@@ -327,11 +370,28 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onScoreChangeRef = useRef(onScoreChange);
     const onPlayerHitRef = useRef(onPlayerHit);
     const onWaveClearRef = useRef(onWaveClear);
-    const onLaserFireRef = useRef(onLaserFire);
     const onExplosionRef = useRef(onExplosion);
+    const onBombBlastRef = useRef(onBombBlast);
+    const onRockBreakRef = useRef(onRockBreak);
+    const onLoopChangeRef = useRef(onLoopChange);
+    const onSoundCueRef = useRef(onSoundCue);
+    const loopFlagsRef = useRef(newLoopFlags());
+    // created once, so the tick allocates no closure to report a loop edge
+    const emitLoopRef = useRef((loop: StarSwarmLoop, on: boolean) =>
+      onLoopChangeRef.current?.(loop, on)
+    );
+    // created once, like emitLoopRef, so a cue allocates nothing on the tick (#3560)
+    const emitCueRef = useRef((cue: StarSwarmCue) => onSoundCueRef.current?.(cue));
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
     const onBuddyLostRef = useRef(onBuddyLost);
+    // created once so the explosion-family sounds allocate nothing on the tick (#3560)
+    const tickSinksRef = useRef<TickSoundSinks>({
+      bombBlast: () => onBombBlastRef.current?.(),
+      buddyLost: () => onBuddyLostRef.current?.(),
+      explosion: () => onExplosionRef.current?.(),
+      rockBreak: (kind) => onRockBreakRef.current?.(kind),
+    });
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
@@ -347,7 +407,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       const wasPaused = isPausedRef.current;
       isPausedRef.current = isPaused;
-      if (wasPaused && !isPaused) lastFrameTimeRef.current = 0; // prevent delta spike on resume
+      if (wasPaused && !isPaused) {
+        lastFrameTimeRef.current = 0; // prevent delta spike on resume
+        // #3709: the ship may have been moved while paused; don't let Lightning sweep that jump
+        gameRef.current = clearLightningSweep(gameRef.current);
+      }
     }, [isPaused]);
     useEffect(() => {
       onGameOverRef.current = onGameOver;
@@ -362,11 +426,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onWaveClearRef.current = onWaveClear;
     }, [onWaveClear]);
     useEffect(() => {
-      onLaserFireRef.current = onLaserFire;
-    }, [onLaserFire]);
-    useEffect(() => {
       onExplosionRef.current = onExplosion;
     }, [onExplosion]);
+    useEffect(() => {
+      onBombBlastRef.current = onBombBlast;
+    }, [onBombBlast]);
+    useEffect(() => {
+      onRockBreakRef.current = onRockBreak;
+    }, [onRockBreak]);
+    useEffect(() => {
+      onLoopChangeRef.current = onLoopChange;
+    }, [onLoopChange]);
+    useEffect(() => {
+      onSoundCueRef.current = onSoundCue;
+    }, [onSoundCue]);
     useEffect(() => {
       onBossWaveRef.current = onBossWave;
     }, [onBossWave]);
@@ -411,13 +484,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const hudRef = useRef<HudState>(hud);
     // #2847: the pickup cue toast — the label is rare React state, its fade a UI-thread animation
     const [pickupCue, setPickupCue] = useState<PickupCue | null>(null);
-    // #2150: the lives row sits just under the HUD score row, wherever that ends up at the
-    // device font scale (the score text isn't capped), so follow its measured bottom.
-    const [livesTop, setLivesTop] = useState(LIVES_TOP_FALLBACK);
-    const onHudTopLayout = useCallback((e: LayoutChangeEvent) => {
-      const { y, height } = e.nativeEvent.layout;
-      setLivesTop(livesTopBelow(y + height));
-    }, []);
     const pickupCueElapsed = useSharedValue(PICKUP_CUE_MS);
     const pickupCueStyle = useAnimatedStyle(() => {
       const f = pickupCueFrame(pickupCueElapsed.value);
@@ -440,6 +506,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       if (collectCueUp)
         AccessibilityInfo.announceForAccessibility(tRef.current("a11y.collectPowerUps"));
     }, [collectCueUp]);
+    // #3568: the same, once, for the rock-only wait's "crack it" cue
+    const crackCueUp = hud.crackAsteroids;
+    useEffect(() => {
+      if (crackCueUp)
+        AccessibilityInfo.announceForAccessibility(tRef.current("a11y.crackAsteroids"));
+    }, [crackCueUp]);
     // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
     const [initialCues] = useState<HudCues>(() => hudCues(initialFrame.game));
     const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
@@ -448,9 +520,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     cueSVRef.current = { mission: missionOpacitySV, powerUp: powerUpSV };
     const cuesRef = useRef<HudCues>(initialCues);
     const missionStyle = useAnimatedStyle(() => ({ opacity: missionOpacitySV.value }));
-    // translateX, not width: a transform stays off the layout path; the wrap's overflow clips it
-    const powerUpBarStyle = useAnimatedStyle(() => ({
-      transform: [{ translateX: -POWERUP_BAR_WIDTH * (1 - powerUpSV.value) }],
+    // #3598: the 10-segment bar — a clipping window slides left by the unlit width and the lit
+    // segments slide back by the same amount: transforms only, off the layout path
+    const powerUpClipStyle = useAnimatedStyle(() => ({
+      transform: [{ translateX: -(HUD_BAR_WIDTH - litBarWidth(powerUpSV.value)) }],
+    }));
+    const powerUpContentStyle = useAnimatedStyle(() => ({
+      transform: [{ translateX: HUD_BAR_WIDTH - litBarWidth(powerUpSV.value) }],
     }));
     // #2563: the frame last published to the Picture (#2565). The loop publishes only when the
     // next one differs, so a paused or finished game stops publishing entirely.
@@ -460,8 +536,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // derived value re-records only when the list, the image set or the canvas size changes.
     // Seeded with the first frame so the Picture is never blank before the first publish.
     const [initialOps] = useState(() =>
-      buildFrame(initialFrame.game, { loaded: loadedRef.current, width, height })
+      buildFrame(initialFrame.game, { loaded: loadedRef.current, width, height, ship })
     );
+    // #3600: the loop reads the ship through a ref, so a new pick applies from the next publish
+    const shipRef = useRef(ship);
+    shipRef.current = ship;
     const frameSV = useSharedValue<readonly DrawOp[]>(initialOps);
     // Effects and the loop write through a ref: the shared value's identity is stable in the app,
     // and a ref keeps them correct (and out of dependency lists) even where it isn't.
@@ -490,8 +569,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // fallback shapes until it resumed.
     useEffect(() => {
       const { width: w, height: h } = sizeRef.current;
-      publishPicture(frameSVRef.current, publishedRef.current, loadedRef.current, w, h);
+      publishPicture(
+        frameSVRef.current,
+        publishedRef.current,
+        loadedRef.current,
+        w,
+        h,
+        shipRef.current
+      );
     }, [drawImages]);
+
+    // #3600: a new pick (or the stored one arriving late) shows at once, even while paused, behind
+    // the picker or the result card — no frame change or reset publishes it otherwise.
+    useEffect(() => {
+      const { width: w, height: h } = sizeRef.current;
+      publishPicture(
+        frameSVRef.current,
+        publishedRef.current,
+        loadedRef.current,
+        w,
+        h,
+        shipRef.current
+      );
+    }, [ship]);
 
     useImperativeHandle(
       ref,
@@ -514,6 +614,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         },
         killEscorts() {
           killEscortsRef.current = true;
+        },
+        markDevAffected() {
+          if (!gameRef.current.devAffected)
+            gameRef.current = { ...gameRef.current, devAffected: true };
         },
         getState() {
           return gameRef.current;
@@ -540,7 +644,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.difficulty ?? difficultyRef.current,
         opts?.stragglerEnabled,
         undefined,
-        { timelineOn: timelineEnabledRef.current?.() === true } // #3393: decided once per run
+        {
+          timelineOn: timelineEnabledRef.current?.() === true, // #3393: decided once per run
+          ...(opts?.devRun === true ? { devAffected: true } : {}), // #3510
+        }
       );
       sfRef.current = starLayout;
       starClockSVRef.current.value = 0;
@@ -555,6 +662,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevBonusLivesRef.current = gameRef.current.bonusLivesAwarded;
       bonusFlashEndRef.current = 0;
       waveBannerCountdownRef.current = false;
+      loopFlagsRef.current = newLoopFlags(); // #3526
       // #2490: a game that opens on a boss wave (dev wave jump) is announced like a cleared-into one
       if (isBossWave(gameRef.current.wave) && !isPausedRef.current) onBossWaveRef.current?.();
       const fresh: FrameInputs = {
@@ -564,7 +672,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         bonusFlash: false,
       };
       publishedRef.current = fresh;
-      publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
+      publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height, shipRef.current);
       publishHud(fresh, hudRef, setHud, cuesRef, cueSVRef.current);
     }, [resetTick, width, height, starLayout]);
 
@@ -586,7 +694,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         if (triggerPowerUpRef.current) {
           const type = triggerPowerUpRef.current;
           triggerPowerUpRef.current = null;
-          gameRef.current = applyPowerUp(gameRef.current, type);
+          const before = gameRef.current;
+          gameRef.current = applyPowerUp(before, type);
+          // #3526: the dev panel's Smart Bomb detonates outside the tick, so sound it here;
+          // #3560: so do its Shield / Buddy (the tick's prev already includes the injection)
+          emitSoundCues(before, gameRef.current, emitCueRef.current);
+          if (bombJustDetonated(before, gameRef.current)) onBombBlastRef.current?.();
         }
         if (throwAsteroidRef.current) {
           throwAsteroidRef.current = false;
@@ -618,7 +731,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             if (countdownMsRef.current === 0) countdownMsRef.current = null;
           } else {
             try {
-              const prevCooldown = prev.player.shootCooldown;
               // #1039: apply pauseStraggler from devOptions each tick
               const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
               const playerFireDisabled = devOptionsRef.current?.playerFireDisabled ?? false;
@@ -663,15 +775,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 prevScoreRef.current = applied.score;
                 onScoreChangeRef.current?.(applied.score);
               }
-              if (
-                applied.player.shootCooldown > prevCooldown &&
-                applied.activePowerUp?.type === "lightning"
-              ) {
-                onLaserFireRef.current?.();
-              }
-              if (applied.explosions.length > prev.explosions.length) {
-                onExplosionRef.current?.();
-              }
+              // #3526/#3560: bomb blast, Buddy down (#2845), rock break, generic explosion
+              emitTickSounds(prev, applied, tickSinksRef.current);
               if (applied.player.lives < prevLivesRef.current) {
                 if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
               }
@@ -682,7 +787,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               }
               prevBonusLivesRef.current = applied.bonusLivesAwarded;
               const nowType = applied.activePowerUp?.type ?? null;
-              if (prevActivePowerUpRef.current === null && nowType !== null) {
+              // #3526: the pickup sound plays when an ordinary power-up is collected, banked or not. A
+              // buff that rises without a collection (the dev panel) still sounds; the banked power-up
+              // taking effect on the next wave does not (it sounded when it was banked).
+              const collected = powerUpCollected(prev, applied);
+              const applyingBanked = prev.bankedPowerUp !== null && applied.bankedPowerUp === null;
+              if (collected) onPowerUpCollectRef.current?.(collected);
+              else if (
+                prevActivePowerUpRef.current === null &&
+                nowType !== null &&
+                !applyingBanked
+              ) {
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
@@ -692,7 +807,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // #2485
               if (carrierBeamJustStarted(prev, applied)) onCarrierEventRef.current?.("beamCharge");
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
-              if (reinforcementsJustLaunched(prev, applied))
+              // #3561: on the bay-open edge (the telegraph), not the launch 400 ms later
+              if (reinforcementBayJustOpened(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
               // #2843: attack-run telegraph and a final stand after the armor was already down
               if (carrierAttackRunJustStarted(prev, applied))
@@ -703,13 +819,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // #2847: the newest cue wins if two land on one tick
               const cues = pickupCues(prev, applied);
               if (cues.length > 0) showPickupCueRef.current(cues[cues.length - 1]!);
-              // A maxed pickup fires no upgrade event, so announce it here for screen readers.
+              // A maxed pickup fires no upgrade event, so announce it here for screen readers;
+              // #3512: likewise a power-up banked or applied (each fires on one tick only)
               for (const cue of cues) {
-                if (cue.max)
-                  AccessibilityInfo.announceForAccessibility(tRef.current(pickupCueLabelKey(cue)));
+                const a11yKey = pickupCueA11yKey(cue);
+                if (a11yKey) AccessibilityInfo.announceForAccessibility(tRef.current(a11yKey));
               }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
-              if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845
+              // #3526: loops start/stop on their condition's edges only
+              updateLoops(applied, loopFlagsRef.current, emitLoopRef.current);
+              emitSoundCues(prev, applied, emitCueRef.current); // #3560
               // #2842: the wave clears on the last kill — extraction starts (no freeze, #2352);
               // the wave counter bumps later, once the AI has flown the ship out and the field
               // has had its hard reset.
@@ -763,7 +882,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           // #2565: the scene goes to the UI thread as data. #2566: React hears about a frame only
           // when the HUD changed.
           const { width: w, height: h } = sizeRef.current;
-          publishPicture(frameSVRef.current, next, loadedRef.current, w, h);
+          publishPicture(frameSVRef.current, next, loadedRef.current, w, h, shipRef.current);
           publishHud(next, hudRef, setHud, cuesRef, cueSVRef.current);
         }
         id = requestAnimationFrame(loop);
@@ -776,6 +895,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const displayW = Math.round(width * scale);
     const displayH = Math.round(height * scale);
     const hs = Math.max(highScore, hud.score);
+    // #3598 (owner): grouped in the app language's style, Western digits. Formatted only when the
+    // number or the language changes — this render is itself change-gated (sameHud).
+    const lng = languageOf(t);
+    const scoreText = useMemo(() => formatHudNumber(hud.score, lng), [hud.score, lng]);
+    const bestText = useMemo(() => formatHudNumber(hs, lng), [hs, lng]);
 
     return (
       <View style={{ width: displayW, height: displayH }}>
@@ -793,39 +917,36 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           </Group>
         </Canvas>
 
-        {/* HUD overlay — React Native Text over the Skia canvas */}
+        {/* HUD overlay — React Native Text over the Skia canvas: the banners, cues and toasts */}
         <View style={styles.hud} pointerEvents="none">
-          <View style={styles.hudTop} onLayout={onHudTopLayout} testID="starswarm-hud-top">
-            <Text style={styles.hudText}>{t("hud.scoreValue", { score: hud.score })}</Text>
-            <Text style={styles.hudText}>{t("hud.bestValue", { best: hs })}</Text>
-            <Text style={styles.hudText}>{t("hud.waveValue", { wave: hud.wave })}</Text>
-          </View>
-          <View style={styles.hudDifficulty}>
-            <Text style={styles.hudDifficultyText}>
-              {`${t(`tier.${hud.difficulty}`)} ×${difficultyMultiplier(hud.difficulty)}`}
-            </Text>
-            {/* #2488 upgrade ladders */}
-            <Text style={styles.hudDifficultyText}>
-              {`${t("hud.guns")}${hud.guns} · ${t("hud.hull")} ${"◆".repeat(hud.hull) || "–"}`}
-            </Text>
-          </View>
-
-          {/* #2847: "GUNS +1" / "HULL +1" / "GUNS MAX" — non-modal, fades on its own. The spoken
-              cue comes from onUpgrade (or the MAX announcement above), so hide this from screen readers. */}
+          {/* #2847: "GUNS +1" / "HULL +1" / "GUNS MAX" — non-modal, fades on its own. #3512 adds
+              "SHIELD → NEXT WAVE" / "SHIELD UP!" (one line, shrinking to fit). The spoken cue
+              comes from onUpgrade (or the announcements above), so hide this from screen readers.
+              #3598: centred on HUD_LAYOUT.pickupCueCenterY, the slot the web canvas draws it in. */}
           {pickupCue !== null && (
-            <Animated.Text
-              style={[styles.pickupCue, { color: pickupCueColor(pickupCue.kind) }, pickupCueStyle]}
-              accessibilityElementsHidden
-              importantForAccessibility="no-hide-descendants"
-              testID="starswarm-pickup-cue"
-            >
-              {t(pickupCueLabelKey(pickupCue))}
-            </Animated.Text>
+            <View style={styles.pickupCueSlot} pointerEvents="none">
+              <Animated.Text
+                style={[
+                  styles.pickupCue,
+                  { color: cueColor(pickupCue), textShadowColor: cueColor(pickupCue) },
+                  pickupCueStyle,
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                testID="starswarm-pickup-cue"
+              >
+                {t(pickupCueLabelKey(pickupCue))}
+              </Animated.Text>
+            </View>
           )}
 
           {/* #3187: the wave is cleared but pickups are still out — say why it hasn't moved on.
-              Upper third: below the score row and pickup toast, above the ship and the
-              top-left lives/power-up HUD, clear of the centered banners. */}
+              Upper third: below the HUD columns and the pickup toast, above the ship, clear of the
+              centered banners. */}
           {hud.collectPowerUps && (
             <View
               style={[styles.collectCue, { top: collectCueTop(displayH) }]}
@@ -836,10 +957,32 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.6}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
                 accessibilityLabel={t("a11y.collectPowerUps")}
                 testID="starswarm-collect-powerups-cue"
               >
                 {t("phase.collectPowerUps")}
+              </Text>
+            </View>
+          )}
+
+          {/* #3568: the wait holds only for a passing rock — same slot, one at a time with the
+              pickup cue above (the pickup cue wins) */}
+          {hud.crackAsteroids && (
+            <View
+              style={[styles.collectCue, { top: collectCueTop(displayH) }]}
+              pointerEvents="none"
+            >
+              <Text
+                style={styles.collectCueText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+                accessibilityLabel={t("a11y.crackAsteroids")}
+                testID="starswarm-crack-asteroids-cue"
+              >
+                {t("phase.crackAsteroids")}
               </Text>
             </View>
           )}
@@ -855,9 +998,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               {hud.waveBannerCountdown && (
                 <Text
                   style={styles.waveIncomingText}
+                  maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
                 >{`— ${t("hud.waveValue", { wave: hud.wave })} —`}</Text>
               )}
-              <Text style={styles.countdownText}>{hud.countdownDigit}</Text>
+              <Text
+                style={styles.countdownText}
+                allowFontScaling={false}
+                testID="starswarm-countdown"
+              >
+                {hud.countdownDigit}
+              </Text>
             </View>
           )}
 
@@ -869,7 +1019,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           {hud.missionComplete && (
             <View style={styles.phaseOverlay} pointerEvents="none">
               {/* #2566: the fade runs on the UI thread from a shared value */}
-              <Animated.Text style={[styles.overlayTitle, missionStyle]}>
+              <Animated.Text
+                style={[styles.missionTitle, missionStyle]}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+              >
                 {t("phase.missionComplete")}
               </Animated.Text>
             </View>
@@ -878,14 +1031,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           {/* #2489: rout banner — up while grunts are running for the edge */}
           {hud.rout && (
             <View style={styles.phaseOverlay} pointerEvents="none">
-              <Text style={[styles.overlayTitle, styles.bossWaveTitle]}>{t("phase.rout")}</Text>
+              <Text style={styles.bossBannerTitle} maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}>
+                {t("phase.rout")}
+              </Text>
             </View>
           )}
 
           {/* #2490: boss-wave telegraph — up while the Carrier and its escorts swoop in */}
           {hud.bossWave && (
             <View style={styles.phaseOverlay} pointerEvents="none">
-              <Text style={[styles.overlayTitle, styles.bossWaveTitle]}>{t("phase.bossWave")}</Text>
+              <Text style={styles.bossBannerTitle} maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}>
+                {t("phase.bossWave")}
+              </Text>
             </View>
           )}
 
@@ -893,19 +1050,117 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               canvas keeps its final frame behind it. */}
         </View>
 
-        {/* Lives — outside hud to avoid stacking-context conflicts with phaseOverlay children.
-            #2150: top-left under the score, out of the ship's bottom movement band. */}
-        <LivesIndicator lives={hud.lives} top={livesTop} />
+        {/* #3598 (H1-A): the HUD's three top columns, after the overlays so they always draw
+            above them (the lives used to be a separate sibling for the same reason). Each column
+            flows top-down, so a larger font scale pushes what is under it down with it. The HUD
+            does not mirror in RTL (see hudStyle.ts). */}
+        <View style={styles.hudBar} pointerEvents="none" testID="starswarm-hud-top">
+          {/* Top left: SCORE over the score, the GUNS / HULL chips stacked under it */}
+          <View style={styles.hudLeft}>
+            <View accessible accessibilityLabel={t("hud.scoreValue", { score: scoreText })}>
+              <Text
+                style={styles.caption}
+                numberOfLines={1}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+              >
+                {t("hud.scoreLabel")}
+              </Text>
+              <Text
+                style={styles.numeral}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+                testID="starswarm-hud-score"
+              >
+                {scoreText}
+              </Text>
+            </View>
+            {/* #2488 upgrade ladders — words, not colour alone */}
+            <View style={styles.chips} testID="starswarm-hud-chips">
+              <View style={[styles.chip, { borderColor: HUD_CHIP_COLOR.guns }]}>
+                <Text
+                  style={[styles.chipText, { color: HUD_CHIP_COLOR.guns }]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+                >
+                  {gunsChipText(t("hud.guns"), hud.guns)}
+                </Text>
+              </View>
+              <View style={[styles.chip, styles.chipStacked, { borderColor: HUD_CHIP_COLOR.hull }]}>
+                <Text
+                  style={[styles.chipText, { color: HUD_CHIP_COLOR.hull }]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+                >
+                  {hullChipText(t("hud.hull"), hud.hull)}
+                </Text>
+              </View>
+            </View>
+          </View>
 
-        {/* Power-up indicator — outside hud for the same reason as lives.
-            #3476: stacked under the lives row, out of the ship's bottom movement band. */}
-        {hud.powerUp !== null && (
-          <PowerUpIndicator
-            kind={hud.powerUp}
-            top={powerUpTopBelow(livesTop)}
-            barStyle={powerUpBarStyle}
-          />
-        )}
+          {/* Top centre: BEST over the best score, the difficulty line under it */}
+          <View style={styles.hudCenter}>
+            <View accessible accessibilityLabel={t("hud.bestValue", { best: bestText })}>
+              <Text
+                style={[styles.caption, styles.centerText]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+              >
+                {t("hud.bestLabel")}
+              </Text>
+              <Text
+                style={[styles.best, styles.centerText]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+                testID="starswarm-hud-best"
+              >
+                {bestText}
+              </Text>
+            </View>
+            <Text
+              style={[styles.difficulty, styles.centerText]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+              maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+            >
+              {`${t(`tier.${hud.difficulty}`)} ×${difficultyMultiplier(hud.difficulty)}`}
+            </Text>
+          </View>
+
+          {/* Top right: WAVE over the wave number; the lives and the power-up timer under it */}
+          <View style={styles.hudRight}>
+            <View accessible accessibilityLabel={t("hud.waveValue", { wave: hud.wave })}>
+              <Text
+                style={[styles.caption, styles.rightText]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+              >
+                {t("hud.waveLabel")}
+              </Text>
+              <Text
+                style={[styles.numeral, styles.rightText]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={HUD_MAX_FONT_SCALE}
+              >
+                {hud.wave}
+              </Text>
+            </View>
+            <View style={styles.underNumeral}>
+              <LivesIndicator lives={hud.lives} ship={ship} />
+            </View>
+            {hud.powerUp !== null && (
+              <PowerUpIndicator
+                kind={hud.powerUp}
+                clipStyle={powerUpClipStyle}
+                contentStyle={powerUpContentStyle}
+              />
+            )}
+          </View>
+        </View>
       </View>
     );
   }
@@ -926,67 +1181,98 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
   },
-  hudTop: {
+  // #3598: the three top columns. Left and right share the spare width equally, so the centre
+  // column stays centred on the canvas.
+  hudBar: {
+    position: "absolute",
+    top: HUD_LAYOUT.top,
+    left: HUD_LAYOUT.marginX,
+    right: HUD_LAYOUT.marginX,
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
-  hudText: {
-    color: STARSWARM_HUD_TEXT,
-    fontSize: 12,
-    fontWeight: "bold",
-    fontVariant: ["tabular-nums"],
+  hudLeft: {
+    flex: 1,
+    alignItems: "flex-start",
+  },
+  hudCenter: {
+    alignItems: "center",
+    maxWidth: HUD_LAYOUT.centerMaxWidth,
+  },
+  hudRight: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+  caption: hudTextStyle(HUD_TEXT.caption),
+  numeral: hudTextStyle(HUD_TEXT.numeral),
+  best: hudTextStyle(HUD_TEXT.best),
+  difficulty: hudTextStyle(HUD_TEXT.difficulty),
+  centerText: {
+    textAlign: "center",
+  },
+  rightText: {
+    textAlign: "right",
+  },
+  underNumeral: {
+    marginTop: HUD_LAYOUT.underNumeralGap,
+  },
+  chips: {
+    marginTop: HUD_LAYOUT.underNumeralGap,
+    alignItems: "flex-start",
+  },
+  chip: {
+    minWidth: HUD_LAYOUT.chipMinWidth,
+    height: HUD_LAYOUT.chipHeight,
+    paddingHorizontal: HUD_LAYOUT.chipPadX,
+    borderRadius: HUD_LAYOUT.chipRadius,
+    borderWidth: HUD_LAYOUT.chipBorder,
+    backgroundColor: STARSWARM_HUD_CHIP_FILL,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chipStacked: {
+    marginTop: HUD_LAYOUT.chipGap,
+  },
+  chipText: {
+    ...hudTextStyle(HUD_TEXT.chip),
+    textAlign: "center",
   },
   phaseOverlay: {
     ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },
-  overlayTitle: {
-    color: STARSWARM_ACCENT,
-    fontSize: 22,
-    fontWeight: "bold",
+  missionTitle: {
+    ...hudTextStyle(HUD_TEXT.missionComplete),
     textAlign: "center",
   },
-  bossWaveTitle: {
-    color: STARSWARM_BOSS_WAVE,
+  bossBannerTitle: {
+    ...hudTextStyle(HUD_TEXT.bossBanner),
+    textAlign: "center",
   },
   waveIncomingText: {
-    color: STARSWARM_ACCENT,
-    fontSize: 16,
-    fontWeight: "bold",
+    ...hudTextStyle(HUD_TEXT.waveIncoming),
     textAlign: "center",
-    letterSpacing: 1,
     marginBottom: 12,
   },
-  countdownText: {
-    color: STARSWARM_ACCENT,
-    fontSize: 96,
-    fontWeight: "bold",
-    textShadowColor: STARSWARM_ACCENT,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 24,
-  },
+  countdownText: hudTextStyle(HUD_TEXT.countdown),
   bonusLifeOverlay: {
     position: "absolute",
     top: "40%",
     alignSelf: "center",
   },
-  bonusLifeText: {
-    color: STARSWARM_BONUS_LIFE,
-    fontSize: 36,
-    fontWeight: "bold",
-    textShadowColor: STARSWARM_BONUS_LIFE_GLOW,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+  bonusLifeText: hudTextStyle(HUD_TEXT.bonusLife),
+  pickupCueSlot: {
+    position: "absolute",
+    top: HUD_LAYOUT.pickupCueCenterY - HUD_TEXT.pickupCue.lineHeight / 2,
+    left: 0,
+    right: 0,
+    alignItems: "center",
   },
   pickupCue: {
-    alignSelf: "center",
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: "bold",
-    textShadowColor: STARSWARM_TEXT_OUTLINE,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    ...hudTextStyle(HUD_TEXT.pickupCue),
+    maxWidth: "90%", // bounds adjustsFontSizeToFit so a long locale shrinks instead of overflowing
+    textAlign: "center",
   },
   collectCue: {
     position: "absolute",
@@ -995,23 +1281,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   collectCueText: {
-    color: STARSWARM_ACCENT,
-    fontSize: 18,
-    fontWeight: "bold",
-    textAlign: "center",
-    letterSpacing: 1,
-    textShadowColor: STARSWARM_TEXT_OUTLINE,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
-  },
-  hudDifficulty: {
-    alignSelf: "center",
-    marginTop: 2,
-  },
-  hudDifficultyText: {
-    color: STARSWARM_HUD_DIFFICULTY,
-    fontSize: 10,
-    fontWeight: "bold",
+    ...hudTextStyle(HUD_TEXT.collectCue),
     textAlign: "center",
   },
 });

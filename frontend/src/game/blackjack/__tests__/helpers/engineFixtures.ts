@@ -94,3 +94,19 @@ export function splitSetup(opts?: {
     ...emptySplitState(),
   };
 }
+
+/**
+ * A round saved mid-hand by a build from before the dealer's peek (#3741): the player (`player`,
+ * 100 on the bet, 1000 chips) still to act against the dealer's natural (K in the hole, A up).
+ * The peek makes this unreachable in play; such a save is settled on load
+ * (`settleUnpeekedDealerNatural`), and the engine still settles one right if it is played on.
+ * `draws` are the next cards dealt, in order.
+ */
+export function savedAgainstNatural(player: Card[], draws: Card[] = []): EngineState {
+  return {
+    ...stateInPlayer(1000, 100),
+    player_hand: player,
+    dealer_hand: [c("♦", "K"), c("♣", "A")],
+    deck: [...Array(10).fill(c("♠", "5")), ...[...draws].reverse()],
+  };
+}

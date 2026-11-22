@@ -34,6 +34,8 @@ A board declares:
 | `max_value` / partition caps | Sanity bounds for values that are allowed to rank |
 | `qualifying_outcomes` | Optional outcome filter; abandoned rows never qualify |
 | `enabled` | Whether a public board can be opened |
+| `edition` | Optional `(metadata key, integer)`: only rows holding that integer rank (or count as Stats "Best"); raising it resets the board without touching stored rows (Sort's `catalog_version`, #2761) |
+| `edition_switch` | Optional boolean setting that turns `edition` on; while it is off every row ranks (Sort: `SORT_CATALOG_EDITION_ENFORCED`, so the reset waits for the app release) |
 
 A disabled board is still useful: its metric/direction/label can define the per-game "Best" shown in Stats.
 
@@ -43,10 +45,13 @@ A stored session is eligible for a board only when all applicable rules pass:
 
 1. It is **not abandoned**.
 2. If the board declares `qualifying_outcomes`, the row's outcome is one of them.
+   If it declares an `edition` (and its `edition_switch`, if any, is on), the row's metadata holds that integer under that key.
 3. The metric exists and is a sane integer within the board's effective bounds.
 4. Any required partition values resolve to an allowed board.
 5. The player has joined the leaderboards (so has a generated public name; see §4a).
 6. Legacy sentinel anonymous rows are excluded.
+7. A run a dev-panel action touched (`metadata.dev_affected` is JSON `true`, Star Swarm, #3510) is
+   kept but never ranks (`not_dev_affected()` in `games/filters.py`).
 
 A malformed or legacy row can remain in storage without being allowed to rank.
 
@@ -81,7 +86,7 @@ Boards use one ordering rule everywhere: top list, exact rank, and "is this my b
 2. Optional declared `tiebreak`, if a board has one.
 3. Final tie-break: **earlier `received_at` ranks first**: the server time the completion arrived (`games.received_at`); a row without one (only a completion the old instance took during the #2765 deploy) ranks after every row with one, then by `completed_at` (#3225), not the device-reported `completed_at`, which a slow clock or a forged request could set to win every tie (#2765).
 
-No board currently declares a game-specific secondary tie-break. If that changes, the `BoardDefinition` is the single place to add it.
+Sort is the one board with a game-specific tie-break: fewest `total_moves` on the same level (back since its fixed level catalog, #2761). The `BoardDefinition` is the single place to add one.
 
 "Exact rank" means the number of players whose best entry beats yours, plus one.
 
@@ -107,14 +112,14 @@ This table summarizes the generated board configuration on `dev`. Per-game docs 
 | Yacht | Yes | final score | Higher | Max 1575 |
 | 2048 | Yes | final score | Higher | No natural cap declared |
 | Blackjack | **No** | chips / final score for Stats | Higher | Public board disabled |
-| Cascade | Yes | final score | Higher | No natural cap declared |
+| Cascade | Yes | final score (merge score + a win's time bonus, server-computed, #3700) | Higher | No natural cap declared; no tie-break; rows from before #3700 rank by their score |
 | Solitaire | Yes | final score | Higher | Max 1245 |
 | Hearts | Yes | final score | Higher | Max 100 |
 | Sudoku | Yes | final score (base − 10 × illegal moves) | Higher | difficulty + variant; effective caps 100/200/300 by difficulty |
 | Mahjong | Yes | clear time (`duration_ms`), wins only | **Lower** | One board per layout (no default: rows without a layout rank nowhere); clears under 36 s ignored (#2747) |
 | Star Swarm | Yes | final score | Higher | difficulty-tier partitions |
 | FreeCell | Yes | moves / final score | **Lower** | Fewest moves wins |
-| Bottle Sort | Yes | level reached | Higher | Max level 23 |
+| Bottle Sort | Yes | level reached | Higher | Max level 120; ties: fewer total moves; only the current level catalog's rows (#2761) |
 | Daily Word | **No** | guesses used for Stats | **Lower** | Wins only; public board disabled |
 
 When a board's product design changes, update the backend module first and regenerate the frontend vocabulary; do not hand-edit this table independently of code.
@@ -203,6 +208,7 @@ Stats answer: **how have I done in this game over time?**
 - play time;
 - last played;
 - the game's own Best value and label;
+- `best_win_ms`, the fastest plausible win time, for games that opt in (Cascade, #3927);
 - game-specific extras where defined by the module.
 
 The backend uses the game's `BoardDefinition` for the meaning/direction of Best; a game does not need a public board to have a Stats Best.

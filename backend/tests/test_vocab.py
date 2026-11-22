@@ -89,13 +89,11 @@ def test_board_json_turns_pair_tuples_into_records() -> None:
     assert sudoku["partitionDefaults"] == {"variant": "classic"}
     assert sudoku["partitionMaxValues"] == {"difficulty": {"easy": 100, "medium": 200, "hard": 300}}
     sort = gen.board_json(gen.board_for(GameType.SORT))
-    assert sort["tiebreak"] is None  # dropped in #2746
-    assert sort["maxValue"] == 23
-    # No shipped board has a tie-break now: check the pair on a copy that does.
-    with_tiebreak = gen.board_for(GameType.SORT).model_copy(
-        update={"tiebreak": ("total_moves", "asc")}
-    )
-    assert gen.board_json(with_tiebreak)["tiebreak"] == ["total_moves", "asc"]
+    # Dropped in #2746, back with the fixed level catalog (#2761).
+    assert sort["tiebreak"] == ["total_moves", "asc"]
+    assert sort["maxValue"] == 120
+    assert sort["edition"] == ["catalog_version", 1]
+    assert gen.board_json(gen.board_for(GameType.SOLITAIRE))["edition"] is None
     assert gen.board_json(gen.board_for(GameType.DAILY_WORD))["qualifyingOutcomes"] == ["win"]
     starswarm = gen.board_json(gen.board_for(GameType.STARSWARM))
     assert starswarm["partitions"] == ["difficulty_tier"]

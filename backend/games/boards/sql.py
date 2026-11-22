@@ -34,8 +34,9 @@ from games.board import (
     BoardDefinition,
     Direction,
 )
+from games.boards.editions import enforced_edition
 from games.boards.partitions import metric_cap
-from games.filters import not_abandoned
+from games.filters import not_abandoned, not_dev_affected
 from games.ranking import receipt_order
 from players.names import has_display_name
 
@@ -140,6 +141,16 @@ def _ordered(expr: ColumnElement, direction: Direction) -> ColumnElement:
     return expr.desc() if direction == "desc" else expr.asc()
 
 
+def edition_matches(edition: tuple[str, int]) -> ColumnElement:
+    """The row's metadata holds ``edition``'s integer under its key (#2761).
+
+    Read like a metric (``metadata_count``): a string, bool or float never
+    matches, and a row without the key never does either.
+    """
+    key, value = edition
+    return metadata_count(key, MAX_BOARD_VALUE) == value
+
+
 def board_filters(
     board: BoardDefinition,
     game_type_id: int,
@@ -159,6 +170,8 @@ def board_filters(
         metric.is_not(None),
         Game.completed_at.is_not(None),
         not_abandoned(),
+        # #3510: a run a dev-panel action touched is kept, never ranked
+        not_dev_affected(),
         Game.session_id.not_like(f"%{SENTINEL_SESSION_SUFFIX}"),
         # Only players with a display name rank; all their games count (#2624).
         has_display_name(Game.session_id),
@@ -169,6 +182,9 @@ def board_filters(
         filters.append(metric >= board.min_value)
     if board.qualifying_outcomes is not None:
         filters.append(Game.outcome.in_(board.qualifying_outcomes))
+    edition = enforced_edition(board)
+    if edition is not None:
+        filters.append(edition_matches(edition))
     for key, value in partition.items():
         col = Game.game_metadata[key].as_string()
         if value is None:

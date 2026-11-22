@@ -8,12 +8,35 @@
  *   - handleRestart resets score and recreates the engine
  */
 
+import { detectedGesture, type DetectorRender } from "../../test-utils/mockScreenDeps";
 import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
+import { Modal } from "react-native";
+import CascadeCelebration from "../../components/cascade/CascadeCelebration";
+import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
+import {
+  CELEBRATION_CARD_MS,
+  CELEBRATION_CARD_MS_REDUCED,
+  MAX_FRAME_STEP_MS,
+} from "../../game/cascade/celebration";
+import { formatMs } from "../../game/_shared/formatMs";
+import * as pen from "../../game/cascade/art/pen";
+import { __resetArtCachesForTests } from "../../game/cascade/art/sprites";
+import * as celebrationStyles from "../../game/cascade/render/celebrationStyle";
+import { __resetCelebrationStylesForTests } from "../../game/cascade/render/celebrationStyle";
+import * as celebrationHook from "../../components/cascade/useCelebrationStyle";
+import { CELEBRATION_MAX_MS } from "../../components/shared/GameResultModal";
+import { HEADER_FIELD } from "../../game/cascade/render/frame";
+import { CASCADE_TUNING_ID, GROW_IN_STEPS } from "../../game/cascade/constants";
+import { CAPSTONE_TIER } from "../../game/cascade/tiers";
+import { timeBonus } from "../../game/cascade/timeBonus";
 import i18n from "i18next";
+import * as cascadeStorage from "../../game/cascade/storage";
+import { isAppOverlayOpen } from "../../hooks/appOverlay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState } from "react-native";
+import { getBest, storageKey } from "../../game/_shared/personalBest";
+import { AccessibilityInfo, AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 import {
   resetDisplayNameCacheForTests,
@@ -25,11 +48,13 @@ const mockNavigate = jest.fn();
 // Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/
 // Scoreboard screen, #2735).
 const mockNavListeners = new Map<string, Array<() => void>>();
+const mockSetOptions = jest.fn();
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
+    setOptions: (o: unknown) => mockSetOptions(o),
     addListener: jest.fn((event: string, handler: () => void) => {
       mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
       return () => {
@@ -51,23 +76,34 @@ jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+// #3928: the board's press-drag-release gesture, recorded so a test can fire it.
+const mockDetected: DetectorRender[] = [];
+jest.mock("react-native-gesture-handler", () =>
+  mockScreenDeps().mockGestureHandler(() => mockDetected)
+);
 
 jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
 // Captures the fruit-set setter so tests can switch sets like the selector does.
 let mockSetFruitSetById: ((id: string) => void) | null = null;
+// The selector's tap handler (`onRequestSelect`, #3970): the screen's guard in front of the setter.
+let mockRequestFruitSet: ((id: string) => void) | undefined;
+let mockActiveSetId = "";
 jest.mock("../../components/cascade/ThemeSelector", () => {
   const { useFruitSet } = jest.requireActual("../../theme/FruitSetContext");
-  return function MockThemeSelector() {
-    mockSetFruitSetById = useFruitSet().setFruitSetById;
+  return function MockThemeSelector(props: { onRequestSelect?: (id: string) => void }) {
+    const fruitSet = useFruitSet();
+    mockSetFruitSetById = fruitSet.setFruitSetById;
+    mockActiveSetId = fruitSet.activeFruitSet.id;
+    mockRequestFruitSet = props.onRequestSelect;
     return null;
   };
 });
 
+// The Skia API (`Skia.*`): none, unless a test installs a fake (#3699: the capstone's raster).
+let mockSkiaApi: unknown = undefined;
 // Skia requires a native module — mock the whole package in Jest.
-// useImage returns a non-null stub so useFruitImages resolves immediately
-// and useAssetsReady returns true, allowing CascadeGame to render.
-// Canvas/Group/Image/Circle/Line are stubbed as no-ops for PieceRenderer.
+// Canvas/Group/Picture are stubbed as no-ops for CascadeBoard.
 jest.mock("@shopify/react-native-skia", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
@@ -86,6 +122,16 @@ jest.mock("@shopify/react-native-skia", () => {
     Image: () => null,
     Circle: () => null,
     Line: () => null,
+    // The board's Picture (#2960).
+    Picture: () => null,
+    createPicture: jest.fn(() => null),
+    // The lid's drawing (#3694).
+    Path: () => null,
+    DashPathEffect: () => null,
+    BlurMask: () => null,
+    get Skia() {
+      return mockSkiaApi;
+    },
   };
 });
 
@@ -98,11 +144,15 @@ type StartArgs = [string, Record<string, unknown>?, Record<string, unknown>?];
 const mockStartGame = jest.fn() as unknown as jest.Mock<string, StartArgs>;
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
+// The replay recorder's saves (#3858): one call per unit (or per idle save).
+type EnqueueManyArgs = [string, { type: string; data: Record<string, unknown> }[]];
+const mockEnqueueEvents = jest.fn() as unknown as jest.Mock<undefined, EnqueueManyArgs>;
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({
     startGame: lazy(() => mockStartGame),
     enqueueEvent: lazy(() => mockEnqueueEvent),
+    enqueueEvents: lazy(() => mockEnqueueEvents),
     completeGame: lazy(() => mockCompleteGame),
   });
 });
@@ -112,9 +162,10 @@ jest.mock("../../game/_shared/gameEventClient", () => {
 // ---------------------------------------------------------------------------
 
 type MockEngineEvent =
-  | { type: "merge"; result: number; x: number; y: number }
+  | { type: "merge"; result: number; x: number; y: number; tierA: number; step: number }
   | { type: "score"; delta: number; total: number }
   | { type: "gameOver" }
+  | { type: "win"; x: number; y: number; id: number }
   | { type: "guardRailFired"; reason: string; bodyId: number };
 
 let pendingEngineEvents: MockEngineEvent[] = [];
@@ -123,19 +174,33 @@ let mockEngineScore = 0;
 const mockEngineDrop = jest.fn();
 const mockEngineDestroy = jest.fn();
 const mockEngineRestore = jest.fn();
+// The lid's drop gate (#3694): open unless a test closes it.
+const mockEngineCanDrop = jest.fn(() => true);
+// #3904: the win ends play; a test sets it when it injects the win event.
+const mockEngineHasWon = jest.fn(() => false);
 const mockEngineStep = jest.fn().mockImplementation(() => {
   const events = [...pendingEngineEvents];
   pendingEngineEvents = [];
   return { events };
 });
+// The board the mock engine reports (#3920: the win tail reads the capstone's grow-in scale).
+let mockEnginePieces: {
+  id: number;
+  tier: number;
+  x: number;
+  y: number;
+  angle: number;
+  scale?: number;
+}[] = [];
 const mockEngineGetState = jest.fn().mockImplementation(() => ({
-  pieces: [],
+  pieces: mockEnginePieces,
   score: mockEngineScore,
   gameOver: false,
 }));
 
 let mockEngineInstanceCount = 0;
-jest.mock("../../game/cascade/engine2", () => ({
+jest.mock("../../game/cascade/engine", () => ({
+  ENGINE_VERSION: 1, // #3858: game_started records it
   CascadeEngine: jest.fn().mockImplementation(() => {
     mockEngineInstanceCount++;
     return {
@@ -145,6 +210,8 @@ jest.mock("../../game/cascade/engine2", () => ({
       getState: mockEngineGetState,
       destroy: mockEngineDestroy,
       restore: mockEngineRestore,
+      canDrop: mockEngineCanDrop,
+      hasWon: mockEngineHasWon,
     };
   }),
 }));
@@ -174,9 +241,9 @@ function advanceOneFrame() {
   cbs.forEach((cb) => cb(performance.now()));
 }
 
-/** Inject an engine merge event and drive one tick. */
+/** Inject an engine merge event (in fixed step 7) and drive one tick. */
 async function injectMerge(tier: number, x: number, y: number) {
-  pendingEngineEvents.push({ type: "merge", result: tier, x, y });
+  pendingEngineEvents.push({ type: "merge", result: tier, x, y, tierA: tier - 1, step: 7 });
   await act(() => {
     advanceOneFrame();
   });
@@ -208,6 +275,7 @@ beforeEach(() => {
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
+  mockEnqueueEvents.mockReset();
   mockCompleteGame.mockReset();
 });
 
@@ -243,20 +311,24 @@ async function renderScreen() {
   return renderer;
 }
 
-/** Find the tappable game area Pressable. */
+/** Find the board's touch area (`CascadeAimArea`). */
 function findGameArea(renderer: ReturnType<typeof create>) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return renderer.root.findAll((node: any) => node.props.testID === "cascade-game-area")[0];
 }
 
 /**
- * Simulate a tap on the game area at the given world x-coordinate.
- * scale = 0.75 with the mock layout (width=300, height=600).
+ * Simulate a tap on the game area at the given world x-coordinate: the board gesture's press and
+ * release (#3928: a quick tap drops at once). scale = 0.75 with the mock layout (300 x 600).
  */
-async function triggerTap(renderer: ReturnType<typeof create>, worldX = 150) {
-  const area = findGameArea(renderer);
+async function triggerTap(_renderer: ReturnType<typeof create>, worldX = 150) {
+  const pan = detectedGesture(mockDetected, "pan", { testID: "cascade-game-area" });
   await act(() => {
-    area?.props.onPress({ nativeEvent: { locationX: worldX * 0.75 } });
+    // RNGH's order for a still tap (manual activation on touch down, #3928 review B1).
+    pan?.onBegin?.({ x: worldX * 0.75, y: 100 });
+    pan?.onTouchesDown?.({ numberOfTouches: 1 }, { activate: () => {}, fail: () => {} });
+    pan?.onEnd?.({ x: worldX * 0.75, y: 100 }, true);
+    pan?.onFinalize?.({ x: worldX * 0.75, y: 100 }, true);
   });
 }
 
@@ -295,10 +367,71 @@ describe("CascadeGame", () => {
     expect(JSON.stringify(renderer.toJSON())).toContain('"0"');
   });
 
+  it("the tappable board is the bin: exactly the world rect, bottom-anchored in the area (#3698)", async () => {
+    const renderer = await renderScreen();
+    // 300 x 600 area: scale 0.75 -> a 300 x 450 board, the 150 spare px above the bin.
+    const style = findGameArea(renderer)?.props.style;
+    expect(style).toEqual({ position: "absolute", left: 0, top: 150, width: 300, height: 450 });
+  });
+
   it("handleTap calls engine.drop once", async () => {
     const renderer = await renderScreen();
     await triggerTap(renderer);
     expect(mockEngineDrop).toHaveBeenCalledTimes(1);
+  });
+
+  // #3928: the gesture reports x on every platform; a press elsewhere drops at that x.
+  it("a press drops at its own x", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 90);
+    expect(mockEngineDrop).toHaveBeenCalledTimes(1);
+    expect(mockEngineDrop.mock.calls[0]?.[1]).toBeCloseTo(90);
+  });
+
+  // #3928 review S3: a screen reader's double-tap ("activate") drops in the middle.
+  it("the board's accessibility action drops the next piece in the middle", async () => {
+    const renderer = await renderScreen();
+    const board = renderer.root.findAll(
+      (n) =>
+        Array.isArray(n.props.accessibilityActions) &&
+        n.props.accessibilityLabel === "Cascade game board"
+    )[0]!;
+    expect(board.props.accessibilityActions).toEqual([{ name: "activate", label: "Drop piece" }]);
+    expect(board.props.accessibilityHint).toMatch(/Double-tap/);
+    await act(() => {
+      board.props.onAccessibilityAction({ nativeEvent: { actionName: "activate" } });
+    });
+    expect(mockEngineDrop).toHaveBeenCalledTimes(1);
+    expect(mockEngineDrop.mock.calls[0]?.[1]).toBe(200);
+  });
+
+  // #3928 review B2: no swipe-back over the board (a left drag aims), restored on leaving.
+  it("turns the stack's swipe-back off while the game is open", async () => {
+    mockSetOptions.mockClear();
+    await renderScreen();
+    expect(mockSetOptions).toHaveBeenCalledWith({ gestureEnabled: false });
+  });
+
+  // #3928 review B2 backstop: a gesture that ends as another screen covers the board drops nothing.
+  it("drops nothing while another screen covers the board", async () => {
+    const renderer = await renderScreen();
+    await act(() => {
+      for (const h of mockNavListeners.get("blur") ?? []) h();
+    });
+    await triggerTap(renderer, 120);
+    expect(mockEngineDrop).not.toHaveBeenCalled();
+  });
+
+  // #3922: a non-finite x never becomes a drop.
+  it("a press with no usable x drops nothing", async () => {
+    await renderScreen();
+    const pan = detectedGesture(mockDetected, "pan", { testID: "cascade-game-area" });
+    await act(() => {
+      pan?.onBegin?.({ x: Number.NaN, y: 100 });
+      pan?.onEnd?.({ x: Number.NaN, y: 100 }, true);
+      pan?.onFinalize?.({}, true);
+    });
+    expect(mockEngineDrop).not.toHaveBeenCalled();
   });
 
   it("second tap within 200ms cooldown is ignored", async () => {
@@ -367,74 +500,68 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     const [gameType, meta, eventData] = startCall;
     expect(gameType).toBe("cascade");
     expect(meta).toEqual({});
-    expect(eventData).toEqual(
-      expect.objectContaining({
-        fruit_set: expect.any(String),
-        theme: expect.any(String),
-        seed: null,
-      })
-    );
+    // #3858: the game's seeds, physics tuning and engine version, for replays.
+    expect(eventData).toEqual({
+      fruit_set: expect.any(String),
+      theme: expect.any(String),
+      seed: expect.any(Number),
+      engine_seed: expect.any(Number),
+      tuning: CASCADE_TUNING_ID,
+      engine_version: 1,
+    });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
     }
   });
 
-  it("emits a 'drop' event with expected payload shape on each tap", async () => {
+  /** The replay events the recorder saved for the game (#3858), in order. */
+  const saved = () => mockEnqueueEvents.mock.calls.flatMap(([, events]) => events);
+
+  it("records each drop in memory and saves it with its unit, at a tenth of a pixel (#3858)", async () => {
     const renderer = await renderScreen();
     mockEnqueueEvent.mockClear();
-    await triggerTap(renderer, 123);
-    const dropCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "drop");
-    expect(dropCall).toBeDefined();
-    const [gameId, event] = dropCall!;
-    expect(gameId).toBe("game-uuid-test");
-    expect(event.data).toEqual(
-      expect.objectContaining({
-        drop_index: 1,
-        fruit_tier: expect.any(Number),
-        x: 123,
-        score_before: 0,
-      })
-    );
-    for (const key of RESERVED_KEYS) {
-      expect(event.data).not.toHaveProperty(key);
-    }
+    await triggerTap(renderer, 123.456);
+    // Nothing is queued per drop, and the engine drops at the recorded x.
+    expect(mockEnqueueEvent.mock.calls.some((c) => c[1]?.type === "drop")).toBe(false);
+    expect(mockEnqueueEvents).not.toHaveBeenCalled();
+    expect(mockEngineDrop).toHaveBeenLastCalledWith(expect.any(Number), 123.5);
+    const tier = mockEngineDrop.mock.calls.at(-1)![0] as number;
+    await injectGameOver();
+    // The unit goes out before game_ended: step (the stand-in engine reports none: 0), x in tenths, tier.
+    const drop = saved().find((e) => e.type === "drop");
+    expect(drop?.data).toEqual({ d: [[0, 1235, tier]], v: 1, unit: 1, t_ms: expect.any(Number) });
+    for (const key of RESERVED_KEYS) expect(drop?.data).not.toHaveProperty(key);
   });
 
-  it("emits a 'merge' event with from_tier/to_tier and x/y", async () => {
-    const _renderer = await renderScreen();
-    // Make sure game area is rendered (it is after renderScreen)
-    mockEnqueueEvent.mockClear();
+  it("records a merge as [step, tierFrom, chain] with its unit (#3858)", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 200);
     await injectMerge(4, 200, 300);
-    const mergeCall = mockEnqueueEvent.mock.calls.find((c) => c[1]?.type === "merge");
-    expect(mergeCall).toBeDefined();
-    expect(mergeCall![1].data).toEqual(
-      expect.objectContaining({
-        from_tier: 3,
-        to_tier: 4,
-        x: 200,
-        y: 300,
-        score_after: expect.any(Number),
-      })
-    );
-    for (const key of RESERVED_KEYS) {
-      expect(mergeCall![1].data).not.toHaveProperty(key);
-    }
+    await injectMerge(5, 200, 300);
+    expect(mockEnqueueEvent.mock.calls.some((c) => c[1]?.type === "merge")).toBe(false);
+    await injectGameOver();
+    const merge = saved().find((e) => e.type === "merge");
+    expect(merge?.data).toEqual({
+      m: [
+        [7, 3, 1],
+        [7, 4, 2],
+      ],
+      v: 1,
+      unit: 1,
+      t_ms: expect.any(Number),
+    });
   });
 
-  it("capture ordering: drops emit in tap order", async () => {
+  it("capture ordering: drops are recorded in tap order", async () => {
     const renderer = await renderScreen();
-    mockEnqueueEvent.mockClear();
     await triggerTap(renderer, 50);
     await act(() => {
       jest.advanceTimersByTime(201);
     });
     await triggerTap(renderer, 250);
-    const drops = mockEnqueueEvent.mock.calls.map((c) => c[1]).filter((e) => e?.type === "drop");
-    expect(drops.length).toBe(2);
-    expect(drops[0]?.data.drop_index).toBe(1);
-    expect(drops[1]?.data.drop_index).toBe(2);
-    expect(drops[0]?.data.x).toBe(50);
-    expect(drops[1]?.data.x).toBe(250);
+    await injectGameOver();
+    const drop = saved().find((e) => e.type === "drop");
+    expect((drop?.data.d as number[][]).map((t) => t[1])).toEqual([500, 2500]);
   });
 
   it("fires completeGame with snake_case payload on handleGameOver", async () => {
@@ -450,7 +577,8 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     const completeCall = mockCompleteGame.mock.calls[0];
     if (completeCall === undefined) throw new Error("Expected completeGame call");
     const [, summary, eventData] = completeCall;
-    expect(summary.outcome).toBe("completed");
+    // The lid's game over is a loss (#3699; "completed" before Cascade had a win).
+    expect(summary.outcome).toBe("loss");
     expect(eventData).toEqual(
       expect.objectContaining({
         final_score: expect.any(Number),
@@ -458,7 +586,8 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
         theme: expect.any(String),
         total_drops: 1,
         total_merges: 1,
-        outcome: "completed",
+        outcome: "loss",
+        end_step: 0, // #3858: the step the game ended on (the stand-in engine reports none)
       })
     );
     for (const key of RESERVED_KEYS) {
@@ -546,15 +675,29 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
     expect(summary.outcome).toBe("abandoned");
     expect(summary).not.toHaveProperty("finalScore");
-    // #2619 review: same keys as a completed row's result, minus `outcome`.
+    // #2619 review: same keys as a completed row's result, minus `outcome` (#3700 keys too).
     expect(summary.result).toEqual({
       final_score: expect.any(Number),
+      merge_score: expect.any(Number),
+      time_bonus: 0,
+      bonus_rule: 2,
       duration_ms: expect.any(Number),
       theme: "fruits",
       total_drops: 1,
       total_merges: 1,
+      max_tier: expect.any(Number),
+      won: false,
     });
-    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+    // #3858 (review S1): the unmount abandon's game_ended carries the end step too (the stand-in
+    // engine reports none: 0), never in the PATCH result.
+    // #3940: and the recorder's replay counts.
+    expect(eventData).toEqual({
+      ...summary.result,
+      end_step: 0,
+      outcome: "abandoned",
+      replay: expect.any(Object),
+    });
+    expect(summary.result).not.toHaveProperty("end_step");
   });
 
   // #2735: ⋯ → Stats/Leaderboard/Scoreboard covers the board; the loop and
@@ -594,6 +737,56 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     expect(summary.result.duration_ms).toBeLessThan(10_000);
   });
 
+  // #3700: idle time before the first drop costs no time bonus.
+  it("starts the play clock at the first drop, not at mount", async () => {
+    const renderer = await renderScreen();
+    await act(() => {
+      jest.advanceTimersByTime(60_000); // a minute looking at the empty board
+    });
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(5_000);
+    });
+    await triggerTap(renderer, 200); // a later drop doesn't restart it
+    await act(() => {
+      jest.advanceTimersByTime(2_000);
+    });
+    mockCompleteGame.mockClear();
+    await act(() => {
+      renderer.unmount();
+    });
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result.duration_ms).toBe(7_000);
+  });
+
+  it("a New Game's clock waits for its own first drop", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(30_000);
+    });
+    const shell = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onNewGame === "function"
+    )[0];
+    await act(() => {
+      shell?.props.onNewGame();
+    });
+    await act(() => {
+      jest.advanceTimersByTime(45_000); // idle on the new game's empty board
+    });
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(3_000);
+    });
+    mockCompleteGame.mockClear();
+    await act(() => {
+      renderer.unmount();
+    });
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result.duration_ms).toBe(3_000);
+  });
+
   it("a mid-game New Game abandon keeps theme and final_score, but no outcome, in its result", async () => {
     const renderer = await renderScreen();
     await triggerTap(renderer, 100);
@@ -614,14 +807,25 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     expect(summary.outcome).toBe("abandoned");
     expect(summary.result).toEqual({
       final_score: expect.any(Number),
+      merge_score: expect.any(Number),
+      time_bonus: 0,
+      bonus_rule: 2,
       duration_ms: expect.any(Number),
       theme: "fruits",
       total_drops: 1,
       total_merges: 0,
+      max_tier: expect.any(Number),
+      won: false,
     });
     expect(summary.result).not.toHaveProperty("outcome");
     expect(summary.durationMs).toBe(summary.result.duration_ms);
-    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+    // #3858: a New Game's abandon adds the end step and the recorder's replay summary.
+    expect(eventData).toEqual({
+      ...summary.result,
+      outcome: "abandoned",
+      end_step: 0,
+      replay: expect.any(Object),
+    });
   });
 
   it("game over still sends the full result block (#2619: explicit, unchanged)", async () => {
@@ -631,10 +835,9 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     await injectGameOver();
 
     const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
-    expect(summary.result).toEqual(eventData);
-    expect(summary.result).toEqual(
-      expect.objectContaining({ total_drops: 1, outcome: "completed" })
-    );
+    // #3858: game_ended is the result block plus the end step and the replay summary.
+    expect(eventData).toEqual({ ...summary.result, end_step: 0, replay: expect.any(Object) });
+    expect(summary.result).toEqual(expect.objectContaining({ total_drops: 1, outcome: "loss" }));
   });
 
   it("client failures do not block gameplay (enqueueEvent throws)", async () => {
@@ -686,15 +889,17 @@ describe("CascadeScreen — result card (#2515)", () => {
     return renderer;
   }
 
-  it("shows the Game Over card with the score, best and merges", async () => {
+  it("shows the Game Over card with the score, best, merges and time, and no bonus (#3700)", async () => {
     const renderer = await playToGameOver(1234);
     const card = findCard(renderer);
     expect(card?.props.visible).toBe(true);
     expect(card?.props.outcome).toBe("ended");
     expect(card?.props.hero).toEqual({ kind: "score", label: "Score", value: 1234 });
+    // The game ended at the moment its first piece (the merge) started the clock: 0:00.
     expect(card?.props.stats).toEqual([
       { label: "Best", value: 1234 },
       { label: "Merges", value: 1 },
+      { label: "Time", value: formatMs(0) },
     ]);
     // A first game is not a "new best".
     expect(card?.props.isNewBest).toBe(false);
@@ -706,7 +911,15 @@ describe("CascadeScreen — result card (#2515)", () => {
     const card = findCard(renderer);
     expect(card?.props.isNewBest).toBe(true);
     expect(card?.props.stats[0]).toEqual({ label: "Best", value: 1234 });
-    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("1234");
+    await expect(getBest("cascade")).resolves.toBe(1234);
+  });
+
+  it("reads the best from the shared personal best (#3757)", async () => {
+    await AsyncStorage.setItem(storageKey("cascade"), JSON.stringify({ v: 1, b: { _: 1000 } }));
+    const renderer = await playToGameOver(1234);
+    const card = findCard(renderer);
+    expect(card?.props.isNewBest).toBe(true);
+    await expect(getBest("cascade")).resolves.toBe(1234);
   });
 
   it("keeps the stored best when the game scores lower", async () => {
@@ -715,7 +928,7 @@ describe("CascadeScreen — result card (#2515)", () => {
     const card = findCard(renderer);
     expect(card?.props.isNewBest).toBe(false);
     expect(card?.props.stats[0]).toEqual({ label: "Best", value: 5000 });
-    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("5000");
+    await expect(getBest("cascade")).resolves.toBe(5000);
   });
 
   // #2632: the card reads the synced game's rank instead of PATCH /cascade/score/{id}.
@@ -726,6 +939,24 @@ describe("CascadeScreen — result card (#2515)", () => {
     expect(findCard(renderer)?.props.submission).toEqual(
       expect.objectContaining({ status: "saved", rank: 2, playerName: "Riley" })
     );
+  });
+
+  // #3693: the payload now comes from the shared toSubmission; its shape must not drift.
+  it("passes the card exactly the rank fields and the two actions", async () => {
+    await storeAssignedDisplayName("Riley");
+    const renderer = await playToGameOver(1234);
+    const submission = findCard(renderer)?.props.submission;
+    expect(Object.keys(submission).sort()).toEqual(
+      ["isBest", "onJoinLeaderboards", "onRetry", "playerName", "rank", "status"].sort()
+    );
+    expect(submission).toMatchObject({
+      status: "saved",
+      rank: 2,
+      isBest: true,
+      playerName: "Riley",
+    });
+    expect(typeof submission.onJoinLeaderboards).toBe("function");
+    expect(typeof submission.onRetry).toBe("function");
   });
 
   it("links the card to Cascade's board (#2633)", async () => {
@@ -955,7 +1186,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       jest.advanceTimersByTime(20_000);
     });
     await setAppState("background"); // the pause saves the board
-    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v3"))!);
+    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v8"))!);
     expect(saved.playedMs).toBe(20_000);
     await act(() => {
       first.unmount(); // the OS kills the app from here
@@ -979,13 +1210,43 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
     expect(lastDuration()).toBe(25_000);
   });
 
+  // #3699: only a game that ended shows a card; a restored game is in progress.
+  it("restores an in-progress game with no result card", async () => {
+    await AsyncStorage.setItem(
+      "cascade_game_v8",
+      JSON.stringify({
+        version: 8,
+        pieces: [{ tier: 10, x: 120, y: 500 }],
+        score: 900,
+        savedAt: Date.now(),
+        queue: { current: 0, next: 1 },
+        playedMs: 60_000,
+      })
+    );
+    const renderer = await renderScreen();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockEngineRestore).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    const modal = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (n: any) => n.props.testID === "cascade-result" && n.props.visible !== undefined
+    )[0]!;
+    expect(modal.props.visible).toBe(false);
+    expect(modal.props.celebration).toBeUndefined();
+    expect(renderer.root.findAllByType(Modal).some((m) => m.props.visible === true)).toBe(false);
+  });
+
   // An older build's save has no playedMs: its earlier play is unknown, so
   // the clock counts from the load. It must still restore the board.
   it("restores an older build's save without playedMs, counting from the load", async () => {
     await AsyncStorage.setItem(
-      "cascade_game_v3",
+      "cascade_game_v8",
       JSON.stringify({
-        version: 3,
+        version: 8,
         pieces: [{ tier: 0, x: 200, y: 500 }],
         score: 10,
         savedAt: Date.now() - 2 * 24 * 60 * 60_000,
@@ -1006,5 +1267,719 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       renderer.unmount();
     });
     expect(lastDuration()).toBe(4_000);
+  });
+  // #3904 interim win handling (the celebration and the result card are #3699).
+  describe("after the win", () => {
+    beforeEach(() => {
+      // The board: the one piece of this block, or the capstone a test sets (#3920).
+      mockEngineGetState.mockImplementation(() => ({
+        pieces: mockEnginePieces.length > 0 ? mockEnginePieces : ONE_PIECE,
+        score: mockEngineScore,
+        gameOver: false,
+      }));
+    });
+    afterEach(() => {
+      mockEngineHasWon.mockReturnValue(false);
+      mockEnginePieces = [];
+    });
+
+    /** Drops a piece, plays `playMs` (under the 20 s bonus floor by default), then wins. */
+    async function win(renderer: ReturnType<typeof create>, playMs = 5_000) {
+      await triggerTap(renderer, 100);
+      await act(() => {
+        jest.advanceTimersByTime(playMs);
+      });
+      await setAppState("background"); // a save, before the win
+      await setAppState("active");
+      expect(await AsyncStorage.getItem("cascade_game_v8")).not.toBeNull();
+      pendingEngineEvents.push({ type: "win", x: 200, y: 400, id: 1 });
+      mockEngineHasWon.mockReturnValue(true);
+      await act(() => {
+        advanceOneFrame();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+
+    /** The capstone the mock engine reports, at `scale` of its size (#3920: it grows in). */
+    const capstone = (scale: number) => [
+      { id: 9, tier: CAPSTONE_TIER, x: 200, y: 480, angle: 0, scale },
+    ];
+    /** Runs one frame at 60 Hz; true if the loop scheduled another. */
+    async function frame(): Promise<boolean> {
+      jest.advanceTimersByTime(1000 / 60);
+      await act(() => {
+        advanceOneFrame();
+      });
+      return rafCallbacks.length > 0;
+    }
+
+    // #3920: the capstone is made at its parents' size and grows in over GROW_IN_STEPS steps; the
+    // loop runs on until it is full size (plus a short settle), then stops.
+    it("keeps stepping until the capstone has grown in, then stops for good", async () => {
+      const renderer = await renderScreen();
+      mockEnginePieces = capstone(0.8);
+      await win(renderer);
+      // Still running: the capstone is growing in.
+      expect(rafCallbacks).toHaveLength(1);
+      let frames = 0;
+      for (let i = 1; i < GROW_IN_STEPS; i++) {
+        mockEnginePieces = capstone(0.8 + (0.2 * i) / GROW_IN_STEPS);
+        expect(await frame()).toBe(true);
+        frames++;
+      }
+      // A trip to the background in the middle pauses it; the resume finishes the same tail.
+      await setAppState("background");
+      expect(await frame()).toBe(false);
+      await setAppState("active");
+      expect(rafCallbacks).toHaveLength(1);
+      mockEnginePieces = capstone(1);
+      while (await frame()) {
+        frames++;
+        expect(frames).toBeLessThan(GROW_IN_STEPS + 20);
+      }
+      // About GROW_IN_STEPS frames, plus the settle (100 ms: 6 frames at 60 Hz).
+      expect(frames).toBeGreaterThanOrEqual(GROW_IN_STEPS);
+      expect(frames).toBeLessThanOrEqual(GROW_IN_STEPS + 8);
+      mockEngineStep.mockClear();
+      await act(() => {
+        advanceOneFrame();
+      });
+      // Ended for good: a trip to the background and back does not restart the loop.
+      await setAppState("background");
+      await setAppState("active");
+      expect(rafCallbacks).toHaveLength(0);
+      expect(mockEngineStep).not.toHaveBeenCalled();
+    });
+
+    it("with nothing growing in, stops after the short settle", async () => {
+      const renderer = await renderScreen();
+      mockEnginePieces = capstone(1);
+      await win(renderer);
+      let frames = 0;
+      while (await frame()) frames++;
+      expect(frames).toBeLessThanOrEqual(7);
+      expect(rafCallbacks).toHaveLength(0);
+    });
+
+    it("completes the session once and keeps a new best (Codex on #3919)", async () => {
+      await AsyncStorage.setItem("cascade_best_score", "1000");
+      const renderer = await renderScreen();
+      mockEngineScore = 9000;
+      mockCompleteGame.mockClear();
+      await win(renderer);
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      // #3699: the win is recorded as a win ("completed" before the win card).
+      expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("win");
+      await expect(getBest("cascade")).resolves.toBe(9000);
+      // Leaving afterwards does not file the won game as abandoned.
+      await act(() => {
+        renderer.unmount();
+      });
+      const outcomes = mockCompleteGame.mock.calls.map((c) => c[1]?.outcome);
+      expect(outcomes).not.toContain("abandoned");
+    });
+
+    // #3699: the celebration, then the win card.
+    describe("the celebration and the win card (#3699)", () => {
+      let reduceMotionListeners: ((enabled: boolean) => void)[] = [];
+      beforeEach(() => {
+        resetReduceMotionForTests();
+        reduceMotionListeners = [];
+        jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(false);
+        jest
+          .spyOn(AccessibilityInfo, "addEventListener")
+          .mockImplementation((event: string, handler: unknown) => {
+            if (event === "reduceMotionChanged") {
+              reduceMotionListeners.push(handler as (enabled: boolean) => void);
+            }
+            return { remove: jest.fn() } as unknown as ReturnType<
+              typeof AccessibilityInfo.addEventListener
+            >;
+          });
+      });
+      afterEach(() => resetReduceMotionForTests());
+
+      /** The RN Modal that holds the card: shown only once the celebration is over. */
+      const cardShown = (renderer: ReturnType<typeof create>) =>
+        renderer.root.findAllByType(Modal).some((m) => m.props.visible === true);
+      const resultModal = (renderer: ReturnType<typeof create>) =>
+        renderer.root.findAll(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (n: any) => n.props.testID === "cascade-result" && n.props.visible !== undefined
+        )[0]!;
+      const board = (renderer: ReturnType<typeof create>) =>
+        renderer.root.findAll(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (n: any) => n.props.frame !== undefined && n.props.scale !== undefined
+        )[0]!;
+      const celebrating = (renderer: ReturnType<typeof create>) =>
+        renderer.root.findAllByType(CascadeCelebration).length > 0;
+      async function advance(ms: number) {
+        await act(async () => {
+          jest.advanceTimersByTime(ms);
+        });
+      }
+      async function setReduceMotion(enabled: boolean) {
+        await act(async () => {
+          for (const l of reduceMotionListeners) l(enabled);
+        });
+      }
+
+      it("plays the celebration first; the win card only after it, at 2.1 s (#2201)", async () => {
+        const renderer = await renderScreen();
+        mockEngineScore = 4321;
+        await win(renderer);
+        // The board celebrates: it knows of the win, and its clock starts at 0 and is stepped
+        // frame by frame to the card's time (#3924: never by the wall clock).
+        expect(board(renderer).props.won).toBe(true);
+        expect(board(renderer).props.celebration.value).toBe(0);
+        await advance(1000);
+        expect(board(renderer).props.celebration.value).toBe(1000);
+        expect(celebrating(renderer)).toBe(true);
+        expect(resultModal(renderer).props).toMatchObject({ visible: true, outcome: "win" });
+        // No card, not even one render early.
+        expect(cardShown(renderer)).toBe(false);
+        await advance(CELEBRATION_CARD_MS - 1000 - 1);
+        expect(cardShown(renderer)).toBe(false);
+        await advance(1);
+        expect(cardShown(renderer)).toBe(true);
+        expect(celebrating(renderer)).toBe(false);
+        expect(board(renderer).props.celebration.value).toBe(CELEBRATION_CARD_MS);
+      });
+
+      it("the win card shows the score, the merge score, the time bonus, the play time and Best (#3700)", async () => {
+        await AsyncStorage.setItem("cascade_best_score", "1000");
+        const renderer = await renderScreen();
+        mockEngineScore = 9000;
+        mockCompleteGame.mockClear();
+        await win(renderer, 200_000);
+        await advance(CELEBRATION_CARD_MS);
+        const card = resultModal(renderer).props;
+        // The time is the play clock at the win: the session's own duration.
+        const [, summary] = mockCompleteGame.mock.calls[0]!;
+        const playedMs = summary.result.duration_ms as number;
+        expect(playedMs).toBe(200_000);
+        const bonus = timeBonus("win", playedMs);
+        expect(bonus).toBe(13_333); // #3967: rule 2, B = 30,000 (8,889 on rule 1)
+        expect(card.outcome).toBe("win");
+        // The score shown is the server's formula: merge score + time bonus.
+        expect(card.hero).toEqual({ kind: "score", label: "Score", value: 9000 + bonus });
+        expect(card.isNewBest).toBe(true);
+        expect(card.stats).toEqual([
+          { label: "Merge score", value: 9000 },
+          { label: "Time bonus", value: bonus },
+          { label: "Time", value: formatMs(playedMs) },
+          { label: "Best", value: 9000 + bonus },
+        ]);
+        // The session sends the same total, and the result block's new keys (#3700).
+        expect(summary.finalScore).toBe(9000 + bonus);
+        expect(summary.result).toEqual(
+          expect.objectContaining({
+            final_score: 9000 + bonus,
+            merge_score: 9000,
+            time_bonus: bonus,
+            bonus_rule: 2,
+            max_tier: CAPSTONE_TIER,
+            won: true,
+            outcome: "win",
+          })
+        );
+      });
+
+      it("a win under the 20 s floor shows a time bonus of 0", async () => {
+        const renderer = await renderScreen();
+        mockEngineScore = 9000;
+        await win(renderer);
+        await advance(CELEBRATION_CARD_MS);
+        const card = resultModal(renderer).props;
+        expect(card.hero.value).toBe(9000);
+        expect(card.stats[1]).toEqual({ label: "Time bonus", value: 0 });
+      });
+
+      it("drops the merge burst for the winning merge only", async () => {
+        const renderer = await renderScreen();
+        const bursts = () => renderer.root.findAll((n) => n.props.onDone !== undefined).length;
+        await injectMerge(3, 100, 200);
+        expect(bursts()).toBe(1);
+        await injectMerge(CAPSTONE_TIER, 200, 400);
+        expect(bursts()).toBe(1);
+      });
+
+      it("Reduce Motion: the calm version, and the card at 1.6 s", async () => {
+        jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+        const renderer = await renderScreen();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        await win(renderer);
+        expect(board(renderer).props.reduceMotion).toBe(true);
+        expect(board(renderer).props.celebration.value).toBe(0);
+        await advance(CELEBRATION_CARD_MS_REDUCED - 1);
+        expect(cardShown(renderer)).toBe(false);
+        await advance(1);
+        expect(cardShown(renderer)).toBe(true);
+      });
+
+      it("Reduce Motion switched on late in the celebration shows the card at once", async () => {
+        const renderer = await renderScreen();
+        await win(renderer);
+        await advance(1_800); // past the calm version's 1.6 s
+        expect(cardShown(renderer)).toBe(false);
+        await setReduceMotion(true);
+        // The next frame ends it (the clock comes back to the calm version's end).
+        await advance(MAX_FRAME_STEP_MS);
+        expect(cardShown(renderer)).toBe(true);
+      });
+
+      it("Reduce Motion switched off mid-way carries on to the full celebration", async () => {
+        jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+        const renderer = await renderScreen();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        await win(renderer);
+        await advance(1_000);
+        await setReduceMotion(false);
+        // Same clock, the full timeline: the card at 2.1 s, past the calm version's 1.6 s.
+        await advance(CELEBRATION_CARD_MS - 1_000 - 1);
+        expect(cardShown(renderer)).toBe(false);
+        await advance(1);
+        expect(cardShown(renderer)).toBe(true);
+      });
+
+      it("a trip to the background mid-celebration neither restarts play nor shows the card twice", async () => {
+        const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+        announce.mockClear();
+        const renderer = await renderScreen();
+        await win(renderer);
+        // Let the win tail end (the board's loop stops after the capstone's grow-in).
+        let frames = 0;
+        while (await frame()) expect(++frames).toBeLessThan(20);
+        await advance(300);
+        await setAppState("background");
+        await setAppState("active");
+        mockEngineStep.mockClear();
+        await act(() => {
+          advanceOneFrame();
+        });
+        expect(mockEngineStep).not.toHaveBeenCalled();
+        await advance(CELEBRATION_CARD_MS);
+        expect(cardShown(renderer)).toBe(true);
+        await setAppState("background");
+        await setAppState("active");
+        await advance(CELEBRATION_CARD_MS);
+        expect(cardShown(renderer)).toBe(true);
+        const wins = announce.mock.calls.filter(([text]) => String(text).startsWith("You Win!"));
+        expect(wins).toHaveLength(1);
+      });
+
+      // Review on #3924: the capstone's cheering-face raster throws at the win.
+      it("a throw rasterising the cheering face neither breaks the board nor holds the card", async () => {
+        const images: { dispose: jest.Mock }[] = [];
+        const noop = new Proxy({}, { get: () => () => undefined });
+        mockSkiaApi = {
+          Surface: {
+            Make: (w: number, h: number) => ({
+              getCanvas: () => noop,
+              flush: () => undefined,
+              dispose: () => undefined,
+              makeImageSnapshot: () => {
+                const img = { dispose: jest.fn(), width: () => w, height: () => h };
+                images.push(img);
+                return img;
+              },
+            }),
+          },
+        };
+        __resetArtCachesForTests();
+        __resetCelebrationStylesForTests();
+        const drawLayer = jest.spyOn(pen, "drawLayer").mockImplementation((_c, _s, _t, layer) => {
+          if (layer === "cheer") throw new Error("cheer");
+        });
+        try {
+          const renderer = await renderScreen();
+          images.length = 0; // the board's own sprites, made at mount
+          await win(renderer);
+          expect(drawLayer.mock.calls.some((c) => c[3] === "cheer")).toBe(true);
+          // The three capstone bitmaps made before the throw were released.
+          expect(images).toHaveLength(3);
+          images.forEach((img) => expect(img.dispose).toHaveBeenCalledTimes(1));
+          expect(board(renderer).props.won).toBe(true);
+          await advance(CELEBRATION_CARD_MS);
+          expect(cardShown(renderer)).toBe(true);
+          expect(resultModal(renderer).props.outcome).toBe("win");
+        } finally {
+          drawLayer.mockRestore();
+          mockSkiaApi = undefined;
+          __resetArtCachesForTests();
+          __resetCelebrationStylesForTests();
+        }
+      });
+
+      // iOS demo on #3924: the style is built ahead, once the board holds a tier-10 piece.
+      it("pre-warms the celebration on the first tier-10 piece, not before, off the render", async () => {
+        __resetCelebrationStylesForTests();
+        const build = jest.spyOn(celebrationStyles, "celebrationStyleFor");
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const renderer = await renderScreen();
+        await injectMerge(CAPSTONE_TIER - 2, 120, 400);
+        await advance(3_000);
+        expect(build).not.toHaveBeenCalled();
+        expect(board(renderer).props.prepareCelebration).toBe(false);
+        await injectMerge(CAPSTONE_TIER - 1, 120, 400);
+        expect(board(renderer).props.prepareCelebration).toBe(true);
+        expect(build).not.toHaveBeenCalled(); // idle time, not the merge's frame or render
+        await advance(2_000);
+        expect(build).toHaveBeenCalledTimes(1);
+        // The win then needs no build.
+        await win(renderer);
+        expect(build).toHaveBeenCalledTimes(1);
+        __resetCelebrationStylesForTests();
+      });
+
+      it("holds the clock until the board is ready; the card still comes at 4 s if it never is", async () => {
+        jest.spyOn(celebrationHook, "useCelebrationStyle").mockReturnValue(null);
+        const renderer = await renderScreen();
+        await win(renderer);
+        expect(celebrating(renderer)).toBe(true);
+        expect(board(renderer).props.celebration.value).toBe(-1);
+        await advance(CELEBRATION_CARD_MS);
+        expect(cardShown(renderer)).toBe(false);
+        await advance(CELEBRATION_MAX_MS - CELEBRATION_CARD_MS);
+        expect(cardShown(renderer)).toBe(true);
+        expect(resultModal(renderer).props.outcome).toBe("win");
+      });
+
+      it("Play Again after a win starts a fresh game", async () => {
+        const renderer = await renderScreen();
+        await win(renderer);
+        await advance(CELEBRATION_CARD_MS);
+        mockEngineHasWon.mockReturnValue(false);
+        const engines = mockEngineInstanceCount;
+        mockStartGame.mockClear();
+        await act(() => {
+          resultModal(renderer).props.onPlayAgain();
+        });
+        expect(resultModal(renderer).props.visible).toBe(false);
+        expect(cardShown(renderer)).toBe(false);
+        expect(board(renderer).props.won).toBe(false);
+        expect(board(renderer).props.celebration.value).toBe(-1);
+        await act(() => {
+          advanceOneFrame();
+        });
+        expect(mockEngineInstanceCount).toBe(engines + 1);
+        expect(mockStartGame).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("clears the saved game and saves nothing after it, on pause or otherwise", async () => {
+      const renderer = await renderScreen();
+      await win(renderer);
+      expect(await AsyncStorage.getItem("cascade_game_v8")).toBeNull();
+      await setAppState("background");
+      await act(() => {
+        jest.advanceTimersByTime(10_000);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(await AsyncStorage.getItem("cascade_game_v8")).toBeNull();
+      await act(() => {
+        renderer.unmount();
+      });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The lid (#3694): the engine's gate and danger state reach the tap and the board
+// ---------------------------------------------------------------------------
+
+describe("CascadeGame — the lid (#3694)", () => {
+  // No saved board: a restore would hold taps for its settle ticks.
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+  afterEach(() => {
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: [],
+      score: mockEngineScore,
+      gameOver: false,
+    }));
+    mockEngineCanDrop.mockImplementation(() => true);
+  });
+
+  async function showEngineState(state: { dangerRatio: number; canDrop: boolean }) {
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: [],
+      score: mockEngineScore,
+      gameOver: false,
+      ...state,
+    }));
+    await act(() => {
+      advanceOneFrame();
+    });
+  }
+
+  it("a tap while the engine's canDrop() is false does not drop", async () => {
+    const renderer = await renderScreen();
+    mockEngineCanDrop.mockImplementation(() => false);
+    await triggerTap(renderer);
+    expect(mockEngineDrop).not.toHaveBeenCalled();
+    expect(mockEnqueueEvent.mock.calls.some(([, ev]) => ev.type === "drop")).toBe(false);
+  });
+
+  it("the tap drops again once canDrop() is true", async () => {
+    const renderer = await renderScreen();
+    mockEngineCanDrop.mockImplementation(() => false);
+    await triggerTap(renderer);
+    mockEngineCanDrop.mockImplementation(() => true);
+    await triggerTap(renderer);
+    expect(mockEngineDrop).toHaveBeenCalledTimes(1);
+  });
+
+  // #2960: the lid's state no longer reaches the board as React props every frame; it is
+  // published to the board's frame buffer (a shared value) that the board's Picture draws.
+  const lidOf = (renderer: ReturnType<typeof create>) => {
+    const board = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (n: any) => n.props.frame !== undefined && n.props.scale !== undefined
+    )[0]!;
+    const f = board.props.frame.value as Float64Array;
+    return {
+      dangerRatio: f[HEADER_FIELD.dangerRatio],
+      canDrop: f[HEADER_FIELD.canDrop] === 1,
+      spawnerTier: f[HEADER_FIELD.spawnerTier],
+    };
+  };
+
+  it("shows the waiting ghost while the engine reports canDrop false", async () => {
+    const renderer = await renderScreen();
+    await showEngineState({ dangerRatio: 0, canDrop: false });
+    expect(lidOf(renderer).canDrop).toBe(false);
+    await showEngineState({ dangerRatio: 0, canDrop: true });
+    expect(lidOf(renderer).canDrop).toBe(true);
+  });
+
+  it("passes the engine's dangerRatio to the ring and the lid line every frame", async () => {
+    const renderer = await renderScreen();
+    await showEngineState({ dangerRatio: 0, canDrop: true });
+    expect(lidOf(renderer).dangerRatio).toBe(0);
+    await showEngineState({ dangerRatio: 0.5, canDrop: true });
+    expect(lidOf(renderer).dangerRatio).toBe(0.5);
+    await showEngineState({ dangerRatio: 0.9, canDrop: false });
+    expect(lidOf(renderer)).toMatchObject({
+      dangerRatio: 0.9,
+      canDrop: false,
+    });
+  });
+
+  it("the spawner shows the queue's current piece", async () => {
+    const renderer = await renderScreen();
+    const preview = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (n: any) => n.type === "NextFruitPreview"
+    )[0]!;
+    expect(lidOf(renderer).spawnerTier).toBe(preview.props.current.tier);
+  });
+});
+
+// #3970 — switching the piece set mid-game asks first.
+describe("CascadeScreen — piece-set switch confirm (#3970)", () => {
+  const PIECE = { id: 1, tier: 0, x: 200, y: 300, angle: 0 };
+  const findConfirm = (renderer: ReturnType<typeof create>, suffix: "confirm" | "cancel") =>
+    renderer.root.find(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) =>
+        node.props.testID === `cascade-switch-confirm-${suffix}` &&
+        typeof node.props.onPress === "function"
+    );
+  const confirmVisible = (renderer: ReturnType<typeof create>) =>
+    renderer.root.findAllByType(Modal).some((m) => m.props.visible === true);
+  /** Lets the session's deferred start (and other queued work) land before a test clears mocks. */
+  const settleAll = async () => {
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await jest.runOnlyPendingTimersAsync();
+      });
+    }
+  };
+  const request = async (id: string) => {
+    if (!mockRequestFruitSet) throw new Error("ThemeSelector got no onRequestSelect");
+    await act(() => {
+      mockRequestFruitSet?.(id);
+    });
+  };
+  /** A game in progress: a piece is on the board after a frame. */
+  async function midGame() {
+    mockEnginePieces = [PIECE];
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      advanceOneFrame();
+    });
+    await settleAll();
+    return renderer;
+  }
+  const liveScore = (renderer: ReturnType<typeof create>) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    renderer.root.find((n: any) => typeof n.props.store?.get === "function").props.store.get();
+  const startedWith = () => mockStartGame.mock.calls.map((c) => c[2]?.fruit_set);
+
+  // The chosen set persists (AsyncStorage): every test starts on Fruits.
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetReduceMotionForTests();
+    // Earlier describes leave their own engine state behind: report the board these tests set.
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: mockEnginePieces,
+      score: mockEngineScore,
+      gameOver: false,
+    }));
+    mockEngineHasWon.mockReturnValue(false);
+  });
+  afterEach(() => {
+    mockEnginePieces = [];
+  });
+
+  it("asks before switching mid-game, leaving the game alone and pausing under the dialog", async () => {
+    const renderer = await midGame();
+    const clear = jest.spyOn(cascadeStorage, "clearGame");
+    mockStartGame.mockClear();
+    mockCompleteGame.mockClear();
+    const instances = mockEngineInstanceCount;
+
+    await request("cosmos");
+
+    expect(confirmVisible(renderer)).toBe(true);
+    expect(findConfirm(renderer, "confirm")).toBeTruthy();
+    expect(isAppOverlayOpen()).toBe(true); // the clock and loop pause under it
+    expect(clear).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockEngineInstanceCount).toBe(instances);
+  });
+
+  it("Cancel closes the dialog with no reset, no abandoned session and the old set", async () => {
+    mockEngineScore = 42;
+    const renderer = await midGame();
+    const clear = jest.spyOn(cascadeStorage, "clearGame");
+    mockStartGame.mockClear();
+    mockCompleteGame.mockClear();
+    const instances = mockEngineInstanceCount;
+    expect(liveScore(renderer)).toBe(42);
+    await request("cosmos");
+
+    // Under the dialog the loop is paused: no engine steps.
+    mockEngineStep.mockClear();
+    await act(() => {
+      advanceOneFrame();
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+
+    await act(() => {
+      findConfirm(renderer, "cancel").props.onPress();
+    });
+    await act(() => {
+      advanceOneFrame();
+    });
+    await act(() => {
+      advanceOneFrame();
+    });
+    // The loop resumes; the board, score and set are as they were.
+    expect(mockEngineStep).toHaveBeenCalled();
+    expect(mockEngineInstanceCount).toBe(instances);
+    expect(mockActiveSetId).toBe("fruits");
+    expect(liveScore(renderer)).toBe(42);
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(isAppOverlayOpen()).toBe(false);
+    expect(clear).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    // Still Fruits: the set did not change (a later same-set request is a no-op).
+    await request("fruits");
+    expect(confirmVisible(renderer)).toBe(false);
+  });
+
+  it("Confirm switches the set and starts a new game, abandoning the old one", async () => {
+    const renderer = await midGame();
+    const clear = jest.spyOn(cascadeStorage, "clearGame");
+    mockStartGame.mockClear();
+    mockCompleteGame.mockClear();
+    await request("cosmos");
+
+    await act(() => {
+      findConfirm(renderer, "confirm").props.onPress();
+    });
+    await act(() => {
+      advanceOneFrame();
+    });
+    await settleAll();
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
+    expect(clear).toHaveBeenCalled();
+    expect(startedWith()).toEqual(["cosmos"]);
+  });
+
+  it("switches at once, with no dialog, on a fresh board", async () => {
+    mockEnginePieces = [];
+    const renderer = await renderScreen();
+    await settleAll();
+    mockStartGame.mockClear();
+
+    await request("cosmos");
+    await act(() => {
+      advanceOneFrame();
+    });
+    await settleAll();
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(startedWith()).toEqual(["cosmos"]);
+  });
+
+  it("switches at once, with no dialog, after the game is over", async () => {
+    const renderer = await midGame();
+    await injectGameOver();
+    await settleAll();
+    mockStartGame.mockClear();
+
+    await request("cosmos");
+    await act(() => {
+      advanceOneFrame();
+    });
+    await settleAll();
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(startedWith()).toEqual(["cosmos"]);
+  });
+
+  it("a switch tapped right after New Game shows no dialog", async () => {
+    const renderer = await midGame();
+    const shell = renderer.root.find(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onNewGame === "function"
+    );
+    await act(() => {
+      shell.props.onNewGame();
+    });
+    await request("cosmos"); // no frame yet: the old pieces must not count
+
+    expect(confirmVisible(renderer)).toBe(false);
+  });
+
+  it("tapping the active set mid-game does nothing", async () => {
+    const renderer = await midGame();
+    mockStartGame.mockClear();
+
+    await request("fruits");
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(isAppOverlayOpen()).toBe(false);
+    expect(mockStartGame).not.toHaveBeenCalled();
   });
 });

@@ -232,12 +232,12 @@ test.describe("Blackjack — error paths and guardrails", () => {
     await expect(page.getByText("Your Hand")).not.toBeVisible();
   });
 
-  test("hand labels are hidden after transitioning back to betting via Next Hand", async ({
+  test("hand labels are hidden after transitioning back to betting via Change", async ({
     page,
   }) => {
     await injectEngineState(page, resultPhaseState());
     await page.getByRole("button", { name: "Play Blackjack" }).click();
-    await page.getByText("Next Hand").click();
+    await page.getByRole("button", { name: /change bet/i }).click();
 
     const bj = new BlackjackPage(page);
     await expect(bj.dealButton()).toBeVisible({ timeout: 5000 });
@@ -263,7 +263,7 @@ test.describe("Blackjack — error paths and guardrails", () => {
     await injectEngineState(page, resultPhaseState({ chips: 1100 }));
     await page.getByRole("button", { name: "Play Blackjack" }).click();
 
-    await expect(page.getByText("Next Hand")).toBeVisible();
+    await expect(page.getByRole("button", { name: /change bet/i })).toBeVisible();
     await expect(
       page.locator('[aria-label*="Goal progress:"]'),
     ).toBeVisible();

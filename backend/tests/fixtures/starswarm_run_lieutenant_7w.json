@@ -5,7 +5,7 @@
     {
       "event_type": "wave_completed",
       "data": {
-        "v": 1,
+        "v": 2,
         "wave": 1,
         "difficulty": "LieutenantJG",
         "outcome": "cleared",
@@ -76,7 +76,7 @@
     {
       "event_type": "wave_completed",
       "data": {
-        "v": 1,
+        "v": 2,
         "wave": 2,
         "difficulty": "LieutenantJG",
         "outcome": "cleared",
@@ -165,7 +165,7 @@
     {
       "event_type": "wave_completed",
       "data": {
-        "v": 1,
+        "v": 2,
         "wave": 3,
         "difficulty": "LieutenantJG",
         "outcome": "cleared",
@@ -228,7 +228,7 @@
     {
       "event_type": "wave_completed",
       "data": {
-        "v": 1,
+        "v": 2,
         "wave": 4,
         "difficulty": "LieutenantJG",
         "outcome": "cleared",
@@ -295,7 +295,7 @@
     {
       "event_type": "wave_completed",
       "data": {
-        "v": 1,
+        "v": 2,
         "wave": 5,
         "difficulty": "LieutenantJG",
         "outcome": "cleared",
@@ -358,7 +358,7 @@
     {
       "event_type": "wave_completed",
       "data": {
-        "v": 1,
+        "v": 2,
         "wave": 6,
         "difficulty": "LieutenantJG",
         "outcome": "cleared",
@@ -437,7 +437,7 @@
     {
       "event_type": "wave_completed",
       "data": {
-        "v": 1,
+        "v": 2,
         "wave": 7,
         "difficulty": "LieutenantJG",
         "outcome": "died",
@@ -522,7 +522,8 @@
               "life": 1
             }
           },
-          "deathCause": "ram"
+          "deathCause": "ram",
+          "deathPhase": "combat"
         }
       }
     },

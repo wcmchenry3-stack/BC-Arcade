@@ -23,16 +23,16 @@ A game ends when all 13 categories are filled.
 
 ## Scoring categories
 
-| Category | Rule | Score |
-| --- | --- | ---: |
-| Ones–Sixes | Sum dice showing that face | Variable |
-| Three of a Kind | At least 3 matching dice | Sum of all dice |
-| Four of a Kind | At least 4 matching dice | Sum of all dice |
-| Full House | 3 of one face + 2 of another | 25 |
-| Small Straight | At least 4 sequential faces | 30 |
-| Large Straight | 5 sequential faces | 40 |
-| Yacht | All 5 dice match | 50 |
-| Chance | Any dice | Sum of all dice |
+| Category        | Rule                         |           Score |
+| --------------- | ---------------------------- | --------------: |
+| Ones–Sixes      | Sum dice showing that face   |        Variable |
+| Three of a Kind | At least 3 matching dice     | Sum of all dice |
+| Four of a Kind  | At least 4 matching dice     | Sum of all dice |
+| Full House      | 3 of one face + 2 of another |              25 |
+| Small Straight  | At least 4 sequential faces  |              30 |
+| Large Straight  | 5 sequential faces           |              40 |
+| Yacht           | All 5 dice match             |              50 |
+| Chance          | Any dice                     | Sum of all dice |
 
 ### Upper bonus
 
@@ -52,15 +52,128 @@ The current theoretical maximum is **1575**, including the upper bonus and all p
 
 ## Modes
 
+The mode picker covers the header's back arrow, so a labelled "Lobby" chip floats over the scrim near that spot (mirrored in right-to-left) (`ModalCard`'s `onHome`, #3969). It returns to the lobby without starting a game or saving a mode; Android's hardware Back still picks Solo (#3463).
+
 ### Solo
+
 One player completes the 13-category scorecard.
 
 ### Vs computer
+
 The human and one computer player alternate turns under the same scoring rules. The selected computer difficulty is recorded when the game starts.
 
 The human always moves first in a round. The `Round N / 13` header shows the round of whoever is playing (capped at 13): while the computer plays, it is the computer's own round counter, not the human's, which is already one ahead after scoring (#3491).
 
 The public Yacht leaderboard ranks **the human player's final score only**. Solo and vs games share one board; AI difficulty does not partition it.
+
+## UI
+
+The screen (`frontend/src/screens/GameScreen.tsx`) is a **thumb tray** (#3748): the scorecard on top, and below it one card with everything a turn needs in thumb reach. Solo and vs share one layout; the Hint exists in solo only.
+
+```
+Header      Back · Yacht · Round N / 13 · ⋯
+Scorecard   header (Category · You · CPU)
+            Ones … Sixes
+            ── Upper subtotal band ──
+            Three of a Kind … Chance
+            Total
+Tray        turn hint
+            five dice
+            [ Roll (N left) ]  Hint  New Game      (the shared GameActionBar)
+Tab bar     unchanged
+```
+
+### Scorecard (`components/yacht/ScoreTable.tsx`)
+
+- **One table for both modes**: one score column in solo, two (You, CPU) in vs. All 13 rows, the upper subtotal band and the total need about **491 to 503 pt** of table height at 29 pt a row. That fits a 390 × 844 phone only barely, and the claim that it fits has not been measured on a device (the "screen just barely unfits" report, #3968, was on a 420 × 912 iPhone). So the row height is **measured, not assumed**: `ScoreTable` reads the height its container is given (`onLayout`) and `clampRowHeight` (`scoreRowHeight.ts`) picks the largest whole-point row that fits 13 rows plus 126 pt of fixed chrome (card border and padding, header, band, total, row hairlines), kept between **26 and 32 pt** (29 pt until measured). Below the height 13 rows of 26 pt need, the table scrolls inside its card, and the row the computer just scored is scrolled into view. The card's text ignores system font scaling above **1.2x** (`maxFontSizeMultiplier`), the labels shrink to fit one line and the band line is one line, so Dynamic Type cannot grow a row.
+- **Rows are the tap target** (`score-row-<key>`; the whole row, 26 to 32 pt tall (29 on a 390 × 844 phone), not the 44 pt minimum: the owner chose 13 rows on one screen). A row is a button for a screen reader at all times, disabled unless it is open and it is your turn. Its label says which it is: `Chance: scored, 22` or `Ones: open, would score 3, double-tap to score` (`Threes: not available` before the first roll), plus `Computer: 21` or `Computer: open` in vs (`score.scored` / `score.potential` / `score.cpuOpen`, all 13 locales). The accessibility state is `disabled` only (the label carries scored vs open; `checked`/`selected` on a button risk an ARIA-allowed-attr failure), and the check mark is hidden from the accessibility tree.
+- **Potentials look the same in both modes**: the points on the table in the potential (teal) colour, 0s dimmed, the best open row (most points, the first of equals) boxed. Before the first roll no row shows a potential.
+- **Scored rows are marked four ways, none of them colour alone** (#3968, owner decision): a muted fill (the band's surface: surface high in dark, surface alt in light, only about 1.15 to 1.2:1 against the card, so never the sole cue), a **check mark** before the label (`score-row-check-<key>`, the `check` glyph from `components/icons/MaterialIcons`), a dimmer (muted text) label and a **bold score**. A scored 0 keeps the check and is bold, so it never reads as an open row's dash `—` or its dimmed regular 0. Open rows have no fill. The Hint's green tint applies to open rows only. On a row you have scored that the computer just took, only the purple bar marks it (no tint over the fill): a tint there took the muted label and the computer's purple value below 4.5:1 (light 4.03 and 3.92, dark 4.63 and 4.45), so the fill alone is kept. WCAG AA on the fill, from the theme tokens (`ScoreTable.test.tsx` asserts them): muted label 4.78:1 light and 5.88:1 dark, score 13.8 and 12.5, the computer's value (`outcomeDraw`) 4.65 and 5.65.
+- **The upper subtotal is a band, not a score row**: its own background (surface high in dark, surface alt in light), a 2 pt top rule, a bold small-caps "Upper subtotal" label, and the bonus line `42 / 63 · +35 bonus` (`63 / 63 ✓ · +35 bonus` once earned) with each player's subtotal in its column and a `+35` under it when earned. It has no `score-row-*` testID, no press handler and no potential style (`yacht-upper-subtotal`).
+- **Labels are in full** ("Small Straight (30)", "Large Straight (40)") and stay on one line: a long one shrinks (down to 85%, `minimumFontScale`) rather than wrapping, so it cannot make its row taller (#3968). The check takes about 21 pt of the label's width on scored rows (12 pt icon, 3 pt margin and the 6 pt row gap). By estimate, not measured on a device, the longest labels (pt "Sequência pequena (30)", es "Escalera pequeña (30)", ru "Большой стрейт (40)") fit at 360 pt wide in vs with the check (about 160 pt left for the label); at 320 pt wide in vs about 120 pt are left, so the longest ones can still end in an ellipsis there (the row's accessibility label always has the full name), and in solo they fit.
+- **The Yacht Bonus** is named under the total, with `+100` per player, only once someone has one.
+- **The computer's last row**: in vs, the row the computer just scored is tinted purple with a left bar (`yacht-cpu-row-bar`) from its score until you roll or start a new game. A game restored from a save highlights nothing.
+- **The Hint's row** is tinted green with a left bar (`yacht-hint-row-bar`) while the hint is up.
+- The computer's column and text are `outcomeDraw` (purple that reaches AA on cream), your header is `accentText`.
+
+### Tray (`components/DiceRow.tsx`)
+
+- **Turn hint**: solo, "Press Roll to start your turn" then "Tap dice to hold". Vs, "Your Turn" in front of it. On the computer's turn: "Computer is rolling…" and its roll counter ("Roll 2 / 3"); the dice shown are the computer's, at full opacity.
+- **Dice** are sized from the width the dice row measures (`dieSizeFor`: up to 60 pt, down to 36, five dice and four 8 pt gaps always fit), never from the window, so they can't overflow the card.
+- **Held** is a teal ring just outside the die (inside the gap) and a 4 pt lift, replacing the 1.12 × scale and the outside `HELD` badge. The ring's width, the lift and the die's label (", held") say it, not colour alone. Held pips are `accentText`.
+- **Roll** shows the rolls left; on the computer's turn it reads "Computer's Turn" and is disabled. (It has no "Rolling…" state: the roll is synchronous.)
+- **Action bar**: the shared `GameActionBar`, beside Roll: **New Game** (the old row of its own is gone; the ⋯ menu still has it) and, **in solo only**, **Hint**.
+
+### Hint (solo only)
+
+`game/yacht/hint.ts` asks the exact oracle (`ai.ts`, λ = 1: optimal play, no slips) what to do with the dice on the table. Before the last roll it names the dice to keep (a green ring on each; all five dice rolled again if it keeps none). After the third roll, or when the best play is to stop and score, it names the best row (Joker rules included). The message ("Hint: keep the highlighted dice", "Hint: score Large Straight (40)") replaces the turn hint in the tray and is announced to a screen reader.
+
+It behaves like 2048's: up for **2 s** (`useTransientToast`), cleared by a roll, a hold or a score; with nothing to suggest (before the first roll) a 2 s "No hint available" message; **disabled** while the dice are rolling, on the computer's turn and once the game is over. It changes nothing in the game and is not recorded (the replay has no slot for it, and Yacht scores no cost for one). The oracle table (about 400 ms to decode in Jest, more on a phone) is warmed on a timer once the first roll of a solo game is down, so the first Hint is instant; a VS game warms it for the computer, and a player who never rolls never loads it.
+
+### End card
+
+The shared result card. Solo shows the player's Upper / Lower / Bonus stats and a subtitle for the rarest feat: Yacht bonuses, then a Yacht scored in its row, then the upper bonus (`game/yacht/scoreSummary.ts`). Vs drops those player-only stats and shows **both players'** upper and lower subtotals in `YachtFinalScorecard`, which also marks who won each row (green for you, purple for the computer, nothing on a tie; a screen reader gets "Ones: you 4, computer 1, you win the row") and the winner of the total.
+
+### Text, colour and languages
+
+- All words are i18n (`locales/<lang>/yacht.json`), including the `YACHT!` and `JOKER!` celebration words (the game's name stays `YACHT!`; the font shrinks for a long word on a narrow phone). Layout is checked in en, fr-CA and es at 320 and 390 pt (`e2e/tests/yacht-layout.spec.ts`).
+- Text that was the accent is `colors.accentText` (a darker teal in light, ≥ 4.5:1 on cream); see [BRANDING.md](../BRANDING.md#accent-as-text-accenttext-3748).
+
+## Motion (#3749)
+
+Every timing is in `frontend/src/game/yacht/motion.ts`; `__tests__/motion.test.ts` holds the ceilings. The owner picked proposal 2, "tumble". Times are from the press (your roll or score) unless the row says otherwise.
+
+| What                                     | Constant(s)                                                                                                                                                                              | When / how long                                     | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tumble (one die)                         | `TUMBLE_MS` 420                                                                                                                                                                          | 0 to 420 ms                                         | turns 0 to 360° (ease-out over the first 85 %, `TUMBLE_SPIN_SHARE`), hops up to 6 pt (`TUMBLE_HOP_PX`, a sine over the first 80 %; with the turning corners it rises about 18 pt, and the dice row keeps that room above the dice, `tumbleRise`, so it never covers the hint line), until its stagger starts it shows its old face, then flicks a random face every 70 ms (`TUMBLE_FACE_MS`); at 80 % (`TUMBLE_LAND_AT`, 336 ms) it shows its final face and lands with a squash to 1.07 (`TUMBLE_SQUASH_SCALE`) |
+| Stagger                                  | `TUMBLE_STAGGER_MS` 35                                                                                                                                                                   | each rolled die 35 ms after the one to its left     | only the dice rolled tumble; held dice stay still                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Dice at rest, input unlocks              | `tumbleTotalMs(n)`; safety net `inputLockMaxMs(n)` = + `INPUT_LOCK_FALLBACK_MS` 250                                                                                                      | 420 + 35 × (n − 1): 560 ms for five, 455 ms for two | Roll, the dice, the score rows and Hint are inert until every rolled die reports its landing (its animation's end callback, so the lock covers the tumble as it really ran), or at the latest at the safety net (audit bug 8). They are disabled to a screen reader, though Roll, the dice and the rows keep their look (no grey flash on every roll). The net's timer is cleared on landing, unmount, New Game and Reduce Motion (bug 9). The roll sound settles at about 0.42 s, with the first die            |
+| Hold / release                           | `HOLD_MS` 150                                                                                                                                                                            | 0 to 150 ms                                         | the 4 pt lift eases in and out; the ring fades in                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Score pop                                | `SCORE_POP_MS` 260, `SCORE_POP_SCALE` 1.2                                                                                                                                                | 0 to 260 ms, peak at 130 ms                         | the scored cell, yours and the computer's                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Total count-up                           | `TOTAL_COUNT_MS` 300                                                                                                                                                                     | 0 to 300 ms                                         | ease-out; the text's accessibility label is always the final total                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Upper bonus pulse                        | `BONUS_PULSE_MS` 400, `BONUS_PULSE_SCALE` 1.3                                                                                                                                            | 0 to 400 ms                                         | the band's "+35", when it is earned                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| YACHT! / JOKER! celebration              | `JACKPOT_EXIT_AT_MS` 2200, `JACKPOT_DONE_MS` 2800, `JACKPOT_PARTICLE_STAGGER_MS` 45, `JACKPOT_BADGE_FADE_OUT_MS` 500, `JACKPOT_PARTICLE_FADE_OUT_MS` 400, `JACKPOT_REDUCED_DONE_MS` 1500 | done at 2.8 s (1.5 s under Reduce Motion)           | unchanged by this story, so the jackpot sounds keep their timing                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Computer: a roll                         | `cpuRollMs(n)` = `tumbleTotalMs(n)` + `CPU_SETTLE_MS` 150                                                                                                                                | 710 ms for five dice                                | its dice tumble (the roll sound plays as they start), then settle                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Computer: a hold                         | `CPU_HOLD_MS` 500                                                                                                                                                                        | 500 ms                                              | its held dice are shown before it re-rolls                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Computer: the score beat                 | `CPU_SCORE_BEAT_MS` 600                                                                                                                                                                  | 600 ms                                              | then its score lands (pop, count-up, its row highlighted)                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Computer: longest turn                   | `cpuTurnMaxMs()`                                                                                                                                                                         | 3.73 s (was 8 s)                                    | a roll and two re-rolls of five, two holds, the score beat                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Computer: its last turn after yours (vs) | `CPU_LAST_TURN_SPEED` 2                                                                                                                                                                  | at most 1.87 s                                      | everything at 2×, tumbles included, still shown step by step (owner)                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Computer: under Reduce Motion            | `CPU_REDUCED_MOTION_SPEED` 2                                                                                                                                                             | at most 1.87 s (its last turn 0.93 s)               | every step halved, no tumbles, still step by step (owner); read at each step                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| End beat                                 | `WIN_BEAT_MS` 1000, `LOSS_BEAT_MS` 600, `TIE_BEAT_MS` 600                                                                                                                                | from the game's last score                          | see below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+
+### End beats and the moments for the end sounds (#3750)
+
+The result card waits for a beat (`components/yacht/useYachtEndBeat.ts`, as 2048's `useTwenty48Beat`, held through `components/yacht/useYachtMotion.ts`). The beat is started in the same handler as the `setState` of the game's last score (solo: yours, in `handleScore`; vs: the computer's, from `useYachtCpuOpponent`'s `onScored`, in one batch), so the card never flashes before it. The outcome: in vs, win, loss or tie from the totals; in solo, **win on a new personal best, otherwise tie** (owner).
+
+| Game ends with                                   | Beat starts (end sound)                                                                                                                       | Card shows                                  |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Solo, your last score                            | with the score (0 s)                                                                                                                          | 1.0 s on a new best, 0.6 s otherwise        |
+| Solo, your last score a Yacht or a Joker         | when the celebration ends: 2.8 s                                                                                                              | 3.8 s (new best) or 3.4 s                   |
+| Vs, the computer's last score                    | with its score: up to 1.87 s after yours (its last turn at 2×)                                                                                | +1.0 s (you win), +0.6 s (you lose or tie)  |
+| Vs, the computer's last score a Yacht or a Joker | after its own 0.7 s sound (`CPU_JACKPOT_SOUND_MS`), so the end sound never stacks on it; the card is held meanwhile, also under Reduce Motion | +1.0 / +0.6 s (at once under Reduce Motion) |
+| Vs, your last score a Yacht or a Joker           | when the celebration ends (2.8 s after your score), if it is still showing when the computer scores                                           | +1.0 / +0.6 s                               |
+| Reduce Motion                                    | with the last score (after a still celebration, 1.5 s)                                                                                        | at once                                     |
+| A game reopened on the computer's last turn      | never: no beat, no end sound                                                                                                                  | at once (that turn is scored on open)       |
+
+For #3750: `useYachtMotion({ onStart })` (passed to `useYachtEndBeat`) calls `onStart(outcome, beatMs)` at the moment the beat starts, once per game and never on a restore; the card shows `beatMs` later (0 under Reduce Motion). `endOutcome` holds the outcome until a New Game. The end sounds (#3750) play from `onStart` in `GameScreen` (see the Sound table), at the beat's start so the chord lands as the card shows; only one sound plays, since a last-score jackpot's beat waits for its celebration. Under Reduce Motion `onStart` still fires, with `beatMs` 0: the sound plays (it is audio, not motion), the card shows at once and the chord lands about 1.0 s (win) or 0.6 s after it.
+
+- **The card never covers a celebration** (audit bug 1): a last score that is a Yacht or a Joker, or a celebration still showing when the computer scores, holds the card with no timer until the celebration's `onDone`; then the beat runs. A safety net (`JACKPOT_WAIT_MAX_MS`, 3.5 s) starts the beat if the celebration never reports that it is done.
+- **New Game and leaving** clear the beat, any wait and the tumble.
+- **The tray during the beat** (owner): the final dice stay on the table (in vs, the computer's last roll), the hint reads "Game over" (`dice.hintGameOver`) and Roll is disabled ("Roll (0 left)"); it never looks like a fresh turn.
+- **Solo best not read yet** (rare: it is read at mount): the card waits for the read, then the beat with the right outcome.
+- **A Reduce Motion change mid-celebration** restarts the celebration (`useCelebration`), so the beat's safety net is re-armed and the card still never covers it.
+- **The solo best** is local (owner): the shared personal best (#3757, `game/_shared/personalBest.ts`, key `personal_best_v1:yacht`; the old `yacht_best_score_v1` is moved in on the first read), read when the screen mounts so the check at the end is synchronous (`soloEndOutcome` in `game/yacht/bestScore.ts`), and stored only when beaten. The first finished solo game counts as a new best; a score above 1575 (the most a game can score) is never one. Vs games don't record it. It is a record of its own beside the game save, so older saves load unchanged. No server I/O.
+- **A game reopened on the computer's last turn** (you had finished; `resumeInstantly`): that turn is played to its score at once, with no steps, no tumble and no sound (its score carries no events), and the card shows.
+
+### Reduce Motion
+
+Read live with `useReduceMotion` ([ACCESSIBILITY.md section 3](../ACCESSIBILITY.md)):
+
+- no tumble (the faces change in place, and input is not locked), no hold ease, no pop, no count-up, no bonus pulse, no end beat (the card shows at once);
+- turned on mid-tumble, the dice snap to rest and input unlocks; turned on mid-beat, the timer is cancelled and the card shows; turning it off again replays nothing;
+- the computer's turn: its pauses are halved and its dice don't tumble, still step by step.
+
+How it is built: the tumble runs on the UI thread (Reanimated): one shared value per die drives its transform and the pips' opacity (`Die.tsx`); nothing on the JS thread per frame except the total's count-up (one small text, about 18 frames). A rolled die waiting for its stagger keeps showing its old face. Between the press and the tumble's first frame there is one render: `possibleScores` is a `useMemo`, events are not cleared from state (each action's are a new array, fired once; the save leaves them out), a roll is saved once its dice land, the scorecard context is updated only when the card changes, and the pips are memoized. The e2e test checks the first moved frame comes within 4 frames of the press.
 
 ## Computer opponent
 
@@ -80,11 +193,11 @@ The tiers then choose among sufficiently near-best options using a bounded softm
 
 Current parameters:
 
-| Difficulty | Foresight λ | Temperature T | Max loss Δ | Character |
-| --- | ---: | ---: | ---: | --- |
-| Easy | 0.0 | 3 | 10 | Greedy/short-sighted; does not plan for future scorecard value |
-| Medium | 0.4 | 1 | 5 | Partial future planning with smaller slips |
-| Hard | 1.0 | 0.5 | 3 | Near-optimal oracle valuation with very small bounded variation |
+| Difficulty | Foresight λ | Temperature T | Max loss Δ | Character                                                       |
+| ---------- | ----------: | ------------: | ---------: | --------------------------------------------------------------- |
+| Easy       |         0.0 |             3 |         10 | Greedy/short-sighted; does not plan for future scorecard value  |
+| Medium     |         0.4 |             1 |          5 | Partial future planning with smaller slips                      |
+| Hard       |         1.0 |           0.5 |          3 | Near-optimal oracle valuation with very small bounded variation |
 
 This is a **structural** difficulty ladder: even if random variation is removed, the tiers still value future scorecard state differently.
 
@@ -123,22 +236,26 @@ The old documentation describing fixed 25%/10% random-error rates or three indep
 A new session opens on the player's first roll.
 
 ### Finished solo game
+
 Records `completed`.
 
 ### Finished vs game
+
 Once both players have completed their scorecards:
+
 - human higher score → `win`;
 - equal score → `push`;
 - human lower score → `loss`.
 
 ### Leaving early / New Game
+
 Once play has started, an unfinished game records `abandoned`.
 
 A special edge exists when the human has finished but the computer's final turn is still pending: until the computer finishes, there is no final vs result. Leaving/resetting in that gap can record a completed player score without opponent result rather than fabricating a win/loss.
 
 ## Persistence and timing
 
-The local save contains the game state and, for vs mode, AI state/difficulty so an unfinished match can resume.
+The local save contains the game state and, for vs mode, AI state/difficulty so an unfinished match can resume. A game reopened with only the computer's last turn left has that turn scored at once and shows its card (#3749). The solo personal best is a separate local record (`personal_best_v1:yacht`, see [Motion](#motion-3749)).
 
 Yacht does not maintain a separate engine play clock. `useGameSync` supplies active-play duration from foreground time on the game screen; long idle gaps are bounded by the shared play-window rules.
 
@@ -147,6 +264,7 @@ Yacht does not maintain a separate engine play clock. `useGameSync` supplies act
 Backend module: `backend/yacht/module.py`.
 
 Public board:
+
 - metric: `final_score`;
 - higher is better;
 - max value: 1575;
@@ -168,10 +286,12 @@ Bonus accounting: `total = sum(filled categories) + upper_bonus + yacht_bonus_to
 Server rules: **the result is never rejected for its card** (a 400 on `/complete` is dead-lettered by the app, losing the score). A card is valid when its category keys are the 13 above, each a strict non-negative integer within its category maximum (Joker scores included), `upper_bonus` 0 to 35 and `yacht_bonus_count` 0 to 12; unknown keys beside `categories` are ignored. An invalid card is **dropped** (not stored), the game completes, `scorecard_reconciled` is `false`, and the drop is logged and sent to Sentry. A valid card that does not add up, or breaks the bonus rules, is stored with `scorecard_reconciled: false`. The flag is server-written (a client's value is discarded); `true` means every card present is valid and reconciles. The top-level fields (`final_score`, `outcome`, ...) are stored exactly as sent, as before. Old results without a card are unchanged. Only the shared 8 KiB result cap can still 400.
 
 Creation metadata:
+
 - `mode`: `solo` or `vs`;
 - `difficulty`: Easy/Medium/Hard for vs mode only.
 
 Finished result data can include:
+
 - final score;
 - upper bonus;
 - Yacht bonus total;
@@ -186,32 +306,32 @@ Part of epic #3273 (#3282). Every turn of both players, the computer's included,
 
 ### Events
 
-| Event            | When                                 | Notes                                                                                           |
-| ---------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `game_started`   | the session opens                    | lifecycle. `{ v: 1, mode: "solo" }` or `{ v: 1, mode: "vs", cpu_type: "oracle", difficulty }`  |
-| `turn_completed` | a turn is scored, either player      | replay tier; one per player per round (13 solo, 26 vs); the data below                          |
-| `game_ended`     | the session completes or is abandoned | lifecycle                                                                                       |
-| `roll`, `score`  | **retired** (builds before #3282)    | the human's per-roll / per-score events. Still seeded and stored as sent; the app no longer sends them |
+| Event            | When                                  | Notes                                                                                                                                                   |
+| ---------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `game_started`   | the session opens                     | lifecycle. `{ v: 1, mode: "solo", engine_version }` or `{ v: 1, mode: "vs", cpu_type: "oracle", difficulty, engine_version }` (`ENGINE_VERSION`, #3909) |
+| `turn_completed` | a turn is scored, either player       | replay tier; one per player per round (13 solo, 26 vs); the data below                                                                                  |
+| `game_ended`     | the session completes or is abandoned | lifecycle                                                                                                                                               |
+| `roll`, `score`  | **retired** (builds before #3282)     | the human's per-roll / per-score events. Still seeded and stored as sent; the app no longer sends them                                                  |
 
 `cpu_type` names the opponent's engine (`oracle`: `ai.ts`); a new computer type adds a value, not a field.
 
 **A `turn_completed` event** is the recorder's envelope (`v` 1, `unit`, `t_ms`, and in a vs game `actor` = `{ seat, kind }`: seat 0 / `human`, seat 1 / `cpu`; a solo turn has no actor) plus the turn, with compact keys and booleans left out when false:
 
-| Key     | Meaning                                                                                                                              |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `r`     | the round, 1 to 13                                                                                                                   |
-| `rolls` | 1 to 3 rolls, each `[dice]` or `[dice, mask]`: the five dice the roll produced, and the hold mask going **into** it (bit i = die i kept; left out when 0, which the first roll always is) |
-| `h`     | the human's hold taps between rolls, `[after_roll, die, held 1\|0]`, at most 16 per turn; left out when none. The computer sets its holds directly and has none: its masks are in `rolls` |
-| `ro`    | rolls of this turn lost because the app was killed mid-turn (a resumed turn); left out when 0                                      |
+| Key     | Meaning                                                                                                                                                                                                 |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `r`     | the round, 1 to 13                                                                                                                                                                                      |
+| `rolls` | 1 to 3 rolls, each `[dice]` or `[dice, mask]`: the five dice the roll produced, and the hold mask going **into** it (bit i = die i kept; left out when 0, which the first roll always is)               |
+| `h`     | the human's hold taps between rolls, `[after_roll, die, held 1\|0]`, at most 16 per turn; left out when none. The computer sets its holds directly and has none: its masks are in `rolls`               |
+| `ro`    | rolls of this turn lost because the app was killed mid-turn (a resumed turn); left out when 0                                                                                                           |
 | `s`     | the scored choice, `[category, value]`; `category` is the index in `CATEGORIES` (`engine.ts`: ones … sixes, three_of_a_kind, four_of_a_kind, full_house, small_straight, large_straight, yacht, chance) |
-| `alt`   | the **other** legal categories, flat `[category, value, ...]` in category order (Joker rules applied); left out when there are none |
-| `jk`    | 1 when the Joker rule applied (an extra Yacht with the Yacht box at 50)                                                              |
-| `yb`    | 1 when the score earned a Yacht bonus (100)                                                                                          |
-| `ub`    | 1 when the score earned the upper bonus (35)                                                                                         |
-| `yc`    | the Yacht bonus count after the turn; left out when 0                                                                                |
-| `us`    | the upper subtotal after the turn                                                                                                    |
-| `tot`   | the total score after the turn                                                                                                       |
-| `ev`    | the computer only: `[EV of its choice, EV of the best legal category]` to one decimal                                                |
+| `alt`   | the **other** legal categories, flat `[category, value, ...]` in category order (Joker rules applied); left out when there are none                                                                     |
+| `jk`    | 1 when the Joker rule applied (an extra Yacht with the Yacht box at 50)                                                                                                                                 |
+| `yb`    | 1 when the score earned a Yacht bonus (100)                                                                                                                                                             |
+| `ub`    | 1 when the score earned the upper bonus (35)                                                                                                                                                            |
+| `yc`    | the Yacht bonus count after the turn; left out when 0                                                                                                                                                   |
+| `us`    | the upper subtotal after the turn                                                                                                                                                                       |
+| `tot`   | the total score after the turn                                                                                                                                                                          |
+| `ev`    | the computer only: `[EV of its choice, EV of the best legal category]` to one decimal                                                                                                                   |
 
 `jk` and `yb` are separate facts (the old `is_joker` mixed the bonus with the rule). In this engine they coincide, because the Joker rule applies exactly when an extra Yacht earns the bonus, but they are recorded separately so a rule change does not change the data.
 
@@ -247,12 +367,12 @@ Part of epic #3273 (#3282). Every turn of both players, the computer's included,
 
 The scripted 13-round game over the real `GameEventClient` → `EventStore` → AsyncStorage mock, with an idle moment between saves (the worst case for the old path: nothing coalesces). "Before" is the human's `roll` per roll and `score` per score, one save each, the computer not recorded; the script rolls 16 times, where a player who always rolls three times would send 39 + 13 = 52 events. "After" is the 26 `turn_completed` events of both players.
 
-|                                                               | Before (human only, `roll` / `score`) | After (both players, `turn_completed`) |
-| ------------------------------------------------------------- | ------------------------------------- | -------------------------------------- |
-| Queue saves (`EventStore.enqueueEvent` / `enqueueMany` calls) | 29                                    | **26**                                 |
-| AsyncStorage writes                                           | 58                                    | **52**                                 |
-| Bytes written to storage                                      | 167,912                               | **163,335**                            |
-| Events                                                        | 29                                    | 26                                     |
+|                                                               | Before (human only, `roll` / `score`) | After (both players, `turn_completed`)         |
+| ------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------- |
+| Queue saves (`EventStore.enqueueEvent` / `enqueueMany` calls) | 29                                    | **26**                                         |
+| AsyncStorage writes                                           | 58                                    | **52**                                         |
+| Bytes written to storage                                      | 167,912                               | **163,335**                                    |
+| Events                                                        | 29                                    | 26                                             |
 | Recorded JSON (sum of `data`)                                 | 3,513 B                               | **4,761 B** (the computer's 13 turns included) |
 
 Both players cost fewer saves than the human alone did. Zero uploads happen while the game is open: the gameplay events wait for the session's end, the background or `GAMEPLAY_HOLD_MAX_MS` (GAME-CONTRACT §2.10). The shared heavy-day budget test (#3294) is not written yet; its Yacht figures are these.
@@ -281,3 +401,32 @@ The seed migration `0038_yacht_turn_events` (the `turn_completed` event type; no
 The Yacht portion of the unified-AI work is now implemented (#2245/#2246 and #2241 are closed). This specification therefore describes the current AI contract rather than a provisional future design.
 
 The broader #2283 epic remains open because Hearts still has pending strong-engine work; that does not make Yacht's shipped architecture provisional.
+
+## Sound
+
+Registry: `frontend/src/game/yacht/sounds.ts` (`YACHT_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/GameScreen.tsx`.
+
+| Key                                                                                                                                           | File                                                                               | Plays when                                                                                                                                                                                                       | Volume |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `yacht.diceRoll`, `yacht.diceRoll2`, `yacht.diceRoll3`                                                                                        | `dice-roll-1.ogg`, `dice-roll-2.ogg`, `dice-roll-3.ogg` (synthesized, #3578)       | you roll the dice, and each time the computer rolls (on its dice starting to tumble, so a restored computer turn doesn't replay one); `useSoundVariants` plays a random variation, never the same twice in a row | 1.0    |
+| `yacht.dieHold`, `yacht.dieHold2`, `yacht.dieHold3`                                                                                           | `die-hold-1.ogg`, `die-hold-2.ogg`, `die-hold-3.ogg` (synthesized, #3578)          | you hold a die; `useSoundVariants` (the computer's holds are silent)                                                                                                                                             | 1.0    |
+| `yacht.dieRelease`, `yacht.dieRelease2`, `yacht.dieRelease3`                                                                                  | `die-release-1.ogg`, `die-release-2.ogg`, `die-release-3.ogg` (synthesized, #3578) | you release a held die; `useSoundVariants`                                                                                                                                                                       | 1.0    |
+| `yacht.scoreCommit`                                                                                                                           | `score-commit.ogg`                                                                 | you score a category with no milestone below                                                                                                                                                                     | 1.0    |
+| `yacht.scoreZero`                                                                                                                             | `score-zero.ogg`                                                                   | you score a 0                                                                                                                                                                                                    | 1.0    |
+| `yacht.smallStraight`                                                                                                                         | `small-straight.ogg`                                                               | you score a small straight                                                                                                                                                                                       | 1.0    |
+| `yacht.largeStraight`                                                                                                                         | `large-straight.ogg`                                                               | you score a large straight                                                                                                                                                                                       | 1.0    |
+| `yacht.fullHouse`                                                                                                                             | `full-house.ogg`                                                                   | you score a full house                                                                                                                                                                                           | 1.0    |
+| `yacht.upperBonus`                                                                                                                            | `upper-bonus.ogg`                                                                  | you earn the upper bonus                                                                                                                                                                                         | 1.0    |
+| `yacht.cpuScoreCommit`, `yacht.cpuScoreZero`, `yacht.cpuSmallStraight`, `yacht.cpuLargeStraight`, `yacht.cpuFullHouse`, `yacht.cpuUpperBonus` | `cpu-*.ogg` (the same six names)                                                   | the computer's scores: its "rival" versions (falling, minor, darker, quieter)                                                                                                                                    | 1.0    |
+| `yacht.yacht`                                                                                                                                 | `jackpot-yacht.ogg` (synthesized, #3578)                                           | you score a yacht, with the celebration                                                                                                                                                                          | 1.0    |
+| `yacht.joker`                                                                                                                                 | `jackpot-joker.ogg` (synthesized, #3578)                                           | you score a joker yacht, with the celebration                                                                                                                                                                    | 1.0    |
+| `yacht.cpuYacht`, `yacht.cpuJoker`                                                                                                            | `cpu-jackpot-yacht.ogg`, `cpu-jackpot-joker.ogg`                                   | the computer scores a yacht or a joker (quick, the opposite tone)                                                                                                                                                | 1.0    |
+| `yacht.win`                                                                                                                                   | `yacht-win.ogg` (synthesized, #3750)                                               | the end beat starts and you won (vs: your total beats the computer's; solo: a new personal best); its chord lands as the card shows, 1.0 s later                                                                 | 1.0    |
+| `yacht.loss`                                                                                                                                  | `yacht-loss.ogg` (synthesized, #3750)                                              | the end beat starts and you lost (vs); its chord lands as the card shows, 0.6 s later                                                                                                                            | 1.0    |
+| `yacht.tie`                                                                                                                                   | `yacht-tie.ogg` (synthesized, #3750)                                               | the end beat starts and it is a tie (vs), or a solo game that is not a new best; its chord lands 0.6 s later                                                                                                     | 1.0    |
+
+Each score plays exactly one scoring sound (`game/yacht/useScoreSound.ts`): its top milestone (yacht or joker, then upper bonus, large straight, full house, small straight), which replaces the commit; else the commit, or the duller zero for a 0. Your yacht or joker plays its fanfare from the event handlers, with the celebration; the computer's from the same picker. Sounds are synthesized (#3578).
+
+**Lobby tile status (#4008).** The lobby reads the saved game read-only and shows **Resume** when `isResumable` in `lobbyStatus.ts` is true (not over, or a VS game with only the computer's turn left, #2203). `startYacht` uses the same function, so the tile and the tap agree. Otherwise it shows the personal best score (via the side-effect-free `peekBests`). See [ARCHITECTURE §10.7](../ARCHITECTURE.md).

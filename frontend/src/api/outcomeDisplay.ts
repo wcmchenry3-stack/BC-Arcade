@@ -11,7 +11,7 @@
  */
 
 import type { ComponentProps } from "react";
-import type MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import type MaterialCommunityIcons from "../components/icons/MaterialCommunityIcons";
 import type { TFunction } from "i18next";
 import type { Colors } from "../theme/ThemeContext";
 import type { GameRow } from "./types";

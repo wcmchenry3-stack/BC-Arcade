@@ -1,53 +1,58 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { STARSWARM_ACCENT } from "../../theme/theme.starswarm";
-
-/** Used until the HUD score row has been measured: paddingTop 8 + one 12pt line + a small gap. */
-export const LIVES_TOP_FALLBACK = 28;
-/** The lives row's `top` given the measured bottom edge of the HUD score row. */
-export const livesTopBelow = (hudTopBottom: number) => hudTopBottom + 4;
+import { HUD_LAYOUT } from "../../game/starswarm/render/hudStyle";
+import { DEFAULT_SHIP_ID } from "../../game/starswarm/render/ship";
+import type { ShipId } from "../../game/starswarm/render/ship";
+import { SHIP_BASE_IMAGE } from "./hudImages";
 
 /**
- * #2150: remaining lives, one block each. Sits in the top-left HUD band (under the score), clear
- * of the ship's movement band along the bottom, which the old bottom-left spot overlapped.
- * Rendered as a sibling of the main HUD (not a child) so it never joins the stacking context of
- * the full-screen phaseOverlay children.
+ * Remaining lives (#2150), since #3598 one mini player ship each — the ship the player chose
+ * (#3600) — right-aligned under the wave number in the top-right HUD column, clear of the ship's
+ * bottom movement band. The row sits in the column's flow, so a larger font scale above it moves
+ * it down with the text; nothing is measured.
  */
 export default function LivesIndicator({
   lives,
-  top = LIVES_TOP_FALLBACK,
+  ship = DEFAULT_SHIP_ID,
 }: {
   lives: number;
-  top?: number;
+  ship?: ShipId;
 }) {
   const { t } = useTranslation("starswarm");
+  const source = SHIP_BASE_IMAGE[ship];
   return (
     <View
-      style={[styles.container, { top }]}
+      style={styles.row}
       pointerEvents="none"
       accessible
       accessibilityLabel={t("hud.livesValue", { lives })}
       testID="starswarm-lives"
     >
       {Array.from({ length: lives }, (_, i) => (
-        <View key={i} style={styles.life} testID="starswarm-life" />
+        <Image
+          key={i}
+          source={source}
+          style={styles.life}
+          resizeMode="contain"
+          accessible={false}
+          testID="starswarm-life"
+        />
       ))}
     </View>
   );
 }
 
 export const styles = StyleSheet.create({
-  // `top` is passed in (measured from the score row); LIVES_TOP_FALLBACK until then.
-  container: {
-    position: "absolute",
-    left: 10,
+  row: {
     flexDirection: "row",
-    gap: 6,
+    justifyContent: "flex-end",
+    alignSelf: "flex-end",
+    gap: HUD_LAYOUT.lifeGap,
+    minHeight: HUD_LAYOUT.lifeIcon,
   },
   life: {
-    width: 10,
-    height: 14,
-    backgroundColor: STARSWARM_ACCENT,
+    width: HUD_LAYOUT.lifeIcon,
+    height: HUD_LAYOUT.lifeIcon,
   },
 });

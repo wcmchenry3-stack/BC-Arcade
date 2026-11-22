@@ -19,15 +19,18 @@ import { useTranslation } from "react-i18next";
 import type { SharedValue } from "react-native-reanimated";
 
 import { useTheme, type Colors } from "../../theme/ThemeContext";
+import { TABLE_SLOT_EDGE, TABLE_SLOT_FILL } from "../../theme/theme.table";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { rankLabel, suitEmoji } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import SelectableCard from "../../game/_shared/SelectableCard";
 import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
 import { DropTarget } from "../../game/_shared/drag/DropTarget";
+import { dropHighlightStyle } from "../../game/_shared/drag/dropHighlight";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { CardGame, PileCard } from "./pileTypes";
 import HintFrame from "./HintFrame";
+import { TransparentFace } from "./TransparentFace";
 
 export interface FoundationPileProps {
   // ── per-game configuration (fixed by the FreeCell / Solitaire wrapper) ──
@@ -53,6 +56,9 @@ export interface FoundationPileProps {
   readonly suitGlyphStyle: StyleProp<TextStyle>;
   readonly suitGlyphColor: (suit: CanonicalSuit, colors: Colors) => string;
 
+  /** The board sits on a felt (#3606): an empty slot is a faint outline, not an opaque one. */
+  readonly onFelt?: boolean;
+
   // ── per-render state ──
   readonly pile: readonly PileCard[];
   readonly suit: CanonicalSuit;
@@ -61,6 +67,21 @@ export interface FoundationPileProps {
   readonly hintDestination?: boolean;
   /** Solitaire: this pile's top card is the hinted move's source. */
   readonly hintSource?: boolean;
+  /** The selected card can move here (#3606): a green outline and `canMoveHereHint`. */
+  readonly legalTarget?: boolean;
+  /** The hint for a legal target ("Can move here"), in the game's language; the board passes it. */
+  readonly canMoveHereHint?: string;
+  /** Reduce Motion (#3606): the selected card does not lift; the board reads the setting once. */
+  readonly reduceMotion?: boolean;
+  /**
+   * The top card is in flight (Solitaire #3572, FreeCell #3573), drawn by the board's flight
+   * layer. Its view stays (label, testID, touch target), transparent inside its gesture view.
+   * Both games pass it on every render, so the card's view is never re-parented; left out (a
+   * board with no motion), the card is drawn as it is.
+   */
+  readonly topHidden?: boolean;
+  /** The game is over (the win, #3572 / #3573): no card can be dragged. Taps still reach the board. */
+  readonly locked?: boolean;
   readonly onPress?: (suit: CanonicalSuit) => void;
   /** Unique drop-zone ID, e.g. "solitaire-foundation-spades"; doubles as its testID. */
   readonly dropId?: string;
@@ -77,12 +98,18 @@ export default function FoundationPile({
   topCardHint,
   suitGlyphStyle,
   suitGlyphColor,
+  onFelt = false,
   pile,
   suit,
   selected = false,
   shakeX,
   hintDestination = false,
   hintSource = false,
+  legalTarget = false,
+  canMoveHereHint,
+  reduceMotion = false,
+  topHidden,
+  locked = false,
   onPress,
   dropId,
   onDrop,
@@ -90,14 +117,12 @@ export default function FoundationPile({
   const { colors } = useTheme();
   const { t } = useTranslation(ns);
   const { cardWidth, cardHeight } = useCardSize();
+  const hint = legalTarget ? canMoveHereHint : undefined;
   const hasDrop = dropId !== undefined && onDrop !== undefined;
   const hinted = hintDestination || hintSource;
 
-  const highlightStyle: ViewStyle = {
-    borderColor: colors.accent,
-    borderWidth: 2,
-    borderRadius: emptyRadius,
-  };
+  // Layout-neutral: this DropTarget only wraps the fixed-size pile (#3532).
+  const highlightStyle = dropHighlightStyle(colors.accent, emptyRadius);
   const hintStyle: ViewStyle = {
     borderColor: colors.bonus,
     borderWidth: hintBorderWidth,
@@ -112,11 +137,24 @@ export default function FoundationPile({
       const label = selected
         ? t(cardLabelKeys.selected, { rank: rl, suit: suitName })
         : t(cardLabelKeys.normal, { rank: rl, suit: suitName });
+      const face = (
+        <SelectableCard
+          suit={top.suit}
+          rank={top.rank}
+          width={cardWidth}
+          height={cardHeight}
+          selected={selected}
+          reduceMotion={reduceMotion}
+          shakeX={shakeX}
+          accessibilityLabel={label}
+        />
+      );
       const card = (
         <DraggableCard
           testID={`${testIdPrefix}-foundation-${suit}-card`}
           onTap={onPress ? () => onPress(suit) : undefined}
           accessibilityLabel={label}
+          accessibilityHint={hint}
           dragCards={[
             {
               suit: top.suit,
@@ -127,25 +165,42 @@ export default function FoundationPile({
             },
           ]}
           dragSource={{ game, type: "foundation", suit }}
+          draggable={!locked}
         >
-          <SelectableCard
-            suit={top.suit}
-            rank={top.rank}
-            width={cardWidth}
-            height={cardHeight}
-            selected={selected}
-            shakeX={shakeX}
-            accessibilityLabel={label}
-          />
+          {topHidden === undefined ? (
+            face
+          ) : (
+            <TransparentFace hidden={topHidden}>{face}</TransparentFace>
+          )}
         </DraggableCard>
       );
+      const targetOutline = legalTarget ? (
+        <View
+          pointerEvents="none"
+          testID={`${testIdPrefix}-foundation-${suit}-target`}
+          accessible={false}
+          importantForAccessibility="no"
+          style={[styles.targetOutline, { borderColor: colors.bonus, borderRadius: emptyRadius }]}
+        />
+      ) : null;
       if (topCardHint === "frame") {
-        return <View style={hinted ? hintStyle : undefined}>{card}</View>;
+        return (
+          <View style={hinted ? hintStyle : undefined}>
+            {card}
+            {targetOutline}
+          </View>
+        );
       }
       return hintDestination ? (
         <View>
           {card}
           <HintFrame role="destination" radius={emptyRadius} />
+          {targetOutline}
+        </View>
+      ) : legalTarget ? (
+        <View>
+          {card}
+          {targetOutline}
         </View>
       ) : (
         card
@@ -153,15 +208,22 @@ export default function FoundationPile({
     }
 
     const label = t("pile.foundation.empty", { suit: t(`suit.${suit}`) });
+    const marked = hinted || legalTarget;
     const pileStyle = [
       styles.empty,
       {
         borderRadius: emptyRadius,
         width: cardWidth,
         height: cardHeight,
-        borderColor: hinted ? colors.bonus : selected ? colors.accent : colors.border,
-        borderWidth: hinted ? hintBorderWidth : selected ? 2 : 1,
-        backgroundColor: colors.background,
+        borderColor: marked
+          ? colors.bonus
+          : selected
+            ? colors.accent
+            : onFelt
+              ? TABLE_SLOT_EDGE
+              : colors.border,
+        borderWidth: marked ? hintBorderWidth : selected ? 2 : 1,
+        backgroundColor: onFelt ? TABLE_SLOT_FILL : colors.background,
       },
     ];
     const content = (
@@ -177,6 +239,8 @@ export default function FoundationPile({
           style={pileStyle}
           accessibilityRole="button"
           accessibilityLabel={label}
+          accessibilityHint={hint}
+          testID={legalTarget ? `${testIdPrefix}-foundation-${suit}-target` : undefined}
         >
           {content}
         </Pressable>
@@ -214,4 +278,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dim: { opacity: 0.4 },
+  targetOutline: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderWidth: 3,
+  },
 });

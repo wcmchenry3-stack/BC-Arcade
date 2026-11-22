@@ -26,45 +26,41 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { monotonicNow } from "../game/_shared/monotonicNow";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import Animated from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
-import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
-import { DEV_ACCENT } from "../theme/theme.constants";
 import {
   MAHJONG_HINT_COLOR,
   MAHJONG_NO_MOVES_OVERLAY_BG,
   MAHJONG_OVERLAY_BTN_BG,
   MAHJONG_OVERLAY_DETAIL_TEXT,
   MAHJONG_OVERLAY_TEXT,
-  MAHJONG_SHUFFLE_COLOR,
+  MAHJONG_BOARD_BG,
 } from "../theme/theme.mahjong";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
-import { PillButton } from "../components/shared/PillButton";
-import { PlayClockText } from "../components/shared/PlayClockText";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import GameCanvas from "../components/mahjong/GameCanvas";
 import MahjongDevPanel from "../components/mahjong/MahjongDevPanel";
-import FlyingPair from "../components/mahjong/FlyingPair";
-import { useMahjongCamera } from "../game/mahjong/layout";
+import { MAHJONG_STATS_ROW_H, useMahjongCamera } from "../game/mahjong/layout";
 import {
   createGame,
   DEADLOCK_OVERLAY_DELAY_MS,
   dealEventData,
   drawDealSeed,
   elapsedMs,
-  nextBestTime,
+  getAllFreePairs,
   getAnyFreePair,
   pauseGame,
   resumeGame,
@@ -77,17 +73,21 @@ import type { MahjongState } from "../game/mahjong/types";
 import {
   loadGame,
   loadProgress,
-  loadStats,
   saveProgress,
-  saveStats,
   unlockNextLayout,
   DEFAULT_PROGRESS,
   type MahjongProgress,
-  type MahjongStats,
 } from "../game/mahjong/storage";
+import { getBests, judgeResult, recordResult, type Bests } from "../game/_shared/personalBest";
 import LayoutSelectScreen from "../components/mahjong/LayoutSelectScreen";
+import MahjongActionBar from "../components/mahjong/MahjongActionBar";
+import MahjongStatsLine from "../components/mahjong/MahjongStatsLine";
+import MahjongMiniMap from "../components/mahjong/MahjongMiniMap";
 import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
-import { useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
+import { DOUBLE_TAP_MS, useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
+import { useRefitAsTilesClear } from "../game/mahjong/useRefitAsTilesClear";
+import { useOpeningZoom } from "../game/mahjong/useOpeningZoom";
+import { useBoardMotion } from "../game/mahjong/useBoardMotion";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
 import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
@@ -115,11 +115,15 @@ export default function MahjongScreen() {
   const { t } = useTranslation("mahjong");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
-  const camera = useMahjongCamera(getLayout(state?.currentLayoutId ?? "turtle"));
+  const [boardAreaH, setBoardAreaH] = useState<number | undefined>(undefined);
+  const onBoardAreaLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = Math.floor(e.nativeEvent.layout.height);
+    if (h > 0) setBoardAreaH((prev) => (prev === h ? prev : h));
+  }, []);
+  const camera = useMahjongCamera(getLayout(state?.currentLayoutId ?? "turtle"), boardAreaH);
   // Pairs on the board = the layout's tile count / 2 (144 tiles -> 72 for every layout).
   const totalPairs =
     (LAYOUTS.find((l) => l.id === (state?.currentLayoutId ?? "turtle"))?.tileCount ?? 144) / 2;
@@ -135,10 +139,8 @@ export default function MahjongScreen() {
     layout: state?.currentLayoutId ?? "turtle",
   });
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
-  // The HUD clock's screen-reader label; stable, so the clock's own
-  // one-second tick is the only thing that re-renders it.
+  // The HUD clock's screen-reader label; stable, so only the clock's own tick re-renders it.
   const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
-  const [stats, setStats] = useState<MahjongStats>({ bestTimeMsByLayout: {} });
 
   // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
@@ -148,26 +150,26 @@ export default function MahjongScreen() {
   // "No hint" toast — hides itself 2 s after the last press.
   const { visible: noHintVisible, show: showNoHint } = useTransientToast(2000);
 
-  // Dev panel — __DEV__ only; toggled from the HUD's DEV pill, a long press on the clock, or
-  // Shift+D (web).
+  // Dev panel — __DEV__ only; toggled from the ⋯ menu, a long press on the clock, or Shift+D (web).
   const [devOpen, setDevOpen] = useState(false);
   const toggleDev = useCallback(() => setDevOpen((o) => !o), []);
   const [debugShowFree, setDebugShowFree] = useState(false);
   // The board's free tiles, once per board (#2962): shared by the canvas, overlays and moves.
   const free = useFreeTiles(state);
+  // Matches available now (the stat line's MOVES, #3614): once per board, off the frame path.
+  const moves = useMemo(() => getAllFreePairs(free.tiles, free.ids).length, [free]);
 
-  // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
-  const [tileUris, setTileUris] = useState<(string | null)[]>(Array(42).fill(null));
-
-  // Sound and motion for each move (#2981): flying pairs, shake, pulse.
+  // Sound for each move, and the deadlock shake (#2981).
   const reduceMotion = useReduceMotion();
-  const { flyingPairs, dismissFlyingPair, boardAnimStyle } = useMahjongFeedback(
-    state,
-    reduceMotion
-  );
+  const { boardAnimStyle } = useMahjongFeedback(state, reduceMotion);
 
-  // Pinch-to-zoom and drag-to-pan on the board (#2981).
-  const { boardGesture, gestureAnimStyle, fitToScreen } = useBoardZoomPan(camera);
+  // Pinch-to-zoom and drag-to-pan on the board (#2981); re-fit as tiles clear (#3612).
+  const zoom = useBoardZoomPan(camera, reduceMotion, state?.dealId);
+  const { boardGesture, gestureAnimStyle, fitToScreen, refit, panTo, zoomedIn } = zoom;
+  // Small-tiled layouts open zoomed in on their top-left corner (#3612).
+  const openingZoom = useOpeningZoom(state, camera, zoom.zoomInAt);
+  // Each move's motion (#3613): lift, shake, match burst, hint, deal-in, swirl, win, dim.
+  const boardMotion = useBoardMotion(state, hintIds, camera, reduceMotion);
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
@@ -188,6 +190,7 @@ export default function MahjongScreen() {
   // the shuffle CTA, or the deadlock overlay (a geometric deadlock never shows the CTA).
   // A boolean, so it fires once per transition into either state.
   const showNoMoves = showShuffleCTA || !!state?.isDeadlocked;
+  useRefitAsTilesClear(state?.tiles, camera, refit, reduceMotion, showNoMoves);
   useEffect(() => {
     if (showNoMoves) fitToScreen(reduceMotion);
     // reduceMotion is excluded on purpose: it is read when the CTA appears, so
@@ -301,21 +304,6 @@ export default function MahjongScreen() {
     });
   }, [syncSetProgressSnapshot, progressResult]);
 
-  // Load SVG asset URIs for the flying-pair tile overlay (web only — native SVG
-  // display requires Skia and can't run inside Animated.View).
-  // Reuses the singleton promise from loadTileAssets() so no duplicate
-  // network requests are made when GameCanvas also calls it on mount.
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    let cancelled = false;
-    loadTileAssets().then((uris) => {
-      if (!cancelled) setTileUris([...uris]);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Saves only when the board, undo history or banked clock change, debounced (#2961).
   const { saveNow, discardSave, adoptSaved } = useMahjongPersistence(
     state,
@@ -347,11 +335,9 @@ export default function MahjongScreen() {
     stateRef.current = state;
   }, [state]);
 
-  // Stats as of the win, read by the win lifecycle below.
-  const statsRef = useRef(stats);
-  useEffect(() => {
-    statsRef.current = stats;
-  }, [stats]);
+  // The fastest clear per layout (#2747): the shared personal best (#3757), read at mount and
+  // by the win lifecycle below.
+  const bestsRef = useRef<Bests>({});
 
   // Win lifecycle (useCompletionTransition, #3087): complete the sync session
   // and discard the save on the step to a cleared board, record the win once
@@ -409,17 +395,16 @@ export default function MahjongScreen() {
         // plausible one counts: an old save resumed with no time banked can
         // finish under the ranking floor.
         const layoutId = s.currentLayoutId ?? "turtle";
-        setWinSummary(nextBestTime(statsRef.current.bestTimeMsByLayout[layoutId] ?? 0, finalMs));
-        setStats((prev) => {
-          const best = nextBestTime(prev.bestTimeMsByLayout[layoutId] ?? 0, finalMs).bestTimeMs;
-          const updated: MahjongStats = {
-            ...prev,
-            bestTimeMsByLayout:
-              best > 0 ? { ...prev.bestTimeMsByLayout, [layoutId]: best } : prev.bestTimeMsByLayout,
-          };
-          saveStats(updated).catch(() => {});
-          return updated;
-        });
+        const { best, improved, isNewBest } = judgeResult(
+          "mahjong",
+          bestsRef.current[layoutId] ?? 0,
+          finalMs
+        );
+        setWinSummary({ bestTimeMs: best, isNewBest });
+        if (improved) {
+          bestsRef.current = { ...bestsRef.current, [layoutId]: finalMs };
+          void recordResult("mahjong", layoutId, finalMs);
+        }
         unlockAfterWin(s);
       },
       onAlreadyComplete: (s) => {
@@ -433,8 +418,8 @@ export default function MahjongScreen() {
   // guard it sets for a won game restored from storage.
   useEffect(() => {
     let alive = true;
-    Promise.all([loadGame(), loadStats(), loadProgress()]).then(
-      ([saved, savedStats, savedProgress]) => {
+    Promise.all([loadGame(), getBests("mahjong"), loadProgress()]).then(
+      ([saved, bests, savedProgress]) => {
         if (!alive) return;
         hasLoadedRef.current = true;
         progressRef.current = savedProgress;
@@ -452,7 +437,7 @@ export default function MahjongScreen() {
         } else {
           setView("select");
         }
-        setStats(savedStats);
+        bestsRef.current = bests;
         setLoading(false);
       }
     );
@@ -523,11 +508,19 @@ export default function MahjongScreen() {
     setHintIds((prev) => (prev.size === 0 ? prev : new Set()));
   }, []);
 
+  // A double-tap zooms (#3612): its second tap on the tile just selected keeps it selected.
+  const lastTap = useRef({ id: -1, at: 0 });
+  const { dealing, skipDeal, dealIn, celebrating } = boardMotion;
   const handleTilePress = useCallback(
     (tileId: number) => {
+      // A tap during the deal-in lands the tiles at once, and still counts (#3613).
+      if (dealing()) skipDeal();
       clearHint();
+      const now = performance.now();
+      const quickRepeat = lastTap.current.id === tileId && now - lastTap.current.at < DOUBLE_TAP_MS;
+      lastTap.current = { id: tileId, at: now };
       setState((prev) => {
-        if (!prev) return prev;
+        if (!prev || (quickRepeat && prev.selected?.id === tileId)) return prev;
         const moved = selectTile(prev, tileId, freeIdsFor(free, prev.tiles));
         if (moved === prev) return prev;
         // A first tap that lands while the player is away mustn't start the
@@ -537,7 +530,7 @@ export default function MahjongScreen() {
         return next;
       });
     },
-    [ensureSyncStarted, matchPresence, clearHint, free]
+    [ensureSyncStarted, matchPresence, clearHint, free, dealing, skipDeal]
   );
 
   const handleHint = useCallback(() => {
@@ -621,7 +614,7 @@ export default function MahjongScreen() {
   const goToLevelSelect = useCallback(() => {
     const s = stateRef.current;
     setHasSavedGame(s !== null && !s.isComplete);
-    const now = Date.now();
+    const now = monotonicNow();
     // The game stays open while the player is away: save what is waiting.
     replay.flush();
     setState((prev) => (prev ? pauseGame(prev, now) : prev));
@@ -638,6 +631,7 @@ export default function MahjongScreen() {
       const seed = drawDealSeed();
       dealSeedRef.current = seed;
       const fresh = { ...createGame(getLayout(layoutId), seed), currentLayoutId: layoutId };
+      dealIn(fresh);
       setState(fresh);
       setView("play");
       setHasSavedGame(false);
@@ -651,7 +645,7 @@ export default function MahjongScreen() {
       saveProgress(newProgress).catch(() => {});
       // Sync session starts on first tile tap via ensureSyncStarted, not here.
     },
-    [leaveCurrentGame]
+    [leaveCurrentGame, dealIn]
   );
 
   // Play Again from a result card: a fresh deal of the same layout.
@@ -666,7 +660,7 @@ export default function MahjongScreen() {
       // clock stopped: carry on from it (#2750). Reloading the save would drop
       // the play since the last save, and a resume would reopen the session.
       setHasSavedGame(false);
-      const now = Date.now();
+      const now = monotonicNow();
       setState((prev) => (prev ? resumeGame(prev, now) : prev));
       setView("play");
       return;
@@ -694,7 +688,6 @@ export default function MahjongScreen() {
   }, [syncResume, adoptLoaded, adoptSaved, replay]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
-
   if (!loading && view === "select") {
     return (
       <GameShell
@@ -703,7 +696,7 @@ export default function MahjongScreen() {
         requireBack
         loading={false}
         onOpenLeaderboard={openLeaderboard}
-        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        style={{ paddingBottom: 16 }}
       >
         <LayoutSelectScreen
           layouts={LAYOUTS}
@@ -722,86 +715,47 @@ export default function MahjongScreen() {
       title={t("game.title")}
       requireBack
       loading={loading}
-      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+      // No gap under the action bar (#3614, #3624), no side gutter: felt edge to edge (#3612).
+      style={{ paddingBottom: 0 }}
+      gutter={0}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
       // No Scoreboard item (#2627): it led to an untranslated fallback. The
       // Stats item (GameShell's gameType, #2635) takes its place.
       onOpenLeaderboard={openLeaderboard}
-      rightSlot={
-        <View style={styles.hudGroup}>
-          <PillButton
-            label={t("action.undo")}
-            accessibilityLabel={t("action.undoLabel")}
-            onPress={handleUndo}
-            disabled={undoDisabled}
-            testID="mahjong-undo-button"
-          />
-          <PillButton
-            label={t("action.hint")}
-            accessibilityLabel={t("action.hintLabel")}
-            onPress={handleHint}
-            disabled={!!(state?.isComplete || state?.isDeadlocked)}
-            color={MAHJONG_HINT_COLOR}
-            testID="mahjong-hint-button"
-          />
-        </View>
-      }
+      // The deal id and the dev toggle live in the ⋯ menu (#3614), so the header has room
+      // for the full title and the controls can sit in the bottom bar.
+      menuInfo={state ? `${t("hud.deal")} #${state.dealId}` : undefined}
+      menuToggle={[
+        {
+          label: t("menu.openZoomed"),
+          value: openingZoom.enabled,
+          onToggle: openingZoom.setEnabled,
+          testID: "mahjong-opening-zoom-toggle",
+        },
+        ...(__DEV__
+          ? [
+              {
+                label: "Dev panel",
+                value: devOpen,
+                onToggle: toggleDev,
+                testID: "mahjong-dev-toggle",
+              },
+            ]
+          : []),
+      ]}
     >
       {state !== null && (
         <View style={{ flex: 1, alignItems: "center" }}>
-          <View style={styles.hudRow} accessibilityRole="summary">
-            <View style={styles.hudGroup}>
-              {/* The play clock that ranks (#2747), in place of the score: while
-                  playing, the score is 10 per pair, which PAIRS already shows.
-                  The score stays on the result card. */}
-              {__DEV__ ? (
-                <Pressable onLongPress={toggleDev} accessibilityRole="none">
-                  <PlayClockText
-                    startedAt={state.startedAt}
-                    accumulatedMs={state.accumulatedMs}
-                    label={t("hud.time")}
-                    accessibilityLabel={clockA11yLabel}
-                    style={[styles.hudText, { color: colors.text }]}
-                    testID="mahjong-clock"
-                  />
-                </Pressable>
-              ) : (
-                <PlayClockText
-                  startedAt={state.startedAt}
-                  accumulatedMs={state.accumulatedMs}
-                  label={t("hud.time")}
-                  accessibilityLabel={clockA11yLabel}
-                  style={[styles.hudText, { color: colors.text }]}
-                  testID="mahjong-clock"
-                />
-              )}
-              <Text style={[styles.hudText, { color: colors.textMuted }]}>
-                {t("hud.pairs")} {state.pairsRemoved}/{totalPairs}
-              </Text>
-            </View>
-            <View style={styles.hudGroup}>
-              <PillButton
-                label={`${t("action.shuffle")} ${state.shufflesLeft}`}
-                accessibilityLabel={t("action.shuffleLabel")}
-                onPress={handleShuffle}
-                disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
-                color={MAHJONG_SHUFFLE_COLOR}
-                testID="mahjong-shuffle-button"
-              />
-              <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
-                {t("hud.deal")} #{state.dealId}
-              </Text>
-              {__DEV__ && (
-                <PillButton
-                  label="DEV"
-                  accessibilityLabel="Toggle dev panel"
-                  onPress={toggleDev}
-                  color={DEV_ACCENT}
-                />
-              )}
-            </View>
-          </View>
+          <MahjongStatsLine
+            startedAt={state.startedAt}
+            accumulatedMs={state.accumulatedMs}
+            pairsRemoved={state.pairsRemoved}
+            totalPairs={totalPairs}
+            moves={moves}
+            clockA11yLabel={clockA11yLabel}
+            onClockLongPress={__DEV__ ? toggleDev : undefined}
+          />
 
           {noHintVisible && (
             <Text
@@ -813,66 +767,86 @@ export default function MahjongScreen() {
             </Text>
           )}
 
-          {/* Viewport container — clips the board during zoom/pan */}
-          <View
-            testID="mahjong-board-viewport"
-            style={{
-              width: camera.viewportWidth,
-              height: camera.viewportHeight,
-              overflow: "hidden",
-              alignSelf: "center",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <GestureDetector gesture={boardGesture}>
-              {/* Gesture layer — pinch-to-zoom + two-finger pan */}
-              <Animated.View
-                style={[{ width: camera.boardWidth, height: camera.boardHeight }, gestureAnimStyle]}
-              >
-                <Animated.View style={boardAnimStyle}>
-                  <GameCanvas
-                    state={state}
-                    camera={camera}
-                    freeIds={free.ids}
-                    hintIds={hintIds}
-                    debugShowFree={__DEV__ && debugShowFree}
-                    onTilePress={handleTilePress}
-                  />
-                </Animated.View>
-                {flyingPairs.map((pair) => (
-                  <FlyingPair
-                    key={pair.id}
-                    {...pair}
-                    camera={camera}
-                    tileUris={tileUris}
-                    onDone={() => dismissFlyingPair(pair.id)}
-                  />
-                ))}
-              </Animated.View>
-            </GestureDetector>
-
-            {/* No-moves overlays — viewport-level siblings to the gesture layer so
-                they always fill the visible area regardless of board height. */}
-            {showShuffleCTA && (
-              <View
-                style={[StyleSheet.absoluteFill, styles.noMovesOverlay]}
-                accessibilityRole="alert"
-                accessibilityLiveRegion="assertive"
-              >
-                <Text style={styles.overlayTitle}>{t("overlay.noMoves")}</Text>
-                <Text style={styles.overlayDetail}>{t("overlay.noMovesDetail")}</Text>
-                <Pressable
-                  style={styles.overlayBtn}
-                  onPress={handleShuffle}
-                  accessibilityLabel={t("action.shuffleLabel")}
+          {/* The board's space: measured, and the camera fits it (#3614). */}
+          <View style={styles.boardArea} onLayout={onBoardAreaLayout} testID="mahjong-board-area">
+            {/* Viewport container — clips the board during zoom/pan */}
+            <View
+              testID="mahjong-board-viewport"
+              style={{
+                width: camera.viewportWidth,
+                height: camera.viewportHeight,
+                overflow: "hidden",
+                alignSelf: "center",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <GestureDetector gesture={boardGesture}>
+                {/* Gesture layer — pinch-to-zoom + two-finger pan */}
+                <Animated.View
+                  style={[
+                    { width: camera.boardWidth, height: camera.boardHeight },
+                    gestureAnimStyle,
+                  ]}
                 >
-                  <Text style={styles.overlayBtnText}>
-                    {t("overlay.shuffleButton")} ({state!.shufflesLeft})
-                  </Text>
-                </Pressable>
-              </View>
+                  <Animated.View style={boardAnimStyle}>
+                    <GameCanvas
+                      state={state}
+                      camera={camera}
+                      freeIds={free.ids}
+                      hintIds={hintIds}
+                      debugShowFree={__DEV__ && debugShowFree}
+                      motion={boardMotion.motion}
+                      onTilePress={handleTilePress}
+                    />
+                  </Animated.View>
+                </Animated.View>
+              </GestureDetector>
+
+              {/* No-moves overlays — viewport-level siblings to the gesture layer so
+                they always fill the visible area regardless of board height. */}
+              {showShuffleCTA && (
+                <View
+                  style={[StyleSheet.absoluteFill, styles.noMovesOverlay]}
+                  accessibilityRole="alert"
+                  accessibilityLiveRegion="assertive"
+                >
+                  <Text style={styles.overlayTitle}>{t("overlay.noMoves")}</Text>
+                  <Text style={styles.overlayDetail}>{t("overlay.noMovesDetail")}</Text>
+                  <Pressable
+                    style={styles.overlayBtn}
+                    onPress={handleShuffle}
+                    accessibilityRole="button"
+                    testID="mahjong-no-moves-shuffle"
+                  >
+                    <Text style={styles.overlayBtnText}>
+                      {t("overlay.shuffleButton")} ({state!.shufflesLeft})
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+            {zoomedIn && !showNoMoves && (
+              <MahjongMiniMap
+                tiles={state.tiles}
+                camera={camera}
+                view={zoom.view}
+                onPanTo={panTo}
+              />
             )}
+          </View>
+
+          {/* Undo, Hint, Shuffle in thumb reach, after the board in reading order (#3614). */}
+          <View style={styles.actionBarSlot}>
+            <MahjongActionBar
+              undoDisabled={undoDisabled}
+              hintDisabled={state.isComplete || state.isDeadlocked}
+              shuffleDisabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
+              shufflesLeft={state.shufflesLeft}
+              onUndo={handleUndo}
+              onHint={handleHint}
+              onShuffle={handleShuffle}
+            />
           </View>
         </View>
       )}
@@ -890,7 +864,8 @@ export default function MahjongScreen() {
 
       {state !== null ? (
         <GameResultModal
-          visible={state.isComplete || showDeadlockOverlay}
+          // The win cascade plays out before the result card (#3613).
+          visible={(state.isComplete && !celebrating) || showDeadlockOverlay}
           outcome={state.isComplete ? "win" : "loss"}
           eyebrow={`${t("game.title")} · ${t(`layout.${state.currentLayoutId ?? "turtle"}`)}`}
           subtitle={
@@ -916,7 +891,7 @@ export default function MahjongScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={tResult("action.undoLastMove")}
               >
-                <Text style={[styles.resultUndoText, { color: colors.accent }]}>
+                <Text style={[styles.resultUndoText, { color: colors.accentText }]}>
                   {tResult("action.undoLastMove")}
                 </Text>
               </Pressable>
@@ -960,33 +935,26 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textDecorationLine: "underline",
   },
-  hudRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  boardArea: {
+    flex: 1,
     alignSelf: "stretch",
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-  },
-  hudGroup: {
-    flexDirection: "row",
+    backgroundColor: MAHJONG_BOARD_BG, // the felt fills the play area (#3612)
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+  },
+  actionBarSlot: {
+    alignSelf: "stretch",
   },
   noHintToast: {
+    // Over the board (moves nothing) and never takes a tap meant for a tile under it.
+    position: "absolute",
+    pointerEvents: "none",
+    top: MAHJONG_STATS_ROW_H,
+    zIndex: 1,
     fontFamily: typography.heading,
     fontSize: 12,
     letterSpacing: 0.5,
-    paddingBottom: 4,
     color: MAHJONG_HINT_COLOR,
-  },
-  hudText: {
-    fontFamily: typography.heading,
-    fontSize: 14,
-    letterSpacing: 0.5,
-  },
-  dealIdText: {
-    fontSize: 10,
   },
   noMovesOverlay: {
     backgroundColor: MAHJONG_NO_MOVES_OVERLAY_BG,

@@ -15,10 +15,16 @@ import {
   DevToggle,
 } from "../dev/DevPanelShell";
 import type { DevOptions, GameCanvasHandle } from "./GameCanvas";
-import { DIFFICULTY_TIERS, difficultyLabel, dodgeRateByTier } from "../../game/starswarm/engine";
+import {
+  DIFFICULTY_TIERS,
+  ENEMY_TIERS,
+  difficultyLabel,
+  dodgeRateByTier,
+} from "../../game/starswarm/engine";
 import type { TierDodgeRow } from "../../game/starswarm/engine";
 import type {
   DifficultyTier,
+  EnemyTier,
   PowerUpType,
   RunStats,
   StarSwarmState,
@@ -104,6 +110,8 @@ interface DevStatsSnapshot {
   readonly run: RunStats;
   /** #3246: this wave's power-up lifecycle counters. */
   readonly powerUps: StarSwarmState["waveStats"]["powerUps"];
+  /** #3710: this wave's hits on the player by the enemy tier that landed them. */
+  readonly hitsByTier: StarSwarmState["waveStats"]["damage"]["hitsByTier"];
 }
 
 function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
@@ -114,6 +122,7 @@ function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
     rows: dodgeRateByTier(s),
     run: s.runStats,
     powerUps: s.waveStats.powerUps,
+    hitsByTier: s.waveStats.damage.hitsByTier,
   };
 }
 
@@ -139,6 +148,14 @@ function powerUpTableLine(p: DevStatsSnapshot["powerUps"], type: PowerUpType): s
     `${type.padEnd(9)} ${col(spawned, 5)} ${col(p.collected[type], 4)} ${col(p.missed[type], 4)} ` +
     `${col(p.leftover[type], 4)} ${col(p.expired[type], 3)} ${col(Math.round(p.activeMs[type]), 5)}`
   );
+}
+
+const HITS_TABLE_HEADER = `${"tier".padEnd(8)} life plat shld`;
+
+/** #3710: one row of the current wave's hits-by-tier table (rocks are tierless, so not here). */
+function hitsTableLine(h: DevStatsSnapshot["hitsByTier"], tier: EnemyTier): string {
+  const t = h[tier];
+  return `${tier.padEnd(8)} ${col(t.life, 4)} ${col(t.plating, 4)} ${col(t.shield, 4)}`;
 }
 
 const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
@@ -169,6 +186,27 @@ const SETUP_SWITCHES: readonly (readonly [string, SwitchKey])[] = [
   ["Asteroids off", "asteroidsDisabled"],
 ];
 
+/**
+ * #3510: the switches that reach the running game at once (`canvasDevOptions`); turning one on is
+ * a dev action on the live run. The others apply at the panel's New Game (a dev run anyway) or,
+ * like the frame readout, never touch the run.
+ */
+const LIVE_SWITCHES: ReadonlySet<SwitchKey> = new Set<SwitchKey>([
+  "pauseStraggler",
+  "playerFireDisabled",
+  "enemyFireDisabled",
+  "asteroidsDisabled",
+  "dodgeDisabled",
+  "flakDisabled",
+  "routDisabled",
+]);
+
+/** #3510: a live switch is on — a run started now is touched by the panel from its first tick. */
+export function anyLiveSwitchOn(o: StarSwarmDevOptions): boolean {
+  for (const key of LIVE_SWITCHES) if (o[key]) return true;
+  return false;
+}
+
 const ENGINE_SWITCHES: readonly (readonly [string, SwitchKey])[] = [
   ["Dodge off", "dodgeDisabled"],
   ["Flak off", "flakDisabled"],
@@ -187,17 +225,31 @@ const POWER_UPS: readonly PowerUpType[] = [
 ];
 
 const MIXER: readonly (readonly [string, keyof SfxVolumes])[] = [
-  ["Laser", "laser"],
+  ["Music", "music"], // #3638
   ["PU: Lightning", "poweruplightning"],
   ["PU: Shield", "powerupshield"],
   ["PU: Buddy", "powerupbuddy"],
   ["PU: Bomb", "powerupbomb"],
   ["Explosion", "explosion"],
+  ["Bomb blast", "bombblast"],
+  ["Asteroid break", "asteroid"],
+  ["Shield on", "shieldon"],
+  ["Shield loop", "shieldloop"],
+  ["Shield warning (1 s left)", "shieldwarn"],
+  ["Shield off", "shieldoff"],
+  ["Buddy in", "buddyin"],
+  ["Buddy loop (on station)", "buddyloop"],
+  ["Buddy out (peels off)", "buddyout"],
+  ["Buddy shot down", "buddydown"],
+  ["Lightning loop", "lightningloop"],
+  ["Guns 1-3", "guns"],
   ["Player hit", "playerhit"],
   ["Wave clear", "waveclear"],
   ["Game over", "gameover"],
   ["Boss wave", "bosswave"],
+  ["Bonus life", "bonuslife"],
   ["Beam charge", "beamcharge"],
+  ["Attack run", "attackrun"],
   ["Beam fire", "beamfire"],
   ["Reinforce", "reinforce"],
   ["Salvage", "salvage"],
@@ -205,6 +257,11 @@ const MIXER: readonly (readonly [string, keyof SfxVolumes])[] = [
   ["Hull hit", "hullhit"],
   ["Rout", "rout"],
 ];
+
+// #3638: the music row steps finer than the effects (0.05 ≈ 0.8 dB around the 0.57 default),
+// so the owner can set the music under the effects by ear without a rebuild.
+const MUSIC_VOLUME_STEP = 0.05;
+const volumeStep = (key: keyof SfxVolumes) => (key === "music" ? MUSIC_VOLUME_STEP : 0.1);
 
 export interface StarSwarmDevPanelProps {
   readonly enabled: boolean;
@@ -215,6 +272,12 @@ export interface StarSwarmDevPanelProps {
   readonly onOptionsChange: (update: (o: StarSwarmDevOptions) => StarSwarmDevOptions) => void;
   /** The panel's New Game, with its new-game options. */
   readonly onNewGame: (opts: DevOptions) => void;
+  /**
+   * #3510: called on every panel action that reaches the live run — a power-up, a thrown
+   * asteroid, killed escorts, a live switch turned on — before it is applied. The screen latches
+   * the run's dev flag here (the UI path, never the frame loop).
+   */
+  readonly onDevAction?: () => void;
 }
 
 /**
@@ -233,6 +296,7 @@ function StarSwarmDevPanelBody({
   options,
   onOptionsChange,
   onNewGame,
+  onDevAction,
 }: StarSwarmDevPanelProps) {
   const set = useCallback(
     <K extends keyof StarSwarmDevOptions>(key: K, value: StarSwarmDevOptions[K]) =>
@@ -245,12 +309,21 @@ function StarSwarmDevPanelBody({
       ...o,
       volumes: {
         ...o.volumes,
-        [key]: Math.round(Math.min(1, Math.max(0, o.volumes[key] + delta)) * 10) / 10,
+        // Hundredths: the effect rows stay on tenths; the music row moves in 0.05 steps.
+        [key]: Math.round(Math.min(1, Math.max(0, o.volumes[key] + delta)) * 100) / 100,
       },
     }));
 
   const toggle = ([label, key]: readonly [string, SwitchKey]) => (
-    <DevToggle key={key} label={label} value={options[key]} onValueChange={(v) => set(key, v)} />
+    <DevToggle
+      key={key}
+      label={label}
+      value={options[key]}
+      onValueChange={(v) => {
+        if (v && LIVE_SWITCHES.has(key)) onDevAction?.(); // #3510
+        set(key, v);
+      }}
+    />
   );
 
   return (
@@ -279,7 +352,10 @@ function StarSwarmDevPanelBody({
       <DevActionButton
         label="Throw asteroid"
         accessibilityLabel="Throw asteroid"
-        onPress={() => canvasRef.current?.throwAsteroid()} // #2486
+        onPress={() => {
+          onDevAction?.(); // #3510
+          canvasRef.current?.throwAsteroid(); // #2486
+        }}
       />
 
       {ENGINE_SWITCHES.map(toggle)}
@@ -287,7 +363,10 @@ function StarSwarmDevPanelBody({
       <DevActionButton
         label="Kill escorts"
         accessibilityLabel="Kill escorts"
-        onPress={() => canvasRef.current?.killEscorts()} // #2491
+        onPress={() => {
+          onDevAction?.(); // #3510
+          canvasRef.current?.killEscorts(); // #2491
+        }}
       />
 
       <RunStatsSection open={open} canvasRef={canvasRef} />
@@ -323,7 +402,10 @@ function StarSwarmDevPanelBody({
             <Pressable
               key={type}
               style={styles.powerUpBtn}
-              onPress={() => canvasRef.current?.triggerPowerUp(type)}
+              onPress={() => {
+                onDevAction?.(); // #3510
+                canvasRef.current?.triggerPowerUp(type);
+              }}
               accessibilityLabel={`Trigger ${type} power-up`}
             >
               <Text style={styles.powerUpText}>{type}</Text>
@@ -338,9 +420,9 @@ function StarSwarmDevPanelBody({
             key={key}
             label={label}
             labelStyle={styles.mixerLabel}
-            value={options.volumes[key].toFixed(1)}
-            onDecrement={() => adjustVolume(key, -0.1)}
-            onIncrement={() => adjustVolume(key, 0.1)}
+            value={options.volumes[key].toFixed(key === "music" ? 2 : 1)}
+            onDecrement={() => adjustVolume(key, -volumeStep(key))}
+            onIncrement={() => adjustVolume(key, volumeStep(key))}
             decrementLabel={`Decrease ${label} volume`}
             incrementLabel={`Increase ${label} volume`}
           />
@@ -403,6 +485,13 @@ function RunStatsSection({ open, canvasRef }: Pick<StarSwarmDevPanelProps, "open
           {POWER_UPS.map((type) => (
             <Text key={type} style={styles.mono}>
               {powerUpTableLine(stats.powerUps, type)}
+            </Text>
+          ))}
+          <Text style={styles.mono}>hits on you this wave, by tier</Text>
+          <Text style={styles.mono}>{HITS_TABLE_HEADER}</Text>
+          {ENEMY_TIERS.map((tier) => (
+            <Text key={tier} style={styles.mono}>
+              {hitsTableLine(stats.hitsByTier, tier)}
             </Text>
           ))}
           {RUN_STAT_LINES.map(([label, key]) => (

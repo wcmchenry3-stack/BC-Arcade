@@ -36,9 +36,12 @@ describe("PlayingCard + MinimalDeck (Jest default)", () => {
     expect(getK("K")).toBeTruthy();
   });
 
-  it("shows ? and hides rank/suit when face-down", async () => {
+  it("draws the frame-only back and hides rank/suit when face-down", async () => {
     await wrap(<PlayingCard suit="spades" rank={1} faceDown accessibilityLabel="Face-down card" />);
-    expect(screen.getByText("?")).toBeTruthy();
+    expect(screen.getByTestId("minimal-back")).toBeTruthy();
+    expect(screen.getByTestId("minimal-back-field")).toBeTruthy();
+    expect(screen.getByTestId("minimal-back-line")).toBeTruthy();
+    expect(screen.queryByText("?")).toBeNull();
     expect(screen.queryByText("A")).toBeNull();
     expect(screen.queryByText("♠")).toBeNull();
   });

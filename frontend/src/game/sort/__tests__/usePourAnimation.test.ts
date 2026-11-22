@@ -5,6 +5,7 @@
  */
 import { act, renderHook } from "@testing-library/react-native";
 import { usePourAnimation } from "../usePourAnimation";
+import { REDUCE_MOTION_POUR_MS, pourFlowMs, pourTotalMs } from "../motion";
 
 const SETTLE_MS = 500;
 
@@ -274,5 +275,67 @@ describe("usePourAnimation — motion setting", () => {
       result.current.complete();
     });
     expect(onLand).toHaveBeenCalledWith("board-0", 1, 3);
+  });
+});
+
+// #3660: the pour got faster, not different. Taps during it are still refused, and it still
+// lands only when SortBoard says so (the replay recorder records it on landing, #3385).
+describe("usePourAnimation — motion module (#3660)", () => {
+  it("a Reduce Motion pour lands at once by default, not after a wait", async () => {
+    const onLand = jest.fn();
+    const { result } = await renderHook(() =>
+      usePourAnimation<string>({ reduceMotion: true, onLand })
+    );
+    await act(async () => {
+      result.current.start("board-0", 0, 1, pourFlowMs(1));
+    });
+    expect(onLand).not.toHaveBeenCalled(); // not within the tap itself
+    await act(async () => {
+      jest.advanceTimersByTime(REDUCE_MOTION_POUR_MS);
+    });
+    expect(onLand).toHaveBeenCalledTimes(1);
+    expect(result.current.pour).toBeNull();
+  });
+
+  it("a pour of any size, at its new speed, is refused a second pour and lands on complete()", async () => {
+    const { result, onLand } = await setup(false);
+    for (const units of [1, 2, 3, 4]) {
+      let first = false;
+      let second = true;
+      await act(async () => {
+        first = result.current.start(`board-${units}`, 0, 1, pourFlowMs(units));
+        second = result.current.start("other", 2, 3, pourFlowMs(1));
+      });
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+      expect(result.current.pour).toEqual({ from: 0, to: 1, holdMs: pourFlowMs(units) });
+      // Nothing lands it but the board, however long the pour is.
+      await act(async () => {
+        jest.advanceTimersByTime(pourTotalMs(units) * 2);
+      });
+      expect(onLand).not.toHaveBeenCalledWith(`board-${units}`, 0, 1);
+      await act(async () => {
+        result.current.complete();
+      });
+      expect(onLand).toHaveBeenLastCalledWith(`board-${units}`, 0, 1);
+    }
+    expect(onLand).toHaveBeenCalledTimes(4);
+  });
+
+  it("cancel drops the pour without landing it, at any point", async () => {
+    const { result, onLand } = await setup(false);
+    await act(async () => {
+      result.current.start("board-0", 0, 1, pourFlowMs(2));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(pourTotalMs(2) - 1);
+      result.current.cancel();
+    });
+    await act(async () => {
+      result.current.complete();
+      jest.advanceTimersByTime(60_000);
+    });
+    expect(onLand).not.toHaveBeenCalled();
+    expect(result.current.pour).toBeNull();
   });
 });

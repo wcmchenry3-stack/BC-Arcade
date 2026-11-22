@@ -1,10 +1,13 @@
-import { opaque, cssHex, cssRgba, rgbFromHex } from "../../game/starswarm/render/color";
+import { opaque, cssHex, cssRgba } from "../../game/starswarm/render/color";
 import * as palette from "../../game/starswarm/render/palette";
 import { dark, light, type Colors } from "../ThemeContext";
+import * as cascade from "../theme.cascade";
 import * as dailyword from "../theme.dailyword";
+import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
 import * as hearts from "../theme.hearts";
 import * as mahjong from "../theme.mahjong";
 import * as starswarm from "../theme.starswarm";
+import { HUD_CHIP_COLOR, HUD_POWER_UP_COLOR, HUD_TEXT } from "../../game/starswarm/render/hudStyle";
 
 // WCAG 2.x relative luminance / contrast ratio for opaque #rrggbb colours — the same
 // helper shape as outcomeContrast.test.ts.
@@ -116,20 +119,29 @@ describe("Mahjong palette (#2989)", () => {
   });
 });
 
-describe("Hearts animation colours (#2989)", () => {
-  it("queen of spades ink reaches AA on the card face", () => {
-    expect(contrast(hearts.HEARTS_QUEEN_INK, hearts.HEARTS_QUEEN_CARD_FACE)).toBeGreaterThanOrEqual(
+describe("Hearts moment colours (#2989, #3588)", () => {
+  it("the queen of spades caption reaches AA on the felt and on the scrim's dark edge", () => {
+    expect(contrast(hearts.HEARTS_QUEEN_CAPTION, hearts.HEARTS_FELT_CENTRE)).toBeGreaterThanOrEqual(
       4.5
     );
+    expect(
+      contrast(hearts.HEARTS_QUEEN_CAPTION, hearts.HEARTS_QUEEN_SCRIM_EDGE)
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("moon shot caption and stars read on the black backdrop (AA)", () => {
+  it("the hearts-broken caption reaches AA on the felt", () => {
     expect(
-      contrast(hearts.HEARTS_MOONSHOT_LABEL, hearts.HEARTS_MOONSHOT_BACKDROP)
+      contrast(hearts.HEARTS_BROKEN_CAPTION, hearts.HEARTS_FELT_CENTRE)
     ).toBeGreaterThanOrEqual(4.5);
-    expect(
-      contrast(hearts.HEARTS_MOONSHOT_STAR, hearts.HEARTS_MOONSHOT_BACKDROP)
-    ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([
+    ["sky top", hearts.HEARTS_MOON_SKY_TOP],
+    ["sky middle", hearts.HEARTS_MOON_SKY_MID],
+  ])("moon shot captions and stars read on the night sky's %s (AA)", (_n, sky) => {
+    expect(contrast(hearts.HEARTS_MOON_TITLE, sky)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(hearts.HEARTS_MOON_PENALTY, sky)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(hearts.HEARTS_MOON_STAR, sky)).toBeGreaterThanOrEqual(4.5);
   });
 });
 
@@ -148,6 +160,43 @@ describe("Star Swarm HUD colours (#2989)", () => {
     expect(contrast(fg, SPACE)).toBeGreaterThanOrEqual(4.5);
   });
 
+  // #3598: the redesigned HUD's text colours — the dim captions and best score, the plating-blue
+  // HULL chip — and every chip's text on the chip's own dark fill (blended over deep space)
+  it.each([
+    ["HUD dim caption / best", starswarm.STARSWARM_HUD_DIM],
+    ["HULL chip (armour blue)", starswarm.STARSWARM_ARMOR_BLUE],
+  ])("%s text reaches AA on deep space (#3598)", (_n, fg) => {
+    expect(contrast(fg, SPACE)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([
+    ["GUNS", HUD_CHIP_COLOR.guns],
+    ["HULL", HUD_CHIP_COLOR.hull],
+  ])("%s chip text reaches AA on its chip fill (#3598)", (_n, fg) => {
+    const chip = over(starswarm.STARSWARM_HUD_CHIP_FILL.replace(/\s/g, ""), SPACE);
+    expect(contrast(fg, chip)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("every HUD text colour in the shared HUD styles is covered above (#3598)", () => {
+    const covered = new Set([
+      starswarm.STARSWARM_ACCENT,
+      starswarm.STARSWARM_HUD_TEXT,
+      starswarm.STARSWARM_HUD_DIFFICULTY,
+      starswarm.STARSWARM_BOSS_WAVE,
+      starswarm.STARSWARM_BONUS_LIFE,
+      starswarm.STARSWARM_HULL_BLUE,
+      starswarm.STARSWARM_LIGHTNING,
+      starswarm.STARSWARM_HUD_DIM,
+      starswarm.STARSWARM_ARMOR_BLUE,
+    ]);
+    const used = [
+      ...Object.values(HUD_TEXT).map((s) => s.color),
+      ...Object.values(HUD_CHIP_COLOR),
+      ...Object.values(HUD_POWER_UP_COLOR),
+    ];
+    for (const c of used) expect(covered.has(c)).toBe(true);
+  });
+
   it("the dark label on the accent-filled Resume / New Game button reaches AA", () => {
     expect(contrast(SPACE, starswarm.STARSWARM_ACCENT)).toBeGreaterThanOrEqual(4.5);
   });
@@ -164,42 +213,122 @@ describe("Star Swarm canvas palette stays one colour across renderers (#2989)", 
     expect(cssHex(palette.BG_RGB)).toBe(starswarm.STARSWARM_SPACE);
     expect(cssHex(palette.ACCENT_RGB)).toBe(starswarm.STARSWARM_ACCENT);
     expect(cssHex(palette.HULL_BLUE_RGB)).toBe(starswarm.STARSWARM_HULL_BLUE);
-    expect(cssHex(palette.LIGHTNING_RGB)).toBe(starswarm.STARSWARM_LIGHTNING);
-    expect(palette.PLAYER_SHOT).toBe(opaque(rgbFromHex(starswarm.STARSWARM_ACCENT)));
   });
 
   it("keeps the packed colours the display list always used", () => {
     expect(palette.BG).toBe(0xff000010);
-    expect(palette.ENEMY_SHOT).toBe(0xffff4422);
-    expect(palette.FLAK_SHOT).toBe(0xffffd27a);
-    expect(palette.PLAYER_SHOT).toBe(0xff00ffcc);
-    expect(palette.CHARGE_SHOT).toBe(0xff00f0ff);
-    expect(palette.TIER_FALLBACK).toEqual({
-      Grunt: 0xff8888ff,
-      Elite: 0xffff88ff,
-      Guardian: 0xffffff44,
-      Carrier: 0xffb06cff,
-    });
+    // #3594: the shots' body colours (their sprites' loading fallbacks): friendly cyan and mint,
+    // danger red-orange, flak amber, the Carrier's twin lasers hive pink
+    expect([
+      palette.SHOT_PLAYER_RGB,
+      palette.SHOT_BUDDY_RGB,
+      palette.SHOT_ENEMY_RGB,
+      palette.SHOT_FLAK_RGB,
+      palette.SHOT_CARRIER_RGB,
+    ]).toEqual([0x00e8d0, 0x5dffa8, 0xff3a1a, 0xffc04a, 0xe0204a]);
+    // #3593: one fallback colour for every tier (each has its own shape), the lifted shell's light stop
+    expect(palette.ENEMY_FALLBACK).toBe(0xffb07ae0);
+    // #3592 restyled Buddy's HP bar in style B: cyan, amber, danger red (was green, amber, red)
     expect([palette.BUDDY_HP_HIGH, palette.BUDDY_HP_MID, palette.BUDDY_HP_LOW]).toEqual([
-      0xff4dff88, 0xffffc233, 0xffff4a3d,
+      0xff00e8d0, 0xffffb020, 0xffff5a3c,
     ]);
+    // ...and the plating blue the outline and the plating flash share with the generator
+    expect(palette.ARMOR_BLUE_RGB).toBe(0x1fb6ff);
     expect(palette.HULL_BLUE_RGB).toBe(0x00aaff);
     expect(palette.SALVAGE_RGB).toBe(0xffb020);
-    expect(palette.BEAM_RGB).toBe(0xb06cff);
-    expect(palette.BRACE_RGB).toBe(0xffaa28);
+    // #3625: the Carrier's searing plasma (CB2), brace orange, hive shield and final-stand heat
+    expect([palette.PLASMA_RGB, palette.PLASMA_CORE_RGB, palette.PLASMA_GLOW_RGB]).toEqual([
+      0xff3a1a, 0xfff2b0, 0xff8a3c,
+    ]);
+    expect(palette.BRACE_RGB).toBe(0xff8a3c);
+    expect(palette.HIVE_SHIELD_RGB).toBe(0xe08cff);
+    expect(palette.HEAT_RGB).toBe(0xff2a1a);
   });
 
   it("the web table's strings are the packed colours' CSS forms", () => {
-    expect(cssHex(palette.ENEMY_SHOT_RGB)).toBe("#ff4422");
-    expect(cssHex(palette.TIER_RGB.Carrier)).toBe("#b06cff");
+    expect(cssHex(palette.SHOT_ENEMY_RGB)).toBe("#ff3a1a");
+    expect(cssHex(palette.SHELL_LIGHT_RGB)).toBe("#b07ae0");
     expect(cssRgba(palette.HULL_BLUE_RGB, 0.25)).toBe("rgba(0,170,255,0.25)");
     expect(cssRgba(palette.BUDDY_SHIP_RGB, 0.8)).toBe("rgba(0,120,255,0.8)");
-    expect(cssHex(palette.TIER_RGB.Guardian)).toBe("#ffff44");
   });
 
-  it("a tier's fallback colour is its web tint, fully opaque", () => {
-    for (const tier of Object.keys(palette.TIER_RGB) as (keyof typeof palette.TIER_RGB)[]) {
-      expect(palette.TIER_FALLBACK[tier]).toBe(opaque(palette.TIER_RGB[tier]));
+  it("the enemy fallback is the shell's light stop, fully opaque (#3593)", () => {
+    expect(palette.ENEMY_FALLBACK).toBe(opaque(palette.SHELL_LIGHT_RGB));
+  });
+});
+
+describe("Cascade placeholder piece colours (#3693)", () => {
+  it("has one opaque hex colour per physics tier, and PIECE_DEFS reads them", () => {
+    expect(cascade.CASCADE_PIECE_COLORS).toHaveLength(PIECE_DEFS.length);
+    PIECE_DEFS.forEach((def, i) => {
+      expect(def.color).toBe(cascade.CASCADE_PIECE_COLORS[i]);
+      expect(def.color).toMatch(/^#[0-9a-f]{6}$/);
+    });
+  });
+});
+
+describe("Cascade bin palette (#3698)", () => {
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s equals the theme's surface / accent / border tokens", (name, colors) => {
+    expect(cascade.CASCADE_BIN_PALETTE[name]).toEqual({
+      surface: colors.surface,
+      accent: colors.accent,
+      border: colors.border,
+    });
+  });
+});
+
+describe("Cascade win celebration palette (#3699)", () => {
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s equals the theme's background / celebration tokens", (name, colors) => {
+    expect(cascade.CASCADE_CELEBRATION.themes[name]).toEqual({
+      dim: colors.background,
+      ring: colors.celebration,
+    });
+  });
+
+  it("every set colour is an existing #rrggbb art or bin colour", () => {
+    const known = new Set<string>();
+    const collect = (v: unknown): void => {
+      if (typeof v === "string") known.add(v);
+      else if (v && typeof v === "object") Object.values(v).forEach(collect);
+    };
+    collect(cascade.CASCADE_ART);
+    collect(cascade.CASCADE_BIN_PALETTE);
+    for (const set of Object.values(cascade.CASCADE_CELEBRATION.sets)) {
+      for (const c of Object.values(set)) {
+        expect(c).toMatch(/^#[0-9a-f]{6}$/);
+        expect(known.has(c)).toBe(true);
+      }
     }
+  });
+});
+
+describe("Cascade lid palette (#3694)", () => {
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s equals the theme's muted / accent / error / text tokens", (name, colors) => {
+    const lid = cascade.CASCADE_LID_PALETTE[name];
+    expect(lid).toEqual({
+      lid: colors.textMuted,
+      ringSafe: colors.accent,
+      danger: colors.error,
+      ink: colors.text,
+    });
+    Object.values(lid).forEach((c) => expect(c).toMatch(/^#[0-9a-f]{6}$/));
+  });
+
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s lid line is visible on the bin (>= 3:1, non-text contrast)", (name, colors) => {
+    const lid = cascade.CASCADE_LID_PALETTE[name];
+    expect(contrast(lid.lid, colors.surface)).toBeGreaterThanOrEqual(3);
+    expect(contrast(lid.danger, colors.surface)).toBeGreaterThanOrEqual(3);
   });
 });

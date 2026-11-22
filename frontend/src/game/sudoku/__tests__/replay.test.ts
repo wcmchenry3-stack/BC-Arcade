@@ -326,9 +326,10 @@ describe("golden replay: the givens plus the entries rebuild the final grid", ()
   it("an undo past the 50-snapshot limit changes nothing and is not recorded", () => {
     let s = loadPuzzle("hard", "classic", () => 0.77);
     const empties = [...s.puzzle].flatMap((c, i) => (c === "0" ? [i] : []));
-    expect(empties.length).toBeGreaterThan(50);
+    // One cell short of solved: a solved puzzle takes no more actions (#3774), undo included.
+    expect(empties.length).toBeGreaterThan(51);
     const rec = startRecording();
-    for (const cell of empties) {
+    for (const cell of empties.slice(0, -1)) {
       s = selectCell(s, Math.floor(cell / 9), cell % 9);
       s = rec.play(s, { kind: "digit", digit: Number(s.solution[cell]) as CellValue });
     }

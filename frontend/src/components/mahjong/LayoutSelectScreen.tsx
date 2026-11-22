@@ -52,7 +52,9 @@ export default function LayoutSelectScreen({
           <Text style={[styles.layoutName, { color: unlocked ? colors.text : colors.textMuted }]}>
             {t(`layout.${layout.id}`)}
           </Text>
-          <Text style={[styles.tierBadge, { color: unlocked ? colors.accent : colors.textMuted }]}>
+          <Text
+            style={[styles.tierBadge, { color: unlocked ? colors.accentText : colors.textMuted }]}
+          >
             T{layout.tier}
           </Text>
         </>

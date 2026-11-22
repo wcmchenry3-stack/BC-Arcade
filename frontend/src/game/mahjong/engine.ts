@@ -9,13 +9,14 @@
  * valid. Tests can pin the shuffle via `setRng(createSeededRng(seed))`.
  */
 
-import { bestOf } from "../_shared/bestOf";
+import { monotonicNow } from "../_shared/monotonicNow";
 import {
   createRngSlot,
   createSeededRng,
   LCG_MODULUS,
   type RandomSource,
 } from "../_shared/seededRng";
+import { areTestHooksEnabled } from "../_shared/envFlags";
 import { pushCapped } from "../_shared/undoStack";
 import type {
   Layout,
@@ -44,34 +45,6 @@ import {
 const SCORE_PER_PAIR = 10;
 const SCORE_COMPLETE_BONUS = 500;
 
-/**
- * Fastest clear that ranks, in ms (#2747): half a second per pair over 72
- * pairs. Mirrors `MIN_CLEAR_MS` in `backend/mahjong/models.py` (the board's
- * `min_value`); `backend/tests/test_board_definitions.py` keeps them equal.
- * A faster clear is a broken clock (e.g. an old save resumed with no time
- * banked), so it is never a device best either.
- */
-export const MAHJONG_MIN_CLEAR_MS = 36000;
-
-/** A stored device best time, or 0 ("no best yet") when it is below the floor. */
-export function plausibleBestMs(ms: number): number {
-  return Number.isFinite(ms) && ms >= MAHJONG_MIN_CLEAR_MS ? ms : 0;
-}
-
-/**
- * The device best after a clear taking `finalMs`: fastest wins, and a clear
- * below `MAHJONG_MIN_CLEAR_MS` neither counts nor is a new best. A sub-floor
- * `priorBestMs` (stored before the floor) is ignored.
- */
-export function nextBestTime(
-  priorBestMs: number,
-  finalMs: number
-): { bestTimeMs: number; isNewBest: boolean } {
-  const prior = plausibleBestMs(priorBestMs);
-  if (plausibleBestMs(finalMs) === 0) return { bestTimeMs: prior, isNewBest: false };
-  const { best, isNewBest } = bestOf(prior, finalMs, true);
-  return { bestTimeMs: best, isNewBest };
-}
 /** The most moves `undoMove` can take back; the oldest entry goes first. */
 export const UNDO_CAP = 50;
 export const MAX_SHUFFLES = 3;
@@ -296,7 +269,7 @@ export function getAnyFreePair(
 // Elapsed time helper
 // ---------------------------------------------------------------------------
 
-export function elapsedMs(state: MahjongState, now: number = Date.now()): number {
+export function elapsedMs(state: MahjongState, now: number = monotonicNow()): number {
   return clockElapsedMs(state, now);
 }
 
@@ -566,10 +539,18 @@ function computeDealId(tiles: readonly SlotTile[]): string {
 // ---------------------------------------------------------------------------
 
 /**
+ * The one seed every deal uses in a test build (`EXPO_PUBLIC_TEST_HOOKS=1`,
+ * #3803), for every layout, so Maestro/Playwright screenshots show the same
+ * tiles. Any seed works: `createGame` deals a solvable board by construction.
+ */
+export const E2E_DEAL_SEED = 3803;
+
+/**
  * Draw the seed for the next deal (#3281) so the caller can record it, then
  * pass it to `createGame`. A 32-bit seed (the LCG's state space).
  */
 export function drawDealSeed(): number {
+  if (areTestHooksEnabled()) return E2E_DEAL_SEED;
   return Math.floor(rngSlot.rng() * LCG_MODULUS);
 }
 
@@ -637,7 +618,7 @@ export function selectTile(
   const tile = state.tiles.find((t) => t.id === tileId);
   if (!tile || !(freeIds ? freeIds.has(tile.id) : isFreeTile(tile, state.tiles))) return state;
 
-  const now = Date.now();
+  const now = monotonicNow();
   // The first tap starts the clock; a tap while it is paused leaves it so.
   const clock = startClockOnMove(state, now);
 
@@ -652,7 +633,10 @@ export function selectTile(
   }
 
   if (!tilesMatch(state.selected, tile)) {
-    return withClock({ ...state, selected: tile, events: [{ type: "tileSelect" }] }, clock);
+    return withClock(
+      { ...state, selected: tile, events: [{ type: "tileSelect", mismatch: true }] },
+      clock
+    );
   }
 
   // Matched pair — remove both tiles.
@@ -871,7 +855,7 @@ export function shuffleBoard(state: MahjongState): MahjongState {
         undoStack,
         events: [{ type: "shuffle" }, { type: "deadlock" }],
       },
-      Date.now()
+      monotonicNow()
     );
   }
 
@@ -929,7 +913,7 @@ export function tilesBeforeUndo(
 }
 
 /** Undo the last pair removal or shuffle. */
-export function undoMove(state: MahjongState, now: number = Date.now()): MahjongState {
+export function undoMove(state: MahjongState, now: number = monotonicNow()): MahjongState {
   if (state.undoStack.length === 0) return state;
   const entry = state.undoStack[state.undoStack.length - 1]!;
   // The live clock stays (#2750): the clock as it was before the move
@@ -965,11 +949,11 @@ export function undoMove(state: MahjongState, now: number = Date.now()): Mahjong
  * drives both through `usePauseWhileAway`. A no-op once the game has no
  * running timer to freeze (not yet started, or already finished).
  */
-export function pauseGame(state: MahjongState, now: number = Date.now()): MahjongState {
+export function pauseGame(state: MahjongState, now: number = monotonicNow()): MahjongState {
   return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
-export function resumeGame(state: MahjongState, now: number = Date.now()): MahjongState {
+export function resumeGame(state: MahjongState, now: number = monotonicNow()): MahjongState {
   return state.isComplete || state.isDeadlocked ? state : resumeClock(state, now);
 }

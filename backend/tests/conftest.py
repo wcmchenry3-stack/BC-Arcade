@@ -132,6 +132,26 @@ def reset_rate_limiter():
     limiter.reset()
 
 
+@pytest.fixture
+def sort_edition(monkeypatch: pytest.MonkeyPatch) -> Iterator:
+    """``sort_edition(enforced)`` makes ``SORT_CATALOG_EDITION_ENFORCED`` read as
+    ``enforced`` for this test (#2761). ``games.boards.editions`` builds its
+    ``Settings`` once per process and the stats "best" expression is cached, so
+    this swaps the one and clears the other, again when the test ends."""
+    from games import stats_columns
+    from games.boards import editions
+    from settings import Settings
+
+    def set_enforced(enforced: bool) -> None:
+        monkeypatch.setattr(
+            editions, "_settings", Settings.isolated(SORT_CATALOG_EDITION_ENFORCED=enforced)
+        )
+        stats_columns._best_candidate.cache_clear()
+
+    yield set_enforced
+    stats_columns._best_candidate.cache_clear()
+
+
 @pytest.fixture(autouse=True)
 def _reset_rejected_result_throttles() -> None:
     """Clear observability.report's per-reason throttles, so one test's report
@@ -141,6 +161,9 @@ def _reset_rejected_result_throttles() -> None:
     report._rejected_throttles.clear()
     report._rejected_suppressed.clear()
     report.reset_keyed_throttles()  # #3313: store-misconfigured and /stats reporters
+    from starswarm import models as starswarm_models
+
+    starswarm_models._throttles.clear()  # #3535: wave_completed drop reports
 
 
 @pytest.fixture(autouse=True)
@@ -165,11 +188,11 @@ def _reset_purchases_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 def _reset_tunable_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Rebuild the lazy ``Settings`` of the modules that read an operational tunable
     (#3110), so an env var or an injected ``Settings`` cannot leak between tests."""
-    from daily_challenge import streak
+    from daily_challenge import assignments, streak
     from games import sessions, sweep
     from routes import health
 
-    for module in (streak, sessions, sweep, health):
+    for module in (assignments, streak, sessions, sweep, health):
         monkeypatch.setattr(module, "_settings", None)
 
 
@@ -193,13 +216,18 @@ def _reset_process_caches():
     those tables directly, or backdates rows, must not see an earlier test's
     snapshot.
     """
-    from games import catalog_cache, sweep_gate
+    from daily_challenge import assignments
+    from games import catalog_cache, replay_storage, sweep_gate
 
     catalog_cache.invalidate()
     sweep_gate.clear()
+    replay_storage._cached_size = None
+    assignments._size_failed_until = None
     yield
     catalog_cache.invalidate()
     sweep_gate.clear()
+    replay_storage._cached_size = None
+    assignments._size_failed_until = None
 
 
 @pytest.fixture(autouse=True)
@@ -230,6 +258,7 @@ async def _clean_db_tables():
             "purchases",
             "bug_logs",
             "daily_challenge_days",
+            "daily_challenge_assignments",
             "players",
         ):
             await conn.execute(text(f"DELETE FROM {table}"))

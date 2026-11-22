@@ -1,0 +1,138 @@
+appId: com.buffingchi.games
+---
+# FreeCell drag with Large cards on (#3347), with the drag invariant (#3532).
+#
+# Large cards puts the board in a horizontal ScrollView (components/freecell/
+# FreeCellBoard.tsx, BoardScroll) and draws every card 64 dp wide, so the
+# ghost is placed for an enlarged board inside the scroll view. The flow does
+# not scroll (offset 0), so it doesn't cover a non-zero scroll offset. After the swipe,
+# _shared/assert-drag-ok.yaml checks the debug overlay's `drag-check: ok` line.
+#
+# The setting is switched on through the real ⋯ menu by testID: `nav-menu`
+# opens it, `freecell-large-cards-toggle` flips it (the menu stays open), and a
+# tap on the scrim closes it. The choice is stored per install, and
+# launch.yaml clears state, so no other flow sees it. A separate flow, so a
+# calibration miss here can't hide drag.yaml's results.
+#
+# Fixed deal: seed 44 (see drag.yaml). col0 holds 7 cards, top K♠ (card 6).
+# At game start every free cell is empty, so col0's top -> free cell 0 is
+# always valid.
+#
+# ── Coordinates (CI pixel_6 emulator, 1080x2400 px = 411x914 dp) ────────────
+# Felt-table layout (#3607, game/freecell/layout.ts) with Large cards: cards
+# 64 x 91 dp, the free cells and foundations 0.92 of that (58 x 83 dp). The
+# board (8 x 64 + 7 x 4 = 540 dp) is wider than the felt (397 dp inside), so
+# the 48 dp scroll-button strip shows at the top of the felt, then the
+# scroller's 4 dp padding, then the board's 12 dp padding.
+#   x: the scroll starts at offset 0; the board's left edge is 6 (gutter) + 1
+#      (rim) + 4 = 11 dp: column 0 is 11-75 dp and free cell 0 11-69 dp, so
+#      x 10% = 41 dp is in both.
+#   y: T (status bar) + 64 header + 28 stat line + 4 + 1 rim -> felt inside
+#      at T+97; strip 48 + 4 -> board at T+149, + 12 padding -> top row at
+#      T+161 (83 dp), + 12 -> tableau at T+256. The step is the 7-card
+#      column's fit, capped at 0.72 of the card (65 dp): about 60-65 dp,
+#      depending on the bottom inset, so col0's card 6 starts at T+616..T+646.
+#   T is 24 dp by assumption, about 50 dp by the pre-#3607 calibration (see
+#   drag.yaml); both points below hold for both:
+#   from col0 top (K♠, card 6): x 10%, y 78% = 713 dp (T=24: 640-761;
+#        T=50: 666-787, over the step's range)
+#   to   free cell 0: x 10%, y 26% = 238 dp (T=24: 185-268; T=50: 211-294)
+# If CI shows the grab or drop missing, the job's "Maestro failure details"
+# step (e2e/maestro/diagnose.py) prints every freecell- element's bounds at
+# failure; recalibrate from those.
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "freecell"
+      screenLabel: "FreeCell"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-board"
+    timeout: 8000
+
+# --- Large cards on --------------------------------------------------------
+# nav-menu sits in the top-right corner, where expo-dev-menu's floating
+# "Tools" button starts in debug builds; CI builds turn that button off
+# (EXDevMenuShowFloatingActionButton=false in AndroidManifest.xml and
+# Info.plist, docs/ANDROID-CI.md), else this tap opens the dev menu (#3532).
+- tapOn:
+    id: "nav-menu"
+- extendedWaitUntil:
+    visible:
+      id: "freecell-large-cards-toggle"
+    timeout: 3000
+- tapOn:
+    id: "freecell-large-cards-toggle"
+# Close the menu: the scrim covers the whole window under the dropdown, which
+# sits at the top right, so the screen's lower middle is always scrim.
+- tapOn:
+    point: "50%,90%"
+- extendedWaitUntil:
+    notVisible:
+      id: "freecell-large-cards-toggle"
+    timeout: 3000
+# The scroll buttons only exist while Large cards is on and the board
+# overflows: proof the board really is in its enlarged, scrolled form.
+- extendedWaitUntil:
+    visible:
+      id: "freecell-scroll-right"
+    timeout: 5000
+- takeScreenshot: freecell-large-cards-on
+
+# --- tableau-to-freecell with Large cards ----------------------------------
+- extendedWaitUntil:
+    visible:
+      id: "freecell-col-0-top"
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "freecell-col-0-card-5"
+    timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "freecell-slot-0"
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "10%, 78%"
+          end: "10%, 26%"
+          duration: 600
+# iOS (402x874 pt, top inset 62, bottom 34): the felt is 598 pt high
+#   (596 inside), so the tableau has 596 - 56 (strip + padding) - 12 - 83 -
+#   12 - 44 (bottom band) = 389 pt and the 7-card column steps
+#   (389 - 91) / 6 = 49 pt. Board left 11, so x 10% = 40 is in column 0 and
+#   free cell 0; free cell 0 at y 62 + 161 = 223..306, centre 264 = 30%;
+#   tableau from 318, col0's card 6 at 612..703, centre 657 = 75%.
+#   Calibrated: run 43458619805 confirmed these coordinates.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "10%, 75%"
+          end: "10%, 30%"
+          duration: 600
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "1"
+# K♠ is in free cell 0; col0 is down to 6 cards (card 5 is its top now).
+- extendedWaitUntil:
+    visible:
+      id: "freecell-slot-0-card"
+    timeout: 3000
+- extendedWaitUntil:
+    notVisible:
+      id: "freecell-col-0-card-5"
+    timeout: 3000
+- takeScreenshot: freecell-large-drag-tableau-to-freecell
+
+# Board must still be interactive after the sequence.
+- extendedWaitUntil:
+    visible:
+      id: "freecell-board"
+    timeout: 3000

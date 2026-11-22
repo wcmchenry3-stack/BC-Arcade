@@ -54,7 +54,7 @@ export default function JoinLeaderboardsPrompt({ onJoin, testID }: JoinLeaderboa
         <Text
           accessibilityRole="alert"
           accessibilityLiveRegion="assertive"
-          style={[styles.helper, { color: colors.error }]}
+          style={[styles.helper, { color: colors.errorText }]}
         >
           {t("namePrompt.joinError")}
         </Text>

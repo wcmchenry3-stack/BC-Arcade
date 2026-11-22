@@ -10,6 +10,7 @@
   "tile.currentStreak": "연승",
   "tile.bestStreak": "최다 연승",
   "tile.best": "최고 기록",
+  "tile.fastestWin": "최단 시간 승리",
   "tile.timePlayed": "플레이 시간",
   "tile.lastPlayed": "마지막 플레이",
   "empty": "아직 끝낸 게임이 없습니다. 게임을 끝내면 여기에서 통계를 볼 수 있습니다.",

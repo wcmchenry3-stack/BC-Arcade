@@ -19,8 +19,11 @@
   "score.moves": "Jogadas: {{moves}}",
   "error.supermoveRejected": "Não há espaços livres suficientes para mover esta pilha",
   "slot.free": "livre",
-  "a11y.foundationComplete": "Fundação completa",
   "settings.largeCards": "Cartas grandes",
   "a11y.scrollBoardLeft": "Rolar o tabuleiro para a esquerda",
-  "a11y.scrollBoardRight": "Rolar o tabuleiro para a direita"
+  "a11y.scrollBoardRight": "Rolar o tabuleiro para a direita",
+  "stat.moves": "Jogadas",
+  "stat.time": "Tempo",
+  "stat.timeA11y": "Tempo: {{time}}",
+  "pile.canMoveHere": "Pode mover para aqui"
 }

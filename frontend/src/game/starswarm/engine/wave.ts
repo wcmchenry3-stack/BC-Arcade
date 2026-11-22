@@ -7,16 +7,18 @@
  * the renderer can compare frames by identity.
  *
  * Tick pipeline, in order (each step sees the one before it):
- *   1. slow-mo / banner timers (real time) and `tickCtx` — the starting roster, read once
- *   2. `tickPlayer`             input, cooldowns, the player volley; the autopilot in Extraction
+ *   1. banner timers (real time) and `tickCtx` — the starting roster, read once
+ *   2. `tickPlayer`             input, cooldowns, the player volley (or #3562's Lightning pulse
+ *                               clock); the autopilot in Extraction
  *   3. `tickAsteroidThreats`    enemies react to rocks (before they move, so a dodge applies now)
  *   4. `tickEnemies`            the fleet's phase machine, Carrier, fire, reinforcements
  *   5. `tickBullets`            projectiles move; off-screen ones leave
  *   6. `tickAsteroids`          rocks move, timed spawns
  *   7. `tickPowerUps`           pickups fall, the active buff counts down
  *   8. `tickBuddyShips`         Buddy flies, fires, evades
- *   9. `tickCollisions`         only while `hazardsLive` — every hit, kill, pickup and score,
- *                               with the tick's awards committed to the ledger (#2837)
+ *   9. `tickCollisions`         only while `hazardsLive` — every hit, kill, pickup and score
+ *                               (#3562: a Lightning pulse among them), with the tick's awards
+ *                               committed to the ledger (#2837)
  *  10. `tickBonusLives`         a threshold crossed this tick (can revert a same-tick GameOver)
  *  11. `tickExplosions`
  *  12. `tickPickupWait`         #3132: the pickup wait's clock (its safety cap)
@@ -31,6 +33,8 @@
  * a pickup is on screen (#3132)] ──▶ Extraction ──ship out──▶ clearTransientCombat ──▶
  * buildWaveState(wave + 1) ──▶ SwoopIn. GameOver is terminal: `tick` returns the state
  * untouched. The screen's pre-wave countdown runs with the engine frozen.
+ * #3512: an ordinary power-up collected after the last kill is banked (`bankedPowerUp`) and
+ * applied on the next SwoopIn ──▶ Playing transition (`applyBankedPowerUp`).
  *
  * Counters: the seeded rng and the id counters live in `rng.ts`, outside the state. A run
  * restored after a cold start must call `restoreEngineCounters(save.counters)` before its first
@@ -69,14 +73,15 @@ import {
   resumePickupWait,
   tickExtractionPilot,
   tickPickupWait,
-  weaponsFree,
+  playerFireAllowed,
 } from "./extraction";
 import { bossWaveSlots, waveSlots } from "./geometry";
-import { playerVolley, tickPowerUps } from "./powerups";
+import { lightningPulseDue, withLightningPulseX } from "./lightningBeam";
+import { applyBankedPowerUp, playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
-import { SHOTS_FIRED, countShipsSpawned, withDeathCause } from "./waveCounters";
+import { SHOTS_FIRED, countShipsSpawned, withDeathCause, withDeathPhase } from "./waveCounters";
 import {
   bumpWave,
   closeWave,
@@ -95,8 +100,6 @@ import {
 } from "./waveTimeline";
 import {
   BONUS_LIFE_INVINCIBLE_MS,
-  BONUS_LIFE_SLOW_MO_DURATION,
-  BONUS_LIFE_SLOW_MO_SCALE,
   DEFAULT_TUNING,
   MAX_LIVES,
   MAX_PLAYER_BULLETS,
@@ -147,6 +150,11 @@ export interface RunOptions {
    * no buffer and each capture site costs one null check.
    */
   readonly timelineOn?: boolean;
+  /**
+   * #3510: the run was started from the dev panel (its New Game): it is dev-affected from the
+   * first frame (`StarSwarmState.devAffected`). Off by default.
+   */
+  readonly devAffected?: boolean;
 }
 
 export function initStarSwarm(
@@ -187,7 +195,8 @@ export function initStarSwarm(
     undefined,
     tuning
   );
-  const run = options.timelineOn ? { ...opened, ...openTimelineRun(true) } : opened; // #3392
+  const timed = options.timelineOn ? { ...opened, ...openTimelineRun(true) } : opened; // #3392
+  const run = options.devAffected ? { ...timed, devAffected: true } : timed; // #3510
   // #3245: a run that opens past wave 1 is the dev panel's wave jump
   return wave === 1 ? run : markWaveDev(run);
 }
@@ -258,6 +267,7 @@ function buildWaveState(
     asteroidsDisabled: false,
     reinforceTimer,
     reinforcedThisWave: 0,
+    carrierBayOpen: 0, // #3561: a new wave starts with the bay shut
     carrierBeams: [],
     carrierStage: carrierStageIn(enemies), // "protected": every wave opens with its Guardians
     tierStats,
@@ -296,6 +306,8 @@ function buildWaveState(
     closedWavesOverflow: NO_OVERFLOW, // #3251
     closedWavesBytes: 0, // #3251
     ...openTimelineRun(false), // #3392: initStarSwarm / startNextWave set the run's own
+    devAffected: false, // #3510: initStarSwarm / startNextWave set the run's own
+    bankedPowerUp: null, // #3512: startNextWave carries one banked during the last clear
   };
 }
 
@@ -307,10 +319,9 @@ export function tick(
 ): StarSwarmState {
   if (state.phase === "GameOver") return state;
 
-  // #1078: decrement slow-mo timer with real time; scale all gameplay by BONUS_LIFE_SLOW_MO_SCALE
-  const slowMoActive = state.bonusLifeSlowMoTimer > 0;
-  const bonusLifeSlowMoTimer = Math.max(0, state.bonusLifeSlowMoTimer - dtMs);
-  const scaledDt = slowMoActive ? dtMs * BONUS_LIFE_SLOW_MO_SCALE : dtMs;
+  // #3511: the bonus-life slow-mo is gone. `bonusLifeSlowMoTimer` survives only so old saves keep
+  // loading; it never scales dt, and a legacy non-zero value is zeroed here.
+  const bonusLifeSlowMoTimer = 0;
   // #2352: purely cosmetic — never gates or slows gameplay, just counts down real time.
   const missionCompleteTimer = decayMissionCompleteTimer(state.missionCompleteTimer, dtMs);
 
@@ -324,23 +335,27 @@ export function tick(
       : { ...state, bonusLifeSlowMoTimer, missionCompleteTimer, waveStats };
   if (devTogglesOn(s)) s = markWaveDev(s); // #3245
   const ctx = tickCtx(state); // #2963
-  s = tickPlayer(s, scaledDt, input);
-  s = tickAsteroidThreats(s, scaledDt, ctx); // #2487: before the enemy tick so a nudged path or sidestep applies now
-  s = tickEnemies(s, scaledDt, ctx, tuning);
-  s = tickBullets(s, scaledDt);
-  s = tickAsteroids(s, scaledDt); // #2486
-  s = tickPowerUps(s, scaledDt);
-  s = tickBuddyShips(s, scaledDt, tuning);
+  // #3562: does a Lightning beam pulse land this tick? Judged once, on the tick's starting state
+  const lightningPulse = lightningPulseDue(s, dtMs, input);
+  s = tickPlayer(s, dtMs, input, lightningPulse);
+  s = tickAsteroidThreats(s, dtMs, ctx); // #2487: before the enemy tick so a nudged path or sidestep applies now
+  s = tickEnemies(s, dtMs, ctx, tuning);
+  s = tickBullets(s, dtMs);
+  s = tickAsteroids(s, dtMs); // #2486
+  s = tickPowerUps(s, dtMs);
+  s = tickBuddyShips(s, dtMs, tuning);
   // #2842: the central damage gate — during swoop-in every actor is invulnerable, so no
   // bullet, rock, beam or ram resolves at all (and no incoming enemy can be pre-damaged).
   if (hazardsLive(s)) {
     const awards: ScorePoints = {}; // #2837
-    s = tickCollisions(s, awards, tuning); // score updated by kills here
+    s = tickCollisions(s, awards, tuning, lightningPulse); // score updated by kills here
     s = commitAwards(s, awards);
   }
+  // #3709: where the ship was at this pulse, for the next pulse's sweep (kept only while the beam is)
+  s = withLightningPulseX(s, lightningPulse, input);
   s = tickBonusLives(state, s); // #1078: after score updated; un-GameOvers if bonus life rescues player
-  s = tickExplosions(s, scaledDt);
-  s = tickPickupWait(s, scaledDt, state.powerUps); // #3132
+  s = tickExplosions(s, dtMs);
+  s = tickPickupWait(s, dtMs, state.powerUps); // #3132
   s = checkPhaseTransitions(s, tuning);
   // #3245: the run ended on this wave. Only the tick's final phase counts — tickBonusLives can
   // revert a same-tick GameOver — and GameOver is terminal, so this closes the wave exactly once.
@@ -374,7 +389,7 @@ function devTogglesOn(s: StarSwarmState): boolean {
 // Bonus lives (#945)
 // ---------------------------------------------------------------------------
 
-// #1078 #1079: repeating threshold scaled by difficulty; slow-mo + invincibility on award
+// #1078 #1079: repeating threshold scaled by difficulty; invincibility on award (no slow-mo, #3511)
 // No early exit on GameOver — if the threshold was just crossed in the same tick the player died,
 // the bonus life is still awarded and GameOver is reverted (race condition fix).
 function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmState {
@@ -393,10 +408,11 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
 
   const awarded = Math.min(livesToAward, MAX_LIVES - next.player.lives);
   const newLives = next.player.lives + awarded;
-  // #3248: a rescued ship didn't die — the death cause set by the lethal hit goes again
+  // #3248: a rescued ship didn't die — the death cause set by the lethal hit goes again,
+  // and #3535 its phase with it
   const rescued = next.phase === "GameOver" && newLives > 0;
   const waveStats = bumpWave(
-    rescued ? withDeathCause(next.waveStats, null) : next.waveStats,
+    rescued ? withDeathPhase(withDeathCause(next.waveStats, null), null) : next.waveStats,
     BONUS_LIVES_PATH,
     awarded
   ); // #3245
@@ -422,8 +438,9 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
       invincibleTimer: Math.max(next.player.invincibleTimer, BONUS_LIFE_INVINCIBLE_MS),
     },
     bonusLivesAwarded: next.bonusLivesAwarded + awarded,
-    bonusLifeSlowMoTimer: BONUS_LIFE_SLOW_MO_DURATION,
     waveStats,
+    // #3534: a rescued ship didn't die (set only then, so the key never enters a golden's state)
+    ...(rescued && next.endContext ? { endContext: null } : null),
   };
 }
 
@@ -431,7 +448,12 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
 // Player
 // ---------------------------------------------------------------------------
 
-function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput): StarSwarmState {
+function tickPlayer(
+  state: StarSwarmState,
+  dtMs: number,
+  input: StarSwarmInput,
+  lightningPulse: boolean
+): StarSwarmState {
   const p = state.player;
   const invincibleTimer = Math.max(0, p.invincibleTimer - dtMs);
   const shootCooldown = Math.max(0, p.shootCooldown - dtMs);
@@ -451,23 +473,34 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
   const newX = Math.max(hw, Math.min(state.canvasW - hw, input.playerX));
   const player: Player = { ...p, x: newX, invincibleTimer, shootCooldown, hullFlashTimer };
 
-  const isSuper = state.activePowerUp?.type === "lightning";
+  // #3562: Lightning fires its beam, never bolts. A pulse (`lightningPulseDue`, judged by `tick`)
+  // re-arms the fire clock as a Lightning volley did; `tickCollisions` resolves its damage.
+  if (state.activePowerUp?.type === "lightning") {
+    return {
+      ...state,
+      player: lightningPulse ? { ...player, shootCooldown: SUPER_SHOOT_COOLDOWN } : player,
+    };
+  }
 
   if (
     shootCooldown === 0 &&
     input.fire &&
-    weaponsFree(state) && // #2842: no firing during swoop-in (extraction returned above)
+    playerFireAllowed(state) && // #2842/#3568: combat or the pickup wait; not swoop-in (extraction returned above)
     !state.playerFireDisabled &&
     state.playerBullets.length < MAX_PLAYER_BULLETS
   ) {
     // #2488: the gun level decides how many bullets a trigger pull spawns; the cap still holds
     const room = MAX_PLAYER_BULLETS - state.playerBullets.length;
-    const volley = playerVolley(newX, p.y - p.height / 2, p.guns, isSuper).slice(0, room);
+    const counted = state.phase === "Playing";
+    let volley = playerVolley(newX, p.y - p.height / 2, p.guns).slice(0, room);
+    // #3568: a post-clear shot is flagged, so a rock hit does not count it as on-target
+    if (!counted) volley = volley.map((b) => ({ ...b, postClear: true as const }));
     return {
       ...state,
-      player: { ...player, shootCooldown: isSuper ? SUPER_SHOOT_COOLDOWN : PLAYER_SHOOT_COOLDOWN },
+      player: { ...player, shootCooldown: PLAYER_SHOOT_COOLDOWN },
       playerBullets: [...state.playerBullets, ...volley],
-      waveStats: bumpWave(state.waveStats, SHOTS_FIRED, volley.length), // #3248
+      // #3248; #3568: a shot fired after the last kill is not combat accuracy
+      waveStats: counted ? bumpWave(state.waveStats, SHOTS_FIRED, volley.length) : state.waveStats,
     };
   }
 
@@ -491,7 +524,11 @@ function checkPhaseTransitions(state: StarSwarmState, tuning: Tuning): StarSwarm
   // SwoopIn → Playing once all enemies are in Formation
   if (state.phase === "SwoopIn") {
     const allArrived = liveEnemies.every((e) => e.phase !== "SwoopIn");
-    if (allArrived) return phaseChanged(state, { ...state, phase: "Playing" });
+    // #3512: combat starts — a power-up banked during the last wave's clear takes effect now,
+    // once, so the next tick (the first in Playing) runs with it
+    if (allArrived) {
+      return applyBankedPowerUp(phaseChanged(state, { ...state, phase: "Playing" }), tuning);
+    }
     return state;
   }
 
@@ -555,6 +592,8 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
       closedTimelinesLens: state.closedTimelinesLens,
       closedTimelinesBytes: state.closedTimelinesBytes,
       closedTimelinesOverflow: state.closedTimelinesOverflow,
+      devAffected: state.devAffected, // #3510: latched for the run
+      bankedPowerUp: state.bankedPowerUp, // #3512: applied when this wave's combat starts
     },
     closed
   );

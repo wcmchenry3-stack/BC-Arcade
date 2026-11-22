@@ -23,8 +23,17 @@
  * is intentionally route-agnostic and reads its navigation via the hook.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Platform, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { monotonicNow } from "../game/_shared/monotonicNow";
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  ViewStyle,
+  type LayoutChangeEvent,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -32,27 +41,59 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
-import { CELEBRATION_SPARKLE } from "../theme/theme.constants";
+import { AutoCompleteButton } from "../components/shared/AutoCompleteButton";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
-import { bestOf } from "../game/_shared/bestOf";
+import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { FELT_BORDER_WIDTH, FeltTable } from "../components/shared/FeltTable";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { TABLE_STAT_LINE_HEIGHT, TableStatLine } from "../components/shared/TableStatLine";
+import { PlayClockText } from "../components/shared/PlayClockText";
+import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { usePausableClock } from "../hooks/usePausableClock";
-import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import TableauPile from "../components/solitaire/TableauPile";
 import FoundationPile from "../components/solitaire/FoundationPile";
-import StockWastePile from "../components/solitaire/StockWastePile";
+import StockWastePile, { wasteFanOffsetFor } from "../components/solitaire/StockWastePile";
+import {
+  CardFlightContext,
+  CardFlightLayer,
+  createCardFlightStore,
+} from "../components/cards/cardFlights";
+import {
+  cueTimes,
+  FLIGHT_BACKSTOP_MS,
+  INSTANT_CUES,
+  type CueTimes,
+  type MotionPlan,
+  type Point,
+} from "../components/cards/cardMotion";
+import {
+  planMotion,
+  type MotionKind,
+  type MotionLayout,
+} from "../components/solitaire/solitaireMotion";
+import { useCueClock, type CueTag } from "../components/cards/useCueClock";
+import { launchMotion } from "../components/cards/launchMotion";
 import { SolitaireWinCascade } from "../components/solitaire/SolitaireWinCascade";
 import PreGameModal from "../components/solitaire/PreGameModal";
+import TestDealControl from "../components/solitaire/TestDealControl";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
-import { useSound } from "../game/_shared/useSound";
-import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
-import { CARD_HEIGHT, CARD_WIDTH } from "../components/solitaire/CardView";
+import { LAZY_SOUND, useSound } from "../game/_shared/useSound";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
+import { useAutoCompleteRiffle } from "../game/_shared/useRunSound";
+import {
+  SOLITAIRE_AUTO_COMPLETE,
+  SOLITAIRE_CARD_FAN,
+  SOLITAIRE_CARD_FLIP,
+  SOLITAIRE_CARD_PLACE,
+  SOLITAIRE_SOUNDS,
+} from "../game/solitaire/sounds";
 import {
   applyMove,
   applyHint,
@@ -86,30 +127,39 @@ import type { DrawMode, Move, SolitaireState, Suit } from "../game/solitaire/typ
 import { SUITS } from "../game/solitaire/types";
 import { DragProvider } from "../game/_shared/drag/DragContext";
 import { DragContainer } from "../game/_shared/drag/DragContainer";
-import type { DragSource, DragCard } from "../game/_shared/drag/DragContext";
-import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
-import { areTestHooksEnabled } from "../game/_shared/envFlags";
+import type { DragSource, DragCard, DropOffset } from "../game/_shared/drag/DragContext";
+import { GHOST_LIFT } from "../game/_shared/drag/dragGeometry";
+import { CardSizeContext } from "../game/_shared/CardSizeContext";
 import {
-  clearGame,
-  loadGame,
-  loadStats,
-  saveGame,
-  saveStats,
-  type SolitaireStats,
-} from "../game/solitaire/storage";
+  TABLE_BOTTOM_BAND,
+  TABLE_FELT_MARGIN_BOTTOM,
+  TABLE_FELT_MARGIN_TOP,
+  computeTableGeometry,
+  estimateFeltSize,
+  faceUpStepFor,
+} from "../game/_shared/cards/tableLayout";
+import { reportTableauOffTable } from "../game/_shared/cards/offTableReport";
+import { useDeck } from "../game/_shared/decks/CardDeckContext";
+import { legalTargets, type SolitaireSelection } from "../game/solitaire/targets";
+import { areTestHooksEnabled } from "../game/_shared/envFlags";
+import { registerSolitaireTestHooks } from "../game/solitaire/testHooks";
+import { clearGame, loadGame, saveGame } from "../game/solitaire/storage";
+import { getBest, judgeResult, recordResult } from "../game/_shared/personalBest";
 import { formatMs } from "../game/_shared/formatMs";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
 import { useCardSelection } from "../game/_shared/useCardSelection";
 import { rankLabel } from "../game/_shared/decks/cardId";
 
 const TABLEAU_COLS = 7;
-const COL_GAP = 6;
-const SCREEN_H_PADDING = 24;
+/** Side gutter between the screen's edge and the felt, in dp. */
+const FELT_GUTTER = 6;
 const DOUBLE_TAP_MS = 300;
+/** A drop with no ghost offset (one not made by a gesture) settles from the card's own slot. */
+const ORIGIN: Point = { x: 0, y: 0 };
 const AUTO_STEP_MS = 120;
 
 /** The game's play timer so far: time banked plus the running segment. */
-function activeMs(state: SolitaireState, now: number = Date.now()): number {
+function activeMs(state: SolitaireState, now: number = monotonicNow()): number {
   return state.accumulatedMs + (state.startedAt !== null ? now - state.startedAt : 0);
 }
 
@@ -121,10 +171,23 @@ interface WinSummary {
   readonly isNewBest: boolean;
 }
 
-type Selection =
-  | { readonly kind: "waste" }
-  | { readonly kind: "tableau"; readonly col: number; readonly index: number }
-  | { readonly kind: "foundation"; readonly suit: Suit };
+type Selection = SolitaireSelection;
+
+/** Each column's face-down and face-up cards (the board's face-up step depends on them). */
+function columnCountsOf(tableau: SolitaireState["tableau"]): { down: number; up: number }[] {
+  return tableau.map((pile) => {
+    const up = pile.filter((c) => c.faceUp).length;
+    return { down: pile.length - up, up };
+  });
+}
+
+/** The sound cues of the action in motion, and when it started (#3572). */
+interface ActionCues extends CueTimes {
+  readonly at: number;
+  readonly kind: MotionKind;
+  /** The action's id: a later action that calls it off cancels its cues. */
+  readonly action: number;
+}
 
 /** `state` carrying the player's move count (#3461). */
 function withMoves(state: SolitaireState, moves: number): SolitaireState {
@@ -135,22 +198,21 @@ export default function SolitaireScreen() {
   const { t } = useTranslation("solitaire");
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  // The device's cached best time (`solitaire_stats_v1`), for the result
+  // The device's best time (the shared personal best, #3757), for the result
   // card's best time and "New best" badge only (#2636): the player's history
   // is the Stats screen, fed by the server.
-  const statsRef = useRef<SolitaireStats>({ bestTimeMs: 0 });
+  const bestTimeMsRef = useRef(0);
   // #597 — the saved game (usePersistedGameState, #3087): loaded with the
-  // stats on mount, then saved on every state change once that load has
+  // best on mount, then saved on every state change once that load has
   // landed, so a fresh deal can't clobber a resumable save still being read
   // from disk. Called before the completion effect, so a winning move is
   // saved before the completion clears it. The restore is below.
   const game = usePersistedGameState<SolitaireState>({
     load: async () => {
-      const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
-      statsRef.current = savedStats;
+      const [saved, bestTimeMs] = await Promise.all([loadGame(), getBest("solitaire")]);
+      bestTimeMsRef.current = bestTimeMs;
       return saved;
     },
     save: saveGame,
@@ -158,11 +220,52 @@ export default function SolitaireScreen() {
   });
   const { state, setState, stateRef, loading, hasLoadedRef, clear: clearSavedGame } = game;
   const [selection, setSelection] = useState<Selection | null>(null);
+  // Card motion (#3572; docs/games/solitaire.md, "Motion and sound timing"): the engine stays
+  // instant, and the board's flight layer draws the cards an action moved (cardFlights.tsx).
+  // A fresh store per mount: nothing on the table at mount (a restore) ever flies.
+  const [flights] = useState(createCardFlightStore);
+  // Every delayed sound cue and hold release: cancelled on a new deal, on leaving and on unmount.
+  const cues = useCueClock();
+  // The riffle plays on until the last Auto-Complete card lands; the result card waits for the
+  // winning card's landing.
+  const [riffleHold, setRiffleHold] = useState(false);
+  // The hold ended while the player was away: the riffle stops without its settle (a cue due
+  // while away is not played), since a won game's clock is not paused to say so.
+  const [riffleQuiet, setRiffleQuiet] = useState(false);
+  const [winHold, setWinHold] = useState(false);
+  // The action in motion's cues, read by the event handlers below, and the last action's id.
+  const cueRef = useRef<ActionCues>({ ...INSTANT_CUES, at: 0, kind: "tap", action: 0 });
+  const actionIdRef = useRef(0);
+  // Plans and launches an action's motion (set once the board's geometry is known, below).
+  const startMotionRef = useRef<
+    (
+      kind: MotionKind,
+      prev: SolitaireState,
+      next: SolitaireState,
+      drop?: Point
+    ) => MotionPlan | null
+  >(() => null);
+  /** Lands every card, drops every pending cue and releases the holds. */
+  const stopMotion = useCallback(() => {
+    cues.cancelAll();
+    flights.clear();
+    setRiffleHold(false);
+    setRiffleQuiet(false);
+    setWinHold(false);
+  }, [cues, flights]);
   // The move count lives in the saved state (#3461), so a resumed game keeps it.
   const moves = state?.moves ?? 0;
   const [autoCompleting, setAutoCompleting] = useState(false);
+  // Auto-Complete's riffle (#3563); see useAutoCompleteRiffle for what it mutes.
+  // A covering screen pauses the clock and the run's steps wait, so the riffle waits too.
+  const riffleRunRef = useAutoCompleteRiffle(
+    autoCompleting || riffleHold,
+    riffleQuiet ? null : state,
+    SOLITAIRE_AUTO_COMPLETE,
+    SOLITAIRE_SOUNDS,
+    state?.paused === true
+  );
 
-  const sparkleOpacity = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -179,14 +282,30 @@ export default function SolitaireScreen() {
   const { leaderboard, openLeaderboard } = useGameLeaderboard("solitaire", navigation);
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
-  const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
-  const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
-  const { play: playFoundationComplete } = useSound(
-    "solitaire.foundationComplete",
-    SOLITAIRE_SOUNDS
+  const { play: playCardFlip } = useSoundVariants(SOLITAIRE_CARD_FLIP, SOLITAIRE_SOUNDS);
+  const { play: playCardFan } = useSoundVariants(
+    SOLITAIRE_CARD_FAN,
+    SOLITAIRE_SOUNDS,
+    1.0,
+    Math.random,
+    LAZY_SOUND
   );
+  const { play: playCardPlace } = useSoundVariants(SOLITAIRE_CARD_PLACE, SOLITAIRE_SOUNDS);
   const { play: playInvalidMove } = useSound("solitaire.invalidMove", SOLITAIRE_SOUNDS);
-  const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS);
+  const { play: playMultiCardMove } = useSound(
+    "solitaire.multiCardMove",
+    SOLITAIRE_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
+  const { play: playGameWin } = useSound("solitaire.gameWin", SOLITAIRE_SOUNDS, 1.0, LAZY_SOUND);
+  // The recycle's squared deck (#3572, owner): the riffle's settle on the deck's contact.
+  const { play: playRecycleSettle } = useSound(
+    "solitaire.autoCompleteSettle",
+    SOLITAIRE_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
   // A tap is ignored without feedback during Auto-Complete, so a refused drop
   // is too. Read through a ref so the provider's callback is never stale.
@@ -195,8 +314,9 @@ export default function SolitaireScreen() {
     autoCompletingRef.current = autoCompleting;
   }, [autoCompleting]);
   const handleDropRejected = useCallback(() => {
-    if (!autoCompletingRef.current) playInvalidMove();
-  }, [playInvalidMove]);
+    // Nor after a win (#3572): the board is over while the result card waits.
+    if (!autoCompletingRef.current && !stateRef.current?.isComplete) playInvalidMove();
+  }, [playInvalidMove, stateRef]);
 
   // The partial chunk of actions goes to the recorder when the screen unmounts.
   // Declared before `useGameRecorder`, this cleanup runs first (cleanups run in
@@ -281,10 +401,11 @@ export default function SolitaireScreen() {
       syncRestart(dealEventData(drawMode, pick), { draw_mode: drawMode });
       moveLog.reset(0);
       recordingRef.current = true;
+      stopMotion();
       setState(dealGame(drawMode, pick.seed));
       setSelection(null);
     },
-    [syncRestart, setState, moveLog]
+    [syncRestart, setState, moveLog, stopMotion]
   );
 
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
@@ -304,6 +425,8 @@ export default function SolitaireScreen() {
     saveOnLeave: (paused) => {
       if (hasLoadedRef.current) saveGame(paused).catch(() => {});
     },
+    // Leaving the game lands every card in flight and drops every pending cue and hold (#3572).
+    onPaused: stopMotion,
   });
 
   // #597 — mirror moves into a ref so the abandon snapshot (which runs on
@@ -340,18 +463,18 @@ export default function SolitaireScreen() {
         const finalMoves = movesRef.current;
         // Only a win that happened this session has a session to rank.
         if (gameId) void lookupRank(gameId);
-        const priorBest = statsRef.current.bestTimeMs;
-        const { best, improved, isNewBest } = bestOf(priorBest, finalMs, true);
+        const priorBest = bestTimeMsRef.current;
+        const { best, improved, isNewBest } = judgeResult("solitaire", priorBest, finalMs);
         setWinSummary({
           timeMs: finalMs,
           moves: finalMoves,
           bestTimeMs: best,
           isNewBest,
         });
-        // The cache is written only when the best improves.
+        // The best is written only when it improves.
         if (improved) {
-          statsRef.current = { bestTimeMs: finalMs };
-          saveStats(statsRef.current);
+          bestTimeMsRef.current = finalMs;
+          void recordResult("solitaire", finalMs);
         }
       },
       onAlreadyComplete: (s) => {
@@ -359,7 +482,7 @@ export default function SolitaireScreen() {
         setWinSummary({
           timeMs: s.accumulatedMs,
           moves: movesRef.current,
-          bestTimeMs: statsRef.current.bestTimeMs,
+          bestTimeMs: bestTimeMsRef.current,
           isNewBest: false,
         });
       },
@@ -409,21 +532,48 @@ export default function SolitaireScreen() {
   });
 
   // The engine emits a new array per move, in the order cardPlace, cardFlip,
-  // foundationComplete, gameWin, each at most once (one card reaches a
-  // foundation per move). The events stay in the live state: the result card
+  // gameWin, each at most once. The events stay in the live state: the result card
   // reads `gameWin` to decide on the win cascade. A restored game has none
   // (storage drops them, #3093), so a restore plays no sound.
-  useGameEvents(state?.events, {
-    cardPlace: () => playCardPlace(),
-    cardFlip: () => playCardFlip(),
-    foundationComplete: () => {
-      playFoundationComplete();
-      Animated.sequence([
-        Animated.timing(sparkleOpacity, { toValue: 1, duration: 100, useNativeDriver: true }),
-        Animated.timing(sparkleOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
-      ]).start();
+  //
+  // Each sound is timed to its card's motion (#3572): `ms` after the action started, from the
+  // action's cues (`cueTimes`; all 0 with Reduce Motion). A cue still pending is dropped on a
+  // new deal, on leaving the game, and on unmount; one due while the player is away is not played.
+  const cueAt = useCallback(
+    (play: () => void, ms: number, tag: CueTag = "other") => {
+      cues.schedule(
+        () => {
+          if (!awayRef.current) play();
+        },
+        cueRef.current.at + ms - Date.now(),
+        cueRef.current.action,
+        tag
+      );
     },
-    gameWin: () => playGameWin(),
+    [cues, awayRef]
+  );
+  useGameEvents(state?.events, {
+    // card place 40 ms before the contact
+    cardPlace: () => {
+      if (!riffleRunRef.current) cueAt(playCardPlace, cueRef.current.place, "place");
+    },
+    // the flip's peak on the turn's edge-on point (the uncovered card's turn, or a Draw-1 card)
+    cardFlip: () => {
+      if (!riffleRunRef.current) cueAt(playCardFlip, cueRef.current.flip, "flip");
+    },
+    // the fan's first hit on the first Draw-3 card's edge-on point
+    cardFan: () => {
+      if (!riffleRunRef.current) cueAt(playCardFan, cueRef.current.fan, "fan");
+    },
+    // a run of cards moved together: the fan sweep instead of one card place (#3563), its
+    // landing peak on the run's last contact. A dropped run plays card place (#3572, owner).
+    multiCardMove: () => {
+      if (riffleRunRef.current) return;
+      if (cueRef.current.kind === "drop") cueAt(playCardPlace, cueRef.current.place, "place");
+      else cueAt(playMultiCardMove, cueRef.current.multi, "multi");
+    },
+    // with the riffle's settle: its peak on the last contact
+    gameWin: () => cueAt(playGameWin, cueRef.current.settle),
   });
 
   const ensureSyncStarted = useCallback(
@@ -438,10 +588,16 @@ export default function SolitaireScreen() {
   );
 
   const tryMove = useCallback(
-    (move: Move): boolean => {
-      if (state === null) return false;
+    (move: Move, drop?: { readonly offset?: DropOffset }): boolean => {
+      // A won game is over, its result card perhaps still held for the last landing (#3572).
+      if (state === null || state.isComplete) return false;
       const next = applyMove(state, move);
       if (next.events?.includes("invalidMove")) return false;
+      // A tap flies the card from its slot; a drop settles it from where the ghost was let go
+      // (drawn GHOST_LIFT above the finger's card position).
+      const offset = drop?.offset;
+      const at = offset ? { x: offset.dx, y: offset.dy - GHOST_LIFT } : ORIGIN;
+      startMotionRef.current(drop ? "drop" : "tap", state, next, drop ? at : undefined);
       ensureSyncStarted(next);
       setState(
         matchPresence(
@@ -455,7 +611,7 @@ export default function SolitaireScreen() {
   );
 
   const handleWastePress = useCallback(() => {
-    if (state === null || autoCompleting) return;
+    if (state === null || state.isComplete || autoCompleting) return;
     const now = Date.now();
     const last = lastTapRef.current;
     const isDouble = last !== null && last.key === "waste" && now - last.time < DOUBLE_TAP_MS;
@@ -474,20 +630,35 @@ export default function SolitaireScreen() {
   }, [state, selection, autoCompleting, tryMove, triggerIllegal]);
 
   const handleStockPress = useCallback(() => {
-    if (state === null || autoCompleting) return;
+    if (state === null || state.isComplete || autoCompleting) return;
     lastTapRef.current = null;
     const next = state.stock.length > 0 ? drawFromStock(state) : recycleWaste(state);
     if (next === state) return;
+    // A draw slides and turns (its flip or fan from the engine's event); a recycle slides the
+    // waste back to the stock, with the riffle's settle on its contact (it has no event).
+    const plan = startMotionRef.current("stock", state, next);
+    if (state.stock.length === 0 && plan !== null && plan.moved > 0) {
+      cueAt(playRecycleSettle, cueRef.current.settle);
+    }
     ensureSyncStarted(next);
     setState(
       matchPresence(withMoves(recordAction(stockAction(state), next), (state.moves ?? 0) + 1))
     );
     setSelection(null);
-  }, [state, autoCompleting, ensureSyncStarted, matchPresence, recordAction, setState]);
+  }, [
+    state,
+    autoCompleting,
+    ensureSyncStarted,
+    matchPresence,
+    recordAction,
+    setState,
+    cueAt,
+    playRecycleSettle,
+  ]);
 
   const handleFoundationPress = useCallback(
     (suit: Suit) => {
-      if (state === null || autoCompleting) return;
+      if (state === null || state.isComplete || autoCompleting) return;
       lastTapRef.current = null;
 
       if (selection !== null) {
@@ -519,7 +690,7 @@ export default function SolitaireScreen() {
 
   const handleTableauCardPress = useCallback(
     (col: number, index: number) => {
-      if (state === null || autoCompleting) return;
+      if (state === null || state.isComplete || autoCompleting) return;
       const pile = state.tableau[col];
       if (pile === undefined) return;
       const card = pile[index];
@@ -586,7 +757,7 @@ export default function SolitaireScreen() {
 
   const handleEmptyTableauPress = useCallback(
     (col: number) => {
-      if (state === null || autoCompleting) return;
+      if (state === null || state.isComplete || autoCompleting) return;
       lastTapRef.current = null;
       if (selection === null) return;
       if (selection.kind === "waste") {
@@ -616,39 +787,42 @@ export default function SolitaireScreen() {
   // ── Drag-and-drop handlers ─────────────────────────────────────────────────
 
   const handleDropToTableau = useCallback(
-    (source: DragSource, toCol: number): boolean => {
-      if (source.game !== "solitaire") return false;
+    (source: DragSource, toCol: number, offset?: DropOffset): boolean => {
+      if (source.game !== "solitaire" || stateRef.current?.isComplete) return false;
+      const drop = { offset };
       if (source.type === "tableau") {
-        return tryMove({
-          type: "tableau-to-tableau",
-          fromCol: source.col,
-          fromIndex: source.fromIndex,
-          toCol,
-        });
+        return tryMove(
+          { type: "tableau-to-tableau", fromCol: source.col, fromIndex: source.fromIndex, toCol },
+          drop
+        );
       }
-      if (source.type === "waste") return tryMove({ type: "waste-to-tableau", toCol });
+      if (source.type === "waste") return tryMove({ type: "waste-to-tableau", toCol }, drop);
       if (source.type === "foundation") {
-        return tryMove({ type: "foundation-to-tableau", fromSuit: source.suit as Suit, toCol });
+        return tryMove(
+          { type: "foundation-to-tableau", fromSuit: source.suit as Suit, toCol },
+          drop
+        );
       }
       return false;
     },
-    [tryMove]
+    [tryMove, stateRef]
   );
 
   const handleDropToFoundation = useCallback(
-    (source: DragSource): boolean => {
-      if (source.game !== "solitaire") return false;
+    (source: DragSource, offset?: DropOffset): boolean => {
+      if (source.game !== "solitaire" || stateRef.current?.isComplete) return false;
+      const drop = { offset };
       if (source.type === "tableau")
-        return tryMove({ type: "tableau-to-foundation", fromCol: source.col });
-      if (source.type === "waste") return tryMove({ type: "waste-to-foundation" });
+        return tryMove({ type: "tableau-to-foundation", fromCol: source.col }, drop);
+      if (source.type === "waste") return tryMove({ type: "waste-to-foundation" }, drop);
       return false;
     },
-    [tryMove]
+    [tryMove, stateRef]
   );
 
   const getLegalDropIds = useCallback(
     (source: DragSource, cards: DragCard[]): string[] => {
-      if (state === null || source.game !== "solitaire") return [];
+      if (state === null || state.isComplete || source.game !== "solitaire") return [];
       const ids: string[] = [];
 
       for (let col = 0; col < TABLEAU_COLS; col++) {
@@ -686,7 +860,7 @@ export default function SolitaireScreen() {
   // ── Undo / auto-complete ────────────────────────────────────────────────────
 
   const handleUndo = useCallback(() => {
-    if (state === null || autoCompleting) return;
+    if (state === null || state.isComplete || autoCompleting) return;
     if (state.undoStack.length === 0) return;
     const undone = undo(state);
     // Recorded once the game has recorded an action: an undo is part of the
@@ -700,9 +874,22 @@ export default function SolitaireScreen() {
       : logged
         ? recordAction(undoAction(), undone)
         : undone;
+    // The cards fly back, with card place on their landing (#3572, owner).
+    const plan = startMotionRef.current("undo", state, undone);
+    if (plan !== null && plan.moved > 0) cueAt(playCardPlace, cueRef.current.place, "place");
     setState(matchPresence(withMoves(next, Math.max(0, (state.moves ?? 0) - 1))));
     setSelection(null);
-  }, [state, autoCompleting, ensureSyncStarted, matchPresence, moveLog, recordAction, setState]);
+  }, [
+    state,
+    autoCompleting,
+    ensureSyncStarted,
+    matchPresence,
+    moveLog,
+    recordAction,
+    setState,
+    cueAt,
+    playCardPlace,
+  ]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete || autoCompleting) return;
@@ -751,6 +938,25 @@ export default function SolitaireScreen() {
       // Until the commit catches up, so a step that comes due first builds on
       // this one instead of repeating it.
       stateRef.current = next;
+      // The riffle stands in for the run's card sounds (#3563). A run that ends on its first
+      // card never turns `autoCompleting` on (the on and off batch together), so that card keeps
+      // its own sound; a run with nothing to move mutes nothing.
+      if (!next.isComplete) riffleRunRef.current = true;
+      // Each card flies to its foundation in AUTO_FLIGHT_MS (#3572): the steps keep their pace,
+      // so about two are in the air. The riffle plays on until the last card lands, its settle
+      // peaking on that contact (a run that riffled; a lone last card keeps its own sound).
+      startMotionRef.current("auto", current, next);
+      const settleAt = cueRef.current.settle;
+      if (next.isComplete && riffleRunRef.current && settleAt > 0) {
+        setRiffleHold(true);
+        cues.schedule(
+          () => {
+            if (awayRef.current) setRiffleQuiet(true);
+            setRiffleHold(false);
+          },
+          cueRef.current.at + settleAt - Date.now()
+        );
+      }
       setState(next);
       if (next.isComplete) {
         setAutoCompleting(false);
@@ -766,8 +972,10 @@ export default function SolitaireScreen() {
     awayRef,
     matchPresence,
     recordAction,
+    riffleRunRef,
     setState,
     stateRef,
+    cues,
   ]);
 
   /** Tears down the current game (board, timers, result) and shows the draw-mode picker. */
@@ -783,6 +991,7 @@ export default function SolitaireScreen() {
       autoStepTimeoutRef.current = null;
     }
     clearSavedGame();
+    stopMotion();
     setAutoCompleting(false);
     setState(null);
     setSelection(null);
@@ -790,7 +999,7 @@ export default function SolitaireScreen() {
     resetSubmission();
     resetCompletion();
     setResumedWin(false);
-  }, [resetSubmission, resetCompletion, syncClose, clearSavedGame, setState, moveLog]);
+  }, [resetSubmission, resetCompletion, syncClose, clearSavedGame, setState, moveLog, stopMotion]);
 
   // Play Again deals straight into the same draw mode, skipping the picker.
   const handlePlayAgain = useCallback(() => {
@@ -799,7 +1008,20 @@ export default function SolitaireScreen() {
     deal(drawMode);
   }, [resetToPreGame, deal, stateRef]);
 
-  const undoDisabled = state === null || state.undoStack.length === 0 || autoCompleting;
+  // E2E test builds only (#3532): a fresh game in a given draw mode through
+  // the same path as Play Again, so drivers reach the fixed draw-3 deal
+  // without the picker. See game/solitaire/testHooks.ts.
+  const handleTestDeal = useCallback(
+    (drawMode: DrawMode) => {
+      resetToPreGame();
+      deal(drawMode);
+    },
+    [resetToPreGame, deal]
+  );
+  useEffect(() => registerSolitaireTestHooks({ deal: handleTestDeal }), [handleTestDeal]);
+
+  const undoDisabled =
+    state === null || state.isComplete || state.undoStack.length === 0 || autoCompleting;
   const hintMoves = useMemo(() => (state ? getHintMoves(state) : []), [state]);
   const hintDisabled =
     state === null || state.isComplete || autoCompleting || hintMoves.length === 0;
@@ -807,14 +1029,180 @@ export default function SolitaireScreen() {
     () => state !== null && !state.isComplete && canAutoComplete(state),
     [state]
   );
-  const cardSize = useResponsiveCardSize(
-    CARD_WIDTH,
-    CARD_HEIGHT,
-    TABLEAU_COLS,
-    COL_GAP,
-    SCREEN_H_PADDING
+  // The felt's size (#3606): what the screen's chrome leaves (the window less the
+  // header, the stat line, the tab bar and the gutters) until the felt reports its
+  // own size, then the measured one.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const tabBarHeight = useSafeBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  // The stat line grows or wraps with the font scale: its measured height, not a constant.
+  const [statLineHeight, setStatLineHeight] = useState(TABLE_STAT_LINE_HEIGHT);
+  const handleStatLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    if (height > 0) setStatLineHeight((prev) => (prev === height ? prev : height));
+  }, []);
+  // The bottom band wraps at large font scales too: measured, like the stat line.
+  const [bandHeight, setBandHeight] = useState(TABLE_BOTTOM_BAND);
+  const handleBandLayout = useCallback((e: LayoutChangeEvent) => {
+    const { height } = e.nativeEvent.layout;
+    // Only grows: a band that shrinks again (the selection label going away at a large font
+    // scale) would re-lay the board out under the finger.
+    if (height > 0) setBandHeight((prev) => Math.max(prev, height));
+  }, []);
+  const reduceMotion = useReduceMotion();
+  const [measuredFelt, setMeasuredFelt] = useState<{ width: number; height: number } | null>(null);
+  const feltSize =
+    measuredFelt ??
+    estimateFeltSize({
+      windowWidth,
+      windowHeight,
+      sideInsets: {
+        left: Math.max(insets.left, FELT_GUTTER),
+        right: Math.max(insets.right, FELT_GUTTER),
+      },
+      headerHeight: APP_HEADER_HEIGHT + insets.top,
+      statLineHeight,
+      // First frame only (the felt is measured once laid out). Since #3624 the tab bar sits in
+      // flow below the screen (BottomTabBar: 60 plus `insets.bottom || 8`) and the screen pads
+      // only its own 16 dp gap; without a tab bar the shell clears the bottom inset instead.
+      bottomHeight: (tabBarHeight > 0 ? 60 + (insets.bottom || 8) : insets.bottom) + 16,
+    });
+  const handleFeltLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width <= 0 || height <= 0) return;
+    setMeasuredFelt((prev) =>
+      prev !== null && prev.width === width && prev.height === height ? prev : { width, height }
+    );
+  }, []);
+  const geometry = useMemo(
+    // The board sits inside the felt's rim.
+    () =>
+      computeTableGeometry({
+        width: feltSize.width - 2 * FELT_BORDER_WIDTH,
+        height: feltSize.height - 2 * FELT_BORDER_WIDTH,
+        bottomBand: Math.max(TABLE_BOTTOM_BAND, bandHeight),
+      }),
+    [feltSize.width, feltSize.height, bandHeight]
   );
-  const boardWidth = TABLEAU_COLS * cardSize.cardWidth + (TABLEAU_COLS - 1) * COL_GAP;
+  const cardSize = useMemo(
+    () => ({ cardWidth: geometry.cardWidth, cardHeight: geometry.cardHeight }),
+    [geometry.cardWidth, geometry.cardHeight]
+  );
+  const boardWidth = TABLEAU_COLS * geometry.cardWidth + (TABLEAU_COLS - 1) * geometry.gap;
+  const columnCounts = useMemo(() => columnCountsOf(state?.tableau ?? []), [state?.tableau]);
+  // One face-up step for the board: as airy as the tallest column allows.
+  const faceUpStep = useMemo(() => faceUpStepFor(geometry, columnCounts), [geometry, columnCounts]);
+  // The board's geometry for the flight layer (#3572): every slot from the table's layout.
+  const motionLayout = useMemo(
+    (): MotionLayout => ({
+      cardWidth: geometry.cardWidth,
+      cardHeight: geometry.cardHeight,
+      gap: geometry.gap,
+      rowGap: geometry.rowGap,
+      boardWidth,
+      faceDownStep: geometry.faceDownStep,
+      wasteFanOffset: wasteFanOffsetFor(geometry.cardWidth),
+      faceUpStep: (s) => faceUpStepFor(geometry, columnCountsOf(s.tableau)),
+    }),
+    [geometry, boardWidth]
+  );
+  const releaseWin = useCallback(() => setWinHold(false), []);
+  // Plans an action's motion from the board before and after it, and launches it. A card
+  // already in flight is re-targeted from where it is shown (no input lock). With Reduce Motion
+  // nothing flies and every cue is at the instant. A winning action holds the result card until
+  // its last card lands (the landing, or a backstop).
+  const startMotion = useCallback(
+    (kind: MotionKind, prev: SolitaireState, next: SolitaireState, drop?: Point): MotionPlan => {
+      const now = Date.now();
+      const action = ++actionIdRef.current;
+      const plan = planMotion({
+        prev,
+        next,
+        kind,
+        layout: motionLayout,
+        drop,
+        shownAt: (key) => flights.shownAt(key, now),
+      });
+      if (reduceMotion) {
+        // Nothing moves: a card still in flight from before the setting changed lands now.
+        flights.clear();
+        cueRef.current = { ...INSTANT_CUES, at: now, kind, action };
+        return plan;
+      }
+      // The actions this one calls off (it moves a card they had in flight, or lands a turn they
+      // planned): their pending cues go; their other cards still land, with a card place if
+      // theirs had not played yet (launchMotion).
+      const winning = next.isComplete && plan.flights.length > 0;
+      const { owesFlip } = launchMotion({
+        plan,
+        now,
+        action,
+        store: flights,
+        clock: cues,
+        playPlace: () => {
+          if (!awayRef.current && !riffleRunRef.current) playCardPlace();
+        },
+        onLanded: winning ? releaseWin : undefined,
+      });
+      cueRef.current = { ...cueTimes(plan), at: now, kind, action };
+      // A turn face up that a called-off action owed, whose flip or fan had not played yet.
+      if (owesFlip && !next.events?.includes("cardFlip")) {
+        cueAt(
+          () => {
+            if (!riffleRunRef.current) playCardFlip();
+          },
+          cueRef.current.flip,
+          "flip"
+        );
+      }
+      if (winning) {
+        setWinHold(true);
+        cues.schedule(releaseWin, plan.contactMs + FLIGHT_BACKSTOP_MS);
+      }
+      return plan;
+    },
+    [
+      motionLayout,
+      flights,
+      reduceMotion,
+      releaseWin,
+      cues,
+      cueAt,
+      awayRef,
+      riffleRunRef,
+      playCardPlace,
+      playCardFlip,
+    ]
+  );
+  useLayoutEffect(() => {
+    startMotionRef.current = startMotion;
+  }, [startMotion]);
+  // Reduce Motion turned on mid-flight: every card in flight lands at once (a held result card
+  // still waits for its backstop, at most FLIGHT_BACKSTOP_MS after the landing was due).
+  useEffect(() => {
+    if (reduceMotion) flights.clear();
+  }, [reduceMotion, flights]);
+  // Cards off the felt (#3653): checked after a layout change, against the measured felt only.
+  const deckId = useDeck().activeDeck.id;
+  useEffect(() => {
+    reportTableauOffTable({
+      game: "solitaire",
+      measuredFelt,
+      feltBorder: FELT_BORDER_WIDTH,
+      geometry,
+      faceUpStep,
+      columns: columnCounts,
+      boardWidth,
+      checkWidth: true,
+      deck: deckId,
+      insets,
+    });
+  }, [measuredFelt, geometry, faceUpStep, columnCounts, boardWidth, deckId, insets]);
+  // Where the selection can go (#3606): outlined in green while it is held.
+  const targets = useMemo(
+    () => (state === null ? null : legalTargets(state, selection)),
+    [state, selection]
+  );
 
   const tableauSelection = (col: number): number | undefined => {
     if (selection === null || selection.kind !== "tableau") return undefined;
@@ -910,14 +1298,23 @@ export default function SolitaireScreen() {
     return hint.type === "waste-to-tableau" || hint.type === "waste-to-foundation";
   }, [hint]);
 
+  // Tags on drag diagnostics events (#3528).
+  const drawModeTag = state ? `draw${state.drawMode}` : undefined;
+  const dragDiagnosticTags = useMemo(() => ({ drawMode: drawModeTag }), [drawModeTag]);
+
   return (
-    <DragProvider getLegalDropIds={getLegalDropIds} onDropRejected={handleDropRejected}>
+    <DragProvider
+      getLegalDropIds={getLegalDropIds}
+      onDropRejected={handleDropRejected}
+      diagnosticTags={dragDiagnosticTags}
+    >
       <GameShell
         gameType="solitaire"
         title={t("solitaire:game.title")}
         requireBack
         loading={loading}
-        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
+        gutter={FELT_GUTTER}
+        style={{ paddingBottom: 16 }}
         onNewGame={resetToPreGame}
         onOpenLeaderboard={openLeaderboard}
         rightSlot={
@@ -938,123 +1335,153 @@ export default function SolitaireScreen() {
         }
       >
         {state === null ? (
-          <PreGameModal onChoose={deal} />
+          <PreGameModal onChoose={deal} onHome={() => navigation.popToTop()} />
         ) : (
           <CardSizeContext.Provider value={cardSize}>
-            <DragContainer style={styles.body as ViewStyle}>
-              <HudStatRow
-                size="lg"
-                stats={[
-                  { key: "score", text: t("solitaire:score.label", { score: state.score }) },
-                  { key: "moves", text: t("solitaire:score.moves", { moves }), muted: true },
-                ]}
-              />
+            <CardFlightContext.Provider value={flights}>
+              <DragContainer style={styles.body as ViewStyle}>
+                <TableStatLine
+                  onLayout={handleStatLayout}
+                  testID="solitaire-stat-line"
+                  stats={[
+                    {
+                      key: "moves",
+                      label: t("solitaire:stat.moves"),
+                      value: String(moves),
+                      accessibilityLabel: t("solitaire:score.moves", { moves }),
+                      testID: "solitaire-stat-moves",
+                    },
+                    {
+                      key: "score",
+                      label: t("solitaire:stat.score"),
+                      value: String(state.score),
+                      accessibilityLabel: t("solitaire:score.label", { score: state.score }),
+                      testID: "solitaire-stat-score",
+                    },
+                    {
+                      key: "time",
+                      label: t("solitaire:stat.time"),
+                      renderValue: (valueStyle) => (
+                        <PlayClockText
+                          testID="solitaire-stat-time"
+                          startedAt={state.startedAt}
+                          accumulatedMs={state.accumulatedMs}
+                          style={valueStyle}
+                          accessibilityLabel={(time) => t("solitaire:stat.timeA11y", { time })}
+                        />
+                      ),
+                    },
+                  ]}
+                />
 
-              <View
-                style={[styles.board, { width: boardWidth }]}
-                accessibilityLabel={t("solitaire:a11y.boardRegion")}
-              >
-                <View style={styles.topRow}>
-                  <StockWastePile
-                    stock={state.stock}
-                    waste={state.waste}
-                    drawMode={state.drawMode}
-                    wasteSelected={selection?.kind === "waste"}
-                    hintSource={hintSourceIsWaste}
-                    shakeX={selection?.kind === "waste" ? shakeX : undefined}
-                    onStockPress={handleStockPress}
-                    onWastePress={handleWastePress}
-                  />
-                  <View style={{ flex: 1 }} />
-                  <View>
-                    <View style={styles.foundationsRow}>
-                      {SUITS.map((suit) => (
-                        <FoundationPile
-                          key={suit}
-                          pile={state.foundations[suit]}
-                          suit={suit}
-                          selected={selection?.kind === "foundation" && selection.suit === suit}
-                          hintDestination={hintDestSuit === suit}
-                          hintSource={hintSourceFoundationSuit === suit}
+                <FeltTable testID="solitaire-felt" style={styles.felt} onLayout={handleFeltLayout}>
+                  <View
+                    // A margin, not padding: the flight layer's 0, 0 is the top row's corner.
+                    style={[styles.board, { width: boardWidth, marginTop: geometry.padding }]}
+                    accessibilityLabel={t("solitaire:a11y.boardRegion")}
+                  >
+                    <View style={[styles.topRow, { marginBottom: geometry.rowGap }]}>
+                      <StockWastePile
+                        stock={state.stock}
+                        waste={state.waste}
+                        drawMode={state.drawMode}
+                        wasteSelected={selection?.kind === "waste"}
+                        hintSource={hintSourceIsWaste}
+                        shakeX={selection?.kind === "waste" ? shakeX : undefined}
+                        reduceMotion={reduceMotion}
+                        gap={geometry.gap}
+                        onStockPress={handleStockPress}
+                        onWastePress={handleWastePress}
+                        locked={state.isComplete}
+                      />
+                      <View style={{ flex: 1 }} />
+                      <View>
+                        <View style={[styles.foundationsRow, { gap: geometry.gap }]}>
+                          {SUITS.map((suit) => (
+                            <FoundationPile
+                              key={suit}
+                              pile={state.foundations[suit]}
+                              suit={suit}
+                              selected={selection?.kind === "foundation" && selection.suit === suit}
+                              hintDestination={hintDestSuit === suit}
+                              hintSource={hintSourceFoundationSuit === suit}
+                              legalTarget={targets?.suits.has(suit) ?? false}
+                              reduceMotion={reduceMotion}
+                              shakeX={
+                                selection?.kind === "foundation" && selection.suit === suit
+                                  ? shakeX
+                                  : undefined
+                              }
+                              onPress={handleFoundationPress}
+                              locked={state.isComplete}
+                              dropId={`solitaire-foundation-${suit}`}
+                              onDrop={(source, _cards, offset) =>
+                                handleDropToFoundation(source, offset)
+                              }
+                            />
+                          ))}
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={[styles.tableauRow, { gap: geometry.gap }]}>
+                      {state.tableau.map((pile, col) => (
+                        <TableauPile
+                          key={col}
+                          pile={pile}
+                          colIndex={col}
+                          selectedIndex={tableauSelection(col)}
+                          hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
+                          hintDestination={hintDestTableauCol === col}
+                          legalTarget={targets?.cols.has(col) ?? false}
+                          reduceMotion={reduceMotion}
+                          faceUpOffset={faceUpStep}
+                          faceDownOffset={geometry.faceDownStep}
                           shakeX={
-                            selection?.kind === "foundation" && selection.suit === suit
+                            selection?.kind === "tableau" && selection.col === col
                               ? shakeX
                               : undefined
                           }
-                          onPress={handleFoundationPress}
-                          dropId={`solitaire-foundation-${suit}`}
-                          onDrop={(source) => handleDropToFoundation(source)}
+                          onCardPress={handleTableauCardPress}
+                          onEmptyPress={handleEmptyTableauPress}
+                          locked={state.isComplete}
+                          dropId={`solitaire-tableau-${col}`}
+                          onDrop={(source, _cards, offset) =>
+                            handleDropToTableau(source, col, offset)
+                          }
                         />
                       ))}
                     </View>
-                    <Animated.View
-                      pointerEvents="none"
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                      style={[
-                        StyleSheet.absoluteFill,
-                        {
-                          backgroundColor: CELEBRATION_SPARKLE,
-                          opacity: sparkleOpacity,
-                          borderRadius: 8,
-                        },
-                      ]}
-                    />
+                    {/* Last, so a card in flight draws above every pile (#3572). */}
+                    <CardFlightLayer store={flights} />
                   </View>
-                </View>
 
-                <View style={[styles.tableauRow, { minHeight: cardSize.cardHeight * 3 }]}>
-                  {state.tableau.map((pile, col) => (
-                    <TableauPile
-                      key={col}
-                      pile={pile}
-                      colIndex={col}
-                      selectedIndex={tableauSelection(col)}
-                      hintIndex={hintSourceCol === col ? hintSourceCardIndex : undefined}
-                      hintDestination={hintDestTableauCol === col}
-                      shakeX={
-                        selection?.kind === "tableau" && selection.col === col ? shakeX : undefined
-                      }
-                      onCardPress={handleTableauCardPress}
-                      onEmptyPress={handleEmptyTableauPress}
-                      dropId={`solitaire-tableau-${col}`}
-                      onDrop={(source) => handleDropToTableau(source, col)}
-                    />
-                  ))}
-                </View>
-              </View>
+                  <View
+                    style={styles.bottomBand}
+                    onLayout={handleBandLayout}
+                    pointerEvents="box-none"
+                    testID="solitaire-bottom-band"
+                  >
+                    <View accessibilityLiveRegion="polite" pointerEvents="none">
+                      {selectionLabel !== null && (
+                        <Text style={[styles.selectionIndicatorText, { color: colors.accentText }]}>
+                          {selectionLabel}
+                        </Text>
+                      )}
+                    </View>
+                    {showAutoComplete && <AutoCompleteButton onPress={handleAutoComplete} />}
+                  </View>
+                </FeltTable>
 
-              {showAutoComplete && (
-                <Pressable
-                  onPress={handleAutoComplete}
-                  style={[styles.autoBtn, { backgroundColor: colors.accent }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("solitaire:action.autoComplete")}
-                >
-                  <Text style={[styles.autoBtnText, { color: colors.textOnAccent }]}>
-                    {t("solitaire:action.autoComplete")}
-                  </Text>
-                </Pressable>
-              )}
-
-              <View
-                style={[styles.selectionIndicator, { bottom: Math.max(insets.bottom, 8) }]}
-                accessibilityLiveRegion="polite"
-                pointerEvents="none"
-              >
-                {selectionLabel !== null && (
-                  <Text style={[styles.selectionIndicatorText, { color: colors.accent }]}>
-                    {selectionLabel}
-                  </Text>
-                )}
-              </View>
-            </DragContainer>
+                <TestDealControl onDealDraw3={() => handleTestDeal(3)} />
+              </DragContainer>
+            </CardFlightContext.Provider>
           </CardSizeContext.Provider>
         )}
 
         {state !== null ? (
           <GameResultModal
-            visible={state.isComplete}
+            visible={state.isComplete && !winHold}
             outcome="win"
             eyebrow={`${t("game.title")} · ${t(state.drawMode === 1 ? "drawMode.one" : "drawMode.three")}`}
             hero={{ kind: "score", label: tResult("stat.score"), value: state.score }}
@@ -1101,24 +1528,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
+  felt: {
+    flex: 1,
+    marginTop: TABLE_FELT_MARGIN_TOP,
+    marginBottom: TABLE_FELT_MARGIN_BOTTOM,
+    alignItems: "center",
+  },
   board: {
-    alignSelf: "flex-start",
+    alignSelf: "center",
   },
   topRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 12,
   },
   foundationsRow: {
     flexDirection: "row",
-    gap: COL_GAP,
   },
-  selectionIndicator: {
+  // The felt's bottom band: the selection label and the Auto-Complete pill, kept
+  // out of the tableau's way by the geometry (`bottomBand`).
+  bottomBand: {
     position: "absolute",
     left: 0,
     right: 0,
+    bottom: 0,
+    minHeight: TABLE_BOTTOM_BAND,
+    flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    paddingVertical: 8,
+    justifyContent: "center",
+    columnGap: 12,
+    rowGap: 4,
   },
   selectionIndicatorText: {
     fontFamily: typography.heading,
@@ -1128,20 +1567,6 @@ const styles = StyleSheet.create({
   },
   tableauRow: {
     flexDirection: "row",
-    gap: COL_GAP,
     alignItems: "flex-start",
-  },
-  autoBtn: {
-    alignSelf: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    marginTop: 12,
-  },
-  autoBtnText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
 });

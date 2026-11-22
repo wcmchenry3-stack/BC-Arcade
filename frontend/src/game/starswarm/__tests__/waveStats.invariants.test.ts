@@ -250,10 +250,14 @@ function seededRun(seed: number, difficulty: DifficultyTier, style: Style, waves
   }
 }
 
-/** Every tier, a seed dealt round them, brawl and rout alternating; Ensign plays the long run. */
+/**
+ * Every tier, a seed dealt round them, brawl and rout alternating; Ensign plays the long run.
+ * #3512: the long run plays seed 42. Faster post-clear pickups shift every later tick, and on
+ * seed 3 the ship now dies on wave 3, before the score earns its bonus life.
+ */
 const CASES = DIFFICULTY_TIERS.map((d, i) =>
   i === 0
-    ? ([d, SEEDS[0]!, "survive", LONG_WAVES] as const)
+    ? ([d, SEEDS[1]!, "survive", LONG_WAVES] as const)
     : ([d, SEEDS[i % SEEDS.length]!, i % 2 === 0 ? "brawl" : "rout", WAVES] as const)
 );
 

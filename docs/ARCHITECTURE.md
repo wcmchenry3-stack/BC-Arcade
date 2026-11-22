@@ -108,21 +108,21 @@ only) and swallowed otherwise (the purchase jobs); either way every other job is
 still stopped. Adding a job is one `PeriodicJob(...)` builder plus one line in
 `configured_jobs()`.
 
-| Area                      | Location                   | Responsibility                                                                                                     |
-| ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Area                      | Location                   | Responsibility                                                                                                        |
+| ------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas (modules below) |
-| Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                  |
-| Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                               |
-| Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                          |
-| Stats / Profile data      | `backend/stats/`           | Cross-game and per-game aggregates over shared session rows                                                        |
-| Player display name       | `backend/players/`         | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778)          |
-| Entitlements              | `backend/entitlements/`    | Which premium games the current session may open                                                                   |
-| Daily Challenge           | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation                                                      |
-| Daily Word                | `backend/daily_word/`      | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions                                  |
-| Internal bug logs         | `backend/logs/`            | Session-linked diagnostic log ingestion                                                                            |
-| Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
-| Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
-| Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+| Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                     |
+| Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                                  |
+| Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                             |
+| Stats / Profile data      | `backend/stats/`           | Cross-game and per-game aggregates over shared session rows                                                           |
+| Player display name       | `backend/players/`         | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778)             |
+| Entitlements              | `backend/entitlements/`    | Which premium games the current session may open                                                                      |
+| Daily Challenge           | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation                                                         |
+| Daily Word                | `backend/daily_word/`      | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions                                     |
+| Internal bug logs         | `backend/logs/`            | Session-linked diagnostic log ingestion                                                                               |
+| Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                          |
+| Bottle Sort level service | `backend/sort/`            | Catalog version and size (levels ship in the app); legacy random level sets for older builds                          |
+| Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine    |
 
 The `backend/games/` service layer is split by job (#2991; the former
 `games/service.py` is gone, nothing re-exports it):
@@ -300,6 +300,17 @@ Explicit exception to the lint rule, plus contexts that stay under `game/`:
   `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
   because they import no UI.
 
+**Game canvases on web.** The Skia canvases (`@shopify/react-native-skia`) are native. On
+web, Mahjong and Star Swarm draw with their own Canvas 2D `GameCanvas.web.tsx`. Cascade
+instead runs the same Skia code on web through Skia's web runtime, CanvasKit (WebAssembly),
+so web demos show what the phones show (owner decision on #2960). Its route,
+`screens/CascadeRoute.web.tsx`, loads CanvasKit from our own origin when Cascade opens and
+only then imports the screen; nothing else loads it, and native bundles do not contain it.
+Details and cost: [games/cascade.md](games/cascade-decisions.md#rendering-2960),
+[PERFORMANCE.md](PERFORMANCE.md#cascade-on-web-canvaskit-2960). Any other web path that
+imports `@shopify/react-native-skia` before CanvasKit has loaded breaks Skia on web, so keep
+Skia imports behind a native file or the Cascade route.
+
 ### 3.2 Determinism, RNG and counters (#2985, #2999)
 
 The rule: **an engine is replayable from `(seed, inputs)`.** Given the same
@@ -429,25 +440,26 @@ public module keeps its path (`game/starswarm/engine.ts`, now a pure
 `game/starswarm/engine/`, one module per subsystem, each under the
 `max-lines` gate with its own `__tests__/engine.<module>.test.ts`:
 
-| Module           | Owns                                                                                                        |
-| ---------------- | ----------------------------------------------------------------------------------------------------------- |
-| `registries.ts`  | The content lists (`POWERUP_TYPES`, `ENEMY_TIERS`, …) the per-wave stats are keyed by; imports nothing      |
-| `tuning.ts`      | Every tunable, the difficulty tiers (`DIFFICULTY_TIERS`), and the injectable `Tuning` / `DEFAULT_TUNING`    |
-| `rng.ts`         | The seeded LCG (`seedRng`, via `_shared/seededRng`) and the id counters; `engineCounters()` for saves       |
-| `geometry.ts`    | Béziers, overlap tests, the formation slot layout, path factories, proportional aim, `hashFrac`             |
-| `roster.ts`      | Roster reads (leader tiers, Carrier armor and stage), the per-tick `TickCtx`, `mapKeep` / `mapFilterKeep`   |
-| `stats.ts`       | Per-tier dodge/flak counters and the run-wide counters                                                      |
-| `waveStats.ts`   | The per-wave stats record (#3245): open, `bumpWave`, close into a v1 snapshot, the wire format              |
-| `entities.ts`    | Pickups, explosions, the power-up type roll                                                                 |
-| `extraction.ts`  | The `weaponsFree` / `hazardsLive` gates, live hazards, the extraction autopilot, `clearTransientCombat`     |
-| `asteroids.ts`   | Rocks: entries, spawns, the threat contract, and the enemies' response to them (`tickAsteroidThreats`)      |
-| `buddy.ts`       | Buddy: station, attack runs, evasion, the fire it draws, the hits it takes                                  |
-| `carrier.ts`     | The Carrier: cadences, the volley seam, beam, attack run, and the event selectors                           |
-| `enemyPhases.ts` | The per-ship phase machine (SwoopIn → Formation → Wiggling → Diving → Circling → Returning, Fleeing)        |
-| `enemies.ts`     | `tickEnemies`: the fleet-wide tick (dive scheduling, sway, the Carrier context, reinforcements, stragglers) |
-| `collisions.ts`  | Bullets in flight and the single damage-resolution pass (`tickCollisions`, `applyBombBlast`)                |
-| `powerups.ts`    | The player's volley, upgrade ladders, pickups, `applyPowerUp`                                               |
-| `wave.ts`        | `initStarSwarm`, `buildWaveState`, `tick` (the pipeline order is in its header), the phase machine          |
+| Module             | Owns                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `registries.ts`    | The content lists (`POWERUP_TYPES`, `ENEMY_TIERS`, …) the per-wave stats are keyed by; imports nothing                          |
+| `tuning.ts`        | Every tunable, the difficulty tiers (`DIFFICULTY_TIERS`), and the injectable `Tuning` / `DEFAULT_TUNING`                        |
+| `rng.ts`           | The seeded LCG (`seedRng`, via `_shared/seededRng`) and the id counters; `engineCounters()` for saves                           |
+| `geometry.ts`      | Béziers, overlap tests, the formation slot layout, path factories, proportional aim, `hashFrac`                                 |
+| `roster.ts`        | Roster reads (leader tiers, Carrier armor and stage), the per-tick `TickCtx`, `mapKeep` / `mapFilterKeep`                       |
+| `stats.ts`         | Per-tier dodge/flak counters and the run-wide counters                                                                          |
+| `waveStats.ts`     | The per-wave stats record (#3245): open, `bumpWave`, close into a v1 snapshot, the wire format                                  |
+| `entities.ts`      | Pickups, explosions, the power-up type roll                                                                                     |
+| `extraction.ts`    | The `weaponsFree` / `playerFireAllowed` / `hazardsLive` gates, hazards, the autopilot, `clearTransientCombat`                   |
+| `lightningBeam.ts` | The guns' layout (`GUN_LAYOUT`) and Lightning's beams (#3562): when on, their geometry, the pulse clock, #3709's swept hit test |
+| `asteroids.ts`     | Rocks: entries, spawns, the threat contract, and the enemies' response to them (`tickAsteroidThreats`)                          |
+| `buddy.ts`         | Buddy: station, attack runs, evasion, the fire it draws, the hits it takes                                                      |
+| `carrier.ts`       | The Carrier: cadences, the volley seam, beam, attack run, and the event selectors                                               |
+| `enemyPhases.ts`   | The per-ship phase machine (SwoopIn → Formation → Wiggling → Diving → Circling → Returning, Fleeing)                            |
+| `enemies.ts`       | `tickEnemies`: the fleet-wide tick (dive scheduling, sway, the Carrier context, reinforcements, stragglers)                     |
+| `collisions.ts`    | Bullets in flight and the single damage-resolution pass (`tickCollisions`, `applyBombBlast`)                                    |
+| `powerups.ts`      | The player's volley, upgrade ladders, pickups, `applyPowerUp`                                                                   |
+| `wave.ts`          | `initStarSwarm`, `buildWaveState`, `tick` (the pipeline order is in its header), the phase machine                              |
 
 Modules only import downward in that order (no cycles), and the barrel is the
 only thing outside the package that imports them.
@@ -597,6 +609,87 @@ replays saves recorded from the pre-#2987 modules).
 - When a game saves is the screen's decision (most after every move;
   Mahjong debounced, #2961), not the slot's.
 
+**Personal best (#3757, owner decision #3798).** Every game that keeps a best
+keeps it through one module, `game/_shared/personalBest.ts`, not its own
+record. The device is the source of truth; nothing writes the server, and the
+only read is the one-off seed below (#3802).
+
+- **API.** `getBest(game, variant?)` (0: none), `getBests(game)` (by
+  variant), `recordResult(game, variant?, value)` → `{ best, improved,
+isNewBest }`, `readBests`/`recordBests` (below, for Sort), and
+  `judgeResult(game, prior, value)` for screens that read
+  the best when a game starts and decide its end synchronously. The "new
+  best" rule stays `bestOf`: the first result sets the best but is never a new
+  best (Yacht's solo end beat counts the first game as a win itself).
+- **What "best" means** is each game's metric from before #3757
+  (`personalBestGames.ts`): highest score (Cascade, Star Swarm, 2048, Yacht
+  solo, at most 1575), fewest moves in a win (FreeCell), fastest win
+  (Solitaire), fastest solve per mode and difficulty (Sudoku,
+  `"classic.easy"`), fastest clear per layout, never under the 36 s floor
+  (Mahjong), fewest moves per catalog level (Sort, #3821, variant = level id:
+  `"1"`…`"120"`). A value that can't be a best (a 0 score, a broken clock, a
+  0-move solve) is never stored. Blackjack, Hearts and Daily Word keep no
+  best.
+- **Bests kept in memory (Sort, #3821).** Sort's bests are also its progress
+  (its solved levels, and the leaderboard's `total_moves` sum), and its screen
+  decides every solve from bests it holds in memory. It reads them with
+  `readBests(game)` (`null` when storage couldn't be read or holds a newer
+  build's record: it must then not write them back) and mirrors them with
+  `recordBests(game, bests)`: merged in, the better value per variant winning,
+  in one write and only when something improves. What the screen computes and
+  submits is unchanged.
+- **Format.** One AsyncStorage key per game, `personal_best_v1:<game>`:
+  `{"v":1,"b":{"<variant>":<best>}}`, variant `"_"` for a game with none; a
+  few dozen bytes per variant.
+- **Older saves** (`cascade_best_score`, `starswarm.bestScore`,
+  `twenty48_best_score_v1`, `yacht_best_score_v1`, `freecell_stats_v1`,
+  `solitaire_stats_v1`, `sudoku_stats_v1`, `mahjong_stats_v1`) are moved in on
+  the game's first read: merged with any new-format best (the better one wins,
+  so nothing is lowered or lost), written once, and the old key removed only
+  after that write lands. A failed write leaves the old key for the next read;
+  the move is idempotent. Sort's `@sort/best_moves` (#3821) is moved in the
+  same way, but only once `@sort/catalog_version` names this build's catalog
+  (a key read alongside, never removed: `legacy.context`): until the catalog
+  migration has run, the old key may hold the random levels' bests, so it is
+  left exactly as stored and counts for nothing (`legacy.read` returns
+  `null`).
+- **Seed from the server (#3802).** A reinstall's empty best is seeded once per
+  game from `best_value` in the `GET /stats/me` response the app already
+  fetches (`useMyStats.rememberMyStats` → `game/_shared/personalBestSeed.ts`):
+  no request of its own, nothing written to the server. Only games whose
+  server `best_value` is the local metric, matched by `best_label_key`: Cascade,
+  2048, Star Swarm (score) and FreeCell (moves). Not Solitaire (server: score,
+  local: fastest win), Sudoku (one server best, local per mode and
+  difficulty), Mahjong (per layout), Yacht (server counts every mode, local is
+  solo) or Sort. A game with a local best is never touched, so a local best is
+  never overwritten and a seeded game is never seeded again; offline or with
+  no matching stat nothing happens and the next stats response tries again.
+  Kill switch: backend env `PERSONAL_BEST_SEED_ENABLED` (Render), served on
+  `GET /games/catalog` as `personal_best_seed: {enabled}` and taken by
+  `replayDialSync` (held as `personalBestSeedDial.v1`; default on after 7 days
+  unconfirmed; with no value held or fetched yet nothing is seeded, the next
+  stats response retries). A server value outside 1..10,000,000 is ignored, and
+  nothing is seeded while "Delete my data" runs (`deletingData.ts`, set before
+  its network delete). Local bests survive that deletion by current policy
+  (#3888). Volume and cap: [DATA-INVENTORY.md](DATA-INVENTORY.md).
+- **Fail-safe.** Nothing rejects. A record that can't be parsed reads as no
+  best (a Sentry warning, and the record is removed); a value that can't be a
+  best is dropped. A record in a format version this build doesn't know (a
+  newer build's, kept across a rollback) reads as no best and is left exactly
+  as stored: nothing is written over it, and an older save still counts in
+  memory but stays stored. A failed read writes nothing either, so a best it
+  couldn't see is never overwritten. A game's reads and writes run in order.
+  Each kind of failure (read, write, moving an older save in, a corrupt
+  record) is reported to Sentry at most once per app session per game
+  (`sentryThrottle`), so broken storage can't send an event per move.
+- **Cost.** No server I/O of its own (the seed above reads a response the app already fetches); Sentry bounded as above. Storage writes only when a best improves (plus the
+  one-off move of an older save); no work on the frame or gesture path: the
+  best is read when a game starts and recorded once when it ends (2048
+  records as the live score passes the best, as its old record did). Each
+  game's bests are cached in memory once read or written, so storage is read
+  about once per game per session: a 2048 move that raises the best costs one
+  small `setItem` and no read (it was one `getMany` plus one `setItem`).
+
 **Identity and leaderboard name (#2624, #2519 decisions 17–18, #2778).** A
 player is their player id: the app's `game_session_id`, sent as `X-Session-ID`
 (one per install; a reinstall or a new device is a new player until accounts,
@@ -669,11 +762,11 @@ explicitly as `summary.result` to `useGameSync.complete()`; the analytics
 
 **Outcome (#2519 decision 11).** `games.outcome` carries the result, not
 only the lifecycle. Games that can record a winner (`GameModule.has_winner`:
-Yacht, Hearts, Daily Word, Blackjack, Mahjong, Twenty48) record `win` /
-`loss` / `push` (a tie); a `completed` row from such a game (solo Yacht) is a
-finish with no winner, not a win. Score-only games (Solitaire, FreeCell,
-Sudoku, Cascade, Sort, Star Swarm) record `completed` — a finished game with
-no win concept. `kept_playing` means the same; only Twenty48 builds from
+Yacht, Hearts, Daily Word, Blackjack, Mahjong, Twenty48, Cascade) record `win` /
+`loss` / `push` (a tie); a `completed` row from such a game (solo Yacht, or a
+Cascade build before #3699) is a finish with no winner, not a win. Score-only
+games (Solitaire, FreeCell, Sudoku, Sort, Star Swarm) record `completed` — a
+finished game with no win concept. `kept_playing` means the same; only Twenty48 builds from
 before #2631 send it. `abandoned` is a quit, excluded from boards, stats and XP
 by `games.filters.not_abandoned()`. The per-game rules live in one place, the
 `GameOutcome` docstring in `backend/vocab.py`; `won` inside a result block is
@@ -986,6 +1079,11 @@ refunds, the product catalog) is specified in [IAP.md](IAP.md). Purchases write
 
 1. The client calls `GET /entitlements` on startup and on every foreground-resume.
    Purchase and restore responses also carry a fresh token ([IAP.md §8.2](IAP.md#82-endpoints)).
+   If a fetch fails with a network error and no premium games are cached, the
+   client also re-fetches once on each offline → online edge (`useNetwork()`),
+   or at once if the launch fetch failed while already online, until a fetch
+   reaches the server or a token is applied (#3868). A cached unlock or a
+   non-network failure (401/5xx) arms no retry.
 2. The server returns an **RS256-signed JWT** containing:
    - `sub`: session_id
    - `entitled_games`: array of game slugs the session may access
@@ -1000,6 +1098,16 @@ The client may reuse the cached entitlement set for **7 days past JWT expiry**
 when it cannot refresh (reviewed for paid access and retained: [IAP.md §10](IAP.md#10-entitlement-refresh-policy)). If the cache is missing or beyond the grace period,
 premium access is denied locally until the app reconnects. Free games remain
 accessible.
+
+The cache is read when the launch fetch fails, and when any `refresh()`
+(foreground, reconnect or on demand) fails with a network error before any
+entitlements are loaded (it superseded the launch fetch, whose own fallback is
+then dropped, #3879). The reconnect retry is armed before that cache read and
+disarmed after it only if the cache unlocked premium games. Once entitlements
+are held, a refresh that fails with a network error keeps them as they are and
+does not re-read the cache, so a transient error cannot downgrade access. (A
+fetch that returns an expired or undecodable token still falls back to the
+cache, as before.)
 
 This grace is client-side continuity only. Once online, current server
 authorization comes from the session's database entitlement rows, not from a
@@ -1109,6 +1217,19 @@ compensating premium swap — see §10.8). `isGameVisible(slug)` filters:
 so dev builds, e2e test builds and **pre-launch builds** keep all 12 games; a store
 build shows 7 tiles.
 
+**Disabled games.** `DISABLED_GAMES` (empty today) is a second compiled list for a
+premium game switched off for a rework: a store build hides it even after the
+premium games leave `HIDDEN_GAMES` (#2875), so the premium unhide cannot bring it
+back. Internal builds still show it so the rework and the Playwright helpers have
+a target. A disabled game stays premium (`PREMIUM_GAMES`, `is_premium`); its store
+product is held back (`"enabled": false`, IAP.md §2), the paywall and the backend
+purchase routes refuse it, and no Daily Challenge slate picks it
+(DAILY-CHALLENGE.md §2). `metro/storeBundle.js` must keep excluding its screens
+from store bundles (`storeBundle.test.ts`). The backend mirrors the list in
+`backend/entitlements/service.py` (`test_disabled_games_match_the_frontend_list`).
+Cascade was the only entry, from #3001 until its rework shipped (#3703); it is now
+an ordinary premium game.
+
 Tabs do not depend on visibility: every build has the same three — Lobby,
 Profile, Settings — registered by `MainTabs()` from `navigation/mainTabs.ts`
 (`mainTabs.test.tsx` fails on a fourth). The Star Swarm-only **Ranks** tab was
@@ -1156,6 +1277,53 @@ Xcode Cloud rewrites `.env` on every build (it does not check the workflow's own
 environment variables — never add the flag there). `frontend/metro.config.js`
 keys Metro's cache on `EXPO_PUBLIC_*` values so a stale transform from a
 test-hooks build can never be reused by a store build on any platform.
+
+**Lobby grid (#4005).** `lobbyColumns(width)` in
+`frontend/src/components/home/lobbyColumns.ts` picks the Home tile columns from the
+window width: `< 360` → 1, `< 700` → 2, `< 1000` → 3, otherwise 4 (rotation and split
+view recompute through `useWindowDimensions`). A short last row is padded with
+invisible spacer cells (`testID="lobby-spacer"`, hidden from accessibility) so every
+tile keeps the column width. The tile icon slot is `TILE_ICON_ZONE` (68 pt) from the same
+module; art drawn in it (emoji 44 pt, Star Swarm image and Cascade icon 56 pt) must fit.
+Locked and unlocked Play buttons both carry a 1 pt border so tiles are the same height.
+
+**Lobby tile type (#4006).** Title 16 pt (line height 20), description 12 pt (16), button
+label 13 pt in sentence case, letter-spacing 0.2 (constants in `lobbyColumns.ts`); nothing
+in a tile is below 11 pt. Every tile `Text` sets `maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}`
+(1.5), so Dynamic Type / Android font size grows tile text by at most 1.5x. No tile text has
+a fixed height: `lobbyTileTextSizing(fontScale)` returns `minHeight`s that scale with the
+window's `fontScale` (capped at the same 1.5, rounded up to whole points): the description reserves 3 lines, or 5 once
+`fontScale > 1` (`numberOfLines` to match), and the title 1 line, or 2 once `fontScale > 1`, so a title wraps
+instead of truncating and tiles in a row stay equal. The button reads `common:play`
+("Play"); the tile's accessibility label is the game's `game.playLabel`, kept on the
+`GameCard` entry rather than keyed by translated title.
+
+**Lobby order (#4009).** Tiles follow `allGames` in `HomeScreen.tsx`, a fixed order with Daily
+Word first (the daily game) and every other game in its existing relative slot. Store builds
+show Daily Word, Yacht, 2048, Solitaire, FreeCell, Sudoku, Sort Puzzle. The order never changes
+with play history or saves (owner decision: muscle memory); hidden games keep their slots when
+unhidden (#2875).
+
+**Lobby tile status (#4008).** A tile can show one status line from this device's storage, in the
+description's slot (so it keeps the reserved lines and rows stay equal): **Resume** ("In progress",
+accent text, and the button reads "Resume", the label adds ", in progress, tap to resume") over
+**Done today** (Daily Word, tertiary text) over **Best** (muted, in the game's own unit: a score, a
+`m:ss` time for Solitaire, "Best moves" for FreeCell). A locked tile shows none. Each game
+contributes a `getLobbyStatus()` in `game/<name>/lobbyStatus.ts`, listed in
+`components/home/lobbyStatusReaders.ts`; `useLobbyTileStatus` runs them all in one `Promise.all`
+after first paint (`setTimeout(0)`), on mount, on Home's `focus` and on app foreground, and the grid never waits
+on them. The resume rule lives in the game's `lobbyStatus.ts` (`isResumable`); Yacht's is also what
+`startYacht` uses, so the tile and the tap agree (#2203). Most other screens always reopen a stored
+game, so their rule only decides the label: a game in progress is one that is not over and has had a
+move. **Sort is the second whose tap must match:** its screen opens on the level grid, so while the
+tile says Resume the tile navigates to `Sort` with `{ resume: true }`, and `SortScreen`, once its
+progress has loaded, runs the same `handleContinue()` as the level grid's Continue button (once, and
+the param is cleared). Sort's `isResumable` (a level plus an unfinished board, on this build's level
+catalog) is also what the grid uses to offer Continue. Shown for: Yacht, 2048, Solitaire, FreeCell,
+Sudoku, Sort (Resume), Daily Word (Done today), and Best for Yacht, 2048, Solitaire, FreeCell.
+**Not listed:** the hidden games (their storage is never imported or read, so a store bundle holds
+none of it); Sudoku and Sort show no best (one per mode and difficulty, one per level). The reads are silent and write-free: a save or best that cannot be read, parsed or checked reads as no status and is left as stored (no removal, no Sentry event, and an older-format best is not moved in: the best comes from `peekBests`, not `getBest`). They run on mount, on Home's `focus` and when the app returns to the foreground, so "Done today" is derived again against the current date (with Home open and the app in the foreground across midnight, it stays until the next focus or foreground; there is no timer). Keys read: `docs/DATA-INVENTORY.md` §3.
+
 
 ### 10.8 How the free/premium split is decided
 
@@ -1273,15 +1441,15 @@ BC Arcade intentionally keeps external-service responsibilities narrow. This is
 the system map; operational commands, environment variables and secrets belong
 in their runbooks.
 
-| Service                                    | What BC Arcade uses it for                                                           | What happens if it is unavailable                                                                                               | Operational source                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **GitHub**                                 | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run                                                    | Root workflows + testing/build docs                                                    |
-| **Render**                                 | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres                 | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md)                                                                 |
-| **Supabase**                               | Production PostgreSQL only, through the session pooler                               | Production server features that require DB access fail; local single-player can continue until sync/read services are needed    | [RENDER.md](RENDER.md)                                                                 |
+| Service                                    | What BC Arcade uses it for                                                           | What happens if it is unavailable                                                                                               | Operational source                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **GitHub**                                 | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run                                                    | Root workflows + testing/build docs                                                                    |
+| **Render**                                 | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres                 | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md)                                                                                 |
+| **Supabase**                               | Production PostgreSQL only, through the session pooler                               | Production server features that require DB access fail; local single-player can continue until sync/read services are needed    | [RENDER.md](RENDER.md)                                                                                 |
 | **Sentry**                                 | Native app + backend crashes/errors/performance and in-app User Feedback             | Diagnostics/feedback visibility is reduced; gameplay should continue                                                            | `sentryConfig.ts`, backend `observability/sentry.py`; canonical feedback/observability doc under #2805 |
-| **Cloudflare**                             | DNS/TLS/network routing for BC Arcade domains                                        | Custom domains/routing may fail even when Render services are healthy                                                           | Render/domain configuration                                                            |
-| **Apple/Xcode Cloud/App Store Connect**    | iOS build/sign/test/distribution toolchain                                           | New iOS builds/releases stop; installed builds are unaffected                                                                   | [IOS.md](IOS.md)                                                                       |
-| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution                                                 | New Android releases stop; installed builds are unaffected                                                                      | [ANDROID-CI.md](ANDROID-CI.md)                                                         |
+| **Cloudflare**                             | DNS/TLS/network routing for BC Arcade domains                                        | Custom domains/routing may fail even when Render services are healthy                                                           | Render/domain configuration                                                                            |
+| **Apple/Xcode Cloud/App Store Connect**    | iOS build/sign/test/distribution toolchain                                           | New iOS builds/releases stop; installed builds are unaffected                                                                   | [IOS.md](IOS.md)                                                                                       |
+| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution                                                 | New Android releases stop; installed builds are unaffected                                                                      | [ANDROID-CI.md](ANDROID-CI.md)                                                                         |
 
 ### Secrets and configuration ownership
 
@@ -1307,54 +1475,64 @@ used, and a bad `TRUSTED_PROXY_*` value still raises `ValueError` at startup.
 Operational tunables (#3110) are optional env vars with bounds (below); a value outside
 its range fails `Settings()`, so the API refuses to start. Game rules stay constants.
 
-| Setting                | Default when unset                                | Read by                                                 |
-| ---------------------- | ------------------------------------------------- | ------------------------------------------------------- |
-| `ENVIRONMENT`          | unset (Sentry reports `development`)              | `main` (docs routes, `/debug/error`), Sentry, `limiter` |
-| `ALLOWED_ORIGINS`      | `http://localhost:8081`, `http://localhost:19006` | `main` (CORS)                                           |
-| `SENTRY_DSN`           | unset (Sentry off)                                | `observability/sentry.py`                               |
-| `RENDER_GIT_COMMIT`    | unset (no Sentry release)                         | `observability/sentry.py`                               |
-| `TRUSTED_PROXY_MODE`   | `cloudflare`                                      | `limiter.py`                                            |
-| `TRUSTED_PROXY_HOPS`   | `1` (1–10)                                        | `limiter.py`                                            |
-| `LOG_PROXY_HEADERS`    | unset (off; ignored in production)                | `limiter.py`                                            |
-| `RATE_LIMIT_STORAGE_URL` | unset or blank (in-memory counters); `redis://` / `rediss://` shares them | `limiter.py` (`build_limiter`) |
-| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py` (when `MIGRATION_DATABASE_URL` is unset) |
-| `MIGRATION_DATABASE_URL` | unset or blank (Alembic uses `DATABASE_URL`)    | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
-| `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
-| `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
-| `ENTITLEMENT_DEV_OVERRIDE` | unset (override off; only `true` turns it on) | `entitlements/service.py` (lazy, on first use)          |
-| `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY` | unset or blank (an ephemeral pair is generated) | `entitlements/service.py` (lazy, on first use) |
-| `APPLE_BUNDLE_ID`      | unset (Apple verification dormant)                | `purchases/apple_store.py` (lazy, via `purchases/_common.py`) |
-| `APPLE_APP_ID`         | unset (required when `Production` is allowed)     | `purchases/apple_store.py` (lazy)                       |
-| `APPLE_IAP_ISSUER_ID` / `APPLE_IAP_KEY_ID` / `APPLE_IAP_PRIVATE_KEY` | unset (no App Store Server API; all three or none) | `purchases/apple_store.py` (lazy) |
-| `APPLE_IAP_ONLINE_CHECKS` | unset (on; refused when off in production)     | `purchases/apple_store.py` (lazy)                       |
-| `APPLE_IAP_ENVIRONMENTS` | unset/empty → `Production,Sandbox` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
-| `GOOGLE_PLAY_PACKAGE_NAME` | unset (Google verification dormant)           | `purchases/google_play.py` (lazy)                       |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | unset (required with the package name) | `purchases/google_play.py` (lazy)                       |
-| `GOOGLE_RTDN_AUDIENCE` / `GOOGLE_RTDN_PUSH_SA` | unset (required with the package name) | `purchases/google_play.py` (lazy)             |
-| `GOOGLE_PLAY_ENVIRONMENTS` | unset/empty → `production,test` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
-| `ENTITLEMENT_TOKEN_TTL_HOURS` | `24` (1–168; the client's offline grace is 7 days)  | `entitlements/service.py` (lazy)                        |
-| `STALE_GAME_AFTER_HOURS` | `24` (1–720)                                    | `games/sweep.py`, `games/sweep_gate.py` (lazy)          |
-| `MAX_RESULT_BYTES`     | `8192` (1024–131072)                              | `games/sessions.py` (lazy)                              |
-| `MAX_EVENT_DATA_BYTES` | `8192` (1024–131072; per event `data`, UTF-8 bytes of its `jsonb::text`, `payload_size.jsonb_bytes`; over-size dropped) | `games/sessions.py` (lazy)                      |
-| `MAX_EVENTS_PER_GAME` / `MAX_EVENT_BYTES_PER_GAME` | `5000` / `1048576` (1–1000000 events; 1024–1073741824 bytes; per game; excess dropped; appends of one session are serialised by a Postgres advisory lock; a game ends at most one event over a ceiling) | `games/sessions.py` (lazy) |
-| `MAX_GAME_METADATA_BYTES` | `16384` (1024–131072; `POST /games` `metadata` + `players` as compact JSON; over → 413) | `games/sessions.py` (lazy) |
-| `MAX_BUG_LOG_CONTEXT_BYTES` | `16384` (16384–131072; must be ≥ the client's 16 KB; over-size log dropped)  | `logs/service.py` (lazy)                                |
-| `MAX_EVENT_BYTES_PER_SESSION_DAY` | `16777216` (1024–2147483647; rolling 24 h, all of a session's games; excess dropped) | `games/sessions.py` (lazy) |
-| `MAX_BUG_LOGS_PER_SESSION` | `500` (1–1000000; stored bug logs per session; excess dropped) | `logs/service.py` (lazy)                         |
-| `BUG_LOG_RETENTION_DAYS` | `90` (1–3650)                                   | `logs/retention.py` (lazy)                              |
-| `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
-| `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
-| `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
-| `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
-| `DB_COMMAND_TIMEOUT_SECONDS` | `10.0` (above 0, at most 600; must exceed the statement timeout) | `db/base.py` (asyncpg `command_timeout`) |
-| `DB_POOL_TIMEOUT_SECONDS` | `10.0` (above 0, at most 120)                  | `db/base.py` (SQLAlchemy `pool_timeout`)                |
-| `REPLAY_RETENTION_DAYS` | `30` (1–3650): replay event rows older than this are pruned | `games/replay_storage.py` (lazy)               |
-| `REPLAY_STORAGE_BUDGET_MB` | `250` (1–500): `game_events` budget; Sentry at 50/75/90 % | `games/replay_storage.py` (lazy)              |
-| `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
-| `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
-| `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy) |
-| `CLIENT_SENTRY_ENABLED` | `true`: `false` stops the apps' Sentry events but the keep-list, served on `GET /games/catalog` as `client_sentry.enabled` (#3437) | `observability/client_sentry_dial.py` (lazy) |
-| `CLIENT_SENTRY_SAMPLE_RATE` | `1.0` (0–1): share of the apps' Sentry events sent, served as `client_sentry.sample_rate` (#3437) | `observability/client_sentry_dial.py` (lazy) |
+| Setting                                                              | Default when unset                                                                                                                                                                                                                                 | Read by                                                                                                                                 |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENVIRONMENT`                                                        | unset (Sentry reports `development`)                                                                                                                                                                                                               | `main` (docs routes, `/debug/error`), Sentry, `limiter`                                                                                 |
+| `ALLOWED_ORIGINS`                                                    | `http://localhost:8081`, `http://localhost:19006`                                                                                                                                                                                                  | `main` (CORS)                                                                                                                           |
+| `SENTRY_DSN`                                                         | unset (Sentry off)                                                                                                                                                                                                                                 | `observability/sentry.py`                                                                                                               |
+| `RENDER_GIT_COMMIT`                                                  | unset (no Sentry release)                                                                                                                                                                                                                          | `observability/sentry.py`                                                                                                               |
+| `TRUSTED_PROXY_MODE`                                                 | `cloudflare`                                                                                                                                                                                                                                       | `limiter.py`                                                                                                                            |
+| `TRUSTED_PROXY_HOPS`                                                 | `1` (1–10)                                                                                                                                                                                                                                         | `limiter.py`                                                                                                                            |
+| `LOG_PROXY_HEADERS`                                                  | unset (off; ignored in production)                                                                                                                                                                                                                 | `limiter.py`                                                                                                                            |
+| `RATE_LIMIT_STORAGE_URL`                                             | unset or blank (in-memory counters); `redis://` / `rediss://` shares them                                                                                                                                                                          | `limiter.py` (`build_limiter`)                                                                                                          |
+| `DATABASE_URL`                                                       | unset or blank (no database; the API still boots)                                                                                                                                                                                                  | `db/base.py` (on first use), `alembic/env.py` (when `MIGRATION_DATABASE_URL` is unset)                                                  |
+| `MIGRATION_DATABASE_URL`                                             | unset or blank (Alembic uses `DATABASE_URL`)                                                                                                                                                                                                       | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
+| `DAILY_WORD_SALT`                                                    | `0` (empty or non-integer fails the import)                                                                                                                                                                                                        | `daily_word/puzzle.py` (at import)                                                                                                      |
+| `DAILY_CHALLENGE_SALT`                                               | `0` (blank → `0`; non-integer is hashed)                                                                                                                                                                                                           | `daily_challenge/definitions.py` (at import)                                                                                            |
+| `ENTITLEMENT_DEV_OVERRIDE`                                           | unset (override off; only `true` turns it on)                                                                                                                                                                                                      | `entitlements/service.py` (lazy, on first use)                                                                                          |
+| `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY`                 | unset or blank (an ephemeral pair is generated)                                                                                                                                                                                                    | `entitlements/service.py` (lazy, on first use)                                                                                          |
+| `APPLE_BUNDLE_ID`                                                    | unset (Apple verification dormant)                                                                                                                                                                                                                 | `purchases/apple_store.py` (lazy, via `purchases/_common.py`)                                                                           |
+| `APPLE_APP_ID`                                                       | unset (required when `Production` is allowed)                                                                                                                                                                                                      | `purchases/apple_store.py` (lazy)                                                                                                       |
+| `APPLE_IAP_ISSUER_ID` / `APPLE_IAP_KEY_ID` / `APPLE_IAP_PRIVATE_KEY` | unset (no App Store Server API; all three or none)                                                                                                                                                                                                 | `purchases/apple_store.py` (lazy)                                                                                                       |
+| `APPLE_IAP_ONLINE_CHECKS`                                            | unset (on; refused when off in production)                                                                                                                                                                                                         | `purchases/apple_store.py` (lazy)                                                                                                       |
+| `APPLE_IAP_ENVIRONMENTS`                                             | unset/empty → `Production,Sandbox` (blank → none: misconfigured)                                                                                                                                                                                   | `purchases/verifiers.py` (lazy, once per process)                                                                                       |
+| `GOOGLE_PLAY_PACKAGE_NAME`                                           | unset (Google verification dormant)                                                                                                                                                                                                                | `purchases/google_play.py` (lazy)                                                                                                       |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`                                   | unset (required with the package name)                                                                                                                                                                                                             | `purchases/google_play.py` (lazy)                                                                                                       |
+| `GOOGLE_RTDN_AUDIENCE` / `GOOGLE_RTDN_PUSH_SA`                       | unset (required with the package name)                                                                                                                                                                                                             | `purchases/google_play.py` (lazy)                                                                                                       |
+| `GOOGLE_PLAY_ENVIRONMENTS`                                           | unset/empty → `production,test` (blank → none: misconfigured)                                                                                                                                                                                      | `purchases/verifiers.py` (lazy, once per process)                                                                                       |
+| `ENTITLEMENT_TOKEN_TTL_HOURS`                                        | `24` (1–168; the client's offline grace is 7 days)                                                                                                                                                                                                 | `entitlements/service.py` (lazy)                                                                                                        |
+| `STALE_GAME_AFTER_HOURS`                                             | `24` (1–720)                                                                                                                                                                                                                                       | `games/sweep.py`, `games/sweep_gate.py` (lazy)                                                                                          |
+| `MAX_RESULT_BYTES`                                                   | `8192` (1024–131072)                                                                                                                                                                                                                               | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_EVENT_DATA_BYTES`                                               | `8192` (1024–131072; per event `data`, UTF-8 bytes of its `jsonb::text`, `payload_size.jsonb_bytes`; over-size dropped)                                                                                                                            | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_EVENTS_PER_GAME` / `MAX_EVENT_BYTES_PER_GAME`                   | `5000` / `1048576` (1–1000000 events; 1024–1073741824 bytes; per game; excess dropped; appends of one session are serialised by a Postgres advisory lock; a game ends at most one event over a ceiling)                                            | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_GAME_METADATA_BYTES`                                            | `16384` (1024–131072; `POST /games` `metadata` + `players` as compact JSON; over → 413)                                                                                                                                                            | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_BUG_LOG_CONTEXT_BYTES`                                          | `16384` (16384–131072; must be ≥ the client's 16 KB; over-size log dropped)                                                                                                                                                                        | `logs/service.py` (lazy)                                                                                                                |
+| `MAX_EVENT_BYTES_PER_SESSION_DAY`                                    | `16777216` (1024–2147483647; rolling 24 h, all of a session's games; excess dropped)                                                                                                                                                               | `games/sessions.py` (lazy)                                                                                                              |
+| `MAX_BUG_LOGS_PER_SESSION`                                           | `500` (1–1000000; stored bug logs per session; excess dropped)                                                                                                                                                                                     | `logs/service.py` (lazy)                                                                                                                |
+| `BUG_LOG_RETENTION_DAYS`                                             | `90` (1–3650)                                                                                                                                                                                                                                      | `logs/retention.py` (lazy)                                                                                                              |
+| `STREAK_LOOKBACK_DAYS`                                               | `60` (1–365; also the largest streak reported)                                                                                                                                                                                                     | `daily_challenge/streak.py` (lazy)                                                                                                      |
+| `DAILY_CHALLENGE_PERSONALIZED`                                       | `true` (kill switch: `false` serves the shared template and reads/writes no `daily_challenge_assignments` row)                                                                                                                                     | `daily_challenge/assignments.py` (lazy)                                                                                                 |
+| `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`                          | unset → `STREAK_LOOKBACK_DAYS` + 1 (1–365; refused below `STREAK_LOOKBACK_DAYS` + 1)                                                                                                                                                               | `daily_challenge/assignments.py` (lazy)                                                                                                 |
+| `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS`                              | `48` (1–720; an install pins only with a game created this recently)                                                                                                                                                                               | `daily_challenge/assignments.py` (lazy)                                                                                                 |
+| `DAILY_CHALLENGE_STRETCH_PCT`                                        | `12` (0–50; personal target = recent median ± this %)                                                                                                                                                                                              | `daily_challenge/personal.py` (lazy)                                                                                                    |
+| `DAILY_CHALLENGE_AFFINITY_DAYS`                                      | `14` (1–60; days of play weighing a game's core slots)                                                                                                                                                                                             | `daily_challenge/personal.py` (lazy)                                                                                                    |
+| `DAILY_CHALLENGE_HISTORY_GAMES`                                      | `10` (3–50; latest finished games per game a target reads)                                                                                                                                                                                         | `daily_challenge/personal.py` (lazy)                                                                                                    |
+| `DAILY_CHALLENGE_BONUS_ENABLED`                                      | `true` (`false` pins no new optional bonus goal, #3995)                                                                                                                                                                                            | `daily_challenge/personal.py` (lazy)                                                                                                    |
+| `DAILY_CHALLENGE_DISCOVERY_SHARE`                                    | `0.5` (0-1; share of bonus goals that are a discovery game, the rest a bigger stretch, #3995)                                                                                                                                                      | `daily_challenge/personal.py` (lazy)                                                                                                    |
+| `APPLE_REPLAY_WINDOW_HOURS`                                          | `48` (1–720)                                                                                                                                                                                                                                       | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`)                                                                   |
+| `DB_PING_TIMEOUT_SECONDS`                                            | `5.0` (above 0, at most 60)                                                                                                                                                                                                                        | `routes/health.py` (lazy)                                                                                                               |
+| `DB_STATEMENT_TIMEOUT_SECONDS`                                       | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection)                                                                                                                                | `db/base.py` (with `DATABASE_URL`; Postgres only)                                                                                       |
+| `DB_COMMAND_TIMEOUT_SECONDS`                                         | `10.0` (above 0, at most 600; must exceed the statement timeout)                                                                                                                                                                                   | `db/base.py` (asyncpg `command_timeout`)                                                                                                |
+| `DB_POOL_TIMEOUT_SECONDS`                                            | `10.0` (above 0, at most 120)                                                                                                                                                                                                                      | `db/base.py` (SQLAlchemy `pool_timeout`)                                                                                                |
+| `REPLAY_RETENTION_DAYS`                                              | `30` (1–3650): replay event rows older than this are pruned                                                                                                                                                                                        | `games/replay_storage.py` (lazy)                                                                                                        |
+| `REPLAY_STORAGE_BUDGET_MB`                                           | `250` (1–500): `game_events` budget; Sentry at 50/75/90 %                                                                                                                                                                                          | `games/replay_storage.py` (lazy)                                                                                                        |
+| `DATABASE_PLAN_MB`                                                   | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it                                                                                                                                                                             | `games/replay_storage.py` (lazy)                                                                                                        |
+| `REPLAY_JOB_HOUR_UTC`                                                | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check                                                                                                                                                               | `games/replay_storage.py` (lazy)                                                                                                        |
+| `REPLAY_RECORDING_ENABLED`                                           | `true`: `false` drops every replay event on write (lifecycle kept) and cuts the game at the first dropped index (`replay_paused`, `replay_cutoff_index`); the no-release kill switch for every game (per game: `game_types.replay_enabled`, #3279) | `games/sessions.py` (lazy)                                                                                                              |
+| `STARSWARM_HITS_BY_TIER`                                             | `true`: `false` strips `damage.hitsByTier` from every stored Star Swarm `wave_completed` (the unpruned per-tier hit grid, #3710); the rest of the event is unchanged. A no-release dial finer than the replay switches, which stop the whole wave  | `starswarm/models.py` (lazy)                                                                                                            |
+| `CLIENT_SENTRY_ENABLED`                                              | `true`: `false` stops the apps' Sentry events but the keep-list, served on `GET /games/catalog` as `client_sentry.enabled` (#3437)                                                                                                                 | `observability/client_sentry_dial.py` (lazy)                                                                                            |
+| `CLIENT_SENTRY_SAMPLE_RATE`                                          | `1.0` (0–1): share of the apps' Sentry events sent, served as `client_sentry.sample_rate` (#3437)                                                                                                                                                  | `observability/client_sentry_dial.py` (lazy)                                                                                            |
+| `SORT_CATALOG_EDITION_ENFORCED`                                      | `false`: `true` makes the Sort board and Stats "Best" rank only solves of the current level catalog (#2761; set once the catalog builds are live); also moves Sort's daily-challenge goals from 3/8/15 to 10/30/60 for unfrozen days (#3728)       | `games/boards/editions.py` (lazy)                                                                                                       |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
@@ -1399,33 +1577,34 @@ entry, or a decorator that differs from the table.
 **Operational tunables** stay as named constants beside the code they govern
 (they are not env vars and not in `Settings`):
 
-| Constant                                | Module                                                | Value                                |
-| --------------------------------------- | ----------------------------------------------------- | ------------------------------------ |
-| `TOKEN_TTL_HOURS`                       | `entitlements/service.py`                             | `24`                                 |
-| `STALE_GAME_AFTER` (`STALE_GAME_HOURS`) | `games/sweep.py` (also read by `games/sweep_gate.py`) | 24 hours                             |
-| `_TS_WINDOW_LOW` / `_TS_WINDOW_HIGH`    | `games/sessions.py`                                   | 365 days back / 24 hours ahead       |
-| `_MAX_RESULT_BYTES`                     | `games/sessions.py`                                   | `8192`                               |
-| `RETENTION`                             | `daily_word/retention.py`                             | 14 days                              |
-| `DEFAULT_CAP` / `CAPS_BY_GAME_TYPE`     | `games/replay_caps.py`                                | 500 events / 160 KB per game (JSON + 200 B/row); Star Swarm 200 / 104 KB; 2048 2,000 / 690 KB; Blackjack 2,000 / 560 KB; Daily Word 4 / 2.4 KB (one event per game); Cascade 3,000 / 900 KB (provisional) |
-| `LIFECYCLE_CAP` / `RETENTION_KEEP_NAMES` | `games/replay_caps.py`                               | 4 started / 4 ended / 1,000 hand_resolved / 384 KB; keep `wave_completed`, `guess_submitted` |
-| `PRUNE_BATCH_SIZE` / `PRUNE_MAX_BATCHES` | `games/replay_storage.py`                            | `5000` rows / `200` batches per run  |
-| `MAX_GUESSES`                           | `daily_word/progress.py`                              | `6`                                  |
-| `LOOKBACK_DAYS`                         | `daily_challenge/streak.py`                           | `60`                                 |
-| `REPLAY_WINDOW`                         | `purchases/apple_notifications.py`                    | 48 hours                             |
-| `VOIDED_WINDOW`                         | `purchases/google_jobs.py`                            | 48 hours                             |
-| `ACK_SWEEP_MAX_AGE` / `ACK_SWEEP_LIMIT` | `purchases/google_jobs.py`                            | 4 days / `500`                       |
-| `MAX_SESSIONS_PER_PURCHASE`             | `purchases/service.py`                                | `5`                                  |
-| `NEW_LINK_WINDOW`                       | `purchases/service.py`                                | 30 days                              |
-| `DEFAULT_MAX_BODY_BYTES`                | `middleware/body_size.py`                             | 1 KB (default)                       |
-| `LARGE_BODY_BYTES`                      | `middleware/body_size.py`                             | 256 KB (`/games`, `/logs`, `/stats`) |
-| `PURCHASE_BODY_BYTES`                   | `middleware/body_size.py`                             | 32 KB (`/purchases`)                 |
-| `DB_PING_TIMEOUT_SECONDS`               | `routes/health.py`                                    | `5.0`                                |
+| Constant                                 | Module                                                | Value                                                                                                                                                                                                     |
+| ---------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TOKEN_TTL_HOURS`                        | `entitlements/service.py`                             | `24`                                                                                                                                                                                                      |
+| `STALE_GAME_AFTER` (`STALE_GAME_HOURS`)  | `games/sweep.py` (also read by `games/sweep_gate.py`) | 24 hours                                                                                                                                                                                                  |
+| `_TS_WINDOW_LOW` / `_TS_WINDOW_HIGH`     | `games/sessions.py`                                   | 365 days back / 24 hours ahead                                                                                                                                                                            |
+| `_MAX_RESULT_BYTES`                      | `games/sessions.py`                                   | `8192`                                                                                                                                                                                                    |
+| `RETENTION`                              | `daily_word/retention.py`                             | 14 days                                                                                                                                                                                                   |
+| `DEFAULT_CAP` / `CAPS_BY_GAME_TYPE`      | `games/replay_caps.py`                                | 500 events / 160 KB per game (JSON + 200 B/row); Star Swarm 200 / 104 KB; 2048 2,000 / 690 KB; Blackjack 2,000 / 560 KB; Daily Word 4 / 2.4 KB (one event per game); Cascade 3,000 / 900 KB (provisional) |
+| `LIFECYCLE_CAP` / `RETENTION_KEEP_NAMES` | `games/replay_caps.py`                                | 4 started / 4 ended / 1,000 hand_resolved / 384 KB; keep `wave_completed`, `guess_submitted`                                                                                                              |
+| `PRUNE_BATCH_SIZE` / `PRUNE_MAX_BATCHES` | `games/replay_storage.py`                             | `5000` rows / `200` batches per run                                                                                                                                                                       |
+| `MAX_GUESSES`                            | `daily_word/progress.py`                              | `6`                                                                                                                                                                                                       |
+| `STREAK_LOOKBACK_DAYS` (setting)         | `settings.py`, read by `daily_challenge/streak.py`    | `60`                                                                                                                                                                                                      |
+| `REPLAY_WINDOW`                          | `purchases/apple_notifications.py`                    | 48 hours                                                                                                                                                                                                  |
+| `VOIDED_WINDOW`                          | `purchases/google_jobs.py`                            | 48 hours                                                                                                                                                                                                  |
+| `ACK_SWEEP_MAX_AGE` / `ACK_SWEEP_LIMIT`  | `purchases/google_jobs.py`                            | 4 days / `500`                                                                                                                                                                                            |
+| `MAX_SESSIONS_PER_PURCHASE`              | `purchases/service.py`                                | `5`                                                                                                                                                                                                       |
+| `NEW_LINK_WINDOW`                        | `purchases/service.py`                                | 30 days                                                                                                                                                                                                   |
+| `DEFAULT_MAX_BODY_BYTES`                 | `middleware/body_size.py`                             | 1 KB (default)                                                                                                                                                                                            |
+| `LARGE_BODY_BYTES`                       | `middleware/body_size.py`                             | 256 KB (`/games`, `/logs`, `/stats`)                                                                                                                                                                      |
+| `PURCHASE_BODY_BYTES`                    | `middleware/body_size.py`                             | 32 KB (`/purchases`)                                                                                                                                                                                      |
+| `DB_PING_TIMEOUT_SECONDS`                | `routes/health.py`                                    | `5.0`                                                                                                                                                                                                     |
 
 ## 12. Daily cross-game challenge
 
 Daily Challenge is a shared read-side product system built on completed
-`games` rows: three goals per local day, frozen per date/slate, plus an
-app-wide derived streak.
+`games` rows: three core goals per local day (a personal pick pinned per
+install, or the shared template frozen per date/slate), an optional bonus goal
+on a personal day, plus an app-wide derived streak.
 
 The current product rules, goal scheduling/evaluation, free/premium slate
 resolution, API behavior, streak algorithm, offline implications, and the
@@ -1437,7 +1616,8 @@ At the architecture level, the important boundaries are:
 - normal games write their existing shared session/result data; they do not
   call a separate challenge-completion endpoint;
 - `backend/daily_challenge/` reads those rows and freezes each day's assigned
-  goal specs in `daily_challenge_days`;
+  goal specs in `daily_challenge_days`, and pins each install's goals for a
+  served day in `daily_challenge_assignments` (#3992);
 - the challenge and streak are derived views, not mutable counters;
 - the Home card consumes the session-scoped status route and localizes goal
   copy on the client.

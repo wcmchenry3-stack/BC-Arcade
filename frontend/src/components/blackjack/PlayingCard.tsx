@@ -10,6 +10,8 @@ interface Props {
   rotation?: number;
   width: number;
   height: number;
+  /** Dims the card (a split hand already played). */
+  disabled?: boolean;
 }
 
 const EMOJI_TO_SUIT: Record<string, CanonicalSuit> = {
@@ -21,7 +23,7 @@ const EMOJI_TO_SUIT: Record<string, CanonicalSuit> = {
 
 const RANK_STR_TO_NUM: Record<string, number> = { A: 1, J: 11, Q: 12, K: 13 };
 
-export default function PlayingCard({ card, rotation = 0, width, height }: Props) {
+export default function PlayingCard({ card, rotation = 0, width, height, disabled }: Props) {
   const { t } = useTranslation("blackjack");
 
   const suit = EMOJI_TO_SUIT[card.suit] ?? "spades";
@@ -39,6 +41,7 @@ export default function PlayingCard({ card, rotation = 0, width, height }: Props
       width={width}
       height={height}
       rotation={rotation}
+      disabled={disabled}
       accessibilityLabel={label}
     />
   );

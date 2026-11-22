@@ -14,7 +14,7 @@ const config = getSentryExpoConfig(__dirname, {
 // Allow Metro to bundle .wasm files (required for @dimforge/rapier2d-compat)
 config.resolver.assetExts.push("wasm");
 
-// Allow Metro to bundle .ogg audio files (Kenney sound packs)
+// Allow Metro to bundle .ogg audio files (in-house synthesized sounds)
 config.resolver.assetExts.push("ogg");
 
 // Expo inlines EXPO_PUBLIC_* values into modules at transform time, but Metro's

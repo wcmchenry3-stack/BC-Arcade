@@ -21,18 +21,21 @@ export default function NewGameModal({
   currentVariant,
   onQuickRestart,
   onStart,
+  onCancel,
 }: {
   readonly currentDifficulty: Difficulty;
   readonly currentVariant: Variant;
   readonly onQuickRestart: () => void;
   readonly onStart: (d: Difficulty, v: Variant) => void;
+  /** Close without starting (the Cancel button, Android Back, web Escape; #3773). */
+  readonly onCancel: () => void;
 }) {
   const { t } = useTranslation("sudoku");
   const [pendingDifficulty, setPendingDifficulty] = useState(currentDifficulty);
   const [pendingVariant, setPendingVariant] = useState(currentVariant);
 
   return (
-    <ModalCard visible title={t("newGame.title")}>
+    <ModalCard visible title={t("newGame.title")} onRequestClose={onCancel}>
       <View style={styles.newGameSelector}>
         <VariantSelector value={pendingVariant} onChange={setPendingVariant} />
       </View>
@@ -48,6 +51,11 @@ export default function NewGameModal({
           tone="accent"
           label={t("action.quickRestart")}
           onPress={onQuickRestart}
+        />
+        <ModalSecondaryButton
+          label={t("action.cancel")}
+          onPress={onCancel}
+          testID="sudoku-new-game-cancel"
         />
       </ModalActions>
     </ModalCard>

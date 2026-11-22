@@ -84,7 +84,8 @@ function closed(n: number, outcome: "cleared" | "died" = "cleared"): WaveStatsWi
 /** The engine's state at game over (or mid-run), with these waves collected. */
 function engineWith(closedWaves: readonly WaveStatsWire[], over = true): StarSwarmState {
   const s = initStarSwarm(CANVAS_W, CANVAS_H, closedWaves.length || 1, 7, "Commander");
-  return { ...s, phase: over ? "GameOver" : "Playing", closedWaves };
+  // #3510: a run opened past wave 1 is a dev wave jump (devAffected); these are clean runs
+  return { ...s, phase: over ? "GameOver" : "Playing", closedWaves, devAffected: false };
 }
 
 async function gameOver(score = 1000, wave = 3) {

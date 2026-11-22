@@ -25,10 +25,10 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MaterialIcons from "../components/icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { useNavigation } from "@react-navigation/native";
@@ -37,7 +37,6 @@ import { STARSWARM_HULL_BLUE } from "../theme/theme.starswarm";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
-import { bestOf } from "../game/_shared/bestOf";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
@@ -56,6 +55,7 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
+import { asSent, devAffectedResult, tagDevAffected } from "../game/starswarm/devAffected";
 import {
   WAVE_COMPLETED_EVENT,
   WAVE_TIMELINE_EVENT,
@@ -69,15 +69,18 @@ import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
 import StarSwarmDevPanel, {
   DEFAULT_STARSWARM_DEV_OPTIONS,
+  anyLiveSwitchOn,
   canvasDevOptions,
   type StarSwarmDevOptions,
 } from "../components/starswarm/StarSwarmDevPanel";
 import { DevButton } from "../components/dev/DevPanelShell";
-import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
+import { getBest, judgeResult, recordResult } from "../game/_shared/personalBest";
 import GameResultModal from "../components/shared/GameResultModal";
 import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
+import ShipPicker from "../components/starswarm/ShipPicker";
+import { useShipChoice } from "../game/starswarm/shipChoice";
 import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
 import { ModalActions, ModalCard, ModalPrimaryButton } from "../components/shared/ModalCard";
 import { useGameRecorder } from "../game/_shared/useGameRecorder";
@@ -176,7 +179,6 @@ function StarSwarmGame() {
     [t]
   );
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
 
   const canvasRef = useRef<GameCanvasHandle>(null);
@@ -193,6 +195,17 @@ function StarSwarmGame() {
     initialRunState
   );
   const { phase, result, resetTick } = run;
+  // #3534: one cause line on the card; none when the cause is unknown (older run, dev-panel end)
+  const end = result?.end;
+  const endNote = end
+    ? {
+        label: t(`result.end.${end.cause}`),
+        note:
+          end.phase === "ClearAwaitingPickups" || end.phase === "Extraction"
+            ? t("result.end.afterLastKill")
+            : undefined,
+      }
+    : undefined;
   const isPaused = isRunPaused(run);
   const isGameOver = isRunOver(run);
   const showDifficultyPicker = phase === "picker";
@@ -208,13 +221,23 @@ function StarSwarmGame() {
     getGameId: syncGetGameId,
     reportBug: syncReportBug,
     resetPlayWindow: syncResetPlayWindow,
+    setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameRecorder("starswarm", { policy: "on_session_end" });
+  /**
+   * #3510: what the screen knows of the current run's dev flag: set at a dev New Game, a restore
+   * of a flagged run, or a dev-panel action (`latchDevAffected`) — never from the frame loop. The
+   * engine's `devAffected` is the run's own record; the two are OR'd wherever the flag is sent.
+   */
+  const devAffectedRef = useRef(false);
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
   // Dev panel — used only when DEV_TOOLS (dev and internal pre-launch builds, #2567)
   const [devOpen, setDevOpen] = useState(false);
   const [devOptions, setDevOptions] = useState<StarSwarmDevOptions>(DEFAULT_STARSWARM_DEV_OPTIONS);
+  // #3510: read by startRun (a live switch left on makes the new run dev-affected)
+  const devOptionsRef = useRef(devOptions);
+  devOptionsRef.current = devOptions;
 
   // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
   // Its tier defaults to Ensign for new users, then opens on the last tier played (#1129). A saved
@@ -225,6 +248,8 @@ function StarSwarmGame() {
     "Ensign",
     { initial: savedPauseRef.current?.difficulty }
   );
+  // #3600: the ship the next run flies (cosmetic). Restored on mount; saved when a run starts.
+  const { ship, setShip, rememberShip } = useShipChoice();
   // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
   // (#2633), which open the finished run's tier board, else the current tier's.
   const { leaderboard, openLeaderboard } = useGameLeaderboard("starswarm", navigation, {
@@ -235,10 +260,11 @@ function StarSwarmGame() {
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
 
-  // The best score survives restarts (#2516); it was session-only before.
+  // The best score survives restarts (#2516); it was session-only before. It is the shared
+  // personal best (#3757), read once here so the end of a run is decided synchronously.
   useEffect(() => {
     let alive = true;
-    loadBestScore().then((best) => {
+    getBest("starswarm").then((best) => {
       if (!alive || best <= highScoreRef.current) return;
       highScoreRef.current = best;
       setHighScore(best);
@@ -249,18 +275,21 @@ function StarSwarmGame() {
   }, []);
 
   const {
-    playLaser,
+    playCue,
+    playBuddyDown,
     playPowerUpCollect,
     playExplosion,
     playPlayerHit,
     playWaveClear,
     playGameOver,
     playBossWave,
-    playRout,
+    playBombBlast,
+    playRockBreak,
+    setLoop,
     playBonusLife,
     playCarrierEvent,
     playUpgrade,
-  } = useStarSwarmAudio(!isGameOver, devOptions.volumes, resetTick, isPaused);
+  } = useStarSwarmAudio(!isGameOver, devOptions.volumes, resetTick, isPaused, showDifficultyPicker);
   // In dev builds, the dev panel's opts for the current run (applied to the canvas). Any
   // start other than the panel's own New Game clears them (#2567).
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);
@@ -309,14 +338,17 @@ function StarSwarmGame() {
       // saves them in one call ahead of `game_ended`. It applies the per-wave and run caps
       // (eventQueueConfig.ts) and reports what they drop. `?? []`: never trust the shape of what
       // the canvas hands back for an I/O path.
+      // #3510: a dev-affected run's waves all go out flagged `dev`, so per-wave analytics never
+      // count them (a dev New Game's waves are otherwise unflagged)
+      const runDev = state.devAffected === true || devAffectedRef.current;
       for (const wave of state.closedWaves ?? []) {
         // sent as is (`envelope: false`); a copy, because the recorder takes its data by ownership
-        recordWave(WAVE_COMPLETED_EVENT, { ...wave });
+        recordWave(WAVE_COMPLETED_EVENT, { ...asSent(wave, runDev) });
       }
       // #3393: then the kept wave timelines, the run's last death first, so a cap that bites
       // (the recorder's or the server's prefix rule) cuts timelines, never a wave summary
       for (const tl of timelinesInSendOrder(state.closedTimelines ?? [])) {
-        recordWave(WAVE_TIMELINE_EVENT, { ...tl });
+        recordWave(WAVE_TIMELINE_EVENT, { ...asSent(tl, runDev) });
       }
       const dropped = engineDropCounts(state);
       if (dropped) {
@@ -339,18 +371,26 @@ function StarSwarmGame() {
       playGameOver();
       // The result card's haptic marks the end of the run (#2516).
       const priorBest = highScoreRef.current;
-      const { improved, isNewBest } = bestOf(priorBest, finalScore, false);
-      // bestOf counts any result as improving on no best; a 0 score never set one.
-      if (improved && finalScore > 0) {
+      // A 0 score never sets a best (the game's rule in `personalBestGames.ts`).
+      const { improved, isNewBest } = judgeResult("starswarm", priorBest, finalScore);
+      if (improved) {
         highScoreRef.current = finalScore;
         setHighScore(finalScore);
-        void saveBestScore(finalScore);
+        void recordResult("starswarm", finalScore);
       }
       // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
-      const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
+      const engineEnd = canvasRef.current?.getState();
+      const tier = engineEnd?.difficulty ?? difficulty;
       dispatchRun({
         type: "GAME_OVER",
-        result: { score: finalScore, wave, tier, best: Math.max(finalScore, priorBest), isNewBest },
+        result: {
+          score: finalScore,
+          wave,
+          tier,
+          best: Math.max(finalScore, priorBest),
+          isNewBest,
+          end: engineEnd?.endContext ?? null, // #3534: client-only, for the card's cause line
+        },
       });
       // #2626: the run is the leaderboard entry. `difficulty_tier` lands in
       // games.metadata (StarSwarmResult), where the board partitions on it.
@@ -358,11 +398,17 @@ function StarSwarmGame() {
       // keeps no play clock, and a made-up 0 would read as a real time.
       const outcome = recordedOutcome("ended");
       const payload = { outcome, wave_reached: wave, difficulty_tier: tier };
+      const ended = canvasRef.current?.getState();
+      // #3510: a run a dev-panel action touched says so, in the result only: the server keeps it
+      // off the boards and stats. A clean run sends nothing extra.
+      const dev = devAffectedResult({
+        devAffected: ended?.devAffected === true || devAffectedRef.current,
+      });
       // #2837: where the score came from, wave by wave — in the result only, not the event.
-      const ledger = canvasRef.current?.getState()?.scoreLedger;
+      const ledger = ended?.scoreLedger;
       const result = ledger
-        ? { ...payload, score_breakdown: summarizeScoreLedger(ledger, finalScore) }
-        : payload;
+        ? { ...payload, ...dev, score_breakdown: summarizeScoreLedger(ledger, finalScore) }
+        : { ...payload, ...dev };
       // #3251: ahead of syncComplete, so the waves' events come before `game_ended`
       sendClosedWaves();
       const gameId = syncComplete({ outcome, finalScore, result }, payload);
@@ -394,19 +440,21 @@ function StarSwarmGame() {
     AccessibilityInfo.announceForAccessibility(t("a11y.bossWave"));
   }, [playBossWave, t]);
 
-  // #2489: the rout has its banner, but the count is worth speaking — it's what to chase.
+  // #2489: the rout has its banner, but the count is worth speaking — it's what to chase. Its
+  // sound is a loop (#3526) that the canvas starts and stops on its own (onLoopChange).
   const handleRout = useCallback(
     (count: number) => {
-      playRout();
       AccessibilityInfo.announceForAccessibility(t("a11y.rout", { count }));
     },
-    [playRout, t]
+    [t]
   );
 
-  // #2845: Buddy going down has no on-screen text beyond the explosion — speak it.
+  // #2845: Buddy going down has no on-screen text beyond the explosion — speak it. #3560: it has
+  // its own sound, which the canvas plays in place of the generic explosion that tick.
   const handleBuddyLost = useCallback(() => {
+    playBuddyDown();
     AccessibilityInfo.announceForAccessibility(t("a11y.buddyDown"));
-  }, [t]);
+  }, [playBuddyDown, t]);
 
   // #2484: the Carrier's armor dropping is a state change with no on-screen text — speak it.
   const handleCarrierExposed = useCallback(() => {
@@ -499,11 +547,39 @@ function StarSwarmGame() {
   // A run restored from a saved pause is a run in progress: give it a session. After a cold
   // start that is the killed process's session for the run, if it is still open (#2654).
   useEffect(() => {
-    if (savedPauseRef.current !== null && !syncResume()) {
-      openRunSession(savedPauseRef.current.difficulty);
+    if (savedPauseRef.current !== null) {
+      if (!syncResume()) openRunSession(savedPauseRef.current.difficulty);
+      // #3510: the restored run's session says whether it is dev-affected (restoreSavedState
+      // carried the flag over); a store build writes the tag only for a flagged run
+      devAffectedRef.current = savedPauseRef.current.gameState.devAffected === true;
+      if (devAffectedRef.current || DEV_TOOLS) tagDevAffected(devAffectedRef.current);
     }
     // Mount-only: the saved pause is read once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * #3510: a session abandoned by the hook (a new run's restart, leaving the screen) carries the
+   * run's dev flag in its result, so a dev run never abandons as clean. Nothing for a clean run.
+   * Reads refs only (it also runs on unmount) and never throws (the hook isolates it anyway).
+   */
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      ...(devAffectedRef.current || canvasRef.current?.getState()?.devAffected === true
+        ? { result: { ...devAffectedResult({ devAffected: true }) } }
+        : {}),
+    }));
+  }, [syncSetProgressSnapshot]);
+
+  /**
+   * #3510: a dev-panel action on the live run (`onDevAction`): latch the engine's flag and, the
+   * first time, the session's Sentry tag. The panel's handler path, never the frame loop.
+   */
+  const latchDevAffected = useCallback(() => {
+    canvasRef.current?.markDevAffected();
+    if (devAffectedRef.current) return;
+    devAffectedRef.current = true;
+    tagDevAffected(true);
   }, []);
 
   /**
@@ -522,7 +598,14 @@ function StarSwarmGame() {
       sendClosedWaves();
       clearSavedPausedState();
       savedPauseRef.current = null;
+      // the abandon in here still reads the old run's dev flag (the progress snapshot)
       openRunSession(tier);
+      // #3510: then the new run's: a dev New Game, or a live switch left on (the engine flags the
+      // run on its first tick), is dev-affected from the start. The new session's Sentry tag says
+      // so; a store build has no dev panel, so it never writes the tag here.
+      devAffectedRef.current =
+        DEV_TOOLS && (devOpts?.devRun === true || anyLiveSwitchOn(devOptionsRef.current));
+      if (DEV_TOOLS) tagDevAffected(devAffectedRef.current);
       scoreRef.current = 0;
       dispatchRun({ type: "START" });
     },
@@ -531,15 +614,22 @@ function StarSwarmGame() {
 
   // The picker's Start and the card's Play Again: same tier, a clean run.
   // A premium tier (e.g. a paused run's) starts at Ensign instead (#1129).
-  const handleStartFromPicker = useCallback(
-    () => startRun(rememberDifficulty(difficulty)),
-    [startRun, rememberDifficulty, difficulty]
-  );
+  const handleStartFromPicker = useCallback(() => {
+    rememberShip();
+    return startRun(rememberDifficulty(difficulty));
+  }, [startRun, rememberDifficulty, difficulty, rememberShip]);
 
-  // The dev panel's New Game: its own tier if it sets one.
+  // The dev panel's New Game: its own tier if it sets one. #3510: the run it starts is
+  // dev-affected (`devRun`), whatever its options: kept, but off the boards and stats.
   const handleDevNewGame = useCallback(
-    (opts: DevOptions) => startRun(opts.difficulty ?? rememberDifficulty(difficulty), opts),
-    [startRun, rememberDifficulty, difficulty]
+    (opts: DevOptions) => {
+      rememberShip();
+      return startRun(opts.difficulty ?? rememberDifficulty(difficulty), {
+        ...opts,
+        devRun: true,
+      });
+    },
+    [startRun, rememberDifficulty, difficulty, rememberShip]
   );
 
   // Show difficulty picker — header "New Game", the pause overlay, and the
@@ -627,18 +717,22 @@ function StarSwarmGame() {
 
   const showPauseBtn = isLiveRun && scale > 0;
 
+  // Header back arrow and the picker's Lobby chip (#3969) share this: a held run
+  // is saved (#3270), never abandoned.
+  const goHome = () => {
+    if (isPaused || runUnderPicker) {
+      const state = canvasRef.current?.getState();
+      if (state) savePausedRun(state);
+    }
+    navigation.popToTop();
+  };
+
   return (
     <GameShell
       gameType="starswarm"
       title={t("game.title")}
       requireBack
-      onBack={() => {
-        if (isPaused || runUnderPicker) {
-          const state = canvasRef.current?.getState();
-          if (state) savePausedRun(state);
-        }
-        navigation.popToTop();
-      }}
+      onBack={goHome}
       onNewGame={handleRequestNewGame}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
@@ -663,7 +757,7 @@ function StarSwarmGame() {
       }
       gutter={0}
       style={{
-        paddingBottom: Math.max(insets.bottom, 8),
+        paddingBottom: 8,
       }}
     >
       <View testID="starswarm-canvas-outer" style={styles.canvasOuter} onLayout={onLayout}>
@@ -676,9 +770,12 @@ function StarSwarmGame() {
               onGameOver={handleGameOver}
               onPlayerHit={handlePlayerHit}
               onWaveClear={handleWaveClear}
-              onLaserFire={playLaser}
               onPowerUpCollect={playPowerUpCollect}
               onExplosion={playExplosion}
+              onBombBlast={playBombBlast}
+              onRockBreak={playRockBreak}
+              onLoopChange={setLoop}
+              onSoundCue={playCue}
               onBossWave={handleBossWave}
               onRout={handleRout}
               onBuddyLost={handleBuddyLost}
@@ -692,6 +789,7 @@ function StarSwarmGame() {
               height={CANVAS_H}
               scale={scale}
               difficulty={difficulty}
+              ship={ship}
               resetTick={resetTick}
               initialState={savedPauseRef.current?.gameState}
               devOptions={canvasDev}
@@ -714,10 +812,20 @@ function StarSwarmGame() {
           <ModalCard
             visible
             onRequestClose={handlePickerRequestClose}
-            title={t("difficulty.selectTitle")}
+            title={t("launch.title")}
             size="md"
+            onHome={goHome}
           >
             <ScrollView showsVerticalScrollIndicator={false} style={styles.pickerScroll}>
+              <ShipPicker value={ship} onChange={setShip} />
+              <Text
+                style={[styles.pickerLabel, { color: colors.textMuted }]}
+                maxFontSizeMultiplier={1.3}
+                importantForAccessibility="no"
+                accessibilityElementsHidden
+              >
+                {t("difficulty.label")}
+              </Text>
               <DifficultyPicker
                 gameKey="starswarm"
                 options={tierOptions}
@@ -743,6 +851,7 @@ function StarSwarmGame() {
           outcome="ended"
           eyebrow={`${t("game.title")} · ${t(`tier.${result?.tier ?? difficulty}`)}`}
           subtitle={result ? t("result.reachedWave", { wave: result.wave }) : undefined}
+          endNote={endNote}
           hero={{ kind: "score", label: tResult("stat.score"), value: result?.score ?? 0 }}
           isNewBest={result?.isNewBest ?? false}
           stats={
@@ -773,6 +882,7 @@ function StarSwarmGame() {
           options={devOptions}
           onOptionsChange={setDevOptions}
           onNewGame={handleDevNewGame}
+          onDevAction={latchDevAffected}
         />
       </View>
     </GameShell>
@@ -805,5 +915,13 @@ const styles = StyleSheet.create({
   },
   pickerActions: {
     marginTop: 12,
+  },
+  // Matches the ship picker's "Choose your ship" label above it (#3600). Hidden from screen
+  // readers: the tier radiogroup already says "Select Difficulty".
+  pickerLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 6,
   },
 });

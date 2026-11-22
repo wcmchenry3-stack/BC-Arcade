@@ -1,7 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState } from "react-native";
+import { AccessibilityInfo, AppState, StyleSheet } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
@@ -10,6 +10,11 @@ import { applyPour, initState } from "../../game/sort/engine";
 import type { Color } from "../../game/sort/types";
 import type { SortProgress } from "../../game/sort/storage";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
+import * as Haptics from "expo-haptics";
+import { WIN_CASCADE_MS } from "../../game/sort/motion";
+import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
+import { readSortDayStart, resetSortDayStartForTests } from "../../game/sort/dayStart";
+import { localDayKey } from "../../game/daily_challenge/localDay";
 
 // ---------------------------------------------------------------------------
 // Mocks — factories must be self-contained (jest.mock is hoisted)
@@ -24,15 +29,15 @@ const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregrou
 // can call onPourComplete directly (v14: composite components unavailable in
 // host tree, so UNSAFE_getByType is gone).
 // Pass-through to the real solver; one test swaps in a held promise.
-const mockGetNextHint = jest.fn();
+const mockSolveBoard = jest.fn();
 jest.mock("../../game/sort/solver", () => {
   const actual = jest.requireActual("../../game/sort/solver");
   return {
     ...actual,
-    getNextHintAsync: (...args: unknown[]) =>
-      mockGetNextHint.getMockImplementation()
-        ? mockGetNextHint(...args)
-        : actual.getNextHintAsync(...args),
+    solveBoardAsync: (...args: unknown[]) =>
+      mockSolveBoard.getMockImplementation()
+        ? mockSolveBoard(...args)
+        : actual.solveBoardAsync(...args),
   };
 });
 
@@ -47,13 +52,38 @@ jest.mock("../../components/sort/SortBoard", () => {
     return React.createElement(mod.default, props);
   }
   MockSortBoard.displayName = "SortBoard";
-  return { __esModule: true, default: MockSortBoard, POUR_PER_UNIT_MS: mod.POUR_PER_UNIT_MS };
+  return { __esModule: true, default: MockSortBoard };
 });
+
+// Haptics (#3660): the card's own pulse and Sort's per-event ones all come through here.
+jest.mock("expo-haptics", () => ({
+  impactAsync: jest.fn(() => Promise.resolve()),
+  notificationAsync: jest.fn(() => Promise.resolve()),
+  ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
+  NotificationFeedbackType: { Success: "success", Warning: "warning", Error: "error" },
+}));
+
+// Sort's sounds (#3661): the triggers are asserted here; the timeline and the files are covered
+// by game/sort/__tests__ (useSortAudio, sounds).
+const mockAudio = {
+  playSelect: jest.fn(),
+  playPour: jest.fn(),
+  cancelPour: jest.fn(),
+  playRefused: jest.fn(),
+  playComplete: jest.fn(),
+  playUndo: jest.fn(),
+  playHint: jest.fn(),
+  playWin: jest.fn(),
+};
+jest.mock("../../game/sort/useSortAudio", () => ({ useSortAudio: () => mockAudio }));
 
 const mockGoBack = jest.fn();
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 // usePauseWhileAway's focus listeners (#3087), live so a test can blur the screen.
+// The route's params (the lobby's Resume tile passes `resume`, #4008); none unless a test sets them.
+let mockRouteParams: { resume?: boolean } | undefined;
+const mockSetParams = jest.fn();
 const mockNavListeners = new Map<string, Set<() => void>>();
 const mockAddListener = jest.fn((event: string, cb: () => void) => {
   const set = mockNavListeners.get(event) ?? new Set();
@@ -68,8 +98,9 @@ jest.mock("@react-navigation/native", () =>
       popToTop: mockPopToTop,
       navigate: mockNavigate,
       addListener: mockAddListener,
+      setParams: mockSetParams,
     }),
-    { actual: true }
+    { actual: true, useRoute: () => ({ params: mockRouteParams }) }
   )
 );
 
@@ -89,10 +120,21 @@ jest.mock("../../game/_shared/gameEventClient", () => {
 
 jest.mock("../../game/_shared/NetworkContext", () => mockScreenDeps().mockNetwork());
 
-jest.mock("../../game/sort/api", () => ({
-  sortApi: {
-    getLevels: jest.fn(),
-  },
+// The level catalog (#2761): each test sets the levels it plays on (`playOnLevels`).
+jest.mock("../../game/sort/catalog", () => ({
+  ...jest.requireActual("../../game/sort/catalog"),
+  SORT_LEVELS: [],
+}));
+const catalogMock = jest.requireMock("../../game/sort/catalog") as { SORT_LEVELS: unknown[] };
+/** Plays on `levels` instead of the shipped catalog (the array is swapped in place). */
+function playOnLevels(levels: readonly unknown[]) {
+  catalogMock.SORT_LEVELS.splice(0, catalogMock.SORT_LEVELS.length, ...levels);
+}
+
+// The save is already on the catalog unless a test says otherwise.
+const mockMigrateToCatalog = jest.fn();
+jest.mock("../../game/sort/catalogMigration", () => ({
+  migrateToCatalog: () => mockMigrateToCatalog(),
 }));
 
 // The board is the shared leaderboard screen (#2633): Sort never reads it itself.
@@ -112,8 +154,6 @@ jest.mock("../../game/sort/storage", () => {
     loadProgress: jest.fn(),
     saveProgress: jest.fn(),
     clearGame: jest.fn(),
-    saveLevelsCache: jest.fn().mockResolvedValue(undefined),
-    loadLevelsCache: jest.fn().mockResolvedValue(null), // cold cache by default
     loadBestMoves: jest.fn(),
     saveBestMoves: jest.fn(),
     // Pure helpers: the real ones.
@@ -128,12 +168,6 @@ jest.mock("../../game/sort/storage", () => {
 // Typed accessors for the mocked modules
 // ---------------------------------------------------------------------------
 
-const { sortApi } = jest.requireMock("../../game/sort/api") as {
-  sortApi: {
-    getLevels: jest.Mock;
-  };
-};
-
 const { statsApi } = jest.requireMock("../../api/stats") as {
   statsApi: { getLeaderboard: jest.Mock };
 };
@@ -141,8 +175,6 @@ const { statsApi } = jest.requireMock("../../api/stats") as {
 const storage = jest.requireMock("../../game/sort/storage") as {
   loadProgress: jest.Mock;
   saveProgress: jest.Mock;
-  saveLevelsCache: jest.Mock;
-  loadLevelsCache: jest.Mock;
   loadBestMoves: jest.Mock;
   saveBestMoves: jest.Mock;
 };
@@ -174,16 +206,29 @@ async function renderScreen() {
   );
 }
 
+/**
+ * The win cascade (#3660) holds the result card for WIN_CASCADE_MS. Tests that only want the
+ * card skip it, as a tap on the board does, instead of waiting it out in real time.
+ */
+async function skipWinCascade() {
+  await act(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).__sortBoardLastProps?.onWinCascadeDone?.();
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockRouteParams = undefined;
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
   mockStartGame.mockReturnValue("sort-game-id");
-  sortApi.getLevels.mockResolvedValue({ levels: MOCK_LEVELS });
+  playOnLevels(MOCK_LEVELS);
+  mockMigrateToCatalog.mockResolvedValue("current");
   statsApi.getLeaderboard.mockResolvedValue({
     game_type: "sort",
     partition: {},
@@ -194,8 +239,6 @@ beforeEach(async () => {
   storage.loadBestMoves.mockResolvedValue({});
   storage.loadProgress.mockResolvedValue(DEFAULT_PROGRESS);
   storage.saveProgress.mockResolvedValue(undefined);
-  storage.saveLevelsCache.mockResolvedValue(undefined);
-  storage.loadLevelsCache.mockResolvedValue(null); // cold cache by default
   storage.saveBestMoves.mockResolvedValue(true);
 });
 
@@ -216,22 +259,39 @@ describe("SortScreen — loading and level select", () => {
     expect(await findByLabelText("Level 3")).toBeTruthy();
   });
 
-  it("shows error and retry when API fails", async () => {
-    sortApi.getLevels.mockRejectedValue(new Error("network"));
+  // #2761: the levels ship in the app; only the save is read, once it is on the catalog.
+  it("moves the save onto the catalog before reading it", async () => {
+    let finishMigration: (result: string) => void = () => {};
+    mockMigrateToCatalog.mockReturnValue(new Promise((r) => (finishMigration = r)));
     const { findByText } = await renderScreen();
-    expect(await findByText("Could not load this level.")).toBeTruthy();
-    expect(await findByText("Retry")).toBeTruthy();
+    expect(storage.loadProgress).not.toHaveBeenCalled();
+    expect(storage.loadBestMoves).not.toHaveBeenCalled();
+    await act(async () => finishMigration("current"));
+    expect(await findByText("Choose a Level")).toBeTruthy();
+    expect(storage.loadProgress).toHaveBeenCalledTimes(1);
+    expect(storage.loadBestMoves).toHaveBeenCalledTimes(1);
   });
 
-  it("retries loading when Retry is pressed", async () => {
-    sortApi.getLevels.mockRejectedValueOnce(new Error("network"));
-    const { findByText } = await renderScreen();
-    // Wait for the error to appear, then press Retry
-    const retryBtn = await findByText("Retry");
-    await act(async () => {
-      await fireEvent.press(retryBtn);
+  it("drops an unfinished board when the save couldn't be moved onto the catalog", async () => {
+    mockMigrateToCatalog.mockResolvedValue("failed");
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 3,
+      currentLevelId: 2,
+      currentState: initState(MOCK_LEVELS[1]!.bottles as Color[][]),
     });
-    expect(sortApi.getLevels).toHaveBeenCalledTimes(2);
+    const { findByLabelText, queryByText } = await renderScreen();
+    expect(await findByLabelText("Level 3")).toBeTruthy();
+    expect(queryByText(/Continue/)).toBeNull();
+  });
+
+  it("plays from level 1 without reading a save of a catalog it doesn't know", async () => {
+    mockMigrateToCatalog.mockResolvedValue("foreign");
+    storage.loadProgress.mockResolvedValue(DEFAULT_PROGRESS);
+    storage.loadBestMoves.mockResolvedValue({ "1": 2 });
+    const { findByLabelText } = await renderScreen();
+    expect(await findByLabelText("Level 2, locked")).toBeTruthy();
+    expect(storage.loadProgress).not.toHaveBeenCalled();
+    expect(storage.loadBestMoves).not.toHaveBeenCalled();
   });
 });
 
@@ -288,8 +348,11 @@ describe("SortScreen — entering and playing a level", () => {
   });
 
   it("drops a hint that finishes after the level was restarted", async () => {
-    let resolveHint: (h: { from: number; to: number }) => void = () => {};
-    mockGetNextHint.mockImplementation(() => new Promise((resolve) => (resolveHint = resolve)));
+    let resolveHint: (v: {
+      verdict: "solvable";
+      moves: { from: number; to: number }[];
+    }) => void = () => {};
+    mockSolveBoard.mockImplementation(() => new Promise((resolve) => (resolveHint = resolve)));
     try {
       const r = await renderScreen();
       await act(async () => {
@@ -310,11 +373,11 @@ describe("SortScreen — entering and playing a level", () => {
       });
       // The solver answers for the old board after the restart.
       await act(async () => {
-        resolveHint({ from: 0, to: 2 });
+        resolveHint({ verdict: "solvable", moves: [{ from: 0, to: 2 }] });
       });
       expect(r.queryByLabelText(/selected — tap another bottle/)).toBeNull();
     } finally {
-      mockGetNextHint.mockReset();
+      mockSolveBoard.mockReset();
     }
   });
 
@@ -398,6 +461,25 @@ describe("SortScreen — save on leaving the app", () => {
     await setAppState("active");
     await blur();
     expect(storage.saveProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops a pour's pending stream when the app goes to the background, not on a blur (#3661)", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1, 2 of/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Bottle 3, empty"));
+    });
+    mockAudio.cancelPour.mockClear();
+    await blur();
+    await setAppState("active");
+    expect(mockAudio.cancelPour).not.toHaveBeenCalled();
+    await setAppState("background");
+    expect(mockAudio.cancelPour).toHaveBeenCalledTimes(1);
   });
 
   it("saves the latest board: the one after the last pour", async () => {
@@ -538,107 +620,6 @@ describe("SortScreen — pour completion callback (regression #1567)", () => {
   });
 });
 
-describe("SortScreen — TypeError auto-retry (#1862)", () => {
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it("auto-retries a transient TypeError and loads levels without showing an error", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels
-      .mockRejectedValueOnce(new TypeError("Network request failed"))
-      .mockResolvedValueOnce({ levels: MOCK_LEVELS });
-
-    const { findByText, queryByText } = await renderScreen();
-
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    await findByText("Choose a Level");
-    expect(queryByText("Could not load this level.")).toBeNull();
-    expect(sortApi.getLevels).toHaveBeenCalledTimes(2);
-  });
-
-  it("shows error UI only after all retries are exhausted", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
-
-    const { findByText } = await renderScreen();
-
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    await findByText("Could not load this level.");
-    // 1 initial + 3 retries = 4 total calls
-    expect(sortApi.getLevels).toHaveBeenCalledTimes(4);
-  });
-});
-
-describe("SortScreen — offline levels cache (#1887)", () => {
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it("serves cached levels when API fails and cache is warm", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
-    storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
-
-    const { findByText, queryByText } = await renderScreen();
-
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    await findByText("Choose a Level");
-    expect(queryByText("Could not load this level.")).toBeNull();
-  });
-
-  it("shows error when API fails and cache is cold", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
-    storage.loadLevelsCache.mockResolvedValue(null);
-
-    const { findByText } = await renderScreen();
-
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    await findByText("Could not load this level.");
-  });
-
-  it("writes the cache on a successful fetch", async () => {
-    const { findByText } = await renderScreen();
-    await findByText("Choose a Level");
-    expect(storage.saveLevelsCache).toHaveBeenCalledWith({ levels: MOCK_LEVELS });
-  });
-
-  it("does not write the cache when the fetch fails", async () => {
-    jest.useFakeTimers();
-    sortApi.getLevels.mockRejectedValue(new TypeError("Network request failed"));
-
-    await renderScreen();
-    await act(async () => {
-      await jest.runAllTimersAsync();
-    });
-
-    expect(storage.saveLevelsCache).not.toHaveBeenCalled();
-  });
-
-  it("does not serve cache on non-network errors (e.g. 401 entitlement expired)", async () => {
-    sortApi.getLevels.mockRejectedValue(new Error("ApiError: 401 Unauthorized"));
-    storage.loadLevelsCache.mockResolvedValue({ levels: MOCK_LEVELS });
-
-    const { findByText } = await renderScreen();
-
-    await findByText("Could not load this level.");
-    expect(storage.loadLevelsCache).not.toHaveBeenCalled();
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Regression: level advance to a different grid shape (issue #2297)
 //
@@ -662,7 +643,7 @@ describe("SortScreen — level advance to a different grid shape (regression #22
       // 5 bottles — a different grid shape (3-col/2-row instead of 2-col/1-row).
       { id: 2, bottles: [["red"], ["blue"], ["green"], ["yellow"], []] },
     ];
-    sortApi.getLevels.mockResolvedValue({ levels });
+    playOnLevels(levels);
 
     const { findByLabelText, findByText, getAllByLabelText } = await renderScreen();
 
@@ -688,6 +669,7 @@ describe("SortScreen — level advance to a different grid shape (regression #22
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
 
     // Next Level is on the result card straight away (#2512) — it no longer
     // waits for a leaderboard submission.
@@ -719,9 +701,7 @@ describe("SortScreen — level advance to a different grid shape (regression #22
 
 describe("SortScreen — board sizing (#2207)", () => {
   it("sizes the board to the container's height inside its padding", async () => {
-    sortApi.getLevels.mockResolvedValue({
-      levels: [{ id: 1, bottles: [["red", "red", "red"], ["red"]] }],
-    });
+    playOnLevels([{ id: 1, bottles: [["red", "red", "red"], ["red"]] }]);
     const { findByLabelText, getByTestId } = await renderScreen();
     await act(async () => {
       await fireEvent.press(await findByLabelText("Level 1"));
@@ -731,10 +711,10 @@ describe("SortScreen — board sizing (#2207)", () => {
         nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 500 } },
       });
     });
-    // 500 tall minus 16 of padding top and bottom: the grid must fit in 468,
+    // 500 tall minus 8 of padding top and bottom (#3658): the grid must fit in 484,
     // not overflow into the padding (and out of the board's touch bounds).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((global as any).__sortBoardLastProps.availableHeight).toBe(468);
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(484);
   });
 });
 
@@ -763,11 +743,12 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     return within(await r.findByTestId("sort-result"));
   }
 
   beforeEach(() => {
-    sortApi.getLevels.mockResolvedValue({ levels: LEVELS });
+    playOnLevels(LEVELS);
     // Level 1 is the player's frontier: solving it raises "level reached".
     storage.loadProgress.mockResolvedValue({
       unlockedLevel: 1,
@@ -813,6 +794,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     return within(await r.findByTestId("sort-result"));
   }
 
@@ -827,7 +809,15 @@ describe("SortScreen — result card (#2512)", () => {
     expect(summary).toEqual({
       outcome: "completed",
       finalScore: 1,
-      result: { won: true, level: 1, moves: 1, undos: 0, level_reached: 1, total_moves: 1 },
+      result: {
+        won: true,
+        level: 1,
+        moves: 1,
+        undos: 0,
+        level_reached: 1,
+        total_moves: 1,
+        catalog_version: 1,
+      },
     });
     expect(payload).toEqual(expect.objectContaining({ outcome: "completed", won: true }));
   });
@@ -849,6 +839,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     await r.findByTestId("sort-result");
     expect(completion().summary.durationMs).toBe(45_000);
   });
@@ -865,6 +856,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     return within(await r.findByTestId("sort-result"));
   }
 
@@ -899,6 +891,61 @@ describe("SortScreen — result card (#2512)", () => {
     expect(completion(0).summary.durationMs).toBe(30_000);
     expect(completion(1).summary.result).toEqual(expect.objectContaining({ level: 2 }));
     expect(completion(1).summary.durationMs).toBe(15_000);
+  });
+
+  describe("opened from the lobby's Resume tile (#4008)", () => {
+    const saved = () => ({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: initState(LEVELS[0]!.bottles as (Color | "")[][]),
+    });
+
+    it("lands in the saved level, as Continue does, and drops the param", async () => {
+      mockRouteParams = { resume: true };
+      storage.loadProgress.mockResolvedValue(saved());
+      const r = await renderScreen();
+      expect(await r.findByTestId("sort-board")).toBeTruthy();
+      expect(r.queryByLabelText("Continue Level 1")).toBeNull();
+      expect(mockSetParams).toHaveBeenCalledWith({ resume: undefined });
+    });
+
+    it("continues the killed session like Continue (syncResume)", async () => {
+      mockRouteParams = { resume: true };
+      mockResumeGame.mockReturnValueOnce("killed-sort-id");
+      storage.loadProgress.mockResolvedValue(saved());
+      const r = await renderScreen();
+      await r.findByTestId("sort-board");
+      expect(mockResumeGame).toHaveBeenCalledTimes(1);
+      expect(mockStartGame).not.toHaveBeenCalled();
+    });
+
+    it("restores the board once: back on the level grid it does not run again", async () => {
+      mockRouteParams = { resume: true };
+      storage.loadProgress.mockResolvedValue(saved());
+      const r = await renderScreen();
+      await r.findByTestId("sort-board");
+      await act(async () => {
+        await fireEvent.press(await r.findByLabelText("Back to levels"));
+      });
+      await r.findByTestId("sort-level-1");
+      expect(r.queryByTestId("sort-board")).toBeNull();
+      expect(mockResumeGame).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays on the level grid when no board is saved", async () => {
+      mockRouteParams = { resume: true };
+      const r = await renderScreen();
+      expect(await r.findByTestId("sort-level-1")).toBeTruthy();
+      expect(r.queryByTestId("sort-board")).toBeNull();
+    });
+
+    it("shows the level grid without the param, even with a save", async () => {
+      storage.loadProgress.mockResolvedValue(saved());
+      const r = await renderScreen();
+      await r.findByLabelText("Continue Level 1");
+      expect(r.queryByTestId("sort-board")).toBeNull();
+      expect(mockSetParams).not.toHaveBeenCalled();
+    });
   });
 
   it("leaves time on the level grid out of a continued level's duration", async () => {
@@ -979,7 +1026,23 @@ describe("SortScreen — result card (#2512)", () => {
       undos: 0,
       level_reached: 2,
       total_moves: 7,
+      catalog_version: 1,
     });
+  });
+
+  // #4028: the Daily Challenge's offline "N new levels" counts from this standing.
+  it("records the standing before the day's first solve", async () => {
+    resetSortDayStartForTests();
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 3,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.loadBestMoves.mockResolvedValue({ "1": 6 });
+    const r = await renderScreen();
+    await solveLevel(r, 2);
+    const today = localDayKey();
+    await waitFor(async () => expect(await readSortDayStart()).toEqual({ day: today, best: 1 }));
   });
 
   it("leaves total_moves out when a lower level has no best on record", async () => {
@@ -992,7 +1055,50 @@ describe("SortScreen — result card (#2512)", () => {
     await solveLevel(r, 2);
     const { summary } = completion();
     expect(summary.finalScore).toBe(2);
-    expect(summary.result).toEqual({ won: true, level: 2, moves: 1, undos: 0, level_reached: 2 });
+    expect(summary.result).toEqual({
+      won: true,
+      level: 2,
+      moves: 1,
+      undos: 0,
+      level_reached: 2,
+      catalog_version: 1,
+    });
+  });
+
+  // #2761: a save moved from the random levels unlocks far ahead, but the
+  // board only sees levels solved on the catalog.
+  it("scores a migrated player's first solve by what they solved here, not their unlock", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 103,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.loadBestMoves.mockResolvedValue({});
+    const r = await renderScreen();
+    await solveLevel(r, 1);
+    const { summary } = completion();
+    expect(summary.finalScore).toBe(1);
+    expect(summary.result).toEqual({
+      won: true,
+      level: 1,
+      moves: 1,
+      undos: 0,
+      level_reached: 1,
+      total_moves: 1,
+      catalog_version: 1,
+    });
+  });
+
+  it("scores a catalog player's replay with their highest solved level", async () => {
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 3,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.loadBestMoves.mockResolvedValue({ "1": 4, "2": 6 });
+    const r = await renderScreen();
+    await solveLevel(r, 1);
+    expect(completion().summary.result).toMatchObject({ level_reached: 2, total_moves: 7 });
   });
 
   it("asks for the rank of the finished game", async () => {
@@ -1035,7 +1141,15 @@ describe("SortScreen — result card (#2512)", () => {
       outcome: "completed",
       finalScore: 2,
       // The level played, and the standing after it: 1 + 6 moves, was 4 + 6.
-      result: { won: true, level: 1, moves: 1, undos: 0, level_reached: 2, total_moves: 7 },
+      result: {
+        won: true,
+        level: 1,
+        moves: 1,
+        undos: 0,
+        level_reached: 2,
+        total_moves: 7,
+        catalog_version: 1,
+      },
     });
     await waitFor(() => expect(mockRankSubmit).toHaveBeenCalledTimes(1));
     expect(storage.saveBestMoves).toHaveBeenCalledWith({ "1": 1, "2": 6 });
@@ -1056,7 +1170,15 @@ describe("SortScreen — result card (#2512)", () => {
     const expected = {
       outcome: "completed",
       finalScore: 2,
-      result: { won: true, level: 2, moves: 1, undos: 0, level_reached: 2, total_moves: 5 },
+      result: {
+        won: true,
+        level: 2,
+        moves: 1,
+        undos: 0,
+        level_reached: 2,
+        total_moves: 5,
+        catalog_version: 1,
+      },
     };
     expect(completion(0).summary).toEqual(expected);
     expect(completion(1).summary).toEqual(expected);
@@ -1083,27 +1205,6 @@ describe("SortScreen — result card (#2512)", () => {
     expect(completion().summary.result.total_moves).toBe(1);
     await act(async () => {});
     expect(storage.saveBestMoves).not.toHaveBeenCalled();
-  });
-
-  it("merges the stored bests on Retry, keeping the lower in-memory one", async () => {
-    storage.loadProgress.mockResolvedValue({
-      unlockedLevel: 2,
-      currentLevelId: null,
-      currentState: null,
-    });
-    // First load: the levels fail (no cache fallback on a 401); the bests load.
-    sortApi.getLevels.mockRejectedValueOnce(new Error("ApiError: 401 Unauthorized"));
-    storage.loadBestMoves
-      .mockResolvedValueOnce({ "1": 3 })
-      .mockResolvedValueOnce({ "1": 9, "2": 5 });
-    const r = await renderScreen();
-    await act(async () => {
-      await fireEvent.press(await r.findByText("Retry"));
-    });
-    // Level 1 keeps 3 (in memory), level 2 comes from storage; storage catches up.
-    expect(storage.saveBestMoves).toHaveBeenCalledWith({ "1": 3, "2": 5 });
-    await solveLevel(r, 2);
-    expect(completion().summary.result.total_moves).toBe(4); // 3 + 1
   });
 
   // #2576: Next Level is there at once, and the session is already complete.
@@ -1170,6 +1271,7 @@ describe("SortScreen — result card (#2512)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (global as any).__sortBoardLastProps?.onPourComplete?.();
     });
+    await skipWinCascade();
     card = within(await r.findByTestId("sort-result"));
     expect(card.getByText("Sort Puzzle · Level 2")).toBeTruthy();
     // Level 2's best (1) was already on record: not a new best.
@@ -1225,7 +1327,7 @@ describe("SortScreen — result card (#2512)", () => {
   });
 
   it("abandons an unfinished session when the player leaves for level select", async () => {
-    sortApi.getLevels.mockResolvedValue({ levels: MOCK_LEVELS });
+    playOnLevels(MOCK_LEVELS);
     const r = await renderScreen();
     await act(async () => {
       await fireEvent.press(await r.findByLabelText("Level 1"));
@@ -1249,7 +1351,7 @@ describe("SortScreen — result card (#2512)", () => {
 
   // #2710 — the abandon carries the time played on the level, and only that.
   it("abandons with the level's play time, not the time on the level grid", async () => {
-    sortApi.getLevels.mockResolvedValue({ levels: MOCK_LEVELS });
+    playOnLevels(MOCK_LEVELS);
     const r = await renderScreen();
     await r.findByLabelText("Level 1");
     clock.advanceForegroundNow(5 * 60_000); // browsing the level grid
@@ -1274,5 +1376,1211 @@ describe("SortScreen — result card (#2512)", () => {
     // the animation and completes it at once (#2297).
     expect(summary.result).toEqual({ won: false, level: 1, moves: 1 });
     expect(summary.durationMs).toBe(40_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hint on a board that can't be won (#2768)
+//
+// DEAD_LEVEL is solvable from the start; the pours 2 -> 4, 1 -> 2, 3 -> 2
+// (bottle numbers, 1-based) leave a board the solver proves dead after the
+// second pour, while the board after the first pour is still solvable.
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — Hint on a dead board (#2768)", () => {
+  const DEAD_LEVEL = [
+    ["red", "red", "red", "green"],
+    ["red", "green", "blue", "blue"],
+    ["blue", "blue", "green", "green"],
+    [],
+  ];
+
+  type Rendered = Awaited<ReturnType<typeof renderScreen>>;
+
+  async function openDeadLevel() {
+    playOnLevels([{ id: 1, bottles: DEAD_LEVEL }]);
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    return r;
+  }
+
+  async function pour(r: Rendered, from: number, to: number) {
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${from},`)));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${to},`)));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+  }
+
+  async function playIntoDeadEnd(r: Rendered) {
+    await pour(r, 2, 4); // still solvable
+    await pour(r, 1, 2); // dead from here
+    await pour(r, 3, 2);
+  }
+
+  async function tapHint(r: Rendered) {
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+  }
+
+  it("says there is no way to win, with both actions, when the board is dead", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    expect(r.queryByText("No way to win from here")).toBeNull();
+    await tapHint(r);
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    expect(r.getByRole("button", { name: "Back to last good move" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Restart level" })).toBeTruthy();
+  });
+
+  it("does not run the solver until Hint is tapped", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "unknown" });
+    try {
+      const r = await openDeadLevel();
+      await playIntoDeadEnd(r);
+      expect(mockSolveBoard).not.toHaveBeenCalled();
+    } finally {
+      mockSolveBoard.mockReset();
+    }
+  });
+
+  it("Back to last good move lands on the newest solvable state, one undo per step", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    expect(r.getByText("Moves: 3")).toBeTruthy();
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    // Back to the board after the first pour: the second and third are undone.
+    await waitFor(() => expect(r.getByText("Moves: 1")).toBeTruthy());
+    expect(r.getByText("Undos: 2")).toBeTruthy();
+    expect(r.queryByText("No way to win from here")).toBeNull();
+    // A hint from here finds a pour: the board is winnable.
+    await tapHint(r);
+    expect(await r.findByLabelText(/selected — tap another bottle/)).toBeTruthy();
+    expect(r.queryByText("No way to win from here")).toBeNull();
+  });
+
+  it("Back to last good move plays the undo sound once, and the notice's own hint none (#3661)", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    mockAudio.playUndo.mockClear();
+    mockAudio.playHint.mockClear();
+    await tapHint(r); // the dead-board notice: no hint was shown
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    expect(mockAudio.playHint).not.toHaveBeenCalled();
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 1")).toBeTruthy());
+    expect(mockAudio.playUndo).toHaveBeenCalledTimes(1); // one action, though it undoes two moves
+  });
+
+  it("Restart level resets the board and abandons the session", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Restart level" }));
+    });
+    expect(r.getByText("Moves: 0")).toBeTruthy();
+    expect(r.getByText("Undos: 0")).toBeTruthy();
+    expect(r.queryByText("No way to win from here")).toBeNull();
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].outcome).toBe("abandoned");
+  });
+
+  it("says it couldn't find a hint when the verdict is unknown", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "unknown" });
+    try {
+      const r = await openDeadLevel();
+      await tapHint(r);
+      expect(await r.findByText("Couldn't find a hint")).toBeTruthy();
+      expect(r.queryByRole("button", { name: "Restart level" })).toBeNull();
+    } finally {
+      mockSolveBoard.mockReset();
+    }
+  });
+
+  it("can be dismissed", async () => {
+    const r = await openDeadLevel();
+    await playIntoDeadEnd(r);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Dismiss" }));
+    });
+    expect(r.queryByText("No way to win from here")).toBeNull();
+  });
+
+  it("keys the notice apart from the board, so level 1's first notice is not a duplicate key", async () => {
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await openDeadLevel();
+      await playIntoDeadEnd(r);
+      await tapHint(r);
+      expect(r.getByText("No way to win from here")).toBeTruthy();
+      const dupKey = errorSpy.mock.calls.some((args) =>
+        args.some((a) => typeof a === "string" && a.includes("same key"))
+      );
+      expect(dupKey).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("drops a verdict that arrives after the player poured again", async () => {
+    let resolveSolve: (v: { verdict: "unsolvable" }) => void = () => {};
+    mockSolveBoard.mockImplementation(() => new Promise((resolve) => (resolveSolve = resolve)));
+    try {
+      const r = await openDeadLevel();
+      await act(async () => {
+        void fireEvent.press(r.getByRole("button", { name: "Hint" }));
+      });
+      await pour(r, 2, 4);
+      await act(async () => {
+        resolveSolve({ verdict: "unsolvable" });
+      });
+      expect(r.queryByText("No way to win from here")).toBeNull();
+    } finally {
+      mockSolveBoard.mockReset();
+    }
+  });
+
+  it("behaves the same on a dead board restored with Continue", async () => {
+    const start = initState(DEAD_LEVEL as (Color | "")[][]);
+    const dead = applyPour(applyPour(applyPour(start, 1, 3), 0, 1), 2, 1);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: dead,
+    });
+    playOnLevels([{ id: 1, bottles: DEAD_LEVEL }]);
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Continue Level 1"));
+    });
+    await tapHint(r);
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    // No history to step back through; Restart is the way out.
+    expect(r.queryByRole("button", { name: "Back to last good move" })).toBeNull();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Restart level" }));
+    });
+    expect(r.getByText("Moves: 0")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hint notice: search cost, stale answers and layout (#2768 review)
+//
+// PING_LEVEL has two empty bottles, so one ball can be poured back and forth
+// (3 -> 4, 4 -> 3, ...) for as many moves as a test needs. The solver is
+// mocked by moveCount, to build a long history cheaply.
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — Hint notice search and layout (#2768)", () => {
+  const PING_LEVEL = [["red", "blue"], ["blue", "red"], [], []];
+  type Rendered = Awaited<ReturnType<typeof renderScreen>>;
+  type Verdict =
+    { verdict: "solvable"; moves: [] } | { verdict: "unsolvable" } | { verdict: "unknown" };
+
+  afterEach(() => mockSolveBoard.mockReset());
+
+  async function openPing() {
+    playOnLevels([{ id: 1, bottles: PING_LEVEL }]);
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    return r;
+  }
+
+  async function pour(r: Rendered, from: number, to: number) {
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${from},`)));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${to},`)));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+  }
+
+  /** `n` pours: blue to bottle 3, then back and forth between 3 and 4. */
+  async function pourTimes(r: Rendered, n: number) {
+    await pour(r, 1, 3);
+    for (let i = 1; i < n; i++) await pour(r, i % 2 === 1 ? 3 : 4, i % 2 === 1 ? 4 : 3);
+  }
+
+  const tapHint = (r: Rendered) =>
+    act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+
+  it("binary-searches a long history: O(log n) solves", async () => {
+    // Boards with moveCount <= 5 are winnable; later ones are dead.
+    mockSolveBoard.mockImplementation(async (s: { moveCount: number }): Promise<Verdict> =>
+      s.moveCount <= 5 ? { verdict: "solvable", moves: [] } : { verdict: "unsolvable" }
+    );
+    const r = await openPing();
+    await pourTimes(r, 21);
+    expect(r.getByText("Moves: 21")).toBeTruthy();
+    await tapHint(r);
+    mockSolveBoard.mockClear();
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 5")).toBeTruthy());
+    expect(r.getByText("Undos: 16")).toBeTruthy();
+    // 21 history states: about log2(21) + 1 solves, nowhere near 21.
+    expect(mockSolveBoard.mock.calls.length).toBeLessThanOrEqual(7);
+  });
+
+  it("treats an unknown verdict mid-history as not winnable", async () => {
+    mockSolveBoard.mockImplementation(async (s: { moveCount: number }): Promise<Verdict> => {
+      if (s.moveCount <= 2) return { verdict: "solvable", moves: [] };
+      return s.moveCount <= 4 ? { verdict: "unknown" } : { verdict: "unsolvable" };
+    });
+    const r = await openPing();
+    await pourTimes(r, 8);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await waitFor(() => expect(r.getByText("Moves: 2")).toBeTruthy());
+    expect(r.getByText("Undos: 6")).toBeTruthy();
+  });
+
+  it("offers Restart only when no history board is proven winnable (restored dead board)", async () => {
+    const start = initState(PING_LEVEL as (Color | "")[][]);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: applyPour(start, 0, 2),
+    });
+    // Everything is dead, as for a restored dead board.
+    mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
+    playOnLevels([{ id: 1, bottles: PING_LEVEL }]);
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Continue Level 1"));
+    });
+    await pour(r, 3, 4); // history is now [the restored, dead board]
+    await tapHint(r);
+    expect(await r.findByText("No way to win from here")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Back to last good move" }));
+    });
+    // Nothing proven winnable: the board is left alone, Restart is what's left.
+    expect(r.getByText("Moves: 2")).toBeTruthy();
+    expect(r.getByText("Undos: 0")).toBeTruthy();
+    expect(r.queryByRole("button", { name: "Back to last good move" })).toBeNull();
+    expect(r.getByRole("button", { name: "Restart level" })).toBeTruthy();
+  });
+
+  it("drops a search that finishes after the player poured, and leaves Hint usable", async () => {
+    const pending: ((v: Verdict) => void)[] = [];
+    let first = true;
+    mockSolveBoard.mockImplementation((): Promise<Verdict> => {
+      if (first) {
+        first = false;
+        return Promise.resolve({ verdict: "unsolvable" });
+      }
+      return new Promise((res) => pending.push(res));
+    });
+    const r = await openPing();
+    await pourTimes(r, 2);
+    await tapHint(r);
+    await act(async () => {
+      await fireEvent.press(await r.findByRole("button", { name: "Back to last good move" }));
+    });
+    await pour(r, 4, 3); // while the search runs
+    await act(async () => {
+      pending.splice(0).forEach((res) => res({ verdict: "solvable", moves: [] }));
+    });
+    expect(r.getByText("Moves: 3")).toBeTruthy();
+    expect(r.getByText("Undos: 0")).toBeTruthy();
+    expect(r.getByRole("button", { name: "Hint" }).props.accessibilityState.busy).toBe(false);
+  });
+
+  it("runs one search when Back to last good move is tapped twice", async () => {
+    const pending: ((v: Verdict) => void)[] = [];
+    let first = true;
+    mockSolveBoard.mockImplementation((): Promise<Verdict> => {
+      if (first) {
+        first = false;
+        return Promise.resolve({ verdict: "unsolvable" });
+      }
+      return new Promise((res) => pending.push(res));
+    });
+    const r = await openPing();
+    await pourTimes(r, 2);
+    await tapHint(r);
+    const undoBtn = await r.findByRole("button", { name: "Back to last good move" });
+    await act(async () => {
+      await fireEvent.press(undoBtn);
+    });
+    await act(async () => {
+      await fireEvent.press(undoBtn);
+    });
+    for (let i = 0; i < 4; i++) {
+      await act(async () => {
+        pending.splice(0).forEach((res) => res({ verdict: "solvable", moves: [] }));
+      });
+    }
+    // The hint, then history states 0 and 1 once: three solves, one undo.
+    expect(mockSolveBoard).toHaveBeenCalledTimes(3);
+    expect(r.getByText("Moves: 1")).toBeTruthy();
+    expect(r.getByText("Undos: 1")).toBeTruthy();
+  });
+
+  it("announces a repeated Hint on the same notice again", async () => {
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    mockSolveBoard.mockResolvedValue({ verdict: "unknown" });
+    const r = await openPing();
+    await tapHint(r);
+    await r.findByText("Couldn't find a hint");
+    await tapHint(r);
+    await waitFor(() => expect(announce).toHaveBeenCalledTimes(2));
+    announce.mockRestore();
+  });
+
+  it("shows the notice without changing the board's size", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
+    const r = await openPing();
+    await act(async () => {
+      fireEvent(r.getByTestId("sort-board"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 600 } },
+      });
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const heightBefore = (global as any).__sortBoardLastProps.availableHeight;
+    expect(heightBefore).toBe(600 - 16);
+    await tapHint(r);
+    const notice = await r.findByTestId("sort-hint-notice");
+    expect(StyleSheet.flatten(notice.props.style).position).toBe("absolute");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(heightBefore);
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Dismiss" }));
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(heightBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3658 — the bottom action bar, Colorblind Mode in the ⋯ menu, the hint's destination
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — action bar, menu toggle and hint destination (#3658)", () => {
+  const LEVEL = [{ id: 1, bottles: [["blue", "red"], ["red"], []] }];
+  type Rendered = Awaited<ReturnType<typeof renderScreen>>;
+
+  async function openLevel() {
+    playOnLevels(LEVEL);
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    return r;
+  }
+  const tapHint = (r: Rendered) =>
+    act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+  const lastProps = () =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).__sortBoardLastProps;
+
+  afterEach(() => mockSolveBoard.mockReset());
+
+  it("puts Hint and Undo in the bar under the board, not in the header", async () => {
+    const r = await openLevel();
+    const bar = r.getByTestId("sort-action-bar");
+    expect(within(bar).getByRole("button", { name: "Hint" })).toBeTruthy();
+    expect(within(bar).getByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(r.getByTestId("sort-hint-button")).toBeTruthy();
+    expect(r.getByTestId("sort-undo-button")).toBeTruthy();
+    expect(StyleSheet.flatten(bar.props.style).height).toBe(54);
+  });
+
+  it("keeps the bar after the board in reading order", async () => {
+    const r = await openLevel();
+    const flat = JSON.stringify(r.toJSON());
+    const at = (id: string) => flat.indexOf(`"testID":"${id}"`);
+    expect(at("sort-board")).toBeGreaterThan(-1);
+    expect(at("sort-action-bar")).toBeGreaterThan(at("sort-board"));
+  });
+
+  it("Undo is off with no history and on after a pour; Hint is on", async () => {
+    const r = await openLevel();
+    expect(r.getByRole("button", { name: "Undo" }).props.accessibilityState.disabled).toBe(true);
+    expect(r.getByRole("button", { name: "Hint" }).props.accessibilityState.disabled).toBe(false);
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 2,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      lastProps().onPourComplete();
+    });
+    expect(r.getByRole("button", { name: "Undo" }).props.accessibilityState.disabled).toBe(false);
+  });
+
+  it("shows Hint's busy state in the bar while the solver runs", async () => {
+    mockSolveBoard.mockImplementation(() => new Promise(() => {}));
+    const r = await openLevel();
+    // Not awaited: the solver promise is held open on purpose.
+    await act(async () => {
+      void fireEvent.press(r.getByRole("button", { name: "Hint" }));
+    });
+    const hint = r.getByRole("button", { name: "Hint" });
+    expect(hint.props.accessibilityState).toEqual({ disabled: true, busy: true });
+    expect(r.getByTestId("sort-hint-button-busy")).toBeTruthy();
+  });
+
+  it("has no Colorblind row on the screen; the menu item toggles the mode and is checked", async () => {
+    const r = await openLevel();
+    expect(r.queryByRole("switch")).toBeNull();
+    expect(lastProps().colorblindMode).toBe(false);
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "More options" }));
+    });
+    const item = r.getByTestId("sort-colorblind-toggle");
+    expect(item.props.accessibilityState).toEqual({ checked: false });
+    expect(within(item).getByText("Colorblind Mode")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(item);
+    });
+    expect(lastProps().colorblindMode).toBe(true);
+    expect(r.getByTestId("sort-colorblind-toggle").props.accessibilityState).toEqual({
+      checked: true,
+    });
+  });
+
+  it("a hint selects the source and rings the destination", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+    const r = await openLevel();
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+    await tapHint(r);
+    expect(await r.findByLabelText(/Bottle 2 selected/)).toBeTruthy();
+    expect(lastProps().hintTo).toBe(0);
+    // Screen readers learn the destination from its label (the ring is hidden from them).
+    expect(r.getByLabelText(/^Bottle 1,.*Hint: pour here$/)).toBeTruthy();
+    expect(
+      within(r.getByTestId("bottle-cell-0")).getByTestId("hint-dst-ring", {
+        includeHiddenElements: true,
+      })
+    ).toBeTruthy();
+  });
+
+  it("clears the destination ring when the selection changes", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+    const r = await openLevel();
+    await tapHint(r);
+    await r.findByTestId("hint-dst-ring", { includeHiddenElements: true });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(/Bottle 2 selected/));
+    });
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("clears the destination ring when a pour starts, and on undo", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+    const r = await openLevel();
+    await tapHint(r);
+    await r.findByTestId("hint-dst-ring", { includeHiddenElements: true });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(/^Bottle 1,/));
+    });
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+    expect(lastProps().hintTo).toBeNull();
+    await act(async () => {
+      lastProps().onPourComplete();
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Undo" }));
+    });
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+  });
+
+  it("clears the destination ring on restart", async () => {
+    mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+    const r = await openLevel();
+    await tapHint(r);
+    await r.findByTestId("hint-dst-ring", { includeHiddenElements: true });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "More options" }));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+    });
+    expect(r.queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3660 — motion events and haptics, and the win cascade the result card waits for
+// ---------------------------------------------------------------------------
+
+describe("SortScreen — motion events, haptics and the win cascade (#3660)", () => {
+  // Level 1 solves in one pour (bottle 2 -> bottle 1). Level 2 completes a bottle without a win.
+  const WIN_LEVEL = { id: 1, bottles: [["red", "red", "red"], ["red"]] };
+  const BOTTLE_LEVEL = {
+    id: 2,
+    bottles: [["red", "red", "red"], ["blue", "red"], ["blue"], []],
+  };
+  const lastProps = () =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).__sortBoardLastProps;
+  const impact = Haptics.impactAsync as jest.Mock;
+  const notify = Haptics.notificationAsync as jest.Mock;
+  type Rendered = Awaited<ReturnType<typeof renderScreen>>;
+  const press = (r: Rendered, label: RegExp | string) =>
+    act(async () => {
+      await fireEvent.press(await r.findByLabelText(label));
+    });
+  const land = () =>
+    act(async () => {
+      lastProps().onPourComplete();
+    });
+  /** Reports a layout for every row and cell, so a pour is drawn and lands on its callback. */
+  async function layOutBoard(r: Rendered) {
+    await act(async () => {
+      await fireEvent(r.getByTestId("sort-grid"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 300 } },
+      });
+      for (const [i, row] of r.getAllByTestId(/^sort-row-\d+$/).entries()) {
+        await fireEvent(row, "layout", {
+          nativeEvent: { layout: { x: 0, y: i * 160, width: 300, height: 150 } },
+        });
+      }
+      for (const [i, cell] of r.getAllByTestId(/^bottle-cell-\d+$/).entries()) {
+        await fireEvent(cell, "layout", {
+          nativeEvent: { layout: { x: (i % 2) * 100, y: 0, width: 90, height: 150 } },
+        });
+      }
+    });
+  }
+  async function openLevel(level: { id: number }, levels = [WIN_LEVEL, BOTTLE_LEVEL]) {
+    playOnLevels(levels);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 2,
+      currentLevelId: null,
+      currentState: null,
+    });
+    const r = await renderScreen();
+    await press(r, `Level ${level.id}`);
+    await layOutBoard(r);
+    return r;
+  }
+  async function winLevelOne(r: Rendered) {
+    await press(r, /^Bottle 2,/);
+    await press(r, /^Bottle 1,/);
+    await land();
+  }
+
+  beforeEach(() => {
+    resetReduceMotionForTests();
+    impact.mockReset().mockResolvedValue(undefined);
+    notify.mockReset().mockResolvedValue(undefined);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    resetReduceMotionForTests();
+  });
+
+  describe("win cascade", () => {
+    it("holds the result card until the cascade ends, while the score is recorded at once", async () => {
+      const r = await openLevel(WIN_LEVEL);
+      await winLevelOne(r);
+      expect(lastProps().winCascade).toBe(true);
+      expect(r.queryByTestId("sort-result")).toBeNull();
+      // The data is not held back by the cascade: moves, undos and the outcome go out now.
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+      expect(mockCompleteGame.mock.calls[0]![2]).toEqual(
+        expect.objectContaining({ outcome: "completed", won: true, moves: 1, undos: 0 })
+      );
+      await act(async () => {
+        lastProps().onWinCascadeDone();
+      });
+      expect(await r.findByTestId("sort-result")).toBeTruthy();
+      expect(lastProps().winCascade).toBe(false);
+      expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    });
+
+    it("opens the card when the cascade's own timer ends, not before", async () => {
+      const r = await openLevel(WIN_LEVEL);
+      await press(r, /^Bottle 2,/);
+      await press(r, /^Bottle 1,/);
+      jest.useFakeTimers();
+      await land();
+      await act(async () => {
+        jest.advanceTimersByTime(WIN_CASCADE_MS - 1);
+      });
+      expect(r.queryByTestId("sort-result")).toBeNull();
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(r.getByTestId("sort-result")).toBeTruthy();
+    });
+
+    it("a tap skips the cascade and the card opens", async () => {
+      const r = await openLevel(WIN_LEVEL);
+      await winLevelOne(r);
+      expect(r.queryByTestId("sort-result")).toBeNull();
+      await act(async () => {
+        await fireEvent.press(
+          r.getByTestId("sort-win-cascade-skip", { includeHiddenElements: true })
+        );
+      });
+      expect(await r.findByTestId("sort-result")).toBeTruthy();
+    });
+
+    it("Reduce Motion opens the card at once, with no cascade", async () => {
+      const query = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+      try {
+        const r = await openLevel(WIN_LEVEL);
+        await winLevelOne(r);
+        expect(lastProps().winCascade).toBe(false);
+        expect(await r.findByTestId("sort-result")).toBeTruthy();
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("a screen reader skips the cascade: the card at once", async () => {
+      const query = jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(true);
+      try {
+        const r = await openLevel(WIN_LEVEL);
+        await winLevelOne(r);
+        expect(lastProps().winCascade).toBe(false);
+        expect(await r.findByTestId("sort-result")).toBeTruthy();
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("Undo is ignored while the cascade plays", async () => {
+      const r = await openLevel(WIN_LEVEL);
+      await winLevelOne(r);
+      expect(r.getByRole("button", { name: "Undo" }).props.accessibilityState.disabled).toBe(true);
+      expect(lastProps().undoSeq).toBe(0);
+    });
+
+    it("leaving the board mid-cascade never opens the card", async () => {
+      const r = await openLevel(WIN_LEVEL);
+      await winLevelOne(r);
+      await press(r, "Back to levels");
+      expect(await r.findByText("Choose a Level")).toBeTruthy();
+      expect(r.queryByTestId("sort-result")).toBeNull();
+    });
+
+    it("plays the cascade again for a replay of the level, not for closing the card", async () => {
+      const r = await openLevel(WIN_LEVEL, [WIN_LEVEL]); // the last level replays
+      await winLevelOne(r);
+      await act(async () => {
+        lastProps().onWinCascadeDone();
+      });
+      await act(async () => {
+        await fireEvent.press(
+          within(await r.findByTestId("sort-result")).getByRole("button", { name: "Play Again" })
+        );
+      });
+      expect(lastProps().winCascade).toBe(false);
+      await winLevelOne(r);
+      expect(lastProps().winCascade).toBe(true);
+    });
+  });
+
+  describe("level in, undo and refused pour", () => {
+    it("Play Again keeps the mounted board and tells it to play no level-in", async () => {
+      const r = await openLevel(WIN_LEVEL, [WIN_LEVEL]);
+      expect(lastProps().levelIn).toBe(true);
+      await winLevelOne(r);
+      await act(async () => {
+        lastProps().onWinCascadeDone();
+      });
+      await act(async () => {
+        await fireEvent.press(
+          within(await r.findByTestId("sort-result")).getByRole("button", { name: "Play Again" })
+        );
+      });
+      expect(lastProps().levelIn).toBe(false);
+    });
+
+    it("a new level drops in; a restored game plays nothing", async () => {
+      const r = await openLevel(WIN_LEVEL);
+      expect(lastProps().levelIn).toBe(true);
+      await r.unmount();
+
+      playOnLevels([WIN_LEVEL, BOTTLE_LEVEL]);
+      storage.loadProgress.mockResolvedValue({
+        unlockedLevel: 2,
+        currentLevelId: 2,
+        currentState: initState(BOTTLE_LEVEL.bottles as Color[][]),
+      });
+      const restored = await renderScreen();
+      await press(restored, "Continue Level 2");
+      expect(lastProps().levelIn).toBe(false);
+      expect(lastProps().winCascade).toBe(false);
+      expect(lastProps().refused).toBeNull();
+      expect(lastProps().undoSeq).toBe(0);
+      expect(impact).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it("bumps the undo clock once per undo", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 2,/);
+      await press(r, /^Bottle 1,/);
+      await land();
+      expect(lastProps().undoSeq).toBe(0);
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Undo" }));
+      });
+      expect(lastProps().undoSeq).toBe(1);
+    });
+
+    it("a refused pour shakes the tapped destination once and clears the selection", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/); // ["blue"]
+      await press(r, /^Bottle 1,/); // red on top: refused
+      expect(lastProps().refused).toEqual({ index: 0, seq: 1 });
+      expect(lastProps().state.selectedBottleIndex).toBeNull();
+      // Taps are never blocked by the shake: the next select is taken at once.
+      await press(r, /^Bottle 3,/);
+      expect(lastProps().state.selectedBottleIndex).toBe(2);
+      await press(r, /^Bottle 1,/);
+      expect(lastProps().refused).toEqual({ index: 0, seq: 2 });
+    });
+  });
+
+  describe("haptics", () => {
+    it("select: one light impact; deselecting fires none", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 2,/);
+      expect(impact).toHaveBeenCalledTimes(1);
+      expect(impact).toHaveBeenCalledWith("light");
+      await press(r, /^Bottle 2 selected/);
+      expect(impact).toHaveBeenCalledTimes(1);
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it("an empty bottle with nothing selected fires nothing", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 4,/);
+      expect(impact).not.toHaveBeenCalled();
+    });
+
+    it("refused pour: one warning notification", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      impact.mockClear();
+      await press(r, /^Bottle 1,/);
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify).toHaveBeenCalledWith("warning");
+      expect(impact).not.toHaveBeenCalled();
+    });
+
+    it("pour: a medium impact when it lands, not when it starts", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      impact.mockClear();
+      await press(r, /^Bottle 4,/); // blue into the empty bottle: a pour in flight
+      expect(impact).toHaveBeenCalledTimes(0);
+      await land();
+      expect(impact).toHaveBeenCalledTimes(1);
+      expect(impact).toHaveBeenCalledWith("medium");
+    });
+
+    it("a pour that completes a bottle adds one success; the winning pour adds none of its own", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 2,/);
+      await press(r, /^Bottle 1,/);
+      notify.mockClear();
+      impact.mockClear();
+      await land();
+      // Success only: no medium impact in the same tick.
+      expect(impact).not.toHaveBeenCalled();
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify).toHaveBeenCalledWith("success");
+      await r.unmount();
+
+      // The winning pour: medium on landing; the success pulse is the card's, once, after the cascade.
+      const w = await openLevel(WIN_LEVEL);
+      notify.mockClear();
+      impact.mockClear();
+      await winLevelOne(w);
+      expect(impact.mock.calls.filter(([kind]) => kind === "medium")).toHaveLength(1);
+      expect(notify).not.toHaveBeenCalled();
+      await act(async () => {
+        lastProps().onWinCascadeDone();
+      });
+      await w.findByTestId("sort-result");
+      expect(notify.mock.calls.filter(([kind]) => kind === "success")).toHaveLength(1);
+    });
+
+    it("a cancelled pour fires nothing", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 2,/);
+      await press(r, /^Bottle 1,/);
+      impact.mockClear();
+      notify.mockClear();
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "More options" }));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByText("New Game"));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+      });
+      await land();
+      expect(impact).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it("a haptic that rejects or throws never breaks play", async () => {
+      impact.mockRejectedValue(new Error("no haptics"));
+      notify.mockImplementation(() => {
+        throw new Error("no module");
+      });
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 1,/); // refused: the warning throws
+      expect(lastProps().state.selectedBottleIndex).toBeNull();
+      await press(r, /^Bottle 2,/); // select: the impact rejects
+      await press(r, /^Bottle 1,/);
+      await land(); // the landing impact rejects, the move still lands
+      expect(lastProps().state.moveCount).toBe(1);
+    });
+  });
+
+  describe("sounds (#3661)", () => {
+    const heard = () =>
+      Object.fromEntries(
+        Object.entries(mockAudio)
+          .map(([name, fn]) => [name, fn.mock.calls.length] as const)
+          // cancelPour is housekeeping (entering a level clears it too): asserted on its own.
+          .filter(([name, n]) => n > 0 && name !== "cancelPour")
+      );
+    beforeEach(() => {
+      Object.values(mockAudio).forEach((fn) => fn.mockClear());
+    });
+
+    it("select: one sound on a tap that lifts a filled bottle; none to deselect or on an empty one", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 4,/); // empty, nothing selected
+      expect(heard()).toEqual({});
+      await press(r, /^Bottle 2,/);
+      expect(heard()).toEqual({ playSelect: 1 });
+      await press(r, /^Bottle 2 selected/); // deselect
+      expect(heard()).toEqual({ playSelect: 1 });
+    });
+
+    it("pour: the lift and stream are started once, with the unit count, at the tap; the landing adds none", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/); // ["blue"]
+      mockAudio.playSelect.mockClear();
+      await press(r, /^Bottle 4,/); // one unit into the empty bottle
+      expect(mockAudio.playPour).toHaveBeenCalledTimes(1);
+      expect(mockAudio.playPour).toHaveBeenCalledWith(1, false);
+      expect(heard()).toEqual({ playPour: 1 });
+      await land();
+      expect(heard()).toEqual({ playPour: 1 });
+    });
+
+    it("pour: a multi-unit pour passes its unit count", async () => {
+      const levels = [WIN_LEVEL, { id: 2, bottles: [["blue", "red", "red"], ["red"], [], []] }];
+      const r = await openLevel({ id: 2 }, levels);
+      await press(r, /^Bottle 1,/);
+      await press(r, /^Bottle 2,/);
+      expect(mockAudio.playPour).toHaveBeenCalledWith(2, false);
+    });
+
+    it("pour under Reduce Motion tells the audio, which plays the lift and the 1-unit stream at once", async () => {
+      const query = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+      try {
+        const r = await openLevel(BOTTLE_LEVEL);
+        await press(r, /^Bottle 3,/);
+        await press(r, /^Bottle 4,/);
+        expect(mockAudio.playPour).toHaveBeenCalledWith(1, true);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("refused pour: the refused sound once, and neither the pour nor the select again", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      mockAudio.playSelect.mockClear();
+      await press(r, /^Bottle 1,/); // red on top: refused
+      expect(heard()).toEqual({ playRefused: 1 });
+    });
+
+    it("complete: when the pour that completes a bottle lands, not when it starts", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 2,/);
+      await press(r, /^Bottle 1,/);
+      expect(mockAudio.playComplete).not.toHaveBeenCalled();
+      await land();
+      expect(mockAudio.playComplete).toHaveBeenCalledTimes(1);
+      expect(mockAudio.playWin).not.toHaveBeenCalled();
+    });
+
+    it("a pour that completes no bottle plays no complete sound", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      await land();
+      expect(mockAudio.playComplete).not.toHaveBeenCalled();
+    });
+
+    it("win: the winning pour plays the win once and no complete sound", async () => {
+      const r = await openLevel(WIN_LEVEL);
+      await press(r, /^Bottle 2,/);
+      await press(r, /^Bottle 1,/);
+      expect(mockAudio.playWin).not.toHaveBeenCalled();
+      await land();
+      expect(mockAudio.playWin).toHaveBeenCalledTimes(1);
+      expect(mockAudio.playComplete).not.toHaveBeenCalled();
+      // Closing the card does not play it again.
+      await act(async () => {
+        lastProps().onWinCascadeDone();
+      });
+      await r.findByTestId("sort-result");
+      expect(mockAudio.playWin).toHaveBeenCalledTimes(1);
+    });
+
+    it("win under Reduce Motion plays once, as the card opens at once", async () => {
+      const query = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+      try {
+        const r = await openLevel(WIN_LEVEL);
+        await winLevelOne(r);
+        expect(await r.findByTestId("sort-result")).toBeTruthy();
+        expect(mockAudio.playWin).toHaveBeenCalledTimes(1);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("undo: once per Undo; none while the button is off", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Undo" })); // nothing to undo: disabled
+      });
+      expect(mockAudio.playUndo).not.toHaveBeenCalled();
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      await land();
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Undo" }));
+      });
+      expect(mockAudio.playUndo).toHaveBeenCalledTimes(1);
+    });
+
+    it("hint: one sound when a hint is shown (the source lifts), and no select sound", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      mockSolveBoard.mockResolvedValue({ verdict: "solvable", moves: [{ from: 1, to: 0 }] });
+      try {
+        await act(async () => {
+          await fireEvent.press(r.getByRole("button", { name: /^Hint/ }));
+        });
+        await r.findByLabelText(/Bottle 2 selected/);
+        expect(heard()).toEqual({ playHint: 1 });
+      } finally {
+        mockSolveBoard.mockReset();
+      }
+    });
+
+    it("hint: none for the no-solution notice", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      mockSolveBoard.mockResolvedValue({ verdict: "unsolvable" });
+      try {
+        await act(async () => {
+          await fireEvent.press(r.getByRole("button", { name: /^Hint/ }));
+        });
+        await waitFor(() => expect(mockSolveBoard).toHaveBeenCalled());
+        await r.findByText(/no way to win/i);
+        expect(mockAudio.playHint).not.toHaveBeenCalled();
+      } finally {
+        mockSolveBoard.mockReset();
+      }
+    });
+
+    it("leaving to the level select mid-pour cancels the pending stream", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      expect(mockAudio.playPour).toHaveBeenCalledTimes(1);
+      mockAudio.cancelPour.mockClear();
+      await press(r, "Back to levels");
+      expect(await r.findByText("Choose a Level")).toBeTruthy();
+      expect(mockAudio.cancelPour).toHaveBeenCalledTimes(1);
+      await land(); // a late landing plays nothing more
+      expect(heard()).toEqual({ playSelect: 1, playPour: 1 });
+    });
+
+    it("a dropped pour (New Game) cancels its pending stream; a restored game plays nothing", async () => {
+      const r = await openLevel(BOTTLE_LEVEL);
+      await press(r, /^Bottle 3,/);
+      await press(r, /^Bottle 4,/);
+      mockAudio.cancelPour.mockClear();
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "More options" }));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByText("New Game"));
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByRole("button", { name: "Start New" }));
+      });
+      expect(mockAudio.cancelPour).toHaveBeenCalledTimes(1);
+      await land();
+      expect(mockAudio.playComplete).not.toHaveBeenCalled();
+      expect(mockAudio.playWin).not.toHaveBeenCalled();
+      await r.unmount();
+
+      Object.values(mockAudio).forEach((fn) => fn.mockClear());
+      playOnLevels([WIN_LEVEL, BOTTLE_LEVEL]);
+      storage.loadProgress.mockResolvedValue({
+        unlockedLevel: 2,
+        currentLevelId: 2,
+        currentState: initState(BOTTLE_LEVEL.bottles as Color[][]),
+      });
+      const restored = await renderScreen();
+      await press(restored, "Continue Level 2");
+      expect(heard()).toEqual({});
+    });
+  });
+});
+
+describe("SortScreen — stars (#3687)", () => {
+  // Each level solves in one pour (bottle 2 → bottle 1); `par` is the level's target.
+  const STAR_LEVELS = [
+    { id: 1, par: 1, bottles: [["red", "red", "red"], ["red"]] },
+    // A target below the one move taken: the solve is over par, past the 2-star margin.
+    { id: 2, par: 0, bottles: [["blue", "blue", "blue"], ["blue"]] },
+  ];
+
+  async function solve(r: Awaited<ReturnType<typeof renderScreen>>, label: string) {
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(label));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 2,/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+    await skipWinCascade();
+    return within(await r.findByTestId("sort-result"));
+  }
+
+  beforeEach(() => {
+    playOnLevels(STAR_LEVELS);
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 2,
+      currentLevelId: null,
+      currentState: null,
+    });
+  });
+
+  it("shows 3 stars and the target on the card for a solve at par", async () => {
+    const r = await renderScreen();
+    const card = await solve(r, "Level 1");
+    expect(card.getByLabelText("3 of 3 stars. Moves 1, target 1.")).toBeTruthy();
+    expect(card.getByText("Moves 1 · Target 1")).toBeTruthy();
+    expect(card.getAllByTestId(/^sort-result-star-\d-filled$/, { hidden: true })).toHaveLength(3);
+  });
+
+  it("shows 1 star for a solve past the 2-star margin", async () => {
+    const r = await renderScreen();
+    const card = await solve(r, "Level 2");
+    expect(card.getByLabelText("1 of 3 stars. Moves 1, target 0.")).toBeTruthy();
+    expect(card.getAllByTestId(/^sort-result-star-\d-filled$/, { hidden: true })).toHaveLength(1);
+    expect(card.getAllByTestId(/^sort-result-star-\d-empty$/, { hidden: true })).toHaveLength(2);
+  });
+
+  it("sends the solve's stars on the result already sent", async () => {
+    const r = await renderScreen();
+    await solve(r, "Level 1");
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]![1].result).toMatchObject({ level: 1, stars: 3 });
+  });
+
+  it("shows the best stars on the level grid's tile after the solve", async () => {
+    const r = await renderScreen();
+    await solve(r, "Level 1");
+    await act(async () => {
+      await fireEvent.press(
+        within(r.getByTestId("sort-result")).getByRole("button", { name: "Change Level" })
+      );
+    });
+    expect(await r.findByLabelText("Level 1, 3 of 3 stars")).toBeTruthy();
+    expect(r.getAllByTestId(/^sort-level-1-stars-\d-filled$/, { hidden: true })).toHaveLength(3);
+  });
+
+  it("a worse replay shows its own 1 star on the card; the tile keeps the best 3", async () => {
+    // Four reds in four bottles: three pours to solve. Par 1, best stored as 1 move (3 stars);
+    // the replay takes 3 moves, past ceil(1 x 1.25) = 2, so it earns 1 star.
+    playOnLevels([{ id: 1, par: 1, bottles: [["red"], ["red"], ["red"], ["red"], []] }]);
+    storage.loadBestMoves.mockResolvedValue({ "1": 1 });
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 1,
+      currentLevelId: null,
+      currentState: null,
+    });
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1, 3 of 3 stars"));
+    });
+    for (const from of [2, 3, 4]) {
+      await act(async () => {
+        await fireEvent.press(await r.findByLabelText(new RegExp(`^Bottle ${from},`)));
+      });
+      await act(async () => {
+        await fireEvent.press(await r.findByLabelText(/^Bottle 1,/));
+      });
+      await act(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (global as any).__sortBoardLastProps?.onPourComplete?.();
+      });
+    }
+    await skipWinCascade();
+    const card = within(await r.findByTestId("sort-result"));
+    expect(card.getByLabelText("1 of 3 stars. Moves 3, target 1.")).toBeTruthy();
+    expect(card.getAllByTestId(/^sort-result-star-\d-filled$/, { hidden: true })).toHaveLength(1);
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Level" }));
+    });
+    expect(await r.findByLabelText("Level 1, 3 of 3 stars")).toBeTruthy();
+  });
+
+  it("shows a stored best's stars on the grid at load", async () => {
+    storage.loadBestMoves.mockResolvedValue({ "2": 1 });
+    const r = await renderScreen();
+    expect(await r.findByLabelText("Level 2, 1 of 3 stars")).toBeTruthy();
   });
 });

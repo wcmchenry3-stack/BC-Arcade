@@ -68,6 +68,11 @@ VALIDATED: frozenset[Pair] = frozenset(
         ("mahjong", "moves"),
         ("solitaire", "moves"),
         ("freecell", "moves"),
+        # Bottle Sort's step log (#3387): sort/replay.py
+        ("sort", "moves"),
+        # Cascade's replay units (#3858): cascade/events.py
+        ("cascade", "drop"),
+        ("cascade", "merge"),
     }
 )
 
@@ -83,8 +88,6 @@ STORED_AS_SENT: frozenset[Pair] = frozenset(
         ("yacht", "score"),
         # the per-swipe type older app builds still send (#3286: new builds send "moves")
         ("twenty48", "move"),
-        ("cascade", "drop"),
-        ("cascade", "merge"),
     }
 )
 
@@ -267,6 +270,9 @@ def test_the_registry_is_parsed_not_empty() -> None:
     # Solitaire's and FreeCell's chunked moves (#3289): replay tier, split on the `m` array
     assert app["solitaire"]["moves"] == AppEvent("REPLAY", True)
     assert app["freecell"]["moves"] == AppEvent("REPLAY", True)
+    # Cascade's replay units (#3858): a drop event never split, a merge event split on `m`
+    assert app["cascade"]["drop"] == AppEvent("REPLAY", False)
+    assert app["cascade"]["merge"] == AppEvent("REPLAY", True)
 
 
 @pytest.mark.parametrize(("game", "name"), sorted(VALIDATED))

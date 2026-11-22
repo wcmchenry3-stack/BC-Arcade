@@ -1,10 +1,10 @@
 /**
- * useMahjongFeedback (#2981): each engine event gets its sound, and under full
- * motion its animation (flying pair, shuffle pulse, deadlock shake); Reduce
- * Motion keeps the sounds and drops the motion. Events fire once per array
+ * useMahjongFeedback (#2981): each engine event gets its sound, and a deadlock
+ * shakes the board under full motion; Reduce Motion keeps the sounds and drops
+ * the shake. The tiles' motion is useBoardMotion's (#3613). Events fire once per array
  * (#3087): a copy of the state with the same array is no new event.
  */
-import { act, renderHook } from "@testing-library/react-native";
+import { renderHook } from "@testing-library/react-native";
 import * as Reanimated from "react-native-reanimated";
 
 import { createGame } from "../../../game/mahjong/engine";
@@ -153,39 +153,23 @@ describe("useMahjongFeedback — sounds", () => {
 });
 
 describe("useMahjongFeedback — motion", () => {
-  it("flies the matched pair, and drops it when dismissed", async () => {
-    const hook = await setup(false);
-    await hook.rerender({
-      s: withEvents({ ...game, tiles: game.tiles.slice(2) }, firstPair()),
-      rm: false,
-    });
-    const pairs = hook.result.current.flyingPairs;
-    expect(pairs).toHaveLength(1);
-    expect(pairs[0]!.tile1).toBe(game.tiles[0]);
-    expect(pairs[0]!.tile2).toBe(game.tiles[1]);
-
-    await act(async () => {
-      hook.result.current.dismissFlyingPair(pairs[0]!.id);
-    });
-    expect(hook.result.current.flyingPairs).toEqual([]);
-  });
-
-  it("pulses the board on a shuffle and shakes it on a deadlock", async () => {
+  // The tiles' own motion (the match burst, the swirl…) is useBoardMotion's (#3613).
+  it("shakes the board on a deadlock, and no longer pulses it on a shuffle", async () => {
     const hook = await setup(false);
     const shuffled = withEvents({ ...game, shufflesLeft: game.shufflesLeft - 1 }, shuffle());
     await hook.rerender({ s: shuffled, rm: false });
-    expect(sequence).toHaveBeenCalledTimes(1);
-    expect(sequence.mock.calls[0]).toHaveLength(2);
+    await hook.rerender({ s: withEvents(shuffled, firstPair()), rm: false });
+    expect(sequence).not.toHaveBeenCalled();
 
     await hook.rerender({
       s: withEvents({ ...shuffled, isDeadlocked: true }, deadlock()),
       rm: false,
     });
-    expect(sequence).toHaveBeenCalledTimes(2);
-    expect(sequence.mock.calls[1]).toHaveLength(7);
+    expect(sequence).toHaveBeenCalledTimes(1);
+    expect(sequence.mock.calls[0]).toHaveLength(7);
   });
 
-  it("keeps the sounds but drops all motion under Reduce Motion", async () => {
+  it("keeps the sounds but drops the shake under Reduce Motion", async () => {
     const hook = await setup(true);
     const matched = { ...game, tiles: game.tiles.slice(2) };
     await hook.rerender({ s: withEvents(matched, firstPair()), rm: true });
@@ -199,7 +183,6 @@ describe("useMahjongFeedback — motion", () => {
     expect(mockSounds.playTileMatch).toHaveBeenCalledTimes(1);
     expect(mockSounds.playShuffle).toHaveBeenCalledTimes(1);
     expect(mockSounds.playDeadlock).toHaveBeenCalledTimes(1);
-    expect(hook.result.current.flyingPairs).toEqual([]);
     expect(sequence).not.toHaveBeenCalled();
   });
 });

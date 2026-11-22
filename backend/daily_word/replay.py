@@ -9,16 +9,19 @@ The board is an empty grid plus the game's scored guesses in order; refusals are
 only a count (``rj``). Anything that does not fit (no event, more than one, lists
 that do not line up, a result as long as the guess is not) is a ``problem``
 rather than a guess: a game whose event was never recorded (killed mid-play, or
-cut by a cap) says so.
+cut by a cap) says so. The rules are chosen by the game's ``engine_version``
+(``ENGINES``, ``games/engine_version.py``): a version this reader does not rebuild
+sets ``RebuiltBoard.incompatible`` and rebuilds nothing.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
 from daily_word.guess_event import GUESS_SUBMITTED, ROWS
+from games.engine_version import ReplayEngines, replay_engines
 
 _EMOJI = {"c": "G", "p": "Y", "a": "."}
 
@@ -31,6 +34,8 @@ class RebuiltBoard:
     display: list[str] = field(default_factory=list)
     refusals: int = 0
     problems: list[str] = field(default_factory=list)
+    incompatible: str | None = None
+    """Set (the reason) when the game's ``engine_version`` is not one this reader rebuilds."""
 
     @property
     def won(self) -> bool:
@@ -46,8 +51,24 @@ class RebuiltBoard:
         return [guess for guess, _ in self.rows]
 
 
-def rebuild(events: Iterable[tuple[str, dict[str, Any]]]) -> RebuiltBoard:
-    """The board ``(event type, data)`` pairs describe, played from an empty one."""
+def rebuild(
+    events: Iterable[tuple[str, dict[str, Any]]],
+    engines: ReplayEngines[Rules] | None = None,
+) -> RebuiltBoard:
+    """The board ``(event type, data)`` pairs describe, played from an empty one.
+
+    With the rules ``engines`` (``ENGINES`` when omitted) has for the game's
+    ``engine_version``; for any other version nothing is rebuilt.
+    """
+    pairs = list(events)
+    engine = (engines or ENGINES).resolve_events(pairs)
+    if engine.rules is None:
+        return RebuiltBoard(problems=[str(engine.reason)], incompatible=engine.reason)
+    return engine.rules(pairs)
+
+
+def _rebuild_v1(events: list[tuple[str, dict[str, Any]]]) -> RebuiltBoard:
+    """``rebuild`` under engine_version 1 (today's rules)."""
     board = RebuiltBoard()
     found = [data for name, data in events if name == GUESS_SUBMITTED]
     if not found:
@@ -77,9 +98,17 @@ def rebuild(events: Iterable[tuple[str, dict[str, Any]]]) -> RebuiltBoard:
     return board
 
 
+Rules = Callable[[list[tuple[str, dict[str, Any]]]], RebuiltBoard]
+
+ENGINES: ReplayEngines[Rules] = replay_engines("daily_word", _rebuild_v1)
+"""The engine versions ``rebuild`` replays, each with its rules."""
+
+
 def render_board(board: RebuiltBoard) -> list[str]:
     """The rebuilt board as plain text lines, for ``scripts/replay_game.py``."""
     lines = ["Daily Word board rebuilt from the guess_submitted event:"]
+    if board.incompatible:
+        return [*lines, f"  {board.incompatible}; nothing rebuilt"]
     for i, ((_, result), shown) in enumerate(zip(board.rows, board.display, strict=True), start=1):
         marks = "".join(_EMOJI.get(c, "?") for c in result)
         lines.append(f"  {i}. {shown}  {marks}")

@@ -20,7 +20,17 @@
  *      its in-memory hand log is separate from the replay events, which every build records.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -30,7 +40,27 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { ModalCard } from "../components/shared/ModalCard";
-import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
+import {
+  OpponentCapturedPile,
+  SelfCapturedPile,
+  penaltyPoints,
+} from "../components/hearts/CapturedPile";
+import SeatPlate from "../components/hearts/SeatPlate";
+import {
+  COUNTER_MIN_BANNER_H,
+  NARROW_BANNER_WIDTH,
+  computeFallbackGeometry,
+  computeHeartsGeometry,
+  handCardBounds,
+  rotatedBounds,
+  type HeartsTableGeometry,
+  type SeatPosition,
+  type TrickPosition,
+} from "../game/hearts/layout";
+import { HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE, HEARTS_FELT_BORDER } from "../theme/theme.hearts";
+import { reportCardsOffTable } from "../game/_shared/cards/offTableReport";
+import { SCREENSHOT_SKIPPED_CUSTOM_NAMES } from "../utils/sentryConfig";
+import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import OpponentHand from "../components/hearts/OpponentHand";
 import PassBanner from "../components/hearts/PassBanner";
 import PlayerHand from "../components/hearts/PlayerHand";
@@ -82,11 +112,19 @@ import { BLUR_MIN_TRICKS, HeartsReplay, gameStartedData } from "../game/hearts/r
 import { loadPendingReplay, pendingReplayPort } from "../game/hearts/pendingReplay";
 import type { PrincipleId } from "../game/hearts/conservative/terms";
 import { useGameEvents } from "../game/_shared/useGameEvents";
-import { useSound } from "../game/_shared/useSound";
-import { HEARTS_SOUNDS } from "../game/hearts/sounds";
+import { LAZY_SOUND, useSound } from "../game/_shared/useSound";
+import { useSoundVariants } from "../game/_shared/useSoundVariants";
+import { HEARTS_CARD_PLAY, HEARTS_SOUNDS, HEARTS_TRICK_WON } from "../game/hearts/sounds";
 import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimation";
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
-import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
+import {
+  HeartsQueenOfSpadesAnimation,
+  type QueenCardRect,
+} from "../components/hearts/HeartsQueenOfSpadesAnimation";
+import { createMomentHold } from "../game/hearts/momentHold";
+import { BROKEN_TIMING } from "../components/hearts/momentTimeline";
+import { AI_PACE_MS, QUEEN_LANDING_FALLBACK_MS } from "../components/hearts/trickMotion";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
 import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
 import {
   DEFAULT_AI_PRESET,
@@ -108,6 +146,34 @@ import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 const HUMAN = 0;
 
+/** Seat index to its place at the table, relative to the human (West is seat 1, North 2, East 3). */
+const SEAT_POSITIONS: readonly { seat: number; position: SeatPosition }[] = [
+  { seat: 0, position: "self" },
+  { seat: 1, position: "left" },
+  { seat: 2, position: "top" },
+  { seat: 3, position: "right" },
+];
+
+const TRICK_POSITION: Record<SeatPosition, TrickPosition> = {
+  self: "bottom",
+  left: "left",
+  top: "top",
+  right: "right",
+};
+
+/** Where a seat's card lies in the trick, in the table's coordinates (the Q♠ moment lifts it). */
+function trickCardRect(g: HeartsTableGeometry, seat: number): QueenCardRect {
+  const position = SEAT_POSITIONS.find((p) => p.seat === seat)?.position ?? "self";
+  const slot = g.trick.slots[TRICK_POSITION[position]];
+  return {
+    x: g.trick.area.x + slot.x,
+    y: g.trick.area.y + slot.y,
+    w: g.trick.cardW,
+    h: g.trick.cardH,
+    rotation: slot.rotation,
+  };
+}
+
 // Dev / pre-launch only: required lazily so the debug panel (and the PIMC
 // benchmark it pulls in) is not evaluated in release builds (#2970; pattern:
 // yacht/oracle/oracle.ts).
@@ -126,6 +192,13 @@ function loadHeartsDebugPanel(): HeartsDebugPanelType {
 function debugEnabled(): boolean {
   return __DEV__ || isPreLaunchApiBuild();
 }
+
+/**
+ * The longest the hearts-broken moment may hold its trick's sweep: its full run plus a margin.
+ * Its onAnimationEnd normally lets go first (1.7 s, or the still caption's 1 s with Reduce
+ * Motion); this only stops a trick staying on the table if that never reports.
+ */
+const BROKEN_HOLD_LIMIT_MS = BROKEN_TIMING.end + 500;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -183,12 +256,56 @@ export default function HeartsScreen() {
     rememberDifficulty,
   } = useLastDifficulty<AiPreset>("hearts", selectablePresets(legacyPersonas), DEFAULT_AI_PRESET);
   const [lastTrick, setLastTrick] = useState<LastTrick>(null);
+  // The hearts-broken moment (#3588). While it shows, the trick with the breaking heart stays
+  // on the table (its sweep waits); the CPU players do not wait for it.
   const [showHeartsBroken, setShowHeartsBroken] = useState(false);
+  useEffect(() => {
+    if (!showHeartsBroken) return;
+    const timer = setTimeout(() => setShowHeartsBroken(false), BROKEN_HOLD_LIMIT_MS);
+    return () => clearTimeout(timer);
+  }, [showHeartsBroken]);
+  // The moon shot moment and who shot it (#3588). Hand Complete waits for it to end (#3586).
   const [showMoonShot, setShowMoonShot] = useState(false);
-  const [moonShotLabel, setMoonShotLabel] = useState("");
+  const [moonShotSeat, setMoonShotSeat] = useState(HUMAN);
+  // A moon shot clinched by the trick the Q♠ was played to waits for the queen's moment.
+  const [queuedMoonShotSeat, setQueuedMoonShotSeat] = useState<number | null>(null);
+  // The Queen of Spades moment (#3588) and the seat that played the Q♠.
   const [showQueenOfSpades, setShowQueenOfSpades] = useState(false);
-  const [queenOfSpadesLabel, setQueenOfSpadesLabel] = useState("");
+  const [queenSeat, setQueenSeat] = useState(HUMAN);
+  // The Q♠ has been played and is still in flight to the trick: its moment (scrim and gong)
+  // starts when it lands (#3574). The table is held from the throw.
+  const [queenLanding, setQueenLanding] = useState(false);
+  const queenLandingRef = useRef(false);
+  const queenFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reduceMotion = useReduceMotion();
+  // The CPU players wait while the queen's or a moon shot's moment holds the table (#3588).
+  const momentHold = useMemo(() => createMomentHold(), []);
   const [showRename, setShowRename] = useState(false);
+  // The seat whose captured cards are open (tapped plate), or null.
+  const [pileSeat, setPileSeat] = useState<number | null>(null);
+  // The pile is only for the hand in play: when the phase leaves "playing" (hand over, game over,
+  // a new deal) it closes, so it never sits under the Hand Complete or result card, or shows
+  // the last hand's cards.
+  const phase = gameState?.phase;
+  useEffect(() => {
+    if (phase !== "playing") setPileSeat(null);
+  }, [phase]);
+  // The table's measured area; until it is measured, the window less the header and tab bar.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const [tableSize, setTableSize] = useState<{ width: number; height: number } | null>(null);
+  const handleTableLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setTableSize((prev) =>
+      prev && prev.width === width && prev.height === height ? prev : { width, height }
+    );
+  }, []);
+  const geometry = useMemo(
+    () =>
+      tableSize
+        ? computeHeartsGeometry(tableSize)
+        : computeFallbackGeometry({ width: windowWidth, height: windowHeight }),
+    [tableSize, windowWidth, windowHeight]
+  );
   const [playerNames, setPlayerNames] = useState<string[]>([...DEFAULT_NAMES]);
   const [draftNames, setDraftNames] = useState<string[]>([...DEFAULT_NAMES]);
   // What the rename form was seeded with, per seat: whether the stored name was the
@@ -233,7 +350,6 @@ export default function HeartsScreen() {
   const loopActiveRef = useRef(false);
   const gameStateRef = useRef<HeartsState | null>(gameState);
   const trickAnimResolverRef = useRef<(() => void) | null>(null);
-  const humanJustPlayedQSRef = useRef(false);
   const gameOverFiredRef = useRef(false);
   // The play clock (#2629): active play time, sent as the game's durationMs.
   // It runs while an unfinished game is on screen with the app in front.
@@ -339,11 +455,14 @@ export default function HeartsScreen() {
   useEffect(
     () => () => {
       unmountedRef.current = true;
+      // A loop waiting on a moment wakes, sees the unmount and stops.
+      momentHold.release();
+      if (queenFallbackRef.current) clearTimeout(queenFallbackRef.current);
       const resolve = trickAnimResolverRef.current;
       trickAnimResolverRef.current = null;
       if (resolve) resolve();
     },
-    []
+    [momentHold]
   );
 
   // ─── Load saved game and player names on mount ────────────────────────────
@@ -371,6 +490,8 @@ export default function HeartsScreen() {
         const state = {
           ...loaded,
           aiDifficulty: resolveAvailablePreset(loaded.aiDifficulty, legacyPersonas),
+          // Their sounds and moments played before the game was saved: none replays (#3588).
+          events: [] as HeartsState["events"],
         };
         // A restored game continues the session a killed app left open (#2654).
         const resumed = state.phase !== "game_over" && syncResume();
@@ -479,35 +600,100 @@ export default function HeartsScreen() {
     )
   );
 
-  const { play: playHeartsBroken } = useSound("hearts.heartsBroken", HEARTS_SOUNDS);
-  const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS);
-  const { play: playQueenOfSpades } = useSound("hearts.queenOfSpades", HEARTS_SOUNDS);
-  const { play: playCardPlay } = useSound("hearts.cardPlay", HEARTS_SOUNDS);
-  const { play: playTrickWon } = useSound("hearts.trickWon", HEARTS_SOUNDS);
-  const { play: playGameOver } = useSound("hearts.gameOver", HEARTS_SOUNDS);
+  const { play: playHeartsBroken } = useSound(
+    "hearts.heartsBroken",
+    HEARTS_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
+  const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS, 1.0, LAZY_SOUND);
+  const { play: playQueenOfSpades } = useSound(
+    "hearts.queenOfSpades",
+    HEARTS_SOUNDS,
+    1.0,
+    LAZY_SOUND
+  );
+  const { play: playCardPlay } = useSoundVariants(HEARTS_CARD_PLAY, HEARTS_SOUNDS);
+  const { play: playTrickWon } = useSoundVariants(HEARTS_TRICK_WON, HEARTS_SOUNDS);
+  const { play: playGameWon } = useSound("hearts.gameWon", HEARTS_SOUNDS, 1.0, LAZY_SOUND);
+  const { play: playGameLost } = useSound("hearts.gameLost", HEARTS_SOUNDS, 1.0, LAZY_SOUND);
+
+  /** The moon shot moment, with the howl when the human shot it. */
+  function startMoonShot(shooter: number) {
+    if (shooter === HUMAN) playMoonShot();
+    momentHold.hold("moon");
+    setMoonShotSeat(shooter);
+    setShowMoonShot(true);
+  }
+
+  /** The Queen of Spades moment: the scrim and the gong, as the Q♠ lands in the trick. */
+  function startQueenMoment() {
+    cancelQueenLanding();
+    playQueenOfSpades();
+    // The queen supersedes a hearts-broken moment still playing: one caption at a time.
+    setShowHeartsBroken(false);
+    setShowQueenOfSpades(true);
+  }
+
+  /** Forgets a Q♠ still in flight (a new hand, leaving the game). */
+  function cancelQueenLanding() {
+    if (queenFallbackRef.current) clearTimeout(queenFallbackRef.current);
+    queenFallbackRef.current = null;
+    queenLandingRef.current = false;
+    setQueenLanding(false);
+  }
+
+  /** A played card reached its trick slot (TrickArea): the Q♠'s moment starts here. */
+  function handleCardLanded(card: Card) {
+    if (isQueenOfSpades(card) && queenLandingRef.current) startQueenMoment();
+  }
+
+  function handleQueenMomentEnd() {
+    setShowQueenOfSpades(false);
+    // The moon shot the same trick clinched plays now, holding the table before the queen lets go.
+    if (queuedMoonShotSeat !== null) {
+      setQueuedMoonShotSeat(null);
+      startMoonShot(queuedMoonShotSeat);
+    }
+    momentHold.release("queen");
+  }
+
+  function handleMoonMomentEnd() {
+    setShowMoonShot(false);
+    momentHold.release("moon");
+  }
 
   useGameEvents(
     gameState?.events,
     {
       heartsBroken: () => {
+        // During the Queen of Spades' moment hearts break silently: one caption and one
+        // sound at a time, and the queen already holds the trick's sweep.
+        if (momentHold.isHeld("queen")) return;
         playHeartsBroken();
         setShowHeartsBroken(true);
       },
       moonShot: (event) => {
-        if (event.shooter === HUMAN) playMoonShot();
-        setMoonShotLabel(playerLabels[event.shooter] ?? "");
-        setShowMoonShot(true);
+        if (momentHold.isHeld("queen")) setQueuedMoonShotSeat(event.shooter);
+        else startMoonShot(event.shooter);
       },
-      queenOfSpadesPlayed: () => {
-        if (humanJustPlayedQSRef.current) {
-          humanJustPlayedQSRef.current = false;
+      queenOfSpadesPlayed: (event) => {
+        // The table holds from the throw (no CPU plays, a moon shot queues, hearts break
+        // silently); the moment itself starts when the card lands (#3574).
+        momentHold.hold("queen");
+        setQueenSeat(event.seat);
+        if (reduceMotion) {
+          // No flight: the card is in its slot already.
+          startQueenMoment();
           return;
         }
-        playQueenOfSpades();
-      },
-      queenOfSpades: (event) => {
-        setQueenOfSpadesLabel(playerLabels[event.takerSeat] ?? "");
-        setShowQueenOfSpades(true);
+        queenLandingRef.current = true;
+        setQueenLanding(true);
+        // Should the landing never report (the trick remounted mid-flight), start it anyway.
+        if (queenFallbackRef.current) clearTimeout(queenFallbackRef.current);
+        queenFallbackRef.current = setTimeout(() => {
+          if (queenLandingRef.current) startQueenMoment();
+        }, QUEEN_LANDING_FALLBACK_MS);
       },
     },
     () => setGameState((prev) => (prev ? { ...prev, events: [] as HeartsState["events"] } : null))
@@ -529,19 +715,27 @@ export default function HeartsScreen() {
     async (initial: HeartsState) => {
       if (loopActiveRef.current) return;
       loopActiveRef.current = true;
+      // The game this loop plays for. Leaving it (New Game, play again, the picker) bumps the
+      // generation and wakes the loop wherever it waits, so it stops instead of playing on.
+      const generation = gameGenerationRef.current;
+      const stale = () => unmountedRef.current || generation !== gameGenerationRef.current;
       try {
         // Start with a clean events slate; initial events are already in React state
         // and will be processed by useGameEvents independently.
         let s: HeartsState = { ...initial, events: [] };
         while (s.currentPlayerIndex !== HUMAN && s.phase === "playing") {
           const willComplete = s.currentTrick.length === 3;
-          await delay(400);
-          if (unmountedRef.current) return;
+          await delay(AI_PACE_MS);
+          if (stale()) return;
 
           // Read the latest committed React state after the await. If the game was
           // reset mid-loop (handleStartGame sets loopActiveRef=false and a fresh
           // non-null state), our stale card is no longer in that state's hands —
           // bail rather than throwing "Invalid play" inside the state write.
+          // A table-stopping moment (the Queen of Spades, a moon shot) plays out first (#3588).
+          await momentHold.settled();
+          if (stale()) return;
+
           const latestState = gameStateRef.current;
           if (!latestState || latestState.currentPlayerIndex !== s.currentPlayerIndex) return;
 
@@ -577,7 +771,7 @@ export default function HeartsScreen() {
 
           const before = s;
           s = playCard(s, playerIndex, card);
-          playCardPlay();
+          // Card place sounds from the card's flight (TrickArea's onCardPlace), not from here.
 
           if (completedTrick) {
             setLastTrick({ trick: completedTrick, winnerIndex: s.currentLeaderIndex });
@@ -605,15 +799,16 @@ export default function HeartsScreen() {
             await new Promise<void>((resolve) => {
               trickAnimResolverRef.current = resolve;
             });
-            if (unmountedRef.current) return;
+            if (stale()) return;
             setLastTrick(null);
           }
         }
       } finally {
-        loopActiveRef.current = false;
+        // A loop for a game that was left no longer owns the flag: the new game's loop may.
+        if (generation === gameGenerationRef.current) loopActiveRef.current = false;
       }
     },
-    [playCardPlay, persist, replay]
+    [persist, replay, momentHold]
   );
 
   // Trigger AI loop when it's their turn; wait for lastTrick display first.
@@ -660,13 +855,27 @@ export default function HeartsScreen() {
     lookupRank,
   ]);
 
+  // Hand Complete and the result card open, and the game-over sound plays, only after the
+  // Queen of Spades' and the moon shot's moments (#3586, #3588), including the render in
+  // which the event has arrived but its handler has not run yet.
+  const pendingEvents = gameState?.events ?? [];
+  const momentPending =
+    showMoonShot ||
+    showQueenOfSpades ||
+    queenLanding ||
+    queuedMoonShotSeat !== null ||
+    pendingEvents.some((e) => e.type === "moonShot" || e.type === "queenOfSpadesPlayed");
+
   useEffect(() => {
+    if (momentPending) return;
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
-      playGameOver();
+      // Tied for the lowest score counts as won: the player shares the win (#3563).
+      if (heartsResult(gameState.cumulativeScores, HUMAN).outcome === "loss") playGameLost();
+      else playGameWon();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState?.phase]);
+  }, [gameState?.phase, momentPending]);
 
   // ─── Human card play ──────────────────────────────────────────────────────
   function handleCardPress(card: Card) {
@@ -678,12 +887,7 @@ export default function HeartsScreen() {
     // loopActiveRef.current === true and freezing all subsequent AI turns.
     if (lastTrick !== null) return;
     ensureSyncStarted(gameState.aiDifficulty);
-    if (isQueenOfSpades(card)) {
-      humanJustPlayedQSRef.current = true;
-      playQueenOfSpades();
-    } else {
-      playCardPlay();
-    }
+    // Card place (or, for the Q♠, its moment's gong) sounds from the card's flight to the trick.
     const willComplete = gameState.currentTrick.length === 3;
     const completedTrick: readonly TrickCard[] | null = willComplete
       ? [...gameState.currentTrick, { card, playerIndex: HUMAN }]
@@ -700,14 +904,26 @@ export default function HeartsScreen() {
         cpuPlayNotesRef.current = [];
       }
       void persist(newState);
-      if (newState.phase === "playing") {
-        setLastTrick({ trick: completedTrick, winnerIndex: newState.currentLeaderIndex });
-        setGameState(newState);
-        return;
-      }
+      // The hand's last trick sweeps too (as when a CPU completes it), so the Q♠'s moment
+      // lifts it from the table rather than from an empty slot (#3588).
+      setLastTrick({ trick: completedTrick, winnerIndex: newState.currentLeaderIndex });
+      setGameState(newState);
+      return;
     }
     setLastTrick(null);
     setGameState(newState);
+  }
+
+  // Card place, cued by TrickArea from the card's flight (SOUND_LEAD_MS before it lands). The
+  // Q♠ sounds only its gong, as its moment starts on landing.
+  function handleCardPlace(card: Card) {
+    if (!isQueenOfSpades(card)) playCardPlay();
+  }
+
+  // Trick gathered, at the sweep's start (#3574): its thump (193 ms) lands as the cards reach
+  // the winner. TrickArea cues it inside the sweep, so a held trick never sounds under a scrim.
+  function handleSweepStart() {
+    if (gameStateRef.current?.phase === "playing") playTrickWon();
   }
 
   // Called by TrickArea when the trick-take animation completes. Resolves the
@@ -715,7 +931,6 @@ export default function HeartsScreen() {
   // clears lastTrick directly.
   function handleTrickAnimationComplete() {
     if (unmountedRef.current) return;
-    if (gameState?.phase === "playing") playTrickWon();
     const resolve = trickAnimResolverRef.current;
     if (resolve) {
       trickAnimResolverRef.current = null;
@@ -767,10 +982,14 @@ export default function HeartsScreen() {
   // ─── Hand end / next hand ─────────────────────────────────────────────────
   function handleNextHand() {
     if (!gameState) return;
+    setPileSeat(null);
     setLastTrick(null);
     setShowMoonShot(false);
+    setQueuedMoonShotSeat(null);
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
+    cancelQueenLanding();
+    momentHold.release();
     const next = dealNextHand(gameState);
     replay.dealt(next);
     if (debugEnabled()) {
@@ -799,10 +1018,19 @@ export default function HeartsScreen() {
     replay.reset();
     syncClose();
     gameGenerationRef.current += 1;
+    // A loop parked on the old game's trick animation wakes, sees the new generation and stops;
+    // left parked, the new game's first trick would resume it with the old game's state.
+    const parked = trickAnimResolverRef.current;
+    trickAnimResolverRef.current = null;
+    if (parked) parked();
+    setPileSeat(null);
     setLastTrick(null);
     setShowMoonShot(false);
+    setQueuedMoonShotSeat(null);
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
+    cancelQueenLanding();
+    momentHold.release();
     resetSubmission();
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
@@ -878,9 +1106,62 @@ export default function HeartsScreen() {
       ? getValidPlays(gameState, HUMAN)
       : [];
   const displayTrick = lastTrick !== null ? lastTrick.trick : (gameState?.currentTrick ?? []);
+  // A completed trick waits on the table (no sweep, no trick gathered) under every moment: the
+  // Q♠ from its throw (in flight, then its moment), hearts broken, and a moon shot, playing or
+  // queued behind the queen. A sweep already under way runs to its end.
+  const sweepHeld =
+    queenLanding ||
+    showQueenOfSpades ||
+    showHeartsBroken ||
+    showMoonShot ||
+    queuedMoonShotSeat !== null;
   const trickWinnerIndex = lastTrick !== null ? lastTrick.winnerIndex : null;
   const moonShooter = gameState ? detectMoon(gameState.wonCards) : null;
+  // The queen's and hearts-broken captions sit just under the trick.
+  const momentCaptionTop =
+    geometry.trick.area.y + geometry.trick.area.h + 12 * (geometry.trick.cardW / 66);
   const result = heartsResult(gameState?.cumulativeScores ?? [0, 0, 0, 0], HUMAN);
+  // Cards off the table (#3653): the hand fan and the trick against the measured table, after a
+  // layout change or a card count change only (never per frame, never the first-frame estimate).
+  const deckId = useDeck().activeDeck.id;
+  const customNames = playerNames.some((n, i) => n !== DEFAULT_NAMES[i]);
+  const handCount = humanHand.length;
+  const trickSeatsKey = displayTrick.map((c) => c.playerIndex).join(",");
+  useEffect(() => {
+    if (tableSize === null) return;
+    const trickSeats = trickSeatsKey === "" ? [] : trickSeatsKey.split(",").map(Number);
+    const boxes = [
+      ...handCardBounds(geometry.hand, handCount),
+      ...trickSeats.map((seat) => {
+        const c = trickCardRect(geometry, seat);
+        return rotatedBounds(c.x, c.y, c.w, c.h, c.rotation);
+      }),
+    ];
+    if (boxes.length === 0) return;
+    reportCardsOffTable({
+      game: "hearts",
+      measured: true,
+      container: { w: tableSize.width, h: tableSize.height },
+      content: {
+        left: Math.min(...boxes.map((b) => b.x)),
+        top: Math.min(...boxes.map((b) => b.y)),
+        right: Math.max(...boxes.map((b) => b.x + b.w)),
+        bottom: Math.max(...boxes.map((b) => b.y + b.h)),
+      },
+      deck: deckId,
+      // Owner decision (#3653): a seat showing a name the player chose (renamed, or the
+      // profile display name) means no screenshot; the event's numbers still go.
+      ...(customNames ? { skipScreenshot: SCREENSHOT_SKIPPED_CUSTOM_NAMES } : {}),
+      context: {
+        felt: { width: geometry.felt.w, height: geometry.felt.h },
+        cardWidth: geometry.hand.cardW,
+        cardHeight: geometry.hand.cardH,
+        compression: geometry.mode,
+        handLengths: [handCount],
+        trickLength: trickSeats.length,
+      },
+    });
+  }, [tableSize, geometry, handCount, trickSeatsKey, deckId, customNames]);
 
   // ─── Pre-game: show difficulty picker until a game is started ────────────
   if (!gameState && !HEARTS_OPPONENT_PICKER_ENABLED) {
@@ -948,92 +1229,168 @@ export default function HeartsScreen() {
       onOpenLeaderboard={openLeaderboard}
       onEditPlayerNames={handleOpenRename}
     >
-      {/* ── Table ──────────────────────────────────────────────────── */}
-      <View style={[styles.table, styles.tablePositioned, { backgroundColor: colors.background }]}>
-        {/* Top AI (seat 2) */}
-        <View style={styles.topArea}>
-          <OpponentHand
-            cardCount={gameState.playerHands[2]?.length ?? 0}
-            label={playerLabels[2] ?? ""}
-            revealCards={__DEV__ && debugMode ? gameState.playerHands[2] : undefined}
-          />
-          <OpponentCapturedPile
-            cards={gameState.wonCards[2] ?? []}
-            seatLabel={playerLabels[2] ?? ""}
+      {/* ── Table: the felt, the four seat plates, the trick and the fanned hand (#3587) ── */}
+      <View
+        testID="hearts-table"
+        style={[styles.table, { backgroundColor: colors.background }]}
+        onLayout={handleTableLayout}
+      >
+        <View
+          testID="hearts-felt"
+          pointerEvents="none"
+          style={[
+            styles.felt,
+            {
+              left: geometry.felt.x,
+              top: geometry.felt.y,
+              width: geometry.felt.w,
+              height: geometry.felt.h,
+              borderRadius: geometry.felt.radius,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[HEARTS_FELT_CENTRE, HEARTS_FELT_EDGE]}
+            style={StyleSheet.absoluteFill}
           />
         </View>
 
-        {/* Middle: Left AI | TrickArea | Right AI */}
-        <View style={styles.middleRow}>
-          <View style={styles.sideColumn}>
+        {SEAT_POSITIONS.map(({ seat, position }) =>
+          position === "self" ? null : (
             <OpponentHand
-              cardCount={gameState.playerHands[1]?.length ?? 0}
-              label={playerLabels[1] ?? ""}
-              layout="vertical"
-              revealCards={__DEV__ && debugMode ? gameState.playerHands[1] : undefined}
+              key={`fan-${seat}`}
+              cardCount={gameState.playerHands[seat]?.length ?? 0}
+              label={playerLabels[seat] ?? ""}
+              fan={geometry.fans[position]}
+              revealCards={__DEV__ && debugMode ? gameState.playerHands[seat] : undefined}
             />
-            <OpponentCapturedPile
-              cards={gameState.wonCards[1] ?? []}
-              seatLabel={playerLabels[1] ?? ""}
-            />
-          </View>
-          <View style={styles.trickWrapper}>
-            <TrickArea
-              trick={[...displayTrick]}
-              playerIndex={HUMAN}
-              playerLabels={playerLabels}
-              winnerIndex={trickWinnerIndex}
-              onAnimationComplete={handleTrickAnimationComplete}
-            />
-            <HeartsBrokenAnimation
-              visible={showHeartsBroken}
-              onAnimationEnd={() => setShowHeartsBroken(false)}
-            />
-          </View>
-          <View style={styles.sideColumn}>
-            <OpponentHand
-              cardCount={gameState.playerHands[3]?.length ?? 0}
-              label={playerLabels[3] ?? ""}
-              layout="vertical"
-              revealCards={__DEV__ && debugMode ? gameState.playerHands[3] : undefined}
-            />
-            <OpponentCapturedPile
-              cards={gameState.wonCards[3] ?? []}
-              seatLabel={playerLabels[3] ?? ""}
-            />
-          </View>
+          )
+        )}
+
+        <View
+          testID="hearts-trick"
+          pointerEvents="none"
+          style={[
+            styles.trickWrapper,
+            {
+              left: geometry.trick.area.x,
+              top: geometry.trick.area.y,
+              width: geometry.trick.area.w,
+              height: geometry.trick.area.h,
+            },
+          ]}
+        >
+          <TrickArea
+            trick={[...displayTrick]}
+            playerIndex={HUMAN}
+            playerLabels={playerLabels}
+            winnerIndex={trickWinnerIndex}
+            onAnimationComplete={handleTrickAnimationComplete}
+            geometry={geometry.trick}
+            holdSweep={sweepHeld}
+            nudge={showQueenOfSpades}
+            onCardPlace={handleCardPlace}
+            onCardLanded={handleCardLanded}
+            onSweepStart={handleSweepStart}
+          />
         </View>
+
+        {SEAT_POSITIONS.map(({ seat, position }) => (
+          <SeatPlate
+            key={`plate-${seat}`}
+            testID={`hearts-plate-${seat}`}
+            name={playerLabels[seat] ?? ""}
+            score={gameState.cumulativeScores[seat] ?? 0}
+            handPoints={penaltyPoints(gameState.wonCards[seat] ?? [])}
+            isTurn={gameState.phase === "playing" && gameState.currentPlayerIndex === seat}
+            isSelf={position === "self"}
+            plate={geometry.plates[position]}
+            height={geometry.plateHeight}
+            onPress={() => {
+              // Not over another dialog (rename) or the hand-end / result cards.
+              if (gameState.phase === "playing" && !showRename) setPileSeat(seat);
+            }}
+          />
+        ))}
+
+        {isPassing && (
+          <PassBanner
+            passDirection={gameState.passDirection}
+            selectedCount={humanPassSelections.length}
+            onConfirm={handlePassConfirm}
+            narrow={geometry.passBanner.w < NARROW_BANNER_WIDTH}
+            roomForCounter={geometry.passBanner.h >= COUNTER_MIN_BANNER_H}
+            style={{
+              position: "absolute",
+              left: geometry.passBanner.x,
+              top: geometry.passBanner.y,
+              width: geometry.passBanner.w,
+              maxHeight: geometry.passBanner.h,
+              // Edge margins win over `margin`, so each one the banner has is cleared.
+              margin: 0,
+              marginHorizontal: 0,
+              marginBottom: 0,
+              zIndex: 4,
+              elevation: 4,
+            }}
+          />
+        )}
 
         {/* Human hand */}
-        <View testID="hearts-player-hand-area" style={styles.bottomArea}>
-          <Text style={[styles.humanLabel, { color: colors.textMuted }]}>
-            {playerLabels[0] ?? ""}
-          </Text>
-          {isPassing && (
-            <PassBanner
-              passDirection={gameState.passDirection}
-              selectedCount={humanPassSelections.length}
-              onConfirm={handlePassConfirm}
-            />
-          )}
-          <SelfCapturedPile cards={gameState.wonCards[HUMAN] ?? []} />
+        <View
+          testID="hearts-player-hand-area"
+          style={[styles.handArea, { left: geometry.hand.rect.x, top: geometry.hand.rect.y }]}
+        >
           <PlayerHand
             hand={humanHand}
             selectedCards={isPassing ? humanPassSelections : undefined}
             validCards={isPassing ? undefined : validCards}
             onCardPress={isPassing ? handlePassCardPress : handleCardPress}
+            geometry={geometry.hand}
           />
         </View>
-        <HeartsMoonShotAnimation
-          visible={showMoonShot}
-          shooterLabel={moonShotLabel}
-          onAnimationEnd={() => setShowMoonShot(false)}
-        />
-        <HeartsQueenOfSpadesAnimation
-          visible={showQueenOfSpades}
-          takerLabel={queenOfSpadesLabel}
-          onAnimationEnd={() => setShowQueenOfSpades(false)}
-        />
+        {/* ── The moments (#3588): over the whole table, never taking a touch ── */}
+        <View testID="hearts-overlay-broken" style={styles.overlayLayer} pointerEvents="none">
+          <HeartsBrokenAnimation
+            visible={showHeartsBroken}
+            centre={{
+              x: geometry.trick.area.x + geometry.trick.area.w / 2,
+              y: geometry.trick.area.y + geometry.trick.area.h / 2,
+            }}
+            cardW={geometry.trick.cardW}
+            captionTop={momentCaptionTop}
+            width={geometry.width}
+            height={geometry.height}
+            onAnimationEnd={() => setShowHeartsBroken(false)}
+          />
+        </View>
+        <View testID="hearts-overlay-moon" style={styles.overlayLayer} pointerEvents="none">
+          <HeartsMoonShotAnimation
+            visible={showMoonShot}
+            shooterLabel={playerLabels[moonShotSeat] ?? ""}
+            shooterIsHuman={moonShotSeat === HUMAN}
+            otherLabels={
+              [1, 2, 3].map((d) => playerLabels[(moonShotSeat + d) % 4] ?? "") as [
+                string,
+                string,
+                string,
+              ]
+            }
+            width={geometry.width}
+            height={geometry.height}
+            onAnimationEnd={handleMoonMomentEnd}
+          />
+        </View>
+        <View testID="hearts-overlay-queen" style={styles.overlayLayer} pointerEvents="none">
+          <HeartsQueenOfSpadesAnimation
+            visible={showQueenOfSpades}
+            card={trickCardRect(geometry, queenSeat)}
+            captionTop={momentCaptionTop}
+            width={geometry.width}
+            height={geometry.height}
+            onAnimationEnd={handleQueenMomentEnd}
+          />
+        </View>
         {showDebugPanel && (
           <Pressable
             style={[styles.devButton, { backgroundColor: colors.accent }]}
@@ -1048,8 +1405,38 @@ export default function HeartsScreen() {
         )}
       </View>
 
+      {/* ── Cards a seat has taken: opened from its plate (#3587) ──── */}
+      <ModalCard
+        visible={pileSeat !== null && gameState.phase === "playing"}
+        size="sm"
+        onRequestClose={() => setPileSeat(null)}
+        title={
+          pileSeat === null
+            ? undefined
+            : t("captured.title", { label: playerLabels[pileSeat] ?? "" })
+        }
+        testID="hearts-captured-modal"
+      >
+        {pileSeat === HUMAN && <SelfCapturedPile cards={gameState.wonCards[HUMAN] ?? []} />}
+        {pileSeat !== null && pileSeat !== HUMAN && (
+          <OpponentCapturedPile
+            cards={gameState.wonCards[pileSeat] ?? []}
+            seatLabel={playerLabels[pileSeat] ?? ""}
+          />
+        )}
+        <Pressable
+          style={[styles.btn, { backgroundColor: colors.surfaceAlt }]}
+          onPress={() => setPileSeat(null)}
+          accessibilityRole="button"
+          accessibilityLabel={t("captured.close")}
+          testID="hearts-captured-close"
+        >
+          <Text style={[styles.btnText, { color: colors.text }]}>{t("captured.close")}</Text>
+        </Pressable>
+      </ModalCard>
+
       {/* ── Hand-end overlay (dealing phase = hand just finished) ──── */}
-      {gameState.phase === "dealing" && (
+      {gameState.phase === "dealing" && !momentPending && (
         <ModalCard visible size="md">
           <ScrollView
             style={styles.panelScroll}
@@ -1060,7 +1447,7 @@ export default function HeartsScreen() {
           >
             <Text style={[styles.panelTitle, { color: colors.text }]}>{t("hand_end.title")}</Text>
             {moonShooter !== null && (
-              <Text style={[styles.moonText, { color: colors.accent }]}>
+              <Text style={[styles.moonText, { color: colors.accentText }]}>
                 {t("hand_end.moon", { label: playerLabels[moonShooter] ?? "" })}
               </Text>
             )}
@@ -1086,7 +1473,7 @@ export default function HeartsScreen() {
 
       {/* ── Game over: the shared result card (#2506) ─────────────── */}
       <GameResultModal
-        visible={gameState.phase === "game_over"}
+        visible={gameState.phase === "game_over" && !momentPending}
         outcome={result.outcome}
         winnerName={playerLabels[result.winnerIndex] ?? ""}
         eyebrow={t("game.title")}
@@ -1215,31 +1602,23 @@ export default function HeartsScreen() {
 const styles = StyleSheet.create({
   table: {
     flex: 1,
-    justifyContent: "space-between",
-    paddingVertical: 12,
-  },
-  tablePositioned: {
     position: "relative",
   },
-  topArea: {
-    alignItems: "center",
-    paddingTop: 4,
-  },
-  middleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 8,
-  },
-  sideColumn: {
-    alignItems: "center",
-    gap: 6,
+  felt: {
+    position: "absolute",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: HEARTS_FELT_BORDER,
   },
   trickWrapper: {
-    position: "relative",
+    position: "absolute",
+    // Above the plates on both platforms, so a won trick sweeps over the winner's plate
+    // (Android orders siblings by elevation, iOS by zIndex).
+    zIndex: 3,
+    elevation: 3,
   },
-  bottomArea: {
-    paddingBottom: 8,
+  handArea: {
+    position: "absolute",
   },
   panelScroll: {
     width: "100%",
@@ -1267,12 +1646,6 @@ const styles = StyleSheet.create({
   btnText: {
     fontSize: 16,
     fontWeight: "700",
-  },
-  humanLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    paddingHorizontal: 12,
-    paddingBottom: 4,
   },
   renameScroll: {
     width: "100%",
@@ -1306,8 +1679,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
+  // Above the trick layer (3) and the pass banner (4).
+  overlayLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 5,
+    elevation: 5,
+  },
   devButton: {
     position: "absolute",
+    zIndex: 5,
+    elevation: 5,
     bottom: 8,
     right: 8,
     paddingHorizontal: 8,

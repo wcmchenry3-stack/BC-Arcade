@@ -196,10 +196,9 @@ module.exports = [
   },
 
   // Sound maps: Metro needs a literal require() per asset, so a generic loader is
-  // impossible. (Cascade keeps its per-line disables until epic #3033.)
+  // impossible.
   {
     files: ["src/game/*/sounds.ts"],
-    ignores: ["src/game/cascade/**"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
     },

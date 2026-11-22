@@ -15,6 +15,14 @@ inputs:
       unchanged sources from scratch in each.
     required: false
     default: "false"
+  cache-read-only:
+    description: >
+      "true" restores the Metro cache but never saves it. mobile-smoke-android
+      passes true on pull_request so per-PR entries don't push the shared
+      default-branch ones out of the cache quota. Ignored unless metro-cache
+      is "true".
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -31,8 +39,16 @@ runs:
       working-directory: frontend
 
     - name: Cache Metro bundler transforms
-      if: inputs.metro-cache == 'true'
+      if: inputs.metro-cache == 'true' && inputs.cache-read-only != 'true'
       uses: actions/cache@v6
+      with:
+        path: /tmp/metro-cache
+        key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: metro-${{ runner.os }}-
+
+    - name: Restore Metro bundler transforms (read-only)
+      if: inputs.metro-cache == 'true' && inputs.cache-read-only == 'true'
+      uses: actions/cache/restore@v6
       with:
         path: /tmp/metro-cache
         key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}

@@ -25,6 +25,9 @@ import {
   GUNS_MAX,
   HULL_MAX,
 } from "../engine";
+import { DEFAULT_TUNING, type Tuning } from "../engine/tuning";
+import { rng } from "../engine/rng";
+import { settleRocks } from "../engine/asteroids";
 import type { Asteroid, Bullet, PowerUp, StarSwarmInput, StarSwarmState } from "../types";
 import { NO_INPUT, FIRE_INPUT, advanceMs, clearWave, makeBeam } from "./helpers/engineFixtures";
 
@@ -189,19 +192,18 @@ describe("Power-up engine (#980)", () => {
     expect(pu.despawnTimer).toBeGreaterThan(msToReachPlayer);
   });
 
-  it("super state applies damage=4, piercing=true, fast cooldown to player bullets", () => {
+  it("super state fires a beam pulse (#3562): no bullets, the fast cooldown re-armed", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
     s = {
       ...s,
       activePowerUp: { remainingMs: 3000, type: "lightning" as const, shieldAbsorbed: 0 },
       player: { ...s.player, shootCooldown: 0 },
+      playerBullets: [],
     };
     s = tick(s, 16, FIRE_INPUT);
-    const bullet = s.playerBullets[s.playerBullets.length - 1];
-    expect(bullet).toBeDefined();
-    expect(bullet!.damage).toBe(4);
-    expect(bullet!.piercing).toBe(true);
+    // #3562: Lightning spawns no bolts; its beam's damage is covered in engine.lightningBeam.test.ts
+    expect(s.playerBullets).toEqual([]);
     // Cooldown should be the super cooldown (70ms), well below normal 280ms
     expect(s.player.shootCooldown).toBeGreaterThan(0);
     expect(s.player.shootCooldown).toBeLessThan(280);
@@ -422,7 +424,10 @@ describe("#1034 Smart Bomb", () => {
 
 // ---------------------------------------------------------------------------
 // Laser sound gating — only fires during lightning power-up
-// The canvas checks: shootCooldown > prevCooldown && activePowerUp?.type === "lightning"
+// The canvas checked: shootCooldown > prevCooldown && activePowerUp?.type === "lightning".
+// #3560 retired that per-shot laser for a loop (soundLoops.ts) and no canvas reads this any
+// more; the cases still pin that the fire clock re-arms on each Lightning beam pulse (#3562)
+// and on normal fire, which the beam's cadence relies on.
 // ---------------------------------------------------------------------------
 
 describe("laser sound gating", () => {
@@ -432,7 +437,7 @@ describe("laser sound gating", () => {
     return s;
   }
 
-  // Mirrors exactly the condition checked in GameCanvas.tsx / GameCanvas.web.tsx
+  // The condition GameCanvas.tsx / GameCanvas.web.tsx checked before #3560
   function laserSoundWouldFire(prev: StarSwarmState, next: StarSwarmState): boolean {
     return (
       next.player.shootCooldown > prev.player.shootCooldown &&
@@ -536,14 +541,13 @@ describe("In-run ship upgrades (#2488)", () => {
     expect(s.player.hullFlashTimer).toBe(0);
   });
 
-  it("a volley is 1, 2 or 4 bullets by gun level; lightning keeps its piercing shots", () => {
-    expect(playerVolley(100, 500, 1, false).map((b) => b.x)).toEqual([100]);
-    expect(playerVolley(100, 500, 2, false).map((b) => b.x)).toEqual([93, 107]);
-    const l3 = playerVolley(100, 500, 3, false);
+  it("a volley is 1, 2 or 4 bullets by gun level (#3562: Lightning fires beams, not volleys)", () => {
+    expect(playerVolley(100, 500, 1).map((b) => b.x)).toEqual([100]);
+    expect(playerVolley(100, 500, 2).map((b) => b.x)).toEqual([93, 107]);
+    const l3 = playerVolley(100, 500, 3);
     expect(l3).toHaveLength(4);
     expect(l3.map((b) => b.vx).sort((a, b) => a - b)).toEqual([-SPREAD_VX, 0, 0, SPREAD_VX]);
-    const superL3 = playerVolley(100, 500, 3, true);
-    expect(superL3.every((b) => b.piercing === true && b.damage === 4)).toBe(true);
+    expect(l3.every((b) => !b.piercing && b.damage === 1)).toBe(true);
 
     let s = withPlayer(quiet(), { guns: 3 });
     s = tick(s, 16, FIRE_ASIDE);
@@ -620,7 +624,7 @@ describe("In-run ship upgrades (#2488)", () => {
     expect(s.enemies.find((e) => e.id === grunt.id)!.isAlive).toBe(false);
   });
 
-  it("a broken large rock can drop salvage, whoever broke it", () => {
+  it("a shot-broken large rock always drops salvage, whoever shot it (#3533)", () => {
     let byPlayer = 0;
     let byEnemy = 0;
     const N = 60;
@@ -659,9 +663,126 @@ describe("In-run ship upgrades (#2488)", () => {
       s = tick({ ...base, asteroids: [rock], enemyBullets: [shot("enemy")] }, 16, ASIDE);
       if (s.powerUps.some((p) => p.type === "salvage")) byEnemy++;
     }
-    expect(byPlayer).toBeGreaterThan(N * 0.2);
-    expect(byPlayer).toBeLessThan(N * 0.65);
-    expect(byEnemy).toBeGreaterThan(N * 0.2);
+    expect(byPlayer).toBe(N);
+    expect(byEnemy).toBe(N);
+  });
+
+  describe("salvage drop rate is a Tuning field (#3533)", () => {
+    const withRate = (rate: number): Tuning => ({ ...DEFAULT_TUNING, SALVAGE_DROP_CHANCE: rate });
+    const shotAt = (kind: "large" | "small", seed: number, tuning: Tuning, hp = 1) => {
+      const base = quiet();
+      seedRng(Math.imul(seed, 2654435761) >>> 0);
+      const rock: Asteroid = {
+        id: nextId++,
+        kind,
+        x: CANVAS_W / 2,
+        y: 460,
+        vx: 0,
+        vy: 0,
+        radius: ASTEROID_STATS[kind].radius,
+        hp,
+        rotation: 0,
+        spin: 0,
+        hitFlashTimer: 0,
+        hitEnemyIds: [],
+      };
+      const bolt: Bullet = {
+        id: nextId++,
+        x: rock.x,
+        y: rock.y,
+        vx: 0,
+        vy: 0,
+        owner: "player",
+        width: 5,
+        height: 10,
+        damage: 1,
+      };
+      const s = tick({ ...base, asteroids: [rock], playerBullets: [bolt] }, 16, ASIDE, tuning);
+      return s.powerUps.some((p) => p.type === "salvage");
+    };
+
+    it("defaults to 1", () => {
+      expect(DEFAULT_TUNING.SALVAGE_DROP_CHANCE).toBe(1);
+    });
+
+    it("drops on every seed at the default rate", () => {
+      for (let i = 0; i < 40; i++) expect(shotAt("large", 11_000 + i, DEFAULT_TUNING)).toBe(true);
+    });
+
+    it("never drops from a small rock", () => {
+      for (let i = 0; i < 40; i++) expect(shotAt("small", 12_000 + i, DEFAULT_TUNING)).toBe(false);
+    });
+
+    it("an override of 0 disables drops", () => {
+      for (let i = 0; i < 40; i++) expect(shotAt("large", 13_000 + i, withRate(0))).toBe(false);
+    });
+
+    it("a mid override drops some but not all", () => {
+      let n = 0;
+      const N = 80;
+      for (let i = 0; i < N; i++) if (shotAt("large", 14_000 + i, withRate(0.5))) n++;
+      expect(n).toBeGreaterThan(N * 0.25);
+      expect(n).toBeLessThan(N * 0.75);
+    });
+
+    it("a hull-shattered rock stays excluded even at rate 1", () => {
+      for (let i = 0; i < 20; i++) {
+        const base = quiet();
+        seedRng(Math.imul(15_000 + i, 2654435761) >>> 0);
+        const rock: Asteroid = {
+          id: nextId++,
+          kind: "large",
+          x: base.player.x,
+          y: base.player.y,
+          vx: 0,
+          vy: 0,
+          radius: ASTEROID_STATS.large.radius,
+          hp: ASTEROID_STATS.large.hp,
+          rotation: 0,
+          spin: 0,
+          hitFlashTimer: 0,
+          hitEnemyIds: [],
+        };
+        const s = tick({ ...base, asteroids: [rock] }, 16, ASIDE, withRate(1));
+        expect(s.powerUps.some((p) => p.type === "salvage")).toBe(false);
+      }
+    });
+
+    it("the rng draw is unconditional: the stream after a break is the same at any rate", () => {
+      const next = (tuning: Tuning) => {
+        shotAt("large", 16_000, tuning);
+        return rng();
+      };
+      expect(next(withRate(0))).toBe(next(withRate(1)));
+    });
+
+    it("a small rock and a hull-shattered large rock each consume exactly one rng draw", () => {
+      const broken = (kind: "large" | "small", shattered: boolean): Asteroid => ({
+        id: nextId++,
+        kind,
+        x: 100,
+        y: 100,
+        vx: 0,
+        vy: 0,
+        radius: ASTEROID_STATS[kind].radius,
+        hp: 0,
+        rotation: 0,
+        spin: 0,
+        hitFlashTimer: 0,
+        hitEnemyIds: [],
+        ...(shattered ? { shattered: true } : {}),
+      });
+      for (const rock of [broken("small", false), broken("large", true)]) {
+        seedRng(777);
+        rng();
+        const afterOneDraw = rng();
+        seedRng(777);
+        const drops: PowerUp[] = [];
+        settleRocks([rock], [], drops, CANVAS_H, 1);
+        expect(drops).toHaveLength(0);
+        expect(rng()).toBe(afterOneDraw);
+      }
+    });
   });
 
   it("salvage raises the gun level up to 3 for no points; plating stacks up to 2", () => {

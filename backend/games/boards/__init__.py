@@ -19,8 +19,9 @@ Rules every board follows
   player's current one, looked up through ``players.names`` (the one place
   #1047's accounts will change), so a rename shows on every entry at once.
   ``metadata.player_name`` plays no part in ranking.
-- **Excluded**: abandoned rows (``not_abandoned()``), rows whose outcome is
-  not in ``qualifying_outcomes`` (when the board sets it), and every sentinel
+- **Excluded**: abandoned rows (``not_abandoned()``), dev-affected rows
+  (``not_dev_affected()``: a run a dev-panel action touched, #3510), rows whose
+  outcome is not in ``qualifying_outcomes`` (when the board sets it), and every sentinel
   ``*-anon`` session. The legacy ``POST /<game>/score`` routes that wrote
   those rows are gone (#2644) and migrations 0026/0029 deleted the rows
   (#2622), but a deploy runs 0029 while the old instance still serves the

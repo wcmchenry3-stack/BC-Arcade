@@ -19,8 +19,11 @@
   "score.moves": "Moves: {{moves}}",
   "error.supermoveRejected": "Not enough free spaces to move this stack",
   "slot.free": "free",
-  "a11y.foundationComplete": "Foundation complete",
   "settings.largeCards": "Large cards",
   "a11y.scrollBoardLeft": "Scroll board left",
-  "a11y.scrollBoardRight": "Scroll board right"
+  "a11y.scrollBoardRight": "Scroll board right",
+  "stat.moves": "Moves",
+  "stat.time": "Time",
+  "stat.timeA11y": "Time: {{time}}",
+  "pile.canMoveHere": "Can move here"
 }

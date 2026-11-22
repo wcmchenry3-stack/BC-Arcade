@@ -4,16 +4,20 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { formatNumber } from "../../api/statsDisplay";
 import { typography } from "../../theme/typography";
+import { accentAsText } from "./tableAccentText";
 
 interface BettingCircleProps {
   bet: number;
   accentColor?: string;
+  /** Diameter in px (default 148); the table sizes it to the felt. */
+  size?: number;
 }
 
-export default function BettingCircle({ bet, accentColor }: BettingCircleProps) {
+export default function BettingCircle({ bet, accentColor, size = 148 }: BettingCircleProps) {
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
   const resolvedAccent = accentColor ?? colors.accent;
+  const amountSize = Math.max(12, Math.min(40, Math.round(size * 0.27)));
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -44,6 +48,9 @@ export default function BettingCircle({ bet, accentColor }: BettingCircleProps) 
       style={[
         styles.circle,
         {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
           borderColor: resolvedAccent,
           transform: [{ scale: pulseAnim }],
         },
@@ -53,20 +60,27 @@ export default function BettingCircle({ bet, accentColor }: BettingCircleProps) 
         style={[
           styles.betAmount,
           {
-            color: bet === 0 ? colors.textMuted : resolvedAccent,
+            color: bet === 0 ? colors.textMuted : accentAsText(colors, resolvedAccent),
             fontFamily: typography.heading,
           },
+          // A small spot (a short landscape felt) scales its amount down to fit.
+          size < 148 && { fontSize: amountSize, lineHeight: Math.round(amountSize * 1.2) },
         ]}
         accessibilityLabel={t("bet.accessibilityLabel", { amount: formatNumber(t, bet) })}
       >
         {bet === 0 ? "0" : formatNumber(t, bet)}
       </Text>
-      <Text style={[styles.hint, { color: colors.textMuted, fontFamily: typography.label }]}>
-        {bet === 0 ? t("betting.tapToAdd") : t("bet.label")}
-      </Text>
+      {size >= HINT_MIN_SIZE && (
+        <Text style={[styles.hint, { color: colors.textMuted, fontFamily: typography.label }]}>
+          {bet === 0 ? t("betting.tapToAdd") : t("bet.label")}
+        </Text>
+      )}
     </Animated.View>
   );
 }
+
+/** Below this diameter the spot shows the amount only. */
+const HINT_MIN_SIZE = 110;
 
 const styles = StyleSheet.create({
   circle: {

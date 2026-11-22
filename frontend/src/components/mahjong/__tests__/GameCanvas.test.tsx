@@ -34,6 +34,12 @@ jest.mock("expo-asset", () => ({
   },
 }));
 
+// Tile faces: none by default; the #3804 tests below set one loadable URI.
+let mockFaceUris: (string | null)[] = [];
+jest.mock("../tileAssetLoader", () => ({
+  loadTileAssets: () => Promise.resolve(mockFaceUris),
+}));
+
 // Use the web variant (no Skia). The canvas ref will be null in jsdom, which
 // the component handles gracefully via the `if (!ctx) return` guard.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -135,5 +141,55 @@ describe("GameCanvas (web)", () => {
     expect(str).not.toContain("overlay.youWon");
     expect(str).not.toContain("overlay.noMoves");
     expect(str).not.toContain("overlay.deadlocked");
+  });
+
+  describe("data-faces-loaded signal (#3804)", () => {
+    const realImage = window.Image;
+    const realFlag = process.env.EXPO_PUBLIC_TEST_HOOKS;
+
+    beforeEach(() => {
+      mockFaceUris = ["face://0"];
+      class FakeImage {
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        crossOrigin = "";
+        set src(_v: string) {
+          Promise.resolve().then(() => this.onload?.());
+        }
+      }
+      (window as unknown as { Image: unknown }).Image = FakeImage;
+    });
+    afterEach(() => {
+      mockFaceUris = [];
+      window.Image = realImage;
+      if (realFlag === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+      else process.env.EXPO_PUBLIC_TEST_HOOKS = realFlag;
+    });
+
+    async function render() {
+      let tree: ReturnType<typeof create>;
+      await act(async () => {
+        tree = create(
+          <GameCanvas
+            state={makeState()}
+            camera={testCamera}
+            onTilePress={noop}
+            onShufflePress={noop}
+          />
+        );
+      });
+      await act(async () => {});
+      return JSON.stringify(tree!.toJSON());
+    }
+
+    it("is absent when test hooks are off, even after the faces load", async () => {
+      delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+      expect(await render()).not.toContain("data-faces-loaded");
+    });
+
+    it("appears once the faces load when test hooks are on", async () => {
+      process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+      expect(await render()).toContain('"data-faces-loaded":"true"');
+    });
   });
 });

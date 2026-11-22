@@ -62,6 +62,7 @@ test.describe("Mahjong — layout select screen", () => {
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
       localStorage.removeItem("mahjong_stats_v1");
+      localStorage.removeItem("personal_best_v1:mahjong");
       localStorage.removeItem("@mahjong/progress");
     });
   });

@@ -67,12 +67,28 @@ afterEach(() => {
 describe("sounds and haptics", () => {
   it("hands the canvas the sound for its own events", async () => {
     await renderRun();
-    await raise("onLaserFire");
     await raise("onPowerUpCollect", "shield");
     await raise("onExplosion");
-    expect(audio.playLaser).toHaveBeenCalledTimes(1);
     expect(audio.playPowerUpCollect).toHaveBeenCalledWith("shield");
     expect(audio.playExplosion).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands the canvas the Smart Bomb blast and the loop switch (#3526)", async () => {
+    await renderRun();
+    await raise("onBombBlast");
+    await raise("onLoopChange", "shield", true);
+    expect(audio.playBombBlast).toHaveBeenCalledTimes(1);
+    expect(audio.setLoop).toHaveBeenCalledWith("shield", true);
+  });
+
+  it("hands the canvas the Shield / Buddy cue sounds, and sounds a Buddy shot down (#3560)", async () => {
+    await renderRun();
+    await raise("onSoundCue", "shieldOn");
+    expect(audio.playCue).toHaveBeenCalledWith("shieldOn");
+    await raise("onBuddyLost");
+    expect(audio.playBuddyDown).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith("Buddy ship destroyed.");
+    expect(audio.playExplosion).not.toHaveBeenCalled();
   });
 
   it("a hit on the player sounds and vibrates", async () => {
@@ -104,10 +120,10 @@ describe("spoken cues", () => {
     expect(announce).toHaveBeenCalledWith("Boss wave. The Carrier and its Guardians only.");
   });
 
-  it("a rout sounds and announces how many grunts are fleeing", async () => {
+  it("a rout announces how many grunts are fleeing (its sound is a loop, #3526)", async () => {
     await renderRun();
     await raise("onRout", 4);
-    expect(audio.playRout).toHaveBeenCalledTimes(1);
+    expect(audio.playRout).not.toHaveBeenCalled();
     expect(announce).toHaveBeenCalledWith("Grunts fleeing: 4. Catch them before they escape.");
   });
 

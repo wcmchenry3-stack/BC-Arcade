@@ -41,5 +41,7 @@ test("tap-to-select: two taps move a tableau card to a free cell", async ({
   await page.getByLabel("5 of Hearts").click();
   await page.getByLabel("Empty free cell 1").click();
 
-  await expect(page.getByText("Moves: 1")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({
+    timeout: 3_000,
+  });
 });

@@ -107,6 +107,42 @@
     "doNotTranslate": [],
     "notes": "{{label}} is the fruit set name (e.g. Fruits, Tropical)."
   },
+  "theme.switchConfirm.title": {
+    "component": "CascadeScreen",
+    "description": "Title of the confirm shown when the player switches piece set (Fruits/Cosmos) mid-game.",
+    "tone": "brief question",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "theme.switchConfirm.body": {
+    "component": "CascadeScreen",
+    "description": "Body of that confirm: switching abandons the current game.",
+    "tone": "clear, reassuring",
+    "characterLimit": 130,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "theme.switchConfirm.confirm": {
+    "component": "CascadeScreen",
+    "description": "Confirm button: switch set and start a new game.",
+    "tone": "action label",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "theme.switchConfirm.cancel": {
+    "component": "CascadeScreen",
+    "description": "Cancel button: keep the current game and set.",
+    "tone": "action label",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "event.merged": {
     "component": "CascadeScreen",
     "description": "Live region announcement when two fruits merge.",
@@ -133,5 +169,284 @@
     "placeholders": [],
     "doNotTranslate": ["Cascade"],
     "notes": "Do not translate the game name."
+  },
+  "a11y.boardHint": {
+    "component": "CascadeBoard (accessibility, #3928)",
+    "description": "Screen-reader hint on the Cascade board: what double-tapping does, and that sighted players press and drag to aim.",
+    "tone": "functional",
+    "characterLimit": 120,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A double-tap (the screen reader's activate) drops the next piece in the middle of the bin."
+  },
+  "a11y.dropPiece": {
+    "component": "CascadeBoard (accessibility action, #3928)",
+    "description": "Name of the screen-reader action on the Cascade board that drops the next piece in the middle.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A short verb phrase."
+  },
+  "pieces.fruits.cherry": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.lychee": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.lime": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.lemon": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.plum": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.orange": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.apple": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.dragonfruit": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.pineapple": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.watermelon": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.pumpkin": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.pomegranate": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.cosmos.pluto": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.moon": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.mercury": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.mars": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.venus": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.earth": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.neptune": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.uranus": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.saturn": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.jupiter": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.sun": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.milkyWay": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "web.loading": {
+    "component": "CascadeRoute (web)",
+    "description": "Caption under the spinner while the web version of Cascade downloads its graphics engine (a few seconds on first open).",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": ["Cascade"],
+    "notes": "Do not translate the game name. Web only."
+  },
+  "web.loadError": {
+    "component": "CascadeRoute (web)",
+    "description": "Error shown when the web version of Cascade could not download or start its graphics engine; a Try again button follows.",
+    "tone": "functional",
+    "characterLimit": 120,
+    "placeholders": [],
+    "doNotTranslate": ["Cascade"],
+    "notes": "Do not translate the game name. Web only. Plain, non-technical wording."
+  },
+  "web.retry": {
+    "component": "CascadeRoute (web)",
+    "description": "Button under the load error that tries to load Cascade's graphics again.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Web only."
+  },
+  "result.mergeScore": {
+    "component": "CascadeResultModal",
+    "description": "Stat label on Cascade's win card: the points scored by merging pieces, before the time bonus is added. The card's big number is this plus the time bonus.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown in a row of four short stat labels under a number; keep it short (it may wrap to two lines)."
+  },
+  "result.timeBonus": {
+    "component": "CascadeResultModal",
+    "description": "Stat label on Cascade's win card: the extra points for winning quickly (the faster the win, the bigger the bonus).",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown in a row of four short stat labels under a number; keep it short (it may wrap to two lines)."
   }
 }

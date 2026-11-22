@@ -19,6 +19,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { GameRecorder } from "../../game/_shared/gameRecorder";
 import { getAnyFreePair } from "../../game/mahjong/engine";
 import type { MahjongState } from "../../game/mahjong/types";
+import { WIN_CASCADE_MS } from "../../game/mahjong/motion";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
 // ---------------------------------------------------------------------------
@@ -176,6 +177,13 @@ async function tap(api: Api, ...ids: number[]) {
       await fireEvent.press(api.getByLabelText(`mock-tile-${id}`));
     });
   }
+}
+
+/** The result card follows the win cascade (#3613): let it play out. */
+async function winCascade() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, WIN_CASCADE_MS + 50));
+  });
 }
 
 async function press(api: Api, testID: string) {
@@ -345,6 +353,7 @@ describe("MahjongScreen — replay recording (#3285)", () => {
     await tap(api, 0, 1); // wins
     expect(entries()).toEqual([[0, 1]]);
 
+    await winCascade();
     await act(async () => {
       await fireEvent.press(await api.findByRole("button", { name: "Play Again" }));
     });
@@ -439,6 +448,7 @@ describe("MahjongScreen — replay recording (#3285)", () => {
     mockStartGame.mockReturnValueOnce("game-old").mockReturnValueOnce("game-new");
     const api = await mountWith(lastPair());
     await tap(api, 0, 1); // wins, unrecorded
+    await winCascade();
     await act(async () => {
       await fireEvent.press(await api.findByRole("button", { name: "Play Again" }));
     });

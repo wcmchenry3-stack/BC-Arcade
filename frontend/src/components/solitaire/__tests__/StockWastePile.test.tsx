@@ -30,6 +30,31 @@ describe("StockWastePile", () => {
     expect(getByText("7")).toBeTruthy(); // waste top rank
   });
 
+  // Playwright axe (role-img-alt): the stock's decorative card back is an unlabelled image,
+  // so it must be hidden from assistive tech on every platform, web included.
+  it("hides the stock's decorative card back from screen readers", async () => {
+    const stock = [card(1), card(2), card(3)];
+    const { toJSON } = await render(
+      withTheme(<StockWastePile stock={stock} waste={[]} drawMode={1} />)
+    );
+    type Node = { props?: Record<string, unknown>; children?: unknown[] | null };
+    const exposed: Node[] = [];
+    const walk = (n: unknown, hidden: boolean) => {
+      if (!n || typeof n !== "object") return;
+      if (Array.isArray(n)) return n.forEach((c) => walk(c, hidden));
+      const node = n as Node;
+      const props = node.props ?? {};
+      const nowHidden =
+        hidden || (props["aria-hidden"] === true && props.accessibilityElementsHidden === true);
+      if (props.accessibilityRole === "image" && !props.accessibilityLabel && !nowHidden) {
+        exposed.push(node);
+      }
+      (node.children ?? []).forEach((c) => walk(c, nowHidden));
+    };
+    walk(toJSON(), false);
+    expect(exposed).toHaveLength(0);
+  });
+
   it("shows the recycle symbol when stock is empty and labels the action accordingly", async () => {
     const { getByText, getByLabelText } = await render(
       withTheme(<StockWastePile stock={[]} waste={[card(1)]} drawMode={3} />)

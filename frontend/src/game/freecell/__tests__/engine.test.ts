@@ -603,7 +603,7 @@ describe("game events", () => {
     expect(next.events).toEqual<readonly GameEvent[]>([{ type: "cardPlace" }]);
   });
 
-  it("emits cardPlace + foundationComplete when a suit reaches 13 cards (tableau → foundation)", () => {
+  it("emits only cardPlace when a suit reaches 13 cards (tableau → foundation)", () => {
     const foundations: Foundations = {
       spades: Array.from({ length: 12 }, (_, i) => c("spades", (i + 1) as Rank)),
       hearts: [],
@@ -616,13 +616,10 @@ describe("game events", () => {
       tableau: [[c("spades", 13)], [c("hearts", 1)], [], [], [], [], [], []],
     });
     const next = applyMove(state, { type: "tableau-to-foundation", fromCol: 0 });
-    expect(next.events).toEqual<readonly GameEvent[]>([
-      { type: "cardPlace" },
-      { type: "foundationComplete", suit: "spades" },
-    ]);
+    expect(next.events).toEqual<readonly GameEvent[]>([{ type: "cardPlace" }]);
   });
 
-  it("emits cardPlace + foundationComplete when a suit reaches 13 cards (free cell → foundation)", () => {
+  it("emits only cardPlace when a suit reaches 13 cards (free cell → foundation)", () => {
     const foundations: Foundations = {
       clubs: Array.from({ length: 12 }, (_, i) => c("clubs", (i + 1) as Rank)),
       spades: [],
@@ -636,10 +633,7 @@ describe("game events", () => {
       tableau: [[c("spades", 1)], [], [], [], [], [], [], []],
     });
     const next = applyMove(state, { type: "freecell-to-foundation", fromCell: 0 });
-    expect(next.events).toEqual<readonly GameEvent[]>([
-      { type: "cardPlace" },
-      { type: "foundationComplete", suit: "clubs" },
-    ]);
+    expect(next.events).toEqual<readonly GameEvent[]>([{ type: "cardPlace" }]);
   });
 
   it("emits noMovesAvailable when no legal move exists after a move", () => {
@@ -681,11 +675,7 @@ describe("game events", () => {
       tableau: [[c("clubs", 13)], [], [], [], [], [], [], []],
     });
     const next = applyMove(state, { type: "tableau-to-foundation", fromCol: 0 });
-    expect(next.events).toEqual<readonly GameEvent[]>([
-      { type: "cardPlace" },
-      { type: "foundationComplete", suit: "clubs" },
-      { type: "gameWin" },
-    ]);
+    expect(next.events).toEqual<readonly GameEvent[]>([{ type: "cardPlace" }, { type: "gameWin" }]);
     expect(next.isComplete).toBe(true);
   });
 });

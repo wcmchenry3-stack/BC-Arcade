@@ -1,32 +1,67 @@
 name: Mobile Smoke — Android
 
-# NOT triggered on pull_request (same as mobile-smoke-ios.yml): the Maestro
-# job has failed or been cancelled on every run where it actually executed —
-# the only "green" runs in this workflow's history are ones where
-# detect-maestro-scope resolved to nothing and the job was skipped. Known
-# blockers are a cold-launch ANR on the CI emulator plus _shared/launch.yaml's
-# unbounded "Wait"-dismiss loop burning the whole job timeout. Attaching a
-# permanently-red check to every PR into dev collides with the
-# all-checks-green merge rule. Run it on demand via workflow_dispatch (always
-# the full suite — see detect-maestro-scope.yml). Re-add `pull_request`
-# (branches: [dev, main]) once #2400 is fixed.
-# Not on push to main either (2026-09-23): prod auto-deploys `main` with Render's
+# Triggers (#2400):
+#  - pull_request into dev/main, ready-for-review PRs only. Draft PRs skip both
+#    jobs (draft guard below); marking a PR ready (`ready_for_review`) runs it.
+#    `converted_to_draft` starts a skipped run whose concurrency group cancels
+#    any run still in progress for that PR.
+#    detect-maestro-scope.yml picks the flow directories: the full suite for
+#    PRs into main or any app-wide (`shared_app`) or Maestro (`maestro_shared`:
+#    e2e/maestro, Maestro's own workflows/actions, the path table, the English
+#    locale files flows assert on) change, only the touched games (plus
+#    `home`) otherwise, and nothing for PRs that touch nothing
+#    Maestro-relevant (the job is then skipped). Workflow edits that aren't
+#    Maestro's own don't run it (#3546). This is the per-PR Maestro leg; the
+#    iOS leg runs on PRs into dev only for native/iOS changes (#3547).
+#  - workflow_dispatch: manual, the full suite, or with `flows: cascade-demo`
+#    or `flows: mahjong-demo` only that game's demo flows (#3705, #3801;
+#    docs/MAESTRO.md, "Cascade demo flows", "Mahjong demo flows"). Every
+#    other run leaves the `demo`-tagged flows out.
+#  - schedule: weekly full suite on the default branch (`dev`). It gives
+#    ongoing signal and is the run that writes the Gradle/Metro caches PR runs
+#    restore (runs off `dev` are read-only, see setup-gradle below). A scheduled run
+#    is not attached to any PR or to a `main` commit, so it never gates a PR
+#    merge or a Render deploy.
+# Deliberately NOT on push to main: prod auto-deploys `main` with Render's
 # "After CI Checks Pass" trigger, which waits for EVERY check on the commit, so a
-# permanently-red smoke check here blocks every prod deploy (it blocked #2522).
-# Re-add the push trigger together with pull_request once the leg is fixed.
+# red or slow smoke check here would block prod deploys (it blocked #2522).
 on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+    inputs:
+      flows:
+        description: "full = every flow directory; cascade-demo / mahjong-demo = only that game's demo flows (records video, #3705, #3801)"
+        type: choice
+        options: [full, cascade-demo, mahjong-demo]
+        default: full
+  schedule:
+    # Mondays 09:23 UTC (off-peak; off the hour to dodge scheduler load).
+    - cron: "23 9 * * 1"
 
 permissions:
   contents: read
+  # dorny/paths-filter (in detect-maestro-scope.yml) lists a PR's changed
+  # files through the API. A called workflow gets at most the caller's
+  # permissions, so the caller must grant this too.
+  pull-requests: read
 
 concurrency:
-  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  # A dispatch's group includes its `flows` input (#3705), so a demo dispatch
+  # neither queues behind nor cancels a full run on the same commit.
+  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   detect-maestro-scope:
+    # Draft guard: draft PRs don't start the 60-minute emulator job. The
+    # maestro job below needs this one, so it is skipped too.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: ./.github/workflows/detect-maestro-scope.yml
+    with:
+      # Empty on every event but workflow_dispatch (#3705).
+      flows: ${{ inputs.flows }}
 
   maestro-android:
     name: Maestro Android smoke
@@ -34,7 +69,40 @@ jobs:
     if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      # The opted-in media names and the media artifact's URL, for comment-media (#3805).
+      media-names: ${{ steps.media-names.outputs.names }}
+      media-url: ${{ steps.upload-media.outputs.artifact-url }}
+    env:
+      # One place for the emulator image: the pre-download step and the
+      # emulator step both read these.
+      EMULATOR_API_LEVEL: "34"
+      EMULATOR_TARGET: google_apis
+      EMULATOR_ARCH: x86_64
+      # Demo flows (tag `demo`, #3705) run only in a `flows: cascade-demo`
+      # or `flows: mahjong-demo` dispatch; every other run leaves them out.
+      MAESTRO_TAG_ARG: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && '--include-tags=demo' || '--exclude-tags=demo' }}
+      # Scope outputs go to the scripts through env, never `${{ }}` inside a
+      # run:/script: body, so no output text is ever parsed as shell.
+      MAESTRO_PROJECTS: ${{ needs.detect-maestro-scope.outputs.projects }}
+      MAESTRO_LABEL: ${{ needs.detect-maestro-scope.outputs.label }}
     steps:
+      # PR #3543's first run was killed mid native build ("The runner has
+      # received a shutdown signal" during buildCMakeDebug, run 41580554078):
+      # on hosted runners that is disk or memory exhaustion. Free the large
+      # preinstalled toolchains this job never uses. Plain `rm -rf` of
+      # well-known directories, no third-party action. Deliberately NOT
+      # touched: $ANDROID_HOME (/usr/local/lib/android: SDK, NDK, emulator),
+      # Java (setup-java), Node and /usr/local/lib/node_modules.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost \
+            /usr/share/swift /usr/local/share/powershell /opt/az /usr/local/julia* \
+            "$AGENT_TOOLSDIRECTORY/CodeQL"
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-java@v6
@@ -48,16 +116,15 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
         with:
-          # This repo's default branch is `dev`, but this workflow never
-          # runs a job directly on `dev` (only `pull_request` against
-          # dev/main, and `push` to `main`) — setup-gradle's default of
-          # "write only from the default branch" would mean the cache is
-          # never populated. All PRs are same-repo (branch off `dev`, never
-          # forked — see CLAUDE.md's git workflow), and GitHub's cache
-          # service already sandboxes fork-PR runs from writing to the base
-          # repo's cache regardless of this setting, so read-write on every
-          # branch is safe here.
-          cache-read-only: false
+          # Write the Gradle cache only from runs on `dev`, the default branch
+          # (the weekly `schedule`, or a workflow_dispatch on dev); restore it
+          # everywhere else (pull_request runs, whose ref is `<n>/merge`, and
+          # dispatches on feature branches). GitHub scopes caches by ref: an
+          # entry saved on a PR or feature branch is visible only to that ref,
+          # while one saved on the default branch is visible to every PR.
+          # Saving GB-scale per-ref entries would push the shared ones out of
+          # the repo's cache quota.
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch }}
 
       # metro-cache: Metro's default FileStore cache lives at $TMPDIR/metro-cache;
       # shared with android-bundle-check and android-release-smoke (ci.yml), which
@@ -65,6 +132,8 @@ jobs:
       - uses: ./.github/actions/setup-frontend
         with:
           metro-cache: "true"
+          # Restore-only off the default branch, same reason as the Gradle cache above.
+          cache-read-only: ${{ github.ref_name != github.event.repository.default_branch }}
 
       - name: Enable KVM
         run: |
@@ -98,18 +167,60 @@ jobs:
         # neither touches gradle.properties/build.gradle's actual defaults,
         # so local `npx expo run:android` and the Play Store release build
         # are unaffected.
-        run: cd android && ./gradlew assembleDebug --no-daemon -PreactNativeArchitectures=x86_64 -Pandroid.bundleDebugForCI=true
+        #
+        # --max-workers=2: gradle.properties sets org.gradle.parallel=true, and
+        # each CMake task runs ninja across every core, so several native
+        # modules compiling at once (reanimated, expo-modules-core,
+        # react-native-audio-api...) can exhaust the runner's 16 GB; the
+        # #3543 run died there. The Gradle JVM keeps gradle.properties'
+        # -Xmx4g; the Kotlin daemon is capped at 2g. Gradle exits
+        # (--no-daemon) before the emulator boots, so it gets the memory back.
+        run: cd android && ./gradlew assembleDebug --no-daemon --max-workers=2 -Pkotlin.daemon.jvmargs=-Xmx2g -PreactNativeArchitectures=x86_64 -Pandroid.bundleDebugForCI=true
         working-directory: frontend
         env:
           EXPO_PUBLIC_API_URL: https://dev-games-api.buffingchi.com
           EXPO_PUBLIC_TEST_HOOKS: "1"
 
+      - name: Disk and memory after build
+        if: always()
+        run: |
+          df -h
+          free -m
+
+      # The emulator step below downloads its system image itself, once, and a
+      # corrupt download ("Error reading Zip content from a
+      # SeekableByteChannel", #3668 and #3674) still exits 0, so the emulator
+      # then fails to boot and the job waits on a manual re-run (#3705).
+      # Install it here first, check the image is really on disk, and retry a
+      # bad download from scratch. The emulator step's own install then finds
+      # it installed and skips the download. A retry rather than a cache: the
+      # image is about 1.5 GB of the repo's 10 GB cache quota.
+      - name: Download the emulator system image (retried)
+        run: |
+          PKG="system-images;android-${EMULATOR_API_LEVEL};${EMULATOR_TARGET};${EMULATOR_ARCH}"
+          IMG_DIR="$ANDROID_HOME/system-images/android-${EMULATOR_API_LEVEL}/${EMULATOR_TARGET}/${EMULATOR_ARCH}"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          for attempt in 1 2 3; do
+            yes | "$SDKMANAGER" --install "$PKG" --channel=0 > sdkmanager.log 2>&1 || true
+            tail -n 5 sdkmanager.log
+            if ! grep -q "An error occurred while preparing" sdkmanager.log \
+               && [ -f "$IMG_DIR/package.xml" ] && [ -f "$IMG_DIR/system.img" ]; then
+              echo "System image ready: $IMG_DIR (attempt $attempt)"
+              exit 0
+            fi
+            echo "::warning::System image download attempt $attempt failed or is incomplete; removing it"
+            rm -rf "$IMG_DIR" "$ANDROID_HOME/.temp"
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+          echo "::error::Could not download $PKG after 3 attempts (see sdkmanager.log above)"
+          exit 1
+
       - name: Run Maestro flows on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
+          api-level: ${{ env.EMULATOR_API_LEVEL }}
+          target: ${{ env.EMULATOR_TARGET }}
+          arch: ${{ env.EMULATOR_ARCH }}
           profile: pixel_6
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
@@ -124,6 +235,11 @@ jobs:
           # covering every directory's files at once, so one directory's
           # failure can't abort the rest of the suite (`|| FAIL=1` below;
           # `exit $FAIL` afterward still fails the step if anything did).
+          # `--format junit --output maestro-results/<dir>/report.xml` writes the
+          # report e2e/maestro/summarize.py reads; without `--format junit`
+          # Maestro 1.39.13 writes no report and the job summary was empty.
+          # `--test-suite-name "$d"` names each report's suite after its
+          # directory (the default is "Test Suite" for all of them).
           #
           # NOTE: this per-directory split does NOT fix — and was never the
           # cause of — the "Unrecognized field \"timeout\"" parse error on
@@ -133,13 +249,64 @@ jobs:
           # many files are passed to one invocation — confirmed against
           # YamlElementSelector.kt at the pinned v1.39.13 tag. The actual
           # fix was rewriting flows to use `extendedWaitUntil` instead.
+          #
+          # `--debug-output maestro-debug/<dir> --flatten-debug-output` puts
+          # each directory's maestro.log and commands-(<flow>).json in a known
+          # place for the "Maestro failure details" step below.
+          # hide_error_dialogs: the emulator's own Pixel Launcher sometimes ANRs
+          # on a cold boot. Its "isn't responding" dialog then covers every flow
+          # (run 41595661151: all 21 flows failed at "BC Arcade", and the
+          # failure hierarchy showed the dialog). Suppressing system error
+          # dialogs removes that flake at its source. It only hides the dialog
+          # and changes no app behaviour; launch.yaml's "Wait" tap stays as a
+          # fallback. Each script line runs as its own `sh -c`.
+          # logcat is cleared before each game's flows and, when they fail, the crash
+          # buffer plus process-death / JS-error lines are printed for that game only.
+          # hide_error_dialogs (above) also hides crash dialogs, so a crashed app
+          # otherwise just vanishes from the hierarchy (#3532, freecell/drag-large).
+          # App output can't be read as workflow commands because `-v time` puts a
+          # timestamp first on every line (the runner trims leading whitespace
+          # before looking for `::`, so the sed indent is cosmetic only) and the
+          # main/system/events buffers are grep-filtered (a full ANR report:
+          # `ANR in`, every E/ActivityManager line, am_anr from events); Maestro's own I/Maestro spam
+          # is dropped. Then the ANR thread dumps (#3556), so a hang names the
+          # thread and call it blocked on: the newest /data/anr/anr_* where the
+          # shell user can read it (not on every image), and DropBox's
+          # data_app_anr entries since this game's flows started (`T`, the
+          # device clock read just before `maestro test`; `dumpsys dropbox
+          # --print YYYY-MM-DD HH:MM:SS tag` lists entries from that time on,
+          # date and time as two arguments), so an older game's ANR isn't
+          # shown again. Readable without root; each capped at 400 lines. Kept on one line: the emulator
+          # action runs each script line in its own sh -c.
+          # $MAESTRO_TAG_ARG (job env) is --exclude-tags=demo, or
+          # --include-tags=demo in a `flows: cascade-demo` or `flows: mahjong-demo`
+          # dispatch (#3705, #3801).
           script: |
+            adb shell settings put global hide_error_dialogs 1
+            adb shell settings put secure anr_show_background 0
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in ${{ needs.detect-maestro-scope.outputs.projects }}; do maestro test --output "maestro-results/$d" "e2e/maestro/flows/$d/" || FAIL=1; done; exit $FAIL
+            FAIL=0; for d in $MAESTRO_PROJECTS; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output $MAESTRO_TAG_ARG "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; exit $FAIL
 
       - name: Write job summary
         if: always()
-        run: python3 e2e/maestro/summarize.py "Android" "${{ needs.detect-maestro-scope.outputs.label }}"
+        run: python3 e2e/maestro/summarize.py "Android" "$MAESTRO_LABEL" "$MAESTRO_PROJECTS"
+
+      # Artifacts aren't always reachable (e.g. from sandboxed agents), so print
+      # the failed command, its error, the drag-relevant element bounds from the
+      # failure-time hierarchy and the maestro.log tail into the job log
+      # (capped at 300 lines; see the script's docstring).
+      - name: Maestro failure details
+        if: failure()
+        run: python3 e2e/maestro/diagnose.py maestro-debug
+
+      # A recording that never stops once left a 1.35 GB video in the artifact
+      # (the 2026-11-12 demo dispatch). Any .mp4/.png over MAX_MEDIA_MB is
+      # deleted, with a warning annotation, before either upload (#3719).
+      - name: Cap media size
+        if: always()
+        env:
+          MAX_MEDIA_MB: "100"
+        run: python3 e2e/maestro/cap_media.py *.mp4 *.png maestro-debug "$HOME/.maestro/tests"
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7
@@ -148,17 +315,88 @@ jobs:
           name: maestro-android-results
           path: |
             maestro-results/
+            maestro-debug/
             ~/.maestro/tests/
           if-no-files-found: warn
           retention-days: 7
+
+      # Every flow's named `takeScreenshot` and `startRecording` output, on
+      # success too (#3705), so a PR can show its change running on a device.
+      # Maestro 1.x writes both to the working directory (the workspace root);
+      # ~/.maestro/tests/ is listed too in case a CLI version writes them to
+      # its test output directory instead. Cost: artifact storage only,
+      # bounded by the 14-day retention.
+      - name: Upload screenshots and recordings
+        id: upload-media
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: maestro-android-media
+          path: |
+            *.png
+            *.mp4
+            ~/.maestro/tests/**/*.png
+            ~/.maestro/tests/**/*.mp4
+          # A demo dispatch exists to produce media, so none is an error there;
+          # normal runs are unaffected.
+          if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
+          retention-days: 14
+
+      # Names of the media the PR comment lists (opt-in prefixes live in media_comment.py).
+      - name: List opted-in media names
+        id: media-names
+        if: always()
+        run: python3 e2e/maestro/media_comment.py names *.png *.mp4 "$HOME/.maestro/tests"
 
       - name: Upload failure screenshots
         uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: maestro-android-screenshots
+          # `takeScreenshot` writes <name>.png to the working directory (the
+          # workspace root), so `*.png` is where the flows' screenshots land.
           path: |
+            *.png
             screenshots/
             maestro-results/*/screenshots/
+            maestro-debug/*/*.png
           if-no-files-found: ignore
           retention-days: 7
+
+  # Lists the run's opted-in media (e2e/maestro/media_comment.py: OPT_IN_PREFIXES) on the
+  # PR, or on the one open PR for a dispatched branch (#3805). A separate job so the
+  # emulator job keeps `contents: read` only; the job's own `permissions` replace the
+  # workflow's, so it names both. Skipped for fork PRs (read-only token) and when the run
+  # has no opted-in media; the script itself never fails the job.
+  comment-media:
+    name: Comment Maestro Android media
+    needs: maestro-android
+    if: |
+      !cancelled() && needs.maestro-android.outputs.media-names != '' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: e2e/maestro
+          persist-credentials: false
+
+      - name: Comment or update the media list
+        # Everything reaches the script through env, never `${{ }}` in the run body.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: android
+          MEDIA_NAMES: ${{ needs.maestro-android.outputs.media-names }}
+          ARTIFACT_URL: ${{ needs.maestro-android.outputs.media-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BRANCH: ${{ github.ref_name }}
+        run: python3 e2e/maestro/media_comment.py comment

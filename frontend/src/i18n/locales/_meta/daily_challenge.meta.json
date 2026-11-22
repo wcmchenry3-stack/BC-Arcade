@@ -125,6 +125,24 @@
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Despite the shared \"final_score_at_least\" kind name, Sort Puzzle's goal is worded as reaching a level, not a score; {{target}} is the level number."
   },
+  "goal.sort.new_levels_at_least_one": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: solve {{count}} level(s) the player has never solved before, today. Replaying an old level does not count. Singular form ({{count}} = 1).",
+    "tone": "functional",
+    "characterLimit": 48,
+    "placeholders": ["{{count}}", "{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Bottle Sort\". Chips wrap, but keep it compact. \"New\" means beyond the highest level already solved, not a newly added level. {{count}} is 1 to 3. Plural forms follow the i18next count rules for the language."
+  },
+  "goal.sort.new_levels_at_least_other": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: solve {{count}} levels the player has never solved before, today, e.g. \"Solve 3 new Bottle Sort levels\". Replaying an old level does not count. Plural form.",
+    "tone": "functional",
+    "characterLimit": 48,
+    "placeholders": ["{{count}}", "{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Bottle Sort\". Chips wrap, but keep it compact. \"New\" means beyond the highest level already solved, not a newly added level. {{count}} is 1 to 3. Plural forms follow the i18next count rules for the language."
+  },
   "goal.solitaire.moves_at_least_one": {
     "component": "DailyChallengeCard",
     "description": "A goal chip: make at least {{count}} moves in one game. Wins are not required. Singular form ({{count}} = 1).",
@@ -305,6 +323,105 @@
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Plural forms follow the i18next count rules for the language."
   },
+  "goal.blackjack.completed": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish one Blackjack run (reach its chip goal or run out of chips; leaving early does not count).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.blackjack.won": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: win one Blackjack run (reach the table's chip goal).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.blackjack.starting_chips_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish a Blackjack run at a table that starts the player with at least {{target}} chips (the 100 / 250 / 500 chip tables). \"+\" means \"or more\".",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{game}}", "{{target}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Keep {{target}} as the number."
+  },
+  "goal.cascade.completed": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish one game, win or lose (leaving early does not count).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.cascade.won": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: win one game (make the top piece).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.cascade.won_duration_ms_at_most": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: win a game within {{target}} minutes (a whole number).",
+    "tone": "functional",
+    "characterLimit": 50,
+    "placeholders": ["{{game}}", "{{target}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Keep {{target}} as the number."
+  },
+  "goal.hearts.completed": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish one game, win or lose (leaving early does not count).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.hearts.won": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: win one game (the lowest score).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.starswarm.completed": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: play one run until the game ends (leaving early does not count).",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact."
+  },
+  "goal.starswarm.wave_reached_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: reach at least wave number {{target}} in one run.",
+    "tone": "functional",
+    "characterLimit": 42,
+    "placeholders": ["{{game}}", "{{target}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Keep {{target}} as the number."
+  },
+  "goal.starswarm.final_score_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: reach at least the given score in one run, e.g. \"Score 2500+ in Star Swarm\".",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}", "{{target}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Keep {{target}} as the number."
+  },
   "goal.doneA11y": {
     "component": "DailyChallengeCard",
     "description": "Screen-reader label for a goal chip that is done. {{goal}} is the chip's visible text.",
@@ -322,6 +439,33 @@
     "placeholders": ["{{goal}}"],
     "doNotTranslate": [],
     "notes": null
+  },
+  "bonus.label": {
+    "component": "DailyChallengeCard",
+    "description": "Small uppercase label before the optional bonus goal chip, below the three core goals. The bonus is extra: it does not count toward the day or the streak.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown in capitals at 10px next to one chip. One short word, e.g. \"Bonus\"."
+  },
+  "bonus.doneA11y": {
+    "component": "DailyChallengeCard",
+    "description": "Screen-reader label for the optional bonus goal chip when it is done. {{goal}} is the chip's visible text.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": ["{{goal}}"],
+    "doNotTranslate": [],
+    "notes": "Say that it is a bonus and optional first, then the goal, then the state."
+  },
+  "bonus.todoA11y": {
+    "component": "DailyChallengeCard",
+    "description": "Screen-reader label for the optional bonus goal chip when it is not done yet. {{goal}} is the chip's visible text.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": ["{{goal}}"],
+    "doNotTranslate": [],
+    "notes": "Say that it is a bonus and optional first, then the goal, then the state."
   },
   "loading.a11y": {
     "component": "DailyChallengeCard",

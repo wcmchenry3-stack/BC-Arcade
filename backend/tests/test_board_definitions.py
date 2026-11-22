@@ -16,8 +16,10 @@ from pydantic import ValidationError
 
 from db.models import Game
 from games.board import DURATION_METRIC, FINAL_TIEBREAK, SCORE_METRIC, BoardDefinition
+from games.boards.editions import enforced_edition
 from games.boards.queries import _unrankable_reason
 from games.registry import get_module
+from settings import Settings
 
 _FRONTEND_SRC = Path(__file__).parents[2] / "frontend" / "src"
 _FRONTEND_GAME = _FRONTEND_SRC / "game"
@@ -61,6 +63,7 @@ def test_defaults() -> None:
     assert board.partition_max_values == ()
     assert board.qualifying_outcomes is None
     assert board.enabled is True
+    assert board.edition is None
 
 
 def test_min_value_must_be_non_negative_and_within_the_caps() -> None:
@@ -282,7 +285,7 @@ def test_sudoku_max_value_for(partition: dict, cap: int) -> None:
         ("hearts", SCORE_METRIC, "desc", None, (), 100, None, True),
         ("sudoku", SCORE_METRIC, "desc", None, ("difficulty", "variant"), 300, None, True),
         ("cascade", SCORE_METRIC, "desc", None, (), None, None, True),
-        ("sort", "level_reached", "desc", None, (), 23, None, True),
+        ("sort", "level_reached", "desc", ("total_moves", "asc"), (), 120, None, True),
         ("blackjack", "final_chips", "desc", None, (), None, None, False),
         ("daily_word", "guesses_used", "asc", None, (), None, ("win",), False),
         ("twenty48", SCORE_METRIC, "desc", None, (), None, None, True),
@@ -428,8 +431,8 @@ def test_mahjong_clear_time_floor_is_half_a_second_per_pair() -> None:
     assert MIN_CLEAR_MS == 72 * 500 == 36_000
     assert _board("mahjong").min_value == MIN_CLEAR_MS
     # The app's device best time uses the same floor (MAHJONG_MIN_CLEAR_MS).
-    engine = _ts_constants(_FRONTEND_GAME / "mahjong" / "engine.ts")
-    assert engine["MAHJONG_MIN_CLEAR_MS"] == MIN_CLEAR_MS
+    clear_time = _ts_constants(_FRONTEND_GAME / "mahjong" / "clearTime.ts")
+    assert clear_time["MAHJONG_MIN_CLEAR_MS"] == MIN_CLEAR_MS
 
 
 @pytest.mark.parametrize(
@@ -461,6 +464,108 @@ def test_which_mahjong_rows_rank(
         assert got is None
     else:
         assert got is not None and got.startswith(reason), got
+
+
+@pytest.mark.parametrize(
+    "edition",
+    [("not an identifier", 1), ("difficulty", 1), ("catalog_version", -1), ("v", 2**31)],
+    ids=["key-not-identifier", "key-is-a-partition", "negative", "above-int32"],
+)
+def test_rejects_invalid_edition(edition: tuple[str, int]) -> None:
+    with pytest.raises(ValidationError):
+        BoardDefinition(
+            metric=SCORE_METRIC,
+            direction="desc",
+            label_key="score",
+            partitions=("difficulty",),
+            edition=edition,
+        )
+
+
+def test_no_board_but_sort_has_an_edition() -> None:
+    for game in _GAMES:
+        assert (_board(game).edition is not None) == (game == "sort"), game
+
+
+@pytest.mark.parametrize(
+    ("metadata", "in_edition"),
+    [
+        ({"catalog_version": 1}, True),
+        ({}, False),
+        ({"catalog_version": None}, False),
+        ({"catalog_version": 2}, False),
+        ({"catalog_version": "1"}, False),
+        ({"catalog_version": True}, False),
+        ({"catalog_version": 1.0}, False),
+    ],
+)
+def test_which_sort_rows_are_in_the_catalog_edition(
+    metadata: dict, in_edition: bool, sort_edition
+) -> None:
+    """The board reset (#2761): once switched on, only rows of the current catalog rank."""
+    sort_edition(True)
+    board = _board("sort")
+    assert board.in_edition(metadata) is in_edition
+    row = Game(
+        final_score=5,
+        outcome="completed",
+        completed_at=datetime(2026, 1, 1, tzinfo=UTC),
+        game_metadata={"level_reached": 5, **metadata},
+    )
+    got = _unrankable_reason(board, row)
+    if in_edition:
+        assert got is None
+    else:
+        assert got == "This game is from an earlier edition of the board."
+
+
+def test_sort_ranks_every_row_until_the_edition_is_switched_on(sort_edition) -> None:
+    """SORT_CATALOG_EDITION_ENFORCED off (the default): the board is as before the reset."""
+    sort_edition(False)
+    board = _board("sort")
+    assert enforced_edition(board) is None
+    row = Game(
+        final_score=5,
+        outcome="completed",
+        completed_at=datetime(2026, 1, 1, tzinfo=UTC),
+        game_metadata={"level_reached": 5},
+    )
+    assert _unrankable_reason(board, row) is None
+    sort_edition(True)
+    assert enforced_edition(board) == ("catalog_version", 1)
+
+
+def test_the_sort_edition_switch_is_a_setting_that_defaults_off() -> None:
+    board = _board("sort")
+    assert board.edition_switch == "sort_catalog_edition_enforced"
+    assert Settings.model_fields[board.edition_switch].annotation is bool
+    assert Settings.isolated().sort_catalog_edition_enforced is False
+    assert Settings.isolated(SORT_CATALOG_EDITION_ENFORCED="true").sort_catalog_edition_enforced
+
+
+@pytest.mark.parametrize("game", _GAMES)
+def test_every_edition_switch_names_a_bool_setting(game: str) -> None:
+    switch = _board(game).edition_switch
+    if switch is not None:
+        assert Settings.model_fields[switch].annotation is bool, game
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"edition_switch": "sort_catalog_edition_enforced"},
+        {"edition": ("v", 1), "edition_switch": "a b"},
+    ],
+    ids=["switch-without-edition", "switch-not-identifier"],
+)
+def test_rejects_invalid_edition_switch(fields: dict) -> None:
+    with pytest.raises(ValidationError):
+        BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score", **fields)
+
+
+def test_a_board_without_an_edition_takes_every_row() -> None:
+    assert _board("solitaire").in_edition({}) is True
+    assert _board("solitaire").in_edition(None) is True
 
 
 def test_yacht_max_value_recomputed_from_engine() -> None:

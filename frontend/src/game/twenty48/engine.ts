@@ -6,12 +6,13 @@
  *
  * Each tile carries a stable numeric ID assigned at spawn. The `tiles`
  * array records per-tile animation metadata (prevRow/prevCol, isNew,
- * isMerge) so the renderer can animate slides, merges, and spawns
+ * isMerge, mergedFrom) so the renderer can animate slides, merges, and spawns
  * without tracking state itself.
  */
 
+import { monotonicNow } from "../_shared/monotonicNow";
 import { createRngSlot, createSeededRng } from "../_shared/seededRng";
-import { Twenty48State, TileData, GameEvent } from "./types";
+import { Twenty48State, TileData, GameEvent, MergeSource } from "./types";
 import {
   pauseClock,
   resumeClock,
@@ -19,6 +20,14 @@ import {
   stopClock,
   withClock,
 } from "../_shared/playClock";
+
+/**
+ * Version of the rules this engine plays by (#3909, epic #3273). Sent in
+ * `game_started` as `engine_version` so a stored game says which rules made it.
+ * Bump it when a change to this engine would make an older recorded game
+ * replay differently; a `game_started` without the field is version 1.
+ */
+export const ENGINE_VERSION = 1;
 
 export const SIZE = 4;
 
@@ -62,7 +71,7 @@ export function _resetTileIds(): void {
  * Operates on parallel value and ID arrays so tile identity is preserved
  * through the slide. Merged tiles receive a new ID; the score delta and
  * the set of newly-merged IDs are returned alongside the output arrays.
- * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ * It is also the merge rule `REPLAY_ENGINES` (replay.ts) replays engine_version 1 with.
  */
 export function slideAndMerge(line: readonly number[]): { line: number[]; score: number } {
   const compacted = line.filter((v) => v !== 0);
@@ -91,7 +100,14 @@ export function slideAndMerge(line: readonly number[]): { line: number[]; score:
 function slideAndMergeWithIds(
   values: readonly number[],
   ids: readonly number[]
-): { values: number[]; ids: number[]; score: number; mergedIds: Set<number> } {
+): {
+  values: number[];
+  ids: number[];
+  score: number;
+  mergedIds: Set<number>;
+  /** Each merged tile's id -> the ids of the two tiles it was made from. */
+  sources: Map<number, [number, number]>;
+} {
   const cv: number[] = [];
   const ci: number[] = [];
   for (let k = 0; k < values.length; k++) {
@@ -106,6 +122,7 @@ function slideAndMergeWithIds(
   const outV: number[] = [];
   const outI: number[] = [];
   const mergedIds = new Set<number>();
+  const sources = new Map<number, [number, number]>();
   let score = 0;
   let i = 0;
   while (i < cv.length) {
@@ -119,6 +136,7 @@ function slideAndMergeWithIds(
       outV.push(val);
       outI.push(id);
       mergedIds.add(id);
+      sources.set(id, [currId, ci[i + 1] ?? 0]);
       score += val;
       i += 2;
     } else {
@@ -131,7 +149,7 @@ function slideAndMergeWithIds(
     outV.push(0);
     outI.push(0);
   }
-  return { values: outV, ids: outI, score, mergedIds };
+  return { values: outV, ids: outI, score, mergedIds, sources };
 }
 
 function transpose(board: readonly number[][]): number[][] {
@@ -203,6 +221,60 @@ export function isGameOver(board: readonly number[][]): boolean {
   return true;
 }
 
+/**
+ * Ties go to the first of these, which keeps the big tiles in the top-left corner (the usual
+ * strategy): left and up before right and down.
+ */
+const HINT_ORDER: readonly Direction[] = ["left", "up", "right", "down"];
+
+/** What sliding one line toward index 0 does: whether it changes, how many merges, the points. */
+function lineEffect(line: readonly number[]): { changed: boolean; merges: number; gained: number } {
+  const { line: out, score } = slideAndMerge(line);
+  const before = line.filter((v) => v !== 0).length;
+  const after = out.filter((v) => v !== 0).length;
+  return {
+    changed: out.some((v, i) => v !== (line[i] ?? 0)),
+    merges: before - after,
+    gained: score,
+  };
+}
+
+/**
+ * The swipe to suggest for `board` (#3688): the legal move that merges the most tiles, then the
+ * one that scores the most, then the first legal move in `HINT_ORDER`. Null when no move changes
+ * the board (it is stuck). Pure: it neither spawns a tile nor draws from the RNG, so asking for a
+ * hint never changes the game.
+ */
+export function suggestMove(board: readonly number[][]): Direction | null {
+  let best: Direction | null = null;
+  let bestMerges = -1;
+  let bestGained = -1;
+  for (const direction of HINT_ORDER) {
+    let changed = false;
+    let merges = 0;
+    let gained = 0;
+    for (let i = 0; i < SIZE; i++) {
+      // The line as the move reads it, toward index 0: a column for up and down, reversed for
+      // right and down.
+      const line = Array.from({ length: SIZE }, (_, k) =>
+        direction === "left" || direction === "right" ? (board[i]?.[k] ?? 0) : (board[k]?.[i] ?? 0)
+      );
+      if (direction === "right" || direction === "down") line.reverse();
+      const effect = lineEffect(line);
+      changed ||= effect.changed;
+      merges += effect.merges;
+      gained += effect.gained;
+    }
+    if (!changed) continue;
+    if (merges > bestMerges || (merges === bestMerges && gained > bestGained)) {
+      best = direction;
+      bestMerges = merges;
+      bestGained = gained;
+    }
+  }
+  return best;
+}
+
 function boardHas2048(board: readonly number[][]): boolean {
   for (const row of board) {
     for (const cell of row) {
@@ -216,12 +288,16 @@ function boardHas2048(board: readonly number[][]): boolean {
 // Build TileData[] from board + idBoard + previous tile positions
 // ---------------------------------------------------------------------------
 
+/** A merged tile's id -> the ids of the two tiles it was made from. */
+type Sources = Map<number, [number, number]>;
+
 function buildTiles(
   board: number[][],
   idBoard: number[][],
   prevPositions: Map<number, { row: number; col: number }>,
   mergedIds: Set<number>,
-  spawnedIds: Set<number>
+  spawnedIds: Set<number>,
+  sources: Sources = new Map()
 ): TileData[] {
   const tiles: TileData[] = [];
   for (let r = 0; r < SIZE; r++) {
@@ -229,6 +305,13 @@ function buildTiles(
       const id = idBoard[r]?.[c] ?? 0;
       if (id === 0) continue;
       const prev = prevPositions.get(id);
+      // Where the two tiles that merged into this one started (#3689), for the renderer to slide
+      // them together. Only a tile whose two sources are both known gets it.
+      const from = sources.get(id)?.map((sid) => ({ id: sid, ...prevPositions.get(sid) }));
+      const mergedFrom =
+        from !== undefined && from.every((f) => f.row !== undefined && f.col !== undefined)
+          ? (from as MergeSource[])
+          : undefined;
       tiles.push({
         id,
         value: board[r]?.[c] ?? 0,
@@ -238,6 +321,7 @@ function buildTiles(
         prevCol: prev?.col ?? null,
         isNew: spawnedIds.has(id),
         isMerge: mergedIds.has(id),
+        ...(mergedFrom ? { mergedFrom } : {}),
       });
     }
   }
@@ -269,9 +353,10 @@ function idBoardFromTiles(tiles: readonly TileData[]): number[][] {
 function applyLeft(
   board: number[][],
   idBoard: number[][]
-): { score: number; mergedIds: Set<number> } {
+): { score: number; mergedIds: Set<number>; sources: Sources } {
   let score = 0;
   const mergedIds = new Set<number>();
+  const sources: Sources = new Map();
   for (let r = 0; r < SIZE; r++) {
     const row = board[r];
     const idRow = idBoard[r];
@@ -281,16 +366,18 @@ function applyLeft(
     idBoard[r] = result.ids;
     score += result.score;
     for (const id of result.mergedIds) mergedIds.add(id);
+    for (const [id, from] of result.sources) sources.set(id, from);
   }
-  return { score, mergedIds };
+  return { score, mergedIds, sources };
 }
 
 function applyRight(
   board: number[][],
   idBoard: number[][]
-): { score: number; mergedIds: Set<number> } {
+): { score: number; mergedIds: Set<number>; sources: Sources } {
   let score = 0;
   const mergedIds = new Set<number>();
+  const sources: Sources = new Map();
   for (let r = 0; r < SIZE; r++) {
     const row = board[r];
     const idRow = idBoard[r];
@@ -302,32 +389,45 @@ function applyRight(
     idBoard[r] = result.ids.reverse();
     score += result.score;
     for (const id of result.mergedIds) mergedIds.add(id);
+    for (const [id, from] of result.sources) sources.set(id, from);
   }
-  return { score, mergedIds };
+  return { score, mergedIds, sources };
 }
 
 function applyUp(
   board: number[][],
   idBoard: number[][]
-): { board: number[][]; idBoard: number[][]; score: number; mergedIds: Set<number> } {
+): {
+  board: number[][];
+  idBoard: number[][];
+  score: number;
+  mergedIds: Set<number>;
+  sources: Sources;
+} {
   let wb = transpose(board);
   let wi = transpose(idBoard);
-  const { score, mergedIds } = applyLeft(wb, wi);
+  const { score, mergedIds, sources } = applyLeft(wb, wi);
   wb = transpose(wb);
   wi = transpose(wi);
-  return { board: wb, idBoard: wi, score, mergedIds };
+  return { board: wb, idBoard: wi, score, mergedIds, sources };
 }
 
 function applyDown(
   board: number[][],
   idBoard: number[][]
-): { board: number[][]; idBoard: number[][]; score: number; mergedIds: Set<number> } {
+): {
+  board: number[][];
+  idBoard: number[][];
+  score: number;
+  mergedIds: Set<number>;
+  sources: Sources;
+} {
   let wb = transpose(board);
   let wi = transpose(idBoard);
-  const { score, mergedIds } = applyRight(wb, wi);
+  const { score, mergedIds, sources } = applyRight(wb, wi);
   wb = transpose(wb);
   wi = transpose(wi);
-  return { board: wb, idBoard: wi, score, mergedIds };
+  return { board: wb, idBoard: wi, score, mergedIds, sources };
 }
 
 // ---------------------------------------------------------------------------
@@ -370,12 +470,12 @@ export function newGame(): Twenty48State {
  * no-op once the game has no running timer to freeze (not yet started, or
  * already over).
  */
-export function pauseGame(state: Twenty48State, now: number = Date.now()): Twenty48State {
+export function pauseGame(state: Twenty48State, now: number = monotonicNow()): Twenty48State {
   return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
-export function resumeGame(state: Twenty48State, now: number = Date.now()): Twenty48State {
+export function resumeGame(state: Twenty48State, now: number = monotonicNow()): Twenty48State {
   return state.game_over ? state : resumeClock(state, now);
 }
 
@@ -396,27 +496,32 @@ export function move(state: Twenty48State, direction: Direction): Twenty48State 
   let nextIdBoard = cloneIds(idBoardFromTiles(state.tiles));
   let gained = 0;
   let mergedIds = new Set<number>();
+  let sources: Sources = new Map();
 
   if (direction === "left") {
     const r = applyLeft(nextBoard, nextIdBoard);
     gained = r.score;
     mergedIds = r.mergedIds;
+    sources = r.sources;
   } else if (direction === "right") {
     const r = applyRight(nextBoard, nextIdBoard);
     gained = r.score;
     mergedIds = r.mergedIds;
+    sources = r.sources;
   } else if (direction === "up") {
     const r = applyUp(nextBoard, nextIdBoard);
     nextBoard = r.board;
     nextIdBoard = r.idBoard;
     gained = r.score;
     mergedIds = r.mergedIds;
+    sources = r.sources;
   } else {
     const r = applyDown(nextBoard, nextIdBoard);
     nextBoard = r.board;
     nextIdBoard = r.idBoard;
     gained = r.score;
     mergedIds = r.mergedIds;
+    sources = r.sources;
   }
 
   if (boardsEqual(nextBoard, oldBoard)) {
@@ -437,7 +542,7 @@ export function move(state: Twenty48State, direction: Direction): Twenty48State 
     }
   }
 
-  const tiles = buildTiles(nextBoard, nextIdBoard, prevPositions, mergedIds, spawnedIds);
+  const tiles = buildTiles(nextBoard, nextIdBoard, prevPositions, mergedIds, spawnedIds, sources);
   const has_won = state.has_won || boardHas2048(nextBoard);
   const game_over = isGameOver(nextBoard);
 
@@ -448,7 +553,7 @@ export function move(state: Twenty48State, direction: Direction): Twenty48State 
   // --- Timer tracking ---
   // The first move starts the clock (a move while it is paused leaves it
   // so), and the game ending freezes it.
-  const now = Date.now();
+  const now = monotonicNow();
   const clock = startClockOnMove(state, now);
 
   return withClock(

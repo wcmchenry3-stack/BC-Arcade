@@ -32,8 +32,11 @@ import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
 import { forceClearSessionTags } from "../game/_shared/sessionTags";
 import { statsApi } from "../api/stats";
 import { clearMyStatsCache } from "../hooks/useMyStats";
+import { setDeletingMyData } from "../game/_shared/deletingData";
 import { clearDisplayName } from "../game/_shared/displayName";
 import { clearDisplayNameSync, forgetSyncedDisplayName } from "../game/_shared/displayNameSync";
+import { isStoreBuild } from "../game/_shared/buildFlavour";
+import { setDragDebugEnabled, useDragDebugEnabled } from "../game/_shared/drag/dragDebug";
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -47,6 +50,9 @@ export default function SettingsScreen() {
   // the unavailable adapter, i.e. web and v1.0 store builds.
   const { isAvailable: purchasesAvailable } = usePurchases();
   const restorer = useRestorePurchases();
+  // Developer settings exist only in internal builds (#3529).
+  const showDeveloper = !isStoreBuild();
+  const dragDebug = useDragDebugEnabled();
 
   const themeLabel: Record<ThemeMode, string> = {
     system: t("theme.system", "System"),
@@ -74,6 +80,9 @@ export default function SettingsScreen() {
 
   const handleDeleteData = async () => {
     setDeleteConfirmVisible(false);
+    // Before anything is sent: a stats response landing from here on is not remembered or
+    // seeded into the personal best (#3802). The generation bump below comes too late for it.
+    setDeletingMyData(true);
     try {
       // First, so a name sync in flight can't recreate the player's name on
       // the server after the delete (#2624).
@@ -109,6 +118,8 @@ export default function SettingsScreen() {
         tags: { subsystem: "settings", op: "deleteData" },
       });
       deleteErrorToast.show();
+    } finally {
+      setDeletingMyData(false);
     }
   };
 
@@ -167,7 +178,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View style={[styles.row, { borderColor: colors.border }]}>
+        <View style={[styles.row, styles.deckRow, { borderColor: colors.border }]}>
           <Text style={[styles.label, { color: colors.text }]}>{t("deck.label")}</Text>
           <View style={styles.pillGroup}>
             {availableDecks.map((id) => {
@@ -288,6 +299,27 @@ export default function SettingsScreen() {
           </SettingsRow>
         )}
 
+        {showDeveloper && (
+          <SettingsRow
+            label={t("settings.dragDebugOverlay", "Drag debug overlay")}
+            description={t(
+              "settings.dragDebugOverlay.description",
+              "Developer: shows the finger, the expected card frame and the drag check result while dragging."
+            )}
+          >
+            <Switch
+              value={dragDebug}
+              onValueChange={setDragDebugEnabled}
+              trackColor={{ false: colors.surfaceAlt, true: colors.accent }}
+              thumbColor={colors.textOnAccent}
+              accessibilityRole="switch"
+              accessibilityLabel={t("settings.dragDebugOverlay", "Drag debug overlay")}
+              accessibilityState={{ checked: dragDebug }}
+              testID="drag-debug-toggle"
+            />
+          </SettingsRow>
+        )}
+
         <View style={styles.legalRow}>
           <Pressable
             onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}
@@ -393,7 +425,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   segmentText: { fontSize: 14, fontWeight: "500" },
-  pillGroup: { flexDirection: "row", gap: 8 },
+  // The deck picker sits on its own line under its label and wraps: six decks (internal
+  // builds) are wider than a phone.
+  deckRow: { flexDirection: "column", alignItems: "stretch", gap: 10 },
+  pillGroup: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
   pillText: { fontSize: 14, fontWeight: "500" },
   toast: {

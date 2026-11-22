@@ -1,6 +1,6 @@
 import type React from "react";
 import type { StyleProp, TextStyle } from "react-native";
-import type MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import type MaterialCommunityIcons from "../icons/MaterialCommunityIcons";
 import type { TFunction } from "i18next";
 import { formatNumber } from "../../api/statsDisplay";
 import type { RankLookupStatus } from "../../game/_shared/useGameRank";
@@ -18,6 +18,11 @@ export type IconName = React.ComponentProps<typeof MaterialCommunityIcons>["name
 export type ResultHero =
   | { kind: "score"; label: string; value: number | string }
   | { kind: "versus"; you: number | string; opponent: number | string; opponentLabel: string };
+
+export interface ResultEndNote {
+  label: string;
+  note?: string;
+}
 
 export interface ResultStat {
   label: string;
@@ -68,6 +73,11 @@ export interface GameResultModalProps {
   /** The game's own line under the title, e.g. "Solved in 12:48". */
   subtitle?: string;
   hero?: ResultHero;
+  /**
+   * How the game ended (#3534), as a pill under the subtitle: a short `label`, and a smaller
+   * `note` under it when the game has one. Omit for no pill. Spoken with the card's announcement.
+   */
+  endNote?: ResultEndNote;
   /** Up to four; the strip is hidden when empty. */
   stats?: ResultStat[];
   isNewBest?: boolean;

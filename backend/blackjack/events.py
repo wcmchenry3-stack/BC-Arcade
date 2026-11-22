@@ -12,7 +12,10 @@ event, each wrapped in the recorder's envelope (``v``, ``unit`` = the round,
   - ``sh`` the shoe size, ``rem`` the cards left after the deal
   - ``a`` the actions in order, each ``[code, hand]`` plus the card a hit or
     double drew, or the two hands a split made: ``["h", 0, "KS"]``,
-    ``["d", 0, "9S"]``, ``["s", 1]``, ``["p", 0, [["8S","3D"],["8H","KC"]]]``
+    ``["d", 0, "9S"]``, ``["s", 1]``, ``["p", 0, [["8S","3D"],["8H","KC"]]]``.
+    Since #3764 a hand that reaches 21 stands on its own; the app records that stand
+    as ``["s", i]`` as well, right after the action that reached 21 (or the split or
+    move that passed a split hand dealt 21), so it reads as any other stand
   - ``dl`` the dealer's play, only when it played: ``{d: draws, t: total, b?: 1}``
   - ``r`` 1 on a round resumed after the app was killed mid-hand: the earlier
     actions and ``p`` were not kept (``p`` is then absent). If the app is killed

@@ -50,10 +50,11 @@ const DISPLAY_NAME_KEY = "player_display_name";
 /**
  * Mocks the rank lookup (#2632: the card reads GET /games/{id}/rank instead
  * of PATCH /sudoku/score/{id}, removed in #2644) and records any call to a
- * removed Sudoku route.
+ * removed Sudoku route. `playerName` is the name the server already holds
+ * for the player (#3790): it must match the name planted on the device.
  */
-const routeSudokuApi = (page: Page) =>
-  routeSessionBoard(page, { legacyPattern: "**/sudoku/**" });
+const routeSudokuApi = (page: Page, playerName: string | null = null) =>
+  routeSessionBoard(page, { legacyPattern: "**/sudoku/**", playerName });
 
 /** Opens the near-won puzzle and enters the final digit. */
 async function solveNearWinPuzzle(
@@ -88,7 +89,7 @@ test.describe("Sudoku — result card + leaderboard", () => {
   test("shows the rank under the saved display name with no name entry", async ({
     page,
   }) => {
-    const calls = await routeSudokuApi(page);
+    const calls = await routeSudokuApi(page, "Tester");
     await solveNearWinPuzzle(page, "Tester");
 
     await expect(

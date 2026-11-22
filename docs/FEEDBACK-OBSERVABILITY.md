@@ -345,6 +345,13 @@ around it must never flood Sentry or bury real errors.
 
 The apps' Sentry volume can be turned down or off without an app release.
 
+The same carrier also serves one non-Sentry dial: `personal_best_seed: {enabled}`
+(#3802, `PERSONAL_BEST_SEED_ENABLED`, default `true`), which stops the one-time
+seeding of the local personal best from `GET /stats/me`. It adds no event, no
+request and no storage beyond one about 30 B write per seeded game; see
+[DATA-INVENTORY.md](DATA-INVENTORY.md) and the
+[RENDER.md runbook](RENDER.md#environment-variables).
+
 - **Source.** Backend env vars on Render: `CLIENT_SENTRY_ENABLED` (default
   `true`) and `CLIENT_SENTRY_SAMPLE_RATE` (default `1.0`, 0–1; a value outside
   the range fails `Settings` validation, so the deploy fails and the running
@@ -482,7 +489,9 @@ row (type, timestamps, outcome, score, duration, metadata) and its events in
 `event_index` order as plain text, each marked `lifecycle` (`game_started`,
 `game_ended`, `hand_resolved`) or `replay`, with a `GAP` line wherever
 `event_index` skips and a summary (counts, gaps, whether `game_started` /
-`game_ended` are present). `--max-chars N` sets the payload truncation (0 =
+`game_ended` are present and, for a game that records its play, its
+`engine_version`: current, an older one replayed with its frozen rules, or
+incompatible, in which case nothing is rebuilt; #3912). `--max-chars N` sets the payload truncation (0 =
 full). It reads `DATABASE_URL` as the app does, issues SELECTs only (and sets the
 Postgres transaction `READ ONLY`), and never prints the install ID. Exit 1: no
 such game. A game with a gap was not fully recorded: a batch dropped by a cap,
@@ -491,8 +500,18 @@ never arrived) cannot show as a GAP, since the indexes that did arrive are
 contiguous: it shows only as `game_ended` absent. A Star Swarm game also gets
 its per-wave summaries, decoded `wave_timeline` rows and the reconciliation
 between them (#3395, `backend/starswarm/replay.py`; a sampled diagnostic, not a
-frame-by-frame replay). Tests: `backend/tests/test_replay_game.py`,
-`backend/tests/test_replay_game_starswarm_timeline.py`.
+frame-by-frame replay). A Sort level is rebuilt step by step from its
+`moves` events with a verdict (`complete`, `incomplete` or `invalid`; #3388,
+`backend/sort/rebuild.py`, [docs/games/sort.md](games/sort.md#replay-recording)).
+A Cascade game is read from its events, not re-simulated (#3858,
+`backend/cascade/replay.py`): its seeds and tuning, drops and merges by tier, the
+longest chain, its danger moments, the outcome with its end and capstone steps,
+the score with its time bonus, and whether the recorded merges add up to the
+merge score ([docs/games/cascade.md](games/cascade-decisions.md#replay-recording-3858)).
+Tests: `backend/tests/test_replay_game.py`,
+`backend/tests/test_replay_game_starswarm_timeline.py`,
+`backend/tests/test_replay_game_sort.py`, `backend/tests/test_sort_rebuild.py`,
+`backend/tests/test_replay_game_cascade.py`.
 
 ### Privacy notes
 

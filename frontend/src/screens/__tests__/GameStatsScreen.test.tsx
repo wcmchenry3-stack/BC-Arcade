@@ -238,6 +238,32 @@ describe("GameStatsScreen — best with its label", () => {
   });
 });
 
+describe("GameStatsScreen — fastest win (#3927)", () => {
+  it.each([
+    [20_000, "0:20"],
+    [75_000, "1:15"],
+    [3_725_000, "1:02:05"],
+  ])("shows a best_win_ms of %i as %s", async (ms, text) => {
+    mockGetMyStats.mockResolvedValue(
+      response({ cascade: gameStats({ won: 3, lost: 1, best_win_ms: ms }) })
+    );
+    await renderStats("cascade");
+    expect(tile("fastestWin")).toBe(text);
+    expect(screen.getByTestId("game-stats-tile-fastestWin").props.accessibilityLabel).toMatch(
+      /^Fastest Win: /
+    );
+  });
+
+  it.each([[null], [undefined]])("hides the tile when best_win_ms is %s", async (value) => {
+    mockGetMyStats.mockResolvedValue(
+      response({ cascade: gameStats({ won: 0, lost: 2, best_win_ms: value }) })
+    );
+    await renderStats("cascade");
+    expect(screen.getByTestId("game-stats-tile-best")).toBeTruthy();
+    expect(screen.queryByTestId("game-stats-tile-fastestWin")).toBeNull();
+  });
+});
+
 describe("GameStatsScreen — links", () => {
   it("links Blackjack's stats to its run history, and to no leaderboard", async () => {
     mockGetMyStats.mockResolvedValue(response({ blackjack: gameStats() }));

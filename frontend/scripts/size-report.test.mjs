@@ -11,9 +11,12 @@ import {
   evaluate,
   findHiddenLocaleStrings,
   findHiddenPremiumAssets,
+  hiddenGameSlugs,
   hiddenLocaleMarkers,
+  hiddenLobbyTilePattern,
   hiddenOnlySoundNames,
   metroAssetName,
+  readStringSet,
   summarize,
 } from "./size-report.mjs";
 
@@ -33,22 +36,19 @@ test("bucketPackagedAsset groups Metro-flattened android asset names", () => {
     ),
     "images: libraries (node_modules)"
   );
-  assert.equal(
-    bucketPackagedAsset("drawable-mdpi/assets_celestialicons_earth.webp"),
-    "images: celestial/cosmos"
-  );
-  assert.equal(bucketPackagedAsset("drawable-mdpi/assets_fruitsbaked_apple.png"), "images: fruits");
   assert.equal(bucketPackagedAsset("raw/keep.xml"), "other");
+});
+
+test("findHiddenPremiumAssets flags Star Swarm's one music track (#3638)", () => {
+  const hits = findHiddenPremiumAssets([f("raw/assets_sounds_starswarmbgm.mp3")]);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].pattern, "Star Swarm / Mahjong BGM");
 });
 
 test("findHiddenPremiumAssets flags premium-only art and BGM but not shared sounds", () => {
   const hits = findHiddenPremiumAssets([
     f("raw/assets_sounds_starswarmbg1.mp3"),
     f("raw/assets_sounds_mahjongbg3.mp3"),
-    f("drawable-mdpi/assets_celestialicons_sun.webp"),
-    f("drawable-mdpi/assets_fruiticons_apple.webp"),
-    f("drawable-mdpi/assets_cosmosbaked_moon.png"),
-    f("drawable-mdpi/assets_fruitsbaked_lemon.png"),
     f("raw/assets_mahjong_01whitedragon.svg"),
     f("drawable-mdpi/assets_starswarm_playership.webp"),
     // allowed: shared / free-game assets
@@ -56,8 +56,63 @@ test("findHiddenPremiumAssets flags premium-only art and BGM but not shared soun
     f("raw/assets_sounds_blackjackwin.ogg"),
     f("drawable-mdpi/assets_logo.png"),
   ]);
-  assert.equal(hits.length, 8);
+  assert.equal(hits.length, 4);
   assert.ok(hits.every((h) => !h.file.includes("yacht") && !h.file.includes("logo")));
+});
+
+test("findHiddenPremiumAssets flags a hidden game's lobby tile, not a free game's (#4011)", () => {
+  const hits = findHiddenPremiumAssets([
+    f("drawable-mdpi/assets_home_mahjongtile.webp"),
+    f("drawable-mdpi/assets_home_starswarmtile.webp"),
+    // allowed: the free games' tiles
+    f("drawable-mdpi/assets_home_yachttile.webp"),
+    f("drawable-mdpi/assets_home_sorttile.webp"),
+    f("drawable-mdpi/assets_home_sudokutile.webp"),
+    f("drawable-mdpi/assets_home_twenty48tile.webp"),
+  ]);
+  assert.deepEqual(
+    hits.map((h) => [h.file, h.pattern]),
+    [
+      ["drawable-mdpi/assets_home_mahjongtile.webp", "Hidden game lobby tile"],
+      ["drawable-mdpi/assets_home_starswarmtile.webp", "Hidden game lobby tile"],
+    ]
+  );
+});
+
+test("hiddenLobbyTilePattern follows HIDDEN_GAMES", () => {
+  for (const slug of hiddenGameSlugs()) {
+    assert.ok(hiddenLobbyTilePattern().re.test(metroAssetName(`home/${slug}-tile.webp`)), slug);
+  }
+  // Once a game is unhidden its tile is allowed again; lookalike names never match.
+  const re = hiddenLobbyTilePattern(new Set(["hearts"])).re;
+  assert.ok(re.test("assets_home_heartstile.webp"));
+  assert.ok(!re.test("assets_home_mahjongtile.webp"));
+  assert.ok(!re.test("assets_home_heartstileback.webp"));
+  assert.ok(!re.test("assets_hearts_tile.webp"));
+});
+
+test("CLI: --forbid-hidden-assets fails a packaged hidden-game lobby tile (#4011)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "size-report-tile-"));
+  try {
+    const bundle = path.join(dir, "b.bundle");
+    fs.writeFileSync(bundle, "x");
+    const assets = path.join(dir, "assets/drawable-mdpi");
+    fs.mkdirSync(assets, { recursive: true });
+    const run = () =>
+      spawnSync(
+        process.execPath,
+        [script, "--bundle", bundle, "--assets", path.dirname(assets), "--forbid-hidden-assets"],
+        { encoding: "utf8" }
+      );
+    fs.writeFileSync(path.join(assets, "assets_home_yachttile.webp"), "y");
+    assert.equal(run().status, 0);
+    fs.writeFileSync(path.join(assets, "assets_home_mahjongtile.webp"), "m");
+    const failed = run();
+    assert.equal(failed.status, 1);
+    assert.match(failed.stdout, /assets_home_mahjongtile\.webp.*Hidden game lobby tile/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("summarize totals files and bytes per bucket, largest first", () => {
@@ -73,6 +128,18 @@ test("evaluate: hard limit fails, warn threshold warns, boundaries are inclusive
   assert.equal(w.failures.length, 0);
   assert.equal(w.warnings.length, 1);
   assert.equal(evaluate({ jsBytes: 1, assetBytes: 11 }, { maxAssets: 10 }).failures.length, 1);
+  // Asset warn line (#3631): warns between the warn and hard limits, never fails, and is
+  // silent at or below the line; above the hard limit only the failure is reported.
+  const aw = evaluate({ jsBytes: 1, assetBytes: 8 }, { maxAssets: 10, warnAssets: 6 });
+  assert.deepEqual(aw.failures, []);
+  assert.equal(aw.warnings.length, 1);
+  assert.deepEqual(
+    evaluate({ jsBytes: 1, assetBytes: 6 }, { maxAssets: 10, warnAssets: 6 }).warnings,
+    []
+  );
+  const awFail = evaluate({ jsBytes: 1, assetBytes: 11 }, { maxAssets: 10, warnAssets: 6 });
+  assert.equal(awFail.failures.length, 1);
+  assert.deepEqual(awFail.warnings, []);
   const h = [{ file: "x", bytes: 1, pattern: "p" }];
   assert.equal(evaluate({ jsBytes: 1, hidden: h }, { forbidHidden: true }).failures.length, 1);
   assert.equal(evaluate({ jsBytes: 1, hidden: h }, {}).failures.length, 0);
@@ -133,31 +200,34 @@ test("CLI exit codes and JSON output", () => {
 
 test("metroAssetName flattens like Metro's Android asset names", () => {
   assert.equal(metroAssetName("sounds/hearts-broken.mp3"), "assets_sounds_heartsbroken.mp3");
-  assert.equal(metroAssetName("fruit-icons/Cherry.webp"), "assets_fruiticons_cherry.webp");
+  assert.equal(metroAssetName("home/Star-Tile.webp"), "assets_home_startile.webp");
 });
 
 test("hiddenOnlySoundNames: premium-only sounds, not ones a free game shares", () => {
   const names = hiddenOnlySoundNames();
   // Only hidden games use these.
-  assert.ok(names.has("assets_sounds_heartsbroken.mp3"));
-  assert.ok(names.has("assets_sounds_starswarmlaser.ogg"));
-  assert.ok(names.has("assets_sounds_mahjongtilematch.ogg"));
-  // Hidden games share these with free games (solitaire, yacht, sort, 2048...).
-  assert.ok(!names.has("assets_sounds_heartsmoonshot.mp3"));
-  assert.ok(!names.has("assets_sounds_blackjackwin.ogg"));
+  assert.ok(names.has("assets_sounds_heartsbrokenheartbeat.ogg"));
+  assert.ok(names.has("assets_sounds_starswarmbombblast.ogg"));
+  assert.ok(names.has("assets_sounds_mahjongmatch1.ogg"));
+  // Cascade's own synthesized sets (#3702); the old Kenney files are gone.
+  assert.ok(names.has("assets_sounds_cascadefruitsmerget0.ogg"));
+  assert.ok(names.has("assets_sounds_cascadecosmoswin.ogg"));
   assert.ok(!names.has("assets_sounds_cascadefruitmerge.ogg"));
+  // Hidden games share these with free games (solitaire, yacht, 2048...).
+  assert.ok(!names.has("assets_sounds_heartsmoonshot.mp3"));
+  assert.ok(!names.has("assets_sounds_cardplace1.ogg"));
   // Free games' own sounds are never flagged.
   assert.ok(!names.has("assets_sounds_yachtdiceroll.ogg"));
   const hits = findHiddenPremiumAssets(
     [
-      { file: "raw/assets_sounds_heartsbroken.mp3", bytes: 1 },
+      { file: "raw/assets_sounds_heartsbrokenheartbeat.ogg", bytes: 1 },
       { file: "raw/assets_sounds_heartsmoonshot.mp3", bytes: 1 },
     ],
     names
   );
   assert.deepEqual(
     hits.map((h) => h.file),
-    ["raw/assets_sounds_heartsbroken.mp3"]
+    ["raw/assets_sounds_heartsbrokenheartbeat.ogg"]
   );
 });
 
@@ -222,4 +292,105 @@ test("CLI: --forbid-hidden-locales fails a bundle that holds a hidden locale's s
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- #4017: slug source covers HIDDEN_GAMES + DISABLED_GAMES and survives empty sets ---
+
+/** A throwaway project root holding only a gameVisibility.ts with the given set literals. */
+function fixtureRoot(hidden, disabled) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "size-report-vis-"));
+  fs.mkdirSync(path.join(dir, "src/entitlements"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "src/game"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "src/entitlements/gameVisibility.ts"),
+    `export const HIDDEN_GAMES: ReadonlySet<string> = ${hidden};\n` +
+      `export const DISABLED_GAMES: ReadonlySet<string> = ${disabled};\n`
+  );
+  return dir;
+}
+
+test("hiddenGameSlugs tolerates empty sets, type arguments, comments and multi-line lists", () => {
+  const cases = [
+    ["new Set([])", "new Set([])", []],
+    ["new Set<string>([])", "new Set<string>([])", []],
+    ['new Set<string>(["a", "b"])', "new Set([])", ["a", "b"]],
+    ["new Set(['a'])", "new Set<string>([ ])", ["a"]],
+    ['new Set<string>([\n  // note, "x"\n  "a",\n  "b", /* "y" */\n])', "new Set([])", ["a", "b"]],
+  ];
+  for (const [hidden, disabled, want] of cases) {
+    const dir = fixtureRoot(hidden, disabled);
+    try {
+      assert.deepEqual([...hiddenGameSlugs(dir)].sort(), want, hidden);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("hiddenGameSlugs is HIDDEN_GAMES union DISABLED_GAMES (a disabled-only slug counts)", () => {
+  const dir = fixtureRoot('new Set(["hearts"])', 'new Set<string>(["cascade"])');
+  try {
+    assert.deepEqual([...hiddenGameSlugs(dir)].sort(), ["cascade", "hearts"]);
+    // hiddenOnlySoundNames shares the parser: a disabled game's sounds count as hidden-only.
+    fs.mkdirSync(path.join(dir, "src/game/cascade"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "src/game/cascade/sounds.ts"),
+      'export const S = require("../../../assets/sounds/cascade-win.ogg");\n'
+    );
+    assert.ok(hiddenOnlySoundNames(dir).has("assets_sounds_cascadewin.ogg"));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("hiddenGameSlugs still throws when a set declaration is missing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "size-report-vis-"));
+  fs.mkdirSync(path.join(dir, "src/entitlements"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "src/entitlements/gameVisibility.ts"), "export const X = 1;\n");
+  try {
+    assert.throws(() => hiddenGameSlugs(dir), /could not read HIDDEN_GAMES/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an empty slug set means no hidden lobby tile: nothing matches, nothing throws", () => {
+  const { re } = hiddenLobbyTilePattern(new Set());
+  assert.ok(!re.test("assets_home_tile.webp"));
+  assert.ok(!re.test("assets_home_starswarmtile.webp"));
+  const hits = findHiddenPremiumAssets(
+    [{ file: "drawable-mdpi/assets_home_yachttile.webp", bytes: 1 }],
+    new Set(),
+    new Set()
+  );
+  assert.deepEqual(hits, []);
+});
+
+test("findHiddenPremiumAssets flags a tile for a slug given from DISABLED_GAMES", () => {
+  const hits = findHiddenPremiumAssets(
+    [{ file: "drawable-mdpi/assets_home_cascadetile.webp", bytes: 1 }],
+    new Set(),
+    new Set(["cascade"])
+  );
+  assert.equal(hits.length, 1);
+});
+
+test("readStringSet rejects non-literal entries instead of dropping them (#4017 review)", () => {
+  const read = (body) => readStringSet(`export const S = new Set([${body}]);`, "S");
+  assert.throws(() => read('...OTHER, "a"'), /plain string literals/);
+  assert.throws(() => read('"a", someSlug'), /plain string literals/);
+  assert.throws(() => read("`a${x}`"), /plain string literals/);
+  assert.deepEqual([...read("`a`, 'b', \"c\"")], ["a", "b", "c"]);
+});
+
+test("readStringSet anchors to the declaration and handles nested generics", () => {
+  // The name appears in a semicolon-less import before the real declaration.
+  const src =
+    'import { HIDDEN_GAMES }\nconst unrelated = new Set(["zzz"])\n' +
+    'export const HIDDEN_GAMES: ReadonlySet<string> = new Set<Array<string>>(["a"]);\n';
+  assert.deepEqual([...readStringSet(src, "HIDDEN_GAMES")], ["a"]);
+  assert.throws(
+    () => readStringSet('import { HIDDEN_GAMES }\nconst x = new Set(["zzz"]);\n', "HIDDEN_GAMES"),
+    /could not read HIDDEN_GAMES/
+  );
 });

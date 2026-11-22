@@ -11,6 +11,14 @@ import ThemeSelector from "../ThemeSelector";
 import { FruitSetProvider, useFruitSet } from "../../../theme/FruitSetContext";
 import { FRUIT_SETS } from "../../../theme/fruitSets";
 import { dark } from "../../../theme/ThemeContext";
+import { piecePicture } from "../../../game/cascade/art/sprites";
+
+// The glyphs' Skia canvas and picture cache are stubbed (the art is tested on real Skia in
+// game/cascade/art/__tests__/art.test.ts).
+jest.mock("@shopify/react-native-skia", () => ({ Canvas: "Canvas", Picture: "Picture" }));
+jest.mock("../../../game/cascade/art/sprites", () => ({
+  piecePicture: jest.fn((set: string, tier: number, size: number) => ({ set, tier, size })),
+}));
 
 const STORAGE_KEY = "gaming_app_fruit_set";
 
@@ -19,10 +27,10 @@ function ActiveSet() {
   return <Text>{`active:${activeFruitSet.id}`}</Text>;
 }
 
-async function mount() {
+async function mount(onRequestSelect?: (id: string) => void) {
   return render(
     <FruitSetProvider>
-      <ThemeSelector />
+      <ThemeSelector onRequestSelect={onRequestSelect} />
       <ActiveSet />
     </FruitSetProvider>
   );
@@ -46,8 +54,9 @@ describe("Cascade ThemeSelector", () => {
     expect(radio("Cosmos theme")).toBeTruthy();
     expect(screen.getByText("Fruits")).toBeTruthy();
     expect(screen.getByText("Cosmos")).toBeTruthy();
-    expect(screen.getByText("🍒")).toBeTruthy();
-    expect(screen.getByText("🌙")).toBeTruthy();
+    // Each tab shows its set's first piece, drawn as on the board (#3698; was 🍒 / 🌙).
+    expect(piecePicture).toHaveBeenCalledWith("fruits", 0, 18);
+    expect(piecePicture).toHaveBeenCalledWith("cosmos", 0, 18);
   });
 
   it("checks and highlights the active set (Fruits by default)", async () => {
@@ -72,5 +81,41 @@ describe("Cascade ThemeSelector", () => {
     await mount();
     await waitFor(() => expect(radio("Cosmos theme")).toBeChecked());
     expect(AsyncStorage.setItem).toHaveBeenLastCalledWith(STORAGE_KEY, "cosmos");
+  });
+
+  describe("with onRequestSelect (#3970)", () => {
+    it("asks the screen instead of switching, so the set only changes when it says so", async () => {
+      const onRequestSelect = jest.fn();
+      await mount(onRequestSelect);
+      await fireEvent.press(radio("Cosmos theme"));
+      expect(onRequestSelect).toHaveBeenCalledWith("cosmos");
+      expect(radio("Fruits theme")).toBeChecked();
+      expect(screen.getByText("active:fruits")).toBeTruthy();
+      expect(AsyncStorage.setItem).not.toHaveBeenCalledWith(STORAGE_KEY, "cosmos");
+    });
+
+    it("does not ask for the active set", async () => {
+      const onRequestSelect = jest.fn();
+      await mount(onRequestSelect);
+      await fireEvent.press(radio("Fruits theme"));
+      expect(onRequestSelect).not.toHaveBeenCalled();
+    });
+  });
+
+  it("pressing the active set without a handler changes nothing", async () => {
+    await mount();
+    await fireEvent.press(radio("Fruits theme"));
+    expect(screen.getByText("active:fruits")).toBeTruthy();
+    expect(AsyncStorage.setItem).not.toHaveBeenCalledWith(STORAGE_KEY, "cosmos");
+  });
+
+  it("grows each tab's touch target with hitSlop, to the 44pt guideline", async () => {
+    await mount();
+    for (const label of ["Fruits theme", "Cosmos theme"]) {
+      const slop = radio(label).props.hitSlop;
+      expect(slop.top + slop.bottom + 28).toBeGreaterThanOrEqual(44);
+      expect(slop.left ?? 0).toBe(0); // adjacent tabs: no horizontal overlap
+      expect(slop.right ?? 0).toBe(0);
+    }
   });
 });

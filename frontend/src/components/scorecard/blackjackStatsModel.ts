@@ -4,15 +4,15 @@
 import type { SessionStats } from "../../game/blackjack/sessionStats";
 
 interface PLColors {
-  readonly bonus: string;
-  readonly error: string;
+  readonly bonusText: string;
+  readonly errorText: string;
   readonly text: string;
 }
 
 /** Sign-driven colour for the hero P/L number. */
 export function plColor(plChips: number, colors: PLColors): string {
-  if (plChips > 0) return colors.bonus;
-  if (plChips < 0) return colors.error;
+  if (plChips > 0) return colors.bonusText;
+  if (plChips < 0) return colors.errorText;
   return colors.text;
 }
 

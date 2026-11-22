@@ -1,34 +1,60 @@
 /**
- * Drag-start geometry (#3397) — where the ghost card starts, in the
- * DragContainer's local coordinate space.
+ * Drag geometry.
  *
- * Coordinate spaces in play when a pan activates:
+ * ## Where the ghost is drawn (#3531): finger − grab, nothing else
  *
- * - **RNGH gesture space** — `absoluteX/Y` (the finger, relative to the root
- *   view) and `x/y` (the finger relative to the gesture view). So
- *   `absolute - local` is the gesture view's own origin in the same space as
- *   the finger, and is always consistent with where the finger is.
- * - **Reanimated `measure()` page space** — `pageX/Y` of the card wrapper and
- *   of the DragContainer. Both come from the same API at the same instant, so
- *   their difference is the card's position inside the container.
+ * The ghost is drawn by the root `DragGhostHost` (App.tsx), a full-window
+ * layer inside `GestureHandlerRootView`, so its origin is RNGH's absolute
+ * origin. Its (unlifted) window position is
  *
- * RNGH space and page space share an origin in this app: the
- * `GestureHandlerRootView` wraps the whole app at the root (flex 1,
- * `App.tsx`), Android runs edge-to-edge (`edgeToEdgeEnabled=true` in
- * `android/gradle.properties`), and the game screens are not modals. The
- * card cross-check below relies on that. If it is ever broken, the signature
- * is every drag flagged `cardMismatch` with the same `mismatchX/Y` across the
- * trace entries; the remedy is to calibrate that delta, not to widen the
- * tolerance.
- * - **Container local space** — what DragOverlay draws in
- *   (`translateX/Y` from the container's top-left).
+ *     ghost = finger − grab     (ghostPosition below; the host then lifts
+ *                                it GHOST_LIFT px)
  *
- * The rule: never start the ghost far from the finger. A measured card origin
- * is used only when it agrees with the gesture-derived origin; otherwise the
- * gesture origin wins and the result is flagged `anomalous` for diagnostics.
+ * where `finger` is RNGH `absoluteX/Y` and `grab` is the finger's offset
+ * inside the grabbed card at activation, captured once in `onStart` from
+ * RNGH itself: `e.x/y` (the gesture view hasn't moved). RNGH resets the
+ * translation to 0 when the pan activates (iOS RNPanHandler, Android
+ * PanGestureHandler.resetProgress, web), so the ghost starts exactly on the
+ * card; the code subtracts `e.translationX/Y` anyway, which is a no-op today
+ * and keeps the math right should a translation ever be reported there. The
+ * card's own window position is `startFinger − grab` with
+ * `startFinger = absolute − translation`: a snap-back springs there and a
+ * cancel parks there. Every term is in one coordinate space, so the ghost
+ * can't drift from the finger whatever the layout does.
  *
- * Everything here is a worklet over plain numbers: it runs on the UI thread
- * once, in the pan's `onStart`, never per frame.
+ * Rule: **never position the ghost from a layout measure.** Each earlier
+ * fix (#1840, #2154, #3397) patched one of three spaces that had to agree:
+ * RNGH gesture space, Reanimated `measure()` page space, and the
+ * DragContainer the ghost used to be drawn in. A safe-area/header offset, a
+ * stale container measure or a remount mid-drag showed up as a constant
+ * card-vs-finger offset (#3527).
+ *
+ * Coordinate origin: on iOS RNGH `absoluteX/Y` are window coordinates
+ * (`locationInView: window`); on Android they are relative to
+ * `android.R.id.content` (captured when the handler is prepared); on web they
+ * are `clientX/Y` (the viewport). The host is an absoluteFill child of the
+ * root view, which fills the window/content view (flex 1 at the app root;
+ * Android runs edge-to-edge, `edgeToEdgeEnabled=true`) or the viewport, so
+ * the two origins are assumed to coincide. That assumption is verified only
+ * on device (#3530). If it fails, the RN surface (where the host and every
+ * `measure()` live) is offset from RNGH's origin: the ghost check reports
+ * it as a `measureSpace` fail with a consistent delta (#3528, #3531).
+ *
+ * ## Drag-start diagnostics (#3397): computeDragOrigin
+ *
+ * `computeDragOrigin` no longer places the ghost. It is kept for the
+ * `drag.start` breadcrumb and the `drag.positionMismatch` diagnostics, which
+ * ask whether Reanimated `measure()` page space agrees with RNGH space:
+ *
+ * - **RNGH gesture space**: `absolute − local` is the gesture view's own
+ *   origin in the same space as the finger.
+ * - **`measure()` page space**: `pageX/Y` of the card wrapper and of the
+ *   DragContainer. A card measure far from the gesture origin is flagged
+ *   `cardMismatch`; the same `mismatchX/Y` on every drag would be a constant
+ *   RNGH-vs-measure() offset (the ghost check's `measureSpace` kind).
+ *
+ * Everything here is a worklet over plain numbers. computeDragOrigin runs
+ * once per drag in `onStart`, never per frame.
  */
 
 export interface PageRect {
@@ -77,7 +103,8 @@ export type CardSource = "measured" | "gesture";
 export type ContainerSource = "measured" | "cached";
 
 export interface DragOrigin {
-  /** Ghost start, container-local. */
+  /** The card's origin by the accepted source, container-local. Diagnostics
+   *  only: the ghost is placed from the finger (#3531). */
   x: number;
   y: number;
   /** The container offset the origin was computed against (page space). */
@@ -216,5 +243,294 @@ export function computeDragOrigin(input: DragOriginInput): DragOrigin {
     originOutsideContainer,
     containerUnknown,
     anomalous: cardMismatch || fingerOutsideCard || originOutsideContainer || containerUnknown,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rendered-ghost check (#3528)
+// ---------------------------------------------------------------------------
+
+/**
+ * How far the RN surface may sit from RNGH's origin before the ghost check
+ * reports it (`failKind: "measureSpace"`, #3531 review 2), in px, on each
+ * axis. The surface offset is computed from onStart values only (the card's
+ * gesture origin minus its `measure()`), so it has no frame lag and needs no
+ * ghost measure; a fixed 12 px sits above every legitimate source and well
+ * below a visible offset:
+ *
+ * | Source                                         | Bias on surfaceOffset |
+ * | ---------------------------------------------- | --------------------- |
+ * | Selected card: lift −6 and scale 1.03          | y −4 … −8, x ≈ −1     |
+ * | Its lift spring overshooting                   | y ≈ −6.6              |
+ * | Shake (rejected-move feedback)                 | \|x\| ≤ ~6           |
+ * | Sub-pixel rounding                             | < 1                   |
+ *
+ * A stale card measure (the card moved or remounted) can exceed it once;
+ * that is told apart by `measureSpaceConsistent` (dragDiagnostics.ts).
+ */
+export const SURFACE_OFFSET_TOL = 12;
+
+/** True when a surface offset is known and beyond `tol` on either axis. */
+export function surfaceOffsetFails(o: { x: number; y: number } | null, tol: number): boolean {
+  "worklet";
+  return o !== null && (Math.abs(o.x) > tol || Math.abs(o.y) > tol);
+}
+
+/** DragGhostHost draws the ghost this many px above `cardY` so the card face
+ *  stays visible above the fingertip (`translateY: cardY - GHOST_LIFT`). */
+export const GHOST_LIFT = 8;
+
+/**
+ * Where the ghost is drawn (#3531): `finger − grab`, raised `lift` px. Window
+ * coordinates (RNGH's absolute origin, shared with the root DragGhostHost).
+ * The pan stores the unlifted part in cardX/Y (inline, so onUpdate allocates
+ * nothing) and the host applies GHOST_LIFT; the ghost check compares the
+ * measured ghost with this.
+ */
+export function ghostPosition(
+  fingerX: number,
+  fingerY: number,
+  grabX: number,
+  grabY: number,
+  lift: number
+): { x: number; y: number } {
+  "worklet";
+  return { x: fingerX - grabX, y: fingerY - grabY - lift };
+}
+
+/**
+ * Where a drop is let go, as the ghost's unlifted offset from where it was picked up (#3572):
+ * `finger − grab − origin`, with `origin` the dragged card's own window position
+ * (`startFinger − grab`). A board settles the drop from its card's slot plus this, less
+ * `GHOST_LIFT`.
+ */
+export function dropOffset(
+  fingerX: number,
+  fingerY: number,
+  grabX: number,
+  grabY: number,
+  originX: number,
+  originY: number
+): { dx: number; dy: number } {
+  "worklet";
+  return { dx: fingerX - grabX - originX, dy: fingerY - grabY - originY };
+}
+
+export interface GhostOffsetInput {
+  /** `measure()` of the ghost's Animated.View; null when it isn't laid out. */
+  ghost: PageRect | null;
+  /** The finger the rendered ghost was drawn for (RNGH `absoluteX/Y`). */
+  fingerX: number;
+  fingerY: number;
+  /** The finger's offset inside the card at activation (RNGH), recorded at
+   *  onStart: the same grab the ghost is positioned with (#3531). */
+  grabX: number;
+  grabY: number;
+  /** DragGhostHost's upward lift, `GHOST_LIFT`. */
+  lift: number;
+  /** Base allowed |delta| on either axis, `dragTolerance(cardHeight)`. */
+  tol: number;
+  /** The finger's last step before the check frame. Added to `tol` per axis:
+   *  a ghost one frame behind the finger (Reanimated can hold a frame while
+   *  React commits) is lag, not an offset. */
+  stepX?: number;
+  stepY?: number;
+  /** Measure-space expectation: the card's `measure()` page origin at onStart
+   *  plus the finger's movement since, i.e. where the (unlifted) ghost should
+   *  be if `measure()` page space is right. Null without a card measure. A
+   *  constant offset between RNGH `absoluteX/Y` and `measure()` cancels out of
+   *  the gesture-space delta (grab comes from the finger) but not this one.
+   *  With the ghost in the root host (#3531) the ghost's own measure is
+   *  `finger − grab` in surface coordinates, so when the render check passes
+   *  this delta equals the card's gesture origin minus its measure at
+   *  onStart: the RN surface's offset from RNGH's origin, which the player
+   *  sees as the ghost that far from the finger. */
+  measureExpected?: { x: number; y: number } | null;
+  /** The lag-free surface signal (#3531 review 2): the card's gesture origin
+   *  (`absolute − x` at onStart) minus its `measure()` origin, i.e. where the
+   *  RN surface sits in RNGH space. When given (non-null), it alone decides
+   *  `failMeasure`, against the fixed `surfaceTol` (SURFACE_OFFSET_TOL), with
+   *  no lag term; `deltaMeasure` is still reported. Null without a card
+   *  measure: then the measure-space side cannot fail. Omitted (undefined):
+   *  the #3528 rule, `deltaMeasure` against `tol + |step|`. */
+  surfaceOffset?: { x: number; y: number } | null;
+  surfaceTol?: number;
+  /** What the host asked for: the origin the ghost is drawn from (the root
+   *  host's, 0,0, since #3531) and the ghost's `cardX/cardY`. When the ghost
+   *  measures at that origin although its transform is large, `measure()`
+   *  ignored the transform. */
+  rendered?: { containerX: number; containerY: number; cardX: number; cardY: number } | null;
+  /** The lag allowance (#3532). `measure()` reads the shadow tree, which
+   *  holds the transform of Reanimated's last commit; under load (a
+   *  software-rendered emulator, a slow phone) that commit can be several
+   *  frames old, so the measured ghost sits where the finger WAS. A sample
+   *  outside `tol + |step|` of the latest finger but consistent with recent
+   *  motion is `status: "lag"`: not a verdict, the caller takes ONE follow-up
+   *  sample and judges it with `judgeGhostFollowUp`. Consistent with recent
+   *  motion = the implied finger (ghost + grab + lift) lies inside the box of
+   *  the finger's running min/max since onStart (+ tol) AND within
+   *  `tol + GHOST_LAG_FRAMES x |step|` of the latest finger on each axis.
+   *  Omitted: no lag allowance (the #3528 rule). */
+  lag?: { minX: number; maxX: number; minY: number; maxY: number } | null;
+}
+
+/** How many frames of the finger's current speed a lagging ghost may trail
+ *  by (#3532). CI's software-rendered emulator measured Δ(19,58) dp at about
+ *  7.5 dp/frame, ~8 frames; 12 leaves headroom for a slower phone while
+ *  bounding the blind spot (a steady offset smaller than 12 frames of travel
+ *  in the drag's direction, which the follow-up then has to catch). */
+export const GHOST_LAG_FRAMES = 12;
+
+/** A lagging ghost must, between the two samples, advance along the
+ *  finger's travel by at least this fraction of it (#3532). A ghost that
+ *  trails by a steady number of frames advances ~100% of it; a frozen one
+ *  0%, one moving the wrong way < 0. Half splits those with margin for a
+ *  decelerating finger. */
+export const GHOST_FOLLOW_UP_MIN_PROGRESS = 0.5;
+
+/** `transformIgnored`: the ghost measured at its host's origin although its
+ *  transform is large. With today's Reanimated flags (synchronous UI props off,
+ *  `measure()` includes the transform) that is a real render failure (ghost
+ *  stuck at the screen's top-left); it is reported as a `transformIgnored` event. */
+export type GhostCheckStatus = "ok" | "fail" | "unmeasured" | "transformIgnored" | "lag";
+
+export interface GhostOffset {
+  status: GhostCheckStatus;
+  /** Rendered ghost page origin minus where the finger says it should be
+   *  drawn (gesture space), px. Positive Y = drawn below. 0 when unmeasured. */
+  deltaX: number;
+  deltaY: number;
+  /** The same against the measure-space expectation; 0 without one. */
+  deltaMeasureX: number;
+  deltaMeasureY: number;
+  /** Which comparison failed. */
+  failGesture: boolean;
+  failMeasure: boolean;
+  /** Where the (unlifted) ghost origin should be: finger − grab, page space. */
+  expectedX: number;
+  expectedY: number;
+}
+
+/**
+ * The invariant the player sees (#3528): the ghost is drawn where the finger
+ * says it should be. DragGhostHost renders the ghost at `cardY − lift` from
+ * the window origin, and the pan writes `cardY = finger − grab` (#3531), so
+ * the rendered page origin must be `ghostPosition(finger, grab, lift)`
+ * (gesture space). When the card was measured at
+ * onStart it must also sit at `cardMeasured + finger movement − (0, lift)`
+ * (measure space). Either delta beyond `tol + |step|` on an axis fails.
+ */
+/** Whether a ghost `delta` px from the latest finger is consistent with
+ *  frame lag (#3532): see `GhostOffsetInput.lag`. */
+function inLagAllowance(input: GhostOffsetInput, deltaX: number, deltaY: number): boolean {
+  "worklet";
+  const lag = input.lag;
+  if (lag === undefined || lag === null) return false;
+  const tol = input.tol;
+  const impliedX = input.fingerX + deltaX;
+  const impliedY = input.fingerY + deltaY;
+  const capX = tol + GHOST_LAG_FRAMES * Math.abs(input.stepX ?? 0);
+  const capY = tol + GHOST_LAG_FRAMES * Math.abs(input.stepY ?? 0);
+  return (
+    impliedX >= lag.minX - tol &&
+    impliedX <= lag.maxX + tol &&
+    impliedY >= lag.minY - tol &&
+    impliedY <= lag.maxY + tol &&
+    Math.abs(deltaX) <= capX &&
+    Math.abs(deltaY) <= capY
+  );
+}
+
+/**
+ * The follow-up to a `lag` sample (#3532). `first`/`second` are the two
+ * samples' gesture-space deltas and the finger each was taken against; the
+ * second's own status is `secondStatus`. OK when the second is within
+ * tolerance (it caught up), or still lagging but having advanced along the
+ * finger's travel between the samples by at least
+ * GHOST_FOLLOW_UP_MIN_PROGRESS of it (when the finger barely moved, by that
+ * fraction of the gap the ghost had to close). Anything else, a frozen ghost
+ * or one moving the wrong way, is a render failure.
+ */
+export function judgeGhostFollowUp(
+  first: { deltaX: number; deltaY: number; fingerX: number; fingerY: number },
+  second: { deltaX: number; deltaY: number; fingerX: number; fingerY: number },
+  secondStatus: GhostCheckStatus,
+  tol: number
+): boolean {
+  "worklet";
+  if (secondStatus === "ok") return true;
+  if (secondStatus !== "lag") return false;
+  // Where the ghost was drawn for (implied finger) at each sample.
+  const i1x = first.fingerX + first.deltaX;
+  const i1y = first.fingerY + first.deltaY;
+  const advX = second.fingerX + second.deltaX - i1x;
+  const advY = second.fingerY + second.deltaY - i1y;
+  let dirX = second.fingerX - first.fingerX;
+  let dirY = second.fingerY - first.fingerY;
+  let len = Math.sqrt(dirX * dirX + dirY * dirY);
+  if (len < tol) {
+    // The finger barely moved: the ghost must close the gap it had instead.
+    dirX = second.fingerX - i1x;
+    dirY = second.fingerY - i1y;
+    len = Math.sqrt(dirX * dirX + dirY * dirY);
+    if (len < 1) return true;
+  }
+  const progress = (advX * dirX + advY * dirY) / len;
+  return progress >= GHOST_FOLLOW_UP_MIN_PROGRESS * len;
+}
+
+export function computeGhostOffset(input: GhostOffsetInput): GhostOffset {
+  "worklet";
+  const { ghost, fingerX, fingerY, grabX, grabY, lift, tol } = input;
+  // Unlifted; the lift is applied per axis below.
+  const expected = ghostPosition(fingerX, fingerY, grabX, grabY, 0);
+  const expectedX = expected.x;
+  const expectedY = expected.y;
+  const none = {
+    deltaX: 0,
+    deltaY: 0,
+    deltaMeasureX: 0,
+    deltaMeasureY: 0,
+    failGesture: false,
+    failMeasure: false,
+    expectedX,
+    expectedY,
+  };
+  if (ghost === null || !Number.isFinite(ghost.pageX) || !Number.isFinite(ghost.pageY)) {
+    return { status: "unmeasured", ...none };
+  }
+  const rendered = input.rendered ?? null;
+  if (
+    rendered !== null &&
+    Math.abs(ghost.pageX - rendered.containerX) < 1 &&
+    Math.abs(ghost.pageY - rendered.containerY) < 1 &&
+    (Math.abs(rendered.cardX) > tol || Math.abs(rendered.cardY - lift) > tol)
+  ) {
+    return { status: "transformIgnored", ...none };
+  }
+  const tolX = tol + Math.abs(input.stepX ?? 0);
+  const tolY = tol + Math.abs(input.stepY ?? 0);
+  const deltaX = ghost.pageX - expectedX;
+  const deltaY = ghost.pageY - (expectedY - lift);
+  const offGesture = Math.abs(deltaX) > tolX || Math.abs(deltaY) > tolY;
+  const lagging = offGesture && inLagAllowance(input, deltaX, deltaY);
+  const failGesture = offGesture && !lagging;
+  const m = input.measureExpected ?? null;
+  const deltaMeasureX = m === null ? 0 : ghost.pageX - m.x;
+  const deltaMeasureY = m === null ? 0 : ghost.pageY - (m.y - lift);
+  const failMeasure =
+    input.surfaceOffset === undefined
+      ? Math.abs(deltaMeasureX) > tolX || Math.abs(deltaMeasureY) > tolY
+      : surfaceOffsetFails(input.surfaceOffset, input.surfaceTol ?? SURFACE_OFFSET_TOL);
+  return {
+    status: failGesture || failMeasure ? "fail" : lagging ? "lag" : "ok",
+    deltaX,
+    deltaY,
+    deltaMeasureX,
+    deltaMeasureY,
+    failGesture,
+    failMeasure,
+    expectedX,
+    expectedY,
   };
 }

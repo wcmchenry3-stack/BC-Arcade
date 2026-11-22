@@ -142,6 +142,11 @@ describe("Errant asteroids (#2486)", () => {
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
+    // #3568: a rock on screen holds the wave in the pickup wait; a rock that never leaves is let
+    // go by the safety cap, and the extraction and then the reset clear it
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
+    for (let i = 0; i < 2000 && s.phase === "ClearAwaitingPickups"; i++) s = tick(s, 16, NO_INPUT);
     expect(s.phase).toBe("Extraction");
     expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
     s = runExtraction(s);
@@ -248,6 +253,26 @@ describe("Errant asteroids (#2486)", () => {
     s = tick(s, 16, NO_INPUT);
     const hit = s.enemies.find((e) => e.id === flying.id)!;
     expect(hit.hp < flying.hp || !hit.isAlive).toBe(true);
+  });
+
+  // #3561: a reinforcement waiting at the Carrier's bay for its stagger is on screen
+  it("strikes a reinforcement waiting at the Carrier's bay for its launch stagger", () => {
+    let s = quiet(2);
+    const g = s.enemies.find((e) => e.isAlive && e.tier === "Grunt" && e.phase === "Formation")!;
+    const bay = { x: 200, y: 160 };
+    const parked = {
+      ...g,
+      phase: "SwoopIn" as const,
+      x: bay.x,
+      y: bay.y,
+      pathT: -0.3,
+      path: { p0: bay, p1: bay, p2: bay, p3: { x: g.formationX, y: g.formationY } },
+    };
+    s = { ...s, enemies: s.enemies.map((e) => (e.id === g.id ? parked : e)) };
+    s = { ...s, asteroids: [rock("large", bay.x, bay.y)] };
+    s = tick(s, 16, NO_INPUT);
+    const hit = s.enemies.find((e) => e.id === g.id)!;
+    expect(hit.hp < parked.hp || !hit.isAlive).toBe(true);
   });
 
   it("shatters harmlessly on the Carrier's force field", () => {
@@ -578,6 +603,34 @@ describe("Enemy asteroid response (#2487)", () => {
       s = tick({ ...s, asteroids: [rock("large", c.x, c.y - 90, { vy: 0.2 })] }, 16, ASIDE);
       expect(s.tierStats.Guardian.flak).toBe(flakCount);
     }
+  });
+
+  it("#3710: a fighter's flak bolt carries the shooter's tier (asteroids.ts stamp site)", () => {
+    const q = { ...quiet(), enemyFireDisabled: false };
+    const guardian = q.enemies.find(
+      (e) => e.isAlive && e.tier === "Guardian" && e.phase === "Formation"
+    )!;
+    const base = {
+      ...q,
+      enemies: q.enemies.map((e) =>
+        e.id === guardian.id || e.tier === "Carrier" ? e : { ...e, isAlive: false, hp: 0 }
+      ),
+    };
+    let bolt: Bullet | undefined;
+    for (let seed = 1; seed <= 40 && !bolt; seed++) {
+      seedRng(seed);
+      const s = tick(
+        {
+          ...base,
+          asteroids: [rock("large", guardian.x, guardian.y - 90, { vy: 0.2 })],
+        },
+        16,
+        ASIDE
+      );
+      bolt = s.enemyBullets.filter((b) => b.flak).find((b) => Math.abs(b.x - guardian.x) < 6);
+    }
+    expect(bolt).toBeDefined();
+    expect(bolt!.tier).toBe("Guardian");
   });
 
   it("no flak at a rock moving away, out of range, or when enemy fire is disabled", () => {

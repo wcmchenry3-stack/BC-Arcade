@@ -70,7 +70,7 @@ describe("registries", () => {
     expect(TIER_ORDER).toBe(ENEMY_TIERS);
   });
 
-  it("hold the v1 schema's values", () => {
+  it("hold the v2 schema's values", () => {
     expect(REGISTRIES).toEqual({
       POWERUP_TYPES: ["lightning", "shield", "buddy", "bomb", "salvage", "hull"],
       POWERUP_SOURCES: ["kill", "rock", "carrier", "dev"],
@@ -82,6 +82,7 @@ describe("registries", () => {
       HIT_RESULTS: ["life", "plating", "shield"],
       KILL_METHODS: ["shot", "dive", "rout", "bomb", "ram", "rock", "buddy"],
       CARRIER_STAGES: ["protected", "exposed", "finalStand"],
+      DEATH_PHASES: ["combat", "pickupWait", "extraction"], // #3535
     });
   });
 
@@ -186,12 +187,14 @@ describe("emptyWaveStats", () => {
   });
 
   it("starts the wave's pacing at 0 from the given loadout, not flagged dev", () => {
-    expect(ws.pacing).toEqual({ durationMs: 0, start: START, bonusLives: 0 });
+    expect(ws.pacing).toEqual({ durationMs: 0, start: START, bonusLives: 0, gunsPeak: 1 }); // #3510
     expect(ws.dev).toBe(false);
     expect(ws.rout).toEqual({ triggered: false, atMs: null, grunts: 0, caught: 0, escaped: 0 });
     expect(ws.damage.deathCause).toBeNull();
     for (const [at, n] of leaves(ws)) {
-      if (typeof n === "number" && !at.startsWith("pacing.start")) expect([at, n]).toEqual([at, 0]);
+      // #3510: gunsPeak opens at the starting loadout's guns, like `start`
+      const seeded = at.startsWith("pacing.start") || at === "pacing.gunsPeak";
+      if (typeof n === "number" && !seeded) expect([at, n]).toEqual([at, 0]);
     }
   });
 
@@ -294,14 +297,14 @@ describe("the wave's accumulator", () => {
 });
 
 describe("closeWave", () => {
-  it("closes a cleared wave into a frozen v1 snapshot", () => {
+  it("closes a cleared wave into a frozen v2 snapshot", () => {
     let s = untilPlaying(run());
     s = { ...s, player: { ...s.player, guns: 3, hull: 2 } };
     const next = clearWave(s);
     const snap = next.lastClosedWave!;
     const entry = next.scoreLedger.waves.find((w) => w.wave === 1)!;
     expect(snap).toMatchObject({
-      v: 1,
+      v: 2,
       wave: 1,
       difficulty: "Commander",
       outcome: "cleared",
@@ -456,7 +459,7 @@ function worstCase(n: number): WaveStatsSnapshot {
     for (const mod of ["dive", "rout", "bomb", "ram"]) pts[`${tier}:${mod}`] = n;
   }
   return {
-    v: 1,
+    v: 2,
     wave: 999,
     difficulty: "LieutenantCommander",
     outcome: "died",
@@ -469,7 +472,8 @@ function worstCase(n: number): WaveStatsSnapshot {
     carrier: ws.carrier,
     rout: { ...ws.rout, triggered: true },
     combat: ws.combat,
-    damage: { ...ws.damage, deathCause: "beam" },
+    // #3535: the longest phase (fill turned the null into a number)
+    damage: { ...ws.damage, deathCause: "beam", deathPhase: "extraction" },
   };
 }
 
@@ -477,12 +481,12 @@ describe("toWirePayload", () => {
   it("drops zero counters and empty objects, keeps the always-present fields", () => {
     const snap = closeWave(run(), "cleared");
     expect(toWirePayload(snap)).toEqual({
-      v: 1,
+      v: 2,
       wave: 1,
       difficulty: "Commander",
       outcome: "cleared",
       dev: false,
-      pacing: { durationMs: 0, start: START, end: START, bonusLives: 0 },
+      pacing: { durationMs: 0, start: START, end: START, bonusLives: 0, gunsPeak: 1 }, // #3510
       score: { total: 0, runningTotal: 0, pts: {} },
       powerUps: {},
       rocks: {},

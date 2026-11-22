@@ -189,15 +189,11 @@ jest.mock("../components/FeedbackWidget/SessionLogger", () => ({
 }));
 const mockFonts = { loaded: true };
 jest.mock("expo-font", () => ({ useFonts: () => [mockFonts.loaded] }));
-jest.mock("@expo-google-fonts/space-grotesk", () => ({
-  SpaceGrotesk_400Regular: 1,
-  SpaceGrotesk_700Bold: 2,
-}));
-jest.mock("@expo-google-fonts/manrope", () => ({
-  Manrope_400Regular: 3,
-  Manrope_600SemiBold: 4,
-  Manrope_700Bold: 5,
-}));
+jest.mock("@expo-google-fonts/space-grotesk/400Regular", () => ({ SpaceGrotesk_400Regular: 1 }));
+jest.mock("@expo-google-fonts/space-grotesk/700Bold", () => ({ SpaceGrotesk_700Bold: 2 }));
+jest.mock("@expo-google-fonts/manrope/400Regular", () => ({ Manrope_400Regular: 3 }));
+jest.mock("@expo-google-fonts/manrope/600SemiBold", () => ({ Manrope_600SemiBold: 4 }));
+jest.mock("@expo-google-fonts/manrope/700Bold", () => ({ Manrope_700Bold: 5 }));
 
 // The global Sentry mock has no ErrorBoundary; give it a minimal real one.
 type FallbackProps = { error: unknown; resetError: () => void };
@@ -592,6 +588,25 @@ describe("App — Sentry start-up", () => {
       upgrade.mockRestore();
       await storage.removeItem("sentryDial.v1");
     }
+  });
+
+  it("screenshots the cards.offTable report only, text unmasked (#3653)", () => {
+    const { init } = loadApp({ dsn: "https://k@o.ingest.sentry.io/1" });
+    const options = init.mock.calls[0][0] as {
+      attachScreenshot?: boolean;
+      integrations: (defaults: object[]) => { name: string }[];
+      beforeScreenshot: (event: object) => boolean;
+      screenshot: object;
+    };
+    // The JS integration (which asks beforeScreenshot) is added; the native SDKs' own
+    // screenshot processors (switched on by attachScreenshot) stay off.
+    expect(options.attachScreenshot).not.toBe(true);
+    const defaults = [{ name: "Default" }];
+    expect(options.integrations(defaults).map((i) => i.name)).toEqual(["Default", "Screenshot"]);
+    expect(options.beforeScreenshot({ message: "cards.offTable", level: "warning" })).toBe(true);
+    expect(options.beforeScreenshot({ message: "drag.ghostOffset", level: "warning" })).toBe(false);
+    expect(options.beforeScreenshot({ exception: { values: [{ value: "boom" }] } })).toBe(false);
+    expect(options.screenshot).toEqual({ maskAllText: false });
   });
 
   it("survives an init that throws", () => {

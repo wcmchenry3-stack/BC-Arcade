@@ -1,6 +1,9 @@
 /**
- * #1108 — tall FreeCell tableau columns compress to fit instead of running
- * off the bottom of the screen.
+ * FreeCell's tableau column on the felt (#3607). It used to compress itself to a
+ * height it was given (#1108, `computeCardOffset`); the board now picks one step
+ * for every column from the felt's geometry (`faceUpStepFor`, tested in
+ * `_shared/cards/__tests__/tableLayout.test.ts` and `FreeCellScreen.feltTable.test.tsx`),
+ * and the column draws the step it is given.
  */
 import React from "react";
 import { StyleSheet } from "react-native";
@@ -9,111 +12,86 @@ import { render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { CardSizeContext } from "../../../game/_shared/CardSizeContext";
 import { DragProvider } from "../../../game/_shared/drag/DragContext";
-import TableauColumn, {
-  computeCardOffset,
-  FACE_UP_OFFSET,
-  MIN_FACE_UP_OFFSET,
-  TABLEAU_MAX_HEIGHT,
-} from "../TableauColumn";
+import TableauColumn from "../TableauColumn";
 import { CARD_HEIGHT, CARD_WIDTH } from "../FreeCellSlot";
 import type { Card } from "../../../game/freecell/types";
 
 const SUITS = ["spades", "hearts", "clubs", "diamonds"] as const;
 function pileOf(n: number): Card[] {
-  return Array.from({ length: n }, (_, i) => ({ suit: SUITS[i % 4]!, rank: (i % 13) + 1 }));
+  return Array.from({ length: n }, (_, i) => ({
+    suit: SUITS[i % 4]!,
+    rank: ((i % 13) + 1) as Card["rank"],
+  }));
 }
 
-describe("computeCardOffset (#1108)", () => {
-  it("budget is 13 cards at full spacing (489 px natural)", () => {
-    expect(TABLEAU_MAX_HEIGHT).toBe(489);
+function renderColumn(props: Partial<React.ComponentProps<typeof TableauColumn>> & { n: number }) {
+  const { n, ...rest } = props;
+  return render(
+    <ThemeProvider>
+      <CardSizeContext.Provider value={{ cardWidth: CARD_WIDTH, cardHeight: CARD_HEIGHT }}>
+        <DragProvider>
+          <TableauColumn pile={pileOf(n)} colIndex={2} {...rest} />
+        </DragProvider>
+      </CardSizeContext.Provider>
+    </ThemeProvider>
+  );
+}
+
+function topOf(el: { props: { style: unknown } }): number {
+  return (StyleSheet.flatten(el.props.style as never) as { top: number }).top;
+}
+
+describe("FreeCell TableauColumn on the felt (#3607)", () => {
+  it("stacks the cards by the step the board gives it", async () => {
+    const { getByTestId } = await renderColumn({ n: 19, faceUpOffset: 22 });
+    expect(topOf(getByTestId("freecell-col-2-card-1"))).toBe(22);
+    expect(topOf(getByTestId("freecell-col-2-top"))).toBe(18 * 22);
   });
 
-  it("a 6-card column keeps the full 36 px offset (height 237)", () => {
-    const off = computeCardOffset(6);
-    expect(off).toBe(36);
-    expect(CARD_HEIGHT + 5 * off).toBe(237);
-  });
-
-  it("13 cards still use full spacing and fit exactly", () => {
-    const off = computeCardOffset(13);
-    expect(off).toBe(36);
-    expect(CARD_HEIGHT + 12 * off).toBe(489);
-  });
-
-  it("14 cards compress (~33.2 px) and fit", () => {
-    const off = computeCardOffset(14);
-    expect(off).toBeLessThan(36);
-    expect(off).toBeCloseTo(33.23, 1);
-    expect(CARD_HEIGHT + 13 * off).toBeLessThanOrEqual(489 + 1e-9);
-  });
-
-  it("37+ cards clamp to the 12 px minimum", () => {
-    expect(computeCardOffset(37)).toBe(12);
-    expect(computeCardOffset(52)).toBe(MIN_FACE_UP_OFFSET);
-  });
-
-  it("is a pure function of length: a shrinking column regains full spacing", () => {
-    expect(computeCardOffset(20)).toBeCloseTo(22.74, 1);
-    expect(computeCardOffset(10)).toBe(36);
-  });
-
-  it("a single card (or empty column) uses the full offset", () => {
-    expect(computeCardOffset(1)).toBe(FACE_UP_OFFSET);
-    expect(computeCardOffset(0)).toBe(FACE_UP_OFFSET);
-  });
-
-  it("uses the measured height when given (SE-class screen)", () => {
-    // 35 px cards (scale 0.875) on a short screen: 300 px for the tableau.
-    const scale = 35 / CARD_WIDTH;
-    const cardH = Math.round(CARD_HEIGHT * scale);
-    const off = computeCardOffset(19, Math.round(36 * scale), cardH, 300, 12 * scale);
-    expect(cardH + 18 * off).toBeLessThanOrEqual(300 + 1e-9);
-  });
-});
-
-describe("TableauColumn layout (#1108)", () => {
-  function renderColumn(n: number, maxHeight?: number, cardWidth = CARD_WIDTH) {
-    const cardHeight = Math.round((CARD_HEIGHT * cardWidth) / CARD_WIDTH);
-    return render(
-      <ThemeProvider>
-        <CardSizeContext.Provider value={{ cardWidth, cardHeight }}>
-          <DragProvider>
-            <TableauColumn pile={pileOf(n)} colIndex={2} maxHeight={maxHeight} />
-          </DragProvider>
-        </CardSizeContext.Provider>
-      </ThemeProvider>
-    );
-  }
-
-  function topOf(el: { props: { style: unknown } }): number {
-    return (StyleSheet.flatten(el.props.style as never) as { top: number }).top;
-  }
-
-  it("keeps full spacing for a short column", async () => {
-    const { getByTestId } = await renderColumn(6);
+  it("without a step, uses the natural 36 dp on the natural card", async () => {
+    const { getByTestId } = await renderColumn({ n: 6 });
     expect(topOf(getByTestId("freecell-col-2-top"))).toBe(5 * 36);
   });
 
-  it("keeps the last card inside the height it was given", async () => {
-    const maxHeight = 360;
-    const { getByTestId } = await renderColumn(19, maxHeight);
-    const lastTop = topOf(getByTestId("freecell-col-2-top"));
-    expect(lastTop + CARD_HEIGHT).toBeLessThanOrEqual(maxHeight + 1e-9);
-    // Evenly spaced: the second card sits one offset down.
-    expect(topOf(getByTestId("freecell-col-2-card-1"))).toBeCloseTo(lastTop / 18, 5);
-  });
-
-  it("scales the default budget with the card size when nothing is measured", async () => {
-    const width = 35;
-    const scale = width / CARD_WIDTH;
-    const cardH = Math.round(CARD_HEIGHT * scale);
-    const { getByTestId } = await renderColumn(16, undefined, width);
-    const lastTop = topOf(getByTestId("freecell-col-2-top"));
-    expect(lastTop + cardH).toBeLessThanOrEqual(TABLEAU_MAX_HEIGHT * scale + 1e-9);
-  });
-
-  it("every card in a compressed column stays labelled for screen readers", async () => {
-    const { getByLabelText } = await renderColumn(19, 360);
+  it("every card in a tight column stays labelled for screen readers", async () => {
+    const { getByLabelText } = await renderColumn({ n: 19, faceUpOffset: 15 });
     expect(getByLabelText(/^A of Spades/)).toBeTruthy();
+  });
+
+  it("a legal target: one 'Can move here' hint, on the top card, and an unannounced outline", async () => {
+    const { getAllByHintText, getByTestId } = await renderColumn({
+      n: 3,
+      legalTarget: true,
+      dropId: "freecell-tableau-2",
+      onDrop: () => true,
+    });
+    const hinted = getAllByHintText("Can move here");
+    expect(hinted).toHaveLength(1);
+    expect(hinted[0]!.props.accessibilityLabel).toBe("3 of Clubs");
+    const outline = getByTestId("freecell-tableau-2-target");
+    expect(outline.props.accessible).toBe(false);
+    expect(outline.props.pointerEvents).toBe("none");
+  });
+
+  it("an empty legal target carries the hint on the slot itself", async () => {
+    const { getAllByHintText } = await renderColumn({
+      n: 0,
+      legalTarget: true,
+      dropId: "freecell-tableau-2",
+      onDrop: () => true,
+    });
+    const hinted = getAllByHintText("Can move here");
+    expect(hinted).toHaveLength(1);
+    expect(hinted[0]!.props.accessibilityLabel).toBe("Empty tableau column 3");
+  });
+
+  it("no hint and no outline when it is not a legal target", async () => {
+    const { queryAllByHintText, queryByTestId } = await renderColumn({
+      n: 3,
+      dropId: "freecell-tableau-2",
+      onDrop: () => true,
+    });
+    expect(queryAllByHintText("Can move here")).toHaveLength(0);
+    expect(queryByTestId("freecell-tableau-2-target")).toBeNull();
   });
 });

@@ -148,5 +148,59 @@
       "payout": -200,
       "bet": 200
     }
+  },
+  {
+    "id": "dealer_peek_natural_ace_up",
+    "description": "Dealer shows an Ace with a K in the hole: the peek finds a natural (#3741). The hand ends at the deal; player's 19 loses the original bet only.",
+    "deck": [
+      { "suit": "♦", "rank": "A" },
+      { "suit": "♥", "rank": "9" },
+      { "suit": "♣", "rank": "K" },
+      { "suit": "♠", "rank": "10" }
+    ],
+    "actions": ["bet:100"],
+    "expected": {
+      "phase": "result",
+      "outcome": "lose",
+      "chips": 900,
+      "payout": -100,
+      "bet": 100
+    }
+  },
+  {
+    "id": "dealer_peek_natural_ten_up",
+    "description": "Dealer shows a Q with an Ace in the hole: the peek finds a natural (#3741). A pair of 8s never gets to split; only the original bet is lost.",
+    "deck": [
+      { "suit": "♦", "rank": "Q" },
+      { "suit": "♥", "rank": "8" },
+      { "suit": "♣", "rank": "A" },
+      { "suit": "♠", "rank": "8" }
+    ],
+    "actions": ["bet:100"],
+    "expected": {
+      "phase": "result",
+      "outcome": "lose",
+      "chips": 900,
+      "payout": -100,
+      "bet": 100
+    }
+  },
+  {
+    "id": "dealer_peek_no_natural",
+    "description": "Dealer shows an Ace with a 9 in the hole (20): the peek finds nothing and the player acts (#3741). Player stands on 19 and loses.",
+    "deck": [
+      { "suit": "♦", "rank": "A" },
+      { "suit": "♥", "rank": "9" },
+      { "suit": "♣", "rank": "9" },
+      { "suit": "♠", "rank": "10" }
+    ],
+    "actions": ["bet:100", "stand"],
+    "expected": {
+      "phase": "result",
+      "outcome": "lose",
+      "chips": 900,
+      "payout": -100,
+      "bet": 100
+    }
   }
 ]

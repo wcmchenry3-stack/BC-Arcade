@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "התחל משחק חדש",
   "newGame.confirm.cancel": "ביטול",
   "settings.soundEffects": "אפקטים קוליים",
+  "settings.dragDebugOverlay": "שכבת דיבאג לגרירה",
+  "settings.dragDebugOverlay.description": "למפתחים: מציג את האצבע, מסגרת הקלף הצפויה ותוצאת בדיקת הגרירה בזמן גרירה.",
   "clearLogs.label": "ניקוי לוגים מקומיים",
   "clearLogs.description": "מוחק את כל האירועים והלוגים שלא סונכרנו עדיין.",
   "clearLogs.button": "נקה",
@@ -49,8 +51,15 @@
   "overflow.abandon.body": "התחלת משחק חדש תמחק את ההתקדמות שלך בסיבוב הזה. הסטטיסטיקות הכלליות שלך לא יושפעו.",
   "overflow.abandon.keepPlaying": "להמשיך לשחק",
   "overflow.abandon.startNew": "להתחיל חדש",
+  "play": "שחק",
   "home.locked.buttonLabel": "פתיחה",
   "home.locked.cardLabel": "{{title}} — נעול, הקישו לפתיחה",
+  "home.resume.buttonLabel": "המשך",
+  "home.resume.cardLabel": "{{label}} — בתהליך, הקישו להמשך",
+  "home.status.inProgress": "בתהליך",
+  "home.status.doneToday": "הושלם היום",
+  "home.status.best": "שיא {{value}}",
+  "home.status.bestMoves": "שיא מהלכים: {{value}}",
   "deleteData.label": "מחיקת הנתונים שלי",
   "deleteData.description": "מוחק לצמיתות את כל היסטוריית המשחקים והסטטיסטיקות המשויכות למכשיר זה.",
   "deleteData.button": "מחק",
@@ -104,5 +113,6 @@
   "locked.back": "חזרה ללובי",
   "locked.back_label": "חזרה ללובי",
   "offline.windowExhausted": "עברו 3 ימים מאז שהתחברת. התחברו לאינטרנט כדי לקבל את החידה החדשה.",
-  "offline.windowExhaustedStreak": "התחברו כדי להמשיך את הרצף שלכם."
+  "offline.windowExhaustedStreak": "התחברו כדי להמשיך את הרצף שלכם.",
+  "action.autoComplete": "סיום אוטומטי"
 }

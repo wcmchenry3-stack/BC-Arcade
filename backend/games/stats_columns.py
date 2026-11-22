@@ -12,11 +12,14 @@ from __future__ import annotations
 import functools
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, case, func, or_
+from sqlalchemy import ColumnElement, and_, case, func, literal, or_
 
+from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from db.jsonx import json_number
 from db.models import Game, GameType
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
+from games.boards.editions import enforced_edition
+from games.boards.sql import edition_matches
 from games.filters import not_abandoned
 from games.protocol import GameModule
 from games.registry import get_module
@@ -78,7 +81,8 @@ def _best_candidate() -> ColumnElement:
 
     A row qualifies when it is not abandoned and, if its board sets
     ``qualifying_outcomes``, its outcome is one of them (Daily Word: wins
-    only). The value is ``final_score``, ``duration_ms`` (Mahjong's clear
+    only), and, if it sets an ``edition``, the row is in it (Sort's level
+    catalog, #2761). The value is ``final_score``, ``duration_ms`` (Mahjong's clear
     time, #2747; only from the board's ``min_value`` up, as on the board) or
     the metadata key the board names.
 
@@ -88,7 +92,11 @@ def _best_candidate() -> ColumnElement:
     whens = []
     for game_type in VocabGameType:
         board = _registered_module(game_type.value).board
-        if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
+        if (
+            board.metric == SCORE_METRIC
+            and board.qualifying_outcomes is None
+            and enforced_edition(board) is None
+        ):
             continue  # the ELSE branch below
         value: ColumnElement
         if board.metric == SCORE_METRIC:
@@ -99,6 +107,10 @@ def _best_candidate() -> ColumnElement:
             value = json_number(Game.game_metadata, board.metric)
         if board.qualifying_outcomes is not None:
             value = case((Game.outcome.in_(board.qualifying_outcomes), value))
+        edition = enforced_edition(board)
+        if edition is not None:
+            # Rows from an earlier edition of the board are no one's best (#2761).
+            value = case((edition_matches(edition), value))
         whens.append((GameType.name == game_type.value, value))
     per_game = case(*whens, else_=Game.final_score) if whens else Game.final_score
     return case((not_abandoned(), per_game))
@@ -115,6 +127,25 @@ _REPORTED_TIME_MS = case(
 )
 
 
+# Games that report ``best_win_ms`` (#3927), each with the lowest plausible win
+# time: a faster win is a broken clock or a forged result and is ignored. Opt-in
+# per game, like ``daily_challenge.definitions._WON_WITHIN_FLOORS``.
+_BEST_WIN_FLOORS_MS: dict[str, int] = {
+    VocabGameType.CASCADE.value: CASCADE_MIN_WIN_MS,
+}
+
+
+def _best_win_ms() -> ColumnElement:
+    """The fastest plausible ``win`` time, NULL for other rows and other games."""
+    whens = [
+        (and_(GameType.name == name, Game.duration_ms >= floor), Game.duration_ms)
+        for name, floor in _BEST_WIN_FLOORS_MS.items()
+    ]
+    if not whens:  # no game opted in: ``case()`` needs at least one WHEN
+        return literal(None)
+    return func.min(case((Game.outcome == _WIN, case(*whens))))
+
+
 def _comparable_columns() -> list[ColumnElement]:
     """Conditional aggregates for the comparable fields, added to the stats query."""
     candidate = _best_candidate()
@@ -125,6 +156,7 @@ def _comparable_columns() -> list[ColumnElement]:
         func.sum(_REPORTED_TIME_MS).label("time_played_ms"),
         func.max(candidate).label("metric_max"),
         func.min(candidate).label("metric_min"),
+        _best_win_ms().label("best_win_ms"),
     ]
 
 
@@ -153,4 +185,5 @@ def _comparable_fields(
         "time_played_ms": round(float(row.time_played_ms or 0)),
         "best_value": _as_number(best_value),
         "best_label_key": board.label_key,
+        "best_win_ms": _as_number(row.best_win_ms),
     }

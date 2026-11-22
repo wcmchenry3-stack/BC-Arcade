@@ -43,17 +43,16 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
 
     // Score into Chance (always legal)
     const chanceBtn = page.getByRole("button", {
-      name: /Chance: potential score/i,
+      name: /Chance: open, would score/i,
     });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
 
     // AI turn banner must appear immediately
     await expect(page.getByText(/Computer'?s Turn/i)).toBeVisible();
-    // Roll button must be disabled while AI plays
-    await expect(
-      page.getByRole("button", { name: /Roll dice/i }),
-    ).toBeDisabled();
+    // Roll button must be disabled while AI plays (it reads "Computer's Turn", not a roll
+    // count, so it is found by its testID)
+    await expect(page.getByTestId("yacht-roll-button")).toBeDisabled();
   });
 
   test("control returns to player after AI completes its turn", async ({
@@ -62,7 +61,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await page.getByRole("button", { name: /Roll dice/i }).click();
 
     const chanceBtn = page.getByRole("button", {
-      name: /Chance: potential score/i,
+      name: /Chance: open, would score/i,
     });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
@@ -78,7 +77,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await page.getByRole("button", { name: /Roll dice/i }).click();
 
     const chanceBtn = page.getByRole("button", {
-      name: /Chance: potential score/i,
+      name: /Chance: open, would score/i,
     });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
@@ -99,7 +98,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await page.getByRole("button", { name: /Roll dice/i }).click();
 
     const chanceBtn = page.getByRole("button", {
-      name: /Chance: potential score/i,
+      name: /Chance: open, would score/i,
     });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();
@@ -112,7 +111,7 @@ test.describe("Yacht — AI turn flow (#1602)", () => {
     await page.getByRole("button", { name: /Roll dice/i }).click();
 
     const chanceBtn = page.getByRole("button", {
-      name: /Chance: potential score/i,
+      name: /Chance: open, would score/i,
     });
     await expect(chanceBtn).toBeVisible();
     await chanceBtn.click();

@@ -157,9 +157,9 @@ Yacht runs on the device; the server only records games. `YachtGameUser` replays
 
 The free tier shuts down after ~15 minutes of inactivity. Cold starts add 20–45 seconds to the first request. The CI workflow includes a warm-up step (up to 5 curl retries × 15s) before timing begins. First-request latency is not representative of steady-state performance.
 
-### Matter.js runtime performance
+### Cascade physics runtime performance
 
-Lighthouse measures initial load quality (LCP, CLS, TBT) on the static export. It does **not** measure frame rate or physics jank during gameplay. Runtime performance of the Matter.js physics engine requires a Playwright trace or browser DevTools recording — not covered by this setup.
+Lighthouse measures initial load quality (LCP, CLS, TBT) on the static export. It does **not** measure frame rate or physics jank during gameplay. Runtime performance of the planck.js physics engine (#3697; Matter.js before) requires a Playwright trace or browser DevTools recording — not covered by this setup. On native, Cascade's frame time and React commits are read from its dev panel ([Cascade renderer (#2960)](#cascade-renderer-2960)), and its step cost from the dev panel's step bench ([Cascade physics step cost (#3697)](#cascade-physics-step-cost-3697)).
 
 ---
 
@@ -195,20 +195,45 @@ Everything in this section is current. The April 2026 sections further down are 
 
 The source of truth is the `android-bundle-check` job in `.github/workflows/ci.yml` (flags to `frontend/scripts/size-report.mjs`) and `frontend/package.json`.
 
-| Budget                     | Value                              | Measured on                                       | Enforced by                                                      | Effect                                                |
-| -------------------------- | ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
-| JS hard limit              | 8,388,608 B (8 MiB)                | Store bundle, `dist/index.android.bundle`         | `--max-js 8388608` in step "Size budgets"                        | CI fails                                              |
-| JS warn threshold          | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
-| Packaged assets hard limit | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
-| Hidden-premium asset guard | 0 files                            | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
-| All-games JS ceiling       | 8,388,608 B (8 MiB)                | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
-| `bundlesize`               | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
-| Hidden-locale guard        | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
-| PR comment baseline        | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
-| Release APK size report    | none                               | `android-release-smoke` universal arm64 APK       | Step "APK size report (non-blocking)"                            | Step summary only                                     |
-| New game JS delta          | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
+| Budget                         | Value                              | Measured on                                       | Enforced by                                                      | Effect                                                |
+| ------------------------------ | ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
+| JS hard limit                  | 8,388,608 B (8 MiB)                | Store bundle, `dist/index.android.bundle`         | `--max-js 8388608` in step "Size budgets"                        | CI fails                                              |
+| JS warn threshold              | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
+| Packaged assets hard limit     | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
+| Packaged assets warn threshold | 3,932,160 B (3.75 MiB)             | Store `dist/assets`                               | `--warn-assets 3932160`                                          | `::warning`, CI passes                                |
+| Hidden-premium asset guard     | 0 files (lobby tiles too, #4011)   | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
+| All-games JS ceiling           | 8,650,752 B (8.25 MiB), temporary  | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
+| `bundlesize`                   | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
+| Hidden-locale guard            | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
+| PR comment baseline            | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
+| Release APK size report        | none                               | `android-release-smoke` universal arm64 APK       | Step "APK size report (non-blocking)"                            | Step summary only                                     |
+| New game JS delta              | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
 
 Why 8 MiB stays the JS limit (decided in #2829): the store bundle was 6.24 MiB then (5.55 MiB since #3150), but the premium release un-hides the games and becomes the 7.11 MiB all-games bundle. 8 MiB leaves about 0.89 MiB (12%) of growth over that ceiling. Lowering the limit now would only fail the premium launch. Drift on today's store bundle is caught by the 6.0 MiB warning (about 8% over 5.55 MiB; it was 6.75 MiB before #3150). The all-games ceiling is checked now, not at launch. The assets limit (4 MiB, about 23% over the 3.25 MiB store payload) will fail by design when games are un-hidden: that needs a deliberate re-budget, not a quiet increase.
+
+The all-games ceiling is 8.25 MiB for now (#3791, 2026-11-13, owner decision). Dev's all-games bundle had reached 8,379,013 B, and the Bottle Sort sound set's 23 asset-registry entries (about 10 KB of JS) put it 711 B over 8 MiB. The store-config limit is unchanged. [#3820](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3820) cuts the all-games JS and lowers the ceiling back to 8 MiB.
+
+### Packaged-asset budget rule (#3631)
+
+> Proposed 2026-11-13 from the measurement in [asset-budget-plan.md](research/asset-budget-plan.md). The numbers below are the rule for new sound and art PRs; they take effect when the owner accepts the plan.
+
+Store-config packaged assets were 3,699,614 B (3.53 MiB, 127 files) on 2026-11-13: 75% fonts, 24% sounds, 1% images. The 4.0 MiB hard limit leaves 0.47 MiB. Every PR that adds or changes a file under `frontend/assets/` that a **store-visible** game or shared UI reaches must follow this. Files only hidden premium games use are outside the totals until the premium launch re-budget, but still obey the per-file limits.
+
+| Budget                         | Value                                                       |
+| ------------------------------ | ----------------------------------------------------------- |
+| New SFX file                   | at most 30 KB (loops and stingers at most 40 KB)            |
+| New sound set for one game     | at most 100 KB total, 3 variants per cue at most            |
+| New raster image               | at most 100 KB, WebP unless it needs alpha steps WebP lacks |
+| New font file or icon font     | none without owner approval                                 |
+| Store `dist/assets` warn line  | 3,932,160 B (3.75 MiB)                                      |
+| Store `dist/assets` hard limit | 4,194,304 B (4 MiB), unchanged                              |
+
+- The [ASSETS.md](ASSETS.md#size-budgets) budgets (SFX 50 KB, game image 500 KB, and so on) still apply; the per-file numbers above are stricter for store-visible files.
+- The PR description states the packaged-assets delta in bytes (before and after, from the `android-bundle-check` comment or `node frontend/scripts/size-report.mjs`) and which of the numbers above it spends.
+- A PR that takes the store total past the warn line, or that needs more than the budget for its set, stops for an owner decision recorded on the issue; it does not raise a limit by itself.
+- Import fonts and icon sets by subpath (`@expo-google-fonts/manrope/400Regular`), never from the package barrel: the barrel makes Metro package every weight.
+- Icons come from `src/components/icons/MaterialIcons` and `MaterialCommunityIcons` (subset fonts, #3843), never from `@expo/vector-icons/<Family>`, which would package the full font (357 KB or 1.31 MB) and inline its glyph map in the JS. A new icon is a name in `src/components/icons/iconNames.ts` plus a regenerated subset (`python tools/assets/subset_icon_fonts.py`); it adds a few hundred bytes. `src/__tests__/iconSubset.test.ts` enforces this.
+- Warn line wiring: the "Size budgets" step in `ci.yml` passes `--warn-assets 3932160`, so crossing 3.75 MiB prints a non-blocking `::warning::` and sets `status=warn`; the "Bundle size report" PR comment then shows a warning line and lists "3.75 MiB warn" next to the assets row (#3844). Current store assets are 1,397,878 B (1.33 MiB, 120 files) since the icon-font subset (#3843), well under the line.
 
 CI builds the store bundle with the env set explicitly. A gitignored `frontend/.env` on a dev machine points at the pre-launch API and would otherwise make a bundle with all 12 games, because Expo loads `.env` before Metro runs.
 
@@ -236,8 +261,10 @@ For the all-games numbers use `EXPO_PUBLIC_API_URL=https://dev-games-api.buffing
 | After #2830 + #2832, store                                   | 6,544,825 B (6.24 MiB)     | 3,403,575 B (3.25 MiB)      |    52 |
 | **After #3150, store (current): non-launch locales stubbed** | **5,818,990 B (5.55 MiB)** | **3,403,575 B (3.25 MiB)**  |    52 |
 | **After #2830 + #2832, all games (premium ceiling)**         | **7,460,309 B (7.11 MiB)** | **28,744,159 B (27.4 MiB)** |   205 |
+| Before #3843, store (2026-11-14, `dev` bd363d7e)             | 6,190,131 B (5.90 MiB)     | 3,054,980 B (2.91 MiB)      |   120 |
+| **After #3843, store: icon fonts subset**                    | **5,960,039 B (5.68 MiB)** | **1,397,878 B (1.33 MiB)**  |   120 |
 
-Notes: the #3150 row was measured against 6,544,912 B for the same tree without the locale stub, so dropping the ten non-launch locales saves 725,922 B (0.69 MiB, 11.1%) of Android store JS; the iOS store bundle is 5,816,474 B, and the all-games bundle keeps all 13 locales (7,458,736 B). The first two rows are from the #2830 comparison runs; the last two were re-measured with `size-report.mjs` and re-checked for the store row on the final tree. Asset byte counts are exact; Metro's "Copying N asset files" log line says 53 and 206 because it counts a directory entry, `size-report.mjs` counts files. Adding `--sourcemap-output` appends 95 bytes to the bundle (6,544,920 B). The stale PR-comment baseline before this epic was 4,718,592 B (4.5 MB, 2026-04).
+Notes: the #3843 rows were measured 2026-11-14 with the command above plus `--reset-cache`. Subsetting MaterialIcons (356,840 B to 3,796 B, 30 glyphs) and MaterialCommunityIcons (1,307,660 B to 3,708 B, 20 glyphs) saves 1,657,102 B of packaged assets; replacing the full glyph maps (272 KB of source JSON) with the subset ones saves 230,092 B of store JS. The all-games bundle on the same tree is 8,326,778 B JS (under the 8.25 MiB ceiling) and 20,748,184 B of assets. The #3150 row was measured against 6,544,912 B for the same tree without the locale stub, so dropping the ten non-launch locales saves 725,922 B (0.69 MiB, 11.1%) of Android store JS; the iOS store bundle is 5,816,474 B, and the all-games bundle keeps all 13 locales (7,458,736 B). The first two rows are from the #2830 comparison runs; the last two were re-measured with `size-report.mjs` and re-checked for the store row on the final tree. Asset byte counts are exact; Metro's "Copying N asset files" log line says 53 and 206 because it counts a directory entry, `size-report.mjs` counts files. Adding `--sourcemap-output` appends 95 bytes to the bundle (6,544,920 B). The stale PR-comment baseline before this epic was 4,718,592 B (4.5 MB, 2026-04).
 
 ### Android artifact inputs
 
@@ -245,13 +272,13 @@ What the Android build copies into the APK/AAB besides native code. Source: `siz
 
 **Store config** (JS 6,544,825 B + assets 3,403,575 B):
 
-| Bucket                  | Files |      KB | Notes                                                               |
-| ----------------------- | ----: | ------: | ------------------------------------------------------------------- |
-| Fonts                   |    14 | 2,710.8 | Manrope ×7, Space Grotesk ×5, MaterialIcons, MaterialCommunityIcons |
-| Sounds                  |    19 |   567.0 | SFX only (see residuals below)                                      |
-| App logo                |     1 |    37.6 | `assets/logo.png` via `AppHeader`                                   |
-| React Navigation images |    17 |     6.2 | Library images                                                      |
-| Other                   |     1 |     2.2 | `raw/keep.xml`                                                      |
+| Bucket                  | Files |      KB | Notes                                                                                                                                                                                                                                                                                                    |
+| ----------------------- | ----: | ------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fonts                   |    14 | 2,710.8 | Manrope ×7, Space Grotesk ×5, MaterialIcons, MaterialCommunityIcons (measured before #3839; per-weight subpath imports now package 7 fonts, 2,128,172 B, and take total assets to 3,051,428 B in 120 files; since #3843 the two icon fonts are subsets, 7,504 B together, and the 7 fonts are 474,728 B) |
+| Sounds                  |    19 |   567.0 | SFX only (see residuals below)                                                                                                                                                                                                                                                                           |
+| App logo                |     1 |    37.6 | `assets/logo.png` via `AppHeader`                                                                                                                                                                                                                                                                        |
+| React Navigation images |    17 |     6.2 | Library images                                                                                                                                                                                                                                                                                           |
+| Other                   |     1 |     2.2 | `raw/keep.xml`                                                                                                                                                                                                                                                                                           |
 
 **All-games config** (JS 7,460,309 B + assets 28,744,159 B):
 
@@ -306,7 +333,7 @@ Record date, commit, env config, artifact bytes, per-device sizes and the JS, as
 
 Before the epic, a store bundle shipped the five hidden premium games' code and assets (206 asset files, about 38 MB) even though no route reached them. Two facts shaped the fix:
 
-- **`assetBundlePatterns: ["assets/**"]` in `app.json` does not package assets in this project.** The native projects are committed (bare workflow) and `expo-updates` is not installed, so the APK/IPA contains exactly the assets that Metro's dependency graph `require()`s, copied by `expo export:embed --assets-dest`. Changing `app.json` did not change the count (verified: 206 files before, 53 after, `app.json` unchanged).
+- **`assetBundlePatterns: ["assets/**"]`in`app.json`does not package assets in this project.** The native projects are committed (bare workflow) and`expo-updates`is not installed, so the APK/IPA contains exactly the assets that Metro's dependency graph`require()`s, copied by `expo export:embed --assets-dest`. Changing `app.json`did not change the count (verified: 206 files before, 53 after,`app.json` unchanged).
 - **`React.lazy()` / `import()` on native does not split the Hermes bundle.** A lazily imported screen, its whole module subtree and the assets it requires are all in the single bundle. Lazy loading only defers evaluation.
 
 **Mechanism.** `frontend/metro/storeBundle.js` wraps `resolver.resolveRequest` (chained after Sentry's resolver; wired in `frontend/metro.config.js`). In a store bundle it resolves the hidden games' screen modules to `src/screens/StoreBuildExcludedScreen.tsx`, which renders nothing:
@@ -321,25 +348,92 @@ Before the epic, a store bundle shipped the five hidden premium games' code and 
 
 A build counts as a store build when `!context.dev && EXPO_PUBLIC_TEST_HOOKS !== "1"` and `EXPO_PUBLIC_API_URL` is not the pre-launch API. This mirrors `SHOW_HIDDEN_GAMES` in `src/entitlements/gameVisibility.ts` minus `__DEV__`. The stubs are unreachable: `visiblePremiumRoutes()` registers no route for hidden games, and the Mahjong inspector screens are only opened from `MahjongScreen`. Dev, e2e (`TEST_HOOKS=1`) and pre-launch-API builds keep all 12 games.
 
-**Guards.** `src/entitlements/__tests__/storeBundle.test.ts` pins parity between the Metro predicate and `envFlags` (including lookalike hosts), the stub list against `HIDDEN_GAMES`, coverage of every `PREMIUM_ROUTES` lazy import, and resolver passthrough. In CI, `--forbid-hidden-assets` fails the job if any hidden-only asset (BGM, `celestial-icons`, `fruit-icons`, `cosmos-baked`, `fruits-baked`, vertices JSON, Mahjong tile art, Star Swarm sprites) is packaged.
+**Guards.** `src/entitlements/__tests__/storeBundle.test.ts` pins parity between the Metro predicate and `envFlags` (including lookalike hosts), the stub list against `HIDDEN_GAMES`, coverage of every `PREMIUM_ROUTES` lazy import, and resolver passthrough. In CI, `--forbid-hidden-assets` fails the job if any hidden-only asset (BGM, Mahjong tile art, Star Swarm sprites, or a hidden game's lobby tile image) is packaged. Cascade's pieces have no image files since #3698 (`assetBudget.test.ts` keeps images out of `assets/`); its lobby tile is an image since #4013, caught by the hidden lobby tile pattern like the others, and HomeScreen imports no Cascade component, so no piece art or Skia reaches a store bundle.
+
+**Lobby tile images (#4011).** Metro packages every image a module imports statically, whether the code that shows it runs or not, so an image HomeScreen imported would ship in every build. `starswarm-tile.webp` was imported that way and was packaged in store builds (`drawable-mdpi/assets_home_starswarmtile.webp`, 2,698 B) although Star Swarm is hidden there, and no hidden pattern matched it. A hidden game's tile image now lives in `src/components/home/hiddenGameTileArt.ts`, which a store bundle resolves to the image-free `hiddenGameTileArt.store.ts` (`STUBBED_MODULES` in `metro/storeBundle.js`); free games' tiles stay in `HomeScreen.tsx`. Measured on the store config (Android `export:embed`, 2026-11-21): packaged assets 1,397,922 B (120 files) before, 1,407,177 B (123 files) after #4011, +9,255 B for the four free-game tiles in (11,858 B) and the Star Swarm tile out (2,698 B); JS +1,227 B (asset-registry entries). #4012 adds the Solitaire, FreeCell and Daily Word tiles (measured the same way, 2026-11-21): packaged assets 1,407,177 B (123 files) to 1,416,829 B (126 files), +9,652 B (the three tiles, 9,544 B with the owner's second-round art, and +108 B in `raw/keep.xml`); JS +939 B (asset-registry entries). The letter outlines the Daily Word tile is drawn from (`tools/assets/lobby_glyphs.json`) are a build-time input only and ship nothing. #4013 gives the five hidden games scene tiles (Blackjack 2,738 B, Hearts 3,096 B, Mahjong 2,930 B, Star Swarm 3,202 B redrawn from the 2,698 B badge, Cascade 2,954 B: 14,920 B), all through `hiddenGameTileArt.ts`; Cascade's Skia-drawn `CascadeTileIcon` and its emoji-only store variant are gone, so `STUBBED_MODULES` holds only the tile art. Measured on the store config (Android `export:embed` and `size-report --forbid-hidden-assets --forbid-hidden-locales`, 2026-11-22, `dev` against the branch): packaged assets unchanged, 1,416,829 B in 126 files before and after (the same files, byte for byte; 0 hidden-premium assets); JS 5,988,639 B to 5,988,076 B (-563 B: the icon's store variant and the emoji path). A pre-launch (all-games) export packages all twelve tiles. `lobbyTileBudget.test.ts` caps the store tiles (21,402 B, cap 25,000 B) and the hidden ones (14,920 B, cap 17,000 B) apart, membership read from `gameVisibility.ts`. Two guards keep it that way:
+
+- `--forbid-hidden-assets` matches `assets_home_<slug>tile.*` for every slug in `HIDDEN_GAMES` or `DISABLED_GAMES` (`hiddenLobbyTilePattern()` in `scripts/size-report.mjs`, built from `gameVisibility.ts` by `hiddenGameSlugs()`, which the hidden-only sounds share), so a hidden or disabled game's tile fails a store build and a game's tile is allowed once it is in neither set. `readStringSet()` accepts `new Set([])`, `new Set<string>([...])`, comments and multi-line lists, so an empty set means no slugs rather than an error, and the pattern is built when the guard runs, not at import (#4017). A game moving from hidden to disabled keeps its tile in `hiddenGameTileArt.ts`; do not move it back into `HomeScreen.tsx`.
+- `storeBundle.test.ts` checks that HomeScreen imports no hidden or disabled game's tile, that `hiddenGameTileArt.ts` holds every hidden or disabled game's tile on disk and nothing else (including a slug only in `DISABLED_GAMES`), and that the stand-in imports no image.
 
 **What remains in the store bundle (known limitation).**
 
 - Small shared modules that free surfaces import: hidden games' i18n namespaces (all locales), the `GameDetail` Hearts and Star Swarm sections, Hearts and Blackjack scorecards and models, the Blackjack and Hearts contexts and storage, and the Star Swarm engine (reached through `scoreLedger`, `GameDetail` and `LeaderboardScreen`). All pure JS, no large assets.
-- Four sounds that look premium by name (`hearts-moon-shot.mp3`, `blackjack-win.ogg`, `cascade-fruit-merge.ogg`, `cascade-game-over.ogg`) are required by free games through the shared sound registry. The guard deliberately does not flag SFX.
+- No sound that looks premium by name is required by a free game any more: `cascade-fruit-merge.ogg` stopped being Bottle Sort's with #3661, `hearts-moon-shot.mp3` stopped being Sudoku's with #3775 (it is not bundled at all, and the file was deleted in #3885), and Cascade's sounds (since #3702 its own 44 synthesized `cascade-fruits-*` / `cascade-cosmos-*` files, which replaced the three Kenney files) are used by Cascade only, so the store bundle leaves them all out with the hidden-premium exclusion (`blackjack-win.ogg` was deleted with #3581). `freecell-game-win.mp3` was bundled by no game either and was deleted in #3871. The guard deliberately does not flag SFX.
 - The Blackjack and Hearts providers stay mounted at startup (about 26 KB of source).
-- No premium-only native dependency exists (`matter-js` and `poly-decomp` are pure JS), so native size is unchanged by #2830.
+- No premium-only native dependency exists (`planck`, Cascade's physics since #3697, is pure JS like `matter-js` before it), so native size is unchanged by #2830.
+
+### Cascade size baseline and budget (#3692)
+
+Measured 2026-11-11 on `dev`, before the dead files were deleted. Part of epic #3033; feeds #2828.
+
+**Store builds already exclude Cascade (#2830).** `metro/storeBundle.js` stubs `CascadeScreen`, so a store bundle contains no Cascade code, no matter-js and none of the art below (store export: 99 assets, 3.77 MB; Hermes bundle 7,959,422 B). The numbers below are what a build with Cascade included carries: a dev build, an e2e build (`EXPO_PUBLIC_TEST_HOOKS=1`), a pre-launch-API build, or a store build once Cascade is unhidden. Cascade is not a separate line in a store AAB today.
+
+| Item                                                                                                                     |                                                  Bytes | State                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------ | -----------------------------------------------------: | -------------------------------------------------------------------------- |
+| `assets/fruit-icons/` (11 imported WebP; 12 on disk, 255,498 B)                                                          |                                                250,642 | Deleted in #3698 (pieces are drawn in code)                                |
+| `assets/celestial-icons/` (11 imported WebP; 12 on disk, 418,804 B)                                                      |                                                371,746 | Deleted in #3698                                                           |
+| `assets/fruits-baked/` (11 imported PNG; 12 on disk, 375,878 B)                                                          |                                                359,716 | Deleted in #3698                                                           |
+| `assets/cosmos-baked/` (11 imported PNG; 12 on disk, 348,439 B)                                                          |                                                310,679 | Deleted in #3698                                                           |
+| `assets/sounds/cascade-*.ogg` (3 files)                                                                                  |                                                 29,360 | Deleted in #3702 (44 synthesized files, 365,174 B, replace them)           |
+| **Cascade assets that shipped before #3698 (44 images + 3 sounds = 47 files)**                                           |                                          **1,322,143** | Now: 0 image bytes (#3698); sounds 365,174 B, budget raised (#3702, #3966) |
+| Cascade JS, minified (`CascadeScreen` 14,945, `engine2` 5,650, `constants` 2,131, other modules and locale JSON ~11,464) |                                                 34,190 | Stays                                                                      |
+| `matter-js` (`matter.js`, minified in the bundle)                                                                        |                                                 83,492 | Removed in #3697 (replaced by `planck`)                                    |
+| `assets/fruit-vertices.json` + `cosmos-vertices.json`                                                                    |                                                 99,365 | Dead, deleted in #3692                                                     |
+| `assets/svg-sprites/` (22 SVG)                                                                                           |                                                 57,652 | Dead, deleted in #3692                                                     |
+| `poly-decomp`                                                                                                            | n/a in bundle (never registered with Matter.js, #2971) | Dead, removed in #3692                                                     |
+| Repo-root `fruit_images/` + `celestial_images/` (24 PNG, not in the app)                                                 |                                                ~163 MB | Deleted in #3692; history not rewritten, so clone size is unchanged        |
+
+Whole-bundle context (Android, `npx expo export --platform android`): store Hermes bundle 7,959,422 B and 99 assets (3,769,852 B); with all hidden games (`EXPO_PUBLIC_TEST_HOOKS=1`) the Hermes bundle is 10,063,185 B and 287 assets (27,681,308 B). The Hermes delta (2,103,763 B) covers every hidden game, not Cascade alone; the Cascade-only figure is the minified-JS attribution above (from the source map of a `--no-bytecode --dump-sourcemap` export, summing generated bytes per source file). A Hermes-bytecode figure per module is not separable.
+
+**#3697: planck.js replaced matter-js.** `npx expo export:embed --platform android --dev false` (ci.yml's steps), 2026-11-13: the store-config bundle is unchanged at 6,172,682 B (Cascade is stubbed out of store bundles, so neither engine is in it); the all-games bundle (pre-launch API URL) went from 8,396,787 B to 8,534,470 B, **+137,683 B** (planck in, matter-js out). That leaves 116,282 B under the 8.25 MiB all-games ceiling (#3791). planck is excluded from the Cascade art/sound budget like matter-js was (it is the physics engine).
+
+**AAB measurement: owner/CI follow-up.** No CI job publishes an AAB or APK as an artifact (`mobile-smoke-android.yml` builds a debug APK only for the smoke run), and this environment has no Android SDK, so `./gradlew bundleRelease` was not run. Because store builds exclude Cascade, the AAB figure for Cascade is currently zero; measure a Cascade-included AAB (`bundleRelease` with `EXPO_PUBLIC_TEST_HOOKS=1`) only if Cascade is unhidden. Recorded on #2828 by the orchestrator.
+
+**Cascade budget (epic #3033)**
+
+| Part                                                              |                                             Budget |
+| ----------------------------------------------------------------- | -------------------------------------------------: |
+| Piece art                                                         |        <= 20 KB, drawing code only, no image files |
+| Sounds                                                            |                <= 360 KiB total (120 KB pre-#3702) |
+| Cascade total (assets + Cascade JS, excluding the physics engine) | about 380 KB (200 KB before #3702; owner decision) |
+
+Before #3698: 1,322,143 B of assets plus 34,190 B of JS, about 1.36 MB against the 200 KB budget. After #3698 the art is code (17.4 KB minified; about 23.8 KB after #3964, over the 20 KB target, see [Cascade code-drawn art](#cascade-code-drawn-art-3698)) and the image bytes are zero; the sounds are what remains over budget until the sound story lands.
+
+**#3702: the owner raised the sound budget.** Cascade plays one full set of 22 sound files per piece set (Fruits and Cosmos), at the house encoding (44.1 kHz mono Vorbis q5): 193,033 B + 172,141 B = **365,174 B** for 44 files (#3966 added the two `merge-t11` files, 10,660 B and 9,256 B: 345,258 B before), against a 120 KB budget that one set at a lower encoding would have fitted. The owner chose two full sets at the house setting and raised the sound budget to about 345 KB (#3702, 2026-11-16), so the Cascade total was about 380 KB with its JS (the row above, raised from 200 KB by that decision). **#3966: the owner raised the ceiling again, to 360 KiB (368,640 B), for the two capstone merge files** (decision recorded on #3966, 2026-11-21): 365,174 B leaves 3,466 B of room. Every Ogg carries about 3.7 KB of fixed Vorbis header, so the 44 files cost about 163 KB before any audio. `src/game/cascade/__tests__/sounds.test.ts` fails if the Cascade sounds pass 360 KiB. Bundle: each `require` adds about 400 B of JS to a build that includes Cascade (the asset registry entry, two for the two sets: about 0.8 KB) plus the 19,916 B of audio in its assets; store builds stub Cascade and carry neither. The all-games JS ceiling (8.25 MiB, [#3820](https://github.com/wcmchenry3-stack/BC-Arcade/issues/3820)) is tight, and the `android-bundle-check` job is what checks it. Only the active set's players exist, so a game holds at most 22 players. **8 are created at mount** (drop, the two landings, merges t0-t3 and the first chain step: the sounds of every turn); the other 14 on their first play, or pre-warmed when they become likely (the win and `merge-t11`, which plays with it, once a tier-10 piece is on the board; danger and game over when the lid count first runs).
+
+**Guard.** `frontend/src/game/cascade/__tests__/assetBudget.test.ts` fails if `frontend/assets/` gains any Cascade image file or folder (the pinned list is empty since #3698), or if any of the files deleted in #3692 reappear. The one exception is the lobby tile `home/cascade-tile.webp` (#4013), pinned by exact path, capped at 3,400 B, and imported by no Cascade source. `scripts/check_large_files.py` (#2967) no longer grandfathers the two deleted source-art folders.
+
+### Cascade code-drawn art (#3698)
+
+The pieces (24 then, 22 since #3920) are drawn in code (`frontend/src/game/cascade/art/`); the sprite folders, `cascade_icon_masters/`, `images.ts` and the bake scripts are deleted. How the art works: [Cascade, Art (#3698)](games/cascade-decisions.md#art-3698).
+
+| Measure                                                                |             Value |
+| ---------------------------------------------------------------------- | ----------------: |
+| Art code, minified, both sets (budget 20 KB)                           |           17.4 KB |
+| Art code, gzipped                                                      |            7.2 KB |
+| Bitmap memory per set at game scale (the old sprites were about 23 MB) |        5.3-6.9 MB |
+| Building a set's bitmaps (JS thread, screen open and set switch)       |          75-91 ms |
+| Recording a frame of 60 pieces, headless CanvasKit (JIT / jitless)     | 0.54 ms / 0.75 ms |
+
+Bundle impact, 2026-11-14, `npx expo export:embed --platform android --dev false` as in ci.yml's `android-bundle-check`, on `bd363d7e` (dev) against the same commit plus #3698:
+
+| Config                             | Dev JS bundle (B) | #3698 JS bundle (B) | JS delta (B) | Dev assets              | #3698 assets            |
+| ---------------------------------- | ----------------: | ------------------: | -----------: | ----------------------- | ----------------------- |
+| Store (`games-api` URL, hooks off) |         6,190,131 |           6,190,616 |         +485 | 120 files, 3,054,980 B  | 120 files, 3,054,980 B  |
+| All games (pre-launch API URL)     |         8,556,870 |           8,557,636 |         +766 | 320 files, 22,405,286 B | 276 files, 21,110,885 B |
+
+The all-games bundle gains the art code but loses nothing else in JS; its assets drop by 44 files and 1,294,401 B (the sprites). The store bundle's +485 B is the home tile's emoji-only stub and the `HomeScreen` change. A grep of the store bundle finds none of `CASCADE_ART`, `FRUIT_ART`, `COSMOS_ART`, `drawLayer`, `piecePicture`, `pieceSprites`, `FruitGlyph` or `CascadeTileIcon`, and no `react-native-skia` (the all-games bundle has them); `storeBundle.test.ts` pins the stub mapping. Recording and frame times are from a headless run, not a phone: device frame time is Manual QA.
 
 ### Sentry JS cost (#2832)
 
 The April finding "Sentry ~24.5%" (below, historical) was a share of **raw `sourcesContent`** in the source map: unminified source text, summed over mapped modules, from a different SDK version. It is not installed size and not shipped JS. The numbers that matter for the bundle are the minified bytes.
 
-| Measure (2026-10-10, `@sentry/react-native` 8.27.0, `@sentry/core` and `browser` 10.75.0) | @sentry/* bytes | Denominator                          |  Share |
-| ----------------------------------------------------------------------------------------- | --------------: | ------------------------------------ | -----: |
-| Minified, original config (`dev` a19aadc5)                                                |       1,386,809 | 7,651,684 B bundle                   | 18.12% |
-| Minified, current store config (#2832 options)                                            |       1,196,103 | 6,544,901 B bundle                   | 18.28% |
-| `sourcesContent`, original config                                                         |       2,268,892 | 13,559,977 B summed `sourcesContent` | 16.73% |
-| `sourcesContent`, current store config                                                    |       1,896,091 | 11,141,467 B summed `sourcesContent` | 17.02% |
+| Measure (2026-10-10, `@sentry/react-native` 8.27.0, `@sentry/core` and `browser` 10.75.0) | @sentry/\* bytes | Denominator                          |  Share |
+| ----------------------------------------------------------------------------------------- | ---------------: | ------------------------------------ | -----: |
+| Minified, original config (`dev` a19aadc5)                                                |        1,386,809 | 7,651,684 B bundle                   | 18.12% |
+| Minified, current store config (#2832 options)                                            |        1,196,103 | 6,544,901 B bundle                   | 18.28% |
+| `sourcesContent`, original config                                                         |        2,268,892 | 13,559,977 B summed `sourcesContent` | 16.73% |
+| `sourcesContent`, current store config                                                    |        1,896,091 | 11,141,467 B summed `sourcesContent` | 17.02% |
 
 The share barely moves because #2830 shrank the denominator in the same period. The absolute change is the point: **−190,706 B of Sentry JS** (−191,244 B of bundle, −2.84%), and −372,801 B of `sourcesContent`.
 
@@ -349,11 +443,11 @@ The share barely moves because #2830 shrank the denominator in the same period. 
 
 **What remains** (minified, baseline build; no supported flag removes it): `@sentry/conventions` 348,607 B (a single `attributes` module), `@sentry/core` 347,725 B, `@sentry/react-native` 302,749 B, `@sentry/browser` 104,291 B, `@sentry/browser-utils` 51,001 B, `@sentry/react` 42,183 B. Patching or deep-importing past this was out of scope (see _Options not taken_).
 
-**Init cost** is static analysis only; nothing was profiled on a device. `Sentry.init` runs synchronously at `App.tsx` module scope (about 25 default integrations, no tracing, replay or profiling because no sample rates are set) and bridges to the native SDK. No init-level change was made. Native SDK versions are Sentry Cocoa 9.29.0 and sentry-android 8.57.0 (podspec and Gradle); native sizes are not measured.
+**Init cost** is static analysis only; nothing was profiled on a device. `Sentry.init` runs synchronously at `App.tsx` module scope (about 25 default integrations, no tracing, replay or profiling because no sample rates are set) and bridges to the native SDK. No init-level change was made. Native SDK versions are Sentry Cocoa 9.30.2 and sentry-android 8.61.0 (as shipped with `@sentry/react-native` 8.31) (podspec and Gradle); native sizes are not measured.
 
 ### Images (#2833)
 
-Two tiers per Cascade theme: 256 px WebP UI thumbnails (`fruit-icons/`, `celestial-icons/`, drawn by `FruitGlyph` at up to 32 pt) and 512 px palette PNG sprites (`fruits-baked/`, `cosmos-baked/`, drawn by Skia in `PieceRenderer`). They are not duplicates. The full-resolution processed icons moved to `cascade_icon_masters/` so Metro no longer bundles them. Rendered-size reasoning, the pipeline and the regeneration commands are in [ASSETS.md](ASSETS.md#rendered-sizes-2833), [Prebuild optimization](ASSETS.md#prebuild-optimization) and [Regenerating the runtime icon thumbnails](ASSETS.md#regenerating-the-runtime-icon-thumbnails). Not repeated here.
+**Superseded by #3698.** Cascade's pieces are now drawn in code and its image files (the 256 px WebP thumbnails and 512 px palette PNG sprites below) are deleted; see [Cascade code-drawn art](#cascade-code-drawn-art-3698). The table is what #2833 measured at the time.
 
 Bytes of bundled files, 2026-10-10 (all-games config; Cascade is a hidden game, so none of this is in the store bundle):
 
@@ -367,7 +461,16 @@ Bytes of bundled files, 2026-10-10 (all-games config; Cascade is a hidden game, 
 
 ### Audio
 
-Audio is not sized or planned here. In the store config the 19 packaged sounds are 567.0 KB of SFX; the 45 sounds (22,211 KB) of the all-games config are mostly BGM behind the hidden games. BGM format, bitrate, per-track budgets and the engine choice are owned by epic #1779 and #1787; the current budgets and track list are in [ASSETS.md](ASSETS.md#size-budgets). `react-native-audio-api` stays installed for that decision (next section).
+**SFX players (#3604).** Every `useSound` key needs an `expo-audio` player, and each player is a native object that also holds the audio session (`retainAudioSession`). Rules for the hooks in `frontend/src/game/_shared/`:
+
+- **One player per distinct asset.** `useSound` takes a hold on a shared pool (`soundPool.ts`) keyed by the registry's asset, so keys that resolve to the same file (Solitaire's `autoCompleteSettle` played by both the riffle and the recycle) share one player. The last hold removes it and releases the session.
+- **Eager by default, lazy for rare sounds.** `useSound(key, registry, volume, { lazy: true })` (shorthand `LAZY_SOUND`) creates the player on the first `play()`. Use it for sounds heard about once a game or less (win/lose, the Draw-3 fan, a multi-card move, the moon shot, the riffle). Keep frequent or latency-critical sounds (card place, flips, trick sweep, lasers) eager so their first play has no creation cost. A lazy sound that is never played costs nothing and never touches the audio session. `useSoundVariants` and `useLoopSound` take the same option; `useRunSound` (riffle) is always lazy.
+- **A lazy first play** skips the redundant `seekTo(0)` (the new player is at the start), and the first play may start a few ms after an eager one; measure on a low-end Android device before marking a sound lazy if it is close to a user action.
+- `useSoundVariants` works out its usable variations once per `keys`/`registry`, and sizes its slots from `MAX_SOUND_VARIANTS`.
+
+Players created at mount, before and after #3604: Solitaire 16 to 7, FreeCell 9 to 3, Hearts 11 to 6 (unit-counted, see `soundLazy.test.tsx`). Device mount time and memory on a low-end Android phone are not yet measured.
+
+Audio is not sized or planned here. In the store config (2026-11-13) the 93 packaged sounds are 851.2 KB of SFX (all `.ogg`); the 45 sounds (22,211 KB) of the all-games config are mostly BGM behind the hidden games. BGM format, bitrate, per-track budgets and the engine choice are owned by epic #1779 and #1787; the current budgets and track list are in [ASSETS.md](ASSETS.md#size-budgets). `react-native-audio-api` stays installed for that decision (next section).
 
 ### Native dependency audit (#2831)
 
@@ -382,7 +485,7 @@ Method (2026-10-10): for every `dependencies` entry, checked `node_modules` for 
 | Largest native cost, premium-only use | `@shopify/react-native-skia` (Star Swarm and Mahjong canvases; Skia is C++, 24M of source)                                                                                                                                       | Keep; per-game owners starswarm and mahjong. Standalone-app rule applies to anything new                                                                                     |
 | Audio                                 | `expo-audio` (SFX and current BGM), `react-native-audio-api` 0.13.5                                                                                                                                                              | Keep both for now, see below                                                                                                                                                 |
 | Dev tooling                           | `expo-dev-client`                                                                                                                                                                                                                | Keep. Its native modules `expo-dev-launcher` and `expo-dev-menu` are `debugOnly` in autolinking, so they are not linked in Release (not verified with a release binary here) |
-| JS only                               | navigation (3), `i18next` stack, `@formatjs/intl-pluralrules`, `fflate`, `@expo/vector-icons`, `matter-js`, `poly-decomp`                                                                                                        | Keep. `matter-js` is Cascade physics (hidden game, in the all-games bundle only)                                                                                             |
+| JS only                               | navigation (3), `i18next` stack, `@formatjs/intl-pluralrules`, `fflate`, `@expo/vector-icons`, `planck`                                                                                                                          | Keep. `planck` is Cascade physics since #3697 (hidden game, in the all-games bundle only)                                                                                    |
 
 **`react-native-audio-api` is kept, justified by #1779.** Its only importer is the dev spike screen `src/screens/__dev__/AudioLibrarySpikeScreen.tsx`, which nothing imports, so neither the library's JS nor the screen is in the production JS bundle; only the native library ships (autolinked). It is the candidate gapless BGM engine (spike #1782, preliminary recommendation 2026-05-22: `AudioBufferSourceNode.loop` for BGM) while `expo-audio` keeps SFX. If #1779 settles on `expo-audio` for BGM, remove it: `package.json`, the `app.json` plugin entry, the Podfile `DISABLE_AUDIOAPI_FFMPEG` line, `disableAudioapiFFmpeg` in `android/gradle.properties`, the `RNAudioAPI` lock entry, the audio-api bullets in [ANDROID-CI.md](ANDROID-CI.md), and the spike screen.
 
@@ -403,9 +506,9 @@ Package size on disk (2026-10-10, `node_modules`, v0.13.5): 14M total (common C+
 5. `EntitlementProvider` reads the cached token from AsyncStorage and calls `GET /entitlements`.
 6. `HomeScreen` mount: the `cold_start_ms` Sentry metric; then `prefetchLobbyGameScreens` on `setTimeout(0)`; `flushQueuedGames()` and `GET /stats/me`; `warmTodayMeta()`.
 
-Heavy data is already off the startup path: the Yacht oracle table (613,392 B source) is `require()`d inside `getOracleTable()`; the i18n locale JSON (840 KB) loads through `import()` for the active language plus `en`; the Sudoku banks (159,077 B) load when the Sudoku screen module is first evaluated, which the lobby prefetch does right after Home mounts. The two glyph maps (231 KB) are eager.
+Heavy data is already off the startup path: the Yacht oracle table (613,392 B source) is `require()`d inside `getOracleTable()`; the i18n locale JSON (840 KB) loads through `import()` for the active language plus `en`; the Sudoku banks (159,077 B) load when the Sudoku screen module is first evaluated, which the lobby prefetch does right after Home mounts. The two icon glyph maps are eager but small since #3843 (50 names, about 1 KB; the full maps were 231 KB).
 
-Largest eager packages (source bytes): reanimated 773 KB, `@sentry/*` about 1.1 MB (before #2832; now about 190 KB less), `@expo/vector-icons` 239 KB, react-native 230 KB, gesture-handler 212 KB.
+Largest eager packages (source bytes): reanimated 773 KB, `@sentry/*` about 1.1 MB (before #2832; now about 190 KB less), `@expo/vector-icons` 239 KB (before #3843; the full glyph maps were most of it), react-native 230 KB, gesture-handler 212 KB.
 
 #### Code evaluated when each v1 screen first opens
 
@@ -520,8 +623,8 @@ The one heavy one-shot is the **Yacht oracle**: `getOracleTable()` 197 ms cold (
 | P1       | Lobby prefetch contention (545 KB evaluated right after Home paints). Only if the P0 trace shows JS-thread contention in the first 2 s: stagger the prefetch (for example start about 1.5 s after Home, one task per tick), and/or `require()` the Sudoku bank lazily inside `poolFor` as the Yacht oracle does (same decode work, identical behaviour). |
 | P1       | Yacht VS-start freeze. If the device measurement is above about 250 ms: compute `targetIndex` with index arithmetic instead of sort/join, chunk `buildHoldOptions` across ticks during the VS intro, or ship the hold options as packed data. Output must stay bit-identical (oracle and AI golden tests, `yacht-sim-gate.yml`).                         |
 | P2       | Sentry and reanimated are about 40% of eager source. Check whether Sentry init and module evaluation is a measurable share of T0 to T1 before touching them; any removal must pass the A/B protocol.                                                                                                                                                     |
-| P2       | Five TTFs (466 KB) gate the first React frame. Measure `useFonts` resolve time on the low-end device; if material, render the shell with system fonts or cut unused weights.                                                                                                                                                                             |
-| P3       | `fflate` (34 KB), the plural-rules polyfill and locale data (39 KB) and the glyph maps (231 KB) are small eager costs. Leave them unless the P0 trace shows them.                                                                                                                                                                                        |
+| P2       | Five TTFs (466 KB) gate the first React frame. Measure `useFonts` resolve time on the low-end device; if material, render the shell with system fonts. Unused weights are already cut (#3839: only the 5 used weights are imported, by subpath).                                                                                                         |
+| P3       | `fflate` (34 KB), the plural-rules polyfill and locale data (39 KB) are small eager costs (the glyph maps, 231 KB, were cut to about 1 KB in #3843). Leave them unless the P0 trace shows them.                                                                                                                                                          |
 | P3       | `LeaderboardScreen`'s lazy chunk (118 KB) pulls in the hidden Star Swarm engine (about 38 KB). Not a startup issue; worth a look in dead-code work.                                                                                                                                                                                                      |
 | P3       | Add a one-line `console.info` of `cold_start_ms` in non-store builds so the number is readable with `adb logcat -s ReactNativeJS` where Sentry is disabled.                                                                                                                                                                                              |
 
@@ -588,6 +691,8 @@ The current enforced numbers (JS limit, warn threshold, packaged-assets limit, a
 - 5.5 MB: limit raised for `react-native-svg` and the Classic card deck (#688).
 - 6.0 MB: limit raised for Expo SDK 56 and new games (#1977).
 - 8.0 MB: limit raised for `@sentry/react-native` 7 → 8 (#1965).
+- **5.90 MiB → 5.68 MiB store JS (2026-11-14, #3843).** Icon fonts subset; the full glyph maps (230,092 B of JS) left the bundle. Limits unchanged.
+- **All-games ceiling 8.25 MiB (2026-11-13, #3791).** Temporary, store limit unchanged; #3820 brings it back to 8 MiB.
 - **8.0 MiB kept, meaning changed (2026-10-10, #2829).** The store bundle is 6.24 MiB after #2830 and #2832; 8 MiB now guards the 7.11 MiB all-games ceiling that the premium release will reach, with a 6.75 MiB warning on the store bundle and a 4 MiB packaged-assets limit. See [Enforced budgets](#enforced-budgets).
 - **7.74 MB → 7.27 MB (2026-09-30, #2869).** The bundle had reached 7.74 MB (8,114,007 bytes), 280 KB under the limit, before the premium client work (`expo-iap`, the five premium games made visible). Two behaviour-preserving changes cut 483 KB and left **752 KB of headroom** (769,634 bytes):
 
@@ -653,7 +758,7 @@ These were looked at for #2869 and left alone, either because they wouldn't redu
 - **Keeping non-active translations out of the bundle.** Every offered locale is reachable through `import()` in `src/i18n/localeLoaders.ts`, and native Metro bundles every `import()` target. (The locales a store build does not offer at all are a different case and are stubbed out at bundle time, #3150: see `frontend/metro/storeBundle.js`.) Moving translations out would mean downloading them (breaks offline play) or shipping them as native assets read at runtime (new native-asset code path). Not worth it while there's headroom.
 - **Minifier `ascii_only: false`.** Would cut ~240 KB from the measured file by writing translations as UTF-8 instead of `\uXXXX` escapes. It doesn't change the Hermes bytecode, so it would only move the metric. If we do it, it should come with measuring real bytecode instead (below).
 - **Measure Hermes bytecode in CI** (`expo export:embed --bytecode`, or the `.hbc` from the Gradle build) so the guardrail tracks what ships. The limit would need re-basing (see "Real bytecode" above), which is an owner decision.
-- **Icon glyph-map subset** (225 KB). `createIconSet` with only the glyphs we use. Needs every icon name to be static, which is not yet true everywhere.
+- **Icon glyph-map subset** (225 KB). Done in #3843: `createIconSet` over subset fonts and glyph maps (`src/components/icons/`); every icon name is now a typed literal, so `tsc` rejects one that is not in the subset.
 - **Expo experimental tree shaking** (`EXPO_UNSTABLE_TREE_SHAKING`). Could trim Sentry's tracing code, which we don't use (replay and the web feedback widget are already stubbed by the supported #2832 options), but it changes how every module is bundled and has to be set in the Gradle and Xcode Cloud builds too. Not measured.
 - **Deleting hidden-game code from store builds beyond their screens.** #2830 stubs the hidden screens and drops their assets; small shared modules (i18n namespaces, scorecards, the Star Swarm engine reached through shared screens) remain. See _Store build: hidden premium exclusion_ above.
 - **Raising the limit.** Not needed now. If it is later, record the owner's approval and the reason here, following _Updating the limit_ below.
@@ -662,7 +767,7 @@ These were looked at for #2869 and left alone, either because they wouldn't redu
 
 When a deliberate size increase is approved (e.g. a new game or major feature, or un-hiding premium games), update everything that carries the number, in the same PR as the size-increasing change so reviewers see them together:
 
-1. The `android-bundle-check` flags in `.github/workflows/ci.yml`: `--max-js`, `--warn-js`, `--max-assets` (store step) and `--max-js` (all-games step), plus the budget comment block above them.
+1. The `android-bundle-check` flags in `.github/workflows/ci.yml`: `--max-js`, `--warn-js`, `--max-assets`, `--warn-assets` (store step) and `--max-js` (all-games step), plus the budget comment block above them.
 2. `frontend/package.json`: the `"bundlesize"` `maxSize` field.
 3. `BASELINE_BYTES` and the "Delta vs ... baseline" label in the PR-comment step, and the numbers in this doc.
 
@@ -676,17 +781,7 @@ For new game additions specifically, the reviewer checklist in [`docs/GAME-CONTR
 
 ### WebP icon enforcement
 
-A separate CI gate in `test-frontend` (`assetTransparency.test.ts`) asserts that no raw PNGs exist in non-exempt icon subdirectories under `frontend/assets/`. To convert new PNGs before staging:
-
-```bash
-python tools/assets/convert_icons_to_webp.py frontend/assets/fruit-icons
-python tools/assets/convert_icons_to_webp.py frontend/assets/celestial-icons
-```
-
-**Exempt directories** (must stay PNG, never pass to the script):
-
-- `*-baked/` (`fruits-baked/`, `cosmos-baked/`) — Skia pipeline textures (palette-quantized by `npm run prebuild`, see [ASSETS.md](ASSETS.md#prebuild-optimization))
-- `source-icons/` — local pipeline inputs, not bundled
+A separate CI gate in `test-frontend` (`assetTransparency.test.ts`) asserts that no raw PNGs exist in the icon subdirectories under `frontend/assets/`. Convert a new PNG to WebP (for example with `sharp` or `cwebp`) before staging it. No directory is exempt since #3698 removed the Cascade `*-baked/` sprites and the local `source-icons/` inputs.
 
 ---
 
@@ -803,64 +898,44 @@ Resolved or superseded; verified on 2026-10-10.
 
 | Directory                                       | Size         | Files    | Bundled?      | Owner / Purpose                                                                                                                                   |
 | ----------------------------------------------- | ------------ | -------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `assets/source-icons/cosmos/`                   | 85.6 MB      | 12 PNG   | No            | Pipeline input — master source files for `npm run process-assets`. Not imported by app code.                                                      |
-| `assets/source-icons/fruits/`                   | 76.8 MB      | 12 PNG   | No            | Pipeline input — same as above.                                                                                                                   |
-| `assets/celestial-icons/`                       | 36.8 MB      | 12 PNG   | **Yes**       | Cosmos theme UI icons. Imported in `src/theme/fruitSets.ts`.                                                                                      |
-| `assets/fruit-icons/`                           | 26.1 MB      | 12 PNG   | **Yes**       | Fruits theme UI icons. Imported in `src/theme/fruitSets.ts`.                                                                                      |
+| `assets/source-icons/cosmos/`                   | 85.6 MB      | 12 PNG   | No            | Pipeline input for `npm run process-assets`. Deleted in #3692 / #3698 (the script is gone).                                                       |
+| `assets/source-icons/fruits/`                   | 76.8 MB      | 12 PNG   | No            | Pipeline input, same as above. Deleted.                                                                                                           |
+| `assets/celestial-icons/`                       | 36.8 MB      | 12 PNG   | **Yes**       | Cosmos theme UI icons. Deleted in #3698 (was imported in `src/theme/fruitSets.ts`).                                                               |
+| `assets/fruit-icons/`                           | 26.1 MB      | 12 PNG   | **Yes**       | Fruits theme UI icons. Deleted in #3698 (was imported in `src/theme/fruitSets.ts`).                                                               |
 | `assets/logo.png`                               | 7.1 MB       | 1 PNG    | **Yes**       | App logo. Imported in `src/components/shared/AppHeader.tsx`.                                                                                      |
 | `assets/adaptive-icon.png`                      | 7.1 MB       | 1 PNG    | Platform only | Android adaptive icon (`app.json`). Identical file to `logo.png`.                                                                                 |
 | `assets/icon.png`                               | 7.1 MB       | 1 PNG    | Platform only | App icon (`app.json`). Identical file to `logo.png`.                                                                                              |
-| `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
-| `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
-| `assets/cosmos-vertices.json`                   | 43 KB        | 1 JSON   | **Yes**       | Cascade physics polygon vertices for Cosmos theme.                                                                                                |
-| `assets/fruit-vertices.json`                    | 58 KB        | 1 JSON   | **Yes**       | Cascade physics polygon vertices for Fruits theme.                                                                                                |
+| `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces. Deleted in #3698 (was imported in `src/theme/useFruitImages.ts`, also deleted).                                               |
+| `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces. Deleted in #3698 (was imported in `src/theme/useFruitImages.ts`, also deleted).                                               |
 | `assets/*.png` (Android icons, splash, favicon) | ~0.2 MB      | 4 PNG    | Platform only | App store / launcher assets.                                                                                                                      |
 | Hearts                                          | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode ♥ emoji; all card rendering is programmatic.                                               |
 | `src/game/sudoku/puzzles.json`                  | ~261 KB      | 1 JSON   | **Yes**       | Sudoku puzzle bank — 3 000 unique-solution puzzles (1 000 per difficulty). ~60 KB gzipped over the wire. Imported by `src/game/sudoku/engine.ts`. |
-| Sudoku (lobby card)                             | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode 🧩 emoji; the board and cells are programmatic.                                            |
+| Sudoku (lobby card)                             | 2.6 KB       | 1 WebP   | **Yes**       | Lobby card art `assets/home/sudoku-tile.webp` since #4011 (was the 🧩 emoji); the board and cells are programmatic.                               |
 | **Repo total**                                  | **249.1 MB** | 83 files |               |                                                                                                                                                   |
 | **Bundled game assets**                         | **~72 MB**   |          |               | `celestial-icons` + `fruit-icons` + `logo` + `*-baked` + JSON                                                                                     |
 | **Not bundled (pipeline inputs)**               | **162.4 MB** |          |               | `source-icons/` — needed locally, not shipped                                                                                                     |
 
-### Asset pipeline
+### Asset pipeline and two-tier images (removed in #3698)
 
-The `source-icons/` directories are the master source files for the Cascade game piece pipeline:
-
-```
-source-icons/{fruits,cosmos}/*.png   →   npm run process-assets   →   {fruits,cosmos}-baked/*.png
-                                         (remove_backgrounds.py)
-```
-
-The baked outputs are the files actually used for in-game Skia rendering. The `*-icons/` files (medium-size PNGs) are used for UI display (selection screens, theme pickers) and are a separate set from the baked game-piece textures.
-
-### Two-tier image architecture
-
-Each theme set ships two separate image tiers:
-
-| Tier                          | Directories                        | Size    | Use                                       |
-| ----------------------------- | ---------------------------------- | ------- | ----------------------------------------- |
-| **UI icons** (large, April)   | `fruit-icons/`, `celestial-icons/` | 62.9 MB | `fruitSets.ts` — theme selector, previews |
-| **Baked game pieces** (small) | `fruits-baked/`, `cosmos-baked/`   | 2.2 MB  | `useFruitImages.ts` — in-game Skia canvas |
-
-Since #2833 the UI icon tier is 256 px thumbnails and the baked tier is palette PNG; see [Images (#2833)](#images-2833).
+This section described the Cascade sprite pipeline (`source-icons/` to `npm run process-assets` to `*-baked/`) and its two image tiers (UI icons and baked game pieces). Both tiers, the pipeline and its scripts are gone: the pieces (22 since #3920) are drawn in code (`frontend/src/game/cascade/art/`, [Cascade code-drawn art](#cascade-code-drawn-art-3698)). The directory table above is the April state, kept for the record; `source-icons/`, `celestial-icons/`, `fruit-icons/`, `cosmos-baked/` and `fruits-baked/` no longer exist.
 
 ### Findings and flags for Epic 2b (status as of 2026-10-10)
 
-| #   | April finding                                                                                 | Status                                                                                                                                                        |
-| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `celestial-icons/` + `fruit-icons/` = 62.9 MB of large PNGs bundled                           | Done. WebP (earlier) and 256 px thumbnails (#2833); the 24 bundled-icon files are now about 0.62 MB. Full-resolution masters moved to `cascade_icon_masters/` |
-| 2   | `source-icons/` lives under `frontend/assets/`                                                | Not bundled (Metro ignores unreferenced files). Pipeline inputs and their location are described in [ASSETS.md](ASSETS.md#directory-map)                      |
-| 3   | `adaptive-icon.png`, `icon.png`, `logo.png` are identical 7.1 MB files; `logo.png` is bundled | The store bundle now packages `logo.png` at 37.6 KB (2026-10-10). `icon.png` (491 KB) and `adaptive-icon.png` are platform-only                               |
-| 4   | `pumpkin` and `milkyway` are imported but unused (~6.7 MB)                                    | Done in #2833: no longer imported in `src/game/cascade/images.ts`                                                                                             |
-| 5   | `cosmos-baked/milkyway.png` referenced?                                                       | Moot; same change as 4                                                                                                                                        |
+| #   | April finding                                                                                 | Status                                                                                                                                                       |
+| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `celestial-icons/` + `fruit-icons/` = 62.9 MB of large PNGs bundled                           | Done. WebP (earlier) and 256 px thumbnails (#2833); the 24 bundled-icon files are now about 0.62 MB. The masters were later deleted with the sprites (#3698) |
+| 2   | `source-icons/` lives under `frontend/assets/`                                                | Not bundled (Metro ignores unreferenced files). Pipeline inputs and their location are described in [ASSETS.md](ASSETS.md#directory-map)                     |
+| 3   | `adaptive-icon.png`, `icon.png`, `logo.png` are identical 7.1 MB files; `logo.png` is bundled | The store bundle now packages `logo.png` at 37.6 KB (2026-10-10). `icon.png` (491 KB) and `adaptive-icon.png` are platform-only                              |
+| 4   | `pumpkin` and `milkyway` are imported but unused (~6.7 MB)                                    | Done in #2833; the files went in #3698                                                                                                                       |
+| 5   | `cosmos-baked/milkyway.png` referenced?                                                       | Moot; same change as 4                                                                                                                                       |
 
 ### Not orphaned (corrects Epic 2a assumption)
 
 The epic listed `/celestial_images/` as "suspected dead weight." Investigation found:
 
-- The actual paths are `celestial-icons/` and `cosmos-baked/` (not `celestial_images/`).
-- Both are actively imported and in use.
-- A third set (`source-icons/cosmos/`) is the pipeline input — intentional and necessary locally.
+- The actual paths were `celestial-icons/` and `cosmos-baked/` (not `celestial_images/`).
+- Both were actively imported and in use at the time; both were deleted in #3698.
+- A third set (`source-icons/cosmos/`) was the pipeline input; it was deleted with the pipeline.
 
 ---
 
@@ -1116,6 +1191,73 @@ same benchmark (three rounds, `dev`'s `engine.ts` swapped in and out on the same
 container) measured 929–1022 µs/tick before the split and 824–892 µs/tick after it, with the GC
 pass count unchanged (179 vs 179–180); on the idle container `dev` measured 632–721 µs/tick.
 
+## Cascade renderer (#2960)
+
+Before #2960 Cascade's RAF loop called `setScore`, `setPieces`, `setDangerRatio` and `setCanDrop` every frame, and the engine built a new pieces array per `getState()`, so the whole screen committed 60 times a second even with every piece asleep. Now the loop reads the engine into a reused state, publishes a packed frame to a shared value only when something drawn changed, and the board's Skia Picture records on the UI thread (see [games/cascade.md](games/cascade-decisions.md#rendering-2960)). A headless CanvasKit comparison of the old and new renderers on real engine states was pixel-identical; it ran on one thread, so device rendering is still unverified (owner follow-up, with the device numbers below).
+
+React commits of the Cascade screen, counted with React's `Profiler` in `src/screens/__tests__/CascadeScreen.frames.test.tsx` (engine stand-in, one `act()` per frame, so each frame commits as it would on a device):
+
+| Scenario (60 frames, 1 s at 60 Hz)                       | Before #2960 | After #2960 |
+| -------------------------------------------------------- | -----------: | ----------: |
+| Every piece asleep (settled board)                       |           60 |           0 |
+| Pieces moving, danger and `canDrop` changing every frame |           60 |           0 |
+| Score changes once, then holds (30 frames)               |           30 |           1 |
+
+Per-frame cost after #2960: the engine read allocates nothing (`getState(into)`); a frame that changes allocates one `Float64Array` of 4 + 7 x pieces numbers (about 2.3 KB for a 40-piece board; 7 since #3697 added the grow-in scale) for the copy handed to the UI thread; a settled frame allocates nothing and publishes nothing. The post-physics pass skips bodies that stay asleep.
+
+**Device numbers: owner follow-up.** Open the dev panel (`DEV`) during play; its _Frame_ line shows `avg / p95 ms · frames · commits/s` over the last second, counting every commit of the screen, `ScoreDisplay`'s alone included (dev builds only, like the panel: React runs in development mode there, so read the frame times as an upper bound and the commit counts as exact). Record a settled board and a 4-chain on a mid-range Android and an older iPhone:
+
+| Device                  | Scenario      | avg / p95 frame ms | commits/s         |
+| ----------------------- | ------------- | ------------------ | ----------------- |
+| Mid-range Android (TBD) | Settled board | TODO               | TODO (expect < 2) |
+| Mid-range Android (TBD) | 4-chain       | TODO               | TODO              |
+| Older iPhone (TBD)      | Settled board | TODO               | TODO (expect < 2) |
+| Older iPhone (TBD)      | 4-chain       | TODO               | TODO              |
+
+## Cascade on web (CanvasKit, #2960)
+
+On web Cascade draws with Skia's web runtime, CanvasKit (how and why: [games/cascade.md](games/cascade-decisions.md#rendering-2960)). Measured on the web export (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform web`, 2026-11-12, `canvaskit-wasm` 0.41.0 for `@shopify/react-native-skia` 2.14.0):
+
+| What                                                                                           |         Raw |     gzip -9 | When it downloads                                                                                          |
+| ---------------------------------------------------------------------------------------------- | ----------: | ----------: | ---------------------------------------------------------------------------------------------------------- |
+| `canvaskit.<hash>.wasm` (`dist/assets/node_modules/canvaskit-wasm/...`)                        | 8,076,553 B | 3,246,406 B | The first time Cascade opens. Same origin, content-hashed name, so the browser caches it                   |
+| `CascadeRoute-<hash>.js` (route, loader, CanvasKit's JS glue)                                  |   124,717 B |    37,713 B | When Cascade opens, or in the lobby's background prefetch for a player who can play Cascade                |
+| `CascadeScreen-<hash>.js` (screen, Matter.js when measured (planck.js since #3697), Skia's JS) |   681,063 B |   166,321 B | After CanvasKit has loaded. No longer prefetched from the lobby: the prefetch now stops at the route chunk |
+
+- **Nothing else pays it.** The lobby, start-up and every other web game never request the `.wasm` and never evaluate Skia (checked by `e2e/tests/cascade-smoke.spec.ts`; in the export, Skia's JS appears only in the `CascadeScreen` chunk and CanvasKit's glue only in the `CascadeRoute` chunk).
+- **Compression is the host's.** The gzip column is what a compressing host sends; whether Render's static sites compress `.wasm` has not been checked. Uncompressed it is 8.1 MB on the first open.
+- **Owner check after the first dev deploy.** Confirm the host serves `/assets/**/canvaskit.<hash>.wasm` with `Content-Type: application/wasm` (a wrong type stops streaming compilation, and some browsers refuse it) and a long `Cache-Control` (the name is content-hashed), e.g. `curl -sI <dev-site>/assets/node_modules/canvaskit-wasm/bin/full/canvaskit.<hash>.wasm`. Fix it in the static site's headers (`render.yaml`) if not.
+- **Load time.** Local, uncached: the board is up about 0.7 s after tapping Play (Chromium, loopback). On a slow 3G link the ~3.2 MB takes about a minute, which is why the load timeout is 60 s (`CANVASKIT_LOAD_TIMEOUT_MS`); past it the player gets an error with Try again, and the download keeps going.
+- **Cost.** Static files from the web host only: no API, database or Sentry volume, except one Sentry event (`subsystem: cascade.canvaskit`) for the first failed load in a page session; later failed attempts only add a breadcrumb, so Retry cannot multiply events. Web is not a store platform; the store web build leaves Cascade out while it is in `HIDDEN_GAMES` with the other premium games (`metro/storeBundle.js`), so production web does not serve the `.wasm` to players yet.
+- **Native: unchanged.** iOS and Android do not get the loader or the `.wasm`: `CascadeRoute.tsx` is the screen itself there. An Android export with every game (`EXPO_PUBLIC_TEST_HOOKS=1 npx expo export --platform android --no-bytecode`) has no `.wasm` asset and none of CanvasKit's loader code (`CanvasKitInit`, `locateFile`, `canvaskit.wasm` all absent; the `CanvasKit` identifiers it does contain are Skia's own `JsiSk*` JS classes, not from this change). The three new strings (loading, error, Try again) ship in the `cascade` translations on every platform, a few hundred bytes per locale.
+
+## Cascade physics step cost (#3697)
+
+Cascade's physics moved from Matter.js to planck.js 1.4.2 (#3697, the owner's "3 lively" tuning; [games/cascade.md](games/cascade-decisions.md#physics)). Box2D's solver costs more per piece than Matter's, and the smaller ladder lets a board hold more pieces (lively's random and spam games reach 70-90 against 45-50 before), so the step is the number to watch on a phone. Nothing new runs on the frame path for measurement: the sim measures from outside the engine, and the bench below runs only when pressed.
+
+**Bench protocol** (`frontend/src/game/cascade/stepBench.ts`, the #3696 spike's): merges and the lid off, tier-0 and tier-1 pieces dropped every 250 ms across the bin, one `step(1000 / 60)` per frame, timed from the (n - 4)th piece to 3 s after the last; best of 5 runs here. `node --jitless` (V8's interpreter) is a rough stand-in for Hermes; a shared 4-core container, so compare ratios, not absolutes.
+
+Measured 2026-11-13 (the production engines, best of 5):
+
+| Step cost, ms per 60 Hz frame                | Matter.js (before, `dev`) | planck lively (after) | Proposal's lively (sim candidate) |
+| -------------------------------------------- | ------------------------: | --------------------: | --------------------------------: |
+| 64 pieces, `--jitless`: mean / p95           |               1.89 / 7.44 |           3.64 / 6.60 |                       7.25 / 9.41 |
+| 90 pieces, `--jitless`: mean / p95           |              2.92 / 13.71 |           5.14 / 9.75 |                     10.90 / 14.04 |
+| 64 pieces, with JIT: mean / p95              |               0.11 / 0.50 |           0.15 / 0.28 |                       0.41 / 0.56 |
+| 90 pieces, with JIT: mean / p95              |               0.17 / 0.75 |           0.23 / 0.43 |                                 - |
+| Real games, 20+ pieces, JIT (sim, random@60) |                      0.06 |                  0.14 |                              0.24 |
+
+The mean is about 1.8x Matter's (Box2D's solver does more per contact), while the p95 is lower than Matter's here. The production engine is about half the cost of the proposal's candidate at 90 pieces: the merge-gap scan only compares same-tier pieces, and the per-step pass reads planck's vectors in place instead of allocating a state object per piece. The before column runs `dev`'s `CascadeEngine` with merges and the lid stubbed out (a one-off script, same protocol; not committed).
+
+**Device check: owner TODO.** Open the dev panel (`DEV`) on a dev build and press **Step bench (90 pieces)** under _Physics_: it prints `90 pieces · mean · p95 · max ms` for the step alone (the JS thread blocks for the run, a few seconds). A 60 Hz frame has 16.7 ms; the step should stay well under half of it at p95. Record it here:
+
+| Device                  | Scenario             | mean / p95 step ms | Notes |
+| ----------------------- | -------------------- | ------------------ | ----- |
+| Mid-range Android (TBD) | Step bench 90 pieces | TODO               |       |
+| Older iPhone (TBD)      | Step bench 90 pieces | TODO               |       |
+
+If p95 is over 8 ms on the mid-range Android, the levers are the solver iterations (`VELOCITY_ITERATIONS` / `POSITION_ITERATIONS` in `constants.ts`, 10 / 8) and the ladder (a larger r0 holds fewer pieces); both change the feel, so re-run the sim gate.
+
 ## Star Swarm timeline diagnostics (#3396)
 
 Epic #3390 adds the wave timeline ([design](games/starswarm-diagnostics.md)): a short list of each
@@ -1279,10 +1421,11 @@ Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT 
 
 ### Benchmarks and CI budgets
 
-`replay.bench.test.ts` plays three games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
+`replay.bench.test.ts` plays four games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
 
 - **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events). This is a stand-in shape (per-card events) from before #3283; the events Hearts really records, and their measured cost, are in [games/hearts.md](games/hearts.md#replay-recording).
 - **Solitaire:** 300 moves, one unit per move.
+- **Cascade** (#3858; #3967): a 10-minute game on the real engine (the skilled bot dropping every 2.4 s, seed 6 on the 12-tier ladder; 249 drops, 210 merges), one unit per 30 drops as the screen records them: 9 units, 18 events, 6,660 B recorded, 201,502 B written to storage, ≤ 6.3 KB a plain save and ≤ 46.0 KB an evicting one, 2 event POSTs, none while open (on the 11-tier ladder with 20-drop units: 13 units, 26 events, 7,003 B, 375,884 B, ≤ 13.4 / 46.9 KB). It has only 18 rows, so its queue is seeded at 4,990 rows for its saves to evict.
 - **Yacht:** 13 rounds against the CPU, one unit per round (13 units, 104 events). This is a stress fixture for the pipeline, not Yacht's real recording: since #3282 the app sends 26 units of one `turn_completed` event each (both players), measured in [games/yacht.md](games/yacht.md#replay-recording).
 
 The count budgets are hard, because the fixture is deterministic. Time has only a generous ceiling, a mean of 40 ms per save, because CI runners are shared and run jest with coverage.
@@ -1372,7 +1515,7 @@ Epic #3273 records far more of each game, so the cost of a heavy player's day is
 
 ### What is measured
 
-`frontend/src/game/_shared/__tests__/replay.budget.test.ts` plays one virtual day on fake timers: a Daily Word, 10 games of 2048, 3 of Hearts, 5 of Yacht against the computer, 5 of Solitaire, 3 Star Swarm runs, a Sudoku and a Mahjong (29 games, about 6 hours). Each game's events come from its own replay path: the real engine and the game's replay module, recorded through a real `GameRecorder`. They are saved into the real `GameEventClient` → `eventStore` → in-memory AsyncStorage, and the real `SyncWorker` (its 30 s interval and its AppState handling) drains them to a mock API. The day includes a trip to the background in three games (Hearts, Yacht, Solitaire: `inactive`, then `background` for 5 min, then `active`), and one hour with the API down, which starts at the Sudoku game. The worker backs off during that hour, then recovers. At the end, the test also checks that the queue is empty and that every row and completion reached the server.
+`frontend/src/game/_shared/__tests__/replay.budget.test.ts` plays one virtual day on fake timers: a Daily Word, 10 games of 2048, 3 of Hearts, 5 of Yacht against the computer, 5 of Solitaire, 3 Star Swarm runs, a Sudoku, a Mahjong and, at the end of the day, 3 of Cascade (#3858: two of about 4 minutes and one of 10, backgrounded after its 120th drop; 32 games, about 6.7 hours). Each game's events come from its own replay path: the real engine and the game's replay module, recorded through a real `GameRecorder`. They are saved into the real `GameEventClient` → `eventStore` → in-memory AsyncStorage, and the real `SyncWorker` (its 30 s interval and its AppState handling) drains them to a mock API. The day includes a trip to the background in three games (Hearts, Yacht, Solitaire: `inactive`, then `background` for 5 min, then `active`), and one hour with the API down, which starts at the Sudoku game. The worker backs off during that hour, then recovers. At the end, the test also checks that the queue is empty and that every row and completion reached the server.
 
 | Metric (per day unless noted)                | How it is measured                                                                                                                                                      |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1398,6 +1541,7 @@ How each game is driven:
 | Daily Word   | `createGuessReplay` with the real engine and scoring, `on_session_end`                                                                                          |
 | Sudoku       | The heavy hard game of the Sudoku bench: `applyRecorded` and `createEntryLog` through a `GameRecorder`                                                          |
 | Mahjong      | `playScripted`: the Turtle layout with matches, hints, undos and shuffles, through `MahjongReplay`                                                              |
+| Cascade      | `playRecordedGame`: the real engine and queue on seeded games, the skilled sim bot, the replay log through a `GameRecorder`; the 10-minute game is backgrounded |
 
 No game's screen is mounted: they are too heavy to drive in jest, so each game's replay module is fed realistic inputs, as its own bench does. The recorder's own `flush()` on backgrounding is exercised for Hearts and Solitaire only; the Yacht trip only exercises `SyncWorker`'s release.
 
@@ -1411,10 +1555,10 @@ Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbe
 
 | Metric                                            |  Measured | Budget (`max`) |
 | ------------------------------------------------- | --------: | -------------: |
-| HTTP requests                                     |       139 |            160 |
-| Bytes uploaded                                    |   137,405 |        158,016 |
+| HTTP requests                                     |       154 |            160 |
+| Bytes uploaded                                    |   161,731 |        182,508 |
 | Requests during the offline hour                  |        12 |             14 |
-| Storage writes (day)                              |     1,029 |          1,184 |
+| Storage writes (day)                              |     1,113 |          1,184 |
 | Sentry events, healthy / offline hour / recording | 0 / 0 / 0 |      0 / 0 / 0 |
 | Gameplay requests, open in foreground             |         0 |              0 |
 | Hold-fallback requests                            |        14 |             17 |
@@ -1429,6 +1573,9 @@ Each `max` is the measured value plus 15% (a count that is 0 stays 0). The numbe
 | Sudoku (1)     |                        6,649 |  7,647 |                                  27 |     32 |
 | Mahjong (1)    |                        4,957 |  5,701 |                                  15 |     18 |
 | Daily Word (1) |                          834 |    960 |                                  11 |     13 |
+| Cascade (3)    |                       36,879 | 39,492 |                                  26 |     39 |
+
+#3858 added the three Cascade games and re-measured the day totals with them (HTTP requests 139 → 152, bytes uploaded 137,405 → 158,703, storage writes 1,029 → 1,121); only the bytes uploaded needed a higher `max`. The other games' rows are unchanged: Cascade plays last, so nothing before it moves. #3962 / #3967 (the 12-tier ladder, a unit per 30 drops) re-measured the Cascade rows and the day totals (HTTP requests 154, bytes uploaded 161,731, storage writes 1,113; Cascade 36,879 B stored and 26 writes a game); no `max` changed.
 
 ### Raising a budget
 

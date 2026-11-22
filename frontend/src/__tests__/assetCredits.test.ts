@@ -35,15 +35,28 @@ describe("Star Swarm asset credits (#2492)", () => {
       .filter((f) => !f.endsWith(".md"))
       .filter((f) => {
         const credits = creditsFor(f);
-        const name = path.basename(f);
-        const frame = /^frame(\d\d)\.png$/.exec(name);
-        if (frame) {
-          // the 20-frame strip is one row: `explosion/frame00–19.png`
-          return !(credits.includes("explosion/frame00–19.png") && Number(frame[1]) <= 19);
-        }
-        return !credits.includes(name);
+        return !credits.includes(path.basename(f));
       })
       .map((f) => path.relative(SPRITES, f));
+    expect(missing).toEqual([]);
+  });
+
+  // #3599: the Star Swarm home tile icon lives with the home screen's images, not the sprites
+  it("every home tile image has a row in assets/home/CREDITS.md", () => {
+    const home = path.join(ASSETS, "home");
+    const credits = fs.readFileSync(path.join(home, "CREDITS.md"), "utf8");
+    const files = fs.readdirSync(home).filter((f) => !f.endsWith(".md"));
+    expect(files).toContain("starswarm-tile.webp");
+    expect(files.filter((f) => !credits.includes(f))).toEqual([]);
+  });
+
+  // Asset audit: the whole sound folder, not just Star Swarm, must be credited.
+  it("every sound file has an entry in SOUND_CREDITS.md", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const missing = fs
+      .readdirSync(SOUNDS)
+      .filter((f) => !f.endsWith(".md"))
+      .filter((f) => !credits.includes(f));
     expect(missing).toEqual([]);
   });
 
@@ -52,23 +65,216 @@ describe("Star Swarm asset credits (#2492)", () => {
     const missing = fs
       .readdirSync(SOUNDS)
       .filter((f) => f.startsWith("starswarm-"))
-      .filter((f) => {
-        const bg = /^starswarm-bg-(\d)\.mp3$/.exec(f);
-        if (bg) {
-          // the four BGM tracks share one heading: `starswarm-bg-1.mp3 — starswarm-bg-4.mp3`
-          return !(
-            credits.includes("starswarm-bg-1.mp3 — starswarm-bg-4.mp3") &&
-            Number(bg[1]) >= 1 &&
-            Number(bg[1]) <= 4
-          );
-        }
-        return !credits.includes(f);
-      });
+      // #3638: the music is one file (starswarm-bgm.mp3) with its own entry, like every sound
+      .filter((f) => !credits.includes(f));
     expect(missing).toEqual([]);
+  });
+
+  // #3526: files were removed and replaced; a credit for a file that no longer ships is stale
+  it("SOUND_CREDITS.md has no entry for a Star Swarm sound that is not shipped", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const shipped = new Set(fs.readdirSync(SOUNDS));
+    const headings = [...credits.matchAll(/^### (starswarm-[a-z0-9-]+\.(?:ogg|mp3))/gm)].map(
+      (m) => m[1]!
+    );
+    expect(headings.length).toBeGreaterThan(0);
+    expect(headings.filter((f) => !shipped.has(f))).toEqual([]);
+  });
+
+  it("every shipped Star Swarm .ogg is an original synthesized sound that names its generator (#3560)", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const oggs = fs.readdirSync(SOUNDS).filter((f) => /^starswarm-.*\.ogg$/.test(f));
+    expect(oggs.length).toBeGreaterThanOrEqual(20);
+    const unsourced = oggs.filter((f) => {
+      const at = credits.indexOf(`### ${f}`);
+      // an entry can head several files (`### starswarm-pickup.ogg (...)`): find the section
+      if (at === -1) return true;
+      const end = credits.indexOf("\n### ", at + 1);
+      const section = credits.slice(at, end === -1 ? undefined : end);
+      // #3560 replaced the whole Star Swarm effects set with sounds synthesized in-house; each
+      // names its generator so it can be rebuilt. A third-party file would need its own entry.
+      return !(
+        /Original sound, synthesized/.test(section) && /synth_starswarm_sfx\.py/.test(section)
+      );
+    });
+    expect(unsourced).toEqual([]);
+  });
+
+  it("every Cascade sound has an entry in SOUND_CREDITS.md naming its generator (#3702)", () => {
+    const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+    const cascade = fs.readdirSync(SOUNDS).filter((f) => f.startsWith("cascade-"));
+    expect(cascade).toHaveLength(44); // 22 per piece set (merge-t11, #3966)
+    // The Kenney files are gone, with their entries (#3702).
+    for (const old of ["cascade-combo.ogg", "cascade-fruit-merge.ogg", "cascade-game-over.ogg"]) {
+      expect(cascade).not.toContain(old);
+      expect(credits).not.toContain(`### ${old}`);
+    }
+    for (const f of cascade) {
+      const at = credits.indexOf(`### ${f}\n`);
+      expect(at).toBeGreaterThanOrEqual(0);
+      const end = credits.indexOf("\n### ", at + 1);
+      const section = credits.slice(at, end === -1 ? undefined : end);
+      expect(section).toMatch(/Original sound, synthesized in-house/);
+      expect(section).toContain("tools/assets/synth_cascade_sfx.py");
+    }
   });
 
   it("no sound is left marked as unconfirmed provenance", () => {
     const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
     expect(credits).not.toMatch(/provenance to be confirmed/i);
+  });
+});
+
+/**
+ * #3563: the card and puzzle games' sounds. Every file their registries use has a credits entry,
+ * and every original sound names its generator, so it can be rebuilt.
+ */
+const ARCADE_GAMES = [
+  "blackjack",
+  "solitaire",
+  "freecell",
+  "hearts",
+  "mahjong",
+  "sudoku",
+  "twenty48",
+  "yacht",
+  "sort",
+  "daily_word",
+];
+// Blackjack's last uncredited files (ASSET-RIGHTS-AUDIT.md U5) were retired with #3581: every
+// file the registries use now has an entry, with no exceptions.
+
+describe("card and puzzle game sound credits (#3563)", () => {
+  const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+  const files = [
+    ...new Set(
+      ARCADE_GAMES.flatMap((g) => {
+        const src = fs.readFileSync(path.join(__dirname, `../game/${g}/sounds.ts`), "utf8");
+        return [...src.matchAll(/require\("[^"]*\/sounds\/([^"]+)"\)/g)].map((m) => m[1]!);
+      })
+    ),
+  ];
+  const section = (f: string): string | null => {
+    const at = credits.indexOf(`### ${f}`);
+    if (at === -1) return null;
+    const end = credits.indexOf("\n### ", at + 1);
+    return credits.slice(at, end === -1 ? undefined : end);
+  };
+
+  it("every file the registries use has an entry in SOUND_CREDITS.md", () => {
+    expect(files.length).toBeGreaterThan(20);
+    const missing = files.filter((f) => section(f) === null);
+    expect(missing).toEqual([]);
+  });
+
+  it("every file synth_arcade_sfx.py writes ships, credited as original and naming the generator", () => {
+    const generator = fs.readFileSync(
+      path.join(__dirname, "../../../tools/assets/synth_arcade_sfx.py"),
+      "utf8"
+    );
+    const registry = generator.slice(generator.indexOf("SOUNDS: dict["));
+    const made = [...registry.matchAll(/^ {4}"([a-z0-9-]+)": \(/gm)].map((m) => `${m[1]}.ogg`);
+    expect(made).toEqual(expect.arrayContaining(["card-place-1.ogg", "riffle-loop.ogg"]));
+    expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);
+    const bad = made.filter((f) => {
+      const s = section(f) ?? "";
+      return !/Original sound, synthesized/.test(s) || !/synth_arcade_sfx\.py/.test(s);
+    });
+    expect(bad).toEqual([]);
+  });
+});
+
+describe("puzzle, tile and dice game sound credits (#3578)", () => {
+  const credits = fs.readFileSync(path.join(SOUNDS, "SOUND_CREDITS.md"), "utf8");
+  const section = (f: string): string | null => {
+    const at = credits.indexOf(`### ${f}`);
+    if (at === -1) return null;
+    const end = credits.indexOf("\n### ", at + 1);
+    return credits.slice(at, end === -1 ? undefined : end);
+  };
+
+  it("every file synth_puzzle_sfx.py writes ships, credited as original and naming the generator", () => {
+    const generator = fs.readFileSync(
+      path.join(__dirname, "../../../tools/assets/synth_puzzle_sfx.py"),
+      "utf8"
+    );
+    const registry = generator.slice(generator.indexOf("SOUNDS: dict["));
+    const made = [...registry.matchAll(/^ {4}"([a-z0-9-]+)": \(/gm)].map((m) => `${m[1]}.ogg`);
+    expect(made).toEqual(
+      expect.arrayContaining([
+        "dice-roll-1.ogg",
+        "dice-roll-2.ogg",
+        "dice-roll-3.ogg",
+        "die-hold-1.ogg",
+        "die-hold-2.ogg",
+        "die-hold-3.ogg",
+        "die-release-1.ogg",
+        "die-release-2.ogg",
+        "die-release-3.ogg",
+        "score-commit.ogg",
+        "upper-bonus.ogg",
+        "cpu-score-commit.ogg",
+        "cpu-upper-bonus.ogg",
+        "score-zero.ogg",
+        "small-straight.ogg",
+        "large-straight.ogg",
+        "full-house.ogg",
+        "cpu-score-zero.ogg",
+        "cpu-small-straight.ogg",
+        "cpu-large-straight.ogg",
+        "cpu-full-house.ogg",
+        "jackpot-yacht.ogg",
+        "jackpot-joker.ogg",
+        "cpu-jackpot-yacht.ogg",
+        "cpu-jackpot-joker.ogg",
+        "tile-merge-1.ogg",
+        "tile-merge-2.ogg",
+        "tile-merge-3.ogg",
+        "tile-spawn-1.ogg",
+        "tile-spawn-2.ogg",
+        "tile-spawn-3.ogg",
+        "win-2048.ogg",
+        "game-over-2048.ogg",
+        "yacht-win.ogg",
+        "yacht-loss.ogg",
+        "yacht-tie.ogg",
+        // Sort, "glass and water" (#3661)
+        "sort-select-1.ogg",
+        "sort-select-2.ogg",
+        "sort-select-3.ogg",
+        "sort-pour-lift-1.ogg",
+        "sort-pour-lift-2.ogg",
+        "sort-pour-lift-3.ogg",
+        "sort-pour-stream-1u-1.ogg",
+        "sort-pour-stream-1u-2.ogg",
+        "sort-pour-stream-1u-3.ogg",
+        "sort-pour-stream-2u-1.ogg",
+        "sort-pour-stream-2u-2.ogg",
+        "sort-pour-stream-2u-3.ogg",
+        "sort-pour-stream-3u-1.ogg",
+        "sort-pour-stream-3u-2.ogg",
+        "sort-pour-stream-3u-3.ogg",
+        "sort-pour-stream-4u-1.ogg",
+        "sort-pour-stream-4u-2.ogg",
+        "sort-pour-stream-4u-3.ogg",
+        "sort-refused.ogg",
+        "sort-complete.ogg",
+        "sort-undo.ogg",
+        "sort-hint.ogg",
+        "sort-win.ogg",
+        "sudoku-digit-place.ogg",
+        "sudoku-digit-place-2.ogg",
+        "sudoku-digit-place-3.ogg",
+        "sudoku-error-entered.ogg",
+        "sudoku-unit-complete.ogg",
+        "sudoku-puzzle-complete.ogg",
+      ])
+    );
+    expect(made.filter((f) => !fs.existsSync(path.join(SOUNDS, f)))).toEqual([]);
+    const bad = made.filter((f) => {
+      const s = section(f) ?? "";
+      return !/Original sound, synthesized/.test(s) || !/synth_puzzle_sfx\.py/.test(s);
+    });
+    expect(bad).toEqual([]);
   });
 });

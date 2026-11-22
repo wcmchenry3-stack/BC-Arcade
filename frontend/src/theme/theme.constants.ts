@@ -24,20 +24,25 @@ export const MENU_SHADOW_COLOR = "#000000";
  *  `MENU_SHADOW_COLOR`). */
 export const MENU_SHADOW_CSS = "0 8px 24px rgba(0,0,0,0.5)";
 
-/** Gold of the FreeCell foundation and Solitaire sparkles: bright in both themes.
- *  `colors.celebration` is darkened in light mode so it can be text; a sparkle
- *  fill must stay gold, so it does not use it. */
-export const CELEBRATION_SPARKLE = "#ffd700";
-
 /** Yacht celebration badge text — near-black on the gold / purple badge. */
 export const BADGE_TEXT = "#1a1a1a";
 
-/** Yacht scorecard row glow: upper section (cyan) and lower section (purple). */
-export const SCORE_ROW_GLOW_UPPER = "rgba(143,245,255,0.45)";
-export const SCORE_ROW_GLOW_LOWER = "rgba(214,116,255,0.45)";
-
 /** Blackjack HUD warning amber — chips below 30% of the starting stack. */
 export const BLACKJACK_CHIPS_LOW = "#ffb547";
+
+/** Blackjack's natural (#3621, owner decisions in #3739): the player's gold edge (and the 3:2
+ *  payout chip's rim), the dealer's cool-silver edge and the light sweep across the felt, per
+ *  theme (`naturalColors`, components/blackjack/tableColors.ts): each edge at least 3:1 against
+ *  the felt, the sweep a faint band. The dark values are the audition's; the light ones are a
+ *  deeper gold, a slate silver and a brown sweep, which read on the cream felt. The sheen crosses
+ *  the card face, which is the same in both themes. */
+export const BLACKJACK_NATURAL_GOLD = "#f5c542";
+export const BLACKJACK_NATURAL_SILVER = "#b9c6d6";
+export const BLACKJACK_NATURAL_SWEEP = "#fff6d8";
+export const BLACKJACK_NATURAL_GOLD_LIGHT = "#b07a00";
+export const BLACKJACK_NATURAL_SILVER_LIGHT = "#66788e";
+export const BLACKJACK_NATURAL_SWEEP_LIGHT = "#8a6100";
+export const BLACKJACK_NATURAL_SHEEN = "rgba(255,240,190,0.75)";
 
 /** 2048 board drop shadow: web `boxShadow`, and the native `shadowColor`. */
 export const TWENTY48_BOARD_SHADOW_CSS = "0 8px 40px #00000099";

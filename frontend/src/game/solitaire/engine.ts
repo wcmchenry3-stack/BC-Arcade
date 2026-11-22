@@ -12,6 +12,7 @@
  * Cascade and Blackjack (so any seed reproduces its deal deterministically).
  */
 
+import { monotonicNow } from "../_shared/monotonicNow";
 import { createRngSlot, createSeededRng } from "../_shared/seededRng";
 import seedsJson from "./seeds.json";
 // True only in E2E test builds (Playwright web + Maestro native, both build
@@ -28,7 +29,7 @@ import {
 } from "../_shared/cards/foundations";
 import { withUndo as pushUndoSnapshot } from "../_shared/undoStack";
 import type { Card, DrawMode, GameEvent, Move, SolitaireState } from "./types";
-import { cardColor, SUITS } from "./types";
+import { cardColor } from "./types";
 import {
   pauseClock,
   resumeClock,
@@ -313,7 +314,7 @@ function withUndo(
 
 /** Start, advance, or freeze the timer. Called after every state mutation. */
 function applyTimer(prev: SolitaireState, next: SolitaireState): SolitaireState {
-  const now = Date.now();
+  const now = monotonicNow();
   // The first move starts the clock; a move while it is paused leaves it so.
   const clock = startClockOnMove(prev, now);
   return withClock(next, next.isComplete && !prev.isComplete ? stopClock(clock, now) : clock);
@@ -325,12 +326,12 @@ function applyTimer(prev: SolitaireState, next: SolitaireState): SolitaireState 
  * no-op once the game has no running timer to freeze (not yet started, or
  * already complete).
  */
-export function pauseGame(state: SolitaireState, now: number = Date.now()): SolitaireState {
+export function pauseGame(state: SolitaireState, now: number = monotonicNow()): SolitaireState {
   return pauseClock(state, now);
 }
 
 /** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
-export function resumeGame(state: SolitaireState, now: number = Date.now()): SolitaireState {
+export function resumeGame(state: SolitaireState, now: number = monotonicNow()): SolitaireState {
   return state.isComplete ? state : resumeClock(state, now);
 }
 
@@ -358,14 +359,7 @@ function finalizeAfterMove(
   const finalScore = clampScore(next.score + bonus);
 
   const events: GameEvent[] = [...(next.events ?? [])];
-  if (!wasComplete) {
-    for (const suit of SUITS) {
-      if (prev.foundations[suit].length < 13 && next.foundations[suit].length === 13) {
-        events.push("foundationComplete");
-      }
-    }
-    if (nowComplete) events.push("gameWin");
-  }
+  if (!wasComplete && nowComplete) events.push("gameWin");
 
   return applyTimer(
     prev,
@@ -441,7 +435,7 @@ export function applyMove(state: SolitaireState, move: Move): SolitaireState {
       const revealed = revealIfNeeded(newSrc);
       let tableau = replaceAt(state.tableau, move.fromCol, revealed.col);
       tableau = replaceAt(tableau, move.toCol, newDst);
-      const ttEvents: GameEvent[] = ["cardPlace"];
+      const ttEvents: GameEvent[] = [run.length >= 2 ? "multiCardMove" : "cardPlace"];
       if (revealed.scoreDelta > 0) ttEvents.push("cardFlip");
       return finalizeAfterMove(state, {
         _v: 1,
@@ -542,7 +536,8 @@ export function drawFromStock(state: SolitaireState): SolitaireState {
       score: state.score,
       recycleCount: state.recycleCount,
       isComplete: state.isComplete,
-      events: ["cardFlip"],
+      // More than one card turned (Draw 3) is heard as a fan, one card as a flip (#3563).
+      events: [n > 1 ? "cardFan" : "cardFlip"],
     })
   );
 }

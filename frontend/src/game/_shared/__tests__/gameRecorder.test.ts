@@ -3,6 +3,7 @@
  * the size caps (chunk or report, never stub) and the session's end.
  */
 
+import type { GameType } from "../types";
 import * as Sentry from "@sentry/react-native";
 
 import type { EnqueueEventInput } from "../gameEventClient";
@@ -587,7 +588,8 @@ describe("recording caps config", () => {
   });
 
   it("gives a game without an entry the defaults", () => {
-    expect(recordingConfigFor("sort")).toBe(DEFAULT_RECORDING_CONFIG);
+    // Cascade was the example until #3858 gave it caps: no registered game is left without one.
+    expect(recordingConfigFor("not_a_game" as GameType)).toBe(DEFAULT_RECORDING_CONFIG);
   });
 });
 

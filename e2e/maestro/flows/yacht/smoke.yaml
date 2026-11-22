@@ -1,16 +1,13 @@
 appId: com.buffingchi.games
 ---
 - runFlow: ../_shared/launch.yaml
+# Fresh install, so the "Choose Mode" picker always opens. open-yacht.yaml
+# taps the mode button before checking the "Yacht" title, which the
+# picker's Android Modal window hides until it closes (#2373).
 - runFlow:
-    file: ../_shared/navigate-to.yaml
+    file: ../_shared/open-yacht.yaml
     env:
-      gameSlug: "yacht"
-      screenLabel: "Yacht"
-# Mode picker only shows for fresh games; skip if a saved game is already in play.
-# `optional: true` alone is enough — see "Timeouts" in e2e/maestro/README.md.
-- tapOn:
-    id: "yacht-mode-solo"
-    optional: true
+      yachtMode: "yacht-mode-solo"
 - extendedWaitUntil:
     visible:
       id: "yacht-roll-button"

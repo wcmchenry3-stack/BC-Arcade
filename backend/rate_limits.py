@@ -119,10 +119,6 @@ DAILY_CHALLENGE_UPCOMING_IP_RATE_LIMIT = "60/minute"
 DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT = "60/minute"
 DAILY_CHALLENGE_STATUS_IP_RATE_LIMIT = "300/minute"
 
-# --- Sort (free game) -------------------------------------------------------------
-# GET /sort/levels (public, IP-keyed).
-SORT_LEVELS_IP_RATE_LIMIT = "60/minute"
-
 # --- Health and diagnostics (public, IP-keyed) ------------------------------------
 # GET /health: Render's health check, no DB.
 HEALTH_IP_RATE_LIMIT = "120/minute"
@@ -233,7 +229,6 @@ ROUTE_LIMITS: dict[str, tuple[Rule, ...]] = {
         Rule(DAILY_CHALLENGE_STATUS_IP_RATE_LIMIT, IP),
         Rule(DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT, SESSION),
     ),
-    "sort.router.get_levels": (Rule(SORT_LEVELS_IP_RATE_LIMIT, IP),),
     "routes.health.health": (Rule(HEALTH_IP_RATE_LIMIT, IP),),
     "routes.health.health_db": (Rule(HEALTH_DB_IP_RATE_LIMIT, IP),),
     "routes.debug.trigger_error": (Rule(DEBUG_ERROR_IP_RATE_LIMIT, IP),),

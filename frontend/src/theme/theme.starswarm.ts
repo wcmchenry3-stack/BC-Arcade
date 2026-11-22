@@ -22,11 +22,25 @@ export const STARSWARM_ACCENT = "#00ffcc";
  *  shield ring. */
 export const STARSWARM_HULL_BLUE = "#00aaff";
 
+/** Armour blue (#3592): the code-drawn outline around a plated player ship and the plating
+ *  flash. Equal to the generator's `ARMOR_EDGE` in `tools/assets/draw_starswarm_art.py`, so the
+ *  plating layers and the outline match. */
+export const STARSWARM_ARMOR_BLUE = "#1fb6ff";
+
+/** The pale end of the plating gradient (generator `ARMOR`): the plating flash's bright core. */
+export const STARSWARM_ARMOR_PALE = "#e4f3ff";
+
 /** Lightning power-up yellow: its bar and label. */
 export const STARSWARM_LIGHTNING = "#ffee00";
 
 /** HUD score text. */
 export const STARSWARM_HUD_TEXT = "#ffffff";
+
+/** #3598: the dim HUD captions ("SCORE", "BEST", "WAVE") and the best score under "BEST". */
+export const STARSWARM_HUD_DIM = "#96c8d2";
+
+/** #3598: the dark fill inside the GUNS / HULL outline chips (deep space, mostly opaque). */
+export const STARSWARM_HUD_CHIP_FILL = "rgba(4,10,24,0.6)";
 
 /** HUD difficulty-tier label. */
 export const STARSWARM_HUD_DIFFICULTY = "#aaffee";
@@ -37,12 +51,6 @@ export const STARSWARM_BOSS_WAVE = "#ffdd00";
 /** Bonus-life flash and its amber glow. */
 export const STARSWARM_BONUS_LIFE = "#ffff00";
 export const STARSWARM_BONUS_LIFE_GLOW = "#ff8800";
-
-/** Black outline behind floating text (the pickup cue). */
-export const STARSWARM_TEXT_OUTLINE = "#000000";
-
-/** Empty track behind a power-up bar. */
-export const STARSWARM_POWERUP_TRACK = "rgba(255,255,255,0.18)";
 
 /** Pause overlay scrim, and the quiet "New game" link beneath Resume. */
 export const STARSWARM_PAUSE_SCRIM = "rgba(0, 0, 16, 0.72)";

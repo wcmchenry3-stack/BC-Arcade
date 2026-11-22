@@ -30,7 +30,10 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
-from observability.report import report_event
+from games.replay_caps import CAP_REPORT_WINDOW_S
+from games.result_flags import with_outcome_flags
+from observability.report import Throttle, report_event
+from settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +181,9 @@ class StarSwarmResult(BaseModel):
     """Result block sent on ``PATCH /games/{id}/complete`` (#2449).
 
     Mirrors ``handleGameOver`` in ``StarSwarmScreen.tsx``:
-    ``{outcome, wave_reached, difficulty_tier, score_breakdown}``
-    (``score_breakdown`` since #2837). ``difficulty_tier`` is
+    ``{outcome, wave_reached, difficulty_tier, score_breakdown, dev_affected}``
+    (``score_breakdown`` since #2837, ``dev_affected`` since #3510, sent only
+    as ``true``: see ``games.filters.DEV_AFFECTED_KEY``). ``difficulty_tier`` is
     declared so it survives validation into ``games.metadata``, where the board
     partitions on it; like the metadata's, only a value in
     ``DIFFICULTY_TIERS`` ranks. Every field is optional and unknown keys are
@@ -191,6 +195,35 @@ class StarSwarmResult(BaseModel):
     difficulty_tier: str | None = Field(default=None, max_length=32)
     # #2837: the run's per-wave score breakdown. Builds before it send none.
     score_breakdown: StarSwarmScoreBreakdown | None = None
+    # #3510: a dev-panel action touched the run. Stored in games.metadata, where
+    # it keeps the run off the boards and the /stats roll-ups. Builds before it,
+    # and every clean run, send none.
+    dev_affected: bool | None = None
+    # Written by the server from the completion's outcome, never the app's (#3996):
+    # true for any run that ended (not an abandon). Star Swarm has no win, so no
+    # ``won``. The Daily Challenge's "finish a run" goal reads it.
+    is_complete: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _outcome_flags(cls, data: Any, info: ValidationInfo) -> Any:
+        return with_outcome_flags(data, (info.context or {}).get("outcome"), has_win=False)
+
+    @field_validator("dev_affected", mode="wrap")
+    @classmethod
+    def _flag_a_malformed_dev_flag(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler
+    ) -> bool | None:
+        """A ``dev_affected`` that isn't a JSON boolean reads as ``True`` (#3510).
+
+        Never rejects the run (a 400 dead-letters it in the app). The app only
+        ever sends ``true``, so anything else is a client that is not ours to
+        trust: the run is kept but kept off the boards, the safe side.
+        """
+        if value is None or isinstance(value, bool):
+            return value
+        logger.warning("starswarm: a non-boolean dev_affected read as true")
+        return handler(True)
 
     @field_validator("score_breakdown", mode="wrap")
     @classmethod
@@ -242,15 +275,17 @@ def _report_dropped_breakdown(
 
 # --- wave_completed event payload (#3250, epic #3244) ------------------------
 #
-# The v1 wire shape built by the app's ``toWirePayload`` (frontend
+# The v2 wire shape built by the app's ``toWirePayload`` (frontend
 # ``game/starswarm/engine``). Zero counters and then-empty objects are omitted
 # on the wire, so a missing key means 0 and every counter field is optional.
 # The registries below mirror the app's ``engine/registries.ts``; a key outside
 # one is tolerated (a newer build may add a power-up) and kept, but logged.
 # Change the shape in a breaking way -> bump ``v`` (``WAVE_STATS_VERSION``).
+# v2 (#3535) added ``damage.deathPhase``; the app was not live on v1, so only v2
+# is accepted.
 
 WAVE_COMPLETED = "wave_completed"
-WAVE_STATS_VERSION = 1
+WAVE_STATS_VERSION = 2
 MAX_WAVE_STATS_BYTES = 4096
 MAX_COUNTER = 10_000_000
 MAX_POINTS = 2_000_000_000
@@ -265,6 +300,7 @@ BuddyHitCause = Literal["bullet", "beam", "rock"]
 HitResult = Literal["life", "plating", "shield"]
 KillMethod = Literal["shot", "dive", "rout", "bomb", "ram", "rock", "buddy"]
 CarrierStage = Literal["protected", "exposed", "finalStand"]
+DeathPhase = Literal["combat", "pickupWait", "extraction"]
 
 POWERUP_TYPES: tuple[str, ...] = get_args(PowerUpType)
 POWERUP_SOURCES: tuple[str, ...] = get_args(PowerUpSource)
@@ -276,6 +312,7 @@ BUDDY_HIT_CAUSES: tuple[str, ...] = get_args(BuddyHitCause)
 HIT_RESULTS: tuple[str, ...] = get_args(HitResult)
 KILL_METHODS: tuple[str, ...] = get_args(KillMethod)
 CARRIER_STAGES: tuple[str, ...] = get_args(CarrierStage)
+DEATH_PHASES: tuple[str, ...] = get_args(DeathPhase)
 
 Count = Annotated[StrictInt, Field(ge=0, le=MAX_COUNTER)]
 Score = Annotated[StrictInt, Field(ge=0, le=MAX_POINTS)]
@@ -305,6 +342,7 @@ _KEYED_TABLES: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] = {
     "combat.spawned": (ENEMY_TIERS, None),
     "combat.kills": (ENEMY_TIERS, KILL_METHODS),
     "damage.hits": (HIT_CAUSES, HIT_RESULTS),
+    "damage.hitsByTier": (ENEMY_TIERS, HIT_RESULTS),
 }
 
 
@@ -329,6 +367,9 @@ class WavePacing(_WaveBlock):
     start: WaveLoadout = Field(default_factory=WaveLoadout)
     end: WaveLoadout = Field(default_factory=WaveLoadout)
     bonusLives: Count = 0
+    # #3510: the highest Guns level held during the wave. Optional: builds
+    # before it don't send it, and a missing key stays missing when stored.
+    gunsPeak: Count = 0
 
 
 class WaveScore(_WaveBlock):
@@ -402,18 +443,27 @@ class WaveCombat(_WaveBlock):
 
 class WaveDamage(_WaveBlock):
     hits: NestedCounts = Field(default_factory=dict)
+    # #3710: the same grid by the enemy tier that landed the hit (rocks are
+    # tierless, so they are in ``hits`` only). Additive on schema v 2 (like
+    # ``gunsPeak``); absent from builds before it. Stripped at validation while
+    # ``STARSWARM_HITS_BY_TIER`` is off (``validate_wave_completed``).
+    hitsByTier: NestedCounts = Field(default_factory=dict)
     # Required: null on a wave the player cleared.
     deathCause: HitCause | None
+    # #3535: when the lethal hit landed. Sent only on a died wave (absent = null);
+    # an unknown value drops the event like any other schema violation.
+    deathPhase: DeathPhase | None = None
 
 
 class StarSwarmWaveStats(_WaveBlock):
-    """One ``wave_completed`` event's ``data`` (wire form, schema ``v`` 1).
+    """One ``wave_completed`` event's ``data`` (wire form, schema ``v`` 2).
 
-    Required: ``v`` (== 1), ``wave`` (>= 1), ``difficulty``, ``outcome``,
+    Required: ``v`` (== 2), ``wave`` (>= 1), ``difficulty``, ``outcome``,
     ``dev``, ``pacing``, ``score``, ``rout`` and ``damage.deathCause``. The
-    other sections default to empty. Counters are non-negative ints. Unknown
-    top-level and section keys are dropped; unknown keys inside a keyed table
-    are kept (logged by ``validate_wave_completed``).
+    other sections default to empty; ``damage.deathPhase`` (#3535) to null.
+    Counters are non-negative ints. Unknown top-level and section keys are
+    dropped; unknown keys inside a keyed table are kept (logged by
+    ``validate_wave_completed``).
     """
 
     # StrictInt, not Literal[1]: a Literal accepts True and 1.0 as 1 (Codex, #3254)
@@ -509,6 +559,17 @@ def _safe_paths(locs: Any) -> list[str]:
     return paths
 
 
+_settings: Settings | None = None
+
+
+def hits_by_tier_enabled() -> bool:
+    """``STARSWARM_HITS_BY_TIER`` (settings.py), read lazily: the no-release switch (#3710)."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings.starswarm_hits_by_tier
+
+
 def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
     """The ``wave_completed`` ``data`` to store, or ``None`` to drop the event.
 
@@ -544,6 +605,9 @@ def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
         _report_dropped_wave("invalid", fields=fields, error_types=types)
         return None
     stored = stats.model_dump(mode="json", exclude_unset=True)
+    if not hits_by_tier_enabled():
+        # #3710 kill switch: the grid is the only unpruned growth this field adds.
+        stored.get("damage", {}).pop("hitsByTier", None)
     unknown = _unknown_table_keys(stored)
     if unknown:
         logger.warning(
@@ -559,8 +623,18 @@ def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
     return stored
 
 
+# Throttled drop reports: one throttle per reason, like ``timeline._throttles``. A build
+# on another schema ``v`` drops every wave of every run (up to 200 a run); the log line
+# stays per event, Sentry gets at most one event per reason per window per process.
+_throttles: dict[str, Throttle] = {}
+
+
 def _report_dropped_wave(reason: str, *, fields: list[str], error_types: list[str]) -> None:
-    """Send a dropped ``wave_completed`` to Sentry. Paths and types, never values."""
+    """Send a dropped ``wave_completed`` to Sentry, at most once per reason per
+    ``CAP_REPORT_WINDOW_S``. Paths and types, never values."""
+    throttle = _throttles.setdefault(reason, Throttle(CAP_REPORT_WINDOW_S))
+    if not throttle.allow():
+        return
     report_event(
         f"starswarm event: wave_completed {reason}",
         level="warning",

@@ -2,7 +2,7 @@
 
 **Category:** Puzzle
 **Tier:** Free (v1.0 store build; swapped with Mahjong, owner decision 2026-09-24)
-**Status:** In Development
+**Status:** Shipping — free in the v1.0 store build
 
 ## How to Play
 
@@ -19,56 +19,307 @@ Bottle Sort (also called Color Sort) is a logic puzzle. A set of bottles contain
 
 ### Level Progression
 
-There are 23 levels, increasing in difficulty (3 to 14 colors). Completing a level unlocks the next.
+There are 120 levels in 6 chapters of 20, from 3 to 14 colours (#2761). Completing a level unlocks the next.
 
-**Current v1 behavior:** `GET /sort/levels` generates a fresh solvable set on each request. A level number fixes its size/difficulty specification, not the exact bottle arrangement. The app caches the last fetched set for offline play.
+Every player gets the same level N: the levels are a fixed catalog shipped inside the app (`frontend/src/game/sort/levels.catalog.json`), so they work offline and nothing is generated or fetched per visit. Because level N is one puzzle for everyone, move counts compare, and the leaderboard breaks ties on fewest total moves again (see [Scoring](#scoring-persistence)). This settles #2738.
 
-Every generated level is solver-verified before it is served. A candidate shuffle that is proven dead or cannot be proven solvable within the solver budget is discarded and regenerated; the API fails rather than knowingly serving an unproven board.
+**The catalog.** `backend/scripts/sort_build_catalog.py` (run from `backend/`) builds it from a fixed seed; the same seed gives the same file byte for byte. For each `(colours, empty bottles)` spec it deals candidates with `deal_level` (uniform shuffles that `fast_solver` proves solvable, never already solved), drops deals that are the same puzzle up to colour names and bottle order (`canonical`: an exact canonical form up to 6 colours; above that a fingerprint built only from the deal's structure, so a duplicate is never missed and a different deal could at worst be dropped too), and measures each:
 
-**Future product decision:** #2761 proposes fixed seeded levels so "Level N" becomes the same puzzle for every player and move counts can become comparable again. That is not current behavior.
+- **length:** the number of pours in `fast_solver`'s solution (best-first, not the shortest);
+- **trap rate:** the share of 24 seeded random plays (12 random non-trivial pours each) that end on a board `fast_solver` proves dead;
+- **openings:** the number of distinct first pours.
+
+Within a spec's pool, difficulty is 60% the trap-rate percentile and 40% the length percentile (ties: fewer openings is harder). The _i_-th of the _n_ levels that use a spec takes the candidate at quantile `(i + 0.5) / n`, so each spec gets harder every time it comes back. A run takes about 9 s; the file is about 7 KB.
+
+**The curve** (`CHAPTERS` in the script; one spec per level):
+
+| Chapter | Levels  | Colours (empty bottles)                 | Par   |
+| ------- | ------- | --------------------------------------- | ----- |
+| 1       | 1–20    | 3–5 (2 or 1)                            | 7–20  |
+| 2       | 21–40   | 5–7 (2 or 1)                            | 17–29 |
+| 3       | 41–60   | 7–9 (2 or 1)                            | 22–37 |
+| 4       | 61–80   | 9–11 (2), with 9-colour 1-empty spikes  | 29–46 |
+| 5       | 81–100  | 11–13 (2), with 9-colour 1-empty spikes | 34–57 |
+| 6       | 101–120 | 12–14 (2), with 9-colour 1-empty spikes | 35–63 |
+
+One empty bottle makes a spec tight, two relaxed. One empty bottle stops at 9 colours: random 1-empty deals of 9 colours are about 99% dead, and 10 or more would take too many deals. Each chapter opens on easier specs than it ends on and drops back to an easier ("breather") spec now and then; mean par rises chapter on chapter and from the first half of each chapter to the second (`test_sort_catalog.py` checks both).
+
+**Par.** Each level stores `par = ceil(1.15 × length)`, the move count a good solve meets; the per-level stars (#3687) read it. The solver's path isn't the shortest: on levels 1–60, where the shortest solution can be found by breadth-first search, it is 7% longer on average (25% at most). So par sits about 23% above the shortest solution: a careful solve makes par, a perfect one beats it by a few moves.
+
+**Format.** `{ version, seed, legend, levels }`. `legend` lists the 14 colour names (letter `A` is `legend[0]`); a level is `[bottles, par]`, its bottles bottom first, one letter per unit, joined by `,` (an empty bottle is an empty string). `version` is the catalog version (now 1): raise it, in the script and in `backend/sort/catalog.py`, whenever the levels change. The app sends it with every scored solve and stores it with the player's progress.
+
+**Moving a save onto the catalog.** Before the catalog, the levels were 23 random deals per visit. The first time a catalog build opens Sort, `catalogMigration.ts` moves the save over once:
+
+- `unlockedLevel` maps by colour count: the old level the player had reached (the higher of their unlocked level and one past their highest solved level, at most 23) had some number of colours; they unlock up to the first catalog level with at least that many. Old level 10 (7 colours) unlocks up to level 30; a player who never got past old level 1 starts at 1.
+- Best moves are dropped (stored as none): they were set on puzzles nobody else saw and can't be compared with the catalog's levels (they would also skew the moves tie-break).
+- An unfinished board is dropped (it was an old random deal), and so is the old cache of server levels (`@sort/levels_cache`).
+- Everything is read and computed first, then written in one batch (`setMany`): the migrated progress, the emptied bests and `@sort/catalog_version`. Until that write lands the old save is untouched, so a failure or a kill part-way just migrates again on the next load, from the same data. Only then is the old level cache removed (best-effort: nothing reads it). While a migration has failed, that session doesn't use the stored bests and offers no unfinished board.
+- A save carrying a catalog version this build doesn't know (a newer build's, reachable only on a web rollback) is left untouched: the session plays from level 1 in memory and writes no progress.
+- The unlock only lets the player play on. The leaderboard counts only levels solved on the catalog (see [Scoring](#scoring-persistence)).
+- The level grid opens scrolled to the furthest unlocked level (`LockableGrid`'s `initialScrollIndex`), so a player unlocked to level 103 doesn't scroll 26 rows. The scroll offset includes the chapter headers above the row.
+
+### Best moves storage (#3821)
+
+The best moves per level are kept by the shared personal best (`game/_shared/personalBest.ts`, game `"sort"`, variant = the catalog level id; see [ARCHITECTURE.md](../ARCHITECTURE.md), "Personal best"): `personal_best_v1:sort`, `{"v":1,"b":{"1":8,"2":11}}`, about 10 bytes a solved level. They are also Sort's progress: the solved levels (`highestSolvedLevel`), the leaderboard's `total_moves` sum and each level's stars all come from them.
+
+- **The screen still decides from memory.** `SortScreen` loads the bests with the screen (`loadBestMoves` → `readBests`, after `migrateToCatalog`), decides every solve from them (`applyLevelSolve`, `highestSolvedLevel`, `totalBestMoves`) and mirrors them to storage (`saveBestMoves` → `recordBests`: merged in, the fewer moves per level winning, one write, only when something improves). What is submitted to the server is unchanged.
+- **Older saves.** Until #3821 the bests were in `@sort/best_moves` (`{"<level>":moves}`). On the first read they are moved in: merged with any bests already in the new record (the fewer moves win), written once, and the old key removed only after that write lands (a failed write keeps it for the next read). Every value Sort's old loader kept is kept, except a 0-move best, which no solve can produce.
+- **Only on this catalog.** The old key is moved in only when `@sort/catalog_version` is this build's catalog. Before the catalog migration it may hold the random levels' bests, which must never become catalog bests, so it is left exactly as stored for `catalogMigration.ts` (which reads it for the unlock and empties it in its one `setMany`); the next read then moves in the emptied `{}` and removes the key.
+- **Fail-safe.** A read that fails, or a newer build's record, gives the screen no bests to write back (`null`), so nothing it couldn't see is overwritten; failures are reported under the `personalBest` subsystem.
+
+### Daily Challenge: day-start best (#4028)
+
+The Daily Challenge's Sort goal is "solve N new levels" today: levels above the highest solved before the local day started ([DAILY-CHALLENGE.md §2a](../DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)). The bests keep only the current standing, so the day's first solve stores the standing before it (`game/sort/dayStart.ts`, `recordSortSolve`): `@sort/day_start`, `{"day":"YYYY-MM-DD","best":N}`, about 30 bytes, one write per day Sort is played, on the solve (never the frame path), and only while the bests could be read. The offline Daily Challenge check reads it (`localProgress.dayStartOn`); a record for another day means no baseline, so the goal waits for `/status`. The server reads its own baseline from the synced rows.
+
+### Lobby tile: Resume (#4008)
+
+The Sort tile on the lobby says **Resume** (button "Resume", status "In progress") when a board is saved that the level grid's Continue would restore: `game/sort/lobbyStatus.ts` `isResumable` (a `currentLevelId` and an unfinished `currentState`), on this build's level catalog (`@sort/catalog_version`, else the screen would drop or not read the board). The grid's Continue button uses the same predicate. The tile shows **no best** (bests are one per level).
+
+- **The tap matches the tile.** Home navigates to `Sort` with `{ resume: true }` only while the status is Resume. `SortScreen` reads the param, and once the progress has loaded (view `select`) it calls `handleContinue()` once (same path as the Continue button: `syncResume`, replay restore) and clears the param. With no board left it simply stays on the level grid.
+- **Silent reads.** The reader only reads `@sort/progress` (and the version key); an unreadable or misshapen save reads as no status, with no removal, write, migration or Sentry event.
+
+### Stars (#3687)
+
+A solve earns 1 to 3 stars against the level's `par`, by moves alone (undo costs nothing; undos are still recorded):
+
+| Stars | Moves                      |
+| ----- | -------------------------- |
+| 3     | at most `par`              |
+| 2     | at most `ceil(par × 1.25)` |
+| 1     | more than that             |
+
+The thresholds live in `frontend/src/game/sort/stars.ts` (`starsFor`, `twoStarMoves`) and nowhere else; `stars.test.ts` pins them at par, at `ceil(par × 1.25)` and one past each. `par` is already about 23% above the shortest solution (see [Par](#level-progression)), so 3 stars asks for a careful solve and 2 stars for a loose one.
+
+**A level's best stars are derived, not stored.** `bestStarsFor(bests, level, par)` reads the level's best moves (`personal_best_v1:sort`, see [Best moves storage](#best-moves-storage-3821)) and its `par`, so there is one copy of the truth, nothing to keep in step, and a save from before stars needs no migration. (The best moves are the lowest, so they give the best stars.) A level with no best, or with no known par, has 0 stars.
+
+**The result card** shows this solve's stars (`SolveStars`, passed through the card's `detail` slot, so no other game's card changes) and "Moves N · Target P". It keeps the NEW BEST pill. **The level grid** shows each unlocked tile's best stars under its number (`StarRow`): filled stars for what is earned and outlined stars for the rest, so an unsolved level shows three outlines (the goal, and a steady tile height). A locked tile is unchanged: no stars. The count is carried by shape (filled vs outlined), not colour alone. Colours are existing tokens (`celebration` for a filled star, `textMuted` for an outline), each at least 3:1 on `surfaceHigh` (`starsContrast.test.ts`). **Screen readers:** a tile reads "Level 5, 2 of 3 stars" (just "Level 5" while unsolved, "Level 5, locked" while locked); the result card's stars read "2 of 3 stars. Moves 6, target 7."; the star icons themselves are hidden from the accessibility tree. Tiles are at least 44 pt.
+
+**Chapters.** The grid has six "Chapter N" headers (`CHAPTER_SIZE` = 20 levels each), accessible headings (`accessibilityRole="header"`). `LockableGrid` takes optional `sectionSize` / `sectionTitleOf` for this; without them (Mahjong's layout picker) it renders as before. It stays a plain `ScrollView`: 120 small tiles and 6 headers are about 500 views, which a mid-range phone lays out once, while a virtualised list would break the shared grid's `initialScrollIndex` scroll and its row padding. Not measured on a device; revisit if the catalog grows.
+
+**Result metadata.** The completed level's result carries `stars` (an integer 1 to 3, on the row already sent): about 10 bytes (`,"stars":2`) per completed level row, no new rows or requests, no new storage. It doesn't change ranking.
+
+## File map
+
+`frontend/src/screens/`
+
+- `SortScreen.tsx`: the screen. Owns level flow, hint/undo/reset, the pour in flight, scoring and sync.
+
+`frontend/src/components/sort/`
+
+- `SortBoard.tsx`: the board. Lays out bottles in rows and draws the pour (tilt, stream, ghost liquid, win cascade).
+- `BottleView.tsx`: one flask. Owns the flask shape and viewBox constants (`VB_W`, `VB_H`, `PAD_TOP`, `NECK_LEFT`, `NECK_RIGHT`, `BODY_BOTTOM`, `INNER_H`) that SortBoard imports.
+- `gridGeometry.ts`: pure grid and bottle-size math, plus `BOARD_PADDING` / `BOARD_HORIZONTAL_PAD`, the one source for the board's padding.
+- `LevelSelectScreen.tsx`: the level grid.
+
+`frontend/src/game/sort/`
+
+- `engine.ts`: pure rules (pour, undo, solved checks).
+- `solver.ts`: solver used for hints.
+- `types.ts`: state types and `BOTTLE_DEPTH`.
+- `levels.catalog.json`: the 120 levels (generated; see [Level Progression](#level-progression)).
+- `catalog.ts`: decodes the catalog (`SORT_LEVELS`, each level's `par`) and holds `SORT_CATALOG_VERSION`.
+- `catalogMigration.ts`: moves a save from the random levels onto the catalog, once.
+- `useSortLevels.ts`: the screen's view, the catalog's levels and the player's progress and bests (after the migration).
+- `storage.ts`: local progress, and the best moves (through the shared personal best, #3821).
+- `stars.ts`: the star thresholds and a level's derived best stars (see [Stars](#stars-3687)).
+- `usePourAnimation.ts`: hook that sequences a pour in flight.
+- `motion.ts`: every duration, ceiling and shape constant of [Motion](#motion-3660), and `pourTimeline(units)`. `haptics.ts`: the per-event haptics.
+- `useSortAudio.ts` / `sounds.ts`: sound playback and the `sort.pour` / `sort.win` registry.
+
+## Screen layout
+
+Top to bottom (and the order a screen reader reads it), #3658:
+
+1. **Header** (`GameShell` / `AppHeader`): back, the title, and the ⋯ menu. The menu holds New Game (restart the level), Level select, Leaderboard, Stats, **Colorblind Mode** (a checkable `menuToggle` item, test id `sort-colorblind-toggle`) and Feedback. Hint and Undo are no longer in the header, so the title has the room (it is not truncated at 390 pt, in es or fr-CA).
+2. **HUD row** (`HudStatRow`): Level, Moves, Undos.
+3. **Board** (`sort-board`, `flex: 1`): 16 pt side padding and 8 pt top and bottom padding (`BOARD_PADDING`, `BOARD_VERTICAL_PADDING`). `SortBoard` gets `availableHeight = boardHeight - 2 * 8`. The "No way to win" notice is an overlay in this container and never resizes the board.
+4. **Action bar** (`sort-action-bar`, 54 pt, `SORT_ACTION_BAR_H`): the shared `GameActionBar` (also Mahjong's and 2048's), Hint (`sort-hint-button`, spinner while the solver runs) and Undo (`sort-undo-button`), each at least 44 x 44 pt. The gap under it is `GameShell`'s `GAME_SHELL_BOTTOM_GAP`, reserved once (#3624); the tab bar and home indicator sit below that.
+
+**Hint** selects the source bottle and rings the destination (`hint-dst-ring`, drawn inside the destination's cell, in `colors.bonus`). The ring clears on any tap, a pour, an undo, a restart or a level change. The ring is hidden from screen readers, so the destination bottle's label gains ". Hint: pour here" (`a11y.hintDestination`) while it is the destination.
+
+**Colorblind Mode symbols** (`COLORBLIND_SYMBOLS` in `BottleView.tsx`) are single plain text glyphs with no emoji property at all (so no presentation selector is needed inside SVG text on Android), one shape family per colour: ▲ ● ■ ★ ⬡ ◆ ✱ ✚ ↑ ✿ ♪ ∞ ☾ ✕. A test pins that none is emoji-capable and that all families differ. How the system fonts draw them was not checked on a device.
+
+**Bottle size** (`computeBoardLayout` in `components/sort/gridGeometry.ts`): bottles fill the board. The 1:3 shape is kept; the size is the largest that fits the content height (rows share it, 8 pt `ROW_GAP`) and the content width (a cell per column, at least 12 pt between bottles), up to `MAX_BOTTLE_SCALE` (2x the 52x156 default, so at most 104x312). When a row has room to spare the gap grows to 0.2 of the bottle's width. The tap cell is never narrower than 48 pt and is the bottle's whole hit area (#2207). `BottleView` draws in a viewBox, so strokes, the ball symbols and the neck scale with it. The grid shape is still a function of the bottle count only (single row up to 4, at most 3 a row for 5-6, at most 4 for 7 and up). A wider grid (5 a row) was checked for 12 and 16 bottles: both are height-limited, so more columns only mean the same rows or more of them, and no bottle gets bigger; 4 a row stays.
+
+Measured on a 390 x 844 phone. The board container was 639 tall before (31 pt of the screen was the Colorblind row, now gone); it is 616 now with the 54 pt bar, so the content box is 358 x 600 (it was 358 x 607):
+
+| Bottles | Before (pt)  | After (pt)   | Tap cell after |
+| ------- | ------------ | ------------ | -------------- |
+| 4       | 52 x 156     | 77.5 x 232.5 | 89.5 wide      |
+| 8       | 52 x 156     | 77.5 x 232.5 | 89.5 wide      |
+| 12      | 52 x 156     | 64.9 x 194.7 | 77.9 wide      |
+| 16      | 47.6 x 142.8 | 48 x 144     | 60 wide        |
+
+The after numbers are pinned in `gridGeometry.test.ts` ("390x844 phone"). The 16-bottle level is height-limited, so the 8 pt row gap and 8 pt vertical padding are what pay for the 54 pt bar; it ends 0.4 pt wider than before.
+
+Smaller phones (375 x 667 and 360 x 640; their old board heights are estimated from the 390 x 844 one minus the height and safe-area differences, not measured) were checked too: at every bottle count from 4 to 16, bottles are at least as wide as before (`gridGeometry.test.ts`, "never smaller than before"). With a 56 pt bar the 9 to 12 bottle levels came out 0.1 pt narrower there, so the bar is 54 pt (its buttons are 52 pt tall).
+
+## Motion (#3660)
+
+Every action has a short motion and, where it makes sense, a haptic. Every duration, ceiling and shape constant lives in one module, `frontend/src/game/sort/motion.ts`, so the sounds (#3661) can be timed to the same numbers; `motion.test.ts` holds each one to the owner's ceilings (2026-11-13). `BottleView`, `SortBoard`, `SortScreen` and `usePourAnimation` import from it. Haptics go through one helper, `frontend/src/game/sort/haptics.ts`.
+
+| Event                               | Motion                                                                                                                                                                                                                                               | Duration (ceiling)                                                                                                   | Reduce Motion                                            | Haptic                                                                                                 |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Select (a tap)                      | the bottle lifts once and holds (5% of its height, never more than the 8 pt row gap, so it never reaches the row above); the stroke changes. No bobbing                                                                                              | 160 ms (200)                                                                                                         | lifted at once                                           | light impact                                                                                           |
+| Deselect                            | the bottle settles back                                                                                                                                                                                                                              | 120 ms                                                                                                               | at once                                                  | none                                                                                                   |
+| Hint                                | the source is selected as above; the destination keeps its ring                                                                                                                                                                                      | as Select                                                                                                            | as Select                                                | none (a hint is not a tap)                                                                             |
+| Pour                                | the bottle lifts to the destination's neck, tilts to 50 degrees, tilts on to 95 as it drains one unit at a time (stream, splash on each landing), then untilts and returns                                                                           | 780 ms of animation for 1 unit, 300 ms more per unit; with the 50 ms start and end budget, 830 ms from the tap (900) | no ghost, no tilt: the move lands at once                | medium impact when the move lands (not at the tap); success instead if it completed a bottle           |
+| Refused pour (wrong colour or full) | the tapped destination shakes "no"; the selection clears, as before. No penalty                                                                                                                                                                      | 240 ms (250)                                                                                                         | no shake                                                 | warning notification                                                                                   |
+| Bottle completed                    | the bottle pulses (scale 1.08) and its check badge pops in. Only when a pour completes it on screen: a bottle already solved on a fresh board, a restore, or by an undo only shows its badge                                                         | 420 ms (450), badge 300 ms                                                                                           | the badge appears at once                                | success notification, instead of the medium impact (not on the winning pour, see Win); none on an undo |
+| Undo                                | the board changes at once and fades in from 40% opacity                                                                                                                                                                                              | 280 ms (300)                                                                                                         | at once                                                  | none                                                                                                   |
+| Level in (a new level)              | the bottles drop in and fade in, one after another (60 ms apart at most); a tap on a bottle skips it. Not for a restored game, Restart or Play Again (neither remounts the board; `SortScreen` tells it `levelIn` only when it will mount)           | 560 ms total (600)                                                                                                   | none: there at once                                      | none                                                                                                   |
+| Win                                 | six liquid-coloured pieces fall across the board, then the result card opens. A tap on the board skips the cascade; a screen reader skips it too (the card and its announcement at once). The score, the session and the unlock are recorded at once | 1.38 s (1.5 s)                                                                                                       | no cascade, the card at once (also with a screen reader) | success notification, from the result card when it opens (`GameResultModal`)                           |
+
+Pour timings, from `pourTimeline(units)` (ms from the start of the pour animation; the tap, the render that starts it and the hop back to React when it ends add up to `POUR_START_LATENCY_BUDGET_MS`, 50 ms, which the one-unit design leaves room for: `pourTotalMs(1) + 50 <= 900`, tested):
+
+| Units | Lift ends | Flow starts | Each unit leaves, lands | Flow ends | Move lands (end) |
+| ----- | --------- | ----------- | ----------------------- | --------- | ---------------- |
+| 1     | 170       | 300         | 480, 600                | 600       | 780              |
+| 2     | 170       | 300         | 480, 600; 780, 900      | 900       | 1080             |
+| 3     | 170       | 300         | ...; 1080, 1200         | 1200      | 1380             |
+| 4     | 170       | 300         | ...; 1380, 1500         | 1500      | 1680             |
+
+How it runs:
+
+- **UI thread.** Every animation is a Reanimated shared value. A pour is one `withSequence`/`withDelay` timeline per value, built in one go, with one callback on its last segment (no finished-callback hand-offs between phases, which slipped a frame each). A bottle's lift, shake, pulse and drop-in are derived values read in its animated style (`selectLiftPx`, `shakeOffsetPx`, `pulseScale`, `levelInLook` in `motion.ts` are worklets); the check badge is `useAnimatedProps`. The pour's ghost is as before, but each unit's drain (the source's layers fade out) and landing (the destination's layers fade in, and the splash pulses through `useAnimatedReaction`) are now steps of two shared values (`unitsEmitted`, `unitsLanded`) on the pour's own timeline. They were a `setTimeout` and a React state update per unit (4 timers and 4 renders for a 2-unit pour); a pour now renders React twice (the ghost appears, the ghost goes), whatever its size. A new level runs one board-wide clock that each bottle reads its slice of. `SortBoard` still does no per-frame React work and keeps its memoised handlers.
+- **Events, not frames.** `SortScreen` turns a tap into one event: a select, a refused pour (`refused` = `{ index, seq }`, which makes that bottle shake once per new `seq`), an undo (`undoSeq`), a new level (`levelIn`), a win (`winCascade`). A restored game carries none, so it replays nothing: a bottle that mounts selected is lifted at once, one that mounts solved shows its badge, a board that mounts with a `seq` plays nothing.
+- **Input.** A tap during a pour is ignored, as before; the pour is just faster. `usePourAnimation` keeps its contract: `start` refuses a second pour, `cancel` drops a pour without landing it, and the move is committed when SortBoard reports the pour done (so the replay recorder, #3385, still records a pour on landing). A select, a refused pour, an undo animation and the level-in never block a tap. Undo and Hint are off while the win cascade plays.
+- **Win.** `SortScreen` records the solve at once, but opens `GameResultModal` only when `SortBoard` reports the cascade over (`onWinCascadeDone`: its timer, `WIN_CASCADE_MS`; or a tap on the board). Under Reduce Motion the card opens at once. Leaving the board during the cascade drops it. Closing the card on a solved board does not play it again; Restart and Play Again make the next solve play it.
+- **Pour geometry** still reads the `onLayout` positions kept in refs (#2297); the bottle count change reset is untouched.
+- **Reduce Motion** is the shared `useReduceMotion` everywhere, `BottleView` included. A Reduce Motion pour has no ghost and no tilt (the old in-place 62 degree tilt is gone); it lands on the hook's timer, `REDUCE_MOTION_POUR_MS` (0).
+
+### Haptics
+
+Fired from the event that starts the motion, once, never per frame. Best-effort, as `GameResultModal`'s: a rejected promise or a thrown error is swallowed. None on web. Sort has no haptics setting, and the app has no shared haptics on/off setting yet; if one is added, `fireSortHaptic` is the one place to honour it. A cancelled pour (Restart, a level change, leaving) fires nothing, since nothing lands. A pour that completes a bottle fires the success only (not the medium impact too, in the same tick). The winning pour fires the medium impact only: the bottle-complete success is skipped for it, and the one success on a win is the result card's own (`useResultFeedback`), which now arrives after the cascade, so a win has exactly one.
+
+### Hint destination ring
+
+The ring (`hint-dst-ring`) is a 2 px border on the page background. `colors.bonus` is 2.7:1 on the light theme's cream, below the 3:1 non-text minimum (WCAG 1.4.11), so it uses its own token, `colors.hintRing` (`#1f7a3c` on light, 4.6:1; `#4ade80` on dark, 11.0:1). `theme/__tests__/hintRingContrast.test.ts` pins both.
+
+## Replay recording
+
+(#3384, epic #3383; the screen wiring is #3385 and #3386.) A step log, not a visual replay: the level and catalog version, then every committed pour, undo, hint shown and "back to last good move", in order. From those the board, move count and undo count are rebuilt exactly, offline, from the shipped catalog. Code: `frontend/src/game/sort/replay.ts` (`SortReplay`, `rebuild`, `isAction`); tests: `__tests__/replay.test.ts`.
+
+**`game_started`** carries `{ level, catalog, engine_version: 1 }` (`SORT_REPLAY_ENGINE_VERSION`). **No fallback board:** the opening board is always `(catalog, level)` from `levels.catalog.json` / `catalog.ts`, so a catalog bump keeps the old catalog file for as long as its recordings are read.
+
+**A `moves` event** is `{ v: 1, unit, t_ms, m: [action, ...] }` (the recorder's envelope plus `m`): up to **25** actions, one recorder unit per chunk (`ACTIONS_PER_CHUNK`). Actions are number tuples:
+
+| Action                 | Tuple           | Meaning                                                                                                                                       |
+| ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pour                   | `[0, from, to]` | a committed pour, recorded when it lands; the engine decides the colour and the amount (the whole top run, up to the room in the destination) |
+| Undo                   | `[1]`           | an undo that changed the board (an undo with empty history is a no-op and is not recorded)                                                    |
+| Hint                   | `[2, from, to]` | a hint shown; changes nothing (for difficulty analysis)                                                                                       |
+| Back to last good move | `[3, n]`        | rewinds `n` moves; each counts as an undo (`undosUsed += n`), as `handleBackToLastGoodMove` calls `undo` n times                              |
+
+Not recorded: selections, refused pours, cancelled pour animations, timing beyond the envelope's `t_ms`.
+
+`rebuild(opening, actions)` applies the log with the engine (`applyPour`, `isValidPour`, `undo`) and reports the first illegal action (malformed tuple, bottle index off the board, an illegal pour, an undo or rewind with not enough history). `isAction` is the strict shape check the backend validator mirrors: integers, bottle indices `0..MAX_BOTTLES-1` (16), `from !== to`, arity, a rewind of `1..MAX_REWIND` (1000).
+
+**Caps** (`eventQueueConfig.ts`): `SORT_MOVES_MAX_BYTES` 1 KB per event (a worst honest chunk of 25 x `[0,15,14],` is about 281 B with the envelope; the backend's `MAX_MOVES_BYTES` holds the same figure), `SORT_MAX_UNITS` 12 rows a level (300 actions; the longest level's par is 63) and `SORT_SESSION_MAX_BYTES` 8 KB of JSON a level. Past either cap recording stops as a clean prefix, so a level with more than 300 actions (a very long, hint-heavy one) keeps only its first 300: its replay is a prefix and does not reach the final move and undo counts. The reader (#3388, `replay_game.py`) reports such a log `incomplete`, never complete. The kill switch and sample rate are the recorder's replay dial; `SortReplay` does not read it.
+
+**Reading a replay** (#3388). `cd backend && python scripts/replay_game.py <game_id>` prints the game's events and then the level rebuilt from them (`backend/sort/rebuild.py`, with the engine's own pour rules, held equal to the reference simulator in `scripts/sort_verify_levels.py` by `tests/test_sort_rebuild.py`): the opening board from the shipped catalog file, each step (`#12 pour 3→7  red ×2  moves 9 undos 1`, `#13 undo`, `#14 hint 2→5`, `#15 back to last good move ×3`; bottles are numbered from 0), the final board, whether it is solved, and a verdict with its reason:
+
+- `complete`: every unit arrived in order, every action applied, and the rebuilt moves, undos and win match `game_ended`.
+- `incomplete`: a clean prefix that stops short of its result: no `game_ended` (`truncated`), a unit or part that never arrived (`gap`: a dropped batch or the cap above; a lost last unit is caught from `game_ended`'s recorder summary `replay.u` when the app sent it, since a last unit of hints changes no count; a log that reached the 12-unit recording cap is always incomplete, as the app stops there without a marker), or a board that has not reached `game_ended`'s undos, moves or win, or a `game_ended` with no `moves` or `won` to check against (the orphan sweep's abandon). Rule 1: undos only grow while moves go back down on an undo, so a log with fewer undos than `game_ended` is a prefix even when it shows more moves or an unsolved board; only equal or higher undos with more moves, or a win claim (`won: true` or `outcome: "completed"`) on an unsolved board, is `invalid`. Rule 2: no result to check is never `complete`. The steps shown are right as far as they go.
+- `invalid`: not an honest recording: `illegal_pour`, `undo_past_start` (an undo or rewind with too little history), `malformed_action`, `duplicate_unit` / `restarted_unit` / `bad_parts`, a `mismatch` with `game_ended` (more moves or undos than it says, a win it does not, another level), or `incompatible_catalog` / `incompatible_engine` (the game's `catalog` is not the catalog file's version, its level is not in it, or `engine_version` is not one the reader rebuilds, today 1; a `game_started` without the field is version 1, #3912). With no fallback board there is nothing to rebuild then, and nothing is printed but the reason; a catalog bump will keep the old file so this can load it by version. A game with no `game_started` is also `invalid`.
+
+Reading stops at the first problem, so a step after a gap or an illegal pour is never guessed.
+
+**Where the screen records** (`SortScreen.tsx`, with `useGameRecorder("sort")` and `game/sort/useSortReplay.ts`):
+
+- **Session:** opened at the tap of the level's first pour (`syncStart(sortStartData(level))`, `game_started` = `{ level, catalog, engine_version }`). The pour itself is recorded only when it lands, which is never inside the tap handler (a timer or SortBoard's callback), so `game_started` always precedes the first action.
+- **Pour** `[0, from, to]`: in `landPour` (the `usePourAnimation` `onLand`), after `applyPour`. Never at the tap. A pour cancelled by `cancelPour` (New Game / Restart, a level change, back to the level grid, navigation) never lands and records nothing; a pour that lands on another board than the one it was made on (`pourGenRef` against `levelGenRef`, defence in depth: a cancel always comes first) records nothing.
+- **Undo** `[1]`: in `handleUndo`, only with history (the button is disabled without it, and the engine's undo is a no-op).
+- **Hint** `[2, from, to]`: in `handleHint`, only when the solver's answer is still for this board (`gen === levelGenRef.current`) and a move was shown. "No way to win" and "couldn't find a hint" notices are not recorded. A hint before the level's first pour is not recorded either: no session is open yet (as Mahjong).
+- **Back to last good move** `[3, n]`: in `handleBackToLastGoodMove`, after the generation check, with `n` the undos actually applied (`past.length - lo`).
+- No serialization, storage or network in these handlers: each pushes a small tuple; a full chunk of 25 goes to the recorder, which saves it at an idle moment.
+
+**Flush points** (the chunk in progress goes to the recorder and the queue now): before the win's `syncComplete` (so the moves precede `game_ended`), before an abandon (`abandonSession`: New Game / Restart, a level change, back to the level grid), on app `background` (not `inactive`: each flush spends a row), and on unmount (an effect declared before `useGameRecorder`, so it runs ahead of the abandon's `game_ended`). Not on a navigation blur: each visit to Stats, Leaderboard or Settings from the ⋯ menu would spend one of the level's 12 rows on a short unit; the board, with the actions still waiting, is already saved, and the chunk carries on when the player comes back. A new level or a restart then `reset()`s the replay: units count from 1 in the new session.
+
+**Saved with the board** (#3386, `SortProgress` in `@sort/progress`, all optional so older saves load): `replayUnit` (the units handed to the recorder, `SortReplay.unit`), `replayPending` (the actions collected and not yet handed over) and `replayGameId` (the recorder session the replay went to; none before the level's first pour). They are written with every board change, again right after a background flush, and when the replay blocks. A unit is handed to the recorder at once (a full chunk as it fills, or at a flush), but the recorder writes it to the queue at an idle moment, so the saved `replayUnit` can run ahead of what was stored: it never lags it.
+
+**Restoring a board** (Continue): `useGameRecorder().resume()` adopts a Sort session a killed process left open (under 24 h old) only if it is the board's saved `replayGameId` (#3876; the reserved `ORPHAN_GAME_ID_KEY` match). Without that, another level's or an earlier attempt's killed session would take this board's result under a `game_started` naming a different level; a save naming no session adopts nothing and the first pour opens a new session (the orphan is abandoned as usual). So the replay carries on at `replayUnit + 1` (`resumeAt`) only when the session resumed is the saved `replayGameId`. It is blocked (`block()`) when the save names no session (an older build; the resume adopts nothing then), when the save has no `replayUnit` (from before replay recording), or when `replayPending > 0`: a kill (or a save that had not landed) lost actions that were never handed over, so the stored log has a hole the unit numbers would not show. If no session resumes, the first pour opens a new session whose `game_started` names the level's opening board, not the restored mid-level board, so the replay is blocked there. A block spends the level's row budget (the unit count goes to `SORT_MAX_UNITS`) and is saved at once (`setOnBlocked`), so a later load of the same board stays blocked; a fresh start of the level records again. A chunk the recorder throws on also blocks (its unit number may be spent with its chunk missing); a flush whose chunk throws still saves what the recorder already holds.
+
+**What a reader can trust:** a replay is complete only when its units run 1..n with no gap or repeat and the log rebuilds to the `game_ended` result's moves and undos. A hard kill in the foreground loses what was not yet stored, and backgrounding flushes first, so only a foreground kill does this. Two cases: actions not yet handed over (up to 24) show in the save as `replayPending > 0`, so the resumed level is blocked and its log stops at the last stored unit; a full chunk handed over but not yet written by the recorder is not visible in the save (`replayPending` is 0 and `replayUnit` already counts it), so the resumed log carries on past a missing unit, a forward gap. Either way the log reads as **incomplete**, never complete. A unit number that repeats or goes back reads as invalid (#3388); the saved count never lags the units handed over and a resume goes only into the board's own session, so this app does not produce one.
+
+**v1 schema, in short.** `game_started`: `{ level, catalog, engine_version: 1 }`. `moves`: `{ v: 1, unit, t_ms, m, part?, parts? }`, `unit` counting from 1 a level, `m` 1..25 actions from the app (the validator takes up to 32 and 1,024 B of compact JSON). `game_ended` is the level's result (`won`, `level`, `moves`, `undos`, `outcome`, ...) with the recorder's summary `replay: { u, n, b, m }` (last unit, rows saved, their JSON length, and the mode the event client adds, `f` full or `s` sampled). Anything else, or another `v`, is dropped by `backend/sort/replay.py`.
+
+**Deployment order.** Migration `0047_sort_replay_events` must reach prod before a build that records goes to the stores: until then the server answers `400 unknown_event_type` for `moves`. The app drops what the server refuses, so an early build loses its replays and nothing else. Recording follows the per-game dial (`replay_enabled`, `replay_sample_rate` on the `sort` game type; 1.0 since migration 0045).
+
+**Engine compatibility.** A replay is rebuilt with the engine and the catalog it was recorded on: `engine_version` 1 (the pour and undo rules in `engine.ts`, mirrored by `backend/sort/rebuild.py` and held equal to the reference simulator by `tests/test_sort_rebuild.py`) and the `catalog` version (`levels.catalog.json`, `SORT_CATALOG_VERSION` = `CATALOG_VERSION`). There is no fallback board: a game with another `catalog` or an `engine_version` the reader does not rebuild (`ENGINES` in `rebuild.py`, `REPLAY_ENGINES` in `replay.ts`; shared rules in `backend/games/engine_version.py`, #3912) reads `invalid` (`incompatible_catalog` / `incompatible_engine`) and nothing is guessed. Changing the pour or undo rules is a new `engine_version`; changing a level's board is a new catalog version that keeps the old file (see [Level Progression](#level-progression)).
+
+**Exact reproducibility.** For a game that reads `complete`, the opening board comes from the catalog and every step is the engine's own rule, so the board after each step, the move count and the undo count are exact, not estimated, and the final board is the one the player had (the solved board, for a win). The cross-stack check is the golden level: the app plays catalog level 8 through the real screen, engine, solver and recorder (a 2-unit pour taken back and made again, hints taken, a 3-unit pour, a partial pour, a dead end, "back to last good move" x2, an Undo, the win), `frontend/src/screens/__tests__/SortScreen.replay.test.tsx` ("the golden level") asserts the saved events equal `backend/tests/fixtures/sort_replay_golden.json` (volatile `t_ms` pinned to a minute a unit, and `replay.b` recomputed), and `backend/tests/test_sort_golden.py` runs the same file through the validator, `rebuild` (verdict `complete`, solved, 8 moves and 4 undos as `game_ended` says) and `replay_game.render`.
+
+**Known omissions** (not recorded, so not in a replay): taps and selections, refused pours, a pour cancelled in flight, "no way to win" and "couldn't find a hint" notices, a hint asked before the level's first pour, and any timing beyond the chunk's `t_ms` (the step order is exact; the time between steps is not). A log can also be short of its result (never wrong): units lost to a foreground kill, the 300-action cap, the dial off or sampled out. The reader says which (`incomplete`, `gap` / `truncated`), and "what a reader can trust" above is the rule.
+
+**Regenerating the golden fixture** after an intended change to what the app records (bump the events' `v` if it is breaking), from `frontend/`:
+
+```
+UPDATE_SORT_REPLAY_FIXTURE=1 npx jest src/screens/__tests__/SortScreen.replay.test.tsx -t "golden level"
+```
+
+then `cd backend && python -m pytest tests/test_sort_golden.py` and, if the bytes moved, update the pinned numbers in that file and the table below. Without the flag the frontend test fails on any difference, so the file cannot go stale unnoticed.
+
+**Storage, measured** (`backend/tests/test_sort_golden.py`; bytes; compact JSON is what the app sends and the validator caps, `jsonb::text` what the database stores and the counters charge, plus `ROW_OVERHEAD_BYTES` = 200 a row). The worst row of a level is 25 actions of the widest pour `[0,15,14]` with a 7-digit `t_ms`; a chunk of about 288 B is far under 1 KB, so it is never split into parts.
+
+| Level                                        | `moves` rows | Compact JSON | `jsonb::text` | Stored (with row overhead) |
+| -------------------------------------------- | ------------ | ------------ | ------------- | -------------------------- |
+| Golden level (level 8, 27 actions)           | 2            | 277 B        | 365 B         | 765 B                      |
+| Typical level (30-60 actions)                | 2-3          | -            | -             | about 0.8-1.2 KB           |
+| Worst a level can record (12 full chunks)    | 12           | 3,447 B      | 4,419 B       | 6,819 B                    |
+| Cap (`SORT_CAP`, the validator's widest row) | 12           | 12,288 B     | -             | 14,688 B                   |
+
+A level's lifecycle rows add `game_started` 47 B and `game_ended` 165 B of `jsonb::text` (plus 200 B each), outside `SORT_CAP`. The golden level is a typical one, 765 B stored, inside the 0.5-1 KB the epic planned; a longer level (60 actions, 3 rows) reaches about 1.2 KB, hence the table's 0.8-1.2 KB for 30-60 actions; the worst honest level stores 6.8 KB, under half of the 14.7 KB cap. At 1,000 levels played a day that is about 0.8-1 MB a day, bounded by the per-game sample rate and the storage-budget job, which lowers every rate at 90 % of the budget; the worst 12-row level is a level of 300 actions (the longest level's par is 63).
 
 ## Scoring (Persistence)
 
 Every level played is its own session row (#2625): progress is not carried in one session.
 
-- **Metric and direction:** `level_reached` (a result key in `games.metadata`), higher is better, labelled `level` (`board` in `backend/sort/module.py`; `BOARDS.sort` in `frontend/src/api/vocab.ts`). It is the player's frontier after the solve: the highest level they have solved, capped at the last level. The same value goes in `final_score`.
-- **Tie-break:** none of its own: players on the same level rank by the earlier `received_at` (server receipt time), every board's final tie-break. There is no moves tie-break (#2746): levels are generated fresh on each `GET /sort/levels` (see [Level Progression](#level-progression)), so two players' moves on the same level number are moves on different puzzles. Fixed, seeded levels that would make a moves tie-break fair are filed separately for after launch.
+- **Metric and direction:** `level_reached` (a result key in `games.metadata`), higher is better, labelled `level` (`board` in `backend/sort/module.py`; `BOARDS.sort` in `frontend/src/api/vocab.ts`). It is the player's frontier after the solve: the highest level they have solved on the catalog (the level just solved, or the highest with a best on record), capped at the last level. It never comes from the unlocked level: a save moved from the random levels unlocks far ahead (say level 103) without having solved anything on the catalog, so its first solve of level 1 sends `level_reached` 1, not 102 (#2761). The same value goes in `final_score`.
+- **Tie-break:** `total_moves` ascending: on the same level, fewer total moves ranks higher; then the earlier `received_at` (server receipt time), every board's final tie-break. The moves tie-break was dropped in #2746 while levels were random per request and came back with the catalog (#2761): level N is the same puzzle for everyone. A row with no `total_moves` ranks after every row with one on its level.
+- **Board reset (#2761):** the board's `edition` is `("catalog_version", 1)`: only rows whose result carries `catalog_version: 1` rank, or count as a player's "Best" in stats. Rows from the random levels, including solves still sent by app builds from before the catalog, carry none: they stay stored (history, XP, stats totals) but never rank. No migration and no delete; nothing grows. A future catalog that changes the levels raises the version, which resets the board the same way.
+- **When the reset takes effect: `SORT_CATALOG_EDITION_ENFORCED`** (env var, default off; the board's `edition_switch`, read by `backend/games/boards/editions.py`). The backend deploys on merge to `main`, long before the store builds that send `catalog_version` reach players. While the switch is off, the Sort board and Stats "Best" rank every row as before the reset (the 120 cap and the moves tie-break already apply). **Release step:** once the catalog builds are live on both stores, the owner sets `SORT_CATALOG_EDITION_ENFORCED=true` on `bc-arcade-api` and redeploys; from then on only catalog rows rank. The same flip also moves Sort's daily-challenge goals from reach level 3 / 8 / 15 to 10 / 30 / 60 (#3728; [DAILY-CHALLENGE.md](../DAILY-CHALLENGE.md#2-current-eligible-goal-pool)); days already frozen keep the thresholds they were frozen with. No app release, no migration; unset it (and redeploy) to undo. See [RENDER.md](../RENDER.md#environment-variables). The metadata grows by `"catalog_version":1`, 20 bytes per completed level row, well inside the existing row.
 - **Partitions:** none: one board.
-- **Recorded, not partitioned:** result (`SortResult`): `level` (the level actually played), `moves`, `undos`, `won`, and `total_moves`, the sum of the player's best moves on levels 1 to `level_reached` (`@sort/best_moves` on the device; left out when one of those levels has no best on record). `total_moves` was the tie-break until #2746 and is no longer ranked.
-- **Max value:** 23, the number of levels. `level_reached` and `total_moves` must be integers (`StrictInt`); `total_moves` is at most 2³¹−1.
-- **Outcomes:** `has_winner = False`. Every solve, a replay included, records `completed` scored with the player's standing after it (`SortScreen.tsx`). The board keeps each player's best row: their first solve of their highest level. A replay never displaces it, even one that lowers a best move count. Leaving a level unsolved records `abandoned` with `{ won: false, level, moves }` and no score: going back to the level grid, resetting the level, or leaving the screen.
+- **Recorded, not partitioned:** result (`SortResult`): `level` (the level actually played), `moves`, `undos`, `won`, `catalog_version`, `stars` (1 to 3, #3687; a strict integer, left out by older builds; about 10 bytes a completed row), and `total_moves`, the sum of the player's best moves on levels 1 to `level_reached` (`personal_best_v1:sort` on the device; left out when one of those levels has no best on record, e.g. after a save moved onto the catalog).
+- **Max value:** 120, the number of catalog levels (`LEVEL_COUNT` in `backend/sort/catalog.py`). `level_reached` and `catalog_version` must be integers (`StrictInt`), as must `total_moves` (at most 2³¹−1); `level_reached` and `level` are at most 120.
+- **Outcomes:** `has_winner = False`. Every solve, a replay included, records `completed` scored with the player's standing after it (`SortScreen.tsx`). The board keeps each player's best row: their highest level, then their lowest total. A replay that lowers a best move count lowers the total and becomes the best row. Leaving a level unsolved records `abandoned` with `{ won: false, level, moves }` and no score: going back to the level grid, resetting the level, or leaving the screen.
 - **Duration:** `useGameSync`'s active-play window; Sort sends no duration of its own. Entering or restarting a level restarts the window (`resetPlayWindow`), so time on the level grid is not counted.
-- **How it reaches the server:** the `useGameSync("sort")` session row, opened at the level's first pour. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best row once. The legacy `POST /sort/score` was removed in #2644, and the unattributable rows it wrote (`sort-anon`) were deleted (#2622). Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **How it reaches the server:** the `useGameRecorder("sort")` session row (`useGameSync` plus the replay recorder), opened at the level's first pour. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best row once. The legacy `POST /sort/score` was removed in #2644, and the unattributable rows it wrote (`sort-anon`) were deleted (#2622). Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the level's win card shows the rank through `lookupGameRank` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the highest level reached.
 
 ## Hint, Undo, Reset, and Level Navigation
 
-- **Hint:** runs the client-side solver asynchronously and returns the next suggested pour for the current board. A result computed for a board the player has already restarted or left is discarded rather than applied to stale state.
+- **Hint:** runs the client-side solver (`frontend/src/game/sort/solver.ts`, the backend's `fast_solver` method; see [Client-Side Engine](#client-side-engine)) asynchronously, only when the player taps Hint (no background solving), via `solveBoardAsync`. A solvable board selects the first pour of a solution (it finds one on every level, including the two-empty-bottle levels from 11 up that the old plain BFS gave up on, #3686). An "unsolvable" verdict shows `HintNotice` (`components/sort/HintNotice.tsx`) between the HUD and the board: "No way to win from here" with **Back to last good move** and **Restart level**, dismissible, announced to screen readers (#2768). An "unknown" verdict (budget spent) shows "Couldn't find a hint". The same happens for a dead board restored with "Continue level N". A result computed for a board that has since changed (restart, level change, a pour or an undo after the tap, tracked by `levelGenRef`) is discarded, not applied.
 - **Undo:** restores the previous bottle state and tracks the undo in the result metadata. It is disabled when there is no history.
-- **Reset/restart:** abandoning or resetting an in-progress level closes the active server session as abandoned once play has begun, then resets the active-play window for the new attempt.
+- **Back to last good move** (from the dead-board notice): undoes the player's own moves, one undo per move (so `undosUsed` rises by the number of moves taken back), back to the most recent position that can still be won. After the tap it binary-searches the history (a dead board stays dead, so about log2 n solves, capped at 24 solves or 8 s) for the newest state the solver proves solvable, including the oldest one (a restored board has no level start behind it). Only "solvable" counts; "unknown" is treated as not winnable. Each step back is an undo, so `undosUsed` rises by the number of steps. If no history state is proven solvable the board is left alone and the notice offers Restart only. The notice is an overlay at the top of the board area, so it never resizes the board.
+- **Reset/restart:** abandoning or resetting an in-progress level closes the active server session as abandoned once play has begun, then resets the active-play window for the new attempt. The notice's **Restart level** reuses this flow (`handleResetLevel`) and returns to the level's starting board; there is no new deal.
 - **Level grid:** time spent browsing/selecting levels is not part of a level's active-play duration.
-- **Offline:** the cached level set remains playable when the level endpoint is unavailable.
+- **Offline:** the levels ship in the app (#2761), so every level is playable offline.
 
 ## Client-Side Engine
 
 - Location: `frontend/src/game/sort/engine.ts`
 - Key exports: `validatePour(state, from, to) → boolean`, `applyPour(state, from, to) → GameState`, win detection
 - Screen: [`frontend/src/screens/SortScreen.tsx`](../../frontend/src/screens/SortScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
-- Level data: fetched from `GET /sort/levels` and cached on the device for offline play (`frontend/src/game/sort/storage.ts`)
+- Solver: `frontend/src/game/sort/solver.ts` is a port of `backend/sort/fast_solver.py`: a state is keyed with its bottles sorted, full single-colour bottles are dropped, only the first empty bottle is tried (and no single-colour bottle is poured into an empty one), and the search is best-first on `runs - colours`, ties newest-first (a small binary min-heap, no dependency). A single generator drives both the sync and async paths; the async one yields to the event loop every 8 ms or 1,000 expanded states, whichever comes first. `solveBoard(state, budget?)` / `solveBoardAsync` return `{ verdict: "solvable", moves }` (pours as indices into the board as shown), `{ verdict: "unsolvable" }` (proven: the whole reachable space was searched) or `{ verdict: "unknown" }` (budget spent). `solve`, `solveAsync` and `getNextHintAsync` keep their `Move[] | null` / first-pour shape (null for unsolvable and unknown). The budget is 200,000 states, as in the generator. Measured worst case over the 120 catalog levels: 3,054 states. The old BFS (bottle order kept in its key, 200,000 cap) hit its cap and returned null on every two-empty level from 11 up (about 3 to 6 s each in a Python port of it, seed 7).
+- Parity fixture: `frontend/src/game/sort/__tests__/fixtures/solverParity.json` holds the 120 catalog levels, plus proven-dead boards and mid-game positions, each with `fast_solver`'s verdict and visited-state count (boards are one-letter-per-unit strings, `""` for an empty bottle). `solver.parity.test.ts` requires the same verdict, the same search (it solves with the backend's own state count as the budget), and replays each solution with `applyPour`. Regenerate it with `python scripts/sort_export_solver_fixture.py` (from `backend/`) whenever `fast_solver` or the catalog changes (it reads the committed `levels.catalog.json`); `backend/tests/test_sort_solver_fixture.py` fails if the committed file is stale.
+- Level data: the catalog shipped in the app (`frontend/src/game/sort/levels.catalog.json`, read by `catalog.ts`); nothing is fetched.
 
 ## Backend
 
 - Module: `backend/sort/module.py`
-- Endpoints: `backend/sort/router.py`. `GET /sort/levels` serves the levels. The legacy `POST /sort/score` and `GET /sort/scores` were removed in #2644.
-- Level data: generated per request by `backend/sort/generate_levels.py` (`build_levels`); nothing is saved to disk. Every level is proven solvable before it is served (#2764). Each level is a uniform random shuffle, dealt again until `backend/sort/fast_solver.py` proves a solution exists. A deal it proves dead, or can't decide within `SOLVER_BUDGET` (200,000 states), is thrown away. If `MAX_ATTEMPTS` (5,000) deals of one level all fail, `build_levels` logs an error and raises `LevelGenerationError`, so the request fails with a 500 rather than serve an unproven level. With the measured solvable rates that can't practically happen: the rarest is about 1% of deals at 9 colors with one empty bottle, so the odds are about 1e-23. A request takes about 0.25 s on average (p95 about 0.5 s).
+- Endpoints: none (`backend/sort/router.py` is gone). Sort has no routes of its own: it ranks on the generic session board (`GET /games/leaderboard/sort`). The legacy `POST /sort/score` and `GET /sort/scores` were removed in #2644, and `GET /sort/levels` (23 random levels for app builds from before the catalog) in #3729; all answer 404.
+- Catalog: `backend/sort/catalog.py` holds what the server knows of the app's catalog: `CATALOG_VERSION` (the board's `edition`) and `LEVEL_COUNT` (the cap). `scripts/sort_build_catalog.py` builds the catalog (see [Level Progression](#level-progression)); `tests/test_sort_catalog.py` regenerates it in memory and fails if the committed file differs, checks it against those constants and the curve, and solves every level with `fast_solver`, replaying the pours with `is_solution` and checking each level's par.
+- Level dealing: `backend/sort/generate_levels.py` holds `deal_level` (a uniform random shuffle, dealt again until `backend/sort/fast_solver.py` proves a solution exists; a deal it proves dead, or can't decide within `SOLVER_BUDGET` (200,000 states), is thrown away; `MAX_ATTEMPTS` (5,000) failed deals raise `LevelGenerationError`), `COLORS_14` and `SOLVER_BUDGET`. Only `scripts/sort_build_catalog.py` uses it. The old per-request generator (`build_levels`, `LEVEL_SPECS`) is gone (#3729).
 - Solver: `fast_solver.solve(bottles, budget)` returns a `Result`. Its verdict is `True`, `False` (proven: the whole reachable space was searched) or `None` (budget spent), and a `True` verdict comes with the solution's pours as indices into the level's bottles. It ignores bottle order, drops full single-colour bottles, and searches best-first. It decides every level in well under a second; the most states any deal has needed is about 40,000. `DEPTH` (units per bottle) is defined there once for the backend; the frontend's `BOTTLE_DEPTH` must match it.
-- Checks: `python scripts/sort_verify_levels.py [--seed N] [--runs N]` (from `backend/`) runs the solver over freshly built sets and replays each solution. `scripts/sort_verify_levels.py` also holds a reference pour simulator written independently of the solver. Its `is_solution` replays a solution pour by pour and checks that the level ends solved, so a "solvable" verdict is certified without trusting the solver's pruning.
-  - In CI, `backend/tests/test_sort_levels_solvable.py` solves every level of 20 fixed-seed sets and replays each solution this way. It also checks the small levels with the reference BFS in the same module.
+- Checks: `python scripts/sort_verify_levels.py` (from `backend/`) runs the solver over the catalog's 120 levels and replays each solution. `scripts/sort_verify_levels.py` also holds a reference pour simulator written independently of the solver. Its `is_solution` replays a solution pour by pour and checks that the level ends solved, so a "solvable" verdict is certified without trusting the solver's pruning.
+  - In CI, `backend/tests/test_sort_catalog.py` solves every catalog level and replays each solution this way.
   - `test_sort_fast_solver.py` checks that the solver agrees with that BFS.
-  - `python scripts/sort_solvability_survey.py` (from `backend/`) measures the unsolvable rate over many sets or raw shuffles.
+  - `python scripts/sort_solvability_survey.py` (from `backend/`) measures the unsolvable rate of raw random shuffles of one configuration.
 - Metadata model: `SortMetadata` — `player_name: str = ""` (max 64 chars, `LegacyPlayerName`; 32 before #2995). Current builds send no metadata.
-- Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `won`, `outcome`, all optional
+- Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `catalog_version`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
+- **Replay recording (backend, #3387, epic #3383).** Sort records a level as `moves` events, validated by `backend/sort/replay.py` (`validate_moves`, hooked in `SortModule.validate_event`) and seeded by `0047_sort_replay_events` (deploy it before the app that sends the event, or the server answers `400 unknown_event_type`). `data` is the recorder's envelope (`v` 1, `unit`, `t_ms`, optional `part` / `parts`) plus `m`, 1..32 actions (the app sends 25), each an array of strict ints: pour `[0, from, to]`, undo `[1]`, hint `[2, from, to]`, rewind `[3, n]` (`0 <= from, to < 16` and `from != to`, `1 <= n <= 1000`). 1,024 B of compact JSON per event (`MAX_MOVES_BYTES`, equal to the app's `SORT_MOVES_MAX_BYTES`; a test holds the two equal). A bad event is dropped, not the batch, with a throttled Sentry report by reason only. `game_started` is not validated and carries `{ level, catalog, engine_version: 1 }`; `game_ended` and `SortResult` are unchanged. Per-level cap `SORT_CAP` (`games/replay_caps.py`): 12 events and 14,688 B. The app's recorder, the replay format and its measured cost are in [Replay recording](#replay-recording).
 
 ## Colour palette
 
@@ -78,10 +329,30 @@ The 14 liquid colours live in `BOTTLE_LIQUID_COLORS` (`frontend/src/theme/theme.
 
 Free: no entitlement check.
 
-## Progression / comparability decision still open
+## Progression / comparability
 
-The current random-per-request model means two players at "Level 19" may have solved different arrangements. That is why v1 deliberately has **no move-count tie-break**; players tied on highest level fall through to the shared completion-time tie-break.
+Settled by #2761: every player gets the same fixed catalog of 120 levels, so "Level 19" is one puzzle for everyone and moves compare. The leaderboard was reset when the catalog shipped (only `catalog_version` 1 rows rank) and ranks fewest total moves on a tie again. Stars per level (#3687) are judged against each level's `par` (see [Stars](#stars-3687)).
 
-#2761 is the post-launch proposal to replace this with fixed seeded levels and restore a fair move-count comparison. Until that ships, documentation and leaderboard configuration must continue to describe levels as difficulty slots with fresh arrangements, not fixed puzzles.
+## Sound
 
-Older devices can still hold a pre-#2764 cached set containing an unsolvable board until they refresh their level set; newly generated sets are solver-verified.
+Registry: `frontend/src/game/sort/sounds.ts` (`SORT_SOUNDS`). Sort's sounds are original, synthesized "glass and water" sounds (#3661, part of #3578) from `tools/assets/synth_puzzle_sfx.py`; the reasoning, the options and the picks are in the [puzzle sound design log](puzzle-sound-design.md). Levels are baked into the files, so every sound plays at `useSound`'s default volume (1.0); each plays through `useSound` (which honours the player's sound setting) or, for the three frequent ones, `useSoundVariants` (three variations, never the same twice in a row).
+
+Triggers are in `frontend/src/screens/SortScreen.tsx` (via `frontend/src/game/sort/useSortAudio.ts`) and are timed to `frontend/src/game/sort/motion.ts`.
+
+| Key                                                                        | File                                      | Plays when                                                                                                                                                                                                                                                 | Volume |
+| -------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `sort.select`, `select2`, `select3`                                        | `sort-select-1/2/3.ogg`                   | a tap selects a filled bottle (with the light haptic); not a deselect, and not the source a hint lifts                                                                                                                                                     | 1.0    |
+| `sort.pourLift`, `pourLift2`, `pourLift3`                                  | `sort-pour-lift-1/2/3.ogg`                | a pour starts (the tap)                                                                                                                                                                                                                                    | 1.0    |
+| `sort.pourStream1u` to `sort.pourStream4u` (each with `2`, `3` variations) | `sort-pour-stream-{1,2,3,4}u-{1,2,3}.ogg` | once per pour, at the stream's start (`flowStartMs` 300 ms after the pour starts, plus the 50 ms latency budget), the file for the pour's unit count (1 to 4; 0.48 to 1.38 s); cleared with a cancelled pour (reset, level change, leaving, backgrounding) | 1.0    |
+| `sort.refused`                                                             | `sort-refused.ogg`                        | a pour is refused (the destination's shake; with the warning haptic)                                                                                                                                                                                       | 1.0    |
+| `sort.complete`                                                            | `sort-complete.ogg`                       | a pour that completes a bottle lands, as the badge pops (with the success haptic); not the winning pour, an undo or a restore                                                                                                                              | 1.0    |
+| `sort.undo`                                                                | `sort-undo.ogg`                           | Undo, or "Back to last good move" (once per action, however many moves it undoes)                                                                                                                                                                          | 1.0    |
+| `sort.hint`                                                                | `sort-hint.ogg`                           | a hint is shown (the source lifts, the destination rings); not for the "no way to win" notice                                                                                                                                                              | 1.0    |
+| `sort.win`                                                                 | `sort-win.ogg`                            | the level is solved: at the start of the win cascade, so its chord lands as the result card opens (`WIN_CASCADE_MS`, 1.38 s)                                                                                                                               | 1.0    |
+
+Notes:
+
+- The stream is one file per pour, as long as the stream (0.3 s per unit) plus an 0.18 s tail: van den Doel bubble synthesis, the pitch rising as the bottle fills.
+- Reduce Motion: the pour lands at once, so a pour plays the lift and the 1-unit stream together at the tap. Under Reduce Motion or a screen reader the result card opens at once and the win sound plays as it is.
+- A restored (Continue) game, a cancelled pour and a level change play nothing. Going to the background mid-pour also drops the pour's pending stream (they would fire late, in a clump, on resume); the pour animation is unchanged.
+- Sort no longer plays `cascade-fruit-merge.ogg` (Cascade's) or `freecell-game-win.mp3`.

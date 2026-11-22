@@ -23,7 +23,8 @@ export function EmptyState({ kind, message, retry, layout = "fill", testID }: Em
   const { colors } = useTheme();
   const { t } = useTranslation("common");
 
-  const color = kind === "error" ? colors.error : kind === "empty" ? colors.textMuted : colors.text;
+  const color =
+    kind === "error" ? colors.errorText : kind === "empty" ? colors.textMuted : colors.text;
 
   return (
     <View style={layout === "fill" ? styles.fill : styles.inline} testID={testID}>

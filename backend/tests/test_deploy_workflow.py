@@ -132,8 +132,9 @@ def test_header_check_targets_a_real_route() -> None:
 
 def test_known_red_smoke_legs_do_not_gate_prod_deploys() -> None:
     """Render's "After CI Checks Pass" waits for every check on a `main` commit.
-    The Maestro legs have never passed (#2347, #2400), so while they ran on
-    push to main no prod deploy could happen (#2522 sat undeployed)."""
+    While the Maestro legs ran on push to main, a red or slow run blocked every
+    prod deploy (#2522 sat undeployed). They run on PRs, manual dispatch and
+    a weekly schedule on `dev` instead, never on push (#2347, #2400)."""
     for name in ("mobile-smoke-ios.yml", "mobile-smoke-android.yml"):
         on = _load(WORKFLOWS / name)["on"]
         assert "push" not in on, f"{name} runs on push again - is it green now?"

@@ -62,18 +62,19 @@ const glyph = (text: string) => StyleSheet.flatten(screen.getByText(text).props.
 const hearts = (rank: number) => ({ suit: "hearts" as const, rank: rank as SolitaireCard["rank"] });
 
 describe("FoundationPile via FreeCell", () => {
-  it("empty: an 18-px, 75%-opacity glyph — red suits in the card red, black in textFilled", async () => {
+  // On the felt (#3607) the empty pile's suit is a quiet textMuted marker for every
+  // suit, as in Solitaire; before, red suits were the card red and black ones textFilled.
+  it("empty: an 18-px glyph in textMuted for every suit, on the felt's faint slot", async () => {
     await draw(<FreeCellFoundationPile pile={[]} suit="hearts" />);
     expect(glyph("♥")).toMatchObject({
       fontSize: 18,
       lineHeight: 22,
-      opacity: 0.75,
-      color: dark.error,
+      color: dark.textMuted,
     });
     expect(flat("Empty Hearts foundation")).toMatchObject({ borderRadius: 6, borderWidth: 1 });
 
     await draw(<FreeCellFoundationPile pile={[]} suit="spades" />);
-    expect(glyph("♠").color).toBe(dark.textFilled);
+    expect(glyph("♠").color).toBe(dark.textMuted);
   });
 
   it("empty and hinted: a 4-px bonus border (#3346)", async () => {

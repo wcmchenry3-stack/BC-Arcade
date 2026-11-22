@@ -31,7 +31,12 @@ import * as fs from "fs";
 import * as path from "path";
 
 import { PREMIUM_GAMES } from "../entitlements/EntitlementContext";
-import { __forceStoreBuildForTests, isGameVisible } from "../entitlements/gameVisibility";
+import {
+  DISABLED_GAMES,
+  __forceStoreBuildForTests,
+  isGameVisible,
+} from "../entitlements/gameVisibility";
+import { STORE_PRODUCTS } from "../entitlements/premiumProducts";
 import { PREMIUM_ROUTES, visiblePremiumRoutes } from "../entitlements/premiumRoutes";
 import { createFakePurchaseAdapter } from "../purchases/fakeAdapter";
 import { registerPurchaseAdapterFactory, selectPurchaseAdapter } from "../purchases/selectAdapter";
@@ -81,6 +86,18 @@ describe("store build exposes exactly the seven free games", () => {
     __forceStoreBuildForTests(true);
     const all = [...Object.keys(FREE_GAME_ROUTES), ...PREMIUM_GAMES];
     expect(all.filter(isGameVisible).sort()).toEqual(Object.keys(FREE_GAME_ROUTES).sort());
+  });
+
+  it("Cascade is an ordinary premium game again (#3703): no game is disabled, all five are sold", () => {
+    expect([...DISABLED_GAMES]).toEqual([]);
+    // Hidden and unrouted in a store build only because every premium game is (HIDDEN_GAMES).
+    __forceStoreBuildForTests(true);
+    expect(isGameVisible("cascade")).toBe(false);
+    expect(visiblePremiumRoutes().map((r) => r.slug)).not.toContain("cascade");
+    expect(STORE_PRODUCTS.map((p) => p.gameSlug).sort()).toEqual([...PREMIUM_GAMES].sort());
+    expect(STORE_PRODUCTS.map((p) => p.productId)).toContain(
+      "com.buffingchi.games.premium.cascade"
+    );
   });
 
   it("App.tsx statically registers only free-game and shared routes", () => {

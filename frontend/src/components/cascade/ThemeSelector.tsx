@@ -1,16 +1,26 @@
-import React from "react";
+import React, { memo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { FRUIT_SETS } from "../../theme/fruitSets";
 import { useFruitSet } from "../../theme/FruitSetContext";
 import { useTheme } from "../../theme/ThemeContext";
+import FruitGlyph from "./FruitGlyph";
 
-const TAB_EMOJIS: Record<string, string> = {
-  fruits: "\uD83C\uDF52",
-  cosmos: "\uD83C\uDF19",
-};
+/** Each tab shows its set's first piece (Cherry, Pluto), drawn as on the board (#3698). */
+const TAB_GLYPH_SIZE = 18;
 
-export default function ThemeSelector() {
+interface Props {
+  /**
+   * Called with the tapped set's id (never the active one). When given, the screen decides
+   * whether to switch (it confirms first mid-game, #3970); without it a tap switches at once.
+   */
+  onRequestSelect?: (id: string) => void;
+}
+
+// A tab is ~28px tall; the touch target grows to the 44pt guideline without changing the layout. Vertical only: tabs are adjacent, so horizontal slop would overlap.
+const TAB_HIT_SLOP = { top: 8, bottom: 8 } as const;
+
+function ThemeSelector({ onRequestSelect }: Props) {
   const { t } = useTranslation("cascade");
   const { activeFruitSet, setFruitSetById } = useFruitSet();
   const { colors } = useTheme();
@@ -26,14 +36,18 @@ export default function ThemeSelector() {
         return (
           <Pressable
             key={set.id}
-            onPress={() => setFruitSetById(set.id)}
+            onPress={() => {
+              if (active) return; // the active set: nothing to switch
+              (onRequestSelect ?? setFruitSetById)(set.id);
+            }}
+            hitSlop={TAB_HIT_SLOP}
             accessibilityRole="radio"
             accessibilityState={{ checked: active }}
             aria-checked={active}
             accessibilityLabel={t("theme.optionLabel", { label: set.label })}
             style={[styles.tab, active && { backgroundColor: colors.accent }]}
           >
-            <Text style={styles.emoji}>{TAB_EMOJIS[set.id] ?? ""}</Text>
+            {set.fruits[0] && <FruitGlyph fruit={set.fruits[0]} size={TAB_GLYPH_SIZE} />}
             <Text
               style={[styles.label, { color: active ? colors.textOnAccent : colors.textMuted }]}
             >
@@ -45,6 +59,9 @@ export default function ThemeSelector() {
     </View>
   );
 }
+
+// Memoized (#2960): it re-renders only when the fruit set, theme or `onRequestSelect` changes.
+export default memo(ThemeSelector);
 
 const styles = StyleSheet.create({
   strip: {
@@ -62,9 +79,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 14,
     minHeight: 28,
-  },
-  emoji: {
-    fontSize: 16,
   },
   label: {
     fontSize: 13,

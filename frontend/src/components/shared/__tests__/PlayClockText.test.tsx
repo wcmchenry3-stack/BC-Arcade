@@ -4,17 +4,24 @@ import { PlayClockText } from "../PlayClockText";
 
 const T0 = 1_800_000_000_000;
 
+// The clock is monotonic (#3925): `mono` is the `performance.now()` the component reads, and
+// `advance` moves it along with the fake timers.
+let mono = T0;
+
 beforeEach(() => {
   jest.useFakeTimers();
   jest.setSystemTime(T0);
+  mono = T0;
+  jest.spyOn(performance, "now").mockImplementation(() => mono);
 });
 
 afterEach(() => {
   jest.useRealTimers();
 });
 
-/** Moves the wall clock and fires whatever timers are due. */
+/** Moves the clock and fires whatever timers are due. */
 async function advance(ms: number) {
+  mono += ms;
   await act(async () => {
     jest.advanceTimersByTime(ms);
   });
@@ -72,7 +79,7 @@ describe("PlayClockText (#2747)", () => {
     expect(api.getByTestId("clock")).toHaveTextContent("0:20");
 
     // Back: the clock runs again from now, with the 20 s banked.
-    const back = Date.now();
+    const back = mono;
     await act(async () => {
       api.rerender(<PlayClockText startedAt={back} accumulatedMs={20_000} testID="clock" />);
     });
@@ -120,7 +127,7 @@ describe("PlayClockText (#2747)", () => {
       });
       expect(clear.mock.calls.length).toBe(before + 1);
       await act(async () => {
-        api.rerender(<PlayClockText startedAt={Date.now()} accumulatedMs={0} />);
+        api.rerender(<PlayClockText startedAt={mono} accumulatedMs={0} />);
       });
       const running = clear.mock.calls.length;
       await act(async () => {

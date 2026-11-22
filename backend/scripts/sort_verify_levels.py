@@ -1,11 +1,10 @@
-"""Script asserting every level ``build_levels()`` generates is solvable.
+"""Script asserting every level of the shipped Sort catalog is solvable.
 
-``GET /sort/levels`` builds a new random set on every request (#2746), so this
-checks freshly built sets, not a saved file. Each level is decided by
-``sort.fast_solver`` (#2764), which reaches a verdict on every level in well
-under a second, and its solution is replayed here with ``is_solution``. The
-generator already requires the solver's proof, so this is a manual end-to-end
-check of what the endpoint serves.
+The app plays the fixed catalog (``frontend/src/game/sort/levels.catalog.json``,
+#2761). This checks the committed file: each level is decided by
+``sort.fast_solver`` (#2764), and its solution is replayed here with
+``is_solution``. A manual end-to-end check of what the app ships;
+``tests/test_sort_catalog.py`` runs the same check in CI.
 
 The reference pour simulator below (``_moves``, ``_apply``, ``_solved``) and
 ``bfs_solvable`` are written independently of ``fast_solver``, and mirror
@@ -15,32 +14,30 @@ The reference pour simulator below (``_moves``, ``_apply``, ``_solved``) and
   legal move, and that the level ends solved: a certificate that doesn't rely
   on the solver's pruning.
 * The tests check ``fast_solver`` agrees with ``bfs_solvable``
-  (``test_sort_fast_solver.py``) and prove the small levels solvable with it
-  (``test_sort_levels_solvable.py``). It can't decide the big levels within
-  ``MAX_STATES``.
+  (``test_sort_fast_solver.py``).
 
 Run from ``backend/``:
-    python scripts/sort_verify_levels.py                 # one random set
-    python scripts/sort_verify_levels.py --runs 5        # five random sets
-    python scripts/sort_verify_levels.py --seed 42       # a reproducible set
+    python scripts/sort_verify_levels.py
 
 Exits with code 1 if any level is proven unsolvable, can't be decided within
 the solver's budget, or its solution doesn't replay.
 """
 
-import argparse
+import json
 import os
-import random
 import sys
 from collections import deque
 from itertools import takewhile
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sort.fast_solver import DEPTH, solve
-from sort.generate_levels import SOLVER_BUDGET, build_levels
+from sort.generate_levels import COLORS_14, SOLVER_BUDGET
 
 MAX_STATES = 300_000
+
+CATALOG_PATH = Path(__file__).resolve().parents[2] / "frontend/src/game/sort/levels.catalog.json"
 
 
 def _compact(state: list[list[str]]) -> tuple:
@@ -125,39 +122,35 @@ def bfs_solvable(state: list[list[str]]) -> tuple[bool, int]:
     return False, len(visited)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--seed", type=int, default=None, help="seed of the first set")
-    parser.add_argument("--runs", type=int, default=1, help="number of sets to build")
-    args = parser.parse_args()
-    if args.runs < 1:
-        parser.error("--runs must be at least 1")
-    # Every run gets its own seed, printed so a failing set can be rebuilt.
-    first = args.seed if args.seed is not None else random.randrange(2**32)
-    failures: list[str] = []
+def catalog_levels() -> list[tuple[int, list[list[str]]]]:
+    """The shipped catalog as ``(level number, bottles)``, level 1 first."""
+    levels = json.loads(CATALOG_PATH.read_text())["levels"]
+    return [
+        (n, [[COLORS_14[ord(ch) - 65] for ch in b] for b in encoded.split(",")])
+        for n, (encoded, _par) in enumerate(levels, start=1)
+    ]
 
-    for seed in range(first, first + args.runs):
-        print(f"Set seed={seed}")
-        for level in build_levels(seed):
-            lid = level["id"]
-            solvable, n_states, pours = solve(level["bottles"], SOLVER_BUDGET)
-            if solvable is True and pours is not None and is_solution(level["bottles"], pours):
-                print(f"Level {lid:>2}: SOLVABLE   ({n_states} states, {len(pours)} pours)")
-            elif solvable is True:
-                print(f"Level {lid:>2}: BAD PATH   (the solver's pours don't replay)")
-                failures.append(f"{lid} (seed {seed}, bad path)")
-            elif solvable is None:
-                print(f"Level {lid:>2}: UNDECIDED  (budget of {n_states} states spent)")
-                failures.append(f"{lid} (seed {seed}, undecided)")
-            else:
-                print(f"Level {lid:>2}: UNSOLVABLE ({n_states} states)")
-                failures.append(f"{lid} (seed {seed})")
+
+def main() -> None:
+    failures: list[str] = []
+    for lid, bottles in catalog_levels():
+        solvable, n_states, pours = solve(bottles, SOLVER_BUDGET)
+        if solvable is True and pours is not None and is_solution(bottles, pours):
+            print(f"Level {lid:>3}: SOLVABLE   ({n_states} states, {len(pours)} pours)")
+        elif solvable is True:
+            print(f"Level {lid:>3}: BAD PATH   (the solver's pours don't replay)")
+            failures.append(f"{lid} (bad path)")
+        elif solvable is None:
+            print(f"Level {lid:>3}: UNDECIDED  (budget of {n_states} states spent)")
+            failures.append(f"{lid} (undecided)")
+        else:
+            print(f"Level {lid:>3}: UNSOLVABLE ({n_states} states)")
+            failures.append(str(lid))
 
     if failures:
         print(f"\nFAIL: levels not proven solvable: {', '.join(failures)}", file=sys.stderr)
         sys.exit(1)
-    else:
-        print("\nAll levels verified.")
+    print("\nAll levels verified.")
 
 
 if __name__ == "__main__":

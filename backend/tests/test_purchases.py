@@ -28,7 +28,7 @@ from db.base import get_session_factory
 from db.models import GameEntitlement, GameType, Purchase, PurchaseEvent, PurchaseLink
 from entitlements import service as entitlements_service
 from games import catalog_cache
-from purchases import apple, google
+from purchases import apple, google, products
 from purchases import service as purchase_service
 from purchases.verifiers import (
     AppleEvidence,
@@ -636,6 +636,85 @@ def test_unknown_or_free_product_is_422(
     r = post_apple(client, new_sid(), "1000")
     assert r.status_code == 422
     assert r.json()["detail"] == "unknown_product"
+
+
+async def test_cascade_is_sold_like_every_premium_game(
+    client: TestClient, fake_apple: FakeAppleVerifier, fake_google: FakeGoogleVerifier
+) -> None:
+    """#3703: Cascade's rework shipped, so it is no longer disabled and a verified
+    receipt for its product grants it on either store, like any premium game."""
+    assert not entitlements_service.DISABLED_GAMES
+    assert "cascade" in entitlements_service.ALL_PREMIUM_SLUGS
+    assert products.purchasable_slug_for_product(CASCADE) == "cascade"
+
+    apple_sid = new_sid()
+    fake_apple.answers["1000"] = verified("1000", product_id=CASCADE)
+    r = post_apple(client, apple_sid, "1000")
+    assert r.status_code == 200, r.text
+    assert r.json()["game_slug"] == "cascade" and r.json()["status"] == "owned"
+    assert token_games(r.json()) == ["cascade"]
+    assert await entitlement(apple_sid, "cascade") is not None
+
+    google_sid = new_sid()
+    fake_google.answers["gtok"] = verified("gtok", platform="google", product_id=CASCADE)
+    r = post_google(client, google_sid, "gtok", product_id=CASCADE)
+    assert r.status_code == 200, r.text
+    assert token_games(r.json()) == ["cascade"]
+    assert await entitlement(google_sid, "cascade") is not None
+
+
+@pytest.fixture
+def cascade_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Puts Cascade back in DISABLED_GAMES for one test, as #3001 did, so the
+    switch that refuses a disabled game's product keeps its coverage while the
+    real list is empty."""
+    monkeypatch.setattr(products, "DISABLED_GAMES", frozenset({"cascade"}))
+
+
+@pytest.mark.usefixtures("cascade_disabled")
+async def test_disabled_game_product_is_refused_and_grants_nothing(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    """A disabled game stays premium but is not sold, so a verified receipt for
+    its product is refused like an unknown product."""
+    assert "cascade" in entitlements_service.ALL_PREMIUM_SLUGS
+    sid = new_sid()
+    fake_apple.answers["1000"] = verified("1000", product_id=CASCADE)
+    r = post_apple(client, sid, "1000")
+    assert r.status_code == 422 and r.json()["detail"] == "unknown_product"
+    async with get_session_factory()() as db:
+        assert (await db.execute(select(Purchase))).scalars().all() == []
+        grants = select(GameEntitlement).where(GameEntitlement.game_slug == "cascade")
+        assert (await db.execute(grants)).scalars().all() == []
+
+
+@pytest.mark.usefixtures("cascade_disabled")
+def test_google_disabled_game_product_rejected_before_verification(
+    client: TestClient, fake_google: FakeGoogleVerifier
+) -> None:
+    fake_google.answers["gtok"] = verified("gtok", platform="google", product_id=CASCADE)
+    r = post_google(client, new_sid(), "gtok", product_id=CASCADE)
+    assert r.status_code == 422 and r.json()["detail"] == "unknown_product"
+
+
+def test_purchasable_slug_for_product_skips_disabled_games(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert products.purchasable_slug_for_product(CASCADE) == "cascade"
+    monkeypatch.setattr(products, "DISABLED_GAMES", frozenset({"cascade"}))
+    assert products.slug_for_product(CASCADE) == "cascade"
+    assert products.purchasable_slug_for_product(CASCADE) is None
+    assert products.purchasable_slug_for_product(HEARTS) == "hearts"
+    assert products.purchasable_slug_for_product("com.example.hearts") is None
+
+
+@pytest.mark.usefixtures("cascade_disabled")
+async def test_notification_for_a_disabled_game_records_nothing() -> None:
+    v = verified("6950", product_id=CASCADE)
+    async with get_session_factory()() as db:
+        assert not await purchase_service.record_store_purchase(db, v, dedupe_key="n-3001")
+    async with get_session_factory()() as db:
+        assert (await db.execute(select(Purchase))).scalars().all() == []
 
 
 async def test_purchase_reads_is_premium_from_the_db_not_the_catalog_cache(

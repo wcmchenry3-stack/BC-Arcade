@@ -1,6 +1,6 @@
 """Star Swarm ``wave_completed`` registry parity with the app (#3252).
 
-``fixtures/starswarm_wave_stats_v1_registries.json`` is the app's registries
+``fixtures/starswarm_wave_stats_v2_registries.json`` is the app's registries
 (``frontend/src/game/starswarm/engine/registries.ts``), held equal to them by the
 frontend's ``waveStats.parity.test.ts``. Here every ``StarSwarmWaveStats``
 Literal set must cover the fixture's values (and, today, equal them), so a
@@ -17,8 +17,8 @@ import pytest
 
 from starswarm import models
 
-_FIXTURE_NAME = "backend/tests/fixtures/starswarm_wave_stats_v1_registries.json"
-_FIXTURE = Path(__file__).parent / "fixtures" / "starswarm_wave_stats_v1_registries.json"
+_FIXTURE_NAME = "backend/tests/fixtures/starswarm_wave_stats_v2_registries.json"
+_FIXTURE = Path(__file__).parent / "fixtures" / "starswarm_wave_stats_v2_registries.json"
 
 # fixture registry -> the backend's Literal set (models.py)
 _BACKEND: dict[str, tuple[str, ...]] = {
@@ -32,6 +32,7 @@ _BACKEND: dict[str, tuple[str, ...]] = {
     "HIT_RESULTS": models.HIT_RESULTS,
     "KILL_METHODS": models.KILL_METHODS,
     "CARRIER_STAGES": models.CARRIER_STAGES,
+    "DEATH_PHASES": models.DEATH_PHASES,  # #3535
 }
 
 

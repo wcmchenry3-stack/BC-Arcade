@@ -1,0 +1,37 @@
+appId: com.buffingchi.games
+---
+# Subflow (#3532): the drag that just ended kept its card under the finger.
+# Caller must set: ${dragSeq} (how many drags this flow has made, this one
+#                  included: the first swipe passes "1").
+#
+# Test builds (EXPO_PUBLIC_TEST_HOOKS=1) show the drag debug overlay by
+# default (game/_shared/drag/dragDebug.ts). After every drag its result line,
+# testID `drag-debug-result`, reads
+#   drag-check: ok Δ(dx,dy)          the rendered ghost was at finger - grab
+#   drag-check: FAIL <kind> Δ(dx,dy) it wasn't (render / transformIgnored /
+#                                     measureSpace, see dragDiagnostics.ts)
+#   drag-check: unmeasured           the ghost couldn't be measured
+# and the line under it, testID `drag-debug-seq`, reads `drag #N`: N counts the
+# drags of this app process (each flow starts one: launch.yaml clears state).
+# The check runs once per drag, on drop AND on a rejected drop (snap-back),
+# because it measures the ghost while the finger is still down; a rejected
+# drop still shows `ok` when the ghost followed the finger.
+#
+# Waiting for `drag #N` first proves this swipe started a drag at all. The
+# line is cleared at the next drag's start, but a swipe that misses its card
+# starts no drag, and the previous drag's `ok` would still be on screen.
+# Both lines are real Text views with a testID, which Maestro sees on Android
+# (resource-id, via ReactTextViewAccessibilityDelegate) and on iOS
+# (accessibilityIdentifier). On failure, e2e/maestro/diagnose.py prints every
+# `drag-debug-*` element, so the job log shows the actual result text.
+- extendedWaitUntil:
+    visible:
+      id: "drag-debug-seq"
+      text: "drag #${dragSeq}"
+    timeout: 5000
+- assertVisible:
+    id: "drag-debug-result"
+    text: "drag-check: ok.*"
+- assertNotVisible:
+    id: "drag-debug-result"
+    text: "drag-check: FAIL.*"

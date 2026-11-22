@@ -12,7 +12,7 @@ Goals are per game
 ------------------
 There is no one measurement that fits every game, so each game owns three goals
 (easy / medium / hard) worded in its own terms — moves, pairs, highest tile,
-chips, guesses. A ``Goal`` carries ``game_type`` + ``kind`` + ``target`` (never
+chips, guesses. Daily Word's three slots all hold its one ``completed`` goal. A ``Goal`` carries ``game_type`` + ``kind`` + ``target`` (never
 display copy — the client builds that in its own i18n namespace) and an
 ``evaluate(facts)`` predicate. ``facts`` is one finished game's measures: the
 result block the game reported on ``PATCH /games/{id}/complete`` (merged into
@@ -29,31 +29,58 @@ Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)
     twenty48    final_score, highest_tile              (already sent)
     solitaire   won, moves                             (SolitaireResult)
-    sort        final_score (highest level solved)     (every solve, #2625)
+    sort        final_score (highest level solved)     (every solve, #2625); the
+                relative ``new_levels_at_least`` goal also reads the best before the
+                day started (``facts_for``, #4028)
     freecell    won, moves                             (#2452)
     yacht       final_score                            (already sent)
     sudoku      won, final_score, errors               (SudokuScreen; final_score =
                 difficulty base 100/200/300 minus 10 per error, sent only on a solve —
                 an abandoned row has won: false, no score, and is filtered by the service)
-    blackjack   hands_played, hands_won, starting_chips, final_chips (BlackjackResult)
-                — premium since 2026-09-23, so not in the free pool (see below)
+    blackjack   won, is_complete, starting_chips, final_chips (BlackjackResult)
+                — premium; won / is_complete are written by the server from the
+                completion's outcome (``games/result_flags.py``, #3996)
+    hearts      won, is_complete                       (HeartsResult, same, #3996)
     mahjong     won, pairs, duration_ms (column)       (MahjongResult)
-                — premium since 2026-09-24, so not in the free pool (see below)
+                — premium since 2026-09-24
+    cascade     won, is_complete, max_tier, duration_ms (column)
+                (CascadeResult, #3700, #3996) — premium; "won within" applies
+                its 20 s win floor
+    starswarm   is_complete, wave_reached, difficulty_tier, final_score
+                (StarSwarmResult) — premium; no win concept
+
+The premium games have goals only through the personal pick (``personal.GAME_SPECS``,
+#3996); ``PREMIUM_GOAL_POOL`` still equals the free pool (see Slates).
 
 Slates
 ------
 ``FREE_GOAL_POOL`` holds the games a store build can show; ``PREMIUM_GOAL_POOL`` is
 a superset for sessions entitled to premium games. Which slate a session gets is
-decided per request from ``game_types.is_premium`` + entitlements (service layer,
-#2454) — never from a list in this module. Premium-only goal specs are
-post-launch (#2458), so today the two pools hold the same games and both slates
-pick identically.
+decided from ``game_types.is_premium`` + entitlements (service layer, #2454) —
+never from a list in this module — when the install's day is first served, and is
+then pinned with that day (``daily_challenge_assignments``, #3992). Only unpinned
+days (an install that may not pin, or the kill switch off) resolve it per request.
+The premium games' goals (#3996) are personal-pick goals only (``personal.py``):
+``PREMIUM_GOAL_POOL`` is deliberately still the free pool, so the two slates pick
+identically. Giving it premium games would change a day ``resolve_slate`` already
+served an entitled install (it picks the slate from the *computed* templates while
+the frozen one is served, #2760) and every streak replay of an unfrozen day, for a
+shared template only an install without history sees.
+
+Daily Word's goal is always "complete today's word" (``completed``, win or lose);
+the easy / medium / hard rotation applies to the other two games (#3991).
 
 Rules the pick enforces (all tested): Daily Word is always present; the other two
 games differ from each other and from the previous day's two; at most one goal
 per day is luck-dependent (a win, or a blackjack run ending in profit) — the slot
 rotates by day, and any other such goal is swapped for that game's easy goal
-(every game's easy goal is not luck-dependent).
+(every game's easy goal is not luck-dependent). Solitaire and FreeCell wins are
+not luck-dependent: their deals are provably solvable (``SOLVABLE_DEAL_GAMES``).
+
+This shared template is what an install sees until it has history: per-install
+picks with personal targets (#3993/#3994) live in ``personal.py``, and an install
+with fewer than 3 finished games (or none in the affinity window) is served this
+template exactly.
 Targets are tuned to be reachable and are marked ``tune post-launch``.
 SALT comes from the DAILY_CHALLENGE_SALT env var (default 0); changing it
 shifts the whole future schedule and reshuffles the game order.
@@ -64,13 +91,17 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from typing import Any, Literal
 
+from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
+from entitlements.service import DISABLED_GAMES
+from games.boards.editions import edition_switch_on
 from settings import Settings
+from sort.catalog import CATALOG_VERSION as SORT_CATALOG_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +194,20 @@ def _completed(game_type: str, tier: Tier) -> Goal:
     return Goal(game_type, "completed", None, tier, False, lambda f: f.get("is_complete") is True)
 
 
+# Games that deal only provably solvable deals (#3993): a win there is skill, not
+# luck, so their win goals are not luck-dependent and never use up the day's one
+# luck-dependent slot.
+SOLVABLE_DEAL_GAMES: frozenset[str] = frozenset({"solitaire", "freecell"})
+# Premium games whose wins are skill too (#3996): Cascade is a physics skill game and
+# a deadlocked Mahjong board can be undone. Blackjack and Hearts stay luck-dependent.
+# Applied by the builders, so ``goal_from_spec`` rebuilds a frozen or pinned goal
+# with the same flag.
+SKILL_WIN_GAMES: frozenset[str] = SOLVABLE_DEAL_GAMES | {"cascade", "mahjong"}
+
+
 def _won(game_type: str, tier: Tier) -> Goal:
-    return Goal(game_type, "won", None, tier, True, lambda f: f.get("won") is True)
+    is_win = game_type not in SKILL_WIN_GAMES
+    return Goal(game_type, "won", None, tier, is_win, lambda f: f.get("won") is True)
 
 
 def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
@@ -180,14 +223,104 @@ def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
     return Goal(game_type, f"{measure}_at_least", target, tier, False, check, measure)
 
 
+# The lowest plausible value of a "won within" measure, per (game, measure): a
+# win under it is a broken clock or a forged result and never meets the goal.
+# Cascade's 20 s win floor (#3700), so a forged 1 s win can't pass a Cascade
+# "win in under N minutes". Read when the goal is built, by every path that
+# builds one (the pools and ``goal_from_spec``), so a frozen day keeps it.
+_WON_WITHIN_FLOORS: dict[tuple[str, str], int] = {
+    ("cascade", "duration_ms"): CASCADE_MIN_WIN_MS,
+}
+
+
 def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
-    """Win while keeping a measure (moves, guesses, time) at or under ``limit``."""
+    """Win while keeping a measure (moves, guesses, time) at or under ``limit``
+    (and at or over its floor, where ``_WON_WITHIN_FLOORS`` names one)."""
+    floor = _WON_WITHIN_FLOORS.get((game_type, measure))
 
     def check(f: Facts) -> bool:
         value = _number(f, measure)
-        return f.get("won") is True and value is not None and value <= limit
+        if f.get("won") is not True or value is None or value > limit:
+            return False
+        return floor is None or value >= floor
 
-    return Goal(game_type, f"won_{measure}_at_most", limit, tier, True, check)
+    is_win = game_type not in SKILL_WIN_GAMES
+    return Goal(game_type, f"won_{measure}_at_most", limit, tier, is_win, check)
+
+
+# Bottle Sort's relative goal (#4028): "solve N new levels" is met when the highest level
+# solved that day minus the highest solved before the day started is at least N. The
+# derived measure is in no result block: ``facts_for`` computes it from the row's
+# ``final_score`` (the highest level solved, sent on every solve, #2625) and the day-start
+# best the caller reads (``service.day_start_bests``). So the goal is relative to the day
+# it is scored on, not to when it was pinned (today+1 and today+2 are pinned at today's
+# first open). A replay reports the unchanged standing, so it is never a new level.
+NEW_LEVELS_MEASURE = "new_levels"
+NEW_LEVELS_KIND = f"{NEW_LEVELS_MEASURE}_at_least"
+# Per game with a relative goal: the measure whose best before the day is the baseline.
+DAY_START_MEASURES: dict[str, str] = {"sort": "final_score"}
+
+# The goal itself is an "at least" goal on the derived measure (``_at_least``), so
+# ``goal_from_spec`` rebuilds a pinned one equal through its ``*_at_least`` rule.
+
+# Sort's levels come in two editions (#2761): the fixed catalog (rows sent with the current
+# ``catalog_version``, ``sort.module``'s board edition) and the random levels from before it
+# (no ``catalog_version``). Their numbers are unrelated, and a migrated save starts the
+# catalog over (``catalogMigration.ts`` empties the device's bests), so a baseline is per
+# edition: a row is only ever compared with rows of its own edition. Which editions count
+# follows ``SORT_CATALOG_EDITION_ENFORCED`` (``counted_editions``).
+SORT_EDITION: tuple[str, int] = ("catalog_version", SORT_CATALOG_VERSION)
+LEGACY_EDITION, CATALOG_EDITION = 0, 1
+
+# {(game_type, edition): the best ``DAY_START_MEASURES`` value before the day starts}. A
+# key that is missing means no such row (0); ``None`` instead of a mapping: not read.
+DayStart = Mapping[tuple[str, int], int]
+
+
+def edition_of(facts: Facts) -> int:
+    """A Sort row's edition: ``CATALOG_EDITION`` when it holds the current catalog version
+    (an int, as ``BoardDefinition.in_edition`` and the SQL ``edition_matches`` read it)."""
+    key, version = SORT_EDITION
+    held = facts.get(key)
+    is_int = isinstance(held, int) and not isinstance(held, bool)
+    return CATALOG_EDITION if is_int and held == version else LEGACY_EDITION
+
+
+def counted_editions() -> tuple[int, ...]:
+    """The editions whose rows a relative goal counts. Switch on: the catalog only, as
+    the leaderboard, so a pre-catalog row neither meets the goal nor raises a baseline.
+    Switch off: both, each against its own edition's baseline, which is what the device
+    playing that edition sees (a catalog build counts from its catalog bests, a pre-catalog
+    build from its 23 random levels)."""
+    if sort_catalog_goals_on():
+        return (CATALOG_EDITION,)
+    return (LEGACY_EDITION, CATALOG_EDITION)
+
+
+def is_relative(goal: Goal) -> bool:
+    """True for a goal scored against the day-start best (``facts_for``)."""
+    return goal.measure == NEW_LEVELS_MEASURE and goal.game_type in DAY_START_MEASURES
+
+
+def relative_games(goals: Iterable[Goal | None]) -> set[str]:
+    """The games among ``goals`` whose evaluation needs a day-start best."""
+    return {g.game_type for g in goals if g is not None and is_relative(g)}
+
+
+def facts_for(goal: Goal, facts: Facts, day_start: DayStart | None) -> Facts | None:
+    """The facts ``goal.evaluate`` reads for one finished game. Unchanged for every goal
+    but a relative one, which gets ``new_levels`` = the row's measure minus the day-start
+    best of the row's own edition (a client-sent ``new_levels`` is overwritten). ``None``
+    (never met) when the day-start bests were not read, the row's edition does not count
+    (``counted_editions``) or the row has no measure."""
+    if not is_relative(goal):
+        return facts
+    edition = edition_of(facts)
+    value = _number(facts, DAY_START_MEASURES[goal.game_type])
+    if day_start is None or value is None or edition not in counted_editions():
+        return None
+    baseline = day_start.get((goal.game_type, edition), 0)
+    return {**facts, NEW_LEVELS_MEASURE: value - baseline}
 
 
 def _solved(game_type: str, tier: Tier) -> Goal:
@@ -240,41 +373,49 @@ def goal_from_spec(spec: Mapping[str, Any]) -> Goal:
     raise ValueError(f"cannot rebuild a goal of kind {kind!r}")
 
 
+_DAILY_WORD_GOAL = _completed("daily_word", "easy")
+
 # Easy / medium / hard per game. Every game's *easy* goal must not require a win
 # (the pick falls back to it) — tests enforce that. All numbers: tune post-launch.
 FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
-    "daily_word": (
-        _completed("daily_word", "easy"),
-        _won("daily_word", "medium"),
-        _won_within("daily_word", "guesses_used", 4, "hard"),
-    ),
+    # Daily Word's goal is always "complete today's word" (win or lose, #3991),
+    # so it is the same goal in all three slots and never takes the day's one
+    # win-dependent slot. Days frozen before #3991 may hold its old ``won`` /
+    # ``won_guesses_used_at_most`` specs; ``goal_from_spec`` still rebuilds them.
+    "daily_word": (_DAILY_WORD_GOAL, _DAILY_WORD_GOAL, _DAILY_WORD_GOAL),
     "twenty48": (
         _at_least("twenty48", "final_score", 500, "easy"),
         _at_least("twenty48", "highest_tile", 512, "medium"),
         _at_least("twenty48", "final_score", 2500, "hard"),
     ),
-    # Klondike deals are not always winnable, so solitaire's win goals are the
-    # luck-dependent kind. A win takes at least 52 foundation moves, so the hard
-    # limit is well above that (a 60-move win is not realistic).
+    # Solitaire and FreeCell deal only provably solvable deals, so a win is skill,
+    # not luck (SOLVABLE_DEAL_GAMES), and their easy goal is the win itself. They
+    # have no loss: a finished row only exists for a win, so the old "make 10 / 5
+    # moves" goals already needed one and are gone (#3993; days frozen with them
+    # still rebuild through goal_from_spec). A win takes at least 52 foundation
+    # moves, so the limits are well above that. Medium limits: tune post-launch.
     "solitaire": (
-        _at_least("solitaire", "moves", 10, "easy"),
-        _won("solitaire", "medium"),
+        _won("solitaire", "easy"),
+        _won_within("solitaire", "moves", 150, "medium"),
         _won_within("solitaire", "moves", 120, "hard"),
     ),
-    # final_score = the player's highest level solved (23 levels), sent on every
-    # solved level, replays included (#2625). Abandons carry no score.
+    # final_score = the player's highest level solved, sent on every solved
+    # level, replays included (#2625). Abandons carry no score. These 3/8/15 were
+    # set for the old 23 levels and stay in force while SORT_CATALOG_EDITION_ENFORCED
+    # is off (store builds from before the 120-level catalog top out at 23). Once
+    # the switch is on, picks use SORT_CATALOG_GOALS (10/30/60) instead (#3728).
     "sort": (
         _at_least("sort", "final_score", 3, "easy"),
         _at_least("sort", "final_score", 8, "medium"),
         _at_least("sort", "final_score", 15, "hard"),
     ),
     "freecell": (
-        _at_least("freecell", "moves", 5, "easy"),
-        _won("freecell", "medium"),
+        _won("freecell", "easy"),
+        _won_within("freecell", "moves", 130, "medium"),
         _won_within("freecell", "moves", 100, "hard"),
     ),
-    # Score only (Yacht sends no result block). A full solo game typically
-    # lands 150-250; abandoned games count with their score so far.
+    # Score only: a full solo game typically lands 150-250. Abandoned games never
+    # count (the service filters them).
     "yacht": (
         _at_least("yacht", "final_score", 100, "easy"),
         _at_least("yacht", "final_score", 175, "medium"),
@@ -292,17 +433,29 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
     ),
 }
 
-# Blackjack moved to premium on 2026-09-23 (simulated gambling would raise the
-# app's age rating); Mahjong moved to premium on 2026-09-24 (owner decision,
-# traded for Sort going free). Their goals are kept here, outside every live
-# pool, so they join PREMIUM_GOAL_POOL with the other premium games in #2458.
-# Days frozen before either move still rebuild through ``goal_from_spec``.
+# Sort's goals for the fixed 120-level catalog (#2761): the middle of chapters
+# 1-3. Only drawn once ``SORT_CATALOG_EDITION_ENFORCED`` is on (#3728), since
+# older store builds cannot reach 30 or 60. Frozen days keep their own spec.
+SORT_CATALOG_GOALS: tuple[Goal, Goal, Goal] = (
+    _at_least("sort", "final_score", 10, "easy"),
+    _at_least("sort", "final_score", 30, "medium"),
+    _at_least("sort", "final_score", 60, "hard"),
+)
+
+
+def sort_catalog_goals_on() -> bool:
+    """Read lazily at pick time, like the Sort board's edition switch."""
+    return edition_switch_on("sort_catalog_edition_enforced")
+
+
+# Mahjong moved to premium on 2026-09-24 (owner decision, traded for Sort going free).
+# Its shared-template goals are kept here, outside every live pool: the premium games'
+# goals are personal-pick goals only (``personal.GAME_SPECS``, #3996) and
+# ``PREMIUM_GOAL_POOL`` still equals the free pool (module docstring, Slates).
+# Blackjack's hand-count goals ("play 3 hands", "win 3 hands") and "finish a session
+# up on chips" were removed in #3996: they do not fit the run-based pattern (the run
+# is the game). Days frozen with them still rebuild through ``goal_from_spec``.
 PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
-    "blackjack": (
-        _at_least("blackjack", "hands_played", 3, "easy"),
-        _chips_gained("blackjack", "medium"),
-        _at_least("blackjack", "hands_won", 3, "hard"),
-    ),
     "mahjong": (
         _at_least("mahjong", "pairs", 10, "easy"),
         _won("mahjong", "medium"),
@@ -310,8 +463,9 @@ PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
     ),
 }
 
-# Premium-only games' goals arrive with #2458; until then the premium slate is
-# the free pool. Kept as a separate name so the slate split is real, not implied.
+# The premium slate is the free pool, on purpose (#3996, module docstring): the premium
+# games' goals come from the personal pick. Kept as a separate name so the slate split
+# is real, not implied.
 PREMIUM_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {**FREE_GOAL_POOL}
 
 GOAL_POOLS: dict[str, dict[str, tuple[Goal, Goal, Goal]]] = {
@@ -330,8 +484,12 @@ class Template:
 
 @cache
 def rotation(slate: Slate, salt: int) -> tuple[str, ...]:
-    """The non-Daily-Word games in salt-seeded order. Reproducible for a given salt."""
-    games = sorted(g for g in GOAL_POOLS[slate] if g != ALWAYS_PRESENT)
+    """The non-Daily-Word games in salt-seeded order. Reproducible for a given salt.
+
+    Disabled games (``entitlements.service.DISABLED_GAMES``, empty today) are
+    skipped even if a pool lists them, so no slate can pick a game that store
+    builds hide; ``pick_template`` only draws from here."""
+    games = sorted(g for g in GOAL_POOLS[slate] if g != ALWAYS_PRESENT and g not in DISABLED_GAMES)
     if len(games) < _MIN_ROTATION:
         raise ValueError(f"{slate} pool has {len(games)} rotating games; need {_MIN_ROTATION}")
     random.Random(salt).shuffle(games)
@@ -358,19 +516,25 @@ def pick_games(day: date, slate: Slate, salt: int) -> tuple[str, str]:
 
 
 @cache
-def pick_template(day: date, slate: Slate, salt: int) -> Template:
+def pick_template(day: date, slate: Slate, salt: int, sort_catalog: bool = False) -> Template:
     """The day's computed template. Memoised (#2966): a pure function of hashable
     arguments over the static pools (as ``rotation`` is), returning a frozen
     ``Template`` of frozen ``Goal``s, so a cached result can be shared. The streak
-    asks for ~120 of them per ``/stats/me``. One entry per (day, slate, salt)."""
+    asks for ~120 of them per ``/stats/me``. One entry per (day, slate, salt,
+    sort_catalog). ``sort_catalog`` swaps in ``SORT_CATALOG_GOALS`` for Sort; it is
+    an argument (not read here) so the memo stays pure — ``template_for`` passes the
+    live switch."""
     pool = GOAL_POOLS[slate]
+    if sort_catalog:
+        pool = {**pool, "sort": SORT_CATALOG_GOALS}
     ordinal = day.toordinal()
     games = (ALWAYS_PRESENT, *pick_games(day, slate, salt))
     # Consecutive goals get consecutive tiers, so a day mixes difficulty.
     picked = [pool[game][(ordinal + salt + i) % len(TIERS)] for i, game in enumerate(games)]
     final = list(picked)
-    # At most one win goal a day; who keeps it rotates by day so it is not always
-    # Daily Word's. Any other win goal falls back to that game's easy goal.
+    # At most one win goal a day; who keeps it rotates by day between the two
+    # rotating games (Daily Word's goal is never a win, #3991). Any other win
+    # goal falls back to that game's easy goal.
     win_taken = False
     for i in range(GOALS_PER_DAY):
         idx = (ordinal + i) % GOALS_PER_DAY
@@ -384,7 +548,7 @@ def pick_template(day: date, slate: Slate, salt: int) -> Template:
 
 
 def template_for(day: date, slate: Slate = "free") -> Template:
-    return pick_template(day, slate, SALT)
+    return pick_template(day, slate, SALT, sort_catalog_goals_on())
 
 
 @dataclass(frozen=True)

@@ -62,4 +62,35 @@ describe("Grid", () => {
     const { getAllByLabelText } = await renderGrid(tiles);
     expect(getAllByLabelText("empty")).toHaveLength(14);
   });
+
+  it("caps the board to maxSize (#3688)", async () => {
+    const { getByLabelText } = await render(
+      <ThemeProvider>
+        <Grid tiles={[]} maxSize={200} />
+      </ThemeProvider>
+    );
+    const style = Object.assign({}, ...[getByLabelText("Game board").props.style].flat(Infinity));
+    expect(style.width).toBe(200);
+    expect(style.height).toBe(200);
+  });
+
+  it("moves its tiles to their new cells when the board is resized", async () => {
+    const tiles = [makeTile(1, 2, 3, 3)];
+    const tree = (size: number) => (
+      <ThemeProvider>
+        <Grid tiles={tiles} maxSize={size} />
+      </ThemeProvider>
+    );
+    const { getByLabelText, rerender } = await render(tree(360));
+    const posOf = () => {
+      const style = Object.assign({}, ...[getByLabelText("2").props.style].flat(Infinity));
+      return [style.top, style.left];
+    };
+    // 360 board: tile 80, gap 8 → cell (3, 3) at 8 + 3 * 88 = 272.
+    expect(posOf()).toEqual([272, 272]);
+    await rerender(tree(200));
+    await rerender(tree(200));
+    // 200 board: tile 40, gap 8 → 8 + 3 * 48 = 152.
+    expect(posOf()).toEqual([152, 152]);
+  });
 });

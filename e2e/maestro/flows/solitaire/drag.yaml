@@ -2,6 +2,12 @@ appId: com.buffingchi.games
 ---
 # Deterministic drag-and-drop regression coverage (see #2346).
 #
+# Drag invariant (#3532): after every swipe, _shared/assert-drag-ok.yaml checks
+# the debug overlay's `drag-check: ok` line for that drag (`drag #N`), so the
+# flow fails when the dragged card leaves the finger, not only when the move
+# ends up wrong. Rejected drops (snap-back) must read `ok` too. It runs once
+# per Android/iOS swipe pair, after the platform blocks.
+#
 # Test builds (EXPO_PUBLIC_TEST_HOOKS=1) skip the draw-mode modal and always
 # deal draw-1 mode with the seed bank's first entry (seed 2) — see
 # `isTestBuild()`/`pickSeed()` in frontend/src/game/solitaire/engine.ts. That
@@ -9,11 +15,51 @@ appId: com.buffingchi.games
 # deal — each drag below asserts one exact outcome instead of accepting
 # "valid or invalid, either is fine".
 #
-# Fixed deal (seed 2, draw-1) tableau tops, computed via `dealGame(1)`:
+# Fixed deal (seed 2, draw-1) tableau tops, computed via `dealGame(1)`
+# (re-checked 2026-11-03):
 #   col0: 7♦   col1: 10♦  col2: 3♥   col3: 8♠
 #   col4: K♣   col5: 2♦   col6: 7♠
 # Stock draw order (1st draw .. 24th): K♠ J♥ 10♠ J♦ 9♦ 6♠ J♣ 9♥ Q♣ 4♦ 4♣ 5♠
 #   10♥ 5♦ 5♥ 4♥ A♠ Q♠ 8♦ A♥ 3♣ 8♥ A♣ 9♣
+#
+# ── Why the swipes use screen percentages (#2366) ──────────────────────────
+# Maestro's `swipe` (v1.39.13, YamlSwipe.kt) has no element-to-element form:
+# it takes `direction`, `from:` element + `direction`, or `start`/`end`
+# coordinates. The old `from:`/`to:` pairs failed to parse, which also
+# stopped every other flow in this directory from running. `start`/`end`
+# must be literal numbers at parse time (no `${...}`), so they are derived
+# from the felt-table layout (#3606; game/_shared/cards/tableLayout.ts, whose
+# numbers were measured in a web build at both sizes below). Maestro's
+# percentages are of the full real display. Devices:
+#   Android pixel_6: 1080x2400 px at 2.625 = 411x914 dp, status bar 24 dp.
+#   iOS (iOS 26 sim): 402x874 pt, top inset 60 pt (derived from the old run).
+# Layout, from the top (T = the status bar / top inset):
+#   header T+64 -> stat line (28) -> 4 gap -> felt at T+96, 6 dp from the sides,
+#   1 dp rim, 12 dp padding -> top row at T+109 (stock, waste, then the four
+#   foundations right-aligned) -> 12 dp gap -> tableau at T+191 on Android (iOS T+189: its cards are 68 pt
+#   tall, not 70).
+#   Cards are (W-62)/7 dp wide, floored, with 4 dp gaps: 49x70 dp on Android,
+#   48x68 pt on iOS. The board (7 cards + 6 gaps) is centred in the felt, so
+#   Android column c centre = 22 + 53c + 24.5 (iOS: 21 + 52c + 24). Stock is
+#   column 0, the waste column 1 (draw-1), the foundations columns 3-6.
+#   Face-down cards step 14 dp (0.2 of the card height; iOS 14 pt); a face-up
+#   card steps up to 0.72 of it, and the deal's columns are short, so none
+#   compresses.
+# The y of a tableau card is (tableau top) + (face-down cards above it) x 14.
+# Drop hit-testing uses the finger position against each legal zone's bounds
+# inflated by 35% (DragContext snapRadiusFraction), so each point below has
+# roughly +-25 dp of slack. The largest unknown is the status bar height: if
+# CI shows the drops landing short or long, the job's "Maestro failure
+# details" step (e2e/maestro/diagnose.py) prints the real bounds of every
+# freecell-/solitaire- element in the failure-time hierarchy; adjust from
+# those. Every source and target is waited on by id first, so a missing
+# element fails loudly before the swipe.
+# Outcome checks use card testIDs, not the column's "Tableau column N, M
+# cards" label: cards/TableauColumn.tsx puts that label on a plain View with
+# no other native-forcing prop, and React Native's view flattening
+# (ViewShadowNode.cpp: accessibilityLabel alone doesn't form a view) drops it
+# on Android, so Maestro never sees it (run 41582095051). A card testID
+# `solitaire-tableau-<c>-card-<i>` exists only while the column holds that card.
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/navigate-to.yaml
@@ -29,41 +75,96 @@ appId: com.buffingchi.games
 # col0 (7♦, red) onto col3 (8♠, black) is the deal's only valid tableau pair
 # at kickoff — opposite color, descending rank. Empties col0 (drop target
 # for the King moves below) and grows col3 to 5 cards.
-- swipe:
-    from:
-      id: "solitaire-tableau-0-card-0"
-    to:
-      id: "solitaire-tableau-3"
-    duration: 600
+#   from col0 card 0 (7♦):      x 47 dp = 11%, y 250 dp = 27%
+#   to   col3 top card (card-3): x 206 dp = 50%, y 292 dp = 32%
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 4, 5 cards"
+      id: "solitaire-tableau-0-card-0"
     timeout: 3000
 - extendedWaitUntil:
     visible:
-      text: "Empty tableau column 1"
+      id: "solitaire-tableau-3"
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "11%, 27%"
+          end: "50%, 32%"
+          duration: 600
+# iOS (402x874 pt, top inset 60), from the layout above (derived, not yet run on CI):
+#   col0 card-0 [21,249][69,317] centre (45,283) = 11%,32%;
+#   col3 top card-3 [177,291][225,359] centre (201,325) = 50%,37%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "11%, 32%"
+          end: "50%, 37%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "1"
+# col3 now has 5 cards (index 4 exists); col0 is empty.
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-3-card-4"
+    timeout: 3000
+- extendedWaitUntil:
+    notVisible:
+      id: "solitaire-tableau-0-card-0"
     timeout: 3000
 - takeScreenshot: solitaire-drag-tableau-to-tableau
 
 # --- waste-to-tableau: deliberately invalid, assert snap-back ----------
 # 1st stock draw is always K♠. A King can't stack on col1's 10♦ (wrong rank
 # entirely) — the drag must snap back and leave col1 untouched.
+#   from waste top (K♠):        x 100 dp = 24%, y 168 dp = 18%
+#   to   col1 top card (card-1): x 100 dp = 24%, y 264 dp = 29%
 - tapOn:
     id: "solitaire-stock-pile"
 - extendedWaitUntil:
     visible:
       id: "solitaire-waste-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "solitaire-waste-top"
-    to:
-      id: "solitaire-tableau-1"
-    duration: 600
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 2, 2 cards"
+      id: "solitaire-tableau-1"
     timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "24%, 18%"
+          end: "24%, 29%"
+          duration: 600
+# iOS: waste = column 1, [73,169][121,237], centre (97,203) = 24%,23%;
+#   col1 top card-1 [73,263][121,331] centre (97,297) = 24%,34%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "24%, 23%"
+          end: "24%, 34%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "2"
+# col1 still exactly 2 cards.
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-1-card-1"
+    timeout: 3000
+- assertNotVisible:
+    id: "solitaire-tableau-1-card-2"
 - extendedWaitUntil:
     visible:
       id: "solitaire-waste-top"
@@ -73,15 +174,39 @@ appId: com.buffingchi.games
 # --- waste-to-tableau: valid (Kings can only land on an empty column) --
 # Same K♠ still on the waste (the invalid drag above didn't consume it).
 # col0 is empty after the tableau-to-tableau move, so this drop is valid.
-- swipe:
-    from:
-      id: "solitaire-waste-top"
-    to:
-      id: "solitaire-tableau-0"
-    duration: 600
+#   from waste top (K♠):           x 100 dp = 24%, y 168 dp = 18%
+#   to   empty col0 (placeholder): x 47 dp = 11%,  y 250 dp = 27%
 - extendedWaitUntil:
     visible:
-      text: "Tableau column 1, 1 cards"
+      id: "solitaire-tableau-0"
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "24%, 18%"
+          end: "11%, 27%"
+          duration: 600
+# iOS: waste centre 24%,23% (as above); empty col0 is one card-sized
+#   placeholder at [21,249][69,317], centre (45,283) = 11%,32%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "24%, 23%"
+          end: "11%, 32%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "3"
+# col0 holds the K♠ now.
+- extendedWaitUntil:
+    visible:
+      id: "solitaire-tableau-0-card-0"
     timeout: 3000
 # Waste is now empty — solitaire-waste-top only exists while waste is
 # non-empty, so its disappearance is a strong, engine-verified success
@@ -95,6 +220,10 @@ appId: com.buffingchi.games
 # --- waste-to-foundation -------------------------------------------------
 # Draw through the rest of the stock — the 17th draw overall (16 more from
 # here) is always A♠, the first foundation-eligible card in this deal.
+# Any foundation accepts it (handleDropToFoundation ignores which pile); the
+# spades pile is the first of the four (SUITS order).
+#   from waste top (A♠):           x 100 dp = 24%, y 168 dp = 18%
+#   to   spades foundation:        x 206 dp = 50%, y 168 dp = 18%
 - repeat:
     times: 16
     commands:
@@ -104,12 +233,33 @@ appId: com.buffingchi.games
     visible:
       id: "solitaire-waste-top"
     timeout: 3000
-- swipe:
-    from:
-      id: "solitaire-waste-top"
-    to:
+- extendedWaitUntil:
+    visible:
       id: "solitaire-foundation-spades"
-    duration: 600
+    timeout: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - swipe:
+          start: "24%, 18%"
+          end: "50%, 18%"
+          duration: 600
+# iOS: waste centre 24%,23%; foundation-spades [177,169][225,237],
+#   centre (201,203) = 50%,23%.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "24%, 23%"
+          end: "50%, 23%"
+          duration: 600
+# Drag-invariant check (#3532): the ghost stayed under the finger.
+- runFlow:
+    file: ../_shared/assert-drag-ok.yaml
+    env:
+      dragSeq: "4"
 - extendedWaitUntil:
     visible:
       id: "solitaire-foundation-spades-card"

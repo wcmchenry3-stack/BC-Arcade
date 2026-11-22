@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from itertools import pairwise
@@ -14,7 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
-from daily_challenge import service
+from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
+from daily_challenge import definitions, service
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
     FREE_GOAL_POOL,
@@ -25,7 +27,10 @@ from daily_challenge.definitions import (
     TIERS,
     Template,
     _at_least,
+    _won_within,
     game_facts,
+    goal_from_spec,
+    goal_to_spec,
     local_day,
     parse_salt,
     pick_games,
@@ -36,7 +41,7 @@ from daily_challenge.definitions import (
 from daily_challenge.service import evaluate_goal
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
-from entitlements.service import ALL_PREMIUM_SLUGS
+from entitlements.service import ALL_PREMIUM_SLUGS, DISABLED_GAMES
 from tests._helpers import session_headers as _headers
 from tests._helpers import set_dev_override
 
@@ -191,14 +196,87 @@ def test_free_pool_has_the_seven_free_games_and_never_a_premium_one() -> None:
 
 
 def test_pending_premium_goals_stay_out_of_every_live_pool() -> None:
-    # Blackjack went premium on 2026-09-23; its goals wait for #2458. In a live
-    # pool it would be picked for store builds, where the game does not exist.
+    # Mahjong went premium on 2026-09-24. In a live pool it would be picked for store
+    # builds, where the game does not exist. Blackjack's hand-count goals were removed
+    # from here in #3996 (its goals are personal picks now).
     for pool in GOAL_POOLS.values():
         assert set(pool).isdisjoint(PENDING_PREMIUM_GOALS)
     assert set(PENDING_PREMIUM_GOALS) <= set(ALL_PREMIUM_SLUGS)
+    assert "blackjack" not in PENDING_PREMIUM_GOALS
     # The one-win rule's easy-goal fallback must hold for them too.
     assert all(goals[0].is_win is False for goals in PENDING_PREMIUM_GOALS.values())
-    assert PENDING_PREMIUM_GOALS["blackjack"][1].is_win  # chips_gained is luck
+
+
+_GAME_VISIBILITY_TS = (
+    Path(__file__).parents[2] / "frontend" / "src" / "entitlements" / "gameVisibility.ts"
+)
+
+
+def test_disabled_games_are_in_no_goal_pool_and_stay_premium() -> None:
+    # Cascade was disabled from #3001 until its rework shipped (#3703); the list
+    # is empty now. Whatever it holds, no slate — free, premium (#2458) or
+    # pending — may list a disabled game, and a disabled game stays premium so
+    # nothing grants it for free.
+    assert not DISABLED_GAMES
+    for pool in GOAL_POOLS.values():
+        assert set(pool).isdisjoint(DISABLED_GAMES)
+    assert set(PENDING_PREMIUM_GOALS).isdisjoint(DISABLED_GAMES)
+    assert set(ALL_PREMIUM_SLUGS) >= DISABLED_GAMES
+
+
+_CASCADE_GOALS = (
+    _at_least("cascade", "score", 1, "easy"),
+    _at_least("cascade", "score", 2, "medium"),
+    _at_least("cascade", "score", 3, "hard"),
+)
+
+
+@pytest.mark.parametrize("slate", ["free", "premium"])
+def test_a_disabled_game_added_to_a_pool_never_reaches_a_slate(
+    monkeypatch: pytest.MonkeyPatch, slate: str
+) -> None:
+    # Even if a pool lists a disabled game, rotation() skips it, so no day's
+    # template can name it. Cascade stands in for a disabled game here.
+    rotation.cache_clear()
+    pick_template.cache_clear()
+    monkeypatch.setattr(definitions, "DISABLED_GAMES", frozenset({"cascade"}))
+    monkeypatch.setitem(GOAL_POOLS[slate], "cascade", _CASCADE_GOALS)
+    try:
+        assert "cascade" in GOAL_POOLS[slate]
+        for salt in (0, 7):
+            assert "cascade" not in rotation(slate, salt)
+            for offset in range(60):
+                template = pick_template(date(2026, 11, 1) + timedelta(days=offset), slate, salt)
+                assert all(goal.game_type != "cascade" for goal in template.goals)
+    finally:
+        rotation.cache_clear()
+        pick_template.cache_clear()
+
+
+@pytest.mark.parametrize("slate", ["free", "premium"])
+def test_cascade_is_no_longer_skipped_once_a_pool_lists_it(
+    monkeypatch: pytest.MonkeyPatch, slate: str
+) -> None:
+    # #3703 re-enabled Cascade: when its goals join a pool (#2458), the rotation
+    # draws it like any other game.
+    rotation.cache_clear()
+    pick_template.cache_clear()
+    monkeypatch.setitem(GOAL_POOLS[slate], "cascade", _CASCADE_GOALS)
+    try:
+        for salt in (0, 7):
+            assert "cascade" in rotation(slate, salt)
+    finally:
+        rotation.cache_clear()
+        pick_template.cache_clear()
+
+
+def test_disabled_games_match_the_frontend_list() -> None:
+    source = _GAME_VISIBILITY_TS.read_text()
+    match = re.search(
+        r"export const DISABLED_GAMES\b[^=]*=\s*new Set(?:<[^>]*>)?\(\[([^\]]*)\]\)", source
+    )
+    assert match, "DISABLED_GAMES not found in gameVisibility.ts"
+    assert set(re.findall(r'"([a-z0-9_]+)"', match.group(1))) == DISABLED_GAMES
 
 
 _EN_COPY = (
@@ -238,8 +316,15 @@ def test_premium_pool_is_a_superset_of_the_free_pool() -> None:
 @pytest.mark.parametrize("game", sorted(PREMIUM_GOAL_POOL))
 def test_each_game_has_easy_medium_hard_goals(game: str) -> None:
     goals = PREMIUM_GOAL_POOL[game]
-    assert [g.tier for g in goals] == list(TIERS)
     assert all(g.game_type == game for g in goals)
+    if game == ALWAYS_PRESENT:
+        # #3991: Daily Word's goal is always "complete", in all three slots.
+        assert {g.id for g in goals} == {"daily_word:completed"}
+        assert len(goals) == len(TIERS)
+        assert goals[0] is goals[1] is goals[2]
+        assert goals[0].target is None and not goals[0].is_win
+        return
+    assert [g.tier for g in goals] == list(TIERS)
     assert len({g.id for g in goals}) == 3
     for g in goals:
         assert g.kind and not g.kind.startswith("_")
@@ -253,14 +338,10 @@ def test_every_games_easy_goal_needs_no_win(game: str) -> None:
 
 
 # The luck-dependent goals, spelled out so a new one is a deliberate edit here.
-_LUCK_DEPENDENT = {
-    "daily_word:won",
-    "daily_word:won_guesses_used_at_most:4",
-    "solitaire:won",
-    "solitaire:won_moves_at_most:120",
-    "freecell:won",
-    "freecell:won_moves_at_most:100",
-}  # sudoku:solved is absent: a solve is skill, not luck
+# None in the live pools since #3993: Solitaire and FreeCell deal only provably
+# solvable deals, so their wins are skill (SOLVABLE_DEAL_GAMES), and a Sudoku solve
+# is skill too. Blackjack's chips_gained (pending premium) still is.
+_LUCK_DEPENDENT: set[str] = set()
 
 
 def test_luck_dependent_flag_is_exactly_the_listed_goals() -> None:
@@ -304,12 +385,53 @@ def test_rotation_never_repeats_a_game_whatever_the_pool_size(
         rotation.cache_clear()
 
 
+def test_a_second_win_goal_falls_back_to_that_games_easy_goal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No live free goal is luck-dependent since #3993, so the at-most-one-win rule
+    is exercised on a pool that has win goals: medium and hard tiers are wins, easy
+    is not. Every day keeps at most one win, and the other falls back to easy."""
+
+    def goals(game: str):
+        return (
+            _at_least(game, "final_score", 1, "easy"),
+            definitions._won(game, "medium"),
+            _won_within(game, "moves", 100, "hard"),
+        )
+
+    pool = {ALWAYS_PRESENT: FREE_GOAL_POOL[ALWAYS_PRESENT]} | {
+        f"g{i}": goals(f"g{i}") for i in range(5)
+    }
+    monkeypatch.setitem(GOAL_POOLS, "free", pool)
+    rotation.cache_clear()
+    pick_template.cache_clear()
+    try:
+        fell_back = 0
+        for day in _days(60):
+            template = pick_template(day, "free", 0)
+            assert sum(g.is_win for g in template.goals) <= 1
+            ordinal = day.toordinal()
+            games = (ALWAYS_PRESENT, *pick_games(day, "free", 0))
+            raw = [pool[g][(ordinal + i) % len(TIERS)] for i, g in enumerate(games)]
+            if sum(g.is_win for g in raw) == 2:
+                fell_back += 1
+                swapped = [
+                    i for i, (r, f) in enumerate(zip(raw, template.goals, strict=True)) if r != f
+                ]
+                assert len(swapped) == 1
+                i = swapped[0]
+                assert template.goals[i] == pool[games[i]][0]  # that game's easy goal
+        assert fell_back > 0
+    finally:
+        rotation.cache_clear()
+        pick_template.cache_clear()
+
+
 def test_win_limits_are_above_the_physical_minimum() -> None:
     # A win is impossible below these, so a goal under them could never be met.
     minimum = {
         ("solitaire", "won_moves_at_most"): 52,  # 52 cards to the foundations
         ("freecell", "won_moves_at_most"): 52,
-        ("daily_word", "won_guesses_used_at_most"): 1,
     }
     for goals in PREMIUM_GOAL_POOL.values():
         for g in goals:
@@ -336,12 +458,12 @@ _EVALUATION_CASES = [
     # daily_word
     ("daily_word", _EASY, {"is_complete": True, "won": False}, True),
     ("daily_word", _EASY, {"is_complete": False}, False),
+    # #3991: every tier slot is the same "complete" goal (a loss still counts).
     ("daily_word", _MEDIUM, {"is_complete": True, "won": True, "guesses_used": 6}, True),
-    ("daily_word", _MEDIUM, {"is_complete": True, "won": False, "guesses_used": 6}, False),
-    ("daily_word", _HARD, {"won": True, "guesses_used": 4}, True),
-    ("daily_word", _HARD, {"won": True, "guesses_used": 5}, False),
-    ("daily_word", _HARD, {"won": False, "guesses_used": 2}, False),
-    ("daily_word", _HARD, {"won": True}, False),
+    ("daily_word", _MEDIUM, {"is_complete": True, "won": False, "guesses_used": 6}, True),
+    ("daily_word", _MEDIUM, {"is_complete": False, "won": True}, False),
+    ("daily_word", _HARD, {"is_complete": True, "won": False, "guesses_used": 6}, True),
+    ("daily_word", _HARD, {"won": True, "guesses_used": 2}, False),
     # twenty48 — final_score / highest_tile, abandoned or not
     ("twenty48", _EASY, {"final_score": 500}, True),
     ("twenty48", _EASY, {"final_score": 499}, False),
@@ -349,11 +471,11 @@ _EVALUATION_CASES = [
     ("twenty48", _MEDIUM, {"highest_tile": 256, "final_score": 9000}, False),
     ("twenty48", _HARD, {"final_score": 2500}, True),
     ("twenty48", _HARD, {"final_score": 2499}, False),
-    # solitaire
-    ("solitaire", _EASY, {"won": False, "moves": 10}, True),
-    ("solitaire", _EASY, {"won": False, "moves": 9}, False),
-    ("solitaire", _MEDIUM, {"won": True, "moves": 300}, True),
-    ("solitaire", _MEDIUM, {"won": False, "moves": 300}, False),
+    # solitaire (#3993: the win is the easy goal; "make 10 moves" is gone)
+    ("solitaire", _EASY, {"won": True, "moves": 300}, True),
+    ("solitaire", _EASY, {"won": False, "moves": 300}, False),
+    ("solitaire", _MEDIUM, {"won": True, "moves": 150}, True),
+    ("solitaire", _MEDIUM, {"won": True, "moves": 151}, False),
     ("solitaire", _HARD, {"won": True, "moves": 120}, True),
     ("solitaire", _HARD, {"won": True, "moves": 121}, False),
     ("solitaire", _HARD, {"won": False, "moves": 20}, False),
@@ -365,13 +487,14 @@ _EVALUATION_CASES = [
     ("sort", _HARD, {"final_score": 15}, True),
     ("sort", _HARD, {"final_score": 14}, False),
     # freecell
-    ("freecell", _EASY, {"won": False, "moves": 5}, True),
-    ("freecell", _EASY, {"won": False, "moves": 4}, False),
-    ("freecell", _MEDIUM, {"won": True, "moves": 200}, True),
-    ("freecell", _MEDIUM, {"won": False, "moves": 200}, False),
+    # (#3993: the win is the easy goal; "make 5 moves" is gone)
+    ("freecell", _EASY, {"won": True, "moves": 200}, True),
+    ("freecell", _EASY, {"won": False, "moves": 200}, False),
+    ("freecell", _MEDIUM, {"won": True, "moves": 130}, True),
+    ("freecell", _MEDIUM, {"won": True, "moves": 131}, False),
     ("freecell", _HARD, {"won": True, "moves": 100}, True),
     ("freecell", _HARD, {"won": True, "moves": 101}, False),
-    # yacht — final_score only, abandoned or not
+    # yacht — final_score only (abandoned games are filtered by the service)
     ("yacht", _EASY, {"final_score": 100}, True),
     ("yacht", _EASY, {"final_score": 99}, False),
     ("yacht", _MEDIUM, {"final_score": 175}, True),
@@ -387,15 +510,7 @@ _EVALUATION_CASES = [
     ("sudoku", _MEDIUM, {"won": True, "final_score": 100, "difficulty": "easy"}, False),
     ("sudoku", _HARD, {"won": True, "final_score": 280, "difficulty": "hard"}, True),
     ("sudoku", _HARD, {"won": True, "final_score": 279, "difficulty": "hard"}, False),
-    # blackjack — premium, pending #2458 (PENDING_PREMIUM_GOALS)
-    ("blackjack", _EASY, {"hands_played": 3, "hands_won": 0}, True),
-    ("blackjack", _EASY, {"hands_played": 2}, False),
-    ("blackjack", _MEDIUM, {"starting_chips": 1000, "final_chips": 1001}, True),
-    ("blackjack", _MEDIUM, {"starting_chips": 1000, "final_chips": 1000}, False),
-    ("blackjack", _MEDIUM, {"final_chips": 1500}, False),
-    ("blackjack", _HARD, {"hands_won": 3}, True),
-    ("blackjack", _HARD, {"hands_won": 2}, False),
-    # mahjong — premium, pending #2458 (PENDING_PREMIUM_GOALS); duration_ms comes from the column
+    # mahjong — premium, pending (PENDING_PREMIUM_GOALS); duration_ms comes from the column
     ("mahjong", _EASY, {"won": False, "pairs": 10}, True),
     ("mahjong", _EASY, {"won": False, "pairs": 9}, False),
     ("mahjong", _MEDIUM, {"won": True, "pairs": 72}, True),
@@ -434,7 +549,7 @@ def test_a_bool_is_not_a_number() -> None:
 
 
 def test_evaluation_never_reads_outcome() -> None:
-    goal = FREE_GOAL_POOL["solitaire"][_MEDIUM]
+    goal = FREE_GOAL_POOL["solitaire"][_EASY]  # solitaire:won (the medium goal before #3993)
     assert not goal.evaluate({"outcome": "completed", "won": False})
     assert goal.evaluate({"outcome": "abandoned", "won": True})
 
@@ -1125,3 +1240,135 @@ def test_upcoming_overlapping_offsets_share_frozen_days(
 def test_upcoming_rejects_out_of_range_timezone(client: TestClient, offset: int) -> None:
     r = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": offset})
     assert r.status_code == 422
+
+
+# --- Sort goals follow SORT_CATALOG_EDITION_ENFORCED (#3728) ------------------
+
+
+def _sort_goals_over(days: list[date]) -> list:
+    return [g for d in days for g in template_for(d).goals if g.game_type == "sort"]
+
+
+def test_sort_goals_are_the_old_levels_while_the_switch_is_off(sort_edition) -> None:
+    sort_edition(False)
+    goals = _sort_goals_over(_days(600))
+    assert {(g.tier, g.target) for g in goals} == {("easy", 3), ("medium", 8), ("hard", 15)}
+
+
+def test_sort_goals_are_the_catalog_levels_once_the_switch_is_on(sort_edition) -> None:
+    sort_edition(True)
+    goals = _sort_goals_over(_days(600))
+    assert {(g.tier, g.target) for g in goals} == {("easy", 10), ("medium", 30), ("hard", 60)}
+    assert all(g.kind == "final_score_at_least" for g in goals)
+
+
+def test_the_switch_leaves_other_games_goals_alone(sort_edition) -> None:
+    sort_edition(False)
+    off = {d: [g for g in template_for(d).goals if g.game_type != "sort"] for d in _days(60)}
+    sort_edition(True)
+    on = {d: [g for g in template_for(d).goals if g.game_type != "sort"] for d in _days(60)}
+    assert off == on
+
+
+def test_a_day_frozen_with_the_old_goals_keeps_them_after_the_flip(sort_edition) -> None:
+    """Frozen days store each goal's spec (target included) and rebuild through
+    ``goal_from_spec``, never the pool, so the flip only moves days not yet frozen."""
+    sort_edition(False)
+    day = next(d for d in _days(60) if any(g.game_type == "sort" for g in template_for(d).goals))
+    frozen = [goal_to_spec(g) for g in template_for(day).goals]
+    sort_edition(True)
+    rebuilt = [goal_from_spec(spec) for spec in frozen]
+    sort_goal = next(g for g in rebuilt if g.game_type == "sort")
+    old_target = next(s["target"] for s in frozen if s["game_type"] == "sort")
+    assert old_target in {3, 8, 15}
+    assert sort_goal.target == old_target
+    assert sort_goal.evaluate({"final_score": old_target}) is True
+    assert sort_goal.evaluate({"final_score": old_target - 1}) is False
+    # The same day computed fresh now differs: it is a new, unfrozen day.
+    assert [g.target for g in template_for(day).goals if g.game_type == "sort"] != [old_target]
+
+
+# ---------------------------------------------------------------------------
+# Daily Word's goal is always "complete" (#3991)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("slate", _SLATES)
+@pytest.mark.parametrize("salt", [0, 1, 7, 12345, 2**31])
+def test_daily_word_goal_is_always_completed(slate: str, salt: int) -> None:
+    for day in _days(730):
+        template = pick_template(day, slate, salt)
+        word = template.goals[0]
+        assert (word.game_type, word.kind, word.target) == ("daily_word", "completed", None)
+        assert word.is_win is False
+        # The pick rules still hold: one win goal at most, no repeat vs the day before.
+        assert sum(g.is_win for g in template.goals) <= 1
+        assert len({g.game_type for g in template.goals}) == GOALS_PER_DAY
+        previous = pick_template(day - timedelta(days=1), slate, salt)
+        assert {g.game_type for g in template.goals[1:]}.isdisjoint(
+            g.game_type for g in previous.goals[1:]
+        )
+
+
+def test_daily_word_no_longer_holds_the_win_slot() -> None:
+    # Daily Word never holds the win-dependent slot. Since #3993 no live free goal is
+    # luck-dependent (Solitaire and FreeCell deals are provably solvable), so over
+    # two years no day has one at all; a pending premium game's would be another game's.
+    win_games = {
+        g.game_type for day in _days(730) for g in pick_template(day, "free", 0).goals if g.is_win
+    }
+    assert "daily_word" not in win_games
+    assert win_games == set()
+
+
+def test_a_day_frozen_with_an_old_daily_word_win_goal_still_replays() -> None:
+    old_specs = [
+        {"game_type": "daily_word", "kind": "won", "target": None, "tier": "medium"},
+        {
+            "game_type": "daily_word",
+            "kind": "won_guesses_used_at_most",
+            "target": 4,
+            "tier": "hard",
+        },
+    ]
+    won_in_4 = {"is_complete": True, "won": True, "guesses_used": 4}
+    won_in_5 = {"is_complete": True, "won": True, "guesses_used": 5}
+    lost = {"is_complete": True, "won": False, "guesses_used": 6}
+    won, within = (goal_from_spec(spec) for spec in old_specs)
+    assert won.is_win and within.is_win
+    assert (won.id, within.id) == ("daily_word:won", "daily_word:won_guesses_used_at_most:4")
+    assert [won.evaluate(f) for f in (won_in_4, won_in_5, lost)] == [True, True, False]
+    assert [within.evaluate(f) for f in (won_in_4, won_in_5, lost)] == [True, False, False]
+    # Neither is in the live pool any more, yet both rebuild (and round-trip).
+    live = {g.id for g in FREE_GOAL_POOL["daily_word"]}
+    assert won.id not in live and within.id not in live
+    assert [goal_to_spec(g) for g in (won, within)] == old_specs
+
+
+# ---------------------------------------------------------------------------
+# Cascade's 20 s win floor in "win within N" (#3700, for Cascade's goals in #2458)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "duration_ms,expected",
+    [
+        (1_000, False),  # a forged 1 s win
+        (CASCADE_MIN_WIN_MS - 1, False),
+        (CASCADE_MIN_WIN_MS, True),
+        (300_000, True),
+        (300_001, False),
+    ],
+)
+def test_cascade_won_within_applies_the_win_floor(duration_ms: int, expected: bool) -> None:
+    goal = _won_within("cascade", "duration_ms", 300_000, "hard")
+    facts = game_facts({"won": True}, final_score=10_000, duration_ms=duration_ms)
+    assert goal.evaluate(facts) is expected
+    # A frozen day's goal, rebuilt from its spec, keeps the floor.
+    assert goal_from_spec(goal_to_spec(goal)).evaluate(facts) is expected
+
+
+def test_the_win_floor_is_cascades_only() -> None:
+    fast = {"won": True, "duration_ms": 1_000}
+    assert _won_within("mahjong", "duration_ms", 480_000, "hard").evaluate(fast) is True
+    assert _won_within("cascade", "moves", 480_000, "hard").evaluate({"won": True, "moves": 1})

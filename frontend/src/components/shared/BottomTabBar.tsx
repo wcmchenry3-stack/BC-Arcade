@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import MaterialIcons from "../icons/MaterialIcons";
 import { MAIN_TABS, type MainTab } from "../../navigation/mainTabs";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";

@@ -56,6 +56,17 @@ describe("yacht storage", () => {
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
+  it("never stores the last action's events: a reopened game replays no roll or celebration (#3749)", async () => {
+    const withEvents = { ...newGame(), round: 3, events: [{ type: "yacht" as const }] };
+    await saveGame(withEvents, "easy", { ...newGame(), events: [{ type: "joker" as const }] });
+    const loaded = await loadGame();
+    expect(loaded?.state.round).toBe(3);
+    expect(loaded?.state).not.toHaveProperty("events");
+    expect(loaded?.aiState).not.toHaveProperty("events");
+    // The state in hand keeps them.
+    expect(withEvents.events).toHaveLength(1);
+  });
+
   it("returns null when no saved game exists", async () => {
     expect(await loadGame()).toBeNull();
   });

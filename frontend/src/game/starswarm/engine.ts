@@ -14,6 +14,7 @@
  *   waveStats   the per-wave stats record: open, bump, close into a v1 snapshot, wire format
  *   entities    pickups, explosions, the power-up type roll
  *   extraction  the `weaponsFree` / `hazardsLive` gates, live hazards, the autopilot, the reset
+ *   lightningBeam  #3562: the guns' layout, and Lightning's beams (when on, their geometry, the pulse)
  *   asteroids   rocks, their threat contract, and the enemies' response to them
  *   buddy       Buddy: station, attack runs, evasion, the fire it draws, the hits it takes
  *   carrier     the Carrier's cadences, volley seam, beam, attack run and event selectors
@@ -58,6 +59,7 @@ export {
   BEAM_HALF_WIDTH,
   BEAM_LENGTH,
   BEAM_SPEED,
+  BOMB_FLASH_DURATION,
   BOSS_WAVE_BEAM_SCALE,
   BOSS_WAVE_CLEAR_MULT,
   BUDDY_BEAM_DAMAGE,
@@ -97,6 +99,8 @@ export {
   DODGE_PATH_NUDGE,
   DODGE_SIDESTEP,
   DODGE_SIDESTEP_MS,
+  EXPLOSION_FRAMES,
+  EXPLOSION_FRAME_MS,
   EXTRACTION_HOLD_MAX_MS,
   EXTRACTION_HOLD_MIN_MS,
   EXTRACTION_MAX_MS,
@@ -130,6 +134,7 @@ export {
   PLAYER_W,
   POWERUP_DURATION,
   REACTION_PHASES,
+  REINFORCE_BAY_OPEN_MS,
   REINFORCE_COUNT,
   SALVAGE_DROP_CHANCE,
   SPREAD_VX,
@@ -187,6 +192,7 @@ export {
 } from "./engine/roster";
 export {
   carrierAttackRunJustStarted,
+  carrierBayCue,
   carrierBeamCharge,
   carrierBeamJustFired,
   carrierBeamJustStarted,
@@ -195,6 +201,7 @@ export {
   carrierRunBrace,
   carrierRunPath,
   chooseCarrierTarget,
+  reinforcementBayJustOpened,
   reinforcementsJustLaunched,
   rollCarrierCadence,
 } from "./engine/carrier";
@@ -207,14 +214,40 @@ export {
   seedRng,
 } from "./engine/rng";
 export type { EngineCounters } from "./engine/rng";
-export { collideCircleAABB, hashFrac, nudgePath, splitRemaining } from "./engine/geometry";
-export { applyPowerUp, playerVolley, upgradeEvents } from "./engine/powerups";
+export {
+  beamHitsAabb,
+  circleAlongBeam,
+  collideCircleAABB,
+  hashFrac,
+  nudgePath,
+  splitRemaining,
+} from "./engine/geometry";
+export type { BeamRect } from "./engine/geometry";
+export {
+  clearLightningSweep,
+  GUN_LAYOUT,
+  LIGHTNING_BEAM_HALF_W,
+  lightningBeamAt,
+  lightningBeamCount,
+  lightningBeamOn,
+  lightningPulseDue,
+  newLightningBeam,
+} from "./engine/lightningBeam";
+export type { LightningBeam } from "./engine/lightningBeam";
+export {
+  applyPowerUp,
+  bombJustDetonated,
+  playerVolley,
+  powerUpCollected,
+  upgradeEvents,
+} from "./engine/powerups";
 export { dodgeChance, dodgeRateByTier, emptyRunStats, emptyTierStats } from "./engine/stats";
 export type { TierDodgeRow } from "./engine/stats";
 export {
   ASTEROID_KINDS,
   BUDDY_HIT_CAUSES,
   CARRIER_STAGES,
+  DEATH_PHASES,
   ENEMY_TIERS,
   HIT_CAUSES,
   HIT_RESULTS,
@@ -226,6 +259,7 @@ export {
 } from "./engine/registries";
 export type {
   BuddyHitCause,
+  DeathPhase,
   HitCause,
   HitResult,
   KillMethod,
@@ -280,5 +314,6 @@ export {
   liveHazards,
   waveJustCleared,
   weaponsFree,
+  playerFireAllowed,
 } from "./engine/extraction";
 export type { Hazard } from "./engine/extraction";

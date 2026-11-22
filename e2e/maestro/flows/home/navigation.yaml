@@ -1,11 +1,12 @@
 appId: com.buffingchi.games
 ---
 - runFlow: ../_shared/launch.yaml
+# open-yacht.yaml answers Yacht's mode picker before checking the "Yacht"
+# title; the picker's Android Modal window hides the title until then (#2373).
 - runFlow:
-    file: ../_shared/navigate-to.yaml
+    file: ../_shared/open-yacht.yaml
     env:
-      gameSlug: "yacht"
-      screenLabel: "Yacht"
+      yachtMode: "yacht-mode-solo"
 - tapOn:
     id: "nav-back"
 - extendedWaitUntil:

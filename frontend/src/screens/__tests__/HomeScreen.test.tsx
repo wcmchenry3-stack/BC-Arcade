@@ -1,15 +1,41 @@
-import { AppState, StyleSheet } from "react-native";
+import { AccessibilityInfo, AppState, Platform, StyleSheet } from "react-native";
+import * as Haptics from "expo-haptics";
 import React from "react";
 import { Alert } from "react-native";
-import { act, render, renderHook, fireEvent, waitFor } from "@testing-library/react-native";
-import * as ReactNative from "react-native";
+import { act, render, renderHook, fireEvent, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
-import { ThemeProvider } from "../../theme/ThemeContext";
+import { ThemeProvider, dark } from "../../theme/ThemeContext";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { StatsResponse } from "../../api/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
+import i18n from "../../i18n/i18n";
+import { LOBBY_MAX_FONT_SCALE, lobbyTileTextSizing } from "../../components/home/lobbyColumns";
+import type { TileStatus } from "../../game/_shared/lobbyStatus";
+import { __resetPersonalBestForTests, recordResult } from "../../game/_shared/personalBest";
+import { newGame as newTwenty48 } from "../../game/twenty48/engine";
+import { saveGame as saveTwenty48 } from "../../game/twenty48/storage";
+import { SORT_CATALOG_VERSION } from "../../game/sort/catalog";
+import { dealGame as dealFreeCell } from "../../game/freecell/engine";
+import { saveGame as saveFreeCell } from "../../game/freecell/storage";
+
+jest.mock("expo-haptics", () => ({
+  impactAsync: jest.fn(() => Promise.resolve()),
+  ImpactFeedbackStyle: { Light: "light" },
+}));
+
+// Render gradients as a host element so tests can read their colours and style (#4005).
+jest.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
+
+// The window the screen sees. react-native's useWindowDimensions reads this module; a
+// jest.spyOn on the `react-native` namespace never reached HomeScreen (width stayed at
+// jest's 750 default), so the width-based tests were not exercising their widths (#4005).
+const mockWindow = { width: 390, height: 844, scale: 2, fontScale: 1 };
+jest.mock("react-native/Libraries/Utilities/useWindowDimensions", () => ({
+  __esModule: true,
+  default: () => mockWindow,
+}));
 
 // ---------------------------------------------------------------------------
 // Mock entitlements — default: all games entitled (canPlay always true)
@@ -77,6 +103,19 @@ jest.mock("../../game/daily_word/todayMeta", () => ({
   warmTodayMeta: () => mockWarmTodayMeta(),
 }));
 
+// The tile statuses (#4008) are read from local storage by the real hook. The status-display tests
+// set `mockTileStatuses` to put exact statuses on tiles instead; unset (the default), the real
+// hook and readers run.
+let mockTileStatuses: Record<string, TileStatus | undefined> | null = null;
+jest.mock("../../hooks/useLobbyTileStatus", () => {
+  const actual = jest.requireActual("../../hooks/useLobbyTileStatus");
+  return {
+    ...actual,
+    useLobbyTileStatus: (...args: unknown[]) =>
+      mockTileStatuses ?? actual.useLobbyTileStatus(...args),
+  };
+});
+
 // Connectivity — online by default; tests flip `isOnline`.
 const mockNetwork = { isOnline: true, isInitialized: true };
 jest.mock("../../game/_shared/NetworkContext", () =>
@@ -120,12 +159,7 @@ const testInsets = {
 };
 
 async function renderScreen(windowWidth = 390) {
-  jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
-    width: windowWidth,
-    height: 844,
-    scale: 2,
-    fontScale: 1,
-  });
+  mockWindow.width = windowWidth;
   return await render(
     <SafeAreaProvider initialMetrics={testInsets}>
       <ThemeProvider>
@@ -164,17 +198,151 @@ describe("HomeScreen — game cards", () => {
     expect(queryByLabelText("Play Pachisi")).toBeNull();
   });
 
-  it("colours tile icons from the theme so text-presentation glyphs stay visible", async () => {
-    // Solitaire's "♠" and FreeCell's "🂡" are not colour emoji; without an explicit
-    // colour iOS draws them black, which disappeared on the dark theme.
-    const { getByTestId } = await renderScreen();
-    for (const slug of ["solitaire", "freecell"]) {
-      const style = StyleSheet.flatten(getByTestId(`game-icon-${slug}`).props.style);
-      expect(style.color).toBeTruthy();
-      expect(style.color).not.toBe("#000");
-      expect(style.color).not.toBe("#000000");
-      expect(style.color).not.toBe("black");
-    }
+  describe("Star Swarm tile icon (#3599)", () => {
+    it("shows the generated scene at cardArt (64 pt) instead of the 👾 emoji (#4013)", async () => {
+      const { getByTestId, queryByText } = await renderScreen();
+      const icon = getByTestId("game-icon-starswarm");
+      expect(icon.type).not.toBe("Text");
+      expect(icon.props.source).toBeTruthy();
+      const style = StyleSheet.flatten(icon.props.style);
+      expect([style.width, style.height]).toEqual([64, 64]); // fits the 68 pt icon zone
+      expect(queryByText("👾")).toBeNull();
+    });
+
+    it("keeps the tile's accessibility label and hint, and hides the image from readers", async () => {
+      const { getByTestId } = await renderScreen();
+      const tile = getByTestId("game-tile-starswarm");
+      expect(tile.props.accessibilityLabel).toBe("Play Star Swarm");
+      expect(tile.props.accessibilityHint).toBeTruthy();
+      expect(getByTestId("game-icon-starswarm").props.accessible).toBe(false);
+    });
+
+    it("labels a locked Star Swarm tile as before", async () => {
+      mockCanPlay.mockReturnValue(false);
+      const { getByTestId } = await renderScreen();
+      expect(getByTestId("game-tile-starswarm").props.accessibilityLabel).toMatch(/Star Swarm/);
+      expect(getByTestId("game-icon-starswarm").props.source).toBeTruthy();
+    });
+  });
+
+  describe("gameplay tile art (#4011)", () => {
+    const ART: Record<string, { label: string; emoji: string }> = {
+      yacht: { label: "Play Yacht", emoji: "🎲" },
+      twenty48: { label: "Play 2048", emoji: "🔢" },
+      sudoku: { label: "Play Sudoku", emoji: "🧩" },
+      sort: { label: "Play Sort Puzzle", emoji: "🍾" },
+    };
+
+    it("draws Yacht, 2048, Sudoku and Sort as a 64 pt image, not the emoji", async () => {
+      const { getByTestId, queryByText } = await renderScreen();
+      for (const [slug, { emoji }] of Object.entries(ART)) {
+        const icon = getByTestId(`game-icon-${slug}`);
+        expect(icon.type).not.toBe("Text");
+        expect(icon.props.source).toBeTruthy();
+        expect(icon.props.resizeMode).toBe("contain");
+        const style = StyleSheet.flatten(icon.props.style);
+        expect([style.width, style.height]).toEqual([64, 64]);
+        expect(queryByText(emoji)).toBeNull();
+      }
+      // Each tile has its own picture.
+      const sources = Object.keys(ART).map((slug) => getByTestId(`game-icon-${slug}`).props.source);
+      expect(new Set(sources.map((s) => JSON.stringify(s))).size).toBe(4);
+    });
+
+    it("keeps the tiles' labels and hides the images from screen readers", async () => {
+      const { getByTestId } = await renderScreen();
+      for (const [slug, { label }] of Object.entries(ART)) {
+        expect(getByTestId(`game-tile-${slug}`).props.accessibilityLabel).toBe(label);
+        expect(getByTestId(`game-icon-${slug}`).props.accessible).toBe(false);
+      }
+    });
+  });
+
+  describe("gameplay tile art, batch 2 (#4012)", () => {
+    const ART: Record<string, { label: string; emoji: string }> = {
+      solitaire: { label: "Play Solitaire", emoji: "♠" },
+      freecell: { label: "Play FreeCell", emoji: "🂡" },
+      daily_word: { label: "Play Daily Word", emoji: "📝" },
+    };
+
+    it("draws Solitaire, FreeCell and Daily Word as a 64 pt image, not the glyph or emoji", async () => {
+      const { getByTestId, queryByText } = await renderScreen();
+      for (const [slug, { emoji }] of Object.entries(ART)) {
+        const icon = getByTestId(`game-icon-${slug}`);
+        expect(icon.type).not.toBe("Text");
+        expect(icon.props.children).toBeUndefined();
+        expect(icon.props.source).toBeTruthy();
+        expect(icon.props.resizeMode).toBe("contain");
+        const style = StyleSheet.flatten(icon.props.style);
+        expect([style.width, style.height]).toEqual([64, 64]);
+        expect(queryByText(emoji)).toBeNull();
+      }
+    });
+
+    it("gives every art tile its own picture", async () => {
+      const { getByTestId } = await renderScreen();
+      const slugs = ["yacht", "twenty48", "sudoku", "sort", ...Object.keys(ART)];
+      const sources = slugs.map((slug) => getByTestId(`game-icon-${slug}`).props.source);
+      expect(new Set(sources.map((s) => JSON.stringify(s))).size).toBe(slugs.length);
+    });
+
+    it("keeps the tiles' labels and hides the images from screen readers", async () => {
+      const { getByTestId } = await renderScreen();
+      for (const [slug, { label }] of Object.entries(ART)) {
+        expect(getByTestId(`game-tile-${slug}`).props.accessibilityLabel).toBe(label);
+        expect(getByTestId(`game-icon-${slug}`).props.accessible).toBe(false);
+      }
+    });
+  });
+
+  describe("hidden games' tile art (#4013)", () => {
+    const ART: Record<string, { label: string; emoji: string }> = {
+      blackjack: { label: "Play Blackjack", emoji: "🃏" },
+      hearts: { label: "Play Hearts", emoji: "♥" },
+      mahjong: { label: "Play Mahjong Solitaire", emoji: "🀄" },
+      starswarm: { label: "Play Star Swarm", emoji: "👾" },
+      cascade: { label: "Play Cascade", emoji: "🍉" },
+    };
+
+    it("a dev build draws all five as a 64 pt image, not the emoji or glyph", async () => {
+      const { getByTestId, queryByText } = await renderScreen();
+      for (const [slug, { emoji }] of Object.entries(ART)) {
+        const icon = getByTestId(`game-icon-${slug}`);
+        expect(icon.type).not.toBe("Text");
+        expect(icon.props.children).toBeUndefined();
+        expect(icon.props.source).toBeTruthy();
+        expect(icon.props.resizeMode).toBe("contain");
+        const style = StyleSheet.flatten(icon.props.style);
+        expect([style.width, style.height]).toEqual([64, 64]);
+        expect(queryByText(emoji)).toBeNull();
+      }
+    });
+
+    it("Cascade's tile is the image, not the Skia-drawn CascadeTileIcon", async () => {
+      const { getByTestId, queryByTestId } = await renderScreen();
+      expect(queryByTestId("game-art-cascade")).toBeNull();
+      expect(getByTestId("game-icon-cascade").props.source).toBeTruthy();
+    });
+
+    it("keeps the labels and hides the images from screen readers", async () => {
+      const { getByTestId } = await renderScreen();
+      for (const [slug, { label }] of Object.entries(ART)) {
+        expect(getByTestId(`game-tile-${slug}`).props.accessibilityLabel).toBe(label);
+        expect(getByTestId(`game-icon-${slug}`).props.accessible).toBe(false);
+      }
+    });
+
+    it("every tile in the lobby shows its own picture and no tile shows an emoji or glyph", async () => {
+      const { getAllByTestId } = await renderScreen();
+      const icons = getAllByTestId(/^game-icon-/);
+      expect(icons).toHaveLength(12);
+      for (const icon of icons) {
+        expect(icon.type).not.toBe("Text");
+        expect(icon.props.source).toBeTruthy();
+      }
+      const sources = icons.map((icon) => JSON.stringify(icon.props.source));
+      expect(new Set(sources).size).toBe(icons.length);
+    });
   });
 
   describe("store build — premium games hidden (#2390)", () => {
@@ -673,5 +841,668 @@ describe("HomeScreen — locked game UI (#1054)", () => {
     expect(getByLabelText("Play Yacht")).toBeTruthy();
     expect(getByLabelText("Play Cascade")).toBeTruthy();
     expect(getByLabelText("Play Sudoku")).toBeTruthy();
+  });
+});
+
+describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
+  afterEach(() => {
+    __forceStoreBuildForTests(false);
+  });
+
+  const hidden = { includeHiddenElements: true };
+
+  it("pads a one-tile last row with a spacer at 2 columns (7 store games)", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(390);
+    const spacers = getAllByTestId("lobby-spacer", hidden);
+    expect(spacers).toHaveLength(1);
+    const spacer = spacers[0] as unknown as {
+      props: Record<string, unknown>;
+      parent: { children: { props: { testID?: string } }[] };
+    };
+    expect(spacer.props.accessible).toBe(false);
+    expect(spacer.props.importantForAccessibility).toBe("no-hide-descendants");
+    expect(spacer.props.accessibilityElementsHidden).toBe(true);
+    expect(spacer.props.pointerEvents).toBe("none");
+    // Its row holds one real tile plus the spacer.
+    const kids = spacer.parent.children;
+    expect(kids).toHaveLength(2);
+  });
+
+  it("gives every tile the column width: the spacer uses the same wrapper style", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId, getByTestId } = await renderScreen(390);
+    const spacer = getAllByTestId("lobby-spacer", hidden)[0];
+    const tileWrapper = getByTestId("game-tile-daily_word").parent;
+    expect(StyleSheet.flatten(spacer.props.style)).toEqual(expect.objectContaining({ flex: 1 }));
+    expect(StyleSheet.flatten(tileWrapper?.props.style)).toEqual(
+      expect.objectContaining({ flex: 1 })
+    );
+  });
+
+  it("pads with two spacers at 3 columns (7 games)", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(834);
+    expect(getAllByTestId("lobby-spacer", hidden)).toHaveLength(2);
+  });
+
+  it("pads with one spacer at 4 columns (7 games)", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(1024);
+    expect(getAllByTestId("lobby-spacer", hidden)).toHaveLength(1);
+  });
+
+  it("renders no spacer when the grid is full (12 games at 4 columns)", async () => {
+    const { queryAllByTestId, getAllByTestId } = await renderScreen(1024);
+    expect(getAllByTestId(/^game-tile-/)).toHaveLength(12);
+    expect(queryAllByTestId("lobby-spacer", hidden)).toHaveLength(0);
+  });
+
+  it("renders no spacer in the single-column path", async () => {
+    __forceStoreBuildForTests(true);
+    const { queryAllByTestId } = await renderScreen(320);
+    expect(queryAllByTestId("lobby-spacer", hidden)).toHaveLength(0);
+  });
+
+  it("spacers carry no game-tile testID and are not buttons", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId, getAllByRole } = await renderScreen(390);
+    expect(getAllByTestId(/^game-tile-/)).toHaveLength(7);
+    expect(
+      getAllByRole("button").filter((b) => /^Play /.test(b.props.accessibilityLabel))
+    ).toHaveLength(7);
+  });
+
+  it("a tile's gradient belongs to its game, not to its position (#4007)", async () => {
+    __forceStoreBuildForTests(true);
+    const { toJSON } = await renderScreen(390);
+    // The Play button of each tile wears the same gradient as its top border.
+    type Json = {
+      type: string;
+      props: { colors?: string[]; testID?: string };
+      children?: (Json | string)[] | null;
+    };
+    const grads: Record<string, string[]> = {};
+    const walk = (n: Json | string | null | (Json | string)[]) => {
+      if (n == null || typeof n === "string") return;
+      if (Array.isArray(n)) return n.forEach(walk);
+      if (n.type === "LinearGradient" && n.props.testID?.startsWith("game-btn-"))
+        grads[n.props.testID.slice("game-btn-".length)] = n.props.colors as string[];
+      n.children?.forEach(walk);
+    };
+    walk(toJSON() as Json | Json[] | null);
+    expect(Object.keys(grads)).toHaveLength(7);
+    // Sudoku and Sort sit 6th and 7th here; they keep their own pair, not the 2nd and 3rd of
+    // the old 4-colour cycle.
+    expect(grads.sudoku).toEqual([dark.tertiary, dark.secondary]);
+    expect(grads.yacht).toEqual([dark.secondary, dark.accent]);
+    expect(grads.solitaire).toEqual([dark.accent, dark.accentBright]);
+    expect(grads.sort).toEqual([dark.accentBright, dark.tertiary]);
+  });
+
+  it("every game keeps the same stops in the store build and in the all-games build (#4007)", async () => {
+    type Json = {
+      type: string;
+      props: { colors?: string[]; testID?: string };
+      children?: (Json | string)[] | null;
+    };
+    const stopsBySlug = async (store: boolean) => {
+      __forceStoreBuildForTests(store);
+      const { toJSON, unmount } = await renderScreen(390);
+      const out: Record<string, string[]> = {};
+      const walk = (n: Json | string | null | (Json | string)[]) => {
+        if (n == null || typeof n === "string") return;
+        if (Array.isArray(n)) return n.forEach(walk);
+        if (n.type === "LinearGradient" && n.props.testID?.startsWith("game-btn-"))
+          out[n.props.testID.slice("game-btn-".length)] = n.props.colors as string[];
+        n.children?.forEach(walk);
+      };
+      walk(toJSON() as Json | Json[] | null);
+      await unmount();
+      return out;
+    };
+    const store = await stopsBySlug(true);
+    const all = await stopsBySlug(false);
+    expect(Object.keys(store)).toHaveLength(7);
+    expect(Object.keys(all)).toHaveLength(12);
+    for (const slug of Object.keys(store)) expect(all[slug]).toEqual(store[slug]);
+  });
+
+  it("locked and unlocked play buttons resolve to the same border width and padding", async () => {
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const { getByTestId } = await renderScreen(390);
+    const locked = StyleSheet.flatten(getByTestId("game-btn-cascade").props.style);
+    const unlocked = StyleSheet.flatten(getByTestId("game-btn-yacht").props.style);
+    expect(locked.borderWidth).toBe(1);
+    expect(unlocked.borderWidth).toBe(1);
+    expect(unlocked.borderColor).toBe("transparent");
+    expect(locked.paddingVertical).toBe(unlocked.paddingVertical);
+  });
+
+  it("compacts the icon zone to TILE_ICON_ZONE (68) around the 64 pt art", async () => {
+    const { getByTestId } = await renderScreen(390);
+    // Every tile is art since #4013, so the zone is checked around Hearts' scene.
+    const icon = getByTestId("game-icon-hearts");
+    const art = StyleSheet.flatten(icon.props.style);
+    expect([art.width, art.height]).toEqual([64, 64]);
+    const zone = icon.parent;
+    expect(StyleSheet.flatten(zone?.props.style).height).toBe(68);
+  });
+
+  it("keeps the Star Swarm image inside the icon zone", async () => {
+    const { getByTestId } = await renderScreen(390);
+    const style = StyleSheet.flatten(getByTestId("game-icon-starswarm").props.style);
+    expect(style.height).toBeLessThanOrEqual(68);
+  });
+
+  it("uses 3 columns at 834 pt: first row holds three tiles", async () => {
+    const { getByTestId } = await renderScreen(834);
+    expect(getByTestId("game-tile-yacht").parent?.parent?.children).toHaveLength(3);
+  });
+
+  it("reserves the same title and description room on every tile, in scalable minimums (#431, #4006)", async () => {
+    const { getByText } = await renderScreen(390);
+    const short = getByText("Guess the five-letter word in six tries.");
+    const long = getByText("Pour colors bottle to bottle — sort them all to win.");
+    const flat = [short, long].map((el) => StyleSheet.flatten(el.props.style));
+    // 16 pt line height x 3 lines at the default font scale.
+    expect(flat[0].minHeight).toBe(flat[1].minHeight);
+    expect(flat[0].minHeight).toBe(48);
+    for (const el of [short, long]) expect(el.props.numberOfLines).toBe(3);
+  });
+});
+
+describe("HomeScreen — tile type (#4006)", () => {
+  /** A tile's title, description and button label, in that order. */
+  function tileTexts(r: Awaited<ReturnType<typeof renderScreen>>, slug: string, button: string) {
+    const tile = within(r.getByTestId(`game-tile-${slug}`));
+    return [
+      tile.getByText(i18n.t(`${slug}:game.title`)),
+      tile.getByText(i18n.t(`${slug}:game.description`)),
+      tile.getByText(button),
+    ];
+  }
+
+  beforeEach(() => {
+    mockWindow.fontScale = 1;
+  });
+  afterEach(() => {
+    mockWindow.fontScale = 1;
+  });
+
+  it("sets the description to 12 pt, the button label to 13 pt, and nothing in a tile below 11 pt", async () => {
+    const r = await renderScreen(390);
+    const desc = StyleSheet.flatten(
+      r.getByText("Guess the five-letter word in six tries.").props.style
+    );
+    expect(desc.fontSize).toBe(12);
+    expect(desc.lineHeight).toBe(16);
+    const title = StyleSheet.flatten(r.getByText("Yacht").props.style);
+    expect([title.fontSize, title.lineHeight]).toEqual([16, 20]);
+    const btn = StyleSheet.flatten(r.getAllByText("Play")[0].props.style);
+    expect(btn.fontSize).toBe(13);
+    expect(btn.textTransform).toBeUndefined();
+    expect(btn.letterSpacing).toBe(0.2);
+    for (const slug of ["yacht", "sort", "daily_word"]) {
+      for (const el of tileTexts(r, slug, "Play")) {
+        expect(StyleSheet.flatten(el.props.style).fontSize).toBeGreaterThanOrEqual(11);
+      }
+    }
+  });
+
+  it("caps every tile text at LOBBY_MAX_FONT_SCALE", async () => {
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const r = await renderScreen(390);
+    expect(LOBBY_MAX_FONT_SCALE).toBe(1.5);
+    for (const [slug, button] of [
+      ["yacht", "Play"],
+      ["cascade", "Unlock"],
+    ]) {
+      for (const el of tileTexts(r, slug, button)) {
+        expect(el.props.maxFontSizeMultiplier).toBe(LOBBY_MAX_FONT_SCALE);
+      }
+    }
+  });
+
+  it("gives title and description no fixed height", async () => {
+    const r = await renderScreen(390);
+    for (const el of [
+      r.getByText("Yacht"),
+      r.getByText("Guess the five-letter word in six tries."),
+    ]) {
+      expect(StyleSheet.flatten(el.props.style).height).toBeUndefined();
+    }
+  });
+
+  it("shows the short Play label as button text with the game's playLabel as accessibility label", async () => {
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const r = await renderScreen(390);
+    expect(r.getByTestId("game-tile-yacht").props.accessibilityLabel).toBe("Play Yacht");
+    expect(within(r.getByTestId("game-btn-yacht")).getByText("Play")).toBeTruthy();
+    expect(r.queryByText("Play Yacht")).toBeNull();
+    // Locked tiles keep Unlock and their card label.
+    expect(within(r.getByTestId("game-btn-cascade")).getByText("Unlock")).toBeTruthy();
+    expect(r.getByTestId("game-tile-cascade").props.accessibilityLabel).toBe(
+      i18n.t("common:home.locked.cardLabel", { title: "Cascade" })
+    );
+  });
+
+  it("keys play labels by slug: two tiles with the same translated title keep their own labels", async () => {
+    i18n.addResource("en", "sort", "game.title", "Daily Word");
+    try {
+      const r = await renderScreen(390);
+      expect(r.getByTestId("game-tile-sort").props.accessibilityLabel).toBe("Play Sort Puzzle");
+      expect(r.getByTestId("game-tile-daily_word").props.accessibilityLabel).toBe(
+        "Play Daily Word"
+      );
+    } finally {
+      i18n.addResource("en", "sort", "game.title", "Sort Puzzle");
+    }
+  });
+
+  it.each([
+    // [system font scale, title lines, title min height, description lines, description min height]
+    [1, 1, 20, 3, 48],
+    // At 1.5x the title may wrap to two lines and descriptions reserve five lines.
+    [1.5, 2, 60, 5, 120],
+    // The cap holds: a 3x system scale reserves no more than 1.5x.
+    [3, 2, 60, 5, 120],
+  ])(
+    "reserves title and description room that grows with font scale %s, up to the cap",
+    async (fontScale, titleLines, titleMin, descLines, descMin) => {
+      mockWindow.fontScale = fontScale;
+      const r = await renderScreen(390);
+      const t = r.getByText("Yacht");
+      const d = r.getByText("Guess the five-letter word in six tries.");
+      expect(t.props.numberOfLines).toBe(titleLines);
+      expect(d.props.numberOfLines).toBe(descLines);
+      expect(StyleSheet.flatten(t.props.style).minHeight).toBe(titleMin);
+      expect(StyleSheet.flatten(d.props.style).minHeight).toBe(descMin);
+    }
+  );
+
+  it("rounds reserved heights up to whole points", () => {
+    const s = lobbyTileTextSizing(1.15);
+    expect(Number.isInteger(s.titleMinHeight)).toBe(true);
+    expect(s.descriptionMinHeight).toBe(Math.ceil(16 * 5 * 1.15));
+  });
+});
+
+describe("HomeScreen — tile status from local data (#4008)", () => {
+  const TWENTY48_DESC = "Slide and merge tiles to reach 2048.";
+
+  async function settle() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+
+  beforeEach(() => {
+    mockTileStatuses = null;
+    __resetPersonalBestForTests();
+  });
+  afterEach(() => {
+    mockTileStatuses = null;
+    mockWindow.fontScale = 1;
+    __forceStoreBuildForTests(false);
+  });
+
+  it("shows Resume for a saved game: the button, the label, the status in place of the description", async () => {
+    await saveTwenty48({ ...newTwenty48(), score: 44 });
+    const r = await renderScreen();
+    // Screen readers hear the status in the label, which still starts with the Play label.
+    const tile = await r.findByLabelText("Play 2048 — in progress, tap to resume");
+    expect(r.getByTestId("game-status-twenty48").props.children).toBe("In progress");
+    expect(r.queryByText(TWENTY48_DESC)).toBeNull();
+    expect(within(r.getByTestId("game-btn-twenty48")).getByText("Resume")).toBeTruthy();
+
+    // Tapping opens the game, which restores the save exactly as it always did.
+    fireEvent.press(tile);
+    expect(mockNavigate).toHaveBeenCalledWith("Twenty48");
+  });
+
+  it("shows Resume for a Sort save, and a tap opens Sort on that level (not the level grid)", async () => {
+    await AsyncStorage.setItem("@sort/catalog_version", String(SORT_CATALOG_VERSION));
+    await AsyncStorage.setItem(
+      "@sort/progress",
+      JSON.stringify({
+        unlockedLevel: 3,
+        currentLevelId: 3,
+        currentState: {
+          bottles: [["red", "blue"], ["blue", "red"], []],
+          moveCount: 2,
+          undosUsed: 0,
+          isComplete: false,
+          selectedBottleIndex: null,
+        },
+      })
+    );
+    const r = await renderScreen();
+    const tile = await r.findByLabelText("Play Sort Puzzle — in progress, tap to resume");
+    expect(r.getByTestId("game-status-sort").props.children).toBe("In progress");
+    expect(within(r.getByTestId("game-btn-sort")).getByText("Resume")).toBeTruthy();
+
+    fireEvent.press(tile);
+    expect(mockNavigate).toHaveBeenCalledWith("Sort", { resume: true });
+  });
+
+  it("shows Play and opens Sort plainly when there is no Sort board to continue", async () => {
+    await AsyncStorage.setItem("@sort/catalog_version", String(SORT_CATALOG_VERSION));
+    await AsyncStorage.setItem(
+      "@sort/progress",
+      JSON.stringify({ unlockedLevel: 3, currentLevelId: null })
+    );
+    const r = await renderScreen();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(r.queryByTestId("game-status-sort")).toBeNull();
+    fireEvent.press(r.getByLabelText("Play Sort Puzzle"));
+    expect(mockNavigate).toHaveBeenCalledWith("Sort");
+  });
+
+  it("renders the grid with the normal description while a read has not landed", async () => {
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    getItem.mockImplementation((key: string) =>
+      key === "twenty48_game_v2" ? new Promise(() => undefined) : Promise.resolve(null)
+    );
+    try {
+      const r = await renderScreen();
+      await settle();
+      expect(r.getByLabelText("Play 2048")).toBeTruthy();
+      expect(r.getByText(TWENTY48_DESC)).toBeTruthy();
+      expect(r.getByLabelText("Play Yacht")).toBeTruthy();
+    } finally {
+      // Put the in-memory store back (jest.setup.ts): mockReset drops this implementation.
+      getItem.mockReset();
+      (AsyncStorage as unknown as { __restoreDefaults: () => void }).__restoreDefaults();
+    }
+  });
+
+  it("keeps Play and the description on a tile with no save, and a tap starts a new game", async () => {
+    const r = await renderScreen();
+    await settle();
+    expect(r.queryByTestId("game-status-twenty48")).toBeNull();
+    expect(r.getByText(TWENTY48_DESC)).toBeTruthy();
+    expect(within(r.getByTestId("game-btn-twenty48")).getByText("Play")).toBeTruthy();
+    fireEvent.press(r.getByLabelText("Play 2048"));
+    expect(mockNavigate).toHaveBeenCalledWith("Twenty48");
+  });
+
+  it("shows the best moves of a FreeCell with a best and no game in progress", async () => {
+    await recordResult("freecell", 1234);
+    await saveFreeCell(dealFreeCell(5));
+    const r = await renderScreen();
+    const status = await r.findByTestId("game-status-freecell");
+    expect(status.props.children).toBe("Best moves: 1,234");
+    expect(r.getByLabelText("Play FreeCell").props.accessibilityValue).toEqual({
+      text: "Best moves: 1,234",
+    });
+  });
+
+  it("formats each best in its game's unit for the locale, in the muted colour", async () => {
+    mockTileStatuses = {
+      twenty48: { kind: "best", value: 12345, unit: "score" },
+      solitaire: { kind: "best", value: 754_000, unit: "time" },
+      freecell: { kind: "best", value: 88, unit: "moves" },
+    };
+    const { getByTestId } = await renderScreen();
+    expect(getByTestId("game-status-twenty48").props.children).toBe("Best 12,345");
+    expect(getByTestId("game-status-solitaire").props.children).toBe("Best 12:34");
+    expect(getByTestId("game-status-freecell").props.children).toBe("Best moves: 88");
+    const muted = StyleSheet.flatten(getByTestId("game-status-twenty48").props.style).color;
+    expect(muted).toBe(StyleSheet.flatten(getByTestId("game-status-freecell").props.style).color);
+  });
+
+  it("shows Done today for Daily Word in the tertiary colour, and Resume in the accent colour", async () => {
+    mockTileStatuses = { daily_word: { kind: "doneToday" }, yacht: { kind: "resume" } };
+    const { getByTestId, getByLabelText } = await renderScreen();
+    const done = getByTestId("game-status-daily_word");
+    expect(done.props.children).toBe("Done today");
+    expect(getByLabelText("Play Daily Word").props.accessibilityValue).toEqual({
+      text: "Done today",
+    });
+    const resume = getByTestId("game-status-yacht");
+    expect(StyleSheet.flatten(resume.props.style).color).not.toBe(
+      StyleSheet.flatten(done.props.style).color
+    );
+    expect(getByLabelText("Play Yacht — in progress, tap to resume")).toBeTruthy();
+    // Daily Word has no Resume: its button still says Play.
+    expect(within(getByTestId("game-btn-daily_word")).getByText("Play")).toBeTruthy();
+  });
+
+  it("the status takes the description's reserved lines: the tile height is unchanged", async () => {
+    mockWindow.fontScale = 1.5;
+    const plain = await renderScreen();
+    const without = plain.getByText(TWENTY48_DESC);
+    const reserved = [
+      without.props.numberOfLines,
+      StyleSheet.flatten(without.props.style).minHeight,
+    ];
+    await plain.unmount();
+
+    mockTileStatuses = { twenty48: { kind: "resume" } };
+    const withStatus = (await renderScreen()).getByTestId("game-status-twenty48");
+    expect([
+      withStatus.props.numberOfLines,
+      StyleSheet.flatten(withStatus.props.style).minHeight,
+    ]).toEqual(reserved);
+    expect(reserved).toEqual([
+      lobbyTileTextSizing(1.5).descriptionLines,
+      lobbyTileTextSizing(1.5).descriptionMinHeight,
+    ]);
+    expect(withStatus.props.maxFontSizeMultiplier).toBe(LOBBY_MAX_FONT_SCALE);
+  });
+
+  it("gives a locked tile no status", async () => {
+    mockTileStatuses = { twenty48: { kind: "resume" } };
+    mockCanPlay.mockImplementation((slug: string) => slug !== "twenty48");
+    const r = await renderScreen();
+    expect(r.queryByTestId("game-status-twenty48")).toBeNull();
+    expect(r.queryByLabelText(/in progress/)).toBeNull();
+    expect(r.getByText(TWENTY48_DESC)).toBeTruthy();
+  });
+
+  it("in a store build reads no hidden game's storage", async () => {
+    __forceStoreBuildForTests(true);
+    const r = await renderScreen();
+    await settle();
+    expect(r.queryByTestId("game-tile-cascade")).toBeNull();
+    const keys = (AsyncStorage.getItem as jest.Mock).mock.calls.map(([key]) => String(key));
+    expect(keys.filter((k) => /cascade|starswarm|mahjong|hearts|blackjack/.test(k))).toEqual([]);
+    // It did read a visible game's save.
+    expect(keys).toContain("twenty48_game_v2");
+  });
+
+  it("reads again when Home regains focus, and writes nothing", async () => {
+    await renderScreen();
+    await settle();
+    const focus = mockAddListener.mock.calls.filter(([event]) => event === "focus");
+    expect(focus.length).toBeGreaterThan(0);
+    await saveTwenty48({ ...newTwenty48(), score: 8 });
+    (AsyncStorage.setItem as jest.Mock).mockClear();
+    (AsyncStorage.getItem as jest.Mock).mockClear();
+    await act(async () => {
+      focus.forEach(([, cb]) => cb());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    // It read the save again, and wrote no game, best or board key (Home's own keys aside).
+    const read = (AsyncStorage.getItem as jest.Mock).mock.calls.map(([key]) => String(key));
+    expect(read).toContain("twenty48_game_v2");
+    const written = (AsyncStorage.setItem as jest.Mock).mock.calls.map(([key]) => String(key));
+    expect(
+      written.filter((k) =>
+        /twenty48|solitaire|freecell|sudoku|yacht|personal_best|daily_word/.test(k)
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("HomeScreen — tile press feedback and haptic (#4007)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  // A real touch: Pressable shows its pressed state from the responder grant, after
+  // Pressability's short highlight delay, not from the onPressIn prop alone.
+  const touch = { nativeEvent: { touches: [], changedTouches: [], target: 1 }, persist: () => {} };
+  const holdDown = async (el: Parameters<typeof fireEvent>[0]) => {
+    await fireEvent(el, "responderGrant", touch);
+    await act(async () => {
+      jest.advanceTimersByTime(200);
+    });
+  };
+
+  const tileStyle = (el: { props: { style?: unknown } }) =>
+    StyleSheet.flatten(el.props.style as never) as { opacity?: number; transform?: unknown[] };
+
+  it("dims to 0.85 and scales to 0.97 while pressed", async () => {
+    const { getByTestId } = await renderScreen(390);
+    expect(tileStyle(getByTestId("game-tile-yacht")).opacity).toBeUndefined();
+    await holdDown(getByTestId("game-tile-yacht"));
+    const pressed = tileStyle(getByTestId("game-tile-yacht"));
+    expect(pressed.opacity).toBe(0.85);
+    expect(pressed.transform).toEqual([{ scale: 0.97 }]);
+  });
+
+  it("gives a locked tile the same feedback", async () => {
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const { getByTestId } = await renderScreen(390);
+    await holdDown(getByTestId("game-tile-cascade"));
+    const style = tileStyle(getByTestId("game-tile-cascade"));
+    expect(style.opacity).toBe(0.85);
+    expect(style.transform).toEqual([{ scale: 0.97 }]);
+  });
+
+  it("under Reduce Motion dims but does not scale", async () => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    const { getByTestId } = await renderScreen(390);
+    await act(async () => {});
+    await holdDown(getByTestId("game-tile-yacht"));
+    const style = tileStyle(getByTestId("game-tile-yacht"));
+    expect(style.opacity).toBe(0.85);
+    expect(style.transform).toBeUndefined();
+  });
+
+  it.each(["ios", "android"] as const)("taps a light haptic once on a tap on %s", async (os) => {
+    jest.replaceProperty(Platform, "OS", os);
+    const { getByTestId } = await renderScreen(390);
+    await fireEvent(getByTestId("game-tile-yacht"), "pressIn");
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    await fireEvent.press(getByTestId("game-tile-yacht"));
+    expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+  });
+
+  it("taps no haptic when a touch-down is taken over by a scroll", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    const { getByTestId } = await renderScreen(390);
+    await holdDown(getByTestId("game-tile-yacht"));
+    await fireEvent(getByTestId("game-tile-yacht"), "responderTerminate", touch);
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("taps no haptic on web", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    const { getByTestId } = await renderScreen(390);
+    await fireEvent.press(getByTestId("game-tile-yacht"));
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalled();
+  });
+
+  it("taps no haptic when sound effects are muted", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    await AsyncStorage.setItem("settings.soundMuted", "true");
+    const { SoundProvider } = jest.requireActual("../../game/_shared/SoundContext");
+    const { getByTestId } = await render(
+      <SafeAreaProvider initialMetrics={testInsets}>
+        <SoundProvider>
+          <ThemeProvider>
+            <HomeScreen />
+          </ThemeProvider>
+        </SoundProvider>
+      </SafeAreaProvider>
+    );
+    await act(async () => {});
+    await fireEvent.press(getByTestId("game-tile-yacht"));
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+  });
+
+  it("a rejected haptic never breaks the tile", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    (Haptics.impactAsync as jest.Mock).mockRejectedValueOnce(new Error("no engine"));
+    const { getByLabelText } = await renderScreen(390);
+    await fireEvent.press(getByLabelText("Play Solitaire"));
+    expect(mockNavigate).toHaveBeenCalledWith("Solitaire");
+  });
+
+  it("a haptic that throws synchronously never blocks navigation", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    (Haptics.impactAsync as jest.Mock).mockImplementationOnce(() => {
+      throw new Error("native module missing");
+    });
+    const { getByLabelText } = await renderScreen(390);
+    await fireEvent.press(getByLabelText("Play Solitaire"));
+    expect(mockNavigate).toHaveBeenCalledWith("Solitaire");
+  });
+
+  it("still runs the tile action and opens the paywall on a locked tile", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
+    const { getByTestId } = await renderScreen(390);
+    await fireEvent.press(getByTestId("game-tile-sudoku"));
+    expect(mockNavigate).toHaveBeenCalledWith("Sudoku");
+    await fireEvent.press(getByTestId("game-tile-cascade"));
+    expect(mockNavigate).toHaveBeenCalledWith("Paywall", { gameSlug: "cascade" });
+  });
+});
+
+describe("HomeScreen — fixed tile order, Daily Word first (#4009)", () => {
+  afterEach(() => __forceStoreBuildForTests(false));
+
+  const tileOrder = (getAllByTestId: (id: RegExp) => { props: { testID: string } }[]) =>
+    getAllByTestId(/^game-tile-/).map((el) => el.props.testID.replace("game-tile-", ""));
+
+  it("store build: Daily Word first, the rest in their existing order", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(390);
+    expect(tileOrder(getAllByTestId)).toEqual([
+      "daily_word",
+      "yacht",
+      "twenty48",
+      "solitaire",
+      "freecell",
+      "sudoku",
+      "sort",
+    ]);
+  });
+
+  it("all games: Daily Word first, hidden games keep their relative slots", async () => {
+    const { getAllByTestId } = await renderScreen(390);
+    expect(tileOrder(getAllByTestId)).toEqual([
+      "daily_word",
+      "yacht",
+      "cascade",
+      "blackjack",
+      "twenty48",
+      "solitaire",
+      "freecell",
+      "hearts",
+      "sudoku",
+      "starswarm",
+      "mahjong",
+      "sort",
+    ]);
+  });
+
+  it("the single-column path uses the same order", async () => {
+    __forceStoreBuildForTests(true);
+    const { getAllByTestId } = await renderScreen(300);
+    expect(tileOrder(getAllByTestId)[0]).toBe("daily_word");
   });
 });

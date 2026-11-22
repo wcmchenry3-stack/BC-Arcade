@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { GameShell } from "../GameShell";
+import { GAME_SHELL_BOTTOM_GAP, GameShell } from "../GameShell";
 
 // GameShell's Stats item (#2635) navigates through useNavigation.
 const mockShellNavigate = jest.fn();
@@ -26,6 +26,11 @@ jest.mock("react-i18next", () => ({
 
 // Mutable so the gutter cases (#2976) can give the device side insets.
 const mockInsets = { top: 44, bottom: 0, left: 0, right: 0 };
+// The tab bar height react-navigation reports: 0 outside a tab navigator (#3624).
+let mockTabBarHeight = 0;
+jest.mock("../../../hooks/useSafeBottomTabBarHeight", () => ({
+  useSafeBottomTabBarHeight: () => mockTabBarHeight,
+}));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => mockInsets,
 }));
@@ -87,15 +92,49 @@ describe("GameShell", () => {
     expect(screen.getByLabelText("a11y.loading")).toBeTruthy();
   });
 
-  it("treats a caller paddingBottom as a minimum under the tab bar height", async () => {
-    await render(
-      <GameShell gameType={null} title="Yacht" onBack={noop} style={{ paddingBottom: 24 }}>
-        <Text>game content</Text>
-      </GameShell>
-    );
-    // Outside a tab navigator the tab bar height is 0, so the caller's 24 wins.
-    const root = screen.toJSON() as { props: { style: unknown } };
-    expect(StyleSheet.flatten(root.props.style as never).paddingBottom).toBe(24);
+  describe("bottom padding (#3624)", () => {
+    afterEach(() => {
+      mockTabBarHeight = 0;
+      mockInsets.bottom = 0;
+    });
+    async function paddingBottom(callerPadding?: number) {
+      await render(
+        <GameShell
+          gameType={null}
+          title="Yacht"
+          onBack={noop}
+          style={callerPadding === undefined ? undefined : { paddingBottom: callerPadding }}
+        >
+          <Text>game content</Text>
+        </GameShell>
+      );
+      const root = screen.toJSON() as { props: { style: unknown } };
+      return StyleSheet.flatten(root.props.style as never).paddingBottom;
+    }
+
+    it("inside the tab navigator, is the caller's gap alone: the tab bar is below, in flow", async () => {
+      mockTabBarHeight = 83;
+      mockInsets.bottom = 34; // the tab bar clears it
+      expect(await paddingBottom(16)).toBe(16);
+    });
+
+    it("inside the tab navigator with no caller gap, is the default gap, not the tab bar's height", async () => {
+      mockTabBarHeight = 83;
+      expect(await paddingBottom()).toBe(GAME_SHELL_BOTTOM_GAP);
+      expect(GAME_SHELL_BOTTOM_GAP).toBe(8);
+    });
+
+    it("lets a screen ask for no gap at all", async () => {
+      mockTabBarHeight = 83;
+      expect(await paddingBottom(0)).toBe(0);
+    });
+
+    it("outside the tab navigator, clears the bottom inset, or the caller's gap if larger", async () => {
+      mockInsets.bottom = 34;
+      expect(await paddingBottom(16)).toBe(34);
+      mockInsets.bottom = 0;
+      expect(await paddingBottom(24)).toBe(24);
+    });
   });
 
   it("renders an error banner when error is a non-empty string", async () => {

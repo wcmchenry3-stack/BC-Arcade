@@ -71,3 +71,11 @@ describe("playClock (#2750)", () => {
     });
   });
 });
+
+describe("playClock - device clock set back (#3738)", () => {
+  it("banks 0 for a segment whose now is before startedAt, on save and on read", () => {
+    expect(clockForSave({ startedAt: 5_000, accumulatedMs: 500 }, 1_000).accumulatedMs).toBe(500);
+    expect(clockElapsedMs({ startedAt: 5_000, accumulatedMs: 500 }, 1_000)).toBe(500);
+    expect(pauseClock({ startedAt: 5_000, accumulatedMs: 0 }, 1_000).accumulatedMs).toBe(0);
+  });
+});

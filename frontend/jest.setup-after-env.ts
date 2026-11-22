@@ -55,3 +55,34 @@ beforeEach(() => {
     )
     .resetSentryThrottle();
 });
+
+// The shared personal best (#3757) caches each game's bests in memory: storage is cleared
+// between tests, so the cache must be too.
+beforeEach(() => {
+  jest
+    .requireActual<typeof import("./src/game/_shared/personalBest")>(
+      "./src/game/_shared/personalBest"
+    )
+    .__resetPersonalBestForTests();
+});
+
+// AsyncStorage's methods are jest.fn()s with in-memory implementations, and
+// spyOn(...).mockRestore() on one strips that implementation (#3895). Re-install
+// any stripped default so a restore in one test cannot make the next test's
+// storage reads return undefined. A file that supplies its own AsyncStorage mock
+// has no such helper, so the call is optional.
+beforeEach(() => {
+  (
+    jest.requireMock("@react-native-async-storage/async-storage") as {
+      __restoreDefaults?: () => void;
+    }
+  ).__restoreDefaults?.();
+});
+
+// The React Native jest setup makes `performance.now` a jest.fn() over Date.now, so
+// spyOn(performance, "now").mockRestore() strips its implementation and the play clock
+// (`monotonicNow`, #3925) would read undefined in the next test. Reset it every test.
+beforeEach(() => {
+  const now = (globalThis as { performance?: { now?: unknown } }).performance?.now;
+  if (jest.isMockFunction(now)) now.mockImplementation(() => Date.now());
+});

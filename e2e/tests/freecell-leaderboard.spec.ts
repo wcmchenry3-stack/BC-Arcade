@@ -2,7 +2,8 @@
  * freecell-leaderboard.spec.ts — GH #2035, #2508, #2632
  *
  * Result card + leaderboard: inject a game one card from winning (the King
- * of Spades alone in column 0), which auto-completes on load. Verify the
+ * of Spades alone in column 0), and tap its Auto-Complete button (#3566: FreeCell
+ * never starts it by itself). Verify the
  * shared result card shows where the synced game ranks (GET /games/{id}/rank;
  * the win's move count is its score) under the player's display name with no
  * name entry (or asks for one once when none is set). Nothing goes to POST
@@ -51,8 +52,11 @@ const NEAR_WIN_STATE = {
 const DISPLAY_NAME_KEY = "player_display_name";
 
 /** Mocks the rank lookup and records any legacy FreeCell call. */
-const routeFreecellApi = (page: Page) =>
-  routeSessionBoard(page, { legacyPattern: "**/freecell/**" });
+const routeFreecellApi = (page: Page, playerName: string | null = null) =>
+  routeSessionBoard(page, {
+    legacyPattern: "**/freecell/**",
+    playerName,
+  });
 
 /** Opens a saved game, optionally under a display name. */
 async function openGame(
@@ -74,9 +78,10 @@ async function openGame(
     .waitFor({ timeout: 10_000 });
 }
 
-/** Wins on load (the last card auto-completes) and waits out the celebration. */
+/** Wins with the Auto-Complete button (the last card) and waits out the celebration. */
 async function winGame(page: Page, displayName?: string): Promise<void> {
   await openGame(page, NEAR_WIN_STATE, displayName);
+  await page.getByRole("button", { name: "Auto-Complete" }).click();
   await expect(page.getByTestId("freecell-result")).toBeVisible({
     timeout: 10_000,
   });
@@ -84,7 +89,7 @@ async function winGame(page: Page, displayName?: string): Promise<void> {
 
 test.describe("FreeCell — result card + leaderboard", () => {
   test("shows the rank under the saved display name", async ({ page }) => {
-    const calls = await routeFreecellApi(page);
+    const calls = await routeFreecellApi(page, "Tester");
     await winGame(page, "Tester");
 
     const card = page.getByTestId("freecell-result");
@@ -123,7 +128,7 @@ test.describe("FreeCell — result card + leaderboard", () => {
   test("Play Again dismisses the card and starts a fresh game", async ({
     page,
   }) => {
-    await routeFreecellApi(page);
+    await routeFreecellApi(page, "Tester");
     await winGame(page, "Tester");
 
     await page
@@ -134,13 +139,15 @@ test.describe("FreeCell — result card + leaderboard", () => {
     await expect(page.getByTestId("freecell-result")).not.toBeVisible({
       timeout: 3_000,
     });
-    await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByLabel("Moves: 0", { exact: true })).toBeVisible({
+      timeout: 3_000,
+    });
   });
 
   test("a resumed, already-won game shows the card without a rank lookup", async ({
     page,
   }) => {
-    const calls = await routeFreecellApi(page);
+    const calls = await routeFreecellApi(page, "Tester");
     await openGame(page, WON_STATE, "Tester");
 
     await expect(page.getByTestId("freecell-result")).toBeVisible({

@@ -25,6 +25,25 @@ describe("hearts storage", () => {
     expect(AsyncStorage.setItem).toHaveBeenCalledWith("hearts_game", JSON.stringify(state));
   });
 
+  it("saveGame leaves out the events: their sounds and moments already played (#3588)", async () => {
+    const state = {
+      ...dealGame(),
+      accumulatedMs: 0,
+      events: [{ type: "heartsBroken" }, { type: "moonShot", shooter: 1 }] as HeartsState["events"],
+    };
+    await saveGame(state);
+    const written = JSON.parse((AsyncStorage.setItem as jest.Mock).mock.calls.at(-1)![1] as string);
+    expect(written).not.toHaveProperty("events");
+  });
+
+  it("loadGame drops the events an older save still carries (#3588)", async () => {
+    const old = { ...dealGame(), events: [{ type: "queenOfSpadesPlayed", seat: 2 }] };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(old));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded).not.toHaveProperty("events");
+  });
+
   it("loadGame returns null when no key exists", async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     expect(await loadGame()).toBeNull();
@@ -163,6 +182,11 @@ describe("hearts storage", () => {
   });
 
   describe("positive-path round trips through saveGame/loadGame (#2224)", () => {
+    /** What a round trip keeps: everything but the events, which are not saved (#3588). */
+    const kept = (s: HeartsState) => {
+      const { events: _played, ...rest } = s;
+      return JSON.parse(JSON.stringify(rest));
+    };
     /** Save through the real saveGame, then load what was written through loadGame. */
     async function roundTrip(state: HeartsState): Promise<HeartsState | null> {
       (AsyncStorage.setItem as jest.Mock).mockClear();
@@ -182,7 +206,7 @@ describe("hearts storage", () => {
       const check = async (s: HeartsState, tag: string) => {
         const loaded = await roundTrip(s);
         expect(loaded).not.toBeNull();
-        expect(loaded).toEqual(JSON.parse(JSON.stringify(s)));
+        expect(loaded).toEqual(kept(s));
         seen.add(tag);
       };
       let s = dealGame();
@@ -237,7 +261,7 @@ describe("hearts storage", () => {
       expect(scored.scoreHistory).toEqual([[26, 0, 26, 26]]);
       const loaded = await roundTrip(scored);
       expect(loaded).not.toBeNull();
-      expect(loaded).toEqual(JSON.parse(JSON.stringify(scored)));
+      expect(loaded).toEqual(kept(scored));
     });
   });
 

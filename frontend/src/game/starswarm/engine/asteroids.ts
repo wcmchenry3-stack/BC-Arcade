@@ -20,7 +20,7 @@ import type {
   TierStats,
   Vec2,
 } from "../types";
-import { makePickup, spawnExplosion } from "./entities";
+import { enemyExplosion, makePickup, rockExplosion } from "./entities";
 import { weaponsFree } from "./extraction";
 import {
   circleCircle,
@@ -38,7 +38,11 @@ import { bumpWave, markWaveDev } from "./waveStats";
 import {
   ASTEROID_ATTENTION,
   ASTEROID_ENTRY_ATTEMPTS,
+  ASTEROID_CORNER_SPREAD,
+  ASTEROID_DESPAWN_MARGIN,
   ASTEROID_ENTRY_EDGE,
+  ASTEROID_SIDE_MARGIN,
+  ASTEROID_SPLIT_VX,
   ASTEROID_HIT_FLASH_MS,
   ASTEROID_INTERVAL_MAX,
   ASTEROID_INTERVAL_MIN,
@@ -392,7 +396,8 @@ export function asteroidEntryMetrics(
  *  - points downward by at least ASTEROID_MIN_ANGLE (no flat skim),
  *  - spends at least ASTEROID_MIN_CROSS_FRAC × canvasWidth of path inside the field,
  *  - leaves at least ASTEROID_MIN_REACTION_MS before it can reach the player's row, and
- *  - does not start overlapping any of `actors` (ships waiting off-screen, for instance).
+ *  - does not start overlapping any of `actors` (ships still off-screen above the field, or
+ *    Grunts waiting at the Carrier's bay, for instance).
  * Up to ASTEROID_ENTRY_ATTEMPTS candidates are drawn from `rand`; returns null if none is fair.
  * Pure: the same `rand` stream yields the same plan, so seeded runs replay exactly.
  */
@@ -436,12 +441,12 @@ export function planAsteroidEntry(
         y = -off;
         break;
       case "topLeft":
-        x = -off - 20 * rand();
-        y = -off - 20 * rand();
+        x = -off - ASTEROID_CORNER_SPREAD * rand();
+        y = -off - ASTEROID_CORNER_SPREAD * rand();
         break;
       default:
-        x = canvasW + off + 20 * rand();
-        y = -off - 20 * rand();
+        x = canvasW + off + ASTEROID_CORNER_SPREAD * rand();
+        y = -off - ASTEROID_CORNER_SPREAD * rand();
     }
     const tx = canvasW * (0.15 + 0.7 * rand());
     const ty = canvasH * (0.25 + 0.45 * rand());
@@ -549,7 +554,10 @@ export function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmSta
       rotation: a.rotation + a.spin * dtMs,
       hitFlashTimer: Math.max(0, a.hitFlashTimer - dtMs),
     }),
-    (a) => a.y - a.radius < canvasH + 40 && a.x > -60 - a.radius && a.x < canvasW + 60 + a.radius
+    (a) =>
+      a.y - a.radius < canvasH + ASTEROID_DESPAWN_MARGIN &&
+      a.x > -ASTEROID_SIDE_MARGIN - a.radius &&
+      a.x < canvasW + ASTEROID_SIDE_MARGIN + a.radius
   );
 
   // The timer only runs mid-wave, so a wave never opens with a rock already on the way in.
@@ -610,8 +618,18 @@ export function absorbBulletsIntoRocks<B extends Bullet>(
 }
 
 /**
+ * A ship still waiting for its path (negative `pathT`) above the screen, as a wave's swoop-in
+ * stagger does, cannot be struck. A fleeing Grunt in its stagger is on screen (#2489), and so is a
+ * reinforcement waiting at the Carrier's bay for its launch stagger (#3561).
+ */
+function waitingOffScreen(e: Enemy): boolean {
+  return e.pathT < 0 && e.phase !== "Fleeing" && e.y < 0;
+}
+
+/**
  * Rocks ram ships: one hit per enemy per rock, in any phase once the ship is on screen
- * (`pathT >= 0` — swooping reinforcements included). A small rock shatters on whatever it hits,
+ * (see `waitingOffScreen`: swooping reinforcements included, and since #3561 Grunts waiting at
+ * the Carrier's bay for their launch stagger). A small rock shatters on whatever it hits,
  * a large one keeps going.
  *
  * #2844: the Carrier's immunity comes from its armor, not its tier. `armored` (the tick's
@@ -656,8 +674,7 @@ export function rocksStrikeEnemies(
     if (rock.hp <= 0) continue;
     for (let ei = 0; ei < outEnemies.length; ei++) {
       const e = outEnemies[ei]!;
-      if (!e.isAlive || (e.pathT < 0 && e.phase !== "Fleeing") || rock.hitEnemyIds.includes(e.id))
-        continue;
+      if (!e.isAlive || waitingOffScreen(e) || rock.hitEnemyIds.includes(e.id)) continue;
       if (!asteroidHitsBox(rock, e)) continue;
       if (e.tier === "Carrier" && armored) {
         outEnemies[ei] = { ...e, hitFlashTimer: HIT_FLASH_DURATION };
@@ -669,7 +686,7 @@ export function rocksStrikeEnemies(
       const newHp = e.hp - 1;
       struck.push(e.tier);
       if (newHp <= 0) {
-        explosions.push(spawnExplosion(e.x, e.y));
+        explosions.push(enemyExplosion(e));
         if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, canvasH, "carrier")); // #2488
         (destroyed ??= []).push(e.tier);
         outEnemies[ei] = { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
@@ -708,7 +725,8 @@ export function settleRocks(
   rocks: readonly Asteroid[],
   explosions: Explosion[],
   drops: PowerUp[],
-  canvasH: number
+  canvasH: number,
+  salvageChance: number = SALVAGE_DROP_CHANCE
 ): Asteroid[] {
   const out: Asteroid[] = [];
   for (const a of rocks) {
@@ -716,15 +734,19 @@ export function settleRocks(
       out.push(a);
       continue;
     }
-    explosions.push(spawnExplosion(a.x, a.y));
+    explosions.push(rockExplosion(a)); // #3597, #3596: dust in the rock's palette
     // Only a rock broken by shots pays out — one that shattered on a hull (the player's or the
     // Carrier's field) would otherwise hand the ship it just hit a free upgrade (#2540 review).
-    if (a.kind === "large" && !a.shattered && rng() < SALVAGE_DROP_CHANCE) {
+    // #3533: the draw is unconditional so the random stream stays deterministic at any rate.
+    const salvageRoll = rng();
+    if (a.kind === "large" && !a.shattered && salvageRoll < salvageChance) {
       drops.push(makePickup("salvage", a.x, a.y, canvasH, "rock"));
     }
     if (a.kind === "large" && !a.shattered) {
       for (const side of [-1, 1] as const) {
-        out.push(makeAsteroid("small", a.x + side * 10, a.y, a.vx + side * 0.06, a.vy));
+        out.push(
+          makeAsteroid("small", a.x + side * 10, a.y, a.vx + side * ASTEROID_SPLIT_VX, a.vy)
+        );
       }
     }
   }
@@ -942,6 +964,7 @@ export function tickAsteroidThreats(
           height: BULLET_E_H,
           damage: 1,
           flak: true,
+          tier: e.tier, // #3710
         });
         // #2844: the attention cost — this ship's next player-directed shot slips back
         e = payAttention({ ...e, flakCooldown: FLAK_COOLDOWN }, "flak");

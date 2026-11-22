@@ -189,13 +189,43 @@ BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
 # unpruned, ~350 B per game, until the owner revisits that.
 DAILY_WORD_CAP = ReplayCap(max_events=4, max_bytes=4 * 600)
 
-# Cascade: provisional until the Cascade refactor (not measured; owner, #3318).
-CASCADE_CAP = ReplayCap(max_events=3_000, max_bytes=1_000 * 900)
+# Bottle Sort (#3387, epic #3383): ``moves`` events of up to 25 actions (a pour is
+# ``[0, 15, 14]``, 9 B), and the app records at most 12 of them a level
+# (``SORT_MAX_UNITS``). The cap is rows x (the event byte cap + row overhead):
+# 12 x (1,024 B ``MAX_MOVES_BYTES`` + 200 B ``ROW_OVERHEAD_BYTES``) = 14,688 B, with
+# 12 events. An honest worst row (25 widest pours, the widest envelope) is 369 B as
+# ``jsonb::text`` (288 B compact), so 12 of them are 12 x (369 + 200) = 6,828 B, under
+# half the cap (tests/test_sort_replay.py). The widest event the validator accepts
+# (32 actions, split into parts) is 496 B stored: 12 x (496 + 200) = 8,352 B, still under. Lifecycle rows are not counted (their own
+# cap). Counts are held to the device's limits; the figures are kept in step by a test.
+SORT_MAX_UNITS = 12
+SORT_CAP = ReplayCap(
+    max_events=SORT_MAX_UNITS,
+    max_bytes=SORT_MAX_UNITS * (1_024 + ROW_OVERHEAD_BYTES),
+)
+
+# Cascade (#3858, cascade/events.py; frontend/src/game/cascade/replay.ts): one ``drop`` and
+# one ``merge`` row per unit of 30 drops (20 before #3967), and the app records at most 32 units
+# a game (``CASCADE_MAX_UNITS``, 960 drops, about 30 minutes; 48 units of 20 before); a background flush cuts a unit short, so this also
+# bounds a player who backgrounds after every drop). Measured on the app's seeded games, as
+# ``jsonb::text`` plus ROW_OVERHEAD_BYTES a row: the golden 271-drop win on the 12-tier ladder
+# (tests/fixtures/cascade_replay_v1.json) is 20 rows and 13,089 B, about 1.3 KB a unit; a
+# 10-minute game is about 18 rows and 12 KB (frontend/perf/replay-budget.json; #3967. On the
+# 11-tier ladder with 20-drop units: 16 rows and 8,192 B, 26 rows and 13 KB). 32 units of
+# the widest honest rows (30 drops at 6-digit steps, 45 merges, the 32 danger moments a game
+# may keep on one of them) are 64 rows and 60,437 B (tests/test_cascade_replay_events.py;
+# 96 rows and 66,901 B at 48 units of 20):
+# 128 events and 80 KB leave room for merge parts. Lifecycle rows are not counted (their own
+# cap). This replaces the provisional 3,000 events / 900 KB (#3318), set before Cascade
+# recorded anything.
+CASCADE_MAX_UNITS = 32
+CASCADE_CAP = ReplayCap(max_events=128, max_bytes=80 * 1024)
 
 CAPS_BY_GAME_TYPE: dict[str, ReplayCap] = {
     "blackjack": BLACKJACK_CAP,
     "cascade": CASCADE_CAP,
     "daily_word": DAILY_WORD_CAP,
+    "sort": SORT_CAP,
     "starswarm": STARSWARM_CAP,
     "twenty48": TWENTY48_CAP,
 }

@@ -1,11 +1,12 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialIcons from "../icons/MaterialIcons";
+import MaterialCommunityIcons from "../icons/MaterialCommunityIcons";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
-import type { BlackjackLayout } from "../../game/blackjack/layout";
+import { DOCK_BUTTON_HEIGHT } from "../../game/blackjack/layout";
 
+/** Hit, Stand, Double Down and Split: four equal buttons across the table's dock (#3580). */
 interface Props {
   onHit: () => void;
   onStand: () => void;
@@ -13,20 +14,26 @@ interface Props {
   onSplit: () => void;
   doubleDownAvailable: boolean;
   splitAvailable: boolean;
-  loading: boolean;
-  layout: BlackjackLayout;
+  /**
+   * Every button greyed and off: the dealer's turn is still playing out on the felt (owner
+   * decision, #3720), so the result's dock only replaces this one when the result shows.
+   */
+  disabled?: boolean;
 }
+
+const ICON_SIZE = 20;
 
 export default function ActionButtons({
   onHit,
   onStand,
   onDoubleDown,
   onSplit,
-  doubleDownAvailable,
-  splitAvailable,
-  loading,
-  layout,
+  doubleDownAvailable: canDouble,
+  splitAvailable: canSplit,
+  disabled = false,
 }: Props) {
+  const doubleDownAvailable = canDouble && !disabled;
+  const splitAvailable = canSplit && !disabled;
   const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
 
@@ -36,30 +43,13 @@ export default function ActionButtons({
 
   const splitLabel = splitAvailable ? t("actions.splitLabel") : t("actions.splitDisabledLabel");
 
-  const btnStyle = {
-    width: layout.buttonSize,
-    height: layout.buttonSize,
-    borderRadius: layout.buttonRadius,
-  };
-
   return (
-    <View
-      style={[
-        styles.cluster,
-        {
-          gap: layout.clusterGap,
-          paddingHorizontal: layout.clusterPaddingH,
-          paddingVertical: layout.clusterPaddingV,
-          backgroundColor: colors.surfaceHigh,
-          borderColor: colors.border,
-        },
-      ]}
-    >
+    <View style={styles.dock}>
       {/* Hit — primary cyan gradient CTA */}
       <Pressable
         style={[
           styles.btn,
-          btnStyle,
+          styles.dockBtn,
           {
             backgroundColor: colors.accent,
             shadowColor: colors.accent,
@@ -68,40 +58,42 @@ export default function ActionButtons({
             shadowRadius: 12,
             elevation: 6,
           },
+          disabled && styles.off,
         ]}
         onPress={onHit}
-        disabled={loading}
+        disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={t("actions.hitLabel")}
-        accessibilityState={{ disabled: loading, busy: loading }}
+        accessibilityState={{ disabled }}
       >
-        <MaterialIcons name="add" size={layout.buttonIconSize} color={colors.textOnAccent} />
+        <MaterialIcons name="add" size={ICON_SIZE} color={colors.textOnAccent} />
         <Text style={[styles.btnLabel, { color: colors.textOnAccent }]}>{t("actions.hit")}</Text>
       </Pressable>
 
       {/* Stand — secondary purple outline */}
       <Pressable
-        style={[styles.btn, btnStyle, { borderColor: colors.secondary, borderWidth: 2 }]}
+        style={[
+          styles.btn,
+          styles.dockBtn,
+          { borderColor: colors.secondary, borderWidth: 2 },
+          disabled && styles.off,
+        ]}
         onPress={onStand}
-        disabled={loading}
+        disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={t("actions.standLabel")}
-        accessibilityState={{ disabled: loading, busy: loading }}
+        accessibilityState={{ disabled }}
       >
         {/* hand-back-right is the closest MCI equivalent to Material Symbols front_hand */}
-        <MaterialCommunityIcons
-          name="hand-back-right"
-          size={layout.buttonIconSize}
-          color={colors.secondary}
-        />
-        <Text style={[styles.btnLabel, { color: colors.secondary }]}>{t("actions.stand")}</Text>
+        <MaterialCommunityIcons name="hand-back-right" size={ICON_SIZE} color={colors.secondary} />
+        <Text style={[styles.btnLabel, { color: colors.secondaryText }]}>{t("actions.stand")}</Text>
       </Pressable>
 
       {/* Double Down — tertiary outline, disabled when unavailable */}
       <Pressable
         style={[
           styles.btn,
-          btnStyle,
+          styles.dockBtn,
           {
             borderColor: colors.border,
             borderWidth: 2,
@@ -109,15 +101,15 @@ export default function ActionButtons({
           },
         ]}
         onPress={onDoubleDown}
-        disabled={!doubleDownAvailable || loading}
+        disabled={!doubleDownAvailable}
         accessibilityRole="button"
         accessibilityLabel={ddLabel}
-        accessibilityState={{ disabled: !doubleDownAvailable || loading }}
+        accessibilityState={{ disabled: !doubleDownAvailable }}
       >
         {/* numeric-2-circle-outline is the closest MCI equivalent to Material Symbols stat_2 */}
         <MaterialCommunityIcons
           name="numeric-2-circle-outline"
-          size={layout.buttonIconSize}
+          size={ICON_SIZE}
           color={colors.textMuted}
         />
         <Text style={[styles.btnLabel, styles.btnLabelSmall, { color: colors.textMuted }]}>
@@ -129,7 +121,7 @@ export default function ActionButtons({
       <Pressable
         style={[
           styles.btn,
-          btnStyle,
+          styles.dockBtn,
           {
             borderColor: colors.border,
             borderWidth: 2,
@@ -137,12 +129,12 @@ export default function ActionButtons({
           },
         ]}
         onPress={onSplit}
-        disabled={!splitAvailable || loading}
+        disabled={!splitAvailable}
         accessibilityRole="button"
         accessibilityLabel={splitLabel}
-        accessibilityState={{ disabled: !splitAvailable || loading }}
+        accessibilityState={{ disabled: !splitAvailable }}
       >
-        <MaterialIcons name="call-split" size={layout.buttonIconSize} color={colors.textMuted} />
+        <MaterialIcons name="call-split" size={ICON_SIZE} color={colors.textMuted} />
         <Text style={[styles.btnLabel, { color: colors.textMuted }]}>{t("actions.split")}</Text>
       </Pressable>
     </View>
@@ -150,10 +142,18 @@ export default function ActionButtons({
 }
 
 const styles = StyleSheet.create({
-  cluster: {
+  off: {
+    opacity: 0.4,
+  },
+  dock: {
     flexDirection: "row",
-    borderRadius: 50,
-    borderWidth: 1,
+    gap: 8,
+    width: "100%",
+  },
+  dockBtn: {
+    flex: 1,
+    height: DOCK_BUTTON_HEIGHT,
+    borderRadius: 14,
   },
   btn: {
     alignItems: "center",

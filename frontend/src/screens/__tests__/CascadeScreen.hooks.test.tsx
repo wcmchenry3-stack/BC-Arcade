@@ -13,6 +13,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import CascadeScreen from "../CascadeScreen";
 import { WORLD_WIDTH } from "../../game/cascade/constants";
 import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
+import { cascadeSetup } from "../../game/cascade/testHooks";
+import { MOTION } from "../../game/cascade/motion";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -42,6 +44,13 @@ jest.mock("@shopify/react-native-skia", () => {
     Image: () => null,
     Circle: () => null,
     Line: () => null,
+    // The board's Picture (#2960).
+    Picture: () => null,
+    createPicture: jest.fn(() => null),
+    // The lid's drawing (#3694).
+    Path: () => null,
+    DashPathEffect: () => null,
+    BlurMask: () => null,
   };
 });
 
@@ -62,8 +71,11 @@ const mockEngine = {
   getState: jest.fn(() => mockEngineState),
   destroy: jest.fn(),
   restore: jest.fn(),
+  canDrop: jest.fn(() => true),
+  hasWon: jest.fn(() => false),
+  seed: jest.fn(),
 };
-jest.mock("../../game/cascade/engine2", () => ({
+jest.mock("../../game/cascade/engine", () => ({
   CascadeEngine: jest.fn().mockImplementation(() => mockEngine),
 }));
 
@@ -81,6 +93,11 @@ type Hooks = {
   __cascade_fastForward?: (ms: number) => void;
   __cascade_triggerGameOver?: () => void;
   __cascade_spawnTierAt?: (tier: number, x: number) => void;
+  __cascade_seedQueue?: (tiers: number[]) => void;
+  __cascade_setupChain?: () => void;
+  __cascade_setupNearLid?: () => void;
+  __cascade_fillBin?: () => void;
+  __cascade_setupWin?: () => void;
 };
 const hooks = globalThis as typeof globalThis & Hooks;
 const HOOK_NAMES = [
@@ -91,6 +108,11 @@ const HOOK_NAMES = [
   "__cascade_fastForward",
   "__cascade_triggerGameOver",
   "__cascade_spawnTierAt",
+  "__cascade_seedQueue",
+  "__cascade_setupChain",
+  "__cascade_setupNearLid",
+  "__cascade_fillBin",
+  "__cascade_setupWin",
 ] as const;
 
 async function mount() {
@@ -122,6 +144,22 @@ afterEach(() => {
   if (original === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
   else process.env.EXPO_PUBLIC_TEST_HOOKS = original;
 });
+
+/**
+ * #3701: a loss shows its card `MOTION.gameOver.cardAtMs` after the game over (the pile dims and
+ * the lid flashes first), never a render before.
+ */
+async function lossCardDue() {
+  expect(screen.queryByTestId("cascade-result")).toBeNull();
+  await act(async () => {
+    jest.advanceTimersByTime(MOTION.gameOver.cardAtMs - 1);
+  });
+  expect(screen.queryByTestId("cascade-result")).toBeNull();
+  await act(async () => {
+    jest.advanceTimersByTime(1);
+  });
+  expect(screen.getByTestId("cascade-result")).toBeTruthy();
+}
 
 describe("E2E test hooks", () => {
   beforeEach(() => {
@@ -160,6 +198,18 @@ describe("E2E test hooks", () => {
       fruits: [{ id: 7, tier: 3, x: 150, y: 400, angle: 0.5 }],
     });
     expect(hooks.__cascade_getState!().nextFruitTier).toEqual(expect.any(Number));
+  });
+
+  it("reports the engine's dangerRatio (#3694)", async () => {
+    mockEngineState = {
+      score: 0,
+      gameOver: false,
+      pieces: [],
+      dangerRatio: 0.4,
+      canDrop: false,
+    } as typeof mockEngineState;
+    await mount();
+    expect(hooks.__cascade_getState!()).toMatchObject({ dangerRatio: 0.4 });
   });
 
   it("a seed makes the drops come in the same order every time", async () => {
@@ -211,7 +261,7 @@ describe("E2E test hooks", () => {
       hooks.__cascade_fastForward!(20);
     });
     expect(hooks.__cascade_getState!().gameOver).toBe(true);
-    expect(screen.getByTestId("cascade-result")).toBeTruthy();
+    await lossCardDue();
   });
 
   it("fastForward does nothing before the engine exists", async () => {
@@ -226,12 +276,135 @@ describe("E2E test hooks", () => {
     await act(async () => {
       hooks.__cascade_triggerGameOver!();
     });
-    expect(screen.getByTestId("cascade-result")).toBeTruthy();
+    await lossCardDue();
     expect(hooks.__cascade_getState!().gameOver).toBe(true);
 
     await run(() => hooks.__cascade_dropAt!(100));
     await run(() => hooks.__cascade_spawnTierAt!(2, 100));
     expect(mockEngine.drop).not.toHaveBeenCalled();
+  });
+});
+
+describe("test controls (#3719)", () => {
+  const IDS = [
+    "cascade-test-chain",
+    "cascade-test-near-lid",
+    "cascade-test-fill-bin",
+    "cascade-test-win",
+    "cascade-test-game-over",
+  ];
+
+  it("are absent from a build without EXPO_PUBLIC_TEST_HOOKS", async () => {
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    await mount();
+    expect(screen.queryByTestId("cascade-test-controls")).toBeNull();
+    for (const id of IDS) expect(screen.queryByTestId(id)).toBeNull();
+  });
+
+  it("are absent when the flag is anything but 1", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "0";
+    await mount();
+    expect(screen.queryByTestId("cascade-test-controls")).toBeNull();
+  });
+
+  describe("in a test build", () => {
+    beforeEach(() => {
+      process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    });
+
+    it("show every button, each findable by testID", async () => {
+      await mount();
+      for (const id of IDS) expect(screen.getByTestId(id)).toBeTruthy();
+    });
+
+    it("the chain button restores the pile into the engine and scripts the queue", async () => {
+      await mount();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-chain"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("chain").pieces,
+        expect.any(Number)
+      );
+      // The next two drops are cherries (the script), not random picks.
+      expect(hooks.__cascade_getState!().nextFruitTier).toBe(0);
+      await run(() => hooks.__cascade_dropAt!(200));
+      await run(() => hooks.__cascade_dropAt!(200));
+      expect(mockEngine.drop.mock.calls.map(([tier]) => tier)).toEqual([0, 0]);
+    });
+
+    it("the near-lid and fill-bin buttons restore their piles and settle the engine", async () => {
+      await mount();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-near-lid"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("nearLid").pieces,
+        expect.any(Number)
+      );
+      expect(mockEngine.step).toHaveBeenCalled(); // settled by a fast-forward
+      mockEngine.step.mockClear();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-fill-bin"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("fillBin").pieces,
+        expect.any(Number)
+      );
+      // The loss is the engine's to decide: the button did not end the game itself.
+      expect(hooks.__cascade_getState!().gameOver).toBe(false);
+      expect(screen.queryByTestId("cascade-result")).toBeNull();
+    });
+
+    it("the win button and hook restore two capstones about to touch (#3904)", async () => {
+      await mount();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-win"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("win").pieces,
+        expect.any(Number)
+      );
+      mockEngine.restore.mockClear();
+      await run(() => hooks.__cascade_setupWin!());
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("win").pieces,
+        expect.any(Number)
+      );
+    });
+
+    it("the game-over button is a separate, forced end", async () => {
+      await mount();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-game-over"));
+      });
+      await lossCardDue();
+    });
+
+    it("the hooks run the same set-ups", async () => {
+      await mount();
+      await run(() => hooks.__cascade_fillBin!());
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("fillBin").pieces,
+        expect.any(Number)
+      );
+      await run(() => hooks.__cascade_seedQueue!([2, 3, 1]));
+      expect(hooks.__cascade_getState!().nextFruitTier).toBe(2);
+      await run(() => hooks.__cascade_dropAt!(100));
+      await run(() => hooks.__cascade_dropAt!(100));
+      await run(() => hooks.__cascade_dropAt!(100));
+      expect(mockEngine.drop.mock.calls.map(([tier]) => tier)).toEqual([2, 3, 1]);
+    });
+
+    it("do nothing once the game is over", async () => {
+      await mount();
+      await act(async () => {
+        hooks.__cascade_triggerGameOver!();
+      });
+      await run(() => hooks.__cascade_setupChain!());
+      await run(() => hooks.__cascade_fillBin!());
+      expect(mockEngine.restore).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -247,6 +420,14 @@ describe("developer panel", () => {
       await fireEvent.press(screen.getByText("Close"));
     });
     expect(screen.queryByText("Cascade Dev Panel")).toBeNull();
+  });
+
+  it("shows the frame readout of the screen's loop (#2960)", async () => {
+    await mount();
+    await act(async () => {
+      await fireEvent.press(screen.getByText("DEV"));
+    });
+    expect(screen.getByTestId("cascade-frame-stats")).toBeTruthy();
   });
 
   it("spawns a piece of the chosen tier in the middle of the board", async () => {

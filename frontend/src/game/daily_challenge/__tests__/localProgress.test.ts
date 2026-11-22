@@ -96,4 +96,25 @@ describe("withLocalProgress", () => {
     ]);
     expect(out.goals.map((g) => g.completed)).toEqual([true, true, false]);
   });
+
+  it("marks the bonus goal the same way, without touching the core goals (#3995)", () => {
+    const challenge = {
+      challengeId: "2026-09-27",
+      goals: [goal("moves_at_least", 10)],
+      bonus: goal("final_score_at_least", 150, "yacht"),
+    };
+    const met = withLocalProgress(challenge, [{ gameType: "yacht", facts: { final_score: 160 } }]);
+    expect(met.bonus?.completed).toBe(true);
+    expect(met.goals.map((g) => g.completed)).toEqual([false]);
+
+    const short = withLocalProgress(challenge, [{ gameType: "yacht", facts: { final_score: 90 } }]);
+    expect(short.bonus?.completed).toBe(false);
+    // A bonus already done stays done; a day without a bonus gains none.
+    const done = withLocalProgress(
+      { ...challenge, bonus: { ...challenge.bonus, completed: true } },
+      []
+    );
+    expect(done.bonus?.completed).toBe(true);
+    expect(withLocalProgress({ ...challenge, bonus: undefined }, []).bonus).toBeUndefined();
+  });
 });

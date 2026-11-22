@@ -59,6 +59,12 @@ export interface GameTypeStats {
   best_value?: number | null;
   /** i18n key for what `best_value` counts: "score", "moves", "level", … */
   best_label_key?: string | null;
+  /**
+   * The fastest winning time (ms) for games that report it (Cascade, #3927);
+   * wins under the game's plausibility floor are ignored. Null with no
+   * plausible win; absent from servers older than #3927.
+   */
+  best_win_ms?: number | null;
   extras?: GameStatsExtras;
 }
 

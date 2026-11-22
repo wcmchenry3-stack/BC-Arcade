@@ -248,6 +248,25 @@ describe("run counters", () => {
     expect(screen.getByText("wave 4 · Commander · score 900")).toBeTruthy();
   });
 
+  it("#3710: shows this wave's hits on the player by enemy tier", async () => {
+    const state = initStarSwarm(CANVAS_W, CANVAS_H, 4, 42, "Commander");
+    const hitsByTier = {
+      ...state.waveStats.damage.hitsByTier,
+      Guardian: { life: 2, plating: 1, shield: 7 },
+    };
+    canvas.state = {
+      ...state,
+      waveStats: { ...state.waveStats, damage: { ...state.waveStats.damage, hitsByTier } },
+    };
+    await renderRun();
+    await openPanel();
+
+    const stats = within(screen.getByLabelText("Run stats"));
+    expect(stats.getByText("tier     life plat shld")).toBeTruthy();
+    expect(stats.getByText("Guardian    2    1    7")).toBeTruthy();
+    expect(stats.getByText("Carrier     0    0    0")).toBeTruthy();
+  });
+
   it("stops reading the engine once the panel is collapsed", async () => {
     jest.useFakeTimers();
     canvas.state = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42);
@@ -270,18 +289,36 @@ describe("sound mixer", () => {
   it("steps a sound's volume by a tenth, and keeps it between 0 and 1", async () => {
     await renderRun();
     await openPanel();
-    expect(latestVolumes().laser).toBe(0.6);
+    expect(latestVolumes().shieldon).toBe(0.8);
 
-    await press("Decrease Laser volume");
-    expect(latestVolumes().laser).toBe(0.5);
-    await press("Increase Laser volume");
-    await press("Increase Laser volume");
-    expect(latestVolumes().laser).toBe(0.7);
+    await press("Decrease Shield on volume");
+    expect(latestVolumes().shieldon).toBe(0.7);
+    await press("Increase Shield on volume");
+    await press("Increase Shield on volume");
+    expect(latestVolumes().shieldon).toBe(0.9);
 
-    for (let i = 0; i < 10; i++) await press("Increase Laser volume");
-    expect(latestVolumes().laser).toBe(1);
-    for (let i = 0; i < 12; i++) await press("Decrease Laser volume");
-    expect(latestVolumes().laser).toBe(0);
+    for (let i = 0; i < 10; i++) await press("Increase Shield on volume");
+    expect(latestVolumes().shieldon).toBe(1);
+    for (let i = 0; i < 12; i++) await press("Decrease Shield on volume");
+    expect(latestVolumes().shieldon).toBe(0);
+  });
+
+  it("#3638: a Music row steps the music volume by 0.05 from 0.57, kept between 0 and 1", async () => {
+    await renderRun();
+    await openPanel();
+    expect(latestVolumes().music).toBe(0.57);
+    expect(screen.getByText("0.57")).toBeTruthy();
+
+    await press("Increase Music volume");
+    expect(latestVolumes().music).toBe(0.62);
+    await press("Decrease Music volume");
+    await press("Decrease Music volume");
+    expect(latestVolumes().music).toBe(0.52);
+
+    for (let i = 0; i < 12; i++) await press("Increase Music volume");
+    expect(latestVolumes().music).toBe(1);
+    for (let i = 0; i < 25; i++) await press("Decrease Music volume");
+    expect(latestVolumes().music).toBe(0);
   });
 
   it("leaves the other sounds alone", async () => {

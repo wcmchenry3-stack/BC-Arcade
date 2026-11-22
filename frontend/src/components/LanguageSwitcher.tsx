@@ -68,7 +68,7 @@ export default function LanguageSwitcher() {
                     <Text style={[styles.optionText, { color: colors.text }]}>
                       {item.flag} {item.nativeLabel}
                     </Text>
-                    {active && <Text style={[styles.check, { color: colors.accent }]}>✓</Text>}
+                    {active && <Text style={[styles.check, { color: colors.accentText }]}>✓</Text>}
                   </Pressable>
                 );
               }}

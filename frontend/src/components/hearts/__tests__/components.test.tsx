@@ -1,4 +1,6 @@
 import React from "react";
+import { StyleSheet } from "react-native";
+import { computeHeartsGeometry } from "../../../game/hearts/layout";
 import { render, fireEvent, act } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import PlayingCard from "../PlayingCard";
@@ -8,6 +10,8 @@ import TrickArea from "../TrickArea";
 import PassBanner from "../PassBanner";
 import { OpponentCapturedPile, SelfCapturedPile, penaltyPoints } from "../CapturedPile";
 import type { Card, TrickCard } from "../../../game/hearts/types";
+import { SWEEP_MS, TRICK_HOLD_MS } from "../trickMotion";
+import { timeReanimatedEnds } from "./helpers/animationFixtures";
 
 async function wrap(ui: React.ReactElement) {
   return await render(<ThemeProvider>{ui}</ThemeProvider>);
@@ -155,9 +159,37 @@ describe("OpponentHand", () => {
     expect(getAllByLabelText(/face.down/i)).toHaveLength(4);
   });
 
-  it("renders label text", async () => {
-    const { getByText } = await wrap(<OpponentHand cardCount={3} label="Right" />);
-    expect(getByText("Right")).toBeTruthy();
+  it("labels the fan with the seat's name and card count (the name itself is on the plate, #3587)", async () => {
+    const { getByLabelText } = await wrap(<OpponentHand cardCount={3} label="Right" />);
+    expect(getByLabelText("Right's hand, 3 cards")).toBeTruthy();
+  });
+
+  it("is one accessible node carrying the real count, so TalkBack can read it (#3608)", async () => {
+    const { getByLabelText } = await wrap(<OpponentHand cardCount={13} label="Left" />);
+    const fan = getByLabelText("Left's hand, 13 cards");
+    expect(fan.props.accessible).toBe(true);
+  });
+
+  it("draws 1 to 3 backs, not the first slots of a four-card fan", async () => {
+    const fan = computeHeartsGeometry({ width: 390, height: 708 }).fans.top;
+    const { getAllByLabelText } = await wrap(<OpponentHand cardCount={2} label="Left" fan={fan} />);
+    const backs = getAllByLabelText(/face.down/i);
+    expect(backs).toHaveLength(2);
+    // Each back sits in a positioned wrapper (the fan's own coordinates less its box).
+    const centres = backs.map((b) => {
+      let node = b.parent;
+      while (node && StyleSheet.flatten(node.props.style)?.left === undefined) node = node.parent;
+      const st = StyleSheet.flatten(node!.props.style);
+      return { x: fan.rect.x + st.left + fan.cardW / 2, y: fan.rect.y + st.top + fan.cardH / 2 };
+    });
+    // Centred on the fan's spot; the first two slots of a four-card fan would sit left of it.
+    expect((centres[0]!.x + centres[1]!.x) / 2).toBeCloseTo(fan.centre.x, 4);
+    expect((centres[0]!.y + centres[1]!.y) / 2).toBeCloseTo(fan.centre.y, 4);
+  });
+
+  it("draws at most four backs however many cards are left", async () => {
+    const { getAllByLabelText } = await wrap(<OpponentHand cardCount={13} label="Left" />);
+    expect(getAllByLabelText(/face.down/i)).toHaveLength(4);
   });
 
   it("renders zero cards without error", async () => {
@@ -267,26 +299,36 @@ describe("TrickArea", () => {
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
 
-    it("fires onAnimationComplete within the 930ms budget (250ms settle + 3×60ms stagger + 500ms slide)", async () => {
-      const onComplete = jest.fn();
-      await wrap(
-        <TrickArea
-          trick={fullTrick}
-          playerIndex={0}
-          winnerIndex={0}
-          onAnimationComplete={onComplete}
-        />
-      );
-      // Not yet complete mid-settle window.
-      await act(() => {
-        jest.advanceTimersByTime(300);
-      });
-      expect(onComplete).not.toHaveBeenCalled();
-      // Finishes after the full duration.
-      await act(() => {
-        jest.advanceTimersByTime(650);
-      });
-      expect(onComplete).toHaveBeenCalledTimes(1);
+    it("fires onAnimationComplete at the sweep's end: 300 ms hold + 200 ms sweep (#3574)", async () => {
+      // The sweep's end callback reports on the fake clock, as the UI thread would.
+      const timed = timeReanimatedEnds();
+      try {
+        const onComplete = jest.fn();
+        await wrap(
+          <TrickArea
+            trick={fullTrick}
+            playerIndex={0}
+            winnerIndex={0}
+            onAnimationComplete={onComplete}
+          />
+        );
+        // Not yet complete during the hold; the sweep starts at its end.
+        await act(() => {
+          jest.advanceTimersByTime(TRICK_HOLD_MS);
+        });
+        expect(onComplete).not.toHaveBeenCalled();
+        await act(() => {
+          jest.advanceTimersByTime(SWEEP_MS - 1);
+        });
+        expect(onComplete).not.toHaveBeenCalled();
+        // Finishes at the sweep's end, from its end callback (the backstop is later).
+        await act(() => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      } finally {
+        timed.mockRestore();
+      }
     });
 
     it("shows all 4 cards statically during settle window (E/W completing-card regression)", async () => {
@@ -356,6 +398,16 @@ describe("PassBanner", () => {
     expect(btn.props.accessibilityState?.disabled).toBe(false);
     await fireEvent.press(btn);
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  // e2e/maestro/flows/hearts/ai-hand.yaml taps the button by id: on iOS the
+  // Pressable's accessibilityLabel replaces its child Text, so Maestro never
+  // sees a "Confirm" text node there.
+  it("exposes the confirm button under testID hearts-pass-confirm", async () => {
+    const { getByTestId, getByRole } = await wrap(
+      <PassBanner passDirection="left" selectedCount={3} onConfirm={jest.fn()} />
+    );
+    expect(getByTestId("hearts-pass-confirm")).toBe(getByRole("button", { name: /confirm/i }));
   });
 
   it("does not render a Modal (inline UI, not overlay)", async () => {

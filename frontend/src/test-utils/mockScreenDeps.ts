@@ -29,7 +29,12 @@
  * every test, so screen tests no longer mock those themselves.
  */
 
-import type { DragCard, DragContextValue, DragSource } from "../game/_shared/drag/DragContext";
+import type {
+  DragCard,
+  DragContextValue,
+  DragSource,
+  DropOffset,
+} from "../game/_shared/drag/DragContext";
 import type { useSound } from "../game/_shared/useSound";
 
 type Members = Record<string, unknown>;
@@ -227,7 +232,10 @@ export function detectedGesture(
 
 /** What `mockDropTarget` records: each target's drop handler, and the drag context it sits in. */
 export interface DropSink {
-  readonly zones: Map<string, (source: DragSource, cards: DragCard[]) => boolean>;
+  readonly zones: Map<
+    string,
+    (source: DragSource, cards: DragCard[], offset?: DropOffset) => boolean
+  >;
   drag: DragContextValue | null;
 }
 
@@ -259,7 +267,7 @@ export function mockDropTarget(sink: () => DropSink) {
       children,
     }: {
       id: string;
-      onDrop: (source: DragSource, cards: DragCard[]) => boolean;
+      onDrop: (source: DragSource, cards: DragCard[], offset?: DropOffset) => boolean;
       children?: unknown;
     }) => {
       const s = sink();
@@ -272,19 +280,23 @@ export function mockDropTarget(sink: () => DropSink) {
 
 const ONE_CARD: DragCard = { suit: "spades", rank: 2, width: 52, height: 74 };
 
-/** Delivers a drop of `source` to the target `id`; resolves to whether it was accepted. */
+/**
+ * Delivers a drop of `source` to the target `id`; resolves to whether it was accepted.
+ * `offset` is where the ghost was let go (a gesture's drop carries one, #3572).
+ */
 export async function dropOn(
   sink: DropSink,
   id: string,
   source: DragSource,
-  cards: DragCard[] = [ONE_CARD]
+  cards: DragCard[] = [ONE_CARD],
+  offset?: DropOffset
 ): Promise<boolean> {
   const { act } = jest.requireActual("@testing-library/react-native");
   const onDrop = sink.zones.get(id);
   if (!onDrop) throw new Error(`no drop target ${id}`);
   let accepted = false;
   await act(async () => {
-    accepted = onDrop(source, cards);
+    accepted = onDrop(source, cards, offset);
   });
   return accepted;
 }

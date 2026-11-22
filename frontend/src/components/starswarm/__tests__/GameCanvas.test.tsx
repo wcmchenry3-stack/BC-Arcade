@@ -14,17 +14,26 @@
  */
 import React, { Profiler } from "react";
 import { AccessibilityInfo, StyleSheet } from "react-native";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { render, screen, within } from "@testing-library/react-native";
 import * as Sentry from "@sentry/react-native";
-import { createPicture, useImage } from "@shopify/react-native-skia";
+import { Skia, createPicture, useImage } from "@shopify/react-native-skia";
 
 import GameCanvas from "../GameCanvas";
 import type { GameCanvasHandle } from "../GameCanvas";
 import * as engine from "../../../game/starswarm/engine";
 import { buildFrame } from "../../../game/starswarm/render/frame";
 import { drawFrame } from "../../../game/starswarm/render/drawFrame";
-import { pickupCues } from "../../../game/starswarm/render/pickupCue";
+import { collectCueTop, pickupCues } from "../../../game/starswarm/render/pickupCue";
+import {
+  HUD_CHIP_COLOR,
+  HUD_LAYOUT,
+  HUD_MAX_FONT_SCALE,
+  HUD_TEXT,
+} from "../../../game/starswarm/render/hudStyle";
+import { typography } from "../../../theme/typography";
+import * as hudStyle from "../../../game/starswarm/render/hudStyle";
 import type { StarSwarmState } from "../../../game/starswarm/types";
+import { nebulaBlobs } from "../../../game/starswarm/render/nebula";
 import {
   CANVAS_TEST_H as H,
   CANVAS_TEST_W as W,
@@ -50,9 +59,16 @@ jest.mock("@shopify/react-native-skia", () => {
       return { size, dispose: () => {} };
     }),
     Skia: {
-      Paint: () => ({ setAntiAlias: () => {}, setColor: () => {} }),
+      Paint: () => ({
+        setAntiAlias: () => {},
+        setColor: () => {},
+        setShader: () => {},
+        dispose: () => {},
+      }),
       Color: (c: number) => c,
+      Shader: { MakeRadialGradient: jest.fn(() => ({ dispose: () => {} })) }, // #3597: the nebula in the backdrop
     },
+    TileMode: { Clamp: 0 },
     useImage: jest.fn(() => null),
   };
 });
@@ -154,13 +170,93 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
   it("renders the labelled Skia canvas and the HUD from a seeded state", async () => {
     await mount({ initialState: seeded({ score: 120, wave: 3 }), highScore: 500 });
     expect(screen.getByTestId("skia-canvas").props.accessibilityLabel).toMatch(/Star Swarm game/);
-    expect(screen.getByText("SCORE 120")).toBeTruthy();
-    expect(screen.getByText("BEST 500")).toBeTruthy();
-    expect(screen.getByText("WAVE 3")).toBeTruthy();
+    // #3598: caption over numeral; screen readers still hear "SCORE 120" etc. as one element
+    expect(screen.getByLabelText("SCORE 120")).toHaveTextContent("SCORE120");
+    expect(screen.getByLabelText("BEST 500")).toHaveTextContent("BEST500");
+    expect(screen.getByLabelText("WAVE 3")).toHaveTextContent("WAVE3");
     expect(screen.getByText("Lieutenant J.G. ×1.5")).toBeTruthy();
-    expect(screen.getByText("GUNS L1 · HULL –")).toBeTruthy();
+    expect(screen.getByText("GUNS L1")).toBeTruthy();
+    expect(screen.getByText("HULL 0")).toBeTruthy();
     // A restored session skips the pre-wave countdown.
-    expect(screen.queryByText("3")).toBeNull();
+    expect(screen.queryByTestId("starswarm-countdown")).toBeNull();
+  });
+
+  it("#3598: the HUD is in the brand fonts, from the shared HUD styles", async () => {
+    await mount({ initialState: seeded({ score: 120, wave: 3 }), highScore: 500 });
+    const font = (text: string) => StyleSheet.flatten(screen.getByText(text).props.style);
+    expect(font("SCORE").fontFamily).toBe(typography.label);
+    expect(font("120").fontFamily).toBe(typography.heading);
+    expect(font("120").textShadowColor).toBe(HUD_TEXT.numeral.glow);
+    expect(font("500").fontFamily).toBe(typography.headingLight);
+    expect(font("Lieutenant J.G. ×1.5").fontFamily).toBe(typography.bodyMedium);
+    expect(font("GUNS L1").fontFamily).toBe(typography.label);
+    expect(font("3").fontFamily).toBe(typography.heading);
+    for (const t of ["SCORE", "120", "500", "3", "GUNS L1", "HULL 0"]) {
+      expect(font(t).fontWeight).toBeUndefined();
+      expect(font(t).fontSize).toBeGreaterThanOrEqual(8);
+      // font scaling allowed, capped so the HUD stays on one line
+      expect(screen.getByText(t).props.maxFontSizeMultiplier).toBe(HUD_MAX_FONT_SCALE);
+      expect(screen.getByText(t).props.numberOfLines).toBe(1);
+    }
+  });
+
+  it("#3598 (owner): score and best are grouped and read naturally to screen readers", async () => {
+    await mount({ initialState: seeded({ score: 12450 }), highScore: 48200 });
+    expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent("12,450");
+    expect(screen.getByTestId("starswarm-hud-best")).toHaveTextContent("48,200");
+    // the same helper the web canvas draws with
+    expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent(
+      hudStyle.formatHudNumber(12450, "en")
+    );
+    expect(screen.getByLabelText("SCORE 12,450")).toBeTruthy();
+    expect(screen.getByLabelText("BEST 48,200")).toBeTruthy();
+    // the widest score shrinks to fit its column rather than truncating
+    expect(screen.getByTestId("starswarm-hud-score").props.adjustsFontSizeToFit).toBe(true);
+  });
+
+  it("#3598 (owner): formats only when the HUD commits a new number, never per frame", async () => {
+    const spy = jest.spyOn(hudStyle, "formatHudNumber");
+    try {
+      await mount({ initialState: seeded({ score: 300 }) });
+      await frame();
+      const settled = spy.mock.calls.length;
+      for (let i = 0; i < 10; i++) {
+        nextTick((s) => ({ ...s, player: { ...s.player, x: s.player.x + 1 } }));
+        await frame();
+      }
+      expect(spy.mock.calls.length).toBe(settled);
+      nextTick((s) => ({ ...s, score: s.score + 100 }));
+      await frame();
+      expect(spy.mock.calls.length).toBeGreaterThan(settled);
+      expect(screen.getByTestId("starswarm-hud-score")).toHaveTextContent("400");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("#3598: the GUNS and HULL chips stack in the left column, cyan over plating blue", async () => {
+    await mount({ initialState: seeded() });
+    const chips = screen.getByTestId("starswarm-hud-chips");
+    expect(StyleSheet.flatten(chips.props.style).flexDirection).toBeUndefined(); // a column
+    const [guns, hull] = chips.children as unknown as { props: { style: unknown } }[];
+    const g = StyleSheet.flatten(guns!.props.style as never) as Record<string, unknown>;
+    const h = StyleSheet.flatten(hull!.props.style as never) as Record<string, unknown>;
+    expect(g.borderColor).toBe(HUD_CHIP_COLOR.guns);
+    expect(h.borderColor).toBe(HUD_CHIP_COLOR.hull);
+    expect(h.marginTop).toBe(HUD_LAYOUT.chipGap);
+    expect(g.height).toBe(HUD_LAYOUT.chipHeight);
+    expect(StyleSheet.flatten(screen.getByText("GUNS L1").props.style).color).toBe(
+      HUD_CHIP_COLOR.guns
+    );
+  });
+
+  it("#3598: the top bar is inset by the shared margins (not mirrored in RTL)", async () => {
+    await mount({ initialState: seeded() });
+    const bar = StyleSheet.flatten(screen.getByTestId("starswarm-hud-top").props.style);
+    expect(bar.top).toBe(HUD_LAYOUT.top);
+    expect(bar.left).toBe(HUD_LAYOUT.marginX);
+    expect(bar.right).toBe(HUD_LAYOUT.marginX);
+    expect(bar.flexDirection).toBe("row");
   });
 
   it("seeds the Picture with the first frame and draws it through drawFrame", async () => {
@@ -173,7 +269,7 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
 
   it("best shows the live score once it beats the stored high score", async () => {
     await mount({ initialState: seeded({ score: 900 }), highScore: 500 });
-    expect(screen.getByText("BEST 900")).toBeTruthy();
+    expect(screen.getByLabelText("BEST 900")).toBeTruthy();
   });
 
   it("shows the shield / lightning indicator for an active duration power-up", async () => {
@@ -188,16 +284,20 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
     expect(screen.queryByText("SHIELD")).toBeNull();
   });
 
-  it("#3476: the power-up indicator sits under the lives row at the top, not bottom-left", async () => {
+  it("#3476/#3598: the power-up timer sits under the lives, in the top-right column", async () => {
     await mount({
       initialState: seeded({
         activePowerUp: { type: "shield", remainingMs: 2500, shieldAbsorbed: 0 },
       }),
     });
-    const pu = StyleSheet.flatten(screen.getByTestId("starswarm-powerup").props.style);
-    const lives = StyleSheet.flatten(screen.getByTestId("starswarm-lives").props.style);
-    expect(pu.bottom).toBeUndefined();
-    expect(pu.top).toBeGreaterThan(lives.top as number);
+    const bar = screen.getByTestId("starswarm-hud-top");
+    expect(StyleSheet.flatten(bar.props.style).bottom).toBeUndefined();
+    // the top bar holds the lives and, after them in the same right column, the timer
+    expect(within(bar).getByTestId("starswarm-lives")).toBeTruthy();
+    expect(within(bar).getByTestId("starswarm-powerup")).toBeTruthy();
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf('"starswarm-powerup"')).toBeGreaterThan(tree.indexOf('"starswarm-lives"'));
+    expect(tree.indexOf('"starswarm-lives"')).toBeGreaterThan(tree.indexOf("WAVE 1"));
   });
 
   it("shows the ROUT!, CARRIER SIGHTED and MISSION COMPLETE banners from the state", async () => {
@@ -217,15 +317,15 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
   });
 });
 
-describe("Star Swarm GameCanvas (native) — lives row placement (#2150)", () => {
-  it("follows the measured bottom of the score row (large font scales)", async () => {
+describe("Star Swarm GameCanvas (native) — lives row placement (#2150, #3598)", () => {
+  it("flows under the wave number, so a large font scale moves it down with no measuring", async () => {
     await mount({ initialState: seeded({ score: 1 }) });
-    const topOf = () => StyleSheet.flatten(screen.getByTestId("starswarm-lives").props.style).top;
-    expect(topOf()).toBe(28);
-    await fireEvent(screen.getByTestId("starswarm-hud-top"), "layout", {
-      nativeEvent: { layout: { x: 0, y: 8, width: 300, height: 40 } },
-    });
-    expect(topOf()).toBe(52);
+    const lives = screen.getByTestId("starswarm-lives");
+    const style = StyleSheet.flatten(lives.props.style);
+    expect(style.position).toBeUndefined();
+    expect(style.top).toBeUndefined();
+    expect(style.alignSelf).toBe("flex-end");
+    expect(screen.getAllByTestId("starswarm-life")).toHaveLength(3);
   });
 });
 
@@ -246,7 +346,7 @@ describe("Star Swarm GameCanvas (native) — collect-the-power-ups cue (#3187)",
 
   it("shows the cue, with its accessible label, while pickups hold the cleared wave", async () => {
     await mount({ initialState: waiting() });
-    expect(screen.getByText("COLLECT THE POWER-UPS!")).toBeTruthy();
+    expect(screen.getByText("QUICK, GRAB 'EM — THEY CARRY OVER!")).toBeTruthy(); // #3512
     expect(screen.getByTestId(cueId).props.accessibilityLabel).toMatch(
       /Collect the remaining power-ups/
     );
@@ -304,6 +404,95 @@ describe("Star Swarm GameCanvas (native) — collect-the-power-ups cue (#3187)",
   });
 });
 
+describe("Star Swarm GameCanvas (native) — crack-the-asteroid cue (#3568)", () => {
+  const rock = {
+    id: 9100,
+    kind: "large" as const,
+    x: 60,
+    y: 120,
+    vx: 0,
+    vy: 0.05,
+    radius: 22,
+    hp: 6,
+    rotation: 0,
+    spin: 0,
+    hitFlashTimer: 0,
+    hitEnemyIds: [],
+  };
+  const pickup = {
+    id: 9001,
+    type: "shield" as const,
+    x: 100,
+    y: 200,
+    vy: 0.05,
+    width: 20,
+    height: 20,
+    despawnTimer: 5000,
+  };
+  const rockOnly = () =>
+    seeded({ enemies: [], phase: "ClearAwaitingPickups" as const, asteroids: [rock] });
+  const crackId = "starswarm-crack-asteroids-cue";
+  const collectId = "starswarm-collect-powerups-cue";
+
+  it("shows the crack line, with its accessible label, while only a rock holds the wave", async () => {
+    await mount({ initialState: rockOnly() });
+    expect(screen.getByText("CRACK IT FOR SALVAGE!")).toBeTruthy();
+    expect(screen.getByTestId(crackId).props.accessibilityLabel).toMatch(/crack it open/);
+    expect(screen.queryByTestId(collectId)).toBeNull();
+  });
+
+  it("sits in the collect cue's slot and stays on one line", async () => {
+    await mount({ initialState: rockOnly(), height: 640, scale: 1 });
+    const cue = screen.getByTestId(crackId);
+    expect(cue.props.numberOfLines).toBe(1);
+    expect(cue.props.adjustsFontSizeToFit).toBe(true);
+    const top = StyleSheet.flatten(cue.parent!.props.style).top as number;
+    expect(top).toBe(collectCueTop(640));
+  });
+
+  it("the pickup cue wins when a pickup is out too", async () => {
+    await mount({ initialState: { ...rockOnly(), powerUps: [pickup] } });
+    expect(screen.getByTestId(collectId)).toBeTruthy();
+    expect(screen.queryByTestId(crackId)).toBeNull();
+  });
+
+  it("shows nothing in normal play, in the extraction or at game over", async () => {
+    const play = await mount({ initialState: seeded({ asteroids: [rock] }) });
+    expect(screen.queryByTestId(crackId)).toBeNull();
+    await play.unmount();
+    const ex = await mount({ initialState: { ...rockOnly(), phase: "Extraction" } });
+    expect(screen.queryByTestId(crackId)).toBeNull();
+    await ex.unmount();
+    await mount({ initialState: { ...rockOnly(), phase: "GameOver" } });
+    expect(screen.queryByTestId(crackId)).toBeNull();
+  });
+
+  it("swaps with the pickup cue as pickups arrive and leave", async () => {
+    await mount({ initialState: rockOnly() });
+    await frame();
+    expect(screen.getByTestId(crackId)).toBeTruthy();
+    nextTick((s) => ({ ...s, powerUps: [pickup] }));
+    await frame();
+    expect(screen.queryByTestId(crackId)).toBeNull();
+    expect(screen.getByTestId(collectId)).toBeTruthy();
+    nextTick((s) => ({ ...s, powerUps: [] }));
+    await frame();
+    expect(screen.getByTestId(crackId)).toBeTruthy();
+  });
+
+  it("speaks the cue once as it appears", async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+    announce.mockClear();
+    await mount({ initialState: rockOnly() });
+    await frame();
+    await frame();
+    const spoken = announce.mock.calls.filter(([m]) => /crack it open/.test(String(m)));
+    expect(spoken).toHaveLength(1);
+  });
+});
+
 describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () => {
   it("publishes every frame the engine state moves, without re-rendering React", async () => {
     const { commits } = await mount({ initialState: seeded() });
@@ -352,6 +541,18 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     expect(commits.count).toBe(before);
   });
 
+  it("a resume clears Lightning's sweep origin, so a move made while paused is not swept (#3709)", async () => {
+    const { ref, rerender } = await mount({
+      initialState: { ...seeded(), lightningPulseX: 40 },
+      isPaused: true,
+    });
+    await frames(1);
+    expect(ref.current!.getState().lightningPulseX).toBe(40); // paused: untouched
+    await rerender({ isPaused: false });
+    expect(mockEngine.clearLightningSweep).toHaveBeenCalled();
+    expect("lightningPulseX" in ref.current!.getState()).toBe(false);
+  });
+
   it("republishes a paused frame when a dev-panel injection changes the state", async () => {
     const { ref } = await mount({ initialState: seeded(), isPaused: true });
     await frames(2);
@@ -370,8 +571,18 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     await rerender({ isPaused: true });
     expect(mockBuildFrame).toHaveBeenCalled();
     const lastOpts = mockBuildFrame.mock.calls.at(-1)![1];
-    expect(lastOpts.loaded.playerShip).toBe(true);
-    expect(lastOpts.loaded.explosion.every(Boolean)).toBe(true);
+    expect(lastOpts.loaded.p1Base).toBe(true);
+    expect(lastOpts.loaded.p1Plating2).toBe(true);
+  });
+
+  it("#3600: builds the frame with the chosen ship, the default when none is given", async () => {
+    const { rerender } = await mount({ initialState: seeded(), isPaused: true });
+    expect(mockBuildFrame.mock.calls.at(-1)![1].ship).toBe("p1");
+    mockBuildFrame.mockClear();
+    // no resetTick and no frame change: only the ship prop republishes the picture
+    await rerender({ initialState: seeded(), isPaused: true, ship: "p3" });
+    expect(mockBuildFrame).toHaveBeenCalled();
+    expect(mockBuildFrame.mock.calls.at(-1)![1].ship).toBe("p3");
   });
 
   it("reports a renderer throw to Sentry once, on the JS thread", async () => {
@@ -425,6 +636,19 @@ describe("Star Swarm GameCanvas (native) — starfield (#2963)", () => {
     expect(near).toBeCloseTo(160 * 0.1);
   });
 
+  it("#3597: bakes the nebula into the background once, never per frame", async () => {
+    const gradients = Skia.Shader.MakeRadialGradient as unknown as jest.Mock;
+    gradients.mockClear();
+    const { rerender } = await mount({ initialState: seeded() });
+    const blobs = nebulaBlobs(W, H).length;
+    expect(gradients).toHaveBeenCalledTimes(blobs);
+    mockTick.mockImplementation(actualEngine.tick);
+    await frames(60);
+    await rerender({ highScore: 1 });
+    await frames(60);
+    expect(gradients).toHaveBeenCalledTimes(blobs);
+  });
+
   it("holds still while paused, and a new game scrolls from the top again", async () => {
     const { rerender } = await mount({ initialState: seeded(), resetTick: 0 });
     await frame();
@@ -450,7 +674,7 @@ describe("Star Swarm GameCanvas (native) — HUD commits (#2566)", () => {
     nextTick((s) => ({ ...s, score: s.score + 50 }));
     await frame();
     expect(onScoreChange).toHaveBeenCalledWith(50);
-    expect(screen.getByText("SCORE 50")).toBeTruthy();
+    expect(screen.getByLabelText("SCORE 50")).toBeTruthy();
     expect(commits.count).toBeGreaterThan(before);
     // A tick that changes nothing visible on the HUD costs no commit.
     const after = commits.count;
@@ -467,7 +691,7 @@ describe("Star Swarm GameCanvas (native) — HUD commits (#2566)", () => {
     nextTick((s) => ({ ...s, player: { ...s.player, hull: 1 } }));
     await frame();
     expect(onUpgrade).toHaveBeenCalledWith({ kind: "hullUp", guns: 1, hull: 1 });
-    expect(screen.getByText("GUNS L1 · HULL ◆")).toBeTruthy();
+    expect(screen.getByText("HULL 1")).toBeTruthy();
     // Spoken through onUpgrade instead, so the toast is hidden from screen readers.
     expect(screen.queryByTestId("starswarm-pickup-cue")).toBeNull();
     expect(
@@ -488,6 +712,36 @@ describe("Star Swarm GameCanvas (native) — HUD commits (#2566)", () => {
     expect(
       screen.getByTestId("starswarm-pickup-cue", { includeHiddenElements: true })
     ).toHaveTextContent("GUNS MAX");
+  });
+
+  it("#3512: shows NEXT WAVE when a power-up is banked, UP! when it applies; each spoken once", async () => {
+    const announce = jest
+      .spyOn(AccessibilityInfo, "announceForAccessibility")
+      .mockImplementation(() => {});
+    announce.mockClear();
+    const { commits } = await mount({
+      initialState: seeded({ phase: "ClearAwaitingPickups", enemies: [] }),
+    });
+    await frame();
+    nextTick((s) => ({ ...s, bankedPowerUp: "shield" }));
+    await frame();
+    const toast = () => screen.getByTestId("starswarm-pickup-cue", { includeHiddenElements: true });
+    expect(toast()).toHaveTextContent("SHIELD → NEXT WAVE");
+    expect(toast().props.numberOfLines).toBe(1);
+    expect(toast().props.adjustsFontSizeToFit).toBe(true);
+    // held banked: later frames neither repeat the announcement nor commit to React
+    const settled = commits.count;
+    await frames(5);
+    expect(commits.count).toBe(settled);
+    nextTick((s) => ({ ...s, phase: "SwoopIn" }));
+    await frame();
+    nextTick((s) => ({ ...s, phase: "Playing", bankedPowerUp: null }));
+    await frame();
+    expect(toast()).toHaveTextContent("SHIELD UP!");
+    await frames(3);
+    const spoken = announce.mock.calls.map(([m]) => String(m));
+    expect(spoken.filter((m) => m === "Shield saved for the next wave.")).toHaveLength(1);
+    expect(spoken.filter((m) => m === "Shield up.")).toHaveLength(1);
   });
 
   it("flashes 1UP on a bonus life until the flash expires", async () => {
@@ -523,13 +777,15 @@ describe("Star Swarm GameCanvas (native) — pause / resume and the countdown", 
 
   it("a new game counts down 3-2-1 with the engine frozen, then starts ticking", async () => {
     await mount();
-    expect(screen.getByText("3")).toBeTruthy();
+    // #3598: the wave numeral is a "1" of its own now, so read the countdown digit by its id
+    const digit = () => screen.queryByTestId("starswarm-countdown");
+    expect(digit()).toHaveTextContent("3");
     await frame(); // dt 0
     await frames(31, 33); // 1023 ms
-    expect(screen.getByText("2")).toBeTruthy();
+    expect(digit()).toHaveTextContent("2");
     expect(mockTick).not.toHaveBeenCalled();
     await frames(62, 33); // past 3000 ms
-    expect(screen.queryByText("1")).toBeNull();
+    expect(digit()).toBeNull();
     await frame();
     expect(mockTick).toHaveBeenCalled();
   });
@@ -602,7 +858,7 @@ describe("Star Swarm GameCanvas (native) — devOptions and reset", () => {
     expect(state.wave).toBe(5);
     expect(state.difficulty).toBe("Captain");
     expect(onBossWave).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("SCORE 0")).toBeTruthy();
+    expect(screen.getByLabelText("SCORE 0")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
     expect(ref.current!.getPlayerX()).toBe(W / 2);
   });
@@ -673,12 +929,11 @@ describe("Star Swarm GameCanvas (native) — devOptions and reset", () => {
 });
 
 describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
-  it("reports a hit, an explosion, a power-up and a laser shot", async () => {
+  it("reports a hit, an explosion and a power-up", async () => {
     const cb = {
       onPlayerHit: jest.fn(),
       onExplosion: jest.fn(),
       onPowerUpCollect: jest.fn(),
-      onLaserFire: jest.fn(),
     };
     await mount({ initialState: seeded(), ...cb });
     await frame();
@@ -699,10 +954,6 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
     }));
     await frame();
     expect(cb.onPowerUpCollect).toHaveBeenCalledWith("lightning");
-
-    nextTick((s) => ({ ...s, player: { ...s.player, shootCooldown: 200 } }));
-    await frame();
-    expect(cb.onLaserFire).toHaveBeenCalledTimes(1);
   });
 
   it("forwards every Carrier event, the rout, a lost Buddy and a wave clear", async () => {
@@ -719,7 +970,7 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
       "carrierJustExposed",
       "carrierBeamJustStarted",
       "carrierBeamJustFired",
-      "reinforcementsJustLaunched",
+      "reinforcementBayJustOpened",
       "carrierAttackRunJustStarted",
       "carrierFinalStandJustStarted",
       "routJustStarted",
@@ -741,6 +992,21 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
     expect(cb.onRout).toHaveBeenCalledWith(4);
     expect(cb.onBuddyLost).toHaveBeenCalledTimes(1);
     expect(cb.onWaveClear).toHaveBeenCalledTimes(1);
+  });
+
+  it("#3561: raises reinforce on the bay-open edge, not when the Grunts launch", async () => {
+    const onCarrierEvent = jest.fn();
+    await mount({ initialState: seeded(), onCarrierEvent });
+    await frame();
+    mockEngine.reinforcementsJustLaunched!.mockReturnValue(true);
+    nextTick((s) => s);
+    await frame();
+    expect(onCarrierEvent).not.toHaveBeenCalledWith("reinforce");
+    mockEngine.reinforcementsJustLaunched!.mockReset();
+    mockEngine.reinforcementBayJustOpened!.mockReturnValueOnce(true);
+    nextTick((s) => s);
+    await frame();
+    expect(onCarrierEvent.mock.calls.map((c) => c[0])).toEqual(["reinforce"]);
   });
 
   it("follows the autopilot: the drag anchor tracks the ship during extraction", async () => {
@@ -919,5 +1185,330 @@ describe("Star Swarm GameCanvas (native) — one run per mount and per reset (#3
     await rerender({ highScore: 1 });
     await rerender({ highScore: 2 });
     expect(mockEngine.initStarSwarm).not.toHaveBeenCalled();
+  });
+});
+
+describe("Star Swarm GameCanvas (native) — sound events (#3526)", () => {
+  const step = frame;
+  const steps = frames;
+
+  const shielded = { type: "shield" as const, remainingMs: 5000, shieldAbsorbed: 0 };
+  const explosion = { id: 1 } as unknown as StarSwarmState["explosions"][number];
+  /** The wave's collected tally, one higher for `type` (what the engine does on a collection). */
+  const collected = (
+    s: StarSwarmState,
+    type: "bomb" | "shield" | "salvage" | "hull"
+  ): StarSwarmState => ({
+    ...s,
+    waveStats: {
+      ...s.waveStats,
+      powerUps: {
+        ...s.waveStats.powerUps,
+        collected: {
+          ...s.waveStats.powerUps.collected,
+          [type]: s.waveStats.powerUps.collected[type] + 1,
+        },
+      },
+    },
+  });
+
+  it("a Smart Bomb detonation reports onBombBlast and skips the generic explosion that tick", async () => {
+    const cb = { onBombBlast: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, bombFlashTimer: 300, explosions: [...s.explosions, explosion] }));
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+    // the flash only counts down on the following ticks: no second blast
+    nextTick((s) => ({ ...s, bombFlashTimer: 284 }));
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+  });
+
+  it("a dev-panel Smart Bomb reports onBombBlast once, outside the tick", async () => {
+    const cb = { onBombBlast: jest.fn(), onExplosion: jest.fn() };
+    const { ref } = await mount({ initialState: seeded(), ...cb });
+    await step();
+    ref.current!.triggerPowerUp("bomb");
+    await step();
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+    // another injection is not a bomb
+    ref.current!.triggerPowerUp("shield");
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+  });
+
+  it("a collected crate or plating reports onPowerUpCollect from the tally, even at max level", async () => {
+    const onPowerUpCollect = jest.fn();
+    await mount({ initialState: seeded(), onPowerUpCollect });
+    await step();
+    nextTick((s) => collected(s, "salvage"));
+    await step();
+    nextTick((s) => collected(s, "hull"));
+    await step();
+    expect(onPowerUpCollect.mock.calls).toEqual([["salvage"], ["hull"]]);
+  });
+
+  it("an ordinary explosion still reports onExplosion", async () => {
+    const cb = { onBombBlast: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, explosions: [...s.explosions, explosion] }));
+    await step();
+    expect(cb.onExplosion).toHaveBeenCalledTimes(1);
+    expect(cb.onBombBlast).not.toHaveBeenCalled();
+  });
+
+  /** A rock of `kind` mid-field (cast: the sound check reads only id, kind, position, velocity). */
+  const rock = (id: number, kind: "large" | "small") =>
+    ({ id, kind, x: 100, y: 100, vx: 0, vy: 0.1, radius: 10, hp: 1 }) as never;
+  /** One rock broke this tick: it leaves the list, a `player` break is counted and it explodes. */
+  const rockBroke = (s: StarSwarmState, id: number, extraExplosions = 0): StarSwarmState => ({
+    ...s,
+    asteroids: s.asteroids.filter((a) => a.id !== id),
+    explosions: [...s.explosions, ...Array(1 + extraExplosions).fill(explosion)],
+    waveStats: {
+      ...s.waveStats,
+      rocks: {
+        ...s.waveStats.rocks,
+        broken: { ...s.waveStats.rocks.broken, player: s.waveStats.rocks.broken.player + 1 },
+      },
+    },
+  });
+
+  it("a rock break reports onRockBreak by size and skips the generic explosion (#3560)", async () => {
+    const cb = { onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large"), rock(902, "small")] }));
+    await step();
+    nextTick((s) => rockBroke(s, 902));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["small"]]);
+    nextTick((s) => rockBroke(s, 901));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["small"], ["large"]]);
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+  });
+
+  it("a rock break and an enemy kill on one tick sound both (#3560)", async () => {
+    const cb = { onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large")] }));
+    await step();
+    nextTick((s) => rockBroke(s, 901, 1));
+    await step();
+    expect(cb.onRockBreak.mock.calls).toEqual([["large"]]);
+    expect(cb.onExplosion).toHaveBeenCalledTimes(1);
+  });
+
+  it("a Smart Bomb tick that clears rocks plays the bomb blast only (#3560)", async () => {
+    const cb = { onBombBlast: jest.fn(), onRockBreak: jest.fn(), onExplosion: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick((s) => ({ ...s, asteroids: [rock(901, "large")] }));
+    await step();
+    nextTick((s) => ({ ...rockBroke(s, 901), bombFlashTimer: 300 }));
+    await step();
+    expect(cb.onBombBlast).toHaveBeenCalledTimes(1);
+    expect(cb.onRockBreak).not.toHaveBeenCalled();
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+  });
+
+  it("a collected power-up (banked or not) reports onPowerUpCollect once, even if its buff rises on that tick", async () => {
+    const onPowerUpCollect = jest.fn();
+    await mount({ initialState: seeded(), onPowerUpCollect });
+    await step();
+    nextTick((s) => collected(s, "bomb"));
+    await step();
+    expect(onPowerUpCollect.mock.calls).toEqual([["bomb"]]);
+    nextTick((s) => ({ ...collected(s, "shield"), activePowerUp: shielded }));
+    await step();
+    expect(onPowerUpCollect.mock.calls).toEqual([["bomb"], ["shield"]]);
+  });
+
+  it("a banked power-up taking effect on the next wave is not announced a second time", async () => {
+    const onPowerUpCollect = jest.fn();
+    await mount({ initialState: seeded({ bankedPowerUp: "shield" }), onPowerUpCollect });
+    await step();
+    nextTick((s) => ({ ...s, bankedPowerUp: null, activePowerUp: shielded }));
+    await step();
+    expect(onPowerUpCollect).not.toHaveBeenCalled();
+  });
+
+  it("reports each loop only when its condition changes", async () => {
+    const onLoopChange = jest.fn();
+    await mount({ initialState: seeded(), onLoopChange });
+    await step();
+    await steps(3);
+    expect(onLoopChange).not.toHaveBeenCalled();
+
+    nextTick((s) => ({ ...s, activePowerUp: shielded }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: shielded }));
+    await step();
+    expect(onLoopChange.mock.calls).toEqual([["shield", true]]);
+
+    nextTick((s) => ({
+      ...s,
+      activePowerUp: null,
+      buddyShips: [{ id: 1, phase: "OnStation" } as never],
+    }));
+    await step();
+    expect(onLoopChange.mock.calls.slice(1)).toEqual([
+      ["shield", false],
+      ["buddy", true],
+    ]);
+
+    nextTick((s) => ({
+      ...s,
+      buddyShips: [],
+      enemies: s.enemies.map((e, i) => (i === 0 ? { ...e, isAlive: true, phase: "Fleeing" } : e)),
+    }));
+    await step();
+    expect(onLoopChange.mock.calls.slice(3)).toEqual([
+      ["buddy", false],
+      ["rout", true],
+    ]);
+  });
+});
+
+describe("Star Swarm GameCanvas (native) — Shield, Buddy and Lightning sounds (#3560)", () => {
+  const step = () => frames(1);
+  const mockTick = engine.tick as jest.MockedFunction<typeof engine.tick>;
+  const realTick = jest.requireActual<typeof engine>("../../../game/starswarm/engine").tick;
+  const nextTick = (change: (s: StarSwarmState) => StarSwarmState) =>
+    mockTick.mockImplementationOnce((s) => change(s));
+  beforeEach(() => mockTick.mockImplementation((s) => s));
+  afterEach(() => mockTick.mockImplementation(realTick));
+
+  const buff = (type: "shield" | "lightning", remainingMs: number) => ({
+    type,
+    remainingMs,
+    shieldAbsorbed: 0,
+  });
+  const explosion = { id: 1 } as unknown as StarSwarmState["explosions"][number];
+  const launched = (s: StarSwarmState): StarSwarmState => ({
+    ...s,
+    runStats: { ...s.runStats, buddyLaunched: s.runStats.buddyLaunched + 1 },
+    buddyShips: [...s.buddyShips, { id: 7, phase: "Entering" } as never],
+  });
+  const phased = (s: StarSwarmState, phase: "OnStation" | "Leaving"): StarSwarmState => ({
+    ...s,
+    buddyShips: s.buddyShips.map((b) => ({ ...b, phase })),
+  });
+
+  it("a Shield cues on once, warns once at 1 s left, and cues off once when it ends", async () => {
+    const onSoundCue = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue });
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 5000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 1016) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 1000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 984) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: null }));
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldWarn"], ["shieldOff"]]);
+  });
+
+  it("Lightning replacing a Shield cues the Shield off and starts the Lightning loop", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("shield", 3000) }));
+    await step();
+    nextTick((s) => ({ ...s, activePowerUp: buff("lightning", 5000) }));
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldOff"]]);
+    expect(onLoopChange.mock.calls).toEqual([
+      ["shield", true],
+      ["shield", false],
+      ["lightning", true],
+    ]);
+    nextTick((s) => ({ ...s, activePowerUp: null }));
+    await step();
+    expect(onLoopChange).toHaveBeenLastCalledWith("lightning", false);
+  });
+
+  it("a Buddy cues in when launched, out when it peels off; its loop runs only on station", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    nextTick(launched);
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["buddyIn"]]);
+    expect(onLoopChange).not.toHaveBeenCalled(); // Entering: the thrusters cover it
+    nextTick((s) => phased(s, "OnStation"));
+    await step();
+    expect(onLoopChange.mock.calls).toEqual([["buddy", true]]);
+    nextTick((s) => phased(s, "Leaving"));
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["buddyIn"], ["buddyOut"]]);
+    expect(onLoopChange.mock.calls).toEqual([
+      ["buddy", true],
+      ["buddy", false],
+    ]);
+    // a second launch cues in again
+    nextTick((s) => launched({ ...s, buddyShips: [] }));
+    await step();
+    expect(onSoundCue.mock.calls.at(-1)).toEqual(["buddyIn"]);
+  });
+
+  it("a Buddy shot down reports onBuddyLost, no out cue, and skips the generic explosion", async () => {
+    const cb = { onBuddyLost: jest.fn(), onExplosion: jest.fn(), onSoundCue: jest.fn() };
+    await mount({ initialState: seeded(), ...cb });
+    await step();
+    nextTick(launched);
+    await step();
+    nextTick((s) => phased(s, "OnStation"));
+    await step();
+    cb.onSoundCue.mockClear();
+    nextTick((s) => ({
+      ...s,
+      buddyShips: [],
+      runStats: { ...s.runStats, buddyLost: s.runStats.buddyLost + 1 },
+      explosions: [...s.explosions, explosion],
+    }));
+    await step();
+    expect(cb.onBuddyLost).toHaveBeenCalledTimes(1);
+    expect(cb.onExplosion).not.toHaveBeenCalled();
+    expect(cb.onSoundCue).not.toHaveBeenCalled();
+    // an ordinary explosion on a later tick still sounds
+    nextTick((s) => ({ ...s, explosions: [...s.explosions, { ...explosion, id: 2 }] })); // a new explosion (new id)
+    await step();
+    expect(cb.onExplosion).toHaveBeenCalledTimes(1);
+  });
+
+  it("dev-panel injections sound too: Shield cues on, Lightning starts its loop, Buddy cues in", async () => {
+    const onSoundCue = jest.fn();
+    const onLoopChange = jest.fn();
+    const { ref } = await mount({ initialState: seeded(), onSoundCue, onLoopChange });
+    await step();
+    ref.current!.triggerPowerUp("shield");
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"]]);
+    expect(onLoopChange.mock.calls).toEqual([["shield", true]]);
+    ref.current!.triggerPowerUp("lightning");
+    await step();
+    await step();
+    expect(onSoundCue.mock.calls).toEqual([["shieldOn"], ["shieldOff"]]);
+    expect(onLoopChange.mock.calls.slice(1)).toEqual([
+      ["shield", false],
+      ["lightning", true],
+    ]);
+    ref.current!.triggerPowerUp("buddy");
+    await step();
+    expect(onSoundCue.mock.calls.at(-1)).toEqual(["buddyIn"]);
   });
 });

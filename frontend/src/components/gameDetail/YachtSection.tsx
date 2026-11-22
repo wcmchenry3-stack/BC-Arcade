@@ -62,7 +62,11 @@ export function YachtSection({ breakdown }: { breakdown: YachtBreakdown }) {
       `yacht-cat-${key}`
     );
   const sectionHeader = (label: string) => (
-    <Text key={label} style={[styles.section, { color: colors.accent }]} accessibilityRole="header">
+    <Text
+      key={label}
+      style={[styles.section, { color: colors.accentText }]}
+      accessibilityRole="header"
+    >
       {label}
     </Text>
   );

@@ -44,11 +44,17 @@ e2e/maestro/
 └── flows/
     ├── _shared/
     │   ├── launch.yaml          # App launch + home screen assertion (imported by all flows)
-    │   └── navigate-to.yaml    # Subflow: tap a tile, assert game screen loads
+    │   ├── tap-game-tile.yaml   # Subflow: scroll a Home tile into view and tap it
+    │   ├── navigate-to.yaml     # Subflow: tap-game-tile + assert the game screen title
+    │   ├── open-yacht.yaml      # Subflow: open Yacht, answer its mode picker, assert title
+    │   ├── open-cascade.yaml    # Subflow: open Cascade and wait for its board (demo flows)
+    │   ├── open-mahjong.yaml    # Subflow: open Mahjong (Turtle) and wait for its board (demo flows)
+    │   ├── warm-up.yaml         # iOS job only: launch once before the loop (#3677)
+    │   └── assert-drag-ok.yaml  # Subflow: the last drag's ghost stayed under the finger (#3532)
     ├── home/                    # Home screen & navigation smoke tests
     ├── blackjack/
     ├── yacht/
-    ├── cascade/
+    ├── cascade/                 # smoke.yaml + demo-*.yaml (tag `demo`, see below)
     ├── freecell/
     ├── hearts/
     ├── solitaire/
@@ -56,7 +62,7 @@ e2e/maestro/
     ├── sudoku/
     ├── daily-word/
     ├── starswarm/
-    ├── mahjong/
+    ├── mahjong/                 # smoke.yaml + demo-*.yaml (tag `demo`, see below)
     ├── sort/
     └── offline/                 # Offline mode: game logic without network
 ```
@@ -81,9 +87,23 @@ To navigate to a game, use `navigate-to.yaml`:
 - runFlow:
     file: ../_shared/navigate-to.yaml
     env:
-      gameSlug: "yacht"
-      screenLabel: "Yacht"
+      gameSlug: "solitaire"
+      screenLabel: "Solitaire"
 ```
+
+`navigate-to.yaml` scrolls the tile into view first (`scrollUntilVisible`), so it
+works for games below the fold on a phone (#2371). It also waits (up to 60 s) for a premium tile to
+lose its "Locked, tap to unlock" label, since tiles stay locked until `/entitlements`
+answers and a locked tile opens the paywall. Use `tap-game-tile.yaml` on its
+own when the game opens a picker in a React Native `<Modal>` (Yacht, Star Swarm):
+on Android a Modal is a separate window, and Maestro cannot see the screen title
+behind it until it closes (#2373). Tap the picker's button, then wait for the
+title. Yacht flows use `open-yacht.yaml` with `yachtMode: "yacht-mode-solo"` or
+`"yacht-mode-vs"`.
+
+`launch.yaml` taps Android's "Wait" button at most 3 times if a system "isn't
+responding" dialog covers the app; a dialog that keeps coming back fails the flow
+within seconds instead of burning the job timeout (#2400).
 
 > **Note:** most slugs match the kebab-case convention (`yacht`, `solitaire`, etc.). The one exception is `daily_word` (underscore), which matches the typed `GameType` literal used across the codebase.
 
@@ -111,12 +131,13 @@ Several games show a selector before the game starts. Each smoke flow handles th
 
 | Game | Selector | How the flow handles it |
 |---|---|---|
-| Yacht | Mode picker (Solo / VS Computer) | taps `yacht-mode-solo` |
+| Yacht | Mode picker (Solo / VS Computer), Android Modal | `open-yacht.yaml` taps `yacht-mode-solo` or `yacht-mode-vs`, then checks the title |
+| Blackjack | Table select (fresh run) | taps `blackjack-table-beginner`, then chip `blackjack-chip-5` (chip testIDs are face values) |
 | Hearts | None (one CPU, #3489) | none: the table is dealt on open |
 | Sort | Level select | taps `sort-level-1` |
 | Mahjong | Layout select | taps `mahjong-layout-turtle` |
 | Sudoku | Difficulty / variant | taps `sudoku-pregame-start` |
-| StarSwarm | Difficulty picker | taps `starswarm-start-game` |
+| StarSwarm | Difficulty picker, Android Modal | taps `starswarm-start-game` before checking the title |
 
 Solitaire also shows a pre-game modal (draw-1/draw-3 picker) on a clean save
 slot, but no flow taps through it — instead, `EXPO_PUBLIC_TEST_HOOKS=1` (set
@@ -124,11 +145,86 @@ for every Maestro build) makes `SolitaireScreen` skip the modal and auto-deal
 draw-1 on a clean slot, since Maestro has no reliable way to tap a
 locale-dependent modal button by text. See `docs/MAESTRO.md` for the fixed
 deterministic deals this same flag enables in Solitaire/FreeCell.
+`solitaire/drag-draw3.yaml` reaches the fixed draw-3 deal by tapping the
+test-build-only button `solitaire-test-deal-draw3` (bottom-right of the board;
+see `docs/TESTING.md`, "Drag invariant flows").
+
+## Drag flows
+
+Maestro's `swipe` (v1.39.13) cannot drag from one element to another: it takes a
+`direction`, an element plus a `direction`, or `start`/`end` coordinates, and the
+coordinates must be literal numbers when the file is parsed (#2366).
+The drag flows therefore swipe between screen
+percentages derived from each board's layout on the CI emulator (pixel_6); the
+derivation is in each file's header. Before each swipe the flow waits for the
+source and target by id. When a flow fails, each mobile-smoke job's "Maestro failure
+details" step (`e2e/maestro/diagnose.py`) prints the failed command, its error and
+the bounds of the drag-relevant elements in the failure-time hierarchy, plus the
+`maestro.log` tail; if a layout change moves the board, correct the percentages
+from those bounds. The full debug output is in the `maestro-android-results`
+artifact under `maestro-debug/`.
+
+**Drag coordinates are per platform.** The iOS simulator (402x874 pt) has a taller
+header than the pixel_6 (411x914 dp), so one percentage lands on different cards.
+Each swipe is two `runFlow` blocks, `when: platform: Android` and
+`when: platform: iOS`, each with its own `start`/`end`; the comment above each block
+names the bounds it came from. To recalibrate one platform, take the bounds that
+`diagnose.py` prints for that platform's failed run (iOS reports points, Android
+reports pixels: divide by the screen size in the same unit), aim at the centre of
+the card's _visible_ strip (fan offset, not full card height, for any card that
+isn't the top one) and at the centre of the drop target, and round to an integer
+percentage that still falls inside both. Leave the other platform's block as it is.
+
+The Hearts pass button is tapped by id (`hearts-pass-confirm`), not by its "Confirm"
+text: a Pressable with its own `accessibilityLabel` hides its child Text on iOS, so
+`tapOn: text:` finds nothing there. Use a testID for any such button.
+
+Every swipe in a drag flow (`solitaire/drag.yaml`, `solitaire/drag-draw3.yaml`,
+`freecell/drag.yaml`, `freecell/drag-large.yaml`) is followed by
+`_shared/assert-drag-ok.yaml` with `dragSeq` = the swipe's number in the flow
+(#3532). Test builds show the drag debug overlay, whose `drag-debug-seq` line
+reads `drag #N` and whose `drag-debug-result` line reads `drag-check: ok Δ(..)`
+or `drag-check: FAIL <kind> Δ(..)` after each drag; the subflow waits for
+`drag #<dragSeq>` and then requires `ok`. That makes the flows fail when the
+dragged card leaves the finger, not only when the move ends up wrong. When you
+add a swipe (an Android/iOS pair of `runFlow` blocks, below), add the subflow
+after the pair and renumber the later ones.
+When `drag #N` never appears, the failure log's `drag-debug-touch` line
+(#3878; docs/TESTING.md; native only, not rendered on web where axe flags an unlabelled input and Maestro doesn't run) says how far the swipe got. A missing line or
+`down=0` both mean no touch reached a card's pan (the line is hidden by opacity
+until the first touch, so the log may list it as `down=0`); `active=0` means the
+pan didn't activate, `js=0` or a large `lag` that the JS thread was busy.
+
+Outcome checks use card testIDs (`solitaire-tableau-<c>-card-<i>`,
+`freecell-col-<c>-card-<i>`, `hearts-hand-card-<i>`) rather than the
+"Tableau column N, M cards" / "Your hand, N cards" labels: on Android the column
+label sits on a View that React Native's view flattening removes, and the hand
+label is a 1x1 transparent Text, so Maestro sees neither.
+
+To play a legal Hearts card, tap `hearts-hand-playable-<i>`: PlayerHand sets it only on
+the Pressable of a card that can be played or selected now (during the pass phase every
+card is selectable). The slot testID `hearts-hand-card-<i>`
+is on an always-enabled wrapper, so `enabled: true` on it filters nothing.
 
 ## Offline flow
 
 `offline/smoke.yaml` uses `toggleAirplaneMode` (Android only). On iOS, put the device in Airplane Mode before running the flow. The flow navigates to Solitaire — a client-side game — taps the stock pile, and asserts the game responds without a network connection.
 
+## Demo flows
+
+Flows tagged `demo` (`tags: [demo]` in the header) record a video
+(`startRecording: <name>` … `stopRecording`) and take named screenshots, for
+showing a change running on a device (#3705). CI leaves them out of every
+smoke run (`--exclude-tags=demo`) and runs only them in a `flows:
+cascade-demo` or `flows: mahjong-demo` dispatch. Locally: `maestro test --include-tags=demo
+e2e/maestro/flows/cascade/`. Where `<name>.png` / `<name>.mp4` land depends on
+the CLI: Maestro 1.39.13 (Android in CI) writes them to the working directory;
+Maestro 2.12.1 (iOS in CI, with `--debug-output`) writes them into the flow's
+debug bundle, `<debug-output>/<flow>/takeScreenshot/` and `.../startRecording/`.
+CI uploads both as `maestro-<platform>-media`. See `docs/MAESTRO.md`, "Cascade demo flows" and "Mahjong demo flows", for
+the list, what they don't cover yet, and how to trigger them.
+Mahjong's screenshots: `mahjong-demo-open`, `mahjong-demo-open-late`, `mahjong-demo-open-late2`, `mahjong-demo-zoom`.
+
 ## Scope
 
-Each game flow is a **smoke test only**: launch → navigate → one interaction → assert screen is stable. Detailed logic (scoring, edge cases, persistence) is covered by Playwright.
+Each game flow is a **smoke test only**: launch → navigate → one interaction → assert screen is stable. Detailed logic (scoring, edge cases, persistence) is covered by Playwright. Demo flows (above) are the exception: they exist to be watched, not to gate.

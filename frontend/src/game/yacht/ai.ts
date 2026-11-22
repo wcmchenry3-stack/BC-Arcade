@@ -160,7 +160,7 @@ export function chooseOption(
 }
 
 /** Map a kept multiset back onto dice positions. */
-function keptToMask(dice: readonly number[], kept: readonly number[]): boolean[] {
+export function keptToMask(dice: readonly number[], kept: readonly number[]): boolean[] {
   const remaining = [...kept];
   return dice.map((d) => {
     const i = remaining.indexOf(d);

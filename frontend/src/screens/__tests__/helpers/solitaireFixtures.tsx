@@ -60,6 +60,16 @@ export async function mountFresh() {
   return api;
 }
 
+/**
+ * Under fake timers: lets every card in flight land and every sound cue timed to the motion
+ * play (#3572: a sound plays on its card's contact or turn, not at the press).
+ */
+export async function landMotion(ms = 1000): Promise<void> {
+  await act(async () => {
+    jest.advanceTimersByTime(ms);
+  });
+}
+
 /** Presses the element with this accessibility label. */
 export async function pressLabel(
   api: Awaited<ReturnType<typeof mountFresh>>,

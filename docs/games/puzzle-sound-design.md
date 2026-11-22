@@ -1,0 +1,576 @@
+# Puzzle, tile and dice games sound design log (#3578)
+
+This log explains why each sound effect in Sort, 2048, Yacht, Daily Word, Sudoku and Mahjong sounds the way it does: the owner's brief, the options auditioned, what was picked and why, and the feedback that shaped it. The card games (Blackjack, Solitaire, FreeCell, Hearts) have their own log, [`arcade-sound-design.md`](arcade-sound-design.md) (#3563), and Star Swarm has [`starswarm-sound-design.md`](starswarm-sound-design.md) (#3560). Cascade has its own log, [`cascade-sound-design.md`](cascade-sound-design.md) (#3702). Mahjong's background music is out of scope.
+
+The **recipes** live in `tools/assets/synth_puzzle_sfx.py`, with the shared building blocks in `tools/assets/synth_common.py`. Each file's credit and one-line recipe is in `frontend/assets/sounds/SOUND_CREDITS.md`. This log keeps the **reasoning**. Add an entry for every sound you change.
+
+Each game's key → file → trigger → volume table is in the Sound section of its doc: [Sort](sort.md#sound), [2048](twenty48.md#sound), [Yacht](yacht.md#sound), [Daily Word](daily_word.md#sound), [Sudoku](sudoku.md#sound), [Mahjong](mahjong.md#sound).
+
+## Direction for the whole set
+
+The house rules are the card games' (see [arcade-sound-design.md](arcade-sound-design.md#direction-for-the-whole-set)):
+
+- **Shared sounds, per-game keys.** One file can back several games' keys (e.g. one "select" sound for a Mahjong tile, a held die and a Sudoku digit). Every game keeps its own key, so volume and triggers stay per game.
+- **Original and synthesized**, from oscillators, noise, envelopes and filters with fixed seeds. No samples.
+- **Smooth over gritty**; **main energy above ~100 Hz** (phone speakers; iOS and Android are primary).
+- **Frequent sounds are short and soft-edged.** Fast repeats get variations (`useSoundVariants`) or a run sound (`useRunSound`).
+- **Physical sounds are built from what makes them** (air, friction, clacks). A pitched "body" makes a die, tile or pour read as something being struck (lesson from #3563's card place).
+- **Variations are matched by short-term loudness** (`level_rms`, the loudest 50 ms), not by peak. The card games' card place sits at −21.5 dBFS.
+- **Small files**: mono Ogg Vorbis q5; loops ~2 s and seamless.
+
+## Auditioning a sound
+
+Every sound goes through the same three steps. The tools are saved in `tools/assets/audition/` (#3673), so a session does not rewrite them; [their README](../../tools/assets/audition/README.md) has the commands, the exact web build command (never a plain `expo export`) and the serve command.
+
+1. **Preview the options.** `preview.py` packages each option, or a gameplay rhythm of sounds, as an mp4 with a spectrogram still, and reports its length, size, `level_rms` and share of energy below 300 Hz. The generators keep each sound's runner-up options in an `OPTIONS` table, never in `SOUNDS`; `python tools/assets/synth_puzzle_sfx.py --options <sound>` writes them to a scratch folder (not `frontend/assets/sounds/`).
+2. **Play the game.** `run.js` drives the game in the web build (Yacht, 2048, Mahjong, Daily Word), records a video and logs every `HTMLMediaElement.play`. Its network is closed: the dev API's `/entitlements` and each game's routes are mocked, and everything else is aborted.
+3. **Check the timing.** `mix.py` lays each logged sound onto the video at its logged time, and grabs frames at given times, so each sound can be checked against the frame it should land on.
+
+Saved options so far: Daily Word's win and loss B and C (recovered from the #3665 thread; `--options daily-word-win` and `daily-word-loss`). The runner-ups below are described in words only, and their recipes were not kept; recreate one only when the owner asks for it, from its description here.
+
+## Starting point (`dev`, before #3578)
+
+A snapshot of what the six games played before this story; each game's current table is in its doc.
+
+The six games' effects on `dev` total about 525 KB, but 321 KB of that is one file, `hearts-moon-shot.mp3` (10 s), shared by four games' wins and Yacht's jackpots, and 88 KB is `freecell-game-win.mp3` (Sort's win). Both are shared with the card games, so they are only deleted once no registry uses them (`freecell-game-win.mp3` was, in #3871, and `hearts-moon-shot.mp3` with `solitaire-invalid-move.ogg` in #3885).
+
+| File                         | Size      | Length  | Used by                                                     |
+| ---------------------------- | --------- | ------- | ----------------------------------------------------------- |
+| `yacht-dice-roll.ogg`        | 19,388 B  | 1.48 s  | `yacht.diceRoll`                                            |
+| `yacht-die-hold.ogg`         | 5,720 B   | 0.17 s  | `yacht.dieHold` (and die release)                           |
+| `yacht-straight.ogg`         | 6,135 B   | 0.55 s  | `yacht.straight`                                            |
+| `yacht-upper-bonus.ogg`      | 5,590 B   | 0.44 s  | `yacht.upperBonus`                                          |
+| `twenty48-tile-merge.ogg`    | 5,859 B   | 0.11 s  | `twenty48.tileMerge`                                        |
+| `twenty48-tile-spawn.ogg`    | 6,634 B   | 0.66 s  | `twenty48.tileSpawn`                                        |
+| `sudoku-digit-place.ogg`     | 6,019 B   | 0.52 s  | `sudoku.digitPlace` (not played)                            |
+| `sudoku-unit-complete.ogg`   | 7,390 B   | 0.50 s  | `sudoku.unitComplete` (not played)                          |
+| `mahjong-tile-select.ogg`    | 5,827 B   | 0.14 s  | `mahjong.tileSelect`                                        |
+| `mahjong-tile-match.ogg`     | 13,915 B  | 1.48 s  | `mahjong.tileMatch`                                         |
+| `mahjong-shuffle.ogg`        | 30,002 B  | 3.06 s  | `mahjong.shuffle`                                           |
+| `hearts-moon-shot.mp3`       | 321,024 B | 10.03 s | Yacht jackpots, 2048 / Sudoku / Mahjong / Daily Word wins   |
+| `freecell-game-win.mp3`      | 87,960 B  | 10.56 s | `sort.win`                                                  |
+| `cascade-game-over.ogg`      | 6,093 B   | 0.31 s  | `twenty48.gameOver`, `mahjong.deadlock` (and Cascade)       |
+| `cascade-fruit-merge.ogg`    | 5,910 B   | 0.55 s  | `sort.pour` (and Cascade)                                   |
+| `solitaire-invalid-move.ogg` | 5,956 B   | 0.78 s  | `sudoku.errorEntered` (not played; and Solitaire, FreeCell) |
+
+## Sounds
+
+Each approved sound gets an entry here: the brief, the constraints, the options, the feedback rounds, the pick, why it works, and a size table against the files it replaced.
+
+### Dice roll (`yacht.diceRoll`)
+
+- **Brief.** The owner asked to hear all three directions before choosing a feel.
+- **Constraints.**
+  - The sound fires as the dice start their tumble (`diceRoll` event, `GameScreen.tsx`), and the tumble lasts **500 ms** (`components/Die.tsx`). The last bounce should land by about 0.5 s.
+  - It repeats up to three times a turn, rolls as fast as ~0.7 s apart, so it has three variations. It used to play only for the player's rolls: the computer opponent's rolls (`useYachtCpuOpponent.ts`) were silent, since only the player's game events reach the sound handlers.
+  - The old file (Kenney's dice shake) ran 1.48 s and peaked 0.43 s in, so it ran on well past the animation.
+- **Round 1: three directions**, each previewed as its 3 variations, 1.2 s apart. Every impact is built from noise (a click plus noise-driven resonances, no sine body: the #3563 lesson that a pitched body reads as striking something). Five dice bounce to rest with shrinking gaps.
+  - **A, cup shake and spill**: a ~150 ms muffled rattle in a cup, then the dice spill onto wood.
+  - B, tumble on felt: soft rounded clacks with a little rolling friction.
+  - C, wooden tray clatter: crisp clicks on hardwood with a few die-on-die knocks.
+  - Feedback: "Let's try A with less cup".
+- **Round 2: less cup**, three steps: A2 a ~90 ms quieter rattle, A3 a ~60 ms hint, A4 a 2–3 click flick.
+- **Pick: A2, "short cup and spill"** (`dice-roll-1/2/3.ogg`, 0.75 s).
+  - The owner chose one sound for every roll: a re-roll of fewer dice does not sound lighter.
+  - A ~90 ms rattle (7–8 muffled clicks, swelling a little as the cup tips), then five dice spill onto a wooden tray at 0.10 s and bounce to rest by ~0.42 s. A third of the bounces carry a quieter die-on-die knock.
+  - Level: −20 dBFS over the loudest 50 ms (about 1.5 dB over card place, since a roll is a bigger event than a card), peaks −5.5 to −7 dBFS, about −25 to −26 LUFS. 0.3–1.0% of the energy is below 100 Hz, 5–6% below 300 Hz.
+- **Gameplay audition.** Yacht solo: a roll, two holds, two re-rolls ~1.5 s apart, then a turn of three rolls as fast as the button allows (~0.7 s apart). Each sound starts within a frame (40 ms) of the tumble, the last bounce lands just before the dice stop, and the fast rolls never overlap. Approved: "those look good".
+- **Why it works.**
+  - The short rattle says "dice in a cup" without spending the animation on it, so most of the sound is the spill, which lines up with the tumble.
+  - The bounces are noise rung at wood-like resonances, so they read as dice landing, not as a mallet or a tone.
+  - Three variations keep repeated rolls from sounding like a loop.
+- **Trigger changes.**
+  - New keys `yacht.diceRoll2` and `yacht.diceRoll3`; `GameScreen.tsx` plays `YACHT_DICE_ROLL` through `useSoundVariants`.
+  - **The computer's rolls play it too** (owner request after the first commit). It fires when the computer's dice start to tumble (its `rollingIndices` turn non-empty), not on its engine events, so a computer turn restored from a save doesn't replay a roll and the computer's scoring stays silent. Audition: VS Computer (Easy), one player roll then the computer's three rolls ~2.6 s apart, each sound on the frame its dice start spinning. Approved: "cpu works". The computer's holds stay silent (owner decision).
+  - A computer re-roll of one or two dice plays the full five-dice spill: one sound for every roll, as chosen.
+
+| File                  | Old size           | New size           | Old length | New length |
+| --------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `yacht-dice-roll.ogg` | 18.9 KB            | removed            | 1.48 s     | —          |
+| `dice-roll-1.ogg`     | —                  | 10.3 KB            | —          | 0.75 s     |
+| `dice-roll-2.ogg`     | —                  | 10.3 KB            | —          | 0.75 s     |
+| `dice-roll-3.ogg`     | —                  | 11.0 KB            | —          | 0.75 s     |
+| **Total**             | 18.9 KB (19,388 B) | 31.6 KB (32,387 B) |            |            |
+
+Three variations cost about 13 KB more than the one file they replace, and the set drops one third-party file (Kenney Casino Audio, CC0).
+
+### Die hold and release (`yacht.dieHold`, `yacht.dieRelease`)
+
+- **Brief.** Yacht gets its own sound (not the shared "select" family with Mahjong and Sudoku: a die and a tile are different objects), release gets its own sound instead of repeating the hold, both have three variations, and the computer's holds stay silent. The owner asked to hear all three directions.
+- **Constraints.**
+  - A hold pops the die to 1.12× on a spring and a release springs it back, settling in ~250–300 ms (`components/Die.tsx`). The sound plays at once on the tap.
+  - Players tap across the dice quickly (~4 a second), so each sound is short and has variations.
+  - It sits under the dice roll: the hold ~1.5 dB under it, the release 1 dB under the hold.
+  - The old file (Kenney's "chip lay", 0.17 s, −21 dBFS over the loudest 50 ms) played for both hold and release.
+- **Options**, each previewed as a roll, three holds and three releases, built from the dice-roll material (clicks rung at wood resonances, air, felt friction; no tonal body):
+  - **A, pick up / set down** (picked): hold a fingertip click plus a small rising puff of air as the die lifts; release a soft tap on wood plus a tiny settle bounce.
+  - B, lock / unlock: hold a firm clack plus a knock against the rail; release one duller tick.
+  - C, slide aside / back: ~70 ms of felt friction into a soft stop; release a shorter, quieter slide.
+- **Pick: A** (`die-hold-1/2/3.ogg`, `die-release-1/2/3.ogg`, 0.12 s each, ~50–60 ms of sound).
+  - Hold: −21.5 dBFS over the loudest 50 ms, almost all click and air (0.2% of the energy below 300 Hz).
+  - Release: −22.5 dBFS, a darker wooden tap (4–16% below 300 Hz, under 2% below 100 Hz).
+- **Gameplay audition.** Yacht solo: a roll, three holds and three releases at a relaxed pace, then a roll and fast taps across all five dice and back (~4 a second). Each sound lands on the frame the die pops or drops back (within one frame on the fast taps). Approved: "like it - approved".
+- **Why it works.**
+  - Hold and release are different motions (lifting off vs putting down), so they read as opposite actions even without looking.
+  - They share the roll's wood, so the whole turn sounds like one set of dice on one tray.
+  - Release is quieter, so a run of taps leans on the hold, the action that matters.
+- **Trigger changes.** New keys `yacht.dieHold2/3` and `yacht.dieRelease`, `yacht.dieRelease2/3`. `GameScreen.tsx` plays `YACHT_DIE_HOLD` and `YACHT_DIE_RELEASE` through `useSoundVariants`; `dieRelease` no longer plays the hold sound. The computer's holds stay silent.
+
+| File                    | Old size         | New size           | Old length | New length |
+| ----------------------- | ---------------- | ------------------ | ---------- | ---------- |
+| `yacht-die-hold.ogg`    | 5.6 KB           | removed            | 0.17 s     | —          |
+| `die-hold-1/2/3.ogg`    | —                | 13.9 KB            | —          | 0.12 s     |
+| `die-release-1/2/3.ogg` | —                | 15.0 KB            | —          | 0.12 s     |
+| **Total**               | 5.6 KB (5,720 B) | 28.9 KB (29,598 B) |            |            |
+
+Six short files where there was one: about 24 KB more, the cost of a separate release and three variations of each. The set drops another Kenney Casino Audio file (CC0).
+
+### Scoring ladder (`yacht.scoreCommit`, `scoreZero`, `smallStraight`, `largeStraight`, `fullHouse`, `upperBonus`, and the computer's `cpu*` set)
+
+- **Brief.** Score commit, the straights and the upper bonus designed together as one ladder, the jackpot as its top step (next). Owner decisions:
+  - a milestone **replaces** the commit (one sound per score);
+  - small and large straights get **their own keys**;
+  - a **full house** gets a milestone too (it is a named, fixed-value combo; three and four of a kind and chance are sums and stay on the commit);
+  - a 0 plays a **duller "scratch"** variant;
+  - the computer's scores get **the opposite tone** of the player's: if yours is triumphant, its is the "rival" version, and always quick;
+  - the **upper bonus** needed a better tone than the old one: an achievement moment.
+- **Constraints.**
+  - There is no scoring animation: the dice blank and the round advances at once, so the sound is the feedback and starts at once.
+  - In VS the computer's first roll starts within ~30 ms of your score, so your score sound always plays over its dice roll. The commit (~50 ms) is over before the roll gets loud.
+  - The commit plays 13 times a game but only once a turn (10+ s apart), so it has no variations: each would cost another audio player on the screen.
+  - The old straight and bonus sat about 17 dB over card place (−4.4 and −4.9 dBFS over the loudest 50 ms).
+- **Options.** Three directions, each a player set (rising, major) and a computer set (falling, minor, darker, 2.5 dB quieter, ≤0.5 s):
+  - **A, wood and mallet** (picked): a pencil tap on a wooden scorepad; marimba-like mallet runs (4 notes for a small straight, 5 for a large, "three and two" for a full house); the bonus a run into a held mallet roll with a glass sparkle.
+  - B, scorepad and bells: a pencil mark on paper; glass-bell runs and a shimmering bell chord.
+  - C, arcade coins: a soft blip; rising blips and a coin cascade into a trill.
+- **Pick: A.** Loudness ladder over the loudest 50 ms: commit −22, zero −23.5, small straight −20.5, large straight and full house −20, upper bonus −18 dBFS; the computer's set 2.5 dB under each. Nothing has energy below 100 Hz; the computer's set reaches down to C4 (262 Hz), which is what makes it darker.
+- **Gameplay audition.** VS Computer, six turns from injected states: a large straight, a full house, a small straight, a 0 (Yacht), a commit (Threes) and the upper bonus (Sixes reaching 63), each followed by the computer's turn (it scored three small straights and three commits). Each sound lands on the frame its score appears. Approved: "I like what you chose".
+- **Why it works.**
+  - The commit is the same wood as the dice, so a plain score sounds like a pencil mark on the pad, not a reward; the rewards are the only tonal sounds in the game, so they stand out.
+  - The straights mirror the dice (4 or 5 notes in a row), and the full house is literally three and two.
+  - The computer's set is the same instrument turned over: you hear what it scored, and that it's bad news for you, without it competing with your own sounds.
+- **Trigger changes.**
+  - The engine emits a `scored` event (category and points) first on every score, and a new `fullHouse` event.
+  - `game/yacht/useScoreSound.ts` picks one sound per score (yacht or joker, then upper bonus, large straight, full house, small straight, else commit or zero). It plays once per new events array and skips the events the screen mounts with, so a restored save doesn't replay a score. Yours play from your state, the computer's from its state.
+  - `yacht.straight` is split into `yacht.smallStraight` and `yacht.largeStraight`; 12 keys in all.
+  - Your yacht and joker still play the old fanfare, and the computer's play its upper bonus, until the jackpot sounds land.
+  - The computer's roll trigger now plays strictly once per roll array (a re-render with a new `play` function could have replayed it).
+
+| File                     | Old size           | New size           |
+| ------------------------ | ------------------ | ------------------ |
+| `yacht-straight.ogg`     | 6.0 KB             | removed            |
+| `yacht-upper-bonus.ogg`  | 5.5 KB             | removed            |
+| `score-commit.ogg`       | —                  | 4.6 KB             |
+| `score-zero.ogg`         | —                  | 5.4 KB             |
+| `small-straight.ogg`     | —                  | 7.6 KB             |
+| `large-straight.ogg`     | —                  | 8.7 KB             |
+| `full-house.ogg`         | —                  | 8.3 KB             |
+| `upper-bonus.ogg`        | —                  | 11.8 KB            |
+| `cpu-score-commit.ogg`   | —                  | 4.6 KB             |
+| `cpu-score-zero.ogg`     | —                  | 5.4 KB             |
+| `cpu-small-straight.ogg` | —                  | 6.9 KB             |
+| `cpu-large-straight.ogg` | —                  | 7.3 KB             |
+| `cpu-full-house.ogg`     | —                  | 6.8 KB             |
+| `cpu-upper-bonus.ogg`    | —                  | 7.0 KB             |
+| **Total**                | 11.4 KB (11,725 B) | 84.5 KB (86,543 B) |
+
+Ten sounds where there were two, half of them the computer's new set: about 73.1 KB more. The set drops two Kenney Digital Audio files (CC0).
+
+### Jackpot (`yacht.yacht`, `yacht.joker`, `yacht.cpuYacht`, `yacht.cpuJoker`)
+
+- **Brief.** The top of the scoring ladder: a yacht and a joker for you and for the computer. Owner: "for the player we can take a minute to celebrate but for the cpu it should be quick like the rest", in the opposite tone.
+- **Constraints.**
+  - Yours plays with the YACHT! / JOKER! celebration, which leaves at 2.2 s (`YachtCelebrationAnimation.tsx`), so it rings out by ~1.5 s in a 1.9 s file.
+  - In VS the computer starts rolling right after you score, so its dice roll plays under your fanfare.
+  - The old sound was the 10 s, 321 KB Pixabay `hearts-moon-shot.mp3`, which ran far past the celebration.
+- **Options**, all in the approved wood and mallet palette, each with your yacht and joker and the computer's:
+  - **1, mallet fanfare** (picked): a two-octave mallet run into a big rolled chord, glass sparkles falling; the joker a step higher with a double "again!" bell; the computer's a fast falling minor run into a low minor chord.
+  - 2, dice slam and motif: the five dice slapped down, then a "ta-da-DAA" mallet motif.
+  - 3, bells and roll: a glass-bell carillon over a swelling mallet roll.
+  - The owner liked all three and asked which matches the other scorecard sounds best: 1, the same mallet runs as the straights stretched to two octaves, ending like the upper bonus (a held roll and a sparkle), only bigger; 2 adds new material and 3 leads with bells (the palette not picked).
+- **Pick: 1.** Yours at −16 dBFS over the loudest 50 ms (2 dB over the upper bonus), the computer's at −19. Nothing below 100 Hz; the computer's low minor chords put ~19% of their energy under 300 Hz.
+- **Gameplay audition.** VS Computer from injected states: your yacht, the computer's yacht, your joker (a second yacht into Fives), the computer's joker. The computer was made to roll five sixes by a local patch built into the audition only (reverted, never committed). Each sound starts on the frame its score appears; yours climbs as the badge flies in. Approved: "approved - commit it".
+- **Why it works.** It is the ladder's own material at its largest, so a yacht sounds like the best score of the same game rather than a different game's fanfare; the joker is the same moment again, a step higher. The computer's is short and falls, so it registers as bad news without competing.
+- **Trigger changes.** `yacht.yacht` / `yacht.joker` point at the new files (still played by the event handlers with the celebration). New keys `yacht.cpuYacht` / `yacht.cpuJoker`; the score picker now tells a yacht from a joker, and the computer's no longer borrow its upper bonus.
+- **Cleanup.** `yacht-yacht.mp3`'s stale `SOUND_CREDITS.md` entry (a file that never shipped) is deleted. `hearts-moon-shot.mp3` stays for 2048, Sudoku, Mahjong, Daily Word and the card games.
+
+| File                                 | Old size                | New size           |
+| ------------------------------------ | ----------------------- | ------------------ |
+| `hearts-moon-shot.mp3` (Yacht's use) | 313.5 KB, shared, stays | —                  |
+| `jackpot-yacht.ogg`                  | —                       | 16.4 KB            |
+| `jackpot-joker.ogg`                  | —                       | 16.5 KB            |
+| `cpu-jackpot-yacht.ogg`              | —                       | 8.4 KB             |
+| `cpu-jackpot-joker.ogg`              | —                       | 8.5 KB             |
+| **Total**                            | —                       | 49.8 KB (51,027 B) |
+
+Adds 51,027 B now. The fanfare can only go once 2048, Sudoku, Mahjong and Daily Word (and the card games, #3563) stop using it; dropping it then saves 321 KB, far more than every Yacht sound together.
+
+### 2048 merge and spawn (`twenty48.tileMerge`, `twenty48.tileSpawn`)
+
+- **Brief.** The owner wanted merge and spawn designed together, since they play on nearly every swipe, and asked to hear samples.
+- **Constraints.**
+  - A slide takes 100 ms, the merge pop starts at 90 ms (1.15×, 150 ms), and a new tile scales in from 60 ms (`AnimatedTile.tsx`). Both sounds fire at the swipe, so each file puts its accent on its animation: the merge at 90 ms, the spawn at 60 ms. (As first designed; #3690 below moved the merge to 100 ms for the sliding merges.)
+  - Swipes come up to ~4–5 a second, and merge and spawn usually play together, so both are short with three variations each.
+  - The old spawn rang 0.68 s on every swipe with 91% of its energy under 300 Hz (mostly lost on phone speakers); the old merge sat at about −27.5 dBFS after its 0.3 volume.
+- **Options**, each previewed as 8 swipes ~0.4 s apart and a fast burst of 6 at 0.22 s:
+  - **A, wooden tiles** (picked): a faint slide, then two wooden tiles clacking on the pop; the spawn a small tile set down.
+  - B, bubbles: a rounded "bloop" gliding up into the pop; the spawn a little water droplet.
+  - C, mallet chime: a soft marimba note; the spawn a tiny glass tick.
+- **Pick: A.** Merge −22 and spawn −26 dBFS over the loudest 50 ms (the spawn, on every swipe, is the quietest sound in the game), set in the files, so the code's 0.3 / 0.2 volumes are gone (1.0). Under 9% of the energy below 300 Hz, nothing below 100 Hz.
+- **Gameplay audition.** A board injected with pairs, then 8 swipes ~0.45 s apart and 8 at 0.22 s: 21 sounds, variations never repeating; each sound sits on its animation (the clack as the pop starts, its peak ~75 ms later; the spawn as the tile scales in). Approved.
+- **Why it works.** The same wood as Yacht's dice and scorepad, so the arcade's tile and dice games sound like one set of pieces; dry and short, so a fast run of swipes stays a run of separate clicks instead of a wash.
+- **Trigger changes.** New keys `twenty48.tileMerge2/3` and `twenty48.tileSpawn2/3`, played by `useSoundVariants`; volumes 0.3 and 0.2 → 1.0 (levels in the files).
+
+| File                      | Old size           | New size           | Old length | New length |
+| ------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `twenty48-tile-merge.ogg` | 5.7 KB             | removed            | 0.11 s     | —          |
+| `twenty48-tile-spawn.ogg` | 6.5 KB             | removed            | 0.66 s     | —          |
+| `tile-merge-1/2/3.ogg`    | —                  | 16.8 KB            | —          | 0.22 s     |
+| `tile-spawn-1/2/3.ogg`    | —                  | 13.4 KB            | —          | 0.16 s     |
+| **Total**                 | 12.2 KB (12,493 B) | 30.2 KB (30,930 B) |            |            |
+
+Six files where there were two: 18,437 B more, for variations on the two sounds that play most. The set drops two Kenney files (CC0).
+
+### 2048 win and game over (`twenty48.win2048`, `twenty48.gameOver`)
+
+- **Brief.** Designed as a pair. The owner asked to hear all the directions.
+- **Constraints.** Both come with a result card that stops play, so neither has to clear the way for the next move: the win can celebrate ~2–2.5 s, the game over should be gentle and short (a long game ending, not a mistake). Today the win was the 10 s, 321 KB shared fanfare and the game over Cascade's sound.
+- **Options**, each a win then a game over:
+  - **A, wood and mallet** (picked): the Yacht jackpot's run and roll, then a final "ta-da" chord with a high bell; the game over a last tile clack, a gentle falling mallet line and a soft low chord.
+  - B, the climb to 2048: 11 rising notes, one per doubling, into a big chord; the game over tiles sliding to a stop.
+  - C, glass and chimes: a bell carillon over a shimmering chord; the game over falling glass bells.
+  - D, reuse Yacht's jackpot for the win (+0 KB), with A's game over.
+- **Pick: A.** Win −16 dBFS over the loudest 50 ms (the top of the ladder, like Yacht's jackpot), game over −21. Nothing below 300 Hz.
+- **Gameplay audition.** Two injected boards: a swipe left merging 1024 + 1024 into 2048 (the fanfare starts with the merge; the win card is up within ~0.3 s, under the rolling chord), and a swipe right leaving no moves whichever tile spawns (the falling line with the result card). Approved.
+- **Why it works.** The free games now share one ending vocabulary: Yacht's jackpot and 2048's win are the same mallet fanfare at different lengths, and the game over is the same instrument falling gently instead of a harsh "fail" sound.
+- **Found in the audition: a reopen bug (fixed).** Reopening a saved game replayed its last swipe's merge and spawn, on `dev` too: a save keeps the tiles' `isMerge`/`isNew` flags (only the events are cleared), and the tile-sound effect also ran when the screen opened. The screen now remembers the tiles a restored game opens with and skips them; a fresh deal still plays its spawn. Owner-approved; `Twenty48Screen.sound.test.tsx` covers both cases.
+- **Cleanup.** Deleted the stale `twenty48-win.mp3` and `twenty48-game-over.ogg` credit entries (files that never shipped).
+
+| File                                 | Old                                  | New size           | Length               |
+| ------------------------------------ | ------------------------------------ | ------------------ | -------------------- |
+| `hearts-moon-shot.mp3` (2048's use)  | 313.5 KB, shared, stays              | —                  | 10.0 s               |
+| `cascade-game-over.ogg` (2048's use) | 6.0 KB, Cascade's (deleted in #3702) | —                  | 0.31 s               |
+| `win-2048.ogg`                       | —                                    | 26.4 KB            | 3.1 s (rings ~2.7 s) |
+| `game-over-2048.ogg`                 | —                                    | 17.3 KB            | 2.0 s (rings ~1.5 s) |
+| **Total**                            | —                                    | 43.7 KB (44,757 B) |                      |
+
+Sizes and lengths as first shipped; #3690 below re-timed both (win 2.6 s, 22.0 KB; game over 2.1 s, 17.1 KB). Adds 44,757 B now; nothing is deleted, since both old files are shared. 2048 no longer uses the 321 KB fanfare; it goes once Sudoku, Mahjong, Daily Word and the card games stop using it.
+
+### 2048 sounds re-timed to the new motion (#3690)
+
+- **Brief.** The 2048 motion story (#3689) changed when things happen on the board: the two tiles of a merge now slide into each other, and the win and game-over cards wait for a short beat. The sounds stay as they were; only their timing moves, so each accent lands on its new moment. Every timing comes from `game/twenty48/motion.ts`, and the generator's tests pin each one.
+- **Changes.** All four sounds still play as the move lands.
+
+| Sound     | Was                                                   | Now                                                        | Motion it follows                                                          |
+| --------- | ----------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Merge     | clack at 90 ms                                        | clack at 100 ms                                            | the two sliding tiles meet at 100 ms and the merged tile pops              |
+| Spawn     | set-down at 60 ms                                     | unchanged, the same audio                                  | the new tile shows from 60 ms                                              |
+| Win       | run from 0 s, "ta-da" chord at 1.5 s                  | run from 100 ms, chord and bell at 1.0 s                   | the 2048 tile pops at 100 ms; the win card at 1.0 s                        |
+| Game over | clack at 0 s, falling line from 50 ms, chord at 0.5 s | clack at 100 ms, falling line 0.2 to 0.5 s, chord at 0.6 s | the move lands; the board dims and shakes 220 to 520 ms; the card at 0.6 s |
+
+- **Gameplay audition.** The motion branch built with the new files. A board of pairs took four calm moves and a quick burst of three, then a 1024 + 1024 win, then a last move that left the board stuck. Every logged sound was laid over the video, next to a copy with today's sounds at the same moments. The win chord lands as the card fades in, and the game-over chord as its card appears. Approved by the owner.
+- **Found in the audition.**
+  - The board flashed back to full brightness between the game-over beat ending and the card's scrim fading in. Fixed in #3725: the board stays dimmed under the card.
+  - "Time played" briefly read "-1:-2" after the first move. Filed as #3735.
+
+| File                   | Before   | After               | Length before | Length after |
+| ---------------------- | -------- | ------------------- | ------------- | ------------ |
+| `tile-merge-1/2/3.ogg` | 17,179 B | 17,224 B            | 0.22 s        | 0.22 s       |
+| `tile-spawn-1/2/3.ogg` | 13,751 B | 13,751 B, unchanged | 0.16 s        | 0.16 s       |
+| `win-2048.ogg`         | 27,028 B | 22,037 B            | 3.1 s         | 2.6 s        |
+| `game-over-2048.ogg`   | 17,729 B | 17,560 B            | 2.0 s         | 2.1 s        |
+| **Changed files**      | 61,936 B | 56,821 B            |               |              |
+
+5,115 B smaller: the win no longer rings on half a second past the card.
+
+### Mahjong select and match (`mahjong.tileSelect`, `mahjong.tileMatch`)
+
+- **Brief.** The owner chose the material for the whole Mahjong set: **real tiles**, bone-and-bamboo tiles on a felt table, the sound of the actual game, over the Yacht/2048 wood and mallet or "jade and bells". Select is Mahjong's own, not shared with Sudoku's digit placement. Select and match were designed first, as a pair, since they play constantly.
+- **Constraints.**
+  - The motions (#3613, `motion.ts`): select lifts the tile over 180 ms; a match lifts the pair, flies it together to meet face to face at 264 ms (0.6 of 440 ms), then bursts in sparks. Both sounds fire at the tap, so the match puts its clack on the meeting.
+  - A board is 72 pairs: select plays ~150 times a game and match 72, often in quick runs (a tap during a burst is taken at once). So both are short with three variations, and select sits 3 dB under match.
+  - The old match was a 1.5 s bell (Kenney) ringing under the next taps; the old select a generic impact.
+- **Options**, each previewed as three calm select → match pairs, two quick pairs and a run of three selects:
+  - **A, crisp clack** (picked): a bright fingertip tick on a dense tile; the match a tap, the pair flying, a sharp clack and its double as they meet, two tiny high sparks.
+  - B, felt table: a soft scuff on the cloth and a muffled tap; the match a rounder, deeper knock with the felt under it.
+  - C, ivory with a chime: a tick with a faint pitched ring; the match's clack followed by a two-note pentatonic chime.
+- **Pick: A.** Select −23 and match −20 dBFS over the loudest 50 ms; nothing below 300 Hz (under 0.6% of the energy).
+- **Gameplay audition.** A Turtle deal (select, a wrong pair, a deselect, select, match) and a four-tile board (select, match, a select during the burst, the winning match), with every `play()` logged and laid over the video: each sound within ~30 ms of its tap, variations never repeating, and the clack on the frame where the pair meets. Approved.
+- **Why it works.** It is the sound the game makes in real life, so it needs no learning; dry and short, so a fast run of matches stays a run of distinct clacks; and the match's accent lands on what the eye sees (the tiles touching), not on the tap.
+- **Trigger changes.** New keys `mahjong.tileSelect2/3` and `mahjong.tileMatch2/3`, played by `useSoundVariants` (`useMahjongAudio.ts`). The deselect stays silent.
+
+| File                       | Old size           | New size           | Old length | New length |
+| -------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `mahjong-tile-select.ogg`  | 5.7 KB             | removed            | 0.14 s     | —          |
+| `mahjong-tile-match.ogg`   | 13.6 KB            | removed            | 1.48 s     | —          |
+| `mahjong-select-1/2/3.ogg` | —                  | 14.0 KB            | —          | 0.12 s     |
+| `mahjong-match-1/2/3.ogg`  | —                  | 24.7 KB            | —          | 0.5 s      |
+| **Total**                  | 19.3 KB (19,742 B) | 38.7 KB (39,652 B) |            |            |
+
+Six files where there were two: 19,910 B more, for variations on the two sounds that play most. The set drops two Kenney files (CC0), the last uses of Kenney Impact Sounds.
+
+### Mahjong shuffle (`mahjong.shuffle`)
+
+- **Brief.** The same "real tiles" material as select and match. The owner heard three options after select and match were approved.
+- **Constraints.** The shuffle motion (#3613, `motion.ts`) swirls every tile to its new place over 880 ms in a left-to-right wave: each tile lifts within the first 308 ms and lands 572 ms later, so the landings run from 572 to 880 ms. Shuffles are rare (three a game at most), so one file, no variations. The old file was Kenney's 3.1 s card shuffle, longer than the motion and the wrong material.
+- **Options**, each previewed after a select and before a select and match:
+  - **A, washing the tiles** (picked): the sound of mixing mahjong tiles, a dense clatter of tiles pushed around on the felt over a soft felt rumble, swelling with the swirl, then the wave of tiles settling into place.
+  - B, sweep and settle: a broad sweep of hands over the felt with a few clicks, then a crisp left-to-right settle.
+  - C, riffle: an orderly run of clicks racing left to right as the wave lifts, the wave landing, a final double clack.
+- **Pick: A.** −20 dBFS over the loudest 50 ms (level with the match: a rare, bigger event); 1.2% of the energy below 300 Hz.
+- **Gameplay audition.** A Turtle deal, a select, then two shuffles from the action bar: each sound within ~30 ms of the press; the clatter swells while the tiles swirl, and the landing clicks run left to right as the left side lands (~0.6 s) and then the right (~0.8 s), settled by ~0.9 s. Approved.
+- **Why it works.** "Washing" the tiles is how a real game reshuffles, so the sound says what happened without a label; the landings put the end of the sound on the end of the motion, so the board is ready when the sound stops.
+
+| File                       | Old size           | New size           | Old length | New length |
+| -------------------------- | ------------------ | ------------------ | ---------- | ---------- |
+| `mahjong-shuffle.ogg`      | 29.3 KB            | removed            | 3.06 s     | —          |
+| `mahjong-shuffle-wash.ogg` | —                  | 14.6 KB            | —          | 1.05 s     |
+| **Total**                  | 29.3 KB (30,002 B) | 14.6 KB (14,986 B) |            |            |
+
+15,016 B smaller. The set drops Mahjong's last Kenney file (Casino Audio, CC0).
+
+### Mahjong win and deadlock (`mahjong.win`, `mahjong.deadlock`)
+
+- **Brief.** The last pair of the Mahjong set. The owner was keen to lose the 10 s fanfare and picked from three directions without a separate brief.
+- **Constraints.**
+  - The win fires at the winning tap, together with the match (whose clack lands at 264 ms). The spark cascade (#3613, `WIN_CASCADE_MS`) holds the result card back until 1.45 s, so the win can build under the sparks and land its accent as the card shows, then ring under it.
+  - The deadlock fires with the 420 ms board shake, and its card shows at 500 ms (`DEADLOCK_OVERLAY_DELAY_MS`): a long game ending, so gentle, not a punishment.
+  - Before: the win was the shared 10 s, 321 KB fanfare; the deadlock Cascade's 0.31 s phaser tone.
+- **Options**, each previewed as the winning tap (match plus win) and a last match into a deadlock:
+  - A, tiles and chimes: the burst growing into a rush of tiles tumbling across the felt under a rising pentatonic chime run, a warm rolled chord; the deadlock two dull knocks and a falling chime.
+  - B, wood and mallet: Yacht and 2048's mallet fanfare at Mahjong's length; the deadlock 2048's gentle ending opened by tile knocks.
+  - **C, gong and bells** (picked): a small gong swelling under the sparks while bells ring a pentatonic carillon, then a bright gong stroke and a bell chord; the deadlock a muted gong and one falling bell.
+- **Pick: C.** Win −16 dBFS over the loudest 50 ms (the top of the ladder, like 2048's win), deadlock −21. Both gongs sit at F4 (349 Hz) or higher: an earlier draft's deadlock gong at G3 had 80% of its energy under 300 Hz, lost on phone speakers. Nothing below 300 Hz now.
+- **Gameplay audition.** A four-tile board cleared in two matches (bells over the sparks, the stroke at 1.45 s as the "You Win!" card appears), then a board with no shuffles left where the last match leaves no free pair (the muted gong with the shake, the bell as "You Lose" appears at 0.5 s). Approved.
+- **Why it works.** The "real tiles" set gets one ceremonial voice for its two endings: the same gong, bright and with bells for a win, muted with a single falling bell when stuck. Mahjong now sounds like itself rather than borrowing the card games' fanfare.
+
+| File                                    | Old                                  | New size           | Length |
+| --------------------------------------- | ------------------------------------ | ------------------ | ------ |
+| `hearts-moon-shot.mp3` (Mahjong's use)  | 313.5 KB, shared, stays              | —                  | 10.0 s |
+| `cascade-game-over.ogg` (Mahjong's use) | 6.0 KB, Cascade's (deleted in #3702) | —                  | 0.31 s |
+| `mahjong-win.ogg`                       | —                                    | 27.0 KB            | 3.4 s  |
+| `mahjong-deadlock.ogg`                  | —                                    | 16.2 KB            | 1.9 s  |
+| **Total**                               | —                                    | 43.2 KB (44,222 B) |        |
+
+Adds 44,222 B now; nothing is deleted, since both old files are shared. Mahjong no longer uses the fanfare; it goes once Sudoku, Daily Word and the card games stop using it.
+
+### Daily Word tile reveal and refusal (`dailyWord.revealMiss` / `revealPresent` / `revealCorrect`, `dailyWord.refused`)
+
+- **Brief (#3665).** The owner chose the material for the whole Daily Word set: **wooden letter tiles**, small wooden tiles turned over, the same family as 2048 and Yacht. They chose this over paper cards or glass and chimes. The frequent reveal and refusal came first, to set the material and the level that the win and loss sit above. There is no key-press sound (owner).
+- **Constraints.**
+  - The reveal motion (#3664, `motion.ts`): a row's tiles turn over top to bottom, 100 ms apart (`TILE_STAGGER_MS`). Each tile's colour shows at its flip midpoint (`i × 100 + 150 ms`), the same moment its key changes. So each tile's sound plays there with its tick at 0, short enough for the next tick to stand clear. That is five sounds per guess, in a 0.55 s run.
+  - The refusal plays with the 360 ms "no" shake (six 60 ms swings), only for a guess the game or server refuses: too short, not a word, or a repeat. It does not play for a network error.
+  - Before: none. Daily Word's only sound was the shared win fanfare.
+- **Options.** Each was previewed as three calm guesses with a refusal, then a quick burst of a refusal and two fast rows:
+  - **A, tick + marimba** (picked):
+    - reveal: a small wooden tick for every tile; a yellow tile adds a soft marimba E5, and a green one a warm G5 + C6, so an all-green row rings;
+    - refusal: two dull taps over a low falling minor second.
+  - B, plain woodblock: unpitched; grey a muffled thud, yellow a clean knock, green a bright ringing "tock"; the refusal a muffled knock-knock.
+  - C, temple blocks: hollow tuned blocks, one pitch per result (low, middle, high), so a row plays its result; the refusal two low blocks falling a semitone.
+- **Pick: A.**
+  - Levels (dBFS over the loudest 50 ms): grey −28, yellow −26, green −24 (2 dB per step up the result); refusal −24.
+  - Energy below 300 Hz: under 6% for the reveal (the grey tile's dull body is the most), 8.6% for the refusal.
+- **Gameplay audition.** Played in the web build, with every `play()` logged and laid over the video:
+  - the moves: SLATE, a too-short word, XYZZY refused by the server, TRACE, then CRANE typed fast;
+  - each tile's sound 100 ms apart, on the frame where its colour shows;
+  - the refusal on the row's shake;
+  - variations never repeating back to back.
+
+  Approved.
+
+- **Why it works.**
+  - The tick is the tile turning, so every tile is heard, grey ones included. The colour adds the music: a guess with no hits is five quiet ticks, and a good guess rings.
+  - The result reads by ear as the tiles turn, without giving it away early: each sound waits for its tile, like the keys (#3663).
+  - The refusal is the same wood, dull and falling, so it says "no" without a buzzer.
+- **Trigger changes.**
+  - New keys `dailyWord.revealMiss/Present/Correct` (each with `2`/`3`), played by `useSoundVariants`, and `dailyWord.refused`.
+  - `useDailyWordSounds` times the reveals like `useRevealedKeyboard`. Under Reduce Motion the colours still change tile by tile at those times, so the sounds do too. A restored board is silent.
+  - The refusal rides the shake's `onRefused`.
+
+| File                           | Old size | New size           | Length |
+| ------------------------------ | -------- | ------------------ | ------ |
+| `daily-word-miss-1/2/3.ogg`    | —        | 13.9 KB            | 0.24 s |
+| `daily-word-present-1/2/3.ogg` | —        | 17.5 KB            | 0.24 s |
+| `daily-word-correct-1/2/3.ogg` | —        | 17.9 KB            | 0.24 s |
+| `daily-word-refused.ogg`       | —        | 7.2 KB             | 0.38 s |
+| **Total**                      | —        | 56.4 KB (57,740 B) |        |
+
+Adds 57,740 B for two sounds the game didn't have, ten files in all. Nothing is removed: the win fanfare is replaced in the next step.
+
+### Daily Word win and loss (`dailyWord.win`, `dailyWord.loss`)
+
+- **Brief (#3665).** The last pair of the Daily Word set, in the same "wooden letter tiles" material as the reveal. The owner picked from three directions after the reveal and refusal were approved.
+- **Constraints.**
+  - Both play when the last row has finished flipping (`finishReveal`, #3664).
+  - Win: the solved row's tiles hop 70 ms apart, each at its highest 108 ms in. Sparks burst for 1.1 s, and the result card waits until then (`winCelebrationMs`). So the win can ride the hops, build under the sparks and land its accent as the card shows.
+  - Loss: the answer's tiles flip in 120 ms apart, each showing its colour 150 ms in, and the card follows at 0.78 s for five letters (`lossRevealMs`). A long puzzle ending, so it is gentle, not a punishment.
+  - Before: the win was the shared 10 s, 321 KB fanfare, and a loss had no sound.
+- **Options.** Each was previewed as an all-green last row (with the approved reveal ticks) then the win, and a losing last row then the loss:
+  - **A, mallet run** (picked):
+    - win: a marimba note on each tile's hop (C E G C E), a glass shimmer over the sparks, then a rolled C major "ta-da" with a bell at the card;
+    - loss: a falling marimba line on the answer's tiles (G E D C A), then a low A minor chord.
+  - B, tiles and chimes: a wooden click as each tile lands, a glass chime run, then a marimba roll; the loss a tick per answer tile and a low minor third.
+  - C, small and sweet: a quick light run then a two-note "ding-ding"; the loss a two-note sigh.
+  - B and C are saved: `python tools/assets/synth_puzzle_sfx.py --options daily-word-win` (or `daily-word-loss`) writes A, B and C to a scratch folder (#3673).
+- **Pick: A.** Win −17 and loss −21 dBFS over the loudest 50 ms, so the win sits 1 dB under Mahjong's and the loss level with 2048's game over. Nothing below 300 Hz.
+- **Gameplay audition.** Two games in the web build, with every `play()` logged and laid over the video:
+  - won (SLATE, TRACE, CRANE): the win starts as the row finishes flipping, its notes on the hops under the sparks, and its chord at 1.1 s as "You Win!" settles;
+  - lost (six misses): the falling line as the answer CRANE flips in, and the chord at 0.78 s as "You Lose" appears.
+
+  Approved.
+
+- **Why it works.**
+  - Both endings are played on the same marimba that answered each tile, so the game finishes in the voice it spoke all along.
+  - The win rides the motion (a note per hop) and resolves when the card arrives.
+  - The loss shows the answer by ear as well as by eye, one falling note per letter.
+  - It is Yacht and 2048's mallet family, so Daily Word sounds of a piece with the other free games.
+- **Trigger changes.**
+  - `dailyWord.win` now points at `daily-word-win.ogg`.
+  - New `dailyWord.loss` plays as the answer starts to flip in: after a played loss, or when the server closes out a game played this visit. A restore stays silent, like the win (#2926).
+
+| File                                      | Old                     | New size           | Length |
+| ----------------------------------------- | ----------------------- | ------------------ | ------ |
+| `hearts-moon-shot.mp3` (Daily Word's use) | 313.5 KB, shared, stays | —                  | 10.0 s |
+| `daily-word-win.ogg`                      | —                       | 20.0 KB            | 2.4 s  |
+| `daily-word-loss.ogg`                     | —                       | 15.1 KB            | 1.9 s  |
+| **Total**                                 | —                       | 35.0 KB (35,883 B) |        |
+
+Adds 35,883 B now; nothing is deleted, since the fanfare is shared. Daily Word no longer uses it; it goes once Sudoku and the card games stop using it.
+
+### Yacht end-of-game sounds (#3750)
+
+- **Brief (#3750, Sentry BC_GAMES-6S).** Yacht played nothing when a game ended; a player reported it. Three originals in Yacht's "wood and mallet" family: a win, a gentle loss and a tie in between. The owner chose the material and the process as for Daily Word.
+- **Constraints.**
+  - Each sound starts with the end beat (`useYachtMotion({ onStart })`, #3749): the game's last score, or the moment a last-score Yacht's celebration ends. The beat plays once per game and never on a restore.
+  - The result card shows after the beat (`game/yacht/motion.ts`): a win `WIN_BEAT_MS` 1.0 s, a loss or a tie `LOSS_BEAT_MS` / `TIE_BEAT_MS` 0.6 s. So the chord lands at 1.0 s for the win and 0.6 s for the loss and the tie, as the card shows. The recipes pin both times (`YACHT_WIN_CARD_AT`, `YACHT_END_CARD_AT`).
+  - Win in vs, or a new personal best in solo; loss in vs; tie in vs, and in solo any game that is not a new best (owner).
+  - Before: none.
+- **Options.** Each was previewed as a score's pencil tap followed by the sound, three times (a win, a loss, a tie):
+  - **A, mallet fanfare** (picked):
+    - win: a two-octave run (C E G C E G), a rolled C major, then a "ta-da" chord with a high bell at the card;
+    - loss: a falling line (G E D C) into a soft low A minor;
+    - tie: two level notes (E, G) into an open, unresolved C-G-D chord.
+  - B, scorepad: pencil taps tallying the card (quickening for the win, slow for the loss, two even ones for the tie), then a marimba roll, a low minor third or a plain octave.
+  - C, small and sweet: a quick light run then a "ding-ding"; a two-note sigh; the same note twice then a level chord. The shortest (1.5 to 1.9 s).
+- **Pick: A, for all three** (owner). It continues the dice, scoring and jackpot sounds Yacht already has, so the win reads as the top of that ladder, and the tie's open chord is clearly neither a win nor a loss.
+- **Levels** (dBFS over the loudest 50 ms, peak at most -1): win -15 (1 dB over the jackpot: the top of the ladder), tie -19, loss -21 (gentle, level with 2048's game over). So win > tie > loss. Under 0.1 % of the energy is below 300 Hz (tested), so they carry on phone speakers.
+- **One sound at a time.** The computer's last score a yacht or a joker plays its own 0.7 s sound (`cpu-jackpot-*`); the end beat then starts after it (`CPU_JACKPOT_SOUND_MS`), so the end sound never stacks on it.
+- **Timing.** The chord's strike is within 10 ms of the card moment (`tools/assets/tests/synth_puzzle_sfx_test.py`). Under Reduce Motion the beat is 0, so the card shows at once and the chord lands about 1.0 s (win) or 0.6 s after it: the sound is audio, not motion, and still plays.
+- **Gameplay audition.** Four games in the web build (a vs win, loss and tie, and a solo game), every `play()` logged and laid over the video; each chord lands as the card appears. See the story's thread for the approval.
+- **Why it works.**
+  - The win is the jackpot's fanfare, one step bigger, so a Yacht score and a won game are the same voice.
+  - The loss falls and settles; the tie holds still; the three read apart without looking.
+  - Only one sound plays: a last-score Yacht plays its jackpot, then the end sound only after the celebration.
+- **Trigger changes.** New `yacht.win`, `yacht.loss` and `yacht.tie`, played from the end beat's `onStart` in `GameScreen`.
+
+| File             | Old | New size           | Length |
+| ---------------- | --- | ------------------ | ------ |
+| `yacht-win.ogg`  | —   | 22.4 KB            | 2.6 s  |
+| `yacht-loss.ogg` | —   | 16.7 KB            | 2.0 s  |
+| `yacht-tie.ogg`  | —   | 17.0 KB            | 2.0 s  |
+| **Total**        | —   | 56.0 KB (57,389 B) |        |
+
+Adds 57,389 B now; nothing is deleted.
+
+### Sort, "glass and water" (`sort.select`, `sort.pourLift`, `sort.pourStream1u`..`4u`, `sort.refused`, `sort.complete`, `sort.undo`, `sort.hint`, `sort.win`, #3661)
+
+- **Brief.** The owner chose the material for the whole set: **glass and water**, real glass bottles with a light clink, water poured into glass and a bright chime cascade for the win (over "soft potion" and "ceramic and syrup"). A stream for the whole pour, and all four optional sounds (bottle complete, select, undo, hint) are in. Before this, Sort borrowed Cascade's 0.55 s fruit-merge blip for the pour and FreeCell's 10.56 s fanfare for the win, and a refused pour, a select, a completed bottle, an undo and a hint were silent.
+- **Constraints.** All times are from `game/sort/motion.ts` (#3660, #3783):
+  - a pour lifts 170 ms, tilts 130 ms, the stream starts at `flowStartMs` 300 ms and each unit has a `POUR_UNIT_MS` 300 ms slot (1 to 4 units); a pour is 780 ms plus 300 ms per extra unit;
+  - select lifts 160 ms, a refused shake is 240 ms, a completed bottle pulses 420 ms (its badge pops in 300 ms), an undo fades 280 ms, and the win cascade is 1,380 ms (`WIN_CASCADE_MS`), then the result card;
+  - level 23 has 16 bottles and a practised player pours fast, so every frequent sound is short and the three most frequent have three variations.
+- **Rounds.**
+  - **Round 1, three options per sound, previewed in gameplay rhythm.** The owner picked **A** for select, refused, complete, undo, hint and win (and the lift).
+  - **Pour, redone (rounds 2 to 4).** The first pour was one short bubble per unit; the owner found it too quick and asked for a real "glug glug glug", about three glugs per unit.
+  - **Round 2, three glugs** (A, a classic bottle glug at 520 Hz, three gulps per unit over a liquid bed; B deeper; C quicker). **A was picked, then rejected at the audition:** "let's work on the sound of a liquid pouring more". Separate gulps read as a bottle being drunk from, not as liquid pouring.
+  - **Round 3, three continuous noise-formant streams** (a hiss and splash with a formant sweeping up as the bottle fills). **Rejected:** "worse, it sounds wavy (in a bad way), not like a liquid". Slow amplitude and formant movement is what read as wavy.
+  - **Round 4, physically based synthesis** (the owner's direction): van den Doel's bubble model, where a liquid is many individual bubble "plinks". Three options (A dense small bubbles, B fuller with larger bubbles, C a sparse trickle). **Picked: A**, "all of these are much better".
+    - Each bubble is a damped sinusoid at the Minnaert frequency, f0 = 3260 / r Hz for a radius r in mm, with a rising chirp f(t) = f0 (1 + 0.1 d t) and damping d = 0.043 f0 + 0.0014 f0^1.5 (1/s).
+    - Bubbles arrive as a Poisson stream at 1,400 a second (thinned: the rate ramps in over 15 ms, flows for the whole stream, dies away over about 50 ms). Radii follow a power law r^-2.5 on 0.5-4 mm (about 0.8-6.5 kHz), amplitude proportional to r (times a 0.25 log-normal spread).
+    - As the destination fills, radii shrink by 0.20 octave per unit, so the pitch rises through the pour; a light impact tap (-26 dB re the bubbles, 2-8 kHz noise) marks the stream hitting. There is no slow amplitude or formant modulation.
+    - One file per unit count (1 to 4 units: 0.48, 0.78, 1.08 and 1.38 s, i.e. 0.3 s per unit plus an 0.18 s tail), three variations each; seed 1000 + 100 x units + variation.
+- **Picks, and how each sound is built** (mono Ogg Vorbis q5, fixed seeds; levels are dBFS over the loudest 50 ms, peak at most -3):
+
+| Sound       | File                                      | Length      | Level | Design                                                                                                                                                                                                                                      | Plays                                                                                          |
+| ----------- | ----------------------------------------- | ----------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Select      | `sort-select-1/2/3.ogg`                   | 0.12 s      | -24   | A bright glass tick (a noise burst, 2.5-9 kHz) with a tiny 3.1 kHz inharmonic glass ping: a fingertip on a bottle. Variations at -5%, 0%, +5.5% pitch.                                                                                      | On the tap that selects a filled bottle (with the light haptic)                                |
+| Pour lift   | `sort-pour-lift-1/2/3.ogg`                | 0.2 s       | -28   | A faint glass touch (1.9 kHz) and a soft tick, then a rising puff of air (0.5-2.4 kHz): the bottle leaves the shelf. The quietest sound in the set.                                                                                         | At the tap that starts a pour                                                                  |
+| Pour stream | `sort-pour-stream-{1,2,3,4}u-{1,2,3}.ogg` | 0.48-1.38 s | -21   | Van den Doel bubble synthesis, "stream4 A": ~1,400 small bubbles a second (0.8-6.5 kHz, damped sinusoids with a rising chirp), the pitch rising 0.20 octave per unit as the bottle fills, over a light impact tap. One file per unit count. | Once, at the stream's start, `flowStartMs` (+ 50 ms latency budget), for the pour's unit count |
+| Refused     | `sort-refused.ogg`                        | 0.26 s      | -23   | Two dull glass taps, falling (900 Hz, then 760 Hz 120 ms later): a bottle knocking its neighbour. Soft and clearly "no"; not shared with the pour.                                                                                          | On the refused-pour shake (with the warning haptic)                                            |
+| Complete    | `sort-complete.ogg`                       | 0.5 s       | -20   | A two-note glass chime rising a fifth (E6, then B6 70 ms later).                                                                                                                                                                            | When a pour that completes a bottle lands, as its badge pops                                   |
+| Undo        | `sort-undo.ogg`                           | 0.3 s       | -27   | A reversed clink: a glass ping played backward, a swell, ending in a tiny tick at 255 ms as the board fades back in.                                                                                                                        | Once per Undo or "Back to last good move"                                                      |
+| Hint        | `sort-hint.ogg`                           | 0.65 s      | -26   | Three soft rising glass pings, G6, B6, D7, 100 ms apart, each a little louder.                                                                                                                                                              | When a hint is shown (the source lifts and the destination rings)                              |
+| Win         | `sort-win.ogg`                            | 2.0 s       | -17   | A glass chime cascade, one rising C major pentatonic note per cascade piece (170 ms apart), then a bright glass chord (C6 G6 C7 G7) and a tick at 1.38 s, the end of the cascade, as the result card opens.                                 | At the start of the win cascade (the winning pour's landing)                                   |
+
+- **Timing and triggers** (`useSortAudio.ts`, `SortScreen.tsx`):
+  - **Pour.** The lift plays at the tap. The stream file for the pour's unit count plays once at `flowStartMs` (300 ms; plus the 50 ms `POUR_START_LATENCY_BUDGET_MS` between the tap and the animation's first frame) and runs as long as the stream (0.3 s per unit) with an 0.18 s tail over the return. It is one JS timer started with the pour, never per-frame work, cleared when the pour is cancelled (a reset, a level change, leaving the screen, the app going to the background, where it would fire late on resume) and on unmount, so a dropped pour makes no stream; a restored game plays nothing.
+  - **Variations.** Each unit count has its own three variations (`useSoundVariants`), never the same one twice in a row for that count. That is 12 players, one per file, created with the screen.
+  - **Reduce Motion.** The pour lands at once (`REDUCE_MOTION_POUR_MS` 0), so there is no stream to follow: the lift and the 1-unit stream play together at the tap.
+  - **Win.** The sound starts at the landing, which is also the start of the cascade, so its chord lands at 1.38 s as the card opens. Under Reduce Motion or a screen reader the card opens at once and the sound plays as it is: the chime run sounds under the card and the chord about 1.4 s after it. (`useSound` can't start mid-file; skipping to the chord would be a follow-up if the owner prefers it.)
+  - **Complete.** On the pour that completes a bottle (the success haptic's event), at the badge pop; not on the winning pour (the win covers it), an undo or a restore.
+  - **Hint.** Only when a pour is suggested, not for the "no way to win" notice.
+- **Levels** are the designed loudness (select -24, lift -28, stream -21, refused -23, complete -20, undo -27, hint -26, win -17), baked into the files; every sound plays at `useSound`'s default volume. Under 3% of any file's energy is below 300 Hz (tested): the lift has the most (1.3-2.1%), the streams under 0.3%.
+- **Prototypes.** Every round's scripts, including the options not picked, are archived in [`sort-sfx-3661/`](sort-sfx-3661/README.md) (reference only; the shipped recipes are in `synth_puzzle_sfx.py`).
+- **Reproducibility.** Every file's decoded audio (`synth_common.decoded_pcm_sha256`) is identical to the approved prototype's (all 12 streams included), and `tools/assets/tests/synth_puzzle_sfx_test.py` pins each sound's timing against the motion.
+- **Gameplay audition.** Recorded with every `play()` logged and laid over the video; see the story's thread for the owner's approval.
+- **Why it works.**
+  - One material for eight sounds: everything is glass touched or water moving, so the game has a voice of its own and the borrowed Cascade blip and FreeCell fanfare are gone.
+  - The pour sounds like pouring: a touch as the bottle lifts, then a stream of many tiny bubbles that rises in pitch as the bottle fills and lasts exactly as long as the stream on screen, so a four-unit pour is a longer pour, not more gulps.
+  - The "no" is dull taps against the bright glass of everything else, and the win's chord lands on the card instead of 10 s after it.
+
+| File                            | Old size                   | New size             | Old length | New length |
+| ------------------------------- | -------------------------- | -------------------- | ---------- | ---------- |
+| `cascade-fruit-merge.ogg`       | 5,910 B, deleted in #3702  | — (Sort's use only)  | 0.55 s     | —          |
+| `freecell-game-win.mp3`         | 87,960 B, deleted in #3871 | — (Sort's use only)  | 10.56 s    | —          |
+| `sort-select-1/2/3.ogg`         | —                          | 14.5 KB (14,882 B)   | —          | 0.12 s     |
+| `sort-pour-lift-1/2/3.ogg`      | —                          | 17.3 KB (17,708 B)   | —          | 0.2 s      |
+| `sort-pour-stream-1u-1/2/3.ogg` | —                          | 30.3 KB (30,313 B)   | —          | 0.48 s     |
+| `sort-pour-stream-2u-1/2/3.ogg` | —                          | 39.2 KB (40,113 B)   | —          | 0.78 s     |
+| `sort-pour-stream-3u-1/2/3.ogg` | —                          | 46.9 KB (48,028 B)   | —          | 1.08 s     |
+| `sort-pour-stream-4u-1/2/3.ogg` | —                          | 59.3 KB (60,672 B)   | —          | 1.38 s     |
+| `sort-refused.ogg`              | —                          | 5.8 KB (5,960 B)     | —          | 0.26 s     |
+| `sort-complete.ogg`             | —                          | 7.1 KB (7,272 B)     | —          | 0.5 s      |
+| `sort-undo.ogg`                 | —                          | 5.9 KB (6,021 B)     | —          | 0.3 s      |
+| `sort-hint.ogg`                 | —                          | 7.7 KB (7,863 B)     | —          | 0.65 s     |
+| `sort-win.ogg`                  | —                          | 16.3 KB (16,676 B)   | —          | 2.0 s      |
+| **Sort's total**                | 91.7 KB (93,870 B)         | 249.5 KB (255,508 B) |            |            |
+
+Twenty-three files added, none removed: Sort's sound files grow by 161,638 B (the twelve streams are 179,126 B; the three glug files this replaced, 23,921 B, never shipped), and its two borrowed files (one of them the 10.56 s fanfare) are no longer played. No single file is over 50 KB (the largest is the 4-unit stream, variation 2, at 20,927 B; a 4-unit set of three is 59.3 KB). `cascade-fruit-merge.ogg` stayed for Cascade until #3702 replaced it. `freecell-game-win.mp3` is no longer used by any game (FreeCell moved to synthesized sounds in #3563), so it is no longer bundled; the owner had it deleted in #3871, together with its CC BY credit (see the rights audit).
+
+### Sudoku sounds (#3775)
+
+- **Brief (#3775, from #3578).** Only the win played, and it was the borrowed 10 s, 321 KB `hearts-moon-shot.mp3`, which kept playing into the next puzzle (audit bug). Four originals for the keys the engine already emits, timed to `game/sudoku/motion.ts` (#3774). The owner chose the material (pencil and paper, Sudoku's own identity) and the options.
+- **Which actions make a sound (owner).** Placing a digit, an error, a completed unit and solving. Notes, Erase, Undo and the Hint button stay silent. A hint that fills a cell places a digit, so it plays the place sound.
+- **One sound per move.** A move's events arrive together (`digitPlace`, then `errorEntered` or the units it completes, then `puzzleComplete`), and the screen plays the most notable one: the solve over an error over a unit over the plain place. A unit's sound and the win each open with the place tick, so the move still sounds like a digit landing. A restored game carries no events, so it is silent; so is a remount.
+- **Timing.**
+  - Place: the mark is at t = 0 (the entry, `PLACE_MS` 150).
+  - Error: inside the 380 ms pulse, with the three strokes at 0, 110 and 230 ms (the pulse and the clash ring's blink).
+  - Unit: the tap run follows the sweep, which starts at `UNIT_SWEEP_START_MS` 50 and runs `UNIT_SWEEP_MS` 450; four taps at 50, 165, 280 and 395 ms.
+  - Win: starts at the solving render (t = 0); the chord lands at +1.0 s, as the card shows (`SOLVED_BEAT_MS`). The recipes pin the constants (`SUDOKU_WIN_CARD_AT`, `SUDOKU_UNIT_SWEEP_START`, `SUDOKU_UNIT_SWEEP`), and a Jest test reads them from the generator and compares them with `motion.ts`. Under Reduce Motion the card shows at once, so the chord lands 1.0 s after it, as in the other games.
+- **Options** (previewed as three digit ticks, an error, a tick, a row completing, then the win):
+
+| Sound         | A: crisp graphite (picked)                                                                  | B: soft pencil on thick paper                        | C: light and airy                                   |
+| ------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------- |
+| Place         | a hard pencil-point tick, 80 ms                                                             | a rounded tip and a short soft stroke, 130 ms        | a tiny high tick and a feathery flick, 90 ms        |
+| Error         | three hard back-and-forth scratches (0, 110, 230 ms)                                        | two duller strokes and a dab                         | a five-stroke zig-zag cross-out                     |
+| Unit complete | four rising pencil taps across the sweep, the last a check-mark stroke                      | four tuned paper taps C5 E5 G5 C6                    | nine tiny taps, one per cell as its glow starts     |
+| Win           | a double underline, a check tick, then a felt-piano C major chord and a faint bell at 1.0 s | tuned paper taps up the wave, a rolled marimba chord | a signature flourish, then a small glass-bell chord |
+
+- **Pick: A, for all four** (owner), with three alternating place variations (`useSoundVariants`), as 2048 and Daily Word do (default; the owner did not choose). It is the quietest, most newspaper-puzzle voice, and the win's felt-piano chord is a warm "done" with none of the mallet family's fanfare, which Yacht, 2048 and Mahjong already own.
+- **Levels** (dBFS over the loudest 50 ms): place -26 (level with 2048's spawn: about 60 a game), error -24 (level with Daily Word's refusal), unit -22 (level with 2048's merge), win -17 (level with Daily Word's win). Under 0.1 % of the win's energy is below 300 Hz (tested: 0.057 %); the short sounds are clicks, all under 1.2 %.
+- **Exactness.** The committed Oggs decode to the same PCM as the approved previews (`decoded_pcm_sha256`, see the story's thread), and `synth_puzzle_sfx_test.py` checks each against its recipe.
+- **Trigger changes.**
+  - `sudoku.digitPlace` (+ `digitPlace2`, `digitPlace3`), `sudoku.errorEntered`, `sudoku.unitComplete` and `sudoku.puzzleComplete` all play, from `useSudokuSounds` (events in, one sound out).
+  - `sudoku.errorEntered` no longer borrows `solitaire-invalid-move.ogg`, nor `puzzleComplete` `hearts-moon-shot.mp3`.
+  - The win is stopped by New Game, Play Again, Change Difficulty and unmount.
+- **Why it works.** One material for the whole game: every sound is a pencil on newsprint, and what changes is how much is written (a tick, a scratch-out, a run of taps, an underline and a check). The reward grows with the moment, and the chord lands as the card does.
+
+| File                                         | Old                    | New size                | Length |
+| -------------------------------------------- | ---------------------- | ----------------------- | ------ |
+| `sudoku-digit-place.ogg`, `-2.ogg`, `-3.ogg` | 6,019 B (not played)   | 4,659 + 4,639 + 4,689 B | 0.08 s |
+| `sudoku-error-entered.ogg`                   | — (borrowed 5,956 B)   | 7,534 B                 | 0.34 s |
+| `sudoku-unit-complete.ogg`                   | 7,390 B (not played)   | 7,635 B                 | 0.60 s |
+| `sudoku-puzzle-complete.ogg`                 | — (borrowed 321,024 B) | 19,749 B                | 2.30 s |
+| **Total**                                    | 13,409 B               | 48,905 B                |        |
+
+The files on disk grow by 35,496 B (+48,905 B new, -13,409 B replaced). The bundle shrinks: no code requires `hearts-moon-shot.mp3` (321,024 B) or `solitaire-invalid-move.ogg` (5,956 B) any more, so Metro leaves them out, by 291,484 B net. Both files were deleted later, in #3885, once nothing referenced them (`ASSET-RIGHTS-AUDIT.md`, Section 2).

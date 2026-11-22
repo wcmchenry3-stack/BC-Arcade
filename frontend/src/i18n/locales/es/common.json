@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Empezar nuevo juego",
   "newGame.confirm.cancel": "Cancelar",
   "settings.soundEffects": "Efectos de sonido",
+  "settings.dragDebugOverlay": "Superposición de depuración de arrastre",
+  "settings.dragDebugOverlay.description": "Para desarrolladores: muestra el dedo, el marco esperado de la carta y el resultado de la comprobación del arrastre mientras se arrastra.",
   "clearLogs.label": "Borrar registros locales",
   "clearLogs.description": "Elimina todos los eventos en cola y registros de errores que no se hayan sincronizado aún.",
   "clearLogs.button": "Borrar",
@@ -49,8 +51,15 @@
   "overflow.abandon.body": "Empezar una nueva partida eliminará tu progreso en esta ronda. Tus estadísticas generales no se verán afectadas.",
   "overflow.abandon.keepPlaying": "Seguir jugando",
   "overflow.abandon.startNew": "Empezar nueva",
+  "play": "Jugar",
   "home.locked.buttonLabel": "Desbloquear",
   "home.locked.cardLabel": "{{title}} — Bloqueado, toca para desbloquear",
+  "home.resume.buttonLabel": "Reanudar",
+  "home.resume.cardLabel": "{{label}} — en curso, toca para reanudar",
+  "home.status.inProgress": "En curso",
+  "home.status.doneToday": "Completado hoy",
+  "home.status.best": "Mejor {{value}}",
+  "home.status.bestMoves": "Mejores movimientos: {{value}}",
   "deleteData.label": "Eliminar mis datos",
   "deleteData.description": "Elimina permanentemente todo el historial de partidas y las estadísticas asociadas a este dispositivo.",
   "deleteData.button": "Eliminar",
@@ -104,5 +113,6 @@
   "locked.back": "Volver a la sala",
   "locked.back_label": "Volver a la sala",
   "offline.windowExhausted": "Han pasado 3 días desde tu última conexión. Conéctate a internet para obtener el último acertijo.",
-  "offline.windowExhaustedStreak": "Conéctate para mantener tu racha."
+  "offline.windowExhaustedStreak": "Conéctate para mantener tu racha.",
+  "action.autoComplete": "Auto-Completar"
 }

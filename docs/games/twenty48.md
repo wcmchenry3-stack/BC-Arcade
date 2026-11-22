@@ -80,7 +80,7 @@ The final board score is ranked for that finished run.
 
 ### Native
 
-Swipe the board in the desired direction.
+Swipe in the desired direction, anywhere below the header: the whole play area takes swipes, not only the board (#3688). A swipe is a move as soon as the finger has travelled 24 px, once per gesture, not when it lifts (#3689).
 
 ### Web
 
@@ -89,9 +89,78 @@ Use:
 - arrow keys; or
 - WASD.
 
-A move is locked briefly during tile animation. One input can be queued during that animation; queued input is dropped when the winning result interrupts play or when the app/screen goes away.
+A move is locked for 120 ms during tile animation. Up to two inputs can be queued during that time and play one after another; queued input is dropped when the winning result interrupts play or when the app/screen goes away (#3689).
 
 There is no undo feature.
+
+## Board and UI (#3688)
+
+Part of the 2048 look-and-feel epic (#3683); motion and sound are the next stories (#3689, #3690).
+
+### Layout
+
+Top to bottom, below the header: one slim stats row (Score, Best, Highest Tile, Time), the board centred in the free height, and an action bar (Hint, New Game). The play area (`twenty48-play-area`) is the swipe target, so a swipe starting on the stats row, beside the board or on the action bar counts; taps on the bar's buttons still work (the Pan gesture only activates after 30 px). The board is the screen's width less 32 px, up to 360 px; the screen measures the free height (`twenty48-board-area`) and caps the board to it less 8 px above and below, so a short screen (320 × 568) shrinks the board instead of clipping it. The ambient glow blobs and the always-on instruction lines (`swipe.hint`, `controls.keyboardHint`) are gone, with their i18n keys.
+
+### Tiles
+
+Flat, high-contrast tiles replace the neon glow look. Colours are in `frontend/src/theme/theme.twenty48.ts` (`TWENTY48_TILES`), one per value from 2 to 131072, the same in light and dark mode; only the empty slot differs by theme (`TWENTY48_SLOT`). Each number is dark (`#14141a`) or white, whichever clears WCAG AA (4.5:1) on its tile.
+
+| Value  | Fill      | Text  | Contrast |
+| ------ | --------- | ----- | -------- |
+| 2      | `#f4ede0` | dark  | 15.8     |
+| 4      | `#e9d5a6` | dark  | 12.7     |
+| 8      | `#f4a259` | dark  | 8.9      |
+| 16     | `#ee7b30` | dark  | 6.6      |
+| 32     | `#e5533d` | dark  | 4.9      |
+| 64     | `#c2255c` | white | 5.7      |
+| 128    | `#f5e463` | dark  | 14.1     |
+| 256    | `#b5d334` | dark  | 10.8     |
+| 512    | `#35b05a` | dark  | 6.6      |
+| 1024   | `#12908e` | dark  | 4.7      |
+| 2048   | `#ffa800` | dark  | 9.5      |
+| 4096   | `#2cb8e8` | dark  | 8.0      |
+| 8192   | `#2f6bdb` | white | 4.9      |
+| 16384  | `#5b47c9` | white | 6.6      |
+| 32768  | `#a040c8` | white | 5.2      |
+| 65536  | `#e0509a` | dark  | 5.1      |
+| 131072 | `#7b1730` | white | 10.5     |
+
+Every pair of tiles is at least 18 (CIE76 ΔE) apart, and every tile at least 15 from the empty slot in both themes (the old 2 tile was the slot's colour). Only 2048 and above get a gold ring and glow; the rest are flat. The number's font size is computed from the tile size and the digit count (`getTileFontSize`: as large as fits the tile's width less 10% each side, up to 45% of its height, never under 10), not a fixed size. `tileStyles.test.ts` guards all of this.
+
+### Hint
+
+Like Mahjong, FreeCell and Solitaire, 2048 has no always-on instructions: a **Hint** button sits in the action bar under the board (the shared `GameActionBar`, which Mahjong's bar now renders too).
+
+- **Suggestion.** `suggestMove(board)` in the engine: the legal move that merges the most tiles, then the one that scores the most, then the first in left, up, right, down (which keeps the big tiles in the top-left corner). It is pure: it spawns nothing and draws nothing from the RNG. It is null on a stuck board.
+- **Display.** An arrow and a label ("Swipe left", plus "or ←" on web) over the board, on the edge the swipe points to, for 2 s. It takes no touches. Any swipe or arrow key clears it (and still moves); a second press restarts the 2 s; New Game clears it.
+- **No hint.** On a board with no move, a "No hint available" message for 2 s (`useTransientToast(2000)`, as in Mahjong). In practice a stuck board is also game over, so the result card covers it; the case is kept so the button never does nothing silently.
+- **Disabled** while the win card is up.
+- **Accessibility.** The button's label is "Show a hint: suggests a swipe for 2 seconds"; the suggestion is announced ("Hint: Swipe left") and the label is a polite live region. Under Reduce Motion (`useReduceMotion`) the arrow appears at once with no fade; it always disappears at once.
+- **Not recorded.** A hint changes nothing in the game (no move, no score cost) and the replay's move format ([Replay recording](#replay-recording)) has no slot for it: a `moves` chunk holds only `[direction, cell, value, gained, total]` tuples, and a new action type would need a server model and a seed migration for data nobody uses (cost, then performance, then data). FreeCell records `hintAction` because its hints cost points; 2048's are free.
+
+## Motion (#3689)
+
+Every timing is in `frontend/src/game/twenty48/motion.ts`; `__tests__/motion.test.ts` holds the ceilings. Times are from the moment the swipe's board renders.
+
+| What                  | When / how long              | Notes                                                                                                                   |
+| --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Slide                 | 0 to 100 ms                  | ease-out; every tile, and both tiles of a merge                                                                         |
+| Merge: the tiles meet | 100 ms (`SLIDE_MS`)          | the two source tiles (ghosts) slide into the destination and vanish; the merged tile appears and pops                   |
+| Merge pop             | 100 to 240 ms                | 1 to 1.15 and back, 70 + 70 ms; peak at 170 ms                                                                          |
+| Spawn                 | starts 60 ms, at rest 220 ms | appears at once from 0.4 scale, up to 1.1 (90 ms), back (70 ms)                                                         |
+| Move lock             | 120 ms                       | up to 2 swipes queue behind it                                                                                          |
+| Score float           | 600 ms                       | "+N" rises 24 px and fades (RN `Animated`)                                                                              |
+| Win beat              | card at 1000 ms              | the 2048 tile pops to 1.35 (peak at 280 ms, back by 540 ms) with a gold glow (100 to 800 ms)                            |
+| Game-over beat        | card at 600 ms               | the board dims (220 to 470 ms, to 45%) and shakes 5 px (220 to 520 ms); it stays dimmed under the card until a New Game |
+
+For the sounds (#3690): the merge "meet" is at 100 ms, the spawn appears from 60 ms, the win card at 1000 ms and the game-over card at 600 ms after the winning or last move. #3690 re-timed the sounds to these moments: each still starts with the move, and the win and game-over chords land as their cards show (see Sound).
+
+How it works:
+
+- **Sliding merges.** The engine puts an optional `mergedFrom: [{ id, row, col }, { id, row, col }]` on a merged `TileData` (the old tiles' ids and the cells they started the move in, in the order the move reads the line). `Grid` renders a `MergeGhost` for each source; `AnimatedTile` keeps the merged tile unseen until they meet. Absent, a tile just pops where it is, as before. It changes no board, score or tile id, so the replay's move tuple is unchanged. `mergedFrom` is never stored (`storage.ts` drops it on save, and on load for safety), so the stored format and size are unchanged and a reopened game opens at rest; a save without it loads as always.
+- **Beats.** The result card waits for a beat. `useTwenty48Beat` is started in the same handler as the `setState` that ends the game, so the board and the hold render together (no flash). A game restored already finished shows its card at once. New Game ends a beat. A 2048 move that also ends the game uses the win beat.
+- **Reduce Motion** (`useReduceMotion`, read live, [ACCESSIBILITY.md section 3](../ACCESSIBILITY.md)): tiles jump to their cells at full size, with no ghosts, glow, dim, shake or score float, and both cards show as soon as the move lands. Turning it on mid-move snaps the tiles; turning it on mid-beat cancels its timer and shows the card.
+- **Input.** `Pan.onUpdate` fires the move once when an axis passes 24 px (`createSwipeTracker`); the gesture is built once. The queue (`createMoveQueue`, depth 2) is drained from the committed state when the lock ends, not inside a `setState` updater. A queued move the engine refuses lets the next queued one play.
 
 ## Scoring and leaderboard
 
@@ -126,7 +195,7 @@ The saved clock banks elapsed active time before a pause/relaunch, so time spent
 
 The board is saved locally after moves and when play is paused.
 
-A saved in-progress board restores after relaunch, including its accumulated active-play clock.
+A saved in-progress board restores after relaunch, including its accumulated active-play clock. The shared play clock measures with the monotonic `monotonicNow()` (#3925), so a device clock set back or forward does not change play time; a running segment banks at least 0 as a defence (#3738, `clockElapsedMs` / `clockForSave`), `loadGame` clamps a saved `accumulatedMs` to a finite value >= 0, and `computeDurationMs` in `Twenty48Screen.tsx` never reports below 0.
 
 The local save is cleared when the game is over so the next launch starts fresh.
 
@@ -146,7 +215,7 @@ For generic syncing, ranking, display-name, Stats, and result-card behavior, see
 
 _(#3286, epic #3273; the shared recorder is [GAME-CONTRACT §2.10](../GAME-CONTRACT.md#210-recording-gameplay).)_
 
-The opening board is in `game_started` (`initial_board`, 16 numbers). Everything after it is recorded as **`moves` events**: opening board + the `moves` rows in `event_index` order rebuild the final board and score.
+The opening board is in `game_started` (`initial_board`, 16 numbers, and `engine_version`, #3909). Everything after it is recorded as **`moves` events**: opening board + the `moves` rows in `event_index` order rebuild the final board and score.
 
 **One move** is the 5-tuple `[direction, cell, value, gained, total]`:
 
@@ -197,14 +266,33 @@ A game resumed after a kill continues its session (#2654), and its log continues
 
 ## Local "Best" vs server history
 
-The screen retains a local best score only to support immediate result-card/UI presentation such as a "New best" badge.
+The screen retains a local best score only to support immediate result-card/UI presentation such as a "New best" badge. It is the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:twenty48`; the old `twenty48_best_score_v1` is moved in on the first read): read with the saved game, recorded as the live score passes it (a write only when it improves), and "New best" compares the final score with the best from before the game. On a reinstall it is seeded once from the server's best score (the stats the app already fetches, #3802); nothing is written to the server.
 
 Historical Stats and public ranking come from the shared server reporting model, not legacy local counters.
 
 ## Implementation
 
-- Engine: `frontend/src/game/twenty48/engine.ts`
+- Engine: `frontend/src/game/twenty48/engine.ts` (including `suggestMove`, the hint's swipe)
+- Tiles and board: `frontend/src/components/twenty48/` (`tileStyles.ts`, `Grid.tsx`, `AnimatedTile.tsx`, `HintOverlay.tsx`); palette in `frontend/src/theme/theme.twenty48.ts`
 - Screen: [`frontend/src/screens/Twenty48Screen.tsx`](../../frontend/src/screens/Twenty48Screen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Storage: `frontend/src/game/twenty48/storage.ts`
 - Types: `frontend/src/game/twenty48/types.ts`
+- Motion and input: `frontend/src/game/twenty48/motion.ts` (every timing), `input.ts` (swipe threshold, move queue); the beat hold is `components/twenty48/useTwenty48Beat.ts`
 - Backend descriptor: `backend/twenty48/module.py`
+
+## Sound
+
+Registry: `frontend/src/game/twenty48/sounds.ts` (`TWENTY48_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting. The effects are being replaced with original synthesized sounds shared across the puzzle, tile and dice games (#3578); the reasoning behind each is in the [puzzle sound design log](puzzle-sound-design.md). Volume is `useSound`'s default (1.0) unless noted.
+
+Triggers are in `frontend/src/screens/Twenty48Screen.tsx`.
+
+| Key                                              | File                                        | Plays when                                                                                          | Volume |
+| ------------------------------------------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------ |
+| `twenty48.tileMerge`, `tileMerge2`, `tileMerge3` | `tile-merge-1/2/3.ogg` (synthesized, #3578) | a swipe with a merge; the clack lands as the sliding tiles meet (100 ms, #3690); `useSoundVariants` | 1.0    |
+| `twenty48.tileSpawn`, `tileSpawn2`, `tileSpawn3` | `tile-spawn-1/2/3.ogg` (synthesized, #3578) | a new tile appears (every swipe); lands as it scales in (60 ms); `useSoundVariants`                 | 1.0    |
+| `twenty48.win2048`                               | `win-2048.ogg` (synthesized, #3578)         | the 2048 tile is reached; the chord lands as the win card shows (1.0 s, #3690)                      | 1.0    |
+| `twenty48.gameOver`                              | `game-over-2048.ogg` (synthesized, #3578)   | no moves are left; the chord lands as the result card shows (0.6 s, #3690)                          | 1.0    |
+
+Reopening a saved game plays nothing: a save keeps its last move's tile flags, so the tiles a restored game opens with are skipped (#3578). A fresh deal still plays its spawn.
+
+**Lobby tile status (#4008).** The save's key and shape check now live in `savedShape.ts` (moved from `storage.ts` unchanged), so the lobby can read a save without importing the engine. The tile shows **Resume** for a game that is not over and has had a move (`score > 0` or a recorded move), otherwise the best score. See [ARCHITECTURE §10.7](../ARCHITECTURE.md).

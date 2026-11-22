@@ -79,7 +79,6 @@ from purchases.verifiers import PurchaseError
 from routes.health import _ping_db
 from routes.health import router as health_router
 from settings import Settings
-from sort.router import router as sort_router
 from stats.router import router as stats_router
 
 # Names other modules and tests import from ``main`` (several moved out in #2993).
@@ -114,7 +113,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     steps run in their previous registration order.
 
     The background jobs (``jobs.lifespan.configured_jobs()``: Daily Word
-    retention, replay storage (#3292), App Store replay, Google Play jobs) start
+    retention, replay storage (#3292), bug-log retention (#3298), daily-challenge
+    assignment retention (#3992), App Store replay, Google Play jobs) start
     in that order, as tasks in ``app.state.job_tasks`` (which tests read), and stop in reverse
     (#2994). They start before the DB health check, which can take up to
     ``DB_PING_TIMEOUT_SECONDS``, and the stack unwinds on every exit —
@@ -274,7 +274,6 @@ def _include_routers(app: FastAPI, settings: Settings) -> None:
     app.include_router(entitlements_router, prefix="/entitlements")
     app.include_router(daily_challenge_router, prefix="/daily-challenge")
     app.include_router(daily_word_router, prefix="/daily-word")
-    app.include_router(sort_router, prefix="/sort")
     app.include_router(games_router, prefix="/games")
     app.include_router(logs_router, prefix="/logs")
     app.include_router(me_router, prefix="/me")

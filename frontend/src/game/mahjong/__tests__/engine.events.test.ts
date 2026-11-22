@@ -48,8 +48,11 @@ describe("mahjong engine events", () => {
     const [a, b] = nonMatchingFreePair(game);
     const s1 = selectTile(game, a.id);
     expect(types(s1)).toEqual(["tileSelect"]);
+    expect(s1.events).toEqual([{ type: "tileSelect" }]);
     const s2 = selectTile(s1, b.id);
     expect(types(s2)).toEqual(["tileSelect"]);
+    // #3613: only the non-matching second tap is a mismatch (the new tile shakes "no").
+    expect(s2.events).toEqual([{ type: "tileSelect", mismatch: true }]);
     // A new array per action, so the screen fires both selects.
     expect(s2.events).not.toBe(s1.events);
     expect(types(selectTile(s2, b.id))).toBeUndefined();
@@ -132,13 +135,13 @@ describe("mahjong engine events", () => {
     const game = createGame(TURTLE_LAYOUT, 1);
     const free = game.tiles.find((t) => isFreeTile(t, game.tiles))!;
     const selected = selectTile(game, free.id);
-    const paused = pauseGame(selected, Date.now() + 1000);
+    const paused = pauseGame(selected, performance.now() + 1000);
     expect(paused.events).toBe(selected.events);
     expect(resumeGame(paused).events).toBe(selected.events);
   });
 
   it("never feed back: the same play with events stripped each step ends identically", () => {
-    jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+    jest.spyOn(performance, "now").mockReturnValue(1_700_000_000_000);
     const play = (strip: boolean) => {
       setRng(createSeededRng(7));
       let s = createGame(TURTLE_LAYOUT, 7);

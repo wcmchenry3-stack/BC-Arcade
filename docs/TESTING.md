@@ -6,16 +6,17 @@ See [~/.claude/standards/testing.md](~/.claude/standards/testing.md) for univers
 
 Source of truth: `.github/workflows/`. "Gates" means a failing run blocks the PR. Details: "Test layers and which gate PRs (#2975)" and "Quality gates" below.
 
-| Layer                    | Where                                                                                         | Gates PRs?                                                                                                                                               |
-| ------------------------ | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| pytest (backend)         | `backend/tests`, job `test-python`                                                            | Yes. `--cov-fail-under=96`                                                                                                                               |
-| jest (frontend)          | `frontend/src/**/__tests__`, job `test-frontend`                                              | Yes. Coverage floors in `package.json`                                                                                                                   |
-| Playwright (web)         | `e2e/tests`, job `e2e`                                                                        | Yes. Selective by changed paths; push and `main` PRs run the full suite                                                                                  |
-| Maestro (iOS/Android)    | `e2e/maestro`, `mobile-smoke-{android,ios}.yml`                                               | No. `workflow_dispatch` only (not on PRs or push) until #2400 is fixed                                                                                   |
-| Colour-literal check     | `frontend/scripts/check-color-literals.mjs`, job `frontend-static` (`Frontend static checks`) | Yes. No colour literals outside the theme and the per-game palettes (#2989); the checker has its own `node --test` run                                   |
-| Markdown link check      | `lychee.toml`, job `docs-links`                                                               | Yes. Dead relative links and `#anchors` in `docs/**` and root `*.md` (offline; run `lychee --config lychee.toml "docs/**/*.md" "docs/**/*.html" "*.md"`) |
-| Tools pytest             | `tools/`, job `test-tools`                                                                    | Yes (asset tools only)                                                                                                                                   |
-| Yacht / Hearts sim gates | `yacht-sim-gate.yml`, `hearts-sim-gate.yml`                                                   | Only PRs touching the AI, engine or gate paths; the nightly full runs do not gate PRs. Hearts: zero principle violations (#3161)                         |
+| Layer                    | Where                                                                                         | Gates PRs?                                                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pytest (backend)         | `backend/tests`, job `test-python`                                                            | Yes. `--cov-fail-under=96`                                                                                                                                                          |
+| jest (frontend)          | `frontend/src/**/__tests__`, job `test-frontend`                                              | Yes. Coverage floors in `package.json`                                                                                                                                              |
+| Playwright (web)         | `e2e/tests`, job `e2e`                                                                        | Yes. Selective by changed paths; push and `main` PRs run the full suite                                                                                                             |
+| Maestro (iOS/Android)    | `e2e/maestro`, `mobile-smoke-{android,ios}.yml`                                               | Both legs run on PRs (scoped by `detect-maestro-scope.yml`; Android #2400, iOS #2347); not required checks. Never on push                                                           |
+| Colour-literal check     | `frontend/scripts/check-color-literals.mjs`, job `frontend-static` (`Frontend static checks`) | Yes. No colour literals outside the theme and the per-game palettes (#2989); the checker has its own `node --test` run                                                              |
+| Markdown link check      | `lychee.toml`, job `docs-links`                                                               | Yes. Dead relative links and `#anchors` in `docs/**` and root `*.md` (offline; run `lychee --config lychee.toml "docs/**/*.md" "docs/**/*.html" "*.md"`)                            |
+| Tools pytest             | `tools/`, job `test-tools`                                                                    | Yes (asset tools only)                                                                                                                                                              |
+| Yacht / Hearts sim gates | `yacht-sim-gate.yml`, `hearts-sim-gate.yml`                                                   | Only PRs touching the AI, engine or gate paths; the nightly full runs do not gate PRs. Hearts: zero principle violations (#3161)                                                    |
+| Cascade sim gate         | `cascade-sim-gate.yml`                                                                        | Only PRs touching the Cascade engine, constants, queue or sim; nightly otherwise. Metrics inside `baseline.json` bands, spam bot loses and never wins, overlap gates (#2893, #3904) |
 
 ## Quality gates and ratchet schedule
 
@@ -82,6 +83,14 @@ The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table b
 - **Boundary:** app code must not import `tooling/` (an eslint `no-restricted-imports` rule fails the lint), so nothing in it can reach the Metro bundle. Tooling imports app modules (engines, AI) by relative path into `src/`.
 - **knip:** `frontend/knip.json` lists `../tools/sim/*.ts` and `../tools/generators/*.ts` as entries so the tooling files they import count as used. knip cannot credit exports used from outside its workspace, so the few tooling exports only a root script uses carry a `@public` JSDoc tag; delete the tag with the export when the script stops using it.
 
+### Cascade sim (#2893)
+
+The Cascade harness lives in `frontend/src/game/cascade/sim/` (not `tooling/`: it plays the app's engine; `knip.json` leaves it out of the production run), with the CLI `tools/sim/simulate-cascade.ts` (`npm run sim:cascade` in `frontend/`). Details, metrics and how to compare a candidate engine: [`docs/games/cascade.md`](games/cascade-decisions.md#sim-harness-sim-2893).
+
+- **PR smoke:** `sim/__tests__/sim.test.ts` runs 3 seeds x 3 bots x 60/120 Hz (about 8 s, budget 30 s) inside the ordinary Jest run and checks them against `baseline.json` "smoke" (a coarse guard: game length, score and guard-rail rate only), plus determinism, the engine seam, the 1 px-contact merge helper, the lid (spam bot loses within 120 s), the step budget (mean step under 16 ms with 20+ pieces) and (#3697) the hard gates: no guard rail fires, nothing goes 1 px into a wall, chain merges in under 150 ms (p90).
+- **Long run:** `cascade-sim-gate.yml` (nightly, manual with a `seeds` input, and on PRs that touch the engine, constants, queue or sim) runs 100 seeds per bot and frame rate against the "full" baseline, plus (#3697) the capstone runs: the skilled bot at 60 Hz for up to 10 simulated minutes each, stopping at the win, which band the win rate and the time to the win (making the capstone since #3920, two capstones touching before; every run ends at the win, since play ends there; `--no-capstone` skips them for a quick look). Hard gates on every run besides the bands: the spam bot loses inside 120 s and never wins, no guard rail fires, chain-merge p90 under 150 ms, the step budget, and (#3904) each run's deepest overlap at most 3 px median over its games (and 5 px p90 in runs of 100 games: the nightly and manual full runs, not the 50-seed PR capstone runs) with a mean visible gap of at least -0.5 px. The capstone runs play 100 seeds nightly and on manual dispatch, and 50 on PRs (`--capstone-seeds 50`, about 7 min in all): the capstone bands are then widened around their value by sqrt(100 / 50), the growth of sampling error with half the games, and every other band is unchanged. A failure lists each metric outside its band; the table is in the job summary and the `cascade-sim` artifact. The bands assume 100 seeds (and `--capstone-seeds` alone is the one exception above): a run with another seed count (or `--bots`) prints the table and skips the bands. `--update-baseline` refuses `--seeds`, `--capstone-seeds`, `--bots`, `--seed-offset` and `--no-capstone`.
+- **Re-baseline** when a story changes the physics on purpose (#3695, #3697): `cd frontend && npm run sim:cascade -- --update-baseline && npm run sim:cascade -- --full --update-baseline`, then `npx prettier --write src/game/cascade/sim/baseline.json`, and say in the PR which numbers moved and why. Step cost is wall clock and is never stored.
+
 **Measured** (2026-10-05 on `dev` after the Phase 0 coverage stories #3010, #3014 and #3017, 324 suites / 6,063 tests, `jest --coverage`, all collected files):
 
 | Metric     | Measured | Floor enforced now | Stretch target |
@@ -110,8 +119,8 @@ E2E hooks (`window.__*`, `EXPO_PUBLIC_TEST_HOOKS=1` builds only) are installed t
 Shared pieces so a workflow change is made once:
 
 - **`.github/actions/setup-frontend`** (composite): Node 22 + npm cache + `npm ci` in `frontend/`. Input `metro-cache: "true"` also restores the Metro transform cache (used by the Android bundle/release/Maestro jobs). Every workflow that needs the frontend toolchain calls it right after `actions/checkout`; put `if:` on the calling step to make it conditional.
-- **`.github/actions/maestro-install`** (composite): installs the pinned Maestro CLI. **`e2e/maestro/summarize.py <platform> <label>`** writes the per-flow job summary for both `mobile-smoke-android.yml` and `mobile-smoke-ios.yml`.
-- **`.github/paths/game-paths.yml`**: the one path-to-game table. `detect-e2e-scope` (Playwright, in `ci.yml`) and `detect-maestro-scope.yml` both pass it to `dorny/paths-filter` as `filters:`. Per-game keys are shared; `shared` is common to both, `playwright_shared` / `maestro_shared` are suite-specific "run everything" triggers, and `logstore` is Playwright-only. Adding a game means adding a key there and one line in each scope step.
+- **`.github/actions/maestro-install`** (composite): installs the pinned Maestro CLI. **`e2e/maestro/summarize.py <platform> <label> [<projects>]`** writes the per-flow job summary for both `mobile-smoke-android.yml` and `mobile-smoke-ios.yml`. **`e2e/maestro/diagnose.py`** prints a bounded failure report (failed command, error, element bounds, `maestro.log` tail) into the Android job log.
+- **`.github/paths/game-paths.yml`**: the one path-to-game table. `detect-e2e-scope` (Playwright, in `ci.yml`) and `detect-maestro-scope.yml` both pass it to `dorny/paths-filter` as `filters:`. Per-game keys are shared. The "run everything" triggers are `shared` OR `playwright_shared` for Playwright, and `shared_app` (the app-wide half of `shared`, which `shared` includes by YAML anchor) OR `maestro_shared` for Maestro, so workflow edits outside Maestro's own files don't run Maestro (#3546). `logstore` is Playwright-only, and `native_ios` gates the iOS Maestro leg on PRs into `dev` (#3547). Adding a game means adding a key there and one line in each scope step.
 - **`tsx`** is a pinned `frontend` devDependency. From the repo root run scripts as `npx --prefix frontend tsx scripts/<name>.ts` (CI and every doc use this form); the working directory stays the repo root.
 - `openai-policy` runs only from `openai-policy.yml` (it used to run a second time inside `ci.yml`). `gemini-policy.yml` is kept on purpose; see the comment in the file.
 
@@ -124,8 +133,49 @@ These keep the suite split-safe: when a large source file is split into modules,
 - **One test file per module.** Name it after the module it tests (`engine.ts` → `engine.test.ts`; a module of a package behind a barrel → `<file>.<module>.test.ts`, e.g. `starswarm/__tests__/engine.carrier.test.ts` for `starswarm/engine/carrier.ts` (#2988) — the tests keep importing from the barrel, so a move inside the package never touches them). When a test file passes ~1,000 lines, split it along the source's own seams (planned modules or exported-function clusters) by moving whole `describe` blocks: the test count and every test's full name stay the same. Helpers used by more than one of the new files go in `__tests__/helpers/<name>Fixtures.ts` (not a test file: `testMatch` only picks up `*.test.ts(x)`); single-file helpers stay local.
 - **No local re-implementations of shipped code.** A test imports the function it checks. If the logic is inline in a component, extract it into a pure module first (as `game/starswarm/drag.ts` was extracted from `Controls.tsx`) and test that; a copy in the test cannot fail when the shipped code regresses.
 - **Prefer targeted assertions to large snapshots.** Assert the roles, texts and theme tokens that matter (`getByRole`, `getByText`, `toHaveStyle({ color: colors.accent })`, `accessibilityState`) so a token change fails one line with a readable diff instead of regenerating a few thousand lines nobody reviews. A snapshot is fine for one small element or a pure value (`toMatchInlineSnapshot`); keep `.snap` files under a few hundred lines.
-- **Golden replay for seeded engines.** An engine with a seeded RNG gets a golden replay test before it is refactored: seed it, drive the public API with scripted input for N ticks, and compare a hash of the canonical state (keys sorted, non-integer numbers rounded to 6 decimals so Node/V8 float differences cannot move it) at checkpoints, plus exact integer gameplay fields, with a committed fixture (`starswarm/__tests__/goldenReplay.test.ts` and `__fixtures__/golden-replay-seed42.json`; re-record with `UPDATE_GOLDEN=1`). A pure-move refactor must leave the fixture byte-identical; a re-record is a behaviour change and the PR says why (the one sanctioned Star Swarm re-record is the `rng()` range fix of #2985).
+- **Golden replay for seeded engines.** An engine with a seeded RNG gets a golden replay test before it is refactored: seed it, drive the public API with scripted input for N ticks, and compare a hash of the canonical state (keys sorted, non-integer numbers rounded to 6 decimals so Node/V8 float differences cannot move it) at checkpoints, plus exact integer gameplay fields, with a committed fixture (`starswarm/__tests__/goldenReplay.test.ts` and `__fixtures__/golden-replay-seed42.json`; re-record with `UPDATE_GOLDEN=1`). A pure-move refactor must leave the fixture byte-identical; a re-record is a behaviour change and the PR says why (the one sanctioned Star Swarm re-record is the `rng()` range fix of #2985). For replayable games a re-recorded fixture also needs an `engine_version` bump: see [Replay fixture version guard](CI-CHECKS.md#replay-fixture-version-guard-3911) (#3911). What the bump keeps alive and when it can be removed: [Replay compatibility and sunset](#replay-compatibility-and-sunset) (#3908).
 - **Backend: same rules.** One `test_<module>.py` per module (`test_google_play.py`, `test_google_push_auth.py`, `test_google_rtdn.py`, `test_google_jobs.py`, `test_apple_store.py`, `test_apple_notifications.py` follow the `purchases/` seams of #2998). Shared plain helpers and fixtures for one area live in an underscore harness module (`tests/_google_iap_harness.py`, `tests/_apple_iap_harness.py`): import plain helpers from it, and pull its fixtures in with `pytest_plugins = ["tests._<area>_harness"]` (importing a fixture would trip ruff F811). Plugin fixtures are visible to every backend test module, so give them an area prefix (`google_gp`, `apple_verifier`). Register a new harness for assertion rewriting in `tests/conftest.py` (`pytest.register_assert_rewrite`). Store fakes stay in `google_play_fakes.py` / `apple_jws.py`.
+
+## Replay compatibility and sunset
+
+A stored game is replayed from its inputs (seed and moves), not from its stored outcome. So a rule change that makes the same inputs rebuild a different game breaks every stored game of that version. Policy (#3908): such a change bumps the game's `engine_version`, keeps the old rules and a frozen old-version fixture, and never re-records an old-version fixture to match new rules; a change that leaves outcomes unchanged is approved in `accepted_changes` (see the guard's docs). The guard in [Replay fixture version guard](CI-CHECKS.md#replay-fixture-version-guard-3911) enforces the pin.
+
+**Replay-breaking** means a change to what a recorded input sequence produces: the deal or shuffle, a move, scoring or merge rule, the draw order of an RNG. (A level's board is a catalog version, not an `engine_version`.) **Not replay-breaking:** UI, logging, uploads, and new fields in `game_started` that the rules do not read. A change that alters a fixture's file but not its outcome is approved in `accepted_changes` (see the guard's docs), not by a bump.
+
+**Steps for a replay-breaking change:**
+
+1. **Bump the constant** to the next integer: `ENGINE_VERSION` in the game's `engine.ts` (Sort: `SORT_REPLAY_ENGINE_VERSION` in `replay.ts`), and the game's entry in `CURRENT_ENGINE_VERSIONS` in `backend/games/engine_version.py`. The backend resolver takes its current version from that map, not from the app's constant (`backend/tests/test_engine_version.py` fails if the two differ), and registering the old version with `with_legacy` raises while the map still holds it.
+2. **Keep the old rules registered.** Frontend: in `replay.ts`, `REPLAY_ENGINES = replayEngines(...).withLegacy(<old>, <old rules>)`. Backend reader (where the game has one): `ENGINES = replay_engines(...).with_legacy(<old>, <old rules>)`. Do not delete or edit the old rules.
+3. **Keep the old fixture and add the new one.** Leave `<name>_v<old>.json` as it is (still listed at its old `engine_version`, still replayed by its test) and record the new rules as `<name>_v<new>.json`, listed at the new version, with a test that replays it.
+4. **Update `.github/replay-fixtures.json`**: add the new fixture entry and keep the old one. The guard fails a bump that changes the old fixture in place. Every listed fixture must be named by a test file, and every game keeps a fixture at its current version.
+
+**How readers treat a version.** Both resolvers (`frontend/src/game/_shared/replayEngine.ts` and `backend/games/engine_version.py`) give one of three answers:
+
+- `current`: replayed with today's rules.
+- `legacy`: an older version still registered, replayed with its frozen rules.
+- `incompatible`: anything else (an unknown or sunset version, a non-integer, `null`). Nothing is rebuilt; the reason reads `incompatible engine: engine_version X, this reader rebuilds Y`. A broken game is never shown as a plausible but wrong board.
+
+A `game_started` without `engine_version` is version 1 (`MISSING_ENGINE_VERSION`): builds from before #3909 recorded version-1 rules. A field that is present but `null` is incompatible, not missing.
+
+**Sunset.** Keep the old path for at least `REPLAY_RETENTION_DAYS` (30, `backend/settings.py`; see [DATA-INVENTORY §2a](DATA-INVENTORY.md#2a-replay-storage-budget)), counted from when the new version is the only one in production. Then, in a later change than the bump, make steps 1 and 2 together in one change:
+
+1. Delete the old-rules path (its `withLegacy` / `with_legacy` registration and its code) and the old `_v<old>` fixture.
+2. In `.github/replay-fixtures.json`, remove that fixture entry and add `"<old>": "<reason with a date YYYY-MM-DD or an issue #N>"` to the game's `retired_versions`. Removing the fixture before its version is listed in `retired_versions` fails the guard, and the guard rejects retiring a version in the same change that bumps past it.
+
+A game whose keep-list rows are never pruned has no automatic end to its window. Daily Word's `guess_submitted` is one (see [DATA-INVENTORY §2b](DATA-INVENTORY.md)): record a per-game decision (keep those logs, or accept that old games read as incompatible) before its sunset change. Star Swarm is outside this policy: it records no `engine_version`, and its stored data carries its own `v` / `ev` fields and is never re-run through the engine.
+
+**Checklist for a new recorded game:**
+
+1. Record `engine_version` in `game_started`, from the exported constant through the recorder's helper (never a literal at the call site).
+2. Export a top-level `export const ENGINE_VERSION = 1;` from `engine.ts`. `backend/tests/test_engine_version.py` reads it by pattern from the game's `engine.ts` (Sort's is `SORT_REPLAY_ENGINE_VERSION` in `replay.ts`).
+3. Export `REPLAY_ENGINES = replayEngines("<game>", ENGINE_VERSION, <rules>)` from `replay.ts`, and, if the backend reads the game's stored events, `ENGINES = replay_engines("<game>", <rules>)` in its reader.
+4. Add the game to `CURRENT_ENGINE_VERSIONS` in `backend/games/engine_version.py`, and to the hand-maintained `CASES` table in `frontend/src/game/_shared/__tests__/replayEngines.games.test.ts`.
+5. Register the game's recorded events in the event registry: see [Adding an event type](GAME-CONTRACT.md#adding-an-event-type) and [DATA-INVENTORY §2c](DATA-INVENTORY.md#2c-recorded-event-types-registry-checklist).
+6. Pin a golden fixture at `engine_version` 1 and list it under the game in `.github/replay-fixtures.json`, with a test that replays it.
+
+Read this with the [new-game checklist in GAME-CONTRACT.md](GAME-CONTRACT.md#3-new-game-checklist), which lists the rest of a new game's steps; the two should be read together.
+
+Cascade (#3858) must do all six when its recorder lands.
 
 ## Project-specific test cases
 
@@ -155,7 +205,7 @@ python -m pytest tests/ -v --cov=. --cov-report=term-missing
 
 **Security group (#3445).** The `security` pytest marker (declared in `backend/pyproject.toml`) tags the request-hardening and access-control tests, mostly as a module-level `pytestmark = pytest.mark.security`. Run just that group with `python -m pytest -m security --no-cov -q`. CI runs the same command as the `test-python-security` job, so the group's status shows up on its own; the tests also stay in the full `test-python` run. pytest exits with code 5 when a marker expression selects nothing, which fails the job, so the group cannot be emptied unnoticed. When you add a test about request hardening or access control, tag it (or its module) with the marker.
 
-**Postgres-only tests (#3107).** `test-python` runs on SQLite, so the Postgres EXPLAIN gate and the JSON/dialect SQL execution tests skip there. The advisory `test-postgres` job (which also runs `tests/test_limiter_storage.py` against a runner-installed `redis-server` with `RATE_LIMIT_STORAGE_URL` set; check its result before merging) runs them against PostgreSQL 17 installed on the runner from the PGDG apt repo (#3336): `LEADERBOARD_EXPLAIN_PG_URL=postgresql://postgres:postgres@localhost:5432/postgres python -m pytest tests/test_leaderboard_query_plans.py tests/test_leaderboard_indexes_migration.py --no-cov`; with the same variable, `python -m pytest tests/test_db_postgres_role.py --no-cov` (#3302: `statement_timeout` — including the per-connection `SET` when the startup parameter is dropped — `command_timeout` and pool exhaustion answer `503 database_timeout`, and the role made by `backend/scripts/create_app_role.sql` can run DML but is refused DDL, `TRUNCATE` and `alembic_version` writes, whether the migration role is a superuser or a non-superuser CREATEROLE owner as on Supabase — it also creates and drops a uniquely named role, so the URL's role needs CREATEROLE); and, with `DATABASE_URL` pointing at a migrated Postgres database (`alembic upgrade head`), `python -m pytest tests/test_jsonx.py --no-cov -o asyncio_default_fixture_loop_scope=session -o asyncio_default_test_loop_scope=session` (the asyncpg pool needs one event loop for the whole session). The job also runs the migration round trip on a scratch Postgres database (`alembic upgrade head`, `alembic check`, `alembic downgrade -1`, `alembic upgrade head`, #3446), which the SQLite suite does not exercise.
+**Postgres-only tests (#3107).** `test-python` runs on SQLite, so the Postgres EXPLAIN gate and the JSON/dialect SQL execution tests skip there. The advisory `test-postgres` job (which also runs `tests/test_limiter_storage.py` against a runner-installed `redis-server` with `RATE_LIMIT_STORAGE_URL` set; check its result before merging) runs them against PostgreSQL 17 installed on the runner from the PGDG apt repo (#3336): `LEADERBOARD_EXPLAIN_PG_URL=postgresql://postgres:postgres@localhost:5432/postgres python -m pytest tests/test_leaderboard_query_plans.py tests/test_leaderboard_indexes_migration.py --no-cov`; with the same variable, `python -m pytest tests/test_db_postgres_role.py --no-cov` (#3302: `statement_timeout` — including the per-connection `SET` when the startup parameter is dropped — `command_timeout` and pool exhaustion answer `503 database_timeout`, and the role made by `backend/scripts/create_app_role.sql` can run DML but is refused DDL, `TRUNCATE` and `alembic_version` writes, whether the migration role is a superuser or a non-superuser CREATEROLE owner as on Supabase — it also creates and drops a uniquely named role, so the URL's role needs CREATEROLE); and, with `DATABASE_URL` pointing at a migrated Postgres database (`alembic upgrade head`), `python -m pytest tests/test_jsonx.py tests/test_replay_storage_pg.py tests/test_daily_challenge_sort_pg.py --no-cov -o asyncio_default_fixture_loop_scope=session -o asyncio_default_test_loop_scope=session` (the asyncpg pool needs one event loop for the whole session). The job also runs the migration round trip on a scratch Postgres database (`alembic upgrade head`, `alembic check`, `alembic downgrade -1`, `alembic upgrade head`, #3446), which the SQLite suite does not exercise.
 
 **Backend coverage (#2958).** `pyproject.toml` sets `addopts = "--cov=. --cov-report=term-missing --cov-fail-under=96"`, so a plain `pytest` run enforces the gate. `[tool.coverage.run]` sets `concurrency = ["greenlet", "thread"]`: the async code runs under SQLAlchemy greenlets and TestClient portal threads, and without it coverage drops every line after the first `await` that switches greenlet (it used to read `me/router.py` at 74 % although its tests ran). With it the number does not depend on the interpreter (97.6 % on 3.11 and on 3.13, a few lines apart in `main.py`). It replaces `core = "sysmon"`, which only worked on Python 3.12+, so a 3.11 run silently under-reported; the cost is the C tracer on 3.13 (a full run is roughly 2x slower, 4 to 8 minutes). `sort/generate_levels.py` is measured (it has tests in `test_sort_generation.py`); the reference pour simulator now lives in `scripts/sort_verify_levels.py` (omitted with the rest of `scripts/`).
 
@@ -253,6 +303,12 @@ issue.
 `game/_shared/foregroundClock`. A test that needs a different shape still calls `jest.mock` for
 that module; its own mock wins.
 
+The AsyncStorage mock's methods are `jest.fn()`s with in-memory implementations. Because they are
+already mocks, `jest.spyOn(AsyncStorage, "x")` returns the same fn and `spy.mockRestore()` strips
+that implementation (#3895). `jest.setup-after-env.ts` re-installs any stripped default before every
+test, so a restore no longer breaks later tests in the file (a read after the restore, in the same
+test, still sees the bare mock). `src/test-utils/__tests__/asyncStorageMock.test.ts` guards this.
+
 The modules most screens need mocked per test (`@react-navigation/native`, `api/stats`,
 `game/_shared/gameEventClient`, `flushQueuedGames`, `displayNameSync`, `NetworkContext`) have
 factories in `frontend/src/test-utils/mockScreenDeps.ts`. `jest.mock` is hoisted above the
@@ -306,6 +362,14 @@ To add a control:
    label or testID. Shell behaviour itself is covered by
    `components/dev/__tests__/DevPanelShell.test.tsx`.
 
+A panel that needs to choose exact cards (to reach a rare hand) uses the shared
+`components/dev/DevCardPicker.tsx` (#3576): game-agnostic `{ rank, suit }` cards, a rank-then-suit
+add row, remove / move up / move down, Clear and optional preset chips. It only edits the list; the
+game's panel decides what the list means (Blackjack stacks it on the deck, see
+`components/blackjack/BlackjackDevPanel.tsx`). Test it in
+`components/dev/__tests__/DevCardPicker.test.tsx`, and the game side with the real engine
+(`game/blackjack/__tests__/devDeck.test.ts`).
+
 ### Testing a native renderer (#2956)
 
 The iOS/Android Skia renderers (`components/starswarm/GameCanvas.tsx`,
@@ -329,7 +393,7 @@ gesture or UI-thread callback survives the next render. Two traps remain, becaus
 evaluates `useAnimatedStyle` / `useDerivedValue` inline at render: a write made in an effect or
 handler shows in an animated style only on the next render, so `rerender` (or `act` on something
 that re-renders) before reading the style; and the init is read once at mount, so a prop-seeded
-value (`useSharedValue(lifted ? -LIFT_AMOUNT : 0)` in `PlayerHand.tsx`) stays at its first value
+value (`useSharedValue(-rise)` in `PlayerHand.tsx`) stays at its first value
 when the prop changes unless the component writes `.value` itself.
 `mockScreenDeps().mockGestureHandler(() => sink)` records every `GestureDetector` render (the
 gesture it was given, composites with their children, each built gesture with its own `on*`
@@ -364,15 +428,15 @@ frontend/src/
 
 **fruitQueue.test.ts**
 
-- `peek()` and `peekNext()` return tiers within `[0, MAX_SPAWN_TIER]`
+- `peek()` and `peekNext()` return tiers within the droppable tiers (`DROPPABLE_TIERS` in `tiers.ts`)
 - `consume()` returns the current peek value
 - Queue advances correctly after consume
-- Never spawns above `MAX_SPAWN_TIER` across 200 samples
+- Never spawns outside `DROPPABLE_TIERS` across 200 samples
 
 **fruitSets.test.ts**
 
-- All 3 sets (fruits, gems, planets) define exactly 11 tiers
-- No duplicate tiers within a set; all tiers 0–10 covered
+- All 3 sets (fruits, gems, planets) define exactly 12 tiers
+- No duplicate tiers within a set; all tiers 0–11 covered
 - Every fruit has non-empty name, emoji, and color
 - Radii increase monotonically with tier
 - Radii are identical across all sets for the same tier (physics skin-agnostic)
@@ -387,7 +451,7 @@ frontend/src/
 
 ### Notes
 
-- Physics engine (Matter.js) is not unit-tested — third-party, no jest DOM available.
+- The physics library (planck.js since #3697) is third-party and not unit-tested itself; Cascade's engine on it is (`game/cascade/__tests__/engine*.test.ts`, run on the real planck world).
 - Native renderers and components have component tests; see "Testing a native renderer" above.
 
 ### Yacht AI simulation — two-layer model (#2245)
@@ -1220,6 +1284,35 @@ a declared dependency.
 
 ## Manual repros
 
+### Drag: on-device ghost check with the debug overlay (#3529)
+
+Verifies the drag ghost sits on the finger on a real device (iPhone 17, Android). Internal build only (dev, TestFlight against the pre-launch API, or an `EXPO_PUBLIC_TEST_HOOKS` build).
+
+1. Settings → turn on "Drag debug overlay" (already on in test-hook builds).
+2. Open Solitaire or FreeCell and drag a card slowly, then in a quick flick, and release on a legal pile.
+3. While your finger is down you should see the crosshair on the fingertip and the card sitting inside the outline. The bottom-left panel gives finger / expected / grab and the check state.
+4. After you release, read the top line: `drag-check: ok Δ(x,y)` with small x and y (a few px) is a pass. `drag-check: FAIL render Δ(0,118) at=update m=2 t=+340ms` means the ghost is drawn that far from the finger (`at`: where the check ran, `m`: ghost measures, `t`: ms from drag start; #3896); `FAIL measureSpace` means the RN surface is offset from the gesture origin (Δ is that offset). Screenshot the screen (finger down: take it with a second finger or AssistiveTouch) and attach it to the issue.
+5. Turn the toggle off and confirm nothing is drawn and the drag feels the same.
+
+Maestro contract: with test hooks on, the overlay is on, and after every drag the element `id: drag-debug-result` has the text and accessibility label `drag-check: ok ...`. Under it, `id: drag-debug-seq` reads `drag #N`, where N counts the drags of the app process that produced a check result (#3532). A third line, `id: drag-debug-drop`, says how the drag ended: `drop: accepted <zone>` (`(snap)` when only the inflated bounds were hit), `drop: snapBack hit=<zone that refused|none> zones=<registered> missing=<without bounds> finger=x,y near=<nearest legal zone>@x,y,wxh` (its cached window bounds), or `drop: cancelled <reason>` (`gesture` when the pan ended without a lift). It is set on the JS end-of-drag path only and cleared at the next drag's start. Flows don't assert it; `e2e/maestro/diagnose.py` prints every `drag-debug-*` line on a failure. Both are plain opaque `Text` views with a testID, which Maestro sees on Android (resource-id) and iOS (accessibilityIdentifier); don't move them onto a plain `View` or make them transparent or 1 px, or Maestro loses them. The lines are not shown for a drag that produced no check result (web). The check samples the ghost once per drag (shortly after it starts, or at the drop if sooner), so `ok` means the ghost was under the finger at that sample, not for the whole drag.
+
+A fourth line, under the result block (top left), `id: drag-debug-touch` (#3878) (native only: not rendered on web, where axe flags an unlabelled input and Maestro doesn't run), says how far a swipe got when no `drag #N` line appears: `touch down=<n> active=<n> end=<n> js=<n> lag=<ms|none>`. `down` counts touches a draggable card's pan saw begin, `active` the pans that activated, `end` the activated pans that ended (all from the UI thread), `js` the drag starts the JS thread has handled, and `lag` how long the last one's onStart took to reach JS. It is hidden (opacity 0) until the first touch on a card, so the failure log may list it as `down=0` or not at all: either one means no touch reached a card's pan; `active=1 js=0` means the JS thread hadn't handled the start yet; a large `lag` is what leaves the ghost `unmeasured notMounted`. Flows don't assert it; `diagnose.py` prints it with the other `drag-debug-*` lines. It is an animated `TextInput` written on the UI thread (so it still updates while the JS thread is blocked); Maestro reads its value as the element's text. Counts are per app process and are written only while the overlay is on (never in a store build): the pan worklets read the setting as a shared value at each gesture phase, so turning the overlay on or off after the board mounted takes effect at the next touch without rebuilding any gesture; one shared-value read, and while on one write, per gesture phase, none per frame.
+
+### Drag invariant flows (Maestro, #3532)
+
+The drag flows fail when the dragged card leaves the finger, not only when the move ends up wrong. After every swipe they run `e2e/maestro/flows/_shared/assert-drag-ok.yaml` with `dragSeq` set to the swipe's number in the flow. It waits for `drag #<dragSeq>` (so a swipe that started no drag can't pass on the previous drag's result), then asserts `drag-debug-result` matches `drag-check: ok.*` and not `drag-check: FAIL.*`. A rejected drop that snaps back still reads `ok`: the check measures the ghost while the finger is down, once per drag. A short or sparse gesture is still measured: a check that hasn't reached a verdict by the drop makes one last attempt in `onEnd`, so `unmeasured` means the ghost never mounted (or never measured) while the finger was down. The line then says why: `drag-check: unmeasured <notMounted|noRef|nullMeasure|noSample> a=<attempts> m=<measures> mount=<+ms|none> end=+<ms>`. `notMounted` means no ghost was drawn (a real UX problem); `noRef` / `nullMeasure` mean it was drawn but couldn't be measured (an instrument problem). It still fails assert-drag-ok. Frame lag doesn't fail it: a ghost measured where the finger was a few frames earlier (Reanimated's last shadow-tree commit, up to 12 frames of the finger's current speed, on the path it has travelled) is re-measured once, and passes if it is moving with the finger; a frozen ghost or one off the path fails (GAMEPLAY_STANDARDS, "Rendered-ghost check").
+
+| Flow                        | Drags                                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `solitaire/drag.yaml`       | draw-1: tableau to tableau, invalid waste drop (snap-back), waste to empty column, waste to foundation               |
+| `solitaire/drag-draw3.yaml` | draw-3: waste to foundation, waste to tableau, a draw immediately followed by a drag of the new waste top (#3397)    |
+| `freecell/drag.yaml`        | tableau to foundation, tableau to free cell, 2-card supermove, near-miss snap into a free cell, free cell to tableau |
+| `freecell/drag-large.yaml`  | Large cards on (#3347, via the ⋯ menu toggle): tableau to free cell on the enlarged, scrolled board                  |
+
+**Draw-3 test hook.** Test builds (`EXPO_PUBLIC_TEST_HOOKS=1`) deal every game from each draw mode's first seed-bank entry (`pickSeed()` in `game/solitaire/engine.ts`: draw-1 is seed 2, draw-3 is seed 3), and on native they skip the draw-mode picker and deal draw-1. To reach the draw-3 deal, a native test build draws a small button, testID `solitaire-test-deal-draw3`, in the board's bottom-right corner (`components/solitaire/TestDealControl.tsx`, absolutely positioned so it moves no layout); tapping it starts a new draw-3 game through the same path as Play Again. Every test build, native and web, also gets `globalThis.__solitaire_deal(drawMode)` (`game/solitaire/testHooks.ts`, via `testHooksRegistry`) for drivers that can call JS, such as Playwright; call it after the board has rendered, so the restore or the draw-1 auto-deal can't overwrite it. Store builds get neither. `game/solitaire/__tests__/testHooks.test.ts` pins the deal (tops and stock order); if it fails, re-derive the deal table and coordinates in `drag-draw3.yaml`'s header.
+
+**Run locally.** Build the app with `EXPO_PUBLIC_TEST_HOOKS=1` (see `docs/MAESTRO.md`), start an emulator or simulator, then `maestro test e2e/maestro/flows/solitaire/drag-draw3.yaml` (or a whole directory). The swipe coordinates are screen percentages, one block per platform (`when: platform: Android` for the CI pixel_6 emulator, 1080x2400; `when: platform: iOS` for the CI iOS 26 simulator, 402x874 pt); on another screen size the swipes miss. The assert-drag-ok step follows each Android/iOS pair. Each flow's header gives the derivation. On CI, a failure prints the `drag-debug-*` lines and element bounds into the job log (`e2e/maestro/diagnose.py`).
+
 ### Hearts: tab-switch state preservation (#745)
 
 Verifies that `scoreHistory` and full game state survive a top-tab switch
@@ -1274,7 +1367,7 @@ Verifies the fanfare sound and full-screen moon overlay fire exactly once when s
 
 1. Start a Hearts game and engineer a moon shot (one player takes all 13 hearts and Q♠). The easiest way in a local dev build is to seed the engine state via the console so that one AI player holds all 26 point cards after trick 13.
 2. Once all 13 tricks resolve, confirm:
-   - A triumphant fanfare (hearts-moon-shot.mp3) plays once.
+   - The moon-shot howl (hearts-moon-howl.ogg) plays once.
    - A dark semi-transparent full-screen overlay appears with a 🌙 moon icon spring-scaling from 0 → 1.
    - Six ★ stars stagger in around the moon (each 120 ms apart).
    - The shooter label appears below the moon (e.g. "You shot the moon!" or "{Name} shot the moon!").
@@ -1289,7 +1382,7 @@ Verifies the dark sting sound and card animation fire exactly once when the Quee
 
 1. Start a Hearts game and play until a trick containing Q♠ is resolved.
 2. The moment the trick resolves (four cards played):
-   - Confirm a dark ominous sting (hearts-queen-of-spades.mp3) plays once.
+   - Confirm the dark gong (queen-of-spades-gong.ogg) plays once.
    - Confirm a Q♠ card (white card face with "Q" and "♠") springs up at scale 0 → 1.4×.
    - Confirm the card executes 4 left-right shake iterations (translateX ±8 px).
    - Confirm the card fades to opacity 0 after the shakes.
@@ -1409,11 +1502,11 @@ Never call `isVisible()` in an `if` branch unless the immediately preceding `awa
 
 ```typescript
 // Bad — race window between toBeVisible() and isVisible()
-await expect(page.getByText("Hit").or(page.getByText("Next Hand"))).toBeVisible();
+await expect(page.getByText("Hit").or(page.getByText("Rebet"))).toBeVisible();
 const hitVisible = await page.getByText("Hit").isVisible(); // stale snapshot
 
 // Good — isVisible() is inside the same await chain
-const hitOrResult = page.getByText("Hit").or(page.getByText("Next Hand"));
+const hitOrResult = page.getByText("Hit").or(page.getByText("Rebet"));
 await expect(hitOrResult).toBeVisible({ timeout: 5000 });
 if (await page.getByText("Hit").isVisible()) { ... }
 ```
@@ -1437,14 +1530,30 @@ Tests that exercise live RNG must use the `.or()` pattern for assertions rather 
 
 ```typescript
 // Live RNG — assert either outcome
-await expect(
-  page.getByText("Hit").or(page.getByText("Next Hand")),
-).toBeVisible();
+await expect(page.getByText("Hit").or(page.getByText("Rebet"))).toBeVisible();
 
 // Deterministic — inject known state
 await injectEngineState(page, playerPhaseState());
 await expect(page.getByText("Hit")).toBeVisible();
 ```
+
+### 6. Mocked server state must agree with planted client state
+
+When a spec plants data the server also owns, its route mocks must answer as a server holding that data. The app reconciles with the server at launch, and the server wins. Example (#3790): a spec planted `player_display_name` but mocked `GET /players/me` as `{display_name: null}`. The launch refresh then erased the name, and the result card showed the join prompt in about 70% of runs. Pass the planted name to the mock (`routeSessionBoard(page, { …, playerName: "Tester" })`). A spec with its own inline `/players/me` mock must likewise start that mock with the planted name (Hearts and Star Swarm now do, #3813; the Sort spec still starts null). Don't rely on the one-time legacy-name migration: earlier page loads in the same test usually set its flag first.
+
+### Mahjong web demo screenshots (#3804)
+
+`e2e/tests/mahjong-demo-shots.spec.ts` (project `mahjong`) is the web counterpart of the Maestro demo flows `mahjong/demo-open.yaml` and `demo-zoom.yaml` (#3801). Web draws Mahjong on Canvas2D and iOS/Android on Skia, so the same board is photographed on both to compare them. A Playwright test build (`EXPO_PUBLIC_TEST_HOOKS=1`) deals the fixed `E2E_DEAL_SEED` board (#3803), so a Maestro run of a test build, which deals the same board, can be compared tile for tile. At 390 x 844 it opens Mahjong (`gotoMahjong`, which taps the Turtle layout if the picker shows), waits for `mahjong-board-viewport`, then for the board to settle, and saves `mahjong-demo-open.png`; a second test double-clicks the viewport, settles again and saves `mahjong-demo-zoom.png`. "Settled" means reduced motion (`reducedMotion: "reduce"`, so no deal-in or camera ease runs), the board canvas carrying `data-faces-loaded="true"` (set by `GameCanvas.web.tsx` only when `EXPO_PUBLIC_TEST_HOOKS=1`, once the 42 tile faces are loaded; they load after the first paint), and then 5 consecutive identical `toDataURL` reads (6 reads, about 1.25 s, 250 ms apart) because the repaint follows the load. The zoom test measures the board box before the double-click and waits for it to grow by more than 1.5x and for `mahjong-minimap` to show, so a missed gesture fails. No pixel assertion: each test checks only that the file is a plausible size (> 10 KB). The PNGs are written to `e2e/test-results/mahjong-demo/`, which the `Playwright E2E` job uploads, pass or fail, in the `playwright-report` artifact (7 days). It runs whenever the `mahjong` Playwright project does: a change under a Mahjong path, any `e2e/**` change (`playwright_shared` in `game-paths.yml`), or a full run. The web shot has no `-late`/`-late2` counterparts: the first one is taken once the board has settled.
+
+## Mahjong tile-face raster test (#3806)
+
+`frontend/src/components/mahjong/__tests__/tileFaces.raster.test.ts` runs the raster path of `tileFaces.ts` (`Surface.Make`, `scale`, `drawSvg`, `flush`, `makeImageSnapshot`, `dispose`, via the exported `tileFacesFor`) on real Skia in Node. Every other Mahjong test stubs Skia out.
+
+- **Skia build.** CanvasKit from the existing `canvaskit-wasm` 0.41.0 dependency (the `full` build Cascade loads on web), initialised once per file with `locateFile` pointing at `node_modules/canvaskit-wasm/bin/full/`. Loading takes under a second. jest-expo's `TextDecoder` polyfill lacks `utf-16le`, which CanvasKit's loader needs, so the test swaps in Node's for the file.
+- **Why an adapter, not RN Skia's web API.** `JsiSkia` (`@shopify/react-native-skia/lib/module/skia/web`) parses SVG with a DOM `<img>`, which Node does not have, and neither CanvasKit build has an SVG module (no `MakeSVG`; only `Path.MakeFromSVGString`). So the file mocks `@shopify/react-native-skia` with a small adapter of the subset `tileFaces.ts` uses. The surface, canvas transform and snapshot are real CanvasKit; `SVG.MakeFromData` and `drawSvg` are stood in by `sharp` (librsvg, already a devDependency), which rasterises each face at the exact pixel size the surface draws it at (filling the box; Skia would letterbox a face whose viewBox aspect differed, but the tile assets share one aspect). Skia's own SVG renderer is not covered.
+- **What is checked.** Five real faces (12 characters-5, 29 bamboos-4, 21 circles-5, 03 red dragon, 39 plum) at the face sizes of Turtle on a 390 x 844 phone (pixel ratio 2 and 3) and a 768 x 1024 tablet (ratio 2), from `calculateMahjongLayout` and `makeBoardCamera`; production rasterises at `PixelRatio x 1` since #3864. Each image must have the expected size (`ceil((face - 2 * ART_INSET) * ratio)`), not be blank (opaque pixels, more than one colour) and match its reference PNG within a mean absolute channel difference of 3 %. The test also asserts that `tileFacesFor` flushes and disposes one surface per face and returns the cached faces, without rasterising again, on a second call for the same size.
+- **Limit.** This tests the faces' raster, not on-device compositing. #3684's cause (the oversized canvas layer on iOS) needed simulator screenshots (#3801) and is fixed in #3864.
+- **Updating the references.** After an intended change to the faces, their size or the raster path, run `cd frontend && UPDATE_RASTER_REFS=1 npx jest tileFaces.raster`, look at the PNGs in `src/components/mahjong/__tests__/__raster__/` and commit them (about 60 KB in all, named `<face>.<w>x<h>.png`). A run without the variable never writes.
 
 ## i18n overflow check
 
@@ -1459,3 +1568,22 @@ npx playwright test --project=cross i18n-overflow
 Adding a game or screen: extend `STORE_GAMES` (or the tabs test) in the spec. Wait for the screen to finish loading before measuring (the game screens wait for the `nav-menu` testID); measuring early gives false passes because header controls mount late.
 
 The spec's `ALLOWLIST` entries are keyed by screen, locale, overflow kind, a selector-path substring and exact text, each with a reason. They hold the six game-header-title overflows tracked in #3211 (solitaire, freecell, sort in es and fr-CA) and one web-only false positive: the es Profile `profile-tile-favorite` value, which `adjustsFontSizeToFit` shrinks on iOS/Android but react-native-web ignores. Remove the #3211 entries when #3211 lands. A stale entry that no longer overflows fails the test, so the list can only shrink.
+
+## Cascade smoke spec (web, CanvasKit, #2960)
+
+`e2e/tests/cascade-smoke.spec.ts` (project `cascade`) is the base the Cascade design-review demos record from. Cascade draws through Skia's web runtime (CanvasKit) on web, so this spec also checks how it loads:
+
+- the lobby requests no `.wasm` and has no `CanvasKit`; opening Cascade requests `canvaskit.<hash>.wasm` once, from the app's own origin;
+- Mahjong and Star Swarm keep a Canvas 2D canvas and never load CanvasKit;
+- drop (`__cascade_dropAt`), merge (`__cascade_spawnTierAt` twice, score > 0) and game over (`__cascade_triggerGameOver`, the `cascade-result` card);
+- the win (#3699): `__cascade_setupWin` restores two tier-10 pieces about to merge; the state reports `won`, the card stays hidden while the celebration plays (#2201), then shows "You Win!" with Time and Merges, and Play Again starts a fresh game;
+- an aborted `.wasm` download shows `cascade-web-error` (an alert, not an endless spinner); Retry then loads the board.
+
+It needs the e2e web build (`EXPO_PUBLIC_TEST_HOOKS=1`) and no backend. `helpers/cascade.ts` has `openCascade` (to the header, while the route may still be loading CanvasKit), `waitForCascadeBoard` and `gotoCascade` (both), and `setupWin`.
+
+```bash
+cd frontend && EXPO_PUBLIC_API_URL=http://localhost:8000 EXPO_PUBLIC_TEST_HOOKS=1 EXPO_PUBLIC_SENTRY_DSN= npx expo export --platform web
+cd ../e2e && npx playwright test --project=cascade
+```
+
+Jest covers the parts Jest can run: the route's loading, error and Retry states (`screens/__tests__/CascadeRoute.web.test.tsx`), the loader's retry and timeout (`game/cascade/render/__tests__/loadCanvasKit.test.ts`), and that `canvaskit-wasm` matches Skia's version and is imported only by web files (`canvasKitWeb.test.ts`). Jest cannot run `import()`, so the screen chunk loading after CanvasKit is covered only here.

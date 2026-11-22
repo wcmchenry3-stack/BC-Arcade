@@ -44,14 +44,77 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "numberPad.digit": {
-    "component": "NumberPad (accessibility)",
-    "description": "Accessibility label for a digit button on the number pad.",
+  "cell.given": {
+    "component": "SudokuCell (accessibility)",
+    "description": "Added to a cell's screen-reader label when it holds a puzzle clue (a given) the player cannot change.",
     "tone": "functional",
-    "characterLimit": 25,
-    "placeholders": ["{{digit}}"],
+    "characterLimit": 15,
+    "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "cell.entered": {
+    "component": "SudokuCell (accessibility)",
+    "description": "Added to a cell's screen-reader label when it holds a digit the player entered.",
+    "tone": "functional",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "cell.box": {
+    "component": "SudokuCell (accessibility)",
+    "description": "Added to a cell's screen-reader label: which 3×3 (or 2×3) box it is in, numbered left to right, top to bottom.",
+    "tone": "functional",
+    "characterLimit": 15,
+    "placeholders": ["{{box}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "cell.notes": {
+    "component": "SudokuCell (accessibility)",
+    "description": "Added to an empty cell's screen-reader label: the pencil notes it holds.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": ["{{notes}}"],
+    "doNotTranslate": [],
+    "notes": "`{{notes}}` is the digits, separated by spaces."
+  },
+  "cell.conflict": {
+    "component": "SudokuCell (accessibility)",
+    "description": "Added to a cell's screen-reader label when its digit repeats one in its row, column or box (an illegal move).",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "cell.mistake": {
+    "component": "SudokuCell (accessibility)",
+    "description": "Added to a cell's screen-reader label when Show mistakes is on and its digit is not the solution (it breaks no rule).",
+    "tone": "functional",
+    "characterLimit": 35,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Different from the conflict: no rule is broken, the digit is just not the answer."
+  },
+  "cell.clash": {
+    "component": "SudokuCell (accessibility)",
+    "description": "Added to a cell's screen-reader label when it holds the digit that a conflicting cell in its row, column or box repeats.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "numberPad.digit": {
+    "component": "NumberPad (accessibility)",
+    "description": "Accessibility label for a digit key: the digit, then how many of it are still to place.",
+    "tone": "functional",
+    "characterLimit": 55,
+    "placeholders": ["{{digit}}", "{{remaining}}"],
+    "doNotTranslate": [],
+    "notes": "`{{remaining}}` is a plain number: 0 means every instance is placed and the key is disabled. Keep \"Enter digit\" first."
   },
   "numberPad.toggleNotes": {
     "component": "NumberPad / header toggle (accessibility)",
@@ -63,7 +126,7 @@
     "notes": "Applied to both the header toggle and the NumberPad button."
   },
   "numberPad.notes": {
-    "component": "NumberPad / header toggle",
+    "component": "Sudoku action bar",
     "description": "Short visible label for the pencil-marks toggle button ('Notes').",
     "tone": "casual",
     "characterLimit": 10,
@@ -81,7 +144,7 @@
     "notes": null
   },
   "numberPad.eraseShort": {
-    "component": "NumberPad",
+    "component": "Sudoku action bar",
     "description": "Short visible label for the erase-cell button ('Erase').",
     "tone": "functional",
     "characterLimit": 10,
@@ -126,22 +189,22 @@
     "notes": null
   },
   "action.undo": {
-    "component": "Header action",
+    "component": "Sudoku action bar",
     "description": "Label + accessibility label for the Undo button.",
     "tone": "functional",
     "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "Shares one line with four other actions on a 320 pt phone: keep it to a short word."
   },
   "action.hint": {
-    "component": "NumberPad tool row",
+    "component": "Sudoku action bar",
     "description": "Label for the Hint button — reveals the correct digit for the selected empty cell.",
     "tone": "casual",
     "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Russian Подсказка needs 9. The button is an auto-width pill beside Notes in a centred row (NumberPad toolBtn), so it grows with its label."
+    "notes": "Shares one line with four other actions on a 320 pt phone: Russian Подсказка needs 9."
   },
   "action.changeDifficulty": {
     "component": "Win modal",
@@ -166,6 +229,24 @@
     "description": "Secondary button in the New Game modal that immediately restarts with the same difficulty and variant, bypassing the selectors.",
     "tone": "casual",
     "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.newGame": {
+    "component": "Sudoku action bar",
+    "description": "Label of the New Game button in the action bar under the board (opens a confirm, then the New Game picker).",
+    "tone": "casual",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shares one line with four other actions on a 320 pt phone: use the shortest natural form, one or two short words."
+  },
+  "action.cancel": {
+    "component": "New Game modal",
+    "description": "Closes the New Game picker without starting a puzzle.",
+    "tone": "casual",
+    "characterLimit": 12,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -224,23 +305,23 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "hud.errors": {
+  "hud.errors_one": {
     "component": "HUD row",
-    "description": "Error counter for 2+ errors (plural).",
+    "description": "Error counter for exactly one error (singular).",
     "tone": "neutral",
     "characterLimit": 17,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
-    "notes": "Use the locale's plural form.  The engine picks `hud.errorsOne` for exactly one error. Renders as e.g. '3 errores'; the limit counts the raw {{count}}."
+    "notes": "Plural forms follow the i18next count rules for the language (add every category the language has, e.g. few/many for Russian, zero/two/few/many for Arabic). The limit counts the raw {{count}}."
   },
-  "hud.errorsOne": {
+  "hud.errors_other": {
     "component": "HUD row",
-    "description": "Error counter for exactly one error (singular).",
+    "description": "Error counter for any other count of errors (plural).",
     "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": [],
+    "characterLimit": 17,
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "Plural forms follow the i18next count rules for the language (add every category the language has, e.g. few/many for Russian, zero/two/few/many for Arabic). The limit counts the raw {{count}}."
   },
   "hud.elapsed": {
     "component": "HUD row (accessibility)",

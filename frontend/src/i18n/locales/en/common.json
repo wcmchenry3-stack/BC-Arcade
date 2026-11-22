@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "Start new game",
   "newGame.confirm.cancel": "Cancel",
   "settings.soundEffects": "Sound effects",
+  "settings.dragDebugOverlay": "Drag debug overlay",
+  "settings.dragDebugOverlay.description": "Developer: shows the finger, the expected card frame and the drag check result while dragging.",
   "clearLogs.label": "Clear local logs",
   "clearLogs.description": "Delete all queued events and bug logs that haven't synced yet.",
   "clearLogs.button": "Clear",
@@ -49,8 +51,15 @@
   "overflow.abandon.body": "Starting a new game will discard your progress in this round. Your lifetime stats won't be affected.",
   "overflow.abandon.keepPlaying": "Keep Playing",
   "overflow.abandon.startNew": "Start New",
+  "play": "Play",
   "home.locked.buttonLabel": "Unlock",
   "home.locked.cardLabel": "{{title}} — Locked, tap to unlock",
+  "home.resume.buttonLabel": "Resume",
+  "home.resume.cardLabel": "{{label}} — in progress, tap to resume",
+  "home.status.inProgress": "In progress",
+  "home.status.doneToday": "Done today",
+  "home.status.best": "Best {{value}}",
+  "home.status.bestMoves": "Best moves: {{value}}",
   "deleteData.label": "Delete my data",
   "deleteData.description": "Permanently delete all game history and statistics associated with this device.",
   "deleteData.button": "Delete",
@@ -103,5 +112,6 @@
   "locked.back": "Back to Lobby",
   "locked.back_label": "Go back to lobby",
   "offline.windowExhausted": "It's been 3 days since you connected. Connect to the internet to get the latest puzzle.",
-  "offline.windowExhaustedStreak": "Connect to keep your streak going."
+  "offline.windowExhaustedStreak": "Connect to keep your streak going.",
+  "action.autoComplete": "Auto-Complete"
 }

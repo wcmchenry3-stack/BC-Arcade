@@ -5,20 +5,26 @@ import {
   clearGame,
   highestSolvedLevel,
   loadBestMoves,
-  loadLevelsCache,
   loadProgress,
   mergeBestMoves,
   saveBestMoves,
-  saveLevelsCache,
   saveProgress,
   totalBestMoves,
   type SortProgress,
 } from "../storage";
 
+import { __resetPersonalBestForTests } from "../../_shared/personalBest";
+import { SORT_CATALOG_VERSION } from "../catalog";
+
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.restoreAllMocks();
 });
+
+/** A save on this catalog (#2761): the old `@sort/best_moves` is moved in only then (#3821). */
+async function onCatalog(): Promise<void> {
+  await AsyncStorage.setItem("@sort/catalog_version", String(SORT_CATALOG_VERSION));
+}
 
 describe("loadBestMoves / saveBestMoves (#2512, #2625)", () => {
   it("reads back what was saved", async () => {
@@ -31,6 +37,7 @@ describe("loadBestMoves / saveBestMoves (#2512, #2625)", () => {
   });
 
   it("reads corrupt bests as none, and drops values that aren't move counts", async () => {
+    await onCatalog();
     await AsyncStorage.setItem("@sort/best_moves", "not json");
     await expect(loadBestMoves()).resolves.toEqual({});
     await AsyncStorage.setItem("@sort/best_moves", JSON.stringify({ "1": 5, "2": "x", "3": -1 }));
@@ -39,14 +46,16 @@ describe("loadBestMoves / saveBestMoves (#2512, #2625)", () => {
 
   it("is null when storage can't be read, so the caller doesn't overwrite it", async () => {
     await saveBestMoves({ "1": 8 });
-    jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
+    __resetPersonalBestForTests(); // a new session: the bests are read from storage
+    jest.spyOn(AsyncStorage, "getMany").mockRejectedValueOnce(new Error("disk"));
     await expect(loadBestMoves()).resolves.toBeNull();
     await expect(loadBestMoves()).resolves.toEqual({ "1": 8 });
   });
 
   it("saves the bests it is given, without reading storage", async () => {
     await saveBestMoves({ "1": 8, "2": 11 });
-    const read = jest.spyOn(AsyncStorage, "getItem");
+    // Storage is read once per session (#3757's cache), and not again for a save.
+    const read = jest.spyOn(AsyncStorage, "getMany");
     read.mockClear(); // the storage mock's own jest.fn keeps earlier calls
     await saveBestMoves({ "1": 7, "2": 11 });
     expect(read).not.toHaveBeenCalled();
@@ -136,6 +145,43 @@ describe("saveProgress / loadProgress / clearGame (#2957)", () => {
     await expect(loadProgress()).resolves.toEqual(progress);
   });
 
+  it("reads back the replay counts saved with a board in progress (#3386)", async () => {
+    await saveProgress({ ...progress, replayUnit: 2, replayPending: 7, replayGameId: "game-1" });
+    await expect(loadProgress()).resolves.toEqual({
+      ...progress,
+      replayUnit: 2,
+      replayPending: 7,
+      replayGameId: "game-1",
+    });
+  });
+
+  it("drops a replay game id that is not an id, keeping the board (#3386)", async () => {
+    for (const replayGameId of [42, "", null]) {
+      await AsyncStorage.setItem("@sort/progress", JSON.stringify({ ...progress, replayGameId }));
+      const loaded = await loadProgress();
+      expect(loaded).toEqual(progress);
+      expect(loaded).not.toHaveProperty("replayGameId");
+    }
+  });
+
+  it("loads an older save with no replay counts as it was (#3386)", async () => {
+    await AsyncStorage.setItem("@sort/progress", JSON.stringify(progress));
+    const loaded = await loadProgress();
+    expect(loaded).toEqual(progress);
+    expect(loaded).not.toHaveProperty("replayUnit");
+  });
+
+  it("drops a replay count that is not a count, keeping the board (#3386)", async () => {
+    await AsyncStorage.setItem(
+      "@sort/progress",
+      JSON.stringify({ ...progress, replayUnit: "lots", replayPending: -1 })
+    );
+    const loaded = await loadProgress();
+    expect(loaded).toEqual(progress);
+    expect(loaded).not.toHaveProperty("replayUnit");
+    expect(loaded).not.toHaveProperty("replayPending");
+  });
+
   it("starts at level 1 with no game when nothing is stored", async () => {
     await expect(loadProgress()).resolves.toEqual(fresh);
   });
@@ -165,35 +211,12 @@ describe("saveProgress / loadProgress / clearGame (#2957)", () => {
   });
 });
 
-describe("saveLevelsCache / loadLevelsCache (#2957)", () => {
-  const levels = { levels: [{ id: 1, bottles: [["red", "blue"], ["blue", "red"], []] }] };
-
-  it("reads back the cached levels", async () => {
-    await saveLevelsCache(levels);
-    await expect(loadLevelsCache()).resolves.toEqual(levels);
-  });
-
-  it("is null when nothing is cached", async () => {
-    await expect(loadLevelsCache()).resolves.toBeNull();
-  });
-
-  it("is null when the cache is corrupt", async () => {
-    await AsyncStorage.setItem("@sort/levels_cache", "oops");
-    await expect(loadLevelsCache()).resolves.toBeNull();
-  });
-
-  it("is null when storage can't be read", async () => {
-    await saveLevelsCache(levels);
-    jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
-    await expect(loadLevelsCache()).resolves.toBeNull();
-    await expect(loadLevelsCache()).resolves.toEqual(levels);
-  });
-});
-
 describe("Sentry reporting (#2987: failures used to be swallowed)", () => {
   const captureException = Sentry.captureException as jest.Mock;
   const captureMessage = Sentry.captureMessage as jest.Mock;
   const tags = (op: string) => ({ tags: { subsystem: "sort.storage", op } });
+  // The bests are reported by the shared personal best (#3821).
+  const bestTags = (op: string) => ({ tags: { subsystem: "personalBest", op, game: "sort" } });
 
   beforeEach(() => {
     captureException.mockClear();
@@ -207,12 +230,8 @@ describe("Sentry reporting (#2987: failures used to be swallowed)", () => {
     expect(captureException).toHaveBeenLastCalledWith(expect.any(Error), tags("save"));
 
     jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(new Error("full"));
-    await expect(saveLevelsCache({ levels: [] })).resolves.toBeUndefined();
-    expect(captureException).toHaveBeenLastCalledWith(expect.any(Error), tags("save"));
-
-    jest.spyOn(AsyncStorage, "setItem").mockRejectedValueOnce(new Error("full"));
     await expect(saveBestMoves({ "1": 3 })).resolves.toBe(false);
-    expect(captureException).toHaveBeenLastCalledWith(expect.any(Error), tags("saveBestMoves"));
+    expect(captureException).toHaveBeenLastCalledWith(expect.any(Error), bestTags("save"));
 
     jest.spyOn(AsyncStorage, "removeItem").mockRejectedValueOnce(new Error("io"));
     await expect(clearGame()).resolves.toBeUndefined();
@@ -221,41 +240,40 @@ describe("Sentry reporting (#2987: failures used to be swallowed)", () => {
 
   it("reports failed reads, and keeps what is stored", async () => {
     await saveProgress({ unlockedLevel: 5, currentLevelId: null, currentState: null });
-    await saveLevelsCache({ levels: [] });
     await saveBestMoves({ "1": 3 });
-    for (const load of [loadProgress, loadLevelsCache, loadBestMoves]) {
-      jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
-      await load();
-    }
-    expect(captureException.mock.calls.map((c) => c[1])).toEqual([
-      tags("load"),
-      tags("load"),
-      tags("loadBestMoves"),
-    ]);
+    __resetPersonalBestForTests(); // a new session: the bests are read from storage
+    jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
+    await loadProgress();
+    jest.spyOn(AsyncStorage, "getMany").mockRejectedValueOnce(new Error("disk"));
+    await expect(loadBestMoves()).resolves.toBeNull();
+    expect(captureException.mock.calls.map((c) => c[1])).toEqual([tags("load"), bestTags("load")]);
     await expect(loadProgress()).resolves.toEqual({
       unlockedLevel: 5,
       currentLevelId: null,
       currentState: null,
     });
-    await expect(loadLevelsCache()).resolves.toEqual({ levels: [] });
     await expect(loadBestMoves()).resolves.toEqual({ "1": 3 });
   });
 
-  it("warns about corrupt payloads; progress and cache are discarded, bests read as none", async () => {
+  it("warns about corrupt payloads; progress is discarded, bests read as none", async () => {
     await AsyncStorage.setItem("@sort/progress", "{x");
-    await AsyncStorage.setItem("@sort/levels_cache", "{x");
-    await AsyncStorage.setItem("@sort/best_moves", "{x");
+    await AsyncStorage.setItem("personal_best_v1:sort", "{x");
     await loadProgress();
-    await loadLevelsCache();
-    await loadBestMoves();
+    await expect(loadBestMoves()).resolves.toEqual({});
     expect(captureMessage.mock.calls.map((c) => [c[0], c[1].tags.op])).toEqual([
       ["sort.storage: corrupt progress payload, discarding", "load"],
-      ["sort.storage: corrupt levels cache, discarding", "load"],
-      ["sort.storage: corrupt best moves, reading as none", "loadBestMoves"],
+      ["personalBest: corrupt record, reading as no best", "load"],
     ]);
     await expect(AsyncStorage.getItem("@sort/progress")).resolves.toBeNull();
-    await expect(AsyncStorage.getItem("@sort/levels_cache")).resolves.toBeNull();
-    await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBe("{x");
+    await expect(AsyncStorage.getItem("personal_best_v1:sort")).resolves.toBeNull();
+  });
+
+  it("reads a corrupt older save (#3821) as no bests and removes it, unreported", async () => {
+    await onCatalog();
+    await AsyncStorage.setItem("@sort/best_moves", "{x");
+    await expect(loadBestMoves()).resolves.toEqual({});
+    expect(captureMessage).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem("@sort/best_moves")).resolves.toBeNull();
   });
 
   it("reads a stored payload that isn't progress as a fresh start", async () => {

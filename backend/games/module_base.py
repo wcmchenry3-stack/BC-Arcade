@@ -9,10 +9,12 @@ every hook on every module, with no ``getattr`` lookups:
 - ``stats_shape``: the game-specific part of its ``/stats/me`` entry. The
   default is ``default_stats_shape``; only Blackjack overrides it.
 - ``derive_final_score``: the ``final_score`` to store for a completion.
-  The default stores the one the client sent; Blackjack overrides it (#2745).
+  The default stores the one the client sent; Blackjack (#2745) and Cascade
+  (#3700) override it.
 - ``reconcile_result``: corrects a validated result block against
   server-side state before it is stored. The default returns it unchanged;
-  Daily Word overrides it (#2541).
+  Daily Word overrides it (#2541); Star Swarm, to warn when a dev-affected
+  run reaches production (#3510).
 
 - ``validate_event``: checks (and may normalize) one gameplay event's ``data``
   before ``append_events`` stores it; ``None`` drops that event. The default

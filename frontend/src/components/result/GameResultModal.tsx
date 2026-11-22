@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Modal, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
+import { endsWithSentenceMark, joinSentence } from "../../utils/joinSentence";
 import { useTheme } from "../../theme/ThemeContext";
 import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
 import { useAppOverlayOpen } from "../../hooks/appOverlay";
@@ -10,6 +11,7 @@ import {
   formatValue,
   type GameOutcome,
   type GameResultModalProps,
+  type ResultEndNote,
   type ResultHero,
 } from "./resultTypes";
 
@@ -84,6 +86,7 @@ export function useResultFeedback({
   outcome,
   winnerName,
   subtitle,
+  endNote,
   hero,
 }: {
   /** The result is up; turning false re-arms the feedback for the next one. */
@@ -97,6 +100,7 @@ export function useResultFeedback({
   outcome: GameOutcome;
   winnerName?: string;
   subtitle?: string;
+  endNote?: ResultEndNote;
   hero?: ResultHero;
 }) {
   const { t } = useTranslation("result");
@@ -121,11 +125,19 @@ export function useResultFeedback({
     if (!presented || announcedRef.current) return;
     announcedRef.current = true;
     fireHaptic(outcome);
-    const detailText = [subtitle, heroA11y].filter(Boolean).join(". ");
+    const detailText = [subtitle, endNote?.label, endNote?.note, heroA11y]
+      .filter((part): part is string => Boolean(part))
+      .reduce<string>((acc, part) => (acc ? joinSentence(acc, part) : part), "");
+    // A title that already ends in a mark ("You Win!") takes no extra separator (#3824); otherwise
+    // the locale's own "{{title}}<sep> {{detail}}" template applies (". " / "。" / "। ").
     AccessibilityInfo.announceForAccessibility(
-      detailText ? t("a11y.announce", { title, detail: detailText }) : title
+      !detailText
+        ? title
+        : endsWithSentenceMark(title)
+          ? joinSentence(title, detailText)
+          : t("a11y.announce", { title, detail: detailText })
     );
-  }, [active, presented, outcome, subtitle, heroA11y, title, t]);
+  }, [active, presented, outcome, subtitle, endNote?.label, endNote?.note, heroA11y, title, t]);
 }
 
 /** The one end-of-game result card every game uses, in a modal. */
@@ -180,6 +192,7 @@ export default function GameResultModal({
     outcome: card.outcome,
     winnerName: card.winnerName,
     subtitle: card.subtitle,
+    endNote: card.endNote,
     hero: card.hero,
   });
 

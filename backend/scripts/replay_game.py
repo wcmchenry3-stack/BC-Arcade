@@ -43,6 +43,25 @@ A Star Swarm game gets its per-wave ``wave_completed`` summaries and decoded
 hull and lives, Carrier stages and power-ups per wave, cross-checked against the summaries.
 It is a sampled diagnostic, not a frame-by-frame or projectile replay.
 
+A Sort game (one level) is rebuilt from its ``game_started`` (level, catalog version) and
+``moves`` events (#3388, ``sort/rebuild.py``): the opening board from the shipped catalog, then
+each pour, undo, hint and "back to last good move" with the moves and undos after it, the final
+board and a verdict: ``complete``, ``incomplete`` (a clean prefix: a cap, a dropped batch, no
+``game_ended``) or ``invalid`` (an illegal pour, a malformed action, repeated units, a result that
+disagrees, an incompatible catalog or engine).
+
+A Cascade game is read from its events, not re-simulated (#3858, ``cascade/replay.py``): its
+seeds and tuning, its drops and merges by tier, its longest chain, its danger moments, and the
+outcome, end and capstone steps and the score with its time bonus from ``game_ended``, with a
+check that the recorded merges add up to the merge score. Cascade's physics replays bit for bit
+only on the JS engine that recorded it, so nothing here re-runs it.
+
+Every game that records its play (``games/engine_version.py``, #3912) also gets an ``engine``
+line in the summary: its ``game_started`` ``engine_version`` (none is version 1) and whether it
+is today's version, an older one still replayed with its frozen rules, or incompatible. An
+incompatible game's events are still printed as stored, but nothing is rebuilt from them: each
+rebuilt section says ``incompatible engine: ...; nothing rebuilt`` instead.
+
 Exit codes: 0 printed (gaps do not change it), 1 no such game, 2 bad argument.
 """
 
@@ -67,6 +86,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from blackjack.replay import render_rounds
 from db.models import EventType, Game, GameEvent, GameType
+from games.engine_version import (
+    CURRENT_ENGINE_VERSIONS,
+    EngineResolution,
+    ReplayEngines,
+    replay_engines,
+)
 from games.replay_caps import RETENTION_KEEP_NAMES
 
 #: Event types that mark the game's life rather than its play.
@@ -169,6 +194,45 @@ def _replay_line(block: dict[str, Any] | None, events: Sequence[EventRow] = ()) 
     return [f"  replay     {text_}" + (f" ({counts})" if counts else "")]
 
 
+def engines_for(game_type: str) -> ReplayEngines[Any] | None:
+    """The engine versions the game's reader replays; ``None`` for a game that records none.
+
+    A game with a reader here (Blackjack, Daily Word, Sort, Yacht) uses its reader's
+    ``ENGINES``; the others are only printed, so their current version is all there is."""
+    if game_type == "blackjack":
+        import blackjack.replay
+
+        return blackjack.replay.ENGINES
+    if game_type == "daily_word":
+        import daily_word.replay
+
+        return daily_word.replay.ENGINES
+    if game_type == "sort":
+        import sort.rebuild
+
+        return sort.rebuild.ENGINES
+    if game_type == "yacht":
+        import yacht.replay
+
+        return yacht.replay.ENGINES
+    if game_type in CURRENT_ENGINE_VERSIONS:
+        return replay_engines(game_type, None)
+    return None
+
+
+def engine_resolution(game_type: str, events: Sequence[EventRow]) -> EngineResolution[Any] | None:
+    """Which rules replay the game, from its ``game_started`` (``None``: the game records none)."""
+    engines = engines_for(game_type)
+    if engines is None:
+        return None
+    return engines.resolve_events((e.event_type, e.data) for e in events)
+
+
+def _engine_line(game_type: str, events: Sequence[EventRow]) -> list[str]:
+    engine = engine_resolution(game_type, events)
+    return [] if engine is None else [f"  engine     {engine.describe()}"]
+
+
 def _gap_line(first: int, last: int) -> str:
     n = last - first + 1
     span = f"{first}" if n == 1 else f"{first}-{last}"
@@ -220,22 +284,32 @@ def render(game: GameRow, events: Sequence[EventRow], max_chars: int = DEFAULT_M
         f"  game_started {'present' if 'game_started' in names else 'MISSING'}",
         f"  game_ended   {'present' if 'game_ended' in names else 'absent'}",
         *_replay_line(replay_summary(ordered), ordered),
+        *_engine_line(game.game_type, ordered),
     ]
     lines.extend(_rebuilt_state(game, ordered))
     return "\n".join(lines) + "\n"
 
 
 def _rebuilt_state(game: GameRow, events: Sequence[EventRow]) -> list[str]:
-    """The game's state rebuilt from its events, for a game that records enough to (Yacht: #3282, Daily Word: #3287, Star Swarm: #3395)."""
+    """The game's state rebuilt from its events, for a game that records enough to (Yacht: #3282, Daily Word: #3287, Star Swarm: #3395, Sort: #3388; Cascade's story, read, not rebuilt: #3858)."""
     if game.game_type == "daily_word":
         from daily_word.replay import rebuild as rebuild_daily_word
         from daily_word.replay import render_board
 
         return ["", *render_board(rebuild_daily_word((e.event_type, e.data) for e in events))]
+    if game.game_type == "cascade":
+        from cascade.replay import render as render_cascade
+
+        return ["", *render_cascade((e.event_type, e.data) for e in events)]
     if game.game_type == "starswarm":
         from starswarm.replay import render as render_starswarm
 
         return ["", *render_starswarm((e.event_type, e.data) for e in events)]
+    if game.game_type == "sort":
+        from sort.rebuild import rebuild as rebuild_sort
+        from sort.rebuild import render as render_sort
+
+        return ["", *render_sort(rebuild_sort((e.event_type, e.data) for e in events))]
     if game.game_type != "yacht":
         return []
     from yacht.replay import rebuild as rebuild_yacht

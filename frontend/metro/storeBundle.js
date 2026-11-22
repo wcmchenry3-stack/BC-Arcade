@@ -32,7 +32,13 @@ const path = require("path");
 // Same pattern as PRE_LAUNCH_API in src/game/_shared/envFlags.ts.
 const PRE_LAUNCH_API = /^https:\/\/dev-games-api\.buffingchi\.com(?:[/:?#]|$)/;
 
-/** Screens owned by the games in HIDDEN_GAMES (src/entitlements/gameVisibility.ts). */
+/**
+ * Screens owned by the games in HIDDEN_GAMES (src/entitlements/gameVisibility.ts).
+ * Store-bundle exclusion must cover the hidden AND the disabled games
+ * (DISABLED_GAMES, empty today): when the premium unhide
+ * (#2875) drops a game from HIDDEN_GAMES, keep every disabled game's screens
+ * here. storeBundle.test.ts fails if a disabled game's screen is not excluded.
+ */
 const HIDDEN_GAME_SCREENS = {
   blackjack: [
     "BlackjackBettingScreen",
@@ -40,11 +46,29 @@ const HIDDEN_GAME_SCREENS = {
     "BlackjackVictoryScreen",
     "BlackjackStatsScreen",
   ],
-  cascade: ["CascadeScreen"],
+  // CascadeRoute is the route (CascadeRoute.web.tsx loads CanvasKit on web, #2960).
+  cascade: ["CascadeRoute", "CascadeScreen"],
   hearts: ["HeartsScreen"],
   mahjong: ["MahjongScreen", "MahjongLayoutInspectorScreen", "MahjongLayoutDetailScreen"],
   starswarm: ["StarSwarmScreen"],
 };
+
+/**
+ * Modules outside a hidden game's screens that would still pull its code or art into a store
+ * bundle, and the stand-in each resolves to there.
+ *
+ * The hidden games' lobby tile images (#4011, #4013) live in `hiddenGameTileArt.ts`, not in
+ * HomeScreen, so a store bundle can swap them for the image-free `.store.ts` stand-in: an image
+ * HomeScreen imported would be packaged whether its tile renders or not. (Cascade's tile was a
+ * Skia-drawn `CascadeTileIcon` with an emoji-only store variant until #4013 made it an image.)
+ */
+const HOME_COMPONENTS = path.join(__dirname, "..", "src", "components", "home");
+const STUBBED_MODULES = new Map([
+  [
+    path.join(HOME_COMPONENTS, "hiddenGameTileArt.ts"),
+    path.join(HOME_COMPONENTS, "hiddenGameTileArt.store.ts"),
+  ],
+]);
 
 const SCREENS_DIR = path.join(__dirname, "..", "src", "screens");
 const STUB_SCREEN = path.join(SCREENS_DIR, "StoreBuildExcludedScreen.tsx");
@@ -102,6 +126,8 @@ function withStoreBundleExclusions(config, env = process.env) {
     if (isExcludedScreen(resolution.filePath)) {
       return { type: "sourceFile", filePath: STUB_SCREEN };
     }
+    const standIn = STUBBED_MODULES.get(resolution.filePath);
+    if (standIn) return { type: "sourceFile", filePath: standIn };
     if (isStorePlatform(platform) && isExcludedLocaleFile(resolution.filePath)) {
       return { type: "sourceFile", filePath: STUB_LOCALE };
     }
@@ -112,6 +138,7 @@ function withStoreBundleExclusions(config, env = process.env) {
 
 module.exports = {
   HIDDEN_GAME_SCREENS,
+  STUBBED_MODULES,
   LAUNCH_LOCALES,
   STUB_LOCALE,
   STUB_SCREEN,

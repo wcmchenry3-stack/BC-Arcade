@@ -17,7 +17,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Game, GameType
-from games.filters import not_abandoned, not_swept
+from games.filters import not_abandoned, not_dev_affected, not_swept
 from games.registry import get_module
 from games.stats_columns import _LOSS, _WIN, _comparable_columns, _comparable_fields
 from observability.report import KeyedThrottle, report_event
@@ -64,6 +64,7 @@ class GameTypeStats:
     time_played_ms: int = 0
     best_value: int | float | None = None
     best_label_key: str | None = None
+    best_win_ms: int | None = None
     # Game-specific figures from stats_shape()'s "extras" (Blackjack's chips).
     extras: dict[str, Any] = field(default_factory=dict)
 
@@ -106,6 +107,7 @@ async def _win_streaks_by_game(
             .where(
                 Game.session_id == session_id,
                 Game.completed_at.is_not(None),
+                not_dev_affected(),  # #3510
                 Game.outcome.in_((_WIN, _LOSS)),
             )
             .order_by(GameType.name, Game.completed_at, Game.started_at, Game.id)
@@ -122,6 +124,9 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
 
     Only counts finished games (``completed_at`` set); in-progress games are
     left out.
+
+    A run a dev-panel action touched (``metadata.dev_affected``, #3510) is
+    left out of every aggregate here: kept, but never counted.
 
     Abandoned games (#2468 / #2472) are counted but not scored. ``sessions``
     and ``last_played_at`` are lifecycle facts and still include them (though
@@ -164,6 +169,8 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             .where(
                 Game.session_id == session_id,
                 Game.completed_at.is_not(None),
+                # #3510: a dev-affected run is kept, but no roll-up counts it
+                not_dev_affected(),
             )
             .group_by(GameType.name)
         )
@@ -194,6 +201,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             Game.session_id == session_id,
             Game.completed_at.is_not(None),
             not_abandoned(),
+            not_dev_affected(),  # #3510
         )
         .subquery()
     )

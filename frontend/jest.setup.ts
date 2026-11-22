@@ -69,12 +69,13 @@ jest.mock("react-native-reanimated", () => {
   // reacting to writes: (1) a write made in an effect or a handler only shows in an animated
   // style on the NEXT render, so `rerender` (or act on something that re-renders) before reading
   // it; (2) the init is read once at mount, so a prop-seeded value (PlayerHand's
-  // `useSharedValue(lifted ? -LIFT_AMOUNT : 0)`) stays frozen at its first value when the prop
+  // `useSharedValue(-rise)`) stays frozen at its first value when the prop
   // changes unless the component writes `.value` itself.
   // `get()` / `set()` are Reanimated 4's React Compiler-safe accessors for `.value`.
   const useStableSharedValue = (init: unknown) =>
     React.useState(() => ({
-      value: init,
+      // Like Reanimated's useSharedValue, a function init is a lazy initializer.
+      value: typeof init === "function" ? (init as () => unknown)() : init,
       get() {
         return this.value;
       },
@@ -114,9 +115,11 @@ jest.mock("react-native-reanimated", () => {
     withTiming: noopAnim,
     withSpring: noopAnim,
     withSequence: (...args: unknown[]) => args[args.length - 1],
+    ReduceMotion: { System: "system", Always: "always", Never: "never" },
     withRepeat: (v: unknown) => v,
     withDelay: (_ms: number, v: unknown) => v,
     Easing: {
+      linear: (t: number) => t,
       out: () => () => 0,
       in: () => () => 0,
       quad: () => 0,
@@ -129,10 +132,61 @@ jest.mock("react-native-reanimated", () => {
     // Used internally by react-native-gesture-handler
     useEvent: () => () => {},
     useHandler: (_handlers: unknown, deps: unknown[]) => [() => {}, deps],
-    useAnimatedRef: () => ({ current: null }),
+    // Stable for the component's lifetime, like the real hook: a memoized
+    // gesture that captures it (DraggableCard, #2264) must not see a new ref
+    // on every render.
+    useAnimatedRef: () => React.useRef(null),
     measure: () => null,
     useAnimatedReaction: () => {},
+    // Inert, as before, unless the component turns it on with `setActive(true)` (#3699: Cascade's
+    // celebration clock): then it calls back every MOCK_FRAME_MS of (fake) time, with the time
+    // since the previous frame, until it is turned off or the component unmounts.
+    useFrameCallback: (callback: (info: Record<string, number | null>) => void) => {
+      const MOCK_FRAME_MS = 10;
+      const ref = React.useRef(callback);
+      ref.current = callback;
+      const [handle] = React.useState(() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let first = 0;
+        let last = 0;
+        const h = {
+          isActive: false,
+          callbackId: -1,
+          setActive(active: boolean) {
+            if (timer !== null) clearTimeout(timer);
+            timer = null;
+            h.isActive = active;
+            if (!active) return;
+            first = last = Date.now();
+            const tick = () => {
+              const now = Date.now();
+              ref.current({
+                timestamp: now,
+                timeSincePreviousFrame: now - last,
+                timeSinceFirstFrame: now - first,
+              });
+              last = now;
+              if (h.isActive) timer = setTimeout(tick, MOCK_FRAME_MS);
+            };
+            timer = setTimeout(tick, MOCK_FRAME_MS);
+          },
+        };
+        return h;
+      });
+      React.useEffect(() => () => handle.setActive(false), [handle]);
+      return handle;
+    },
     useDerivedValue: (fn: () => unknown) => ({ value: fn() }),
+    // A shared value made outside a hook (Mahjong's motion clocks, #3613).
+    makeMutable: (init: unknown) => ({
+      value: init,
+      get() {
+        return this.value;
+      },
+      set(next: unknown) {
+        this.value = next;
+      },
+    }),
     useWorkletCallback: (fn: unknown) => fn,
     makeRemote: (obj: unknown) => obj,
     makeShareable: (obj: unknown) => obj,
@@ -209,11 +263,12 @@ jest.mock("expo-linear-gradient", () => {
 (globalThis as unknown as { expo: { uuidv4: () => string } }).expo.uuidv4 = () =>
   globalThis.crypto.randomUUID();
 
-// @expo/vector-icons — one shared string mock per icon family (#2954/#3107) instead of
-// per-test copies. Renders as a plain native element so other assertions still work. A
-// test that needs another shape mocks the module itself; its jest.mock wins.
-jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
-jest.mock("@expo/vector-icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
+// Icon families — one shared string mock per family (#2954/#3107) instead of per-test
+// copies. Renders as a plain native element so other assertions still work. A test that
+// needs another shape mocks the module itself; its jest.mock wins. The app's icon families
+// are the subset fonts in src/components/icons (#3843), not the full @expo/vector-icons ones.
+jest.mock("./src/components/icons/MaterialIcons", () => "MockMaterialIcons");
+jest.mock("./src/components/icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
 
 // Shared screen-test mock factories (#2954), as a global so hoisted jest.mock
 // factories can call it: babel-plugin-jest-hoist lets a factory reference a
@@ -229,6 +284,7 @@ jest.mock("@sentry/react-native", () => ({
   captureFeedback: jest.fn(() => "mock-feedback-event-id"),
   getClient: jest.fn(() => ({})),
   init: jest.fn(),
+  screenshotIntegration: jest.fn(() => ({ name: "Screenshot" })),
   wrap: (c: unknown) => c,
   ReactNavigationInstrumentation: jest.fn(),
   ReactNativeTracing: jest.fn(),
@@ -243,35 +299,50 @@ jest.mock("@sentry/react-native", () => ({
 // AsyncStorage mock — self-contained in-memory store, no dependency on the
 // package's own jest helper (removed in v3). Each method is a jest.fn() so
 // tests can spy on calls or override with mockResolvedValue.
+//
+// Caveat (#3895): the methods are already mocks, so `jest.spyOn(AsyncStorage, "x")`
+// returns the same fn and `spy.mockRestore()` strips its in-memory implementation
+// ("restoring the original" leaves a bare mock returning undefined). The default
+// implementations are therefore kept in `defaults`, and `__restoreDefaults()`
+// re-installs any that were stripped; jest.setup-after-env.ts calls it before every
+// test so a restore cannot leak into later tests of the same file.
 jest.mock("@react-native-async-storage/async-storage", () => {
   const store: Record<string, string> = {};
-  return {
-    getItem: jest.fn((key: string) => Promise.resolve(store[key] ?? null)),
-    setItem: jest.fn((key: string, value: string) => {
+  const defaults: Record<string, (...args: never[]) => unknown> = {
+    getItem: (key: string) => Promise.resolve(store[key] ?? null),
+    setItem: (key: string, value: string) => {
       store[key] = value;
       return Promise.resolve();
-    }),
-    removeItem: jest.fn((key: string) => {
+    },
+    removeItem: (key: string) => {
       delete store[key];
       return Promise.resolve();
-    }),
-    getMany: jest.fn((keys: string[]) =>
-      Promise.resolve(Object.fromEntries(keys.map((k) => [k, store[k] ?? null])))
-    ),
-    setMany: jest.fn((entries: Record<string, string>) => {
+    },
+    getMany: (keys: string[]) =>
+      Promise.resolve(Object.fromEntries(keys.map((k) => [k, store[k] ?? null]))),
+    setMany: (entries: Record<string, string>) => {
       Object.assign(store, entries);
       return Promise.resolve();
-    }),
-    removeMany: jest.fn((keys: string[]) => {
+    },
+    removeMany: (keys: string[]) => {
       keys.forEach((k) => delete store[k]);
       return Promise.resolve();
-    }),
-    getAllKeys: jest.fn(() => Promise.resolve(Object.keys(store))),
-    clear: jest.fn(() => {
+    },
+    getAllKeys: () => Promise.resolve(Object.keys(store)),
+    clear: () => {
       Object.keys(store).forEach((k) => delete store[k]);
       return Promise.resolve();
-    }),
+    },
   };
+  const mock: Record<string, unknown> = {};
+  for (const [name, impl] of Object.entries(defaults)) mock[name] = jest.fn(impl);
+  mock.__restoreDefaults = () => {
+    for (const [name, impl] of Object.entries(defaults)) {
+      const fn = mock[name] as jest.Mock;
+      if (fn.getMockImplementation() === undefined) fn.mockImplementation(impl);
+    }
+  };
+  return mock;
 });
 
 // useGameSync's foreground clock (#2684) is pinned for every test file to the

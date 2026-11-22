@@ -64,9 +64,13 @@ export function useReduceMotionStatus(): ReduceMotionStatus {
   useEffect(() => {
     let alive = true;
     const unsubscribe = subscribe((enabled) => setStatus({ enabled, known: true }));
-    AccessibilityInfo.isReduceMotionEnabled()
+    // `Promise.resolve`: a reset or restored test mock of the query returns
+    // nothing, and every card on a board now asks (#3606).
+    Promise.resolve(AccessibilityInfo.isReduceMotionEnabled())
       .then((value) => {
-        if (alive) publish(value);
+        if (!alive) return;
+        if (typeof value === "boolean") publish(value);
+        else setStatus((s) => (s.known ? s : { ...s, known: true }));
       })
       .catch(() => {
         // No answer: carry on with what we have rather than wait forever.

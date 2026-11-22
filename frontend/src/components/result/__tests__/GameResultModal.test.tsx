@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
 import { AccessibilityInfo, Pressable, StyleSheet, Text } from "react-native";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialCommunityIcons from "../../icons/MaterialCommunityIcons";
 import { NavigationContext } from "@react-navigation/native";
+import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react-native";
@@ -25,7 +26,7 @@ import type { GameType } from "../../../api/vocab";
 
 // This suite asserts on real glyph codepoints, so it opts out of the shared icon mock
 // in jest.setup.ts (#3107).
-jest.unmock("@expo/vector-icons/MaterialCommunityIcons");
+jest.unmock("../../icons/MaterialCommunityIcons");
 
 jest.mock("expo-haptics", () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),
@@ -220,6 +221,25 @@ describe("GameResultModal — variations", () => {
     });
     expect(screen.getByText("Standings table")).toBeTruthy();
     expect(screen.getByText("New best")).toBeTruthy();
+  });
+
+  it("renders an end note with its smaller second line, and announces both (#3534)", async () => {
+    await renderCard({
+      outcome: "ended",
+      subtitle: "Reached wave 7",
+      endNote: { label: "Hit by a Carrier beam", note: "after the last enemy fell" },
+    });
+    expect(screen.getByText("Hit by a Carrier beam")).toHaveStyle({ color: darkColors.text });
+    expect(screen.getByText("after the last enemy fell")).toHaveStyle({
+      color: darkColors.textMuted,
+    });
+    const spoken = announce.mock.calls.map((c) => c[0]).join(" | ");
+    expect(spoken).toContain("Hit by a Carrier beam. after the last enemy fell");
+  });
+
+  it("renders no end note unless one is given (#3534)", async () => {
+    await renderCard({ outcome: "ended", subtitle: "Reached wave 7" });
+    expect(screen.queryByTestId("game-result-end-note")).toBeNull();
   });
 
   it("caps the stats strip at four", async () => {
@@ -536,7 +556,35 @@ describe("GameResultModal — behaviour", () => {
       hero: { kind: "score", label: "Score", value: 4820 },
     });
     expect(announce).toHaveBeenCalledTimes(1);
-    expect(announce).toHaveBeenCalledWith("You Win!. Solved in 12:48. Score: 4,820");
+    expect(announce).toHaveBeenCalledWith("You Win! Solved in 12:48. Score: 4,820");
+  });
+
+  it("does not double a mark that already ends a detail part (#3824)", async () => {
+    await renderCard({
+      outcome: "win",
+      subtitle: "Solved in 12:48.",
+      hero: { kind: "score", label: "Score", value: 4820 },
+    });
+    expect(announce).toHaveBeenLastCalledWith("You Win! Solved in 12:48. Score: 4,820");
+  });
+
+  it.each([
+    ["ja", "勝利！", "1:02"],
+    ["zh", "你赢了！", "1:02"],
+    ["fr-CA", "Victoire!", " 1:02"],
+    ["he", "ניצחת!", " 1:02"],
+  ])("joins after the %s title's own closing mark (#3824)", async (lng, title, tail) => {
+    for (const ns of ["result", "common"]) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      i18n.addResourceBundle(lng, ns, require(`../../../i18n/locales/${lng}/${ns}.json`));
+    }
+    await i18n.changeLanguage(lng);
+    try {
+      await renderCard({ outcome: "win", subtitle: "1:02" });
+      expect(announce).toHaveBeenLastCalledWith(`${title}${tail}`);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("renders nothing while not visible", async () => {

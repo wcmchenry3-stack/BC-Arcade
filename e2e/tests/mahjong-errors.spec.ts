@@ -42,6 +42,7 @@ test.describe("Mahjong — error paths", () => {
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
       localStorage.removeItem("mahjong_stats_v1");
+      localStorage.removeItem("personal_best_v1:mahjong");
     });
     await gotoMahjong(page);
 
@@ -76,6 +77,7 @@ test.describe("Mahjong — error paths", () => {
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
       localStorage.removeItem("mahjong_stats_v1");
+      localStorage.removeItem("personal_best_v1:mahjong");
     });
     await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
     await page
@@ -104,6 +106,7 @@ test.describe("Mahjong — error paths", () => {
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
       localStorage.removeItem("mahjong_stats_v1");
+      localStorage.removeItem("personal_best_v1:mahjong");
     });
     await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
     await page
@@ -135,6 +138,7 @@ test.describe("Mahjong — error paths", () => {
     await page.evaluate(() => {
       localStorage.setItem("mahjong_game", "not-valid-json{{{");
       localStorage.removeItem("mahjong_stats_v1");
+      localStorage.removeItem("personal_best_v1:mahjong");
     });
     await page.goto("/");
     await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();

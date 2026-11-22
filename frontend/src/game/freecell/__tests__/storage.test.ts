@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 
-import { clearGame, loadGame, saveGame, loadStats, saveStats } from "../storage";
-import { dealGame } from "../engine";
+import { clearGame, loadGame, saveGame } from "../storage";
+import { applyMove, dealGame, getHintMoves } from "../engine";
 import type { FreeCellState } from "../types";
 
 const GAME_KEY = "freecell_game";
@@ -26,6 +26,46 @@ describe("freecell storage", () => {
     expect(loaded!.tableau.length).toBe(8);
     expect(loaded!.freeCells.length).toBe(4);
     expect(loaded!.isComplete).toBe(false);
+  });
+
+  it("restores a save whose stored events include the removed foundationComplete (#3567)", async () => {
+    const s = seedState();
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({
+        ...s,
+        events: [{ type: "cardPlace" }, { type: "foundationComplete", suit: "spades" }],
+      })
+    );
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.tableau.length).toBe(8);
+    // The restored game plays on normally: the next move's events replace the stale ones.
+    const move = getHintMoves(loaded!)[0]!;
+    const next = applyMove(loaded!, move);
+    expect(next.moveCount).toBe(loaded!.moveCount + 1);
+    expect(JSON.stringify(next.events)).not.toContain("foundationComplete");
+  });
+
+  it("never saves the one-shot events (#3826)", async () => {
+    const s: FreeCellState = { ...seedState(), events: [{ type: "cardPlace" }] };
+    await saveGame(s);
+    const parsed = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
+    expect("events" in parsed).toBe(false);
+    expect(parsed.moveCount).toBe(s.moveCount);
+  });
+
+  it("restores an older save that has events without them (#3826)", async () => {
+    const s = seedState();
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...s, _v: 1, events: [{ type: "cardPlace" }] })
+    );
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect("events" in loaded!).toBe(false);
+    expect(loaded!.moveCount).toBe(s.moveCount);
+    expect(loaded!.tableau.length).toBe(8);
   });
 
   it("returns null when no save exists", async () => {
@@ -74,46 +114,49 @@ describe("freecell storage", () => {
     expect(await loadGame()).toBeNull();
   });
 
+  it("strips the play clock from undo snapshots at save time, keeping the game's own (#3607)", async () => {
+    const s = seedState();
+    const clock = { startedAt: 1_000, accumulatedMs: 2_000 };
+    await saveGame({
+      ...s,
+      clock,
+      undoStack: [{ ...s, clock: { startedAt: 5, accumulatedMs: 9 } }],
+    });
+    const parsed = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
+    expect(parsed.clock).toEqual(clock);
+    expect(parsed.undoStack).toHaveLength(1);
+    expect("clock" in parsed.undoStack[0]).toBe(false);
+  });
+
+  it("loads a well-formed clock as saved", async () => {
+    const clock = { startedAt: null, accumulatedMs: 134_000, paused: true };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...seedState(), clock }));
+    expect((await loadGame())!.clock).toEqual(clock);
+  });
+
+  it.each([
+    ["a string", "soon"],
+    ["a missing banked time", { startedAt: 12 }],
+    ["a non-numeric start", { startedAt: "noon", accumulatedMs: 0 }],
+    ["a non-boolean pause", { startedAt: null, accumulatedMs: 0, paused: "yes" }],
+  ])("drops a malformed clock (%s) and keeps the game, as not started", async (_name, clock) => {
+    const s = seedState();
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...s, clock }));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded!.clock).toBeUndefined();
+    expect(loaded!.tableau).toEqual(s.tableau);
+  });
+
+  it("clamps a negative banked time to 0 and keeps the clock (#3607 review)", async () => {
+    const clock = { startedAt: 2_000, accumulatedMs: -5_000, paused: true };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...seedState(), clock }));
+    expect((await loadGame())!.clock).toEqual({ startedAt: 2_000, accumulatedMs: 0, paused: true });
+  });
+
   it("clearGame removes the saved state", async () => {
     await saveGame(seedState());
     await clearGame();
     expect(await loadGame()).toBeNull();
-  });
-});
-
-describe("freecell stats storage", () => {
-  beforeEach(async () => {
-    await AsyncStorage.clear();
-    (Sentry.captureException as jest.Mock).mockClear();
-  });
-
-  it("returns zero defaults when no stats saved", async () => {
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestMoves: 0 });
-  });
-
-  it("saves and loads stats round-trip", async () => {
-    await saveStats({ bestMoves: 42 });
-    const loaded = await loadStats();
-    expect(loaded).toEqual({ bestMoves: 42 });
-  });
-
-  it("returns zero defaults on corrupt stats payload", async () => {
-    await AsyncStorage.setItem("freecell_stats_v1", "not-json{");
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestMoves: 0 });
-  });
-
-  it("coerces a missing best to 0 on partial payload", async () => {
-    await AsyncStorage.setItem("freecell_stats_v1", JSON.stringify({}));
-    expect(await loadStats()).toEqual({ bestMoves: 0 });
-  });
-
-  it("drops the retired play and win counters from an older save", async () => {
-    await AsyncStorage.setItem(
-      "freecell_stats_v1",
-      JSON.stringify({ bestMoves: 60, gamesPlayed: 5, gamesWon: 2 })
-    );
-    expect(await loadStats()).toEqual({ bestMoves: 60 });
   });
 });

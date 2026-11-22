@@ -1,7 +1,18 @@
 import React from "react";
 import { act, fireEvent, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
-import { Dimensions } from "react-native";
+import { AccessibilityInfo, Dimensions, StyleSheet } from "react-native";
+import { dark } from "../../../theme/ThemeContext";
+import { resetReduceMotionForTests } from "../../shared/useReduceMotion";
+import {
+  LEVEL_IN_TOTAL_MS,
+  POUR_LIFT_MS,
+  POUR_TILT_MS,
+  REFUSED_SHAKE_MS,
+  UNDO_FADE_MS,
+  WIN_CASCADE_MS,
+  pourFlowMs,
+} from "../../../game/sort/motion";
 import SortBoard from "../SortBoard";
 import { DEFAULT_BOTTLE_HEIGHT, DEFAULT_BOTTLE_WIDTH } from "../BottleView";
 import { computeBoardLayout, MIN_TOUCH_TARGET } from "../gridGeometry";
@@ -56,6 +67,29 @@ describe("SortBoard", () => {
       withTheme(<SortBoard state={state} onBottleTap={jest.fn()} />)
     );
     expect(getByLabelText("Sort Puzzle board")).toBeTruthy();
+  });
+
+  it("rings only the hint's destination bottle, inside its own cell (#3658)", async () => {
+    const state = mkState([["red"], ["blue"], []]);
+    const { getAllByTestId, getAllByLabelText, queryByTestId, getByTestId, rerender } =
+      await render(
+        withTheme(
+          <SortBoard state={state} onBottleTap={jest.fn()} availableHeight={500} hintTo={2} />
+        )
+      );
+    const ring = getByTestId("hint-dst-ring", { includeHiddenElements: true });
+    expect(getAllByTestId("hint-dst-ring", { includeHiddenElements: true })).toHaveLength(1);
+    expect(getByTestId("bottle-cell-2")).toContainElement(ring);
+    expect(ring.props.pointerEvents).toBe("none");
+    // The ring is hidden from screen readers, so the destination bottle's label says so.
+    expect(getAllByLabelText(/Hint: pour here/)).toHaveLength(1);
+    expect(getAllByLabelText(/^Bottle 3, empty. Hint: pour here/)).toHaveLength(1);
+    await rerender(
+      withTheme(
+        <SortBoard state={state} onBottleTap={jest.fn()} availableHeight={500} hintTo={null} />
+      )
+    );
+    expect(queryByTestId("hint-dst-ring", { includeHiddenElements: true })).toBeNull();
   });
 
   it("renders one BottleView per bottle", async () => {
@@ -411,5 +445,286 @@ describe("SortBoard", () => {
       withTheme(<SortBoard state={state} onBottleTap={jest.fn()} pouringFrom={0} pouringTo={4} />)
     );
     expect(queryByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3660 — win cascade, level-in, undo fade, refused shake, pour on the UI thread
+// ---------------------------------------------------------------------------
+
+describe("SortBoard motion (#3660)", () => {
+  const reanimated = jest.requireMock("react-native-reanimated") as {
+    withTiming: (v: number, cfg?: { duration?: number }) => number;
+  };
+  let timing: jest.SpyInstance;
+  let reduceQuery: jest.SpyInstance | undefined;
+  const durations = () => timing.mock.calls.map((c) => c[1]?.duration);
+  const solvedState = (): SortState => ({
+    ...mkState([["red", "red", "red", "red"], []]),
+    isComplete: true,
+  });
+  const open = () => mkState([["red", "blue"], ["blue"], []]);
+
+  beforeEach(() => {
+    resetReduceMotionForTests();
+    timing = jest.spyOn(reanimated, "withTiming");
+  });
+  afterEach(() => {
+    timing.mockRestore();
+    reduceQuery?.mockRestore();
+    reduceQuery = undefined;
+    resetReduceMotionForTests();
+    jest.useRealTimers();
+  });
+  const reduceMotionOn = () => {
+    reduceQuery = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  };
+
+  describe("win cascade", () => {
+    it("plays only when the screen says so: a solved board alone shows none", async () => {
+      const { queryByTestId } = await render(
+        withTheme(<SortBoard state={solvedState()} onBottleTap={jest.fn()} />)
+      );
+      expect(queryByTestId("sort-win-cascade", { includeHiddenElements: true })).toBeNull();
+      expect(queryByTestId("sort-win-cascade-skip", { includeHiddenElements: true })).toBeNull();
+    });
+
+    it("draws the pieces, and reports its end after WIN_CASCADE_MS, once", async () => {
+      jest.useFakeTimers();
+      const onDone = jest.fn();
+      const { getByTestId } = await render(
+        withTheme(
+          <SortBoard
+            state={solvedState()}
+            onBottleTap={jest.fn()}
+            winCascade
+            onWinCascadeDone={onDone}
+          />
+        )
+      );
+      expect(getByTestId("sort-win-cascade", { includeHiddenElements: true })).toBeTruthy();
+      await act(async () => {
+        jest.advanceTimersByTime(WIN_CASCADE_MS - 1);
+      });
+      expect(onDone).not.toHaveBeenCalled();
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it("a tap skips it", async () => {
+      jest.useFakeTimers();
+      const onDone = jest.fn();
+      const { getByTestId } = await render(
+        withTheme(
+          <SortBoard
+            state={solvedState()}
+            onBottleTap={jest.fn()}
+            winCascade
+            onWinCascadeDone={onDone}
+          />
+        )
+      );
+      await fireEvent.press(getByTestId("sort-win-cascade-skip", { includeHiddenElements: true }));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops its timer when it is taken away", async () => {
+      jest.useFakeTimers();
+      const onDone = jest.fn();
+      const ui = (on: boolean) =>
+        withTheme(
+          <SortBoard
+            state={solvedState()}
+            onBottleTap={jest.fn()}
+            winCascade={on}
+            onWinCascadeDone={onDone}
+          />
+        );
+      const { rerender } = await render(ui(true));
+      await rerender(ui(false));
+      await act(async () => {
+        jest.advanceTimersByTime(WIN_CASCADE_MS * 2);
+      });
+      expect(onDone).not.toHaveBeenCalled();
+    });
+
+    it("Reduce Motion: no pieces, and the end is reported at once", async () => {
+      reduceMotionOn();
+      const onDone = jest.fn();
+      const { queryByTestId } = await render(
+        withTheme(
+          <SortBoard
+            state={solvedState()}
+            onBottleTap={jest.fn()}
+            winCascade
+            onWinCascadeDone={onDone}
+          />
+        )
+      );
+      await act(async () => {});
+      expect(queryByTestId("sort-win-cascade", { includeHiddenElements: true })).toBeNull();
+      expect(onDone).toHaveBeenCalled();
+    });
+  });
+
+  describe("level in", () => {
+    it("a new level runs one board clock over LEVEL_IN_TOTAL_MS", async () => {
+      await render(withTheme(<SortBoard state={open()} onBottleTap={jest.fn()} levelIn />));
+      expect(durations().filter((d) => d === LEVEL_IN_TOTAL_MS)).toHaveLength(1);
+      expect(LEVEL_IN_TOTAL_MS).toBeLessThanOrEqual(600);
+    });
+
+    it("a restored game plays nothing", async () => {
+      await render(withTheme(<SortBoard state={open()} onBottleTap={jest.fn()} />));
+      expect(timing).not.toHaveBeenCalled();
+    });
+
+    it("Reduce Motion: nothing plays", async () => {
+      reduceMotionOn();
+      const { rerender } = await render(
+        withTheme(<SortBoard state={open()} onBottleTap={jest.fn()} />)
+      );
+      await act(async () => {});
+      timing.mockClear();
+      await rerender(withTheme(<SortBoard state={open()} onBottleTap={jest.fn()} levelIn />));
+      expect(timing).not.toHaveBeenCalled();
+    });
+
+    it("a tap on a bottle still reaches the screen", async () => {
+      const onTap = jest.fn();
+      const { getByLabelText } = await render(
+        withTheme(<SortBoard state={open()} onBottleTap={onTap} levelIn />)
+      );
+      await fireEvent.press(getByLabelText(/^Bottle 2,/));
+      expect(onTap).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("undo", () => {
+    it("fades the new board in once per undo, within the ceiling", async () => {
+      const ui = (seq: number) =>
+        withTheme(<SortBoard state={open()} onBottleTap={jest.fn()} undoSeq={seq} />);
+      const { rerender } = await render(ui(0));
+      expect(timing).not.toHaveBeenCalled();
+      await rerender(ui(1));
+      expect(durations()).toEqual([UNDO_FADE_MS]);
+      expect(UNDO_FADE_MS).toBeLessThanOrEqual(300);
+      await rerender(ui(1));
+      expect(timing).toHaveBeenCalledTimes(1);
+      await rerender(ui(2));
+      expect(timing).toHaveBeenCalledTimes(2);
+    });
+
+    it("a board that mounts with a count (a remount) plays nothing", async () => {
+      await render(withTheme(<SortBoard state={open()} onBottleTap={jest.fn()} undoSeq={5} />));
+      expect(timing).not.toHaveBeenCalled();
+    });
+
+    it("Reduce Motion: instant", async () => {
+      reduceMotionOn();
+      const ui = (seq: number) =>
+        withTheme(<SortBoard state={open()} onBottleTap={jest.fn()} undoSeq={seq} />);
+      const { rerender } = await render(ui(0));
+      await act(async () => {});
+      await rerender(ui(1));
+      expect(timing).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("refused pour", () => {
+    it("shakes only the refused bottle, once per bump; a mount with one plays nothing", async () => {
+      const ui = (seq: number) =>
+        withTheme(
+          <SortBoard
+            state={open()}
+            onBottleTap={jest.fn()}
+            refused={seq ? { index: 1, seq } : null}
+          />
+        );
+      const { rerender } = await render(ui(0));
+      await rerender(ui(1));
+      expect(durations()).toEqual([REFUSED_SHAKE_MS]);
+      await rerender(ui(1));
+      expect(timing).toHaveBeenCalledTimes(1);
+      await rerender(ui(2));
+      expect(timing).toHaveBeenCalledTimes(2);
+
+      timing.mockClear();
+      await render(
+        withTheme(
+          <SortBoard state={open()} onBottleTap={jest.fn()} refused={{ index: 1, seq: 7 }} />
+        )
+      );
+      expect(timing).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("pour", () => {
+    it("runs each unit's drain and landing on the UI thread: a longer pour schedules no more timers", async () => {
+      jest.useFakeTimers();
+      const state = mkState([["red", "red", "red", "red"], []]);
+      // The timers a pour of `units` units adds. The old fill was a setTimeout per unit, twice
+      // (drain and land), so a 4-unit pour added six more than a 1-unit one.
+      async function timersAdded(units: number) {
+        const { getByTestId, rerender, unmount } = await render(
+          withTheme(<SortBoard state={state} onBottleTap={jest.fn()} />)
+        );
+        await layoutRows(getByTestId, { x: 8, y: 40 }, [{ x: 0, y: 0, cellXs: [0, 100] }]);
+        const before = jest.getTimerCount();
+        await rerender(
+          withTheme(
+            <SortBoard
+              state={state}
+              onBottleTap={jest.fn()}
+              pouringFrom={0}
+              pouringTo={1}
+              pourHoldMs={pourFlowMs(units)}
+            />
+          )
+        );
+        expect(getByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeTruthy();
+        const added = jest.getTimerCount() - before;
+        await unmount();
+        return added;
+      }
+      expect(await timersAdded(4)).toBe(await timersAdded(1));
+    });
+
+    it("uses the motion module's lift, tilt and return durations for its phases", async () => {
+      const state = mkState([["red", "red", "blue", "blue"], []]);
+      const { getByTestId, rerender } = await render(
+        withTheme(<SortBoard state={state} onBottleTap={jest.fn()} />)
+      );
+      await layoutRows(getByTestId, { x: 8, y: 40 }, [{ x: 0, y: 0, cellXs: [0, 100] }]);
+      timing.mockClear();
+      await rerender(
+        withTheme(
+          <SortBoard
+            state={state}
+            onBottleTap={jest.fn()}
+            pouringFrom={0}
+            pouringTo={1}
+            pourHoldMs={pourFlowMs(2)}
+          />
+        )
+      );
+      const ds = durations();
+      expect(ds).toContain(POUR_LIFT_MS);
+      expect(ds).toContain(POUR_TILT_MS);
+    });
+  });
+
+  describe("hint destination ring (#3660)", () => {
+    it("uses a token that reaches 3:1 against the board, not colors.bonus (2.7:1 on light)", async () => {
+      const { getByTestId } = await render(
+        withTheme(<SortBoard state={open()} onBottleTap={jest.fn()} hintTo={1} />)
+      );
+      const ring = StyleSheet.flatten(
+        getByTestId("hint-dst-ring", { includeHiddenElements: true }).props.style
+      );
+      expect(ring.borderColor).toBe(dark.hintRing);
+    });
   });
 });

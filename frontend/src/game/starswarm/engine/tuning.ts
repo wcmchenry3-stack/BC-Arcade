@@ -43,7 +43,8 @@ export const BULLET_P_VY = -0.56; // px/ms upward
 // has no other bound; this guards against runaway growth feeding the O(enemies × bullets)
 // collision scan in tickCollisions. #2488: raised from 20 to 40 — gun level 3 fires four
 // bullets a volley, and sustained Lightning at L3 sits around 30 in flight; ordinary L1 play
-// never gets near either number.
+// never gets near either number. #3562: Lightning now fires a beam, not bullets, so the beam
+// is outside this cap and the cap bounds ordinary fire plus Buddy's bursts (which share it).
 //
 // Deliberately flat (not wave/difficulty-scaled like bulletCap() below): bulletCap() bounds
 // enemy bullet *density* as a gameplay-difficulty knob that should get harder with wave/
@@ -51,8 +52,12 @@ export const BULLET_P_VY = -0.56; // px/ms upward
 // never despawning on hit) that doesn't grow with wave, so it stays a plain constant.
 export const MAX_PLAYER_BULLETS = 40;
 
-export const BULLET_C_W = 12; // super-state bullet — wider
-export const BULLET_C_H = 22;
+/**
+ * The Lightning bolt's width before #3562, and now the Lightning beam's (`lightningBeam.ts`). A
+ * charged shot restored from a save made mid-Lightning by an older build is drawn as a player
+ * bolt at its own width (#3594, `render/shots.ts`).
+ */
+export const BULLET_C_W = 12;
 
 export const BULLET_E_W = 5;
 export const BULLET_E_H = 10;
@@ -74,6 +79,14 @@ export const RETURN_DURATION = 1900; // ms for return path
 // #975: pre-dive wiggle telegraph
 export const WIGGLE_DURATION = 350; // ms
 export const WIGGLE_AMPLITUDE = 6; // px horizontal oscillation
+
+// #3632: divers launched in the same scheduler tick split up instead of shadowing each other.
+/** Spacing (px) between the aim points of a batch's divers, fanned around the player. */
+export const DIVE_SPREAD_PX = 70;
+/** Canvas-edge margin (px) the fanned aim points are kept inside. */
+export const DIVE_SPREAD_MARGIN_PX = 24;
+/** Extra wait (ms) per batch position before a diver launches; 0 = the whole batch together. */
+export const DIVE_STAGGER_MS = 350;
 
 // #977: Bézier arc dive paths
 export const DIVE_PATH_DURATION = 1800; // ms (non-Guardian)
@@ -161,8 +174,6 @@ export const AIMED_SHOT_FRACTION = 0.1; // 10% aimed at wave 1, +5% per wave, ca
 // #945 Bonus lives (#1078 #1079)
 export const BONUS_LIFE_BASE = 30_000;
 export const MAX_LIVES = 5;
-export const BONUS_LIFE_SLOW_MO_SCALE = 0.35; // #1078: time scale during slow-mo window
-export const BONUS_LIFE_SLOW_MO_DURATION = 800; // ms of slow-mo after bonus life
 export const BONUS_LIFE_INVINCIBLE_MS = 600; // ms of invincibility after bonus life
 
 // #980: power-up entity
@@ -170,6 +181,13 @@ export const POWERUP_W = 24;
 export const POWERUP_H = 24;
 export const POWERUP_VY = 0.08; // px/ms fall speed
 export const POWERUP_DURATION = 5000; // ms of super state (lightning / shield)
+/**
+ * #3512: once the wave is clear (the pickup wait and the extraction), every pickup on screen falls
+ * — and its despawn timer runs — at this multiple of its normal speed, so the wait ends sooner.
+ * Owner intent: noticeably faster, never too fast to catch (a reachability test pins that).
+ * Combat-time pickups are unaffected.
+ */
+export const POST_CLEAR_PICKUP_SPEED_MULT = 2;
 
 // #1034: Smart Bomb flash
 export const BOMB_FLASH_DURATION = 300; // ms
@@ -237,8 +255,17 @@ export const BUDDY_TARGETING: Readonly<Record<EnemyTier, BuddyTargeting>> = {
 };
 // Time for a powerup to fall from spawn (y = POWERUP_H/2) to just past the player, plus a
 
-export const SUPER_SHOOT_COOLDOWN = 70; // ms (4× fire rate during super)
+/** #3562: the Lightning beam's pulse clock, ms (was its 4× fire rate); see `lightningBeam.ts`. */
+export const SUPER_SHOOT_COOLDOWN = 70;
+/** #3562: what one Lightning beam pulse deals to each ship it touches and the rock that stops it. */
 export const SUPER_DAMAGE = 4;
+/**
+ * #3709: the longest horizontal span (px of ship travel) one Lightning pulse sweeps. A pulse
+ * damages every ship its beams crossed since the previous pulse; a move longer than this is not
+ * a sweep (a jump), so that pulse falls back to what the beams overlap at the pulse instant.
+ * 300 px is a 3000 px/s sweep over the longest pulse gap the screens produce (3 × the 33 ms dt cap).
+ */
+export const LIGHTNING_SWEEP_MAX_PX = 300;
 
 // #974: small circle around the player sprite centre — forgiveness hitbox
 export const PLAYER_HURT_RADIUS = 7; // px
@@ -256,6 +283,8 @@ export const BEAM_WIGGLE_AMPLITUDE = 3; // px, during charge
 export const TWIN_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
 export const CARRIER_CADENCE_CAP = 1.6; // paramScale is capped here for every Carrier cadence
 export const ATTACK_RUN_BRACE_MS = 800; // #2843: attack-run telegraph — the Carrier rears back
+/** #3561: the bay-open telegraph before a reinforcement batch launches (cancelled if the Carrier dies). */
+export const REINFORCE_BAY_OPEN_MS = 400;
 export const ATTACK_RUN_BRACE_LIFT = 8; // px the Carrier rears up while bracing
 /** #2843: how long the heavy attack run takes, and how deep it reaches (fraction of canvasH). */
 export const ATTACK_RUN: Readonly<
@@ -342,7 +371,7 @@ export const HULL_MAX: HullLevel = 2;
 export const TWIN_OFFSET = 7; // px either side of centre for the twin guns (L2+)
 export const SPREAD_OFFSET = 12; // px either side for the L3 spread pair
 export const SPREAD_VX = 0.14; // px/ms sideways drift of the L3 spread pair
-export const SALVAGE_DROP_CHANCE = 0.4; // per large asteroid destroyed, whoever broke it
+export const SALVAGE_DROP_CHANCE = 1; // #3533: every large rock broken by a shot drops a crate (was 0.4)
 export const HULL_INVINCIBLE_MS = 600; // grace after plating takes a hit (same as a bonus life)
 
 // #2487: how enemies respond to asteroids — dodge rolls by tier, and flak at approaching rocks
@@ -435,6 +464,12 @@ export const ASTEROID_MIN_CROSS_FRAC = 0.5; // in-field path length, as a fracti
 export const ASTEROID_MIN_REACTION_MS = 1500; // on-screen time before a rock can reach the player row
 export const ASTEROID_MIN_ANGLE = 0.3; // rad below horizontal — never a flat skim along the top
 export const ASTEROID_LARGE_CHANCE = 0.65;
+// #3568: where `tickAsteroids` drops a rock, and the numbers `rockCrossMaxMs` (extraction.ts)
+// bounds a rock's life with — shared so the two cannot drift apart.
+export const ASTEROID_DESPAWN_MARGIN = 40; // px below the canvas (top edge past it)
+export const ASTEROID_SIDE_MARGIN = 60; // px past a side edge (beyond the radius)
+export const ASTEROID_CORNER_SPREAD = 20; // px a corner entry may start further out, per axis
+export const ASTEROID_SPLIT_VX = 0.06; // px/ms a split child's vx differs from its parent's
 export const ASTEROID_HIT_FLASH_MS = 120;
 export const ASTEROID_STATS: Record<AsteroidKind, { radius: number; hp: number }> = {
   large: { radius: 22, hp: 6 },
@@ -616,6 +651,8 @@ export interface Tuning {
   readonly CARRIER_RUN_AT_BUDDY: boolean;
   /** Prototype: the exposed Carrier slides its station toward an on-station Buddy at this px/ms (0 = off). */
   readonly CARRIER_TRACK_BUDDY_SPEED: number;
+  /** Chance a shot-broken large asteroid drops a Salvage crate (shipped: 1, #3533). */
+  readonly SALVAGE_DROP_CHANCE: number;
 }
 
 /** The shipped tuning — every field is the module constant of the same name (or a no-op). */
@@ -639,4 +676,5 @@ export const DEFAULT_TUNING: Tuning = {
   CARRIER_CADENCE,
   CARRIER_RUN_AT_BUDDY: false,
   CARRIER_TRACK_BUDDY_SPEED: 0,
+  SALVAGE_DROP_CHANCE,
 };

@@ -1,0 +1,60 @@
+"""pytest suite for gen_app_icons.py (#3935): splash and Android launcher art from the mascot."""
+
+import sys
+from pathlib import Path
+
+from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import gen_app_icons as g
+
+
+def test_shipped_files_match_the_generator():
+    # Fails when the mascot, the ring recipe or a file changed without re-running the script.
+    assert g.main(["--check"]) == 0
+
+
+def test_adaptive_art_stays_inside_the_android_safe_zone():
+    # Android crops the foreground to the central 66 %; glow included, no pixel may leave it.
+    art = g.adaptive_master()
+    margin = round(g.MASTER * (1 - 0.66) / 2)
+    assert art.getchannel("A").getbbox() is not None
+    left, top, right, bottom = art.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+    assert left >= margin and top >= margin
+    assert right <= g.MASTER - margin and bottom <= g.MASTER - margin
+
+
+def test_splash_and_foreground_are_transparent_so_app_json_background_shows():
+    for art in (g.adaptive_master(), g.splash_master()):
+        assert art.getpixel((0, 0))[3] == 0
+
+
+def test_sizes_match_the_android_densities():
+    for density, px in g.MIPMAP_FOREGROUND.items():
+        assert Image.open(g.RES / f"mipmap-{density}/ic_launcher_foreground.webp").size == (px, px)
+    for density, px in g.MIPMAP_LEGACY.items():
+        assert Image.open(g.RES / f"mipmap-{density}/ic_launcher_round.webp").size == (px, px)
+
+
+def test_splash_survives_the_android_12_circular_mask():
+    # Android 12 shows only the central 192 of 288 dp (66.7 %) of the splash icon.
+    art = g.splash_master()
+    left, top, right, bottom = art.getchannel("A").point(lambda v: 255 if v > 8 else 0).getbbox()
+    margin = round(g.MASTER * (1 - 192 / 288) / 2)
+    assert left >= margin and top >= margin
+    assert right <= g.MASTER - margin and bottom <= g.MASTER - margin
+
+
+def test_shipped_files_are_palette_png_so_they_stay_small():
+    # Truecolour output was 4.6 MiB larger than the placeholders it replaced (#3935 review).
+    budget = 200 * 1024
+    for path in g.build():
+        assert path.stat().st_size <= budget, path
+        assert Image.open(path).mode == "P", path
+
+
+def test_check_notices_a_colour_change_that_keeps_the_alpha(monkeypatch):
+    # Codex review on #3938: getbbox() on RGBA looks only at alpha, so a recolour went unnoticed.
+    monkeypatch.setattr(g, "RING", (255, 0, 0))
+    assert g.main(["--check"]) == 1

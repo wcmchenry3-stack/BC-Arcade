@@ -35,7 +35,10 @@ interface RoutedApi {
  * Intercepts the removed Star Swarm routes (#2644) and the session pipeline: the run's
  * games row (create, events, complete), its rank, and the display name.
  */
-async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
+async function routeStarswarmApi(
+  page: Page,
+  playerName: string | null = null,
+): Promise<RoutedApi> {
   const api: RoutedApi = { legacyPosts: [], completions: [], rankRequests: [] };
   const json = (body: unknown, status = 200) => ({
     status,
@@ -68,11 +71,14 @@ async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
   });
   // /players/me as the server behaves since #2778: a join (PUT, no body)
   // assigns a generated name, GET reads it, DELETE leaves. The name is
-  // "Tester" so a device that already holds that name keeps it.
-  let boardName: string | null = null;
+  // "Tester" so a device that already holds that name keeps it. The board
+  // starts with `playerName` so the server agrees with a name the test planted
+  // on the device: the launch refresh treats the server as the source of truth
+  // (#3813, #3790).
+  let boardName: string | null = playerName;
   await page.route("**/players/me", async (route) => {
     const method = route.request().method();
-    if (method === "PUT") boardName = "Tester";
+    if (method === "PUT") boardName ??= "Tester";
     if (method === "DELETE") boardName = null;
     await route.fulfill(json({ display_name: boardName }));
   });
@@ -151,7 +157,7 @@ test.describe("Star Swarm — result card", () => {
   test("records the run with its score and shows its rank on the tier's board", async ({
     page,
   }) => {
-    const api = await routeStarswarmApi(page);
+    const api = await routeStarswarmApi(page, "Tester");
     await startRun(page, "Tester");
     await endRun(page, 4200, 7);
 

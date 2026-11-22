@@ -108,7 +108,11 @@ export type MahjongUndoEntry = MatchUndoEntry | ShuffleUndoEntry;
 export type MahjongEvent =
   /** A tile became selected: a first tap, a non-matching second tap, or an
    * undo that brings a selection back. */
-  | { readonly type: "tileSelect" }
+  | {
+      readonly type: "tileSelect";
+      /** A non-matching second tap (#3613): the new tile shakes "no" as it takes the selection. */
+      readonly mismatch?: true;
+    }
   /** A pair left the board; `tiles` in their board order before the match. */
   | { readonly type: "tileMatch"; readonly tiles: readonly [SlotTile, SlotTile] }
   /** A shuffle was spent (even one that left a geometric deadlock). */
@@ -135,7 +139,7 @@ export interface MahjongState {
   readonly isComplete: boolean;
   /** True when no free matching pairs remain and no shuffles are left. */
   readonly isDeadlocked: boolean;
-  /** Timestamp (Date.now()) when the current play session started; null if
+  /** Reading of `monotonicNow()` when the current play session started; null if
    * no move has been made yet. */
   readonly startedAt: number | null;
   /** Accumulated elapsed milliseconds from all sessions before the current. */

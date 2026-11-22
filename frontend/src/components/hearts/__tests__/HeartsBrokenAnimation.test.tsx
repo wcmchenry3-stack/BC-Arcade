@@ -1,19 +1,27 @@
 import React from "react";
+import { AccessibilityInfo } from "react-native";
 import { act, render } from "@testing-library/react-native";
 import { HeartsBrokenAnimation } from "../HeartsBrokenAnimation";
+import { BROKEN_TIMING } from "../momentTimeline";
 import { advanceBy, flushReduceMotion, mockReduceMotion } from "./helpers/animationFixtures";
 import { captureReduceMotionChange } from "../../../test-utils/reduceMotion";
 
-// Phases (ms): burst at 0, the icon lingers at 25 % from 800, everything fades
-// from 2900, and the overlay reports it is done at 3400. Reduced motion is a
-// 300 ms tint flash with no icon.
+// Hearts broken (#3588), in ms after the heartbeat starts: the heart pops and the edges pulse
+// on the "lub" at 0, the crack draws on the "dub" at 160, the caption fades in from 200, the
+// halves fall apart from 540 and the moment reports it is done at 1700. Reduced motion is
+// the caption, still, reported at 1000.
 
-const LABEL = "Hearts broken";
+const CAPTION = "Hearts are broken";
 
 describe("HeartsBrokenAnimation", () => {
+  let announce: jest.SpyInstance;
+
   beforeEach(() => {
     jest.useFakeTimers();
     mockReduceMotion(false);
+    // React Native's Jest setup already mocks it, so the spy is shared: start each test at 0.
+    announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility").mockImplementation();
+    announce.mockClear();
   });
 
   afterEach(() => {
@@ -22,71 +30,87 @@ describe("HeartsBrokenAnimation", () => {
   });
 
   async function show(onAnimationEnd = jest.fn(), visible = true) {
-    const view = await render(
-      <HeartsBrokenAnimation visible={visible} onAnimationEnd={onAnimationEnd} />
+    const ui = (v: boolean) => (
+      <HeartsBrokenAnimation
+        visible={v}
+        centre={{ x: 195, y: 266 }}
+        cardW={66}
+        captionTop={380}
+        width={390}
+        height={708}
+        onAnimationEnd={onAnimationEnd}
+      />
     );
+    const view = await render(ui(visible));
     await flushReduceMotion();
-    return {
-      view,
-      onAnimationEnd,
-      rerender: (v: boolean) =>
-        view.rerender(<HeartsBrokenAnimation visible={v} onAnimationEnd={onAnimationEnd} />),
-    };
+    return { view, onAnimationEnd, rerender: (v: boolean) => view.rerender(ui(v)) };
   }
 
-  it("announces the event through a polite live region", async () => {
+  it("never takes a touch", async () => {
     const { view } = await show();
-    const icon = view.getByLabelText(LABEL);
-    expect(icon.props.accessibilityRole).toBe("text");
-    expect(icon.props.accessibilityLiveRegion).toBe("polite");
+    expect(view.getByTestId("hearts-broken-moment").props.pointerEvents).toBe("none");
   });
 
-  it("bursts in, lingers, fades out, then reports it is done", async () => {
-    const { view, onAnimationEnd, rerender } = await show();
-    await rerender(true);
-    expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 1 });
+  it("pops a 150 dp heart centred over the trick (at the mockup's 66 dp cards)", async () => {
+    const { view } = await show();
+    expect(view.getByTestId("hearts-broken-heart")).toHaveStyle({
+      left: 195 - 75,
+      top: 266 - 75,
+      width: 150,
+      height: 150,
+    });
+    expect(view.getByTestId("hearts-broken-edges")).toBeTruthy();
+  });
 
-    await advanceBy(800);
-    await rerender(true);
-    expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 0.25 });
-    expect(onAnimationEnd).not.toHaveBeenCalled();
+  it("plays in order: the heart on the lub, the crack on the dub, the caption, then the end", async () => {
+    const { view, onAnimationEnd } = await show();
+    expect(view.getByTestId("hearts-broken-heart")).toBeTruthy();
+    expect(view.queryByTestId("hearts-broken-crack")).toBeNull();
 
-    await advanceBy(2100); // 2900
-    await rerender(true);
-    expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 0 });
-    expect(onAnimationEnd).not.toHaveBeenCalled();
+    await advanceBy(BROKEN_TIMING.dub - 1);
+    expect(view.queryByTestId("hearts-broken-crack")).toBeNull();
+    await advanceBy(1); // 160: the dub
+    expect(view.getByTestId("hearts-broken-crack")).toBeTruthy();
+    expect(view.queryByText(CAPTION)).toBeNull();
 
-    await advanceBy(499); // 3399
+    await advanceBy(BROKEN_TIMING.caption - BROKEN_TIMING.dub - 1); // 199
+    expect(view.queryByText(CAPTION)).toBeNull();
+    await advanceBy(1); // 200
+    expect(view.getByText(CAPTION)).toBeTruthy();
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith(CAPTION);
+
+    await advanceBy(BROKEN_TIMING.end - BROKEN_TIMING.caption - 1); // 1699
     expect(onAnimationEnd).not.toHaveBeenCalled();
-    await advanceBy(1); // 3400
+    await advanceBy(1); // 1700
     expect(onAnimationEnd).toHaveBeenCalledTimes(1);
 
     await advanceBy(10_000);
     expect(onAnimationEnd).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledTimes(1);
   });
 
-  it("does nothing while hidden", async () => {
+  it("draws nothing while hidden", async () => {
     const { view, onAnimationEnd } = await show(jest.fn(), false);
+    expect(view.queryByTestId("hearts-broken-moment")).toBeNull();
     await advanceBy(10_000);
     expect(onAnimationEnd).not.toHaveBeenCalled();
-    expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 0 });
   });
 
   it("starts when it becomes visible", async () => {
     const { onAnimationEnd, rerender } = await show(jest.fn(), false);
     await rerender(true);
-    await advanceBy(3399);
+    await advanceBy(BROKEN_TIMING.end - 1);
     expect(onAnimationEnd).not.toHaveBeenCalled();
     await advanceBy(1);
     expect(onAnimationEnd).toHaveBeenCalledTimes(1);
   });
 
-  it("resets and never reports when hidden mid-animation", async () => {
+  it("clears and never reports when hidden mid-animation", async () => {
     const { view, onAnimationEnd, rerender } = await show();
     await advanceBy(1000);
     await rerender(false);
-    await rerender(false); // the reset is written by an effect, so it shows on the next render
-    expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 0 });
+    expect(view.queryByTestId("hearts-broken-moment")).toBeNull();
     await advanceBy(10_000);
     expect(onAnimationEnd).not.toHaveBeenCalled();
   });
@@ -104,10 +128,14 @@ describe("HeartsBrokenAnimation", () => {
       mockReduceMotion(true);
     });
 
-    it("reports after the 300 ms flash, not after the full sequence", async () => {
-      const { onAnimationEnd } = await show();
+    it("shows the caption at once with no heart or edge pulse, and reports at 1000 ms", async () => {
+      const { view, onAnimationEnd } = await show();
+      expect(view.getByText(CAPTION)).toBeTruthy();
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(view.queryByTestId("hearts-broken-heart")).toBeNull();
+      expect(view.queryByTestId("hearts-broken-edges")).toBeNull();
 
-      await advanceBy(299);
+      await advanceBy(BROKEN_TIMING.reducedEnd - 1);
       expect(onAnimationEnd).not.toHaveBeenCalled();
       await advanceBy(1);
       expect(onAnimationEnd).toHaveBeenCalledTimes(1);
@@ -126,16 +154,15 @@ describe("HeartsBrokenAnimation", () => {
   });
 
   describe("when reduce motion changes mid-session (#2984)", () => {
-    it("switches to the 300 ms flash from the moment it is turned on", async () => {
+    it("switches to the still caption from the moment it is turned on", async () => {
       const emit = captureReduceMotionChange();
-      const { view, onAnimationEnd, rerender } = await show();
+      const { view, onAnimationEnd } = await show();
       await advanceBy(1000);
 
       await act(async () => emit(true));
-      await rerender(true);
-      // The full sequence is cancelled: no icon, and no report at 3400.
-      expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 0 });
-      await advanceBy(299);
+      // The full sequence is cancelled: no heart, and no report at 1700.
+      expect(view.queryByTestId("hearts-broken-heart")).toBeNull();
+      await advanceBy(BROKEN_TIMING.reducedEnd - 1);
       expect(onAnimationEnd).not.toHaveBeenCalled();
       await advanceBy(1);
       expect(onAnimationEnd).toHaveBeenCalledTimes(1);
@@ -146,15 +173,28 @@ describe("HeartsBrokenAnimation", () => {
     it("plays the full sequence once it is turned off again", async () => {
       mockReduceMotion(true);
       const emit = captureReduceMotionChange();
-      const { view, onAnimationEnd, rerender } = await show();
+      const { view, onAnimationEnd } = await show();
 
       await act(async () => emit(false));
-      await rerender(true);
-      expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 1 });
-      await advanceBy(3399);
+      expect(view.getByTestId("hearts-broken-heart")).toBeTruthy();
+      await advanceBy(BROKEN_TIMING.end - 1);
       expect(onAnimationEnd).not.toHaveBeenCalled();
       await advanceBy(1);
       expect(onAnimationEnd).toHaveBeenCalledTimes(1);
     });
+  });
+  it("keeps the same caption, announced once, when reduce motion is toggled mid-moment", async () => {
+    const emit = captureReduceMotionChange();
+    const { view } = await show();
+    await advanceBy(BROKEN_TIMING.caption);
+    const caption = view.getByText(CAPTION);
+    expect(announce).toHaveBeenCalledTimes(1);
+
+    await act(async () => emit(true));
+    expect(view.getByText(CAPTION)).toBe(caption);
+    await act(async () => emit(false));
+    // Not remounted (its stage restarted, but the caption stays) and not announced again.
+    expect(view.getByText(CAPTION)).toBe(caption);
+    expect(announce).toHaveBeenCalledTimes(1);
   });
 });

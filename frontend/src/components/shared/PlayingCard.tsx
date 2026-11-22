@@ -31,9 +31,24 @@ export interface PlayingCardProps {
   disabled?: boolean;
   onPress?: () => void;
   accessibilityLabel?: string;
+  /** Screen-reader hint, e.g. "Can move here" on a legal destination's top card (#3606). */
+  accessibilityHint?: string;
+  /** testID on the card's own Pressable/View (not a wrapper), for e2e selectors. */
+  testID?: string;
+  /**
+   * Overlapped hands (Hearts' fan): the width of the card's left strip that takes the press, so a
+   * tap lands on the visible part, not under the next card. The card still draws full size.
+   * Ignored without `onPress`, or when it is not narrower than the card.
+   */
+  hitWidth?: number;
+  /**
+   * Compact corner index (#3622): the visible stripe, in dp, of a covered card in a
+   * compressed tableau column; the deck draws the suit beside the rank inside it.
+   */
+  compactIndex?: number;
 }
 
-export default function PlayingCard({
+function PlayingCard({
   suit,
   rank,
   faceDown = false,
@@ -45,6 +60,10 @@ export default function PlayingCard({
   disabled = false,
   onPress,
   accessibilityLabel,
+  accessibilityHint,
+  testID,
+  hitWidth,
+  compactIndex,
 }: PlayingCardProps) {
   const { activeDeck } = useDeck();
   const { colors } = useTheme();
@@ -59,11 +78,13 @@ export default function PlayingCard({
       height={height}
       faceDown={faceDown}
       cardBg={colors.cardFace}
-      cardBgBack={colors.surfaceAlt}
+      cardBgBack={colors.cardBack}
+      cardBackInk={colors.cardBackInk}
       border={hintHighlighted ? colors.bonus : highlighted ? colors.accent : colors.border}
       borderHighlight={colors.accent}
       textColor={colors.cardInk}
       redSuitColor={colors.cardRedSuit}
+      compactIndex={compactIndex}
     />
   );
 
@@ -98,14 +119,36 @@ export default function PlayingCard({
     />
   ) : null;
 
+  if (onPress && hitWidth !== undefined && hitWidth < width) {
+    // The card is drawn whole but is not itself pressable: one button covers its visible strip.
+    return (
+      <View style={wrapperStyle}>
+        {cardFace}
+        {disabledOverlay}
+        <Pressable
+          testID={testID}
+          style={{ position: "absolute", left: 0, top: 0, width: hitWidth, height }}
+          onPress={onPress}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          accessibilityHint={accessibilityHint}
+          accessibilityState={{ disabled }}
+        />
+      </View>
+    );
+  }
+
   if (onPress) {
     return (
       <Pressable
+        testID={testID}
         style={wrapperStyle}
         onPress={onPress}
         disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
         accessibilityState={{ disabled }}
       >
         {cardFace}
@@ -115,9 +158,23 @@ export default function PlayingCard({
   }
 
   return (
-    <View style={wrapperStyle} accessibilityRole="image" accessibilityLabel={accessibilityLabel}>
+    <View
+      testID={testID}
+      style={wrapperStyle}
+      accessibilityRole="image"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+    >
       {cardFace}
       {disabledOverlay}
     </View>
   );
 }
+
+/**
+ * Memoized (#2264): every prop is a primitive or a callback, so a board
+ * re-render (a move, a drag start / end) skips the SVG face of every card
+ * whose props didn't change. Deck and theme changes still re-render it
+ * through their contexts. Pass a stable `onPress` to keep the memo useful.
+ */
+export default React.memo(PlayingCard);

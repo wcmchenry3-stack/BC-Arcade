@@ -565,6 +565,35 @@ describe("StarSwarmScreen — the header's New Game picker over a live run (#327
     expect(canvas.props.initialState).toBe(saved);
   });
 
+  it("the picker's Lobby chip saves the held run and leaves, without starting a run (#3969)", async () => {
+    const r = await renderScreen();
+    await startRun();
+    mockStartGame.mockClear();
+    await openPickerFromHeader();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Go back to lobby" }));
+    });
+    expect(mockPopToTop).toHaveBeenCalledTimes(1);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    await flush();
+    expect((await persisted()).gameState.score).toBe(2500);
+    expect(getSavedPausedState()?.gameState).toBe(canvas.state);
+    expect(abandons()).toHaveLength(0);
+    await act(async () => {
+      r.unmount();
+    });
+  });
+
+  it("the picker holds the loops (#3526) while it is open, and not once a run is going", async () => {
+    await renderScreen();
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+    expect(audioCalls.at(-1)![4]).toBe(true); // loopsHeld
+    await startRun();
+    expect(audioCalls.at(-1)![4]).toBe(false);
+    await openPickerFromHeader();
+    expect(audioCalls.at(-1)![4]).toBe(true);
+  });
+
   it("the app going to the background with the picker open saves the run to survive a kill", async () => {
     await renderScreen();
     await startRun();
@@ -751,6 +780,18 @@ describe("StarSwarmScreen — the header's New Game picker over a live run (#327
     expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
     expectRunning();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("the Lobby chip on a cold-start picker leaves without a run or a save (#3969)", async () => {
+    await renderScreen();
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Go back to lobby" }));
+    });
+    expect(mockPopToTop).toHaveBeenCalledTimes(1);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    await flush();
+    expect(await persisted()).toBeNull();
+    expect(getSavedPausedState()).toBeNull();
   });
 
   it("a cold-start picker (no run under it) saves nothing on Back or background", async () => {

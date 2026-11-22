@@ -4,7 +4,8 @@ import { render, fireEvent } from "@testing-library/react-native";
 
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import type { Card } from "../../../game/solitaire/types";
-import CardView, { CARD_WIDTH, CARD_HEIGHT } from "../CardView";
+import CardView, { CARD_WIDTH } from "../CardView";
+import { CARD_NATURAL_H as CARD_HEIGHT } from "../../../game/_shared/CardSizeContext";
 
 function withTheme(children: React.ReactNode) {
   return <ThemeProvider>{children}</ThemeProvider>;

@@ -11,6 +11,13 @@ interface Props {
   highlighted?: boolean;
   disabled?: boolean;
   onPress?: () => void;
+  testID?: string;
+  /** Size and tilt on the card table (#3587); the natural size and no tilt when omitted. */
+  width?: number;
+  height?: number;
+  rotation?: number;
+  /** Width of the card's pressable left strip in an overlapped hand; see the shared PlayingCard. */
+  hitWidth?: number;
 }
 
 export default function PlayingCard({
@@ -19,6 +26,11 @@ export default function PlayingCard({
   highlighted = false,
   disabled = false,
   onPress,
+  testID,
+  width,
+  height,
+  rotation,
+  hitWidth,
 }: Props) {
   const { t } = useTranslation("hearts");
   const rl = rankLabel(card.rank);
@@ -38,6 +50,11 @@ export default function PlayingCard({
       disabled={disabled}
       onPress={onPress}
       accessibilityLabel={label}
+      testID={testID}
+      width={width}
+      height={height}
+      rotation={rotation}
+      hitWidth={hitWidth}
     />
   );
 }

@@ -57,7 +57,8 @@ export function resolvePersona(preset: AiPreset, seatIndex: number): AiPersona {
 export type GameEvent =
   | { readonly type: "moonShot"; readonly shooter: number }
   | { readonly type: "heartsBroken" }
-  | { readonly type: "queenOfSpadesPlayed" }
+  /** The Q♠ was played, by `seat` (#3588: the moment lifts it from that seat's trick slot). */
+  | { readonly type: "queenOfSpadesPlayed"; readonly seat: number }
   | { readonly type: "queenOfSpades"; readonly takerSeat: number };
 
 export { RANKS, SUITS } from "../_shared/cards/types";

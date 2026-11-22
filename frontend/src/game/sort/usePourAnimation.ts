@@ -7,19 +7,21 @@
  *
  *   - Full motion: SortBoard calls `complete()` the moment its ghost overlay
  *     is removed, so the new board and the overlay's removal share a render.
- *   - Reduce Motion: BottleView only tilts and SortBoard never calls back, so
- *     a `reduceMotionMs` timer lands it instead (`complete()` is a no-op).
+ *   - Reduce Motion: there is no ghost and SortBoard never calls back, so a
+ *     `reduceMotionMs` timer lands it instead, at once by default
+ *     (`complete()` is a no-op).
  *
  * `start` refuses a second pour while one is running (it returns false), and
  * `cancel` drops a pour without landing it (a reset or level change, #2297).
  * The timer is cleared on unmount, so nothing lands on an unmounted screen.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { REDUCE_MOTION_POUR_MS } from "./motion";
 
 export interface Pour {
   readonly from: number;
   readonly to: number;
-  /** How long the stream runs, in ms (SortBoard's `pourHoldMs`). */
+  /** How long the stream runs, in ms (`pourFlowMs`, motion.ts; SortBoard's `pourHoldMs`). */
   readonly holdMs: number;
 }
 
@@ -31,15 +33,15 @@ interface PendingPour<S> {
 
 interface PourAnimationOptions<S> {
   readonly reduceMotion: boolean;
-  /** How long a Reduce Motion pour runs before it lands. */
-  readonly reduceMotionMs: number;
+  /** How long a Reduce Motion pour runs before it lands (default `REDUCE_MOTION_POUR_MS`, motion.ts). */
+  readonly reduceMotionMs?: number;
   /** Lands a pour on the board it was made on (`snapshot`). */
   readonly onLand: (snapshot: S, from: number, to: number) => void;
 }
 
 export function usePourAnimation<S>({
   reduceMotion,
-  reduceMotionMs,
+  reduceMotionMs = REDUCE_MOTION_POUR_MS,
   onLand,
 }: PourAnimationOptions<S>) {
   const [pour, setPour] = useState<Pour | null>(null);

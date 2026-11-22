@@ -1,16 +1,26 @@
 appId: com.buffingchi.games
 ---
 - runFlow: ../_shared/launch.yaml
+# Fresh install, so Star Swarm always opens its difficulty picker
+# (runPhase.ts: initialRunState starts in "picker" unless a paused run is
+# restored). The picker is a ModalCard, i.e. a React Native <Modal>: on
+# Android it is a separate window that hides the "Star Swarm" title from
+# Maestro until it closes, the same problem as Yacht's mode picker (#2373).
+# So tap through the picker first, then check the title.
 - runFlow:
-    file: ../_shared/navigate-to.yaml
+    file: ../_shared/tap-game-tile.yaml
     env:
       gameSlug: "starswarm"
-      screenLabel: "Star Swarm"
-# Difficulty picker only shows when no saved session exists; skip if restoring a pause.
-# `optional: true` alone is enough — see "Timeouts" in e2e/maestro/README.md.
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-start-game"
+    timeout: 10000
 - tapOn:
     id: "starswarm-start-game"
-    optional: true
+- extendedWaitUntil:
+    visible:
+      text: "Star Swarm"
+    timeout: 10000
 - extendedWaitUntil:
     visible:
       id: "starswarm-canvas-outer"

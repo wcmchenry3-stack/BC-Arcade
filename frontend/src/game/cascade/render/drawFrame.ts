@@ -1,0 +1,384 @@
+/**
+ * #2960: draw one Cascade frame (`frame.ts`) onto a Skia canvas, in world units.
+ *
+ * Runs as a worklet on the UI thread inside `createPicture` (`components/cascade/CascadeBoard`),
+ * so it touches only Skia, the frame buffer, the board style and the piece bitmaps it is handed. The
+ * lid, wash and spawner are a straight port of the declarative renderer it replaced (#3694): the
+ * same primitives, in the same order, with the same paints. Every lid decision (colours, wash,
+ * ring, ghost) still comes from the pure mappings in `lidVisuals.ts`. The pieces are the
+ * code-drawn art (#3698), cached as bitmaps on the JS thread (`art/sprites.ts`) and drawn here
+ * as three images each, rotated with the physics except their light.
+ *
+ * Paint handling copies what the declarative renderer does for each element: a fresh
+ * anti-aliased paint, the element's colour, then its opacity multiplied into the alpha. One paint
+ * is reset and reused per draw call (a Picture records a copy with each call), kept with the dash
+ * effect and blur mask in a per-runtime cache on `globalThis`, as Star Swarm's `drawFrame` does.
+ */
+import {
+  BlurStyle,
+  FilterMode,
+  MipmapMode,
+  PaintStyle,
+  Skia,
+  StrokeCap,
+} from "@shopify/react-native-skia";
+import type {
+  SkCanvas,
+  SkColor,
+  SkImage,
+  SkMaskFilter,
+  SkPaint,
+  SkPathEffect,
+} from "@shopify/react-native-skia";
+import type { CascadeLidPalette } from "../../../theme/theme.cascade";
+import type { PieceSprite, PieceSprites, SpriteRect } from "../art/sprites";
+import {
+  GHOST_FILL_OPACITY,
+  GHOST_OUTLINE_OPACITY,
+  LID_LINE,
+  OVER_LID_OUTLINE_OPACITY,
+  OVER_LID_OUTLINE_WIDTH,
+  RING_TRACK_OPACITY,
+  SPAWNER,
+  lidColor,
+  overLidWash,
+  ringArcPath,
+  ringState,
+  spawnerPieceRadius,
+} from "../lidVisuals";
+import { FRAME_HEADER, FRAME_STRIDE, HEADER_FIELD, PIECE_FIELD } from "./frame";
+import {
+  collectLands,
+  drawChainCounter,
+  drawGameOverDim,
+  drawLidMotion,
+  drawMergeMotion,
+  drawSpawnerBlink,
+  pieceSquash,
+  spawnerMotion,
+  type BoardMotion,
+} from "./drawMotion";
+import { MOTION } from "../motion";
+import { aimPieceX } from "../aim";
+import { drawAimGuide } from "./drawAim";
+
+/**
+ * What the board draws with that is not per frame: per-tier sizes and placeholder colours, and
+ * the lid palette. Built on the JS thread when the theme changes (`boardStyle.ts`), so the
+ * worklet looks things up and decides nothing.
+ */
+export interface BoardStyle {
+  /** Collider (and drawn) radius per tier; 0 for a tier the board does not draw. */
+  readonly radius: readonly number[];
+  /** Placeholder circle colour per tier, for a tier whose art could not be drawn. */
+  readonly color: readonly string[];
+  readonly palette: CascadeLidPalette;
+}
+
+/** The pieces' cached bitmaps by tier (`game/cascade/art/sprites.ts`); null = placeholder circle. */
+export type BoardSprites = PieceSprites;
+
+/** The ghost outline's dash, and the ring glow's blur (the declarative props they replace). */
+const GHOST_DASH = [4, 4];
+const GHOST_STROKE_WIDTH = 2;
+const RING_GLOW_BLUR = 4;
+/** Distinct colours kept before the cache starts over (the lid and ring mix a new one as danger rises). */
+const COLOR_CACHE_MAX = 256;
+
+interface DrawCache {
+  readonly paint: SkPaint;
+  readonly colors: Map<string, SkColor>;
+  dash: SkPathEffect | null;
+  glow: SkMaskFilter | null;
+}
+
+/** The paint and converted colours, made once per JS runtime (see Star Swarm's `drawCache`). */
+function drawCache(): DrawCache {
+  "worklet";
+  const g = globalThis as unknown as { __cascadeDrawCache?: DrawCache };
+  let cache = g.__cascadeDrawCache;
+  if (!cache) {
+    cache = { paint: Skia.Paint(), colors: new Map(), dash: null, glow: null };
+    g.__cascadeDrawCache = cache;
+  }
+  return cache;
+}
+
+function skColor(cache: DrawCache, color: string): SkColor {
+  "worklet";
+  let c = cache.colors.get(color);
+  if (c === undefined) {
+    if (cache.colors.size >= COLOR_CACHE_MAX) cache.colors.clear();
+    c = Skia.Color(color);
+    cache.colors.set(color, c);
+  }
+  return c;
+}
+
+/**
+ * A fresh element paint, as the declarative renderer makes for each element: anti-aliased,
+ * `color` (or the default black for an image), with `opacity` multiplied into the alpha.
+ */
+function elementPaint(cache: DrawCache, color: string | null, opacity: number): SkPaint {
+  "worklet";
+  const paint = cache.paint;
+  paint.reset();
+  paint.setAntiAlias(true);
+  if (color !== null) paint.setColor(skColor(cache, color));
+  if (opacity !== 1) paint.setAlphaf(paint.getAlphaf() * opacity);
+  return paint;
+}
+
+function strokePaint(paint: SkPaint, width: number): SkPaint {
+  "worklet";
+  paint.setStyle(PaintStyle.Stroke);
+  paint.setStrokeWidth(width);
+  return paint;
+}
+
+function drawImage(canvas: SkCanvas, paint: SkPaint, img: SkImage, rect: SpriteRect): void {
+  "worklet";
+  canvas.drawImageRectOptions(
+    img,
+    Skia.XYWHRect(0, 0, img.width(), img.height()),
+    Skia.XYWHRect(rect[0], rect[1], rect[2], rect[3]),
+    FilterMode.Linear,
+    MipmapMode.None,
+    paint
+  );
+}
+
+/**
+ * A piece's cached art (#3698) centred on (cx, cy), `size` times its full size (the grow-in, the
+ * spawner's smaller copy), turned by `angle` (radians): the body and the top (face, front
+ * overhangs) turn with the physics, the light between them stays upright. With `opacity` below
+ * 1 the three are faded together, as one piece.
+ */
+function drawSprite(
+  canvas: SkCanvas,
+  cache: DrawCache,
+  sprite: PieceSprite,
+  cx: number,
+  cy: number,
+  size: number,
+  angle: number,
+  opacity: number,
+  squash = 0,
+  radius = 0
+): void {
+  "worklet";
+  canvas.save();
+  if (opacity < 1) canvas.saveLayer(elementPaint(cache, null, opacity));
+  if (squash !== 0) {
+    // #3701: the landing squash, about the piece's bottom (the contact).
+    const sy = 1 - squash;
+    canvas.translate(cx, cy + radius * squash);
+    canvas.scale(size * (1 + MOTION.land.stretchRatio * squash), size * sy);
+  } else {
+    canvas.translate(cx, cy);
+    if (size !== 1) canvas.scale(size, size);
+  }
+  const deg = (angle * 180) / Math.PI;
+  const paint = elementPaint(cache, null, 1);
+  canvas.rotate(deg, 0, 0);
+  drawImage(canvas, paint, sprite.body, sprite.rect);
+  canvas.rotate(-deg, 0, 0);
+  drawImage(canvas, paint, sprite.light, sprite.lightRect);
+  canvas.rotate(deg, 0, 0);
+  drawImage(canvas, paint, sprite.top, sprite.rect);
+  if (opacity < 1) canvas.restore();
+  canvas.restore();
+}
+
+/** The pieces, each with its over-lid wash. */
+function drawPieces(
+  canvas: SkCanvas,
+  cache: DrawCache,
+  frame: Float64Array,
+  style: BoardStyle,
+  sprites: BoardSprites,
+  dangerRatio: number,
+  hideTier: number,
+  motion: BoardMotion | null
+): void {
+  "worklet";
+  const n = frame[HEADER_FIELD.count] ?? 0;
+  collectLands(motion);
+  for (let i = 0; i < n; i++) {
+    const o = FRAME_HEADER + i * FRAME_STRIDE;
+    const tier = frame[o + PIECE_FIELD.tier] ?? -1;
+    if (tier === hideTier) continue;
+    // A merged piece grows in (#3697): drawn at the collider's size, its scale of the tier's.
+    const scale = frame[o + PIECE_FIELD.scale] ?? 1;
+    const r = (style.radius[tier] ?? 0) * scale;
+    if (r <= 0) continue;
+    const x = frame[o + PIECE_FIELD.x] ?? 0;
+    const y = frame[o + PIECE_FIELD.y] ?? 0;
+    const sprite = sprites[tier];
+    if (sprite) {
+      const squash = pieceSquash(motion, frame[o + PIECE_FIELD.id] ?? -1);
+      drawSprite(
+        canvas,
+        cache,
+        sprite,
+        x,
+        y,
+        scale,
+        frame[o + PIECE_FIELD.angle] ?? 0,
+        1,
+        squash,
+        r
+      );
+    } else {
+      canvas.drawCircle(x, y, r, elementPaint(cache, style.color[tier] ?? null, 1));
+    }
+    // The lid (#3694): a piece over the lid is washed red while the count runs.
+    const wash = overLidWash({ y }, r, dangerRatio);
+    if (wash) {
+      const danger = style.palette.danger;
+      canvas.drawCircle(x, y, r, elementPaint(cache, danger, wash.opacity));
+      canvas.drawCircle(
+        x,
+        y,
+        r - OVER_LID_OUTLINE_WIDTH / 2,
+        strokePaint(elementPaint(cache, danger, OVER_LID_OUTLINE_OPACITY), OVER_LID_OUTLINE_WIDTH)
+      );
+    }
+  }
+}
+
+/** The solid lid line, reddening as the count runs. */
+function drawLidLine(canvas: SkCanvas, cache: DrawCache, style: BoardStyle, dangerRatio: number) {
+  "worklet";
+  const paint = elementPaint(cache, lidColor(dangerRatio, style.palette), 1);
+  paint.setStrokeWidth(LID_LINE.strokeWidth);
+  paint.setStrokeCap(StrokeCap.Round);
+  canvas.drawLine(LID_LINE.x1, LID_LINE.y, LID_LINE.x2, LID_LINE.y, paint);
+}
+
+/** The queue's current piece above the lid, the waiting ghost, and the clock ring. */
+function drawSpawner(
+  canvas: SkCanvas,
+  cache: DrawCache,
+  style: BoardStyle,
+  sprites: BoardSprites,
+  dangerRatio: number,
+  canDrop: boolean,
+  tier: number,
+  motion: BoardMotion | null
+): void {
+  "worklet";
+  const { cx, cy, ringRadius, ringWidth } = SPAWNER;
+  const palette = style.palette;
+  const radius = tier >= 0 ? (style.radius[tier] ?? 0) : 0;
+  const hasPiece = radius > 0;
+  const ring = ringState(dangerRatio, palette);
+  const r = hasPiece ? spawnerPieceRadius(radius) : SPAWNER.maxPieceRadius;
+  const pieceOpacity = canDrop ? 1 : GHOST_FILL_OPACITY;
+
+  // #3928: while aiming the piece leaves the ring for the finger (the ring stays centred).
+  const aim = motion?.aim ?? null;
+  const px = aim
+    ? aimPieceX(aim.state, aim.x, aim.fromX, aim.ms, motion?.reduceMotion === true, radius)
+    : cx;
+  if (hasPiece) {
+    // #3701: the new piece drops into the spawner after each drop (a fade under Reduce Motion).
+    const arrival = spawnerMotion(motion);
+    const opacity = pieceOpacity * arrival.alpha;
+    const y = cy + arrival.dy;
+    const sprite = sprites[tier];
+    if (opacity > 0.001) {
+      if (sprite) {
+        drawSprite(canvas, cache, sprite, px, y, (r / radius) * arrival.scale, 0, opacity);
+      } else {
+        canvas.drawCircle(
+          px,
+          y,
+          r * arrival.scale,
+          elementPaint(cache, style.color[tier] ?? null, opacity)
+        );
+      }
+    }
+  }
+  if (!canDrop) {
+    if (!cache.dash) cache.dash = Skia.PathEffect.MakeDash(GHOST_DASH, 0);
+    const paint = strokePaint(
+      elementPaint(cache, palette.ink, GHOST_OUTLINE_OPACITY),
+      GHOST_STROKE_WIDTH
+    );
+    paint.setPathEffect(cache.dash);
+    canvas.drawCircle(px, cy, r, paint);
+  }
+  // The ring: a faint track, then what is left of the countdown on top.
+  canvas.drawCircle(
+    cx,
+    cy,
+    ringRadius,
+    strokePaint(elementPaint(cache, palette.ink, RING_TRACK_OPACITY), ringWidth)
+  );
+  if (ring.remaining >= 1) {
+    canvas.drawCircle(
+      cx,
+      cy,
+      ringRadius,
+      strokePaint(elementPaint(cache, ring.color, 1), ringWidth)
+    );
+  } else if (ring.remaining > 0) {
+    const path = Skia.Path.MakeFromSVGString(ringArcPath(cx, cy, ringRadius, ring.sweepDeg));
+    if (path) {
+      const paint = strokePaint(elementPaint(cache, ring.color, 1), ringWidth);
+      paint.setStrokeCap(StrokeCap.Round);
+      if (ring.glow) {
+        if (!cache.glow)
+          cache.glow = Skia.MaskFilter.MakeBlur(BlurStyle.Solid, RING_GLOW_BLUR, true);
+        paint.setMaskFilter(cache.glow);
+      }
+      canvas.drawPath(path, paint);
+      path.dispose(); // the Picture holds its own copy
+    }
+  }
+}
+
+/**
+ * Draw the whole board, back to front: pieces (with their wash), the lid line, the spawner.
+ * `motion` (#3701, `drawMotion.ts`): the landing squash, the game-over dim and lid flash, the danger
+ * blink, the spawner piece's arrival, the merge pops, the dust and the chain counter; null draws
+ * the board without motion, exactly as before.
+ * `hideTier` (#3699): pieces of this tier are left out, for the win celebration, which draws the
+ * capstone itself above its dim (`drawCelebration.ts`); -1 draws every piece.
+ */
+export function drawFrame(
+  canvas: SkCanvas,
+  frame: Float64Array,
+  style: BoardStyle,
+  sprites: BoardSprites,
+  hideTier = -1,
+  motion: BoardMotion | null = null
+): void {
+  "worklet";
+  const cache = drawCache();
+  const dangerRatio = frame[HEADER_FIELD.dangerRatio] ?? 0;
+  const canDrop = (frame[HEADER_FIELD.canDrop] ?? 1) !== 0;
+  const spawnerTier = frame[HEADER_FIELD.spawnerTier] ?? -1;
+  drawPieces(canvas, cache, frame, style, sprites, dangerRatio, hideTier, motion);
+  drawGameOverDim(canvas, motion);
+  drawLidLine(canvas, cache, style, dangerRatio);
+  drawLidMotion(canvas, motion, style.palette);
+  if (motion?.aim) {
+    drawAimGuide(
+      canvas,
+      frame,
+      style.radius,
+      spawnerTier,
+      motion.aim,
+      style.palette,
+      motion.tones[spawnerTier] ?? null,
+      motion.clock,
+      motion.reduceMotion
+    );
+  }
+  drawSpawner(canvas, cache, style, sprites, dangerRatio, canDrop, spawnerTier, motion);
+  drawSpawnerBlink(canvas, motion);
+  drawMergeMotion(canvas, motion, style.radius);
+  drawChainCounter(canvas, motion);
+}

@@ -23,6 +23,8 @@
   "newGame.confirm.confirm": "开始新游戏",
   "newGame.confirm.cancel": "取消",
   "settings.soundEffects": "音效",
+  "settings.dragDebugOverlay": "拖动调试叠加层",
+  "settings.dragDebugOverlay.description": "开发者选项：拖动时显示手指位置、预期卡牌边框以及拖动检查结果。",
   "clearLogs.label": "清除本地记录",
   "clearLogs.description": "删除所有未同步的事件和错误记录。",
   "clearLogs.button": "清除",
@@ -49,8 +51,15 @@
   "overflow.abandon.body": "开始新游戏会丢失本轮的进度，但不会影响你的总统计数据。",
   "overflow.abandon.keepPlaying": "继续游戏",
   "overflow.abandon.startNew": "开始新游戏",
+  "play": "开始",
   "home.locked.buttonLabel": "解锁",
   "home.locked.cardLabel": "{{title}} — 已锁定，点按解锁",
+  "home.resume.buttonLabel": "继续",
+  "home.resume.cardLabel": "{{label}} — 进行中，点按继续",
+  "home.status.inProgress": "进行中",
+  "home.status.doneToday": "今日已完成",
+  "home.status.best": "最佳 {{value}}",
+  "home.status.bestMoves": "最佳步数：{{value}}",
   "deleteData.label": "删除我的数据",
   "deleteData.description": "永久删除与此设备关联的所有游戏记录和统计数据。",
   "deleteData.button": "删除",
@@ -103,5 +112,6 @@
   "locked.back": "返回大厅",
   "locked.back_label": "返回大厅",
   "offline.windowExhausted": "您已经3天没有联网了。请连接互联网以获取最新谜题。",
-  "offline.windowExhaustedStreak": "请联网以保持连续记录。"
+  "offline.windowExhaustedStreak": "请联网以保持连续记录。",
+  "action.autoComplete": "自动完成"
 }

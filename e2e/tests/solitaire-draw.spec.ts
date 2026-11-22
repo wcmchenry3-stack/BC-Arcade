@@ -33,5 +33,5 @@ test("tap stock: waste shows face-up card and moves counter increments", async (
   ).toBeVisible({ timeout: 3_000 });
 
   // Move counter increments to 1.
-  await expect(page.getByLabel("Moves: 1")).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByLabel("Moves: 1", { exact: true })).toBeVisible({ timeout: 3_000 });
 });
