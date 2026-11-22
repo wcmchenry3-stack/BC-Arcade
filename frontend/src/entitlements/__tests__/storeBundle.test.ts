@@ -307,41 +307,6 @@ describe("Cascade test controls stay out of store bundles (#3719)", () => {
 });
 
 /**
- * The home tile's Cascade icon (#3698) draws the piece with Skia. HomeScreen ships in every build,
- * so a store bundle (Cascade hidden) resolves the icon to its emoji-only variant: no Skia, no art.
- */
-describe("the home tile's Cascade icon stays out of store bundles (#3698)", () => {
-  const COMPONENTS = path.resolve(__dirname, "../../components/cascade");
-  const drawn = path.join(COMPONENTS, "CascadeTileIcon.tsx");
-  const emoji = path.join(COMPONENTS, "CascadeTileIcon.web.tsx");
-  const resolve = (dev: boolean, env: Record<string, string | undefined>) =>
-    storeBundle.withStoreBundleExclusions({ resolver: {} }, env).resolver.resolveRequest!(
-      {
-        dev,
-        resolveRequest: (_c: object, name: string) => ({ type: "sourceFile", filePath: name }),
-      } as object,
-      drawn,
-      "android"
-    ).filePath;
-
-  it("maps exactly the drawn icon to the emoji variant, and both exist", () => {
-    expect([...storeBundle.STUBBED_MODULES]).toEqual([
-      [drawn, emoji],
-      [TILE_ART, TILE_ART_STORE],
-    ]);
-    expect(fs.existsSync(drawn)).toBe(true);
-    expect(fs.existsSync(emoji)).toBe(true);
-    expect(fs.readFileSync(emoji, "utf8")).not.toMatch(/react-native-skia|FruitGlyph|\/art\//);
-  });
-
-  it("a store bundle gets the emoji; dev, e2e and pre-launch bundles draw the piece", () => {
-    expect(resolve(false, STORE_ENV)).toBe(emoji);
-    expect(resolve(true, STORE_ENV)).toBe(drawn);
-    expect(resolve(false, { ...STORE_ENV, EXPO_PUBLIC_TEST_HOOKS: "1" })).toBe(drawn);
-  });
-});
-
-/**
  * Lobby tile images (#4011). Metro packages every image HomeScreen imports, whether its tile
  * renders or not, so a hidden game's tile image lives in `hiddenGameTileArt.ts`, which a store
  * bundle resolves to an image-free stand-in. `starswarm-tile.webp` used to be imported by
@@ -390,6 +355,32 @@ describe("hidden games' lobby tile images stay out of store bundles (#4011)", ()
     expect(resolve(false, { EXPO_PUBLIC_API_URL: "https://dev-games-api.buffingchi.com" })).toBe(
       TILE_ART
     );
+  });
+
+  it("the tile art is the only module a store bundle swaps for a stand-in (#4013)", () => {
+    // Cascade's Skia-drawn tile icon (#3698) and its emoji-only store variant are gone: its tile
+    // is an image in hiddenGameTileArt.ts like the other hidden games'.
+    expect([...storeBundle.STUBBED_MODULES]).toEqual([[TILE_ART, TILE_ART_STORE]]);
+    expect(
+      fs.existsSync(path.resolve(__dirname, "../../components/cascade/CascadeTileIcon.tsx"))
+    ).toBe(false);
+  });
+
+  it("the art and its stand-in hold exactly the hidden games, and the store resolves all five to the stand-in (#4013)", () => {
+    const keys = (file: string) =>
+      [...fs.readFileSync(file, "utf8").matchAll(/^\s{2}(\w+): /gm)].map((m) => m[1]).sort();
+    const hidden = [...HIDDEN_GAMES].sort();
+    expect(hidden).toEqual(["blackjack", "cascade", "hearts", "mahjong", "starswarm"]);
+    expect(keys(TILE_ART)).toEqual(hidden);
+    expect(keys(TILE_ART_STORE)).toEqual(hidden);
+    expect(tileImports(TILE_ART).sort()).toEqual(hidden);
+    expect(resolve(false, STORE_ENV)).toBe(TILE_ART_STORE);
+  });
+
+  it("HomeScreen pulls in no Cascade component, so no Skia or piece art reaches a store bundle", () => {
+    const src = fs.readFileSync(HOME_SCREEN, "utf8");
+    expect(src).not.toMatch(/components\/cascade\//);
+    expect(src).not.toMatch(/react-native-skia|FruitGlyph|game\/cascade\/art/);
   });
 
   it("the stand-in imports no image", () => {

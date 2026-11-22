@@ -6,8 +6,8 @@ export const THREE_COL_BREAKPOINT = 700;
 export const FOUR_COL_BREAKPOINT = 1000;
 
 /**
- * Height (pt) of the icon slot at the top of every lobby tile. The emoji, the Star Swarm
- * image and Cascade's drawn icon are all centred in it; the tile-art work sizes against it.
+ * Height (pt) of the icon slot at the top of every lobby tile. Every tile's 64 pt scene
+ * (`cardArt`, #4011-#4013) is centred in it.
  */
 export const TILE_ICON_ZONE = 68;
 

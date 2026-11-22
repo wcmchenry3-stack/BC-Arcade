@@ -14,10 +14,21 @@
  */
 import type { ImageSourcePropType } from "react-native";
 
+import blackjackTile from "../../../assets/home/blackjack-tile.webp";
+import cascadeTile from "../../../assets/home/cascade-tile.webp";
+import heartsTile from "../../../assets/home/hearts-tile.webp";
+import mahjongTile from "../../../assets/home/mahjong-tile.webp";
 import starSwarmTile from "../../../assets/home/starswarm-tile.webp";
 
-export type HiddenGameTileArt = Readonly<Record<"starswarm", ImageSourcePropType>>;
+/** The hidden games' gameplay scenes (#4013), drawn by tools/assets/draw_lobby_tile_art.py. */
+export type HiddenGameTileArt = Readonly<
+  Record<"blackjack" | "cascade" | "hearts" | "mahjong" | "starswarm", ImageSourcePropType>
+>;
 
 export const HIDDEN_GAME_TILE_ART: HiddenGameTileArt = {
+  blackjack: blackjackTile,
+  cascade: cascadeTile,
+  hearts: heartsTile,
+  mahjong: mahjongTile,
   starswarm: starSwarmTile,
 };

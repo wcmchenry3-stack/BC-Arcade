@@ -13,8 +13,9 @@ Usage:
                `starswarm-guardian-scarab-plate.webp` becomes `enemy/guardian-plate.webp`, and
                `starswarm-rock-large-1-veins.webp` becomes `rock/large-1-veins.webp`, and
                `starswarm-shot-player.webp` becomes `shot/player.webp`, and
-               `starswarm-pickup-shield.webp` becomes `pickup/shield.webp`; the home tile icon
-               `starswarm-home-tile-badge.webp` ships as `frontend/assets/home/starswarm-tile.webp`)
+               `starswarm-pickup-shield.webp` becomes `pickup/shield.webp`. The lobby tile,
+               `frontend/assets/home/starswarm-tile.webp`, is drawn from these sprites by
+               `draw_lobby_tile_art.py` since #4013, which retired the hex badge)
     name       recipe names to draw (default: all). Any unknown name exits non-zero and lists
                the valid ones, before any file is written, whatever the argument order.
     --sheet    also write `contact-sheet.png` (anywhere on the command line): every recipe at
@@ -1260,42 +1261,6 @@ PICKUP_RECIPES: dict[str, Callable[[], Image.Image]] = {
 }
 
 
-# --------------------------------------------------------------------------------------------
-# Home tile icon (#3599, owner pick I3): the Wasp Grunt in a silver-bevelled hex badge with a dark
-# violet face, echoing the hex-chip pickups. The badge carries its own dark face, so it reads on
-# the light and the dark home cards. It replaces the tile's emoji at about 56 px (in the 88 px
-# `emojiZone`), so it is authored at 3x: 168 px. Radii are in badge px (out of 168).
-
-TILE_ICON_SIZE = 168
-TILE_BEVEL_R = 80  # the silver bevel's outer radius (a hex vertex)
-TILE_FACE_R = 66  # the violet face's radius
-TILE_GRUNT = 104  # the Grunt's padded canvas, scaled to this and centred
-TILE_SILVER: Stops = [  # diagonal, top-left to bottom-right: a bevel lit from the top left
-    (0, hexrgb("#f0f4fa")),
-    (0.45, hexrgb("#b0bac8")),
-    (0.55, hexrgb("#788292")),
-    (1, hexrgb("#d6dee8")),
-]
-TILE_FACE: Stops = [(0, hexrgb("#3a1f5c")), (1, hexrgb("#120826"))]  # vertical, top to bottom
-
-
-def home_tile_badge() -> Image.Image:
-    """The Star Swarm home tile: built from `grunt_wasp`, so it always shows the shipped Grunt."""
-    n = TILE_ICON_SIZE
-    c = Canvas(n, n, pad=0)
-    mid = n / 2
-    c.polygon(hexagon_pts(mid, mid, TILE_BEVEL_R), Linear((0, 0), (n, n), TILE_SILVER))
-    c.polygon(hexagon_pts(mid, mid, TILE_FACE_R), Linear((0, 0), (0, n), TILE_FACE))
-    im = c.image()
-    grunt = grunt_wasp().resize((TILE_GRUNT, TILE_GRUNT), Image.LANCZOS)
-    im.alpha_composite(grunt, ((n - TILE_GRUNT) // 2, (n - TILE_GRUNT) // 2))
-    return im
-
-
-# Icons outside the game (not sprites): left off the contact sheet, which is sized for sprites.
-ICON_RECIPES: dict[str, Callable[[], Image.Image]] = {"home-tile-badge": home_tile_badge}
-
-
 ENEMY_RECIPES: dict[str, Callable[[], Image.Image]] = {
     "elite-mantis": elite_mantis,
     "elite-mantis-attack": elite_mantis_attack,
@@ -1361,7 +1326,6 @@ def _build_recipes() -> dict[str, Callable[[], Image.Image]]:
     recipes.update(_rock_recipes())
     recipes.update(SHOT_RECIPES)
     recipes.update(PICKUP_RECIPES)
-    recipes.update(ICON_RECIPES)
     return recipes
 
 
@@ -1419,7 +1383,7 @@ def _short(name: str) -> str:
 def contact_sheet(cache: dict[str, Image.Image]) -> Image.Image:
     """`cache` holds the decoded WebPs, so the sheet shows the shipped look."""
     cols = 9
-    names = [n for n in RECIPES if n not in ICON_RECIPES]
+    names = list(RECIPES)
     rows: list[list[tuple[Image.Image, str]]] = []
     for i in range(0, len(names), cols):
         chunk = names[i : i + cols]

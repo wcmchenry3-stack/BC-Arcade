@@ -26,6 +26,7 @@ REPO = SCRIPT.parents[2]
 SHIPPED = REPO / "frontend/assets/home"
 THEME = REPO / "frontend/src/theme"
 NAMES = ["sort", "yacht", "twenty48", "sudoku", "solitaire", "freecell", "daily_word"]
+NAMES += ["blackjack", "hearts", "mahjong", "starswarm", "cascade"]  # #4013, hidden games
 
 # The owner's budget is 3,400 B per tile (#4010). Measured 2026-11-21 at quality 82 / alpha
 # quality 70 with the pinned Pillow (bytes in the comments); the budget is the hard cap, not
@@ -38,7 +39,15 @@ MEASURED = {
     "solitaire": 2916,  # #4012, the owner's round-2 picks
     "freecell": 3276,
     "daily_word": 3352,
+    "blackjack": 2738,  # #4013, the owner's picks (hidden games)
+    "hearts": 3096,
+    "mahjong": 2930,
+    "starswarm": 3202,
+    "cascade": 2954,
 }
+# The least ink a scene may have (`test_open_scene_no_frame`): Star Swarm's swarm is a few small
+# sprites on open space, not a filled object.
+MIN_COVERAGE = {"starswarm": 0.03}
 
 
 def test_the_scenes_are_the_lobby_tiles_drawn_so_far():
@@ -67,10 +76,10 @@ def test_open_scene_no_frame(name):
     ring = np.concatenate([a[:6].ravel(), a[-6:].ravel(), a[:, :6].ravel(), a[:, -6:].ravel()])
     assert ring.max() == 0
     coverage = (a > 128).mean()
-    assert 0.12 < coverage < 0.8, coverage  # a scene, not an empty or a filled tile
+    assert MIN_COVERAGE.get(name, 0.12) < coverage < 0.8, coverage  # not empty, not filled
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", [n for n in NAMES if n not in art.OUTLINE_EXEMPT])
 def test_every_scene_carries_the_shared_grey_outline(name):
     im = np.asarray(art.render(name)).astype(int)
     grey = np.array([0x8A, 0x8A, 0x98])
@@ -479,6 +488,203 @@ def test_dailyword_draws_every_letter_in_white(monkeypatch):
     im = np.asarray(art.render("daily_word"))
     assert "".join(drawn) == "".join(art.DW_GUESSES)
     assert _mask(im, _rgb(art.DW_LETTER), tol=8).sum() > 600
+
+
+# --------------------------------------------------------------------------------------------
+# Batch 3 (#4013): the hidden premium games, the owner's picks
+
+
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        ("blackjack", "hearts"),
+        ("blackjack", "solitaire"),
+        ("blackjack", "freecell"),
+        ("hearts", "solitaire"),
+        ("hearts", "freecell"),
+    ],
+)
+def test_the_card_game_tiles_differ_at_a_glance(a, b):
+    """At 64 pt (the 1x tile) the four card games' tiles must not look alike (#4013 AC)."""
+    small = [
+        np.asarray(art.render(n).resize((art.DISPLAY_PT,) * 2, Image.LANCZOS)).astype(float)
+        for n in (a, b)
+    ]
+    diff = np.abs(small[0] - small[1])
+    assert diff[..., 3].mean() / 255 > 0.15 or diff[..., :3].mean() > 30
+
+
+# Blackjack (pick A): a natural
+
+
+@pytest.mark.parametrize(
+    ("hand", "total"),
+    [(["AS", "KH"], 21), (["AS", "AD", "9C"], 21), (["AS", "KH", "5C"], 16), (["7D", "9S"], 16)],
+)
+def test_blackjack_counts_a_hand_as_the_game_does(hand, total):
+    assert art.blackjack_total(hand) == total
+
+
+def test_blackjack_hand_is_a_natural_and_the_pill_says_21(monkeypatch):
+    cards = [f for f, _ in art.BJ_HAND]
+    assert cards == ["AS", "KH"] and art.blackjack_total(cards) == 21
+    assert {f[:-1] for f in cards} == {"A", "K"}  # an ace and a ten: a natural
+    drawn = []
+    real = art.text
+    monkeypatch.setattr(art, "text", lambda c, s, *a: (drawn.append(s), real(c, s, *a)))
+    im = np.asarray(art.render("blackjack"))
+    assert drawn == ["A", "K", "21"]
+    cx, cy, w, h = art.BJ_PILL
+    box = im[cy - h // 2 + 3 : cy + h // 2 - 3, cx - w // 2 + 3 : cx + w // 2 - 3]
+    assert _mask(box, _rgb(art.BJ_WIN), tol=6).mean() > 0.3  # the win colour
+
+
+def test_blackjack_colours_are_the_games():
+    ctx = _theme("ThemeContext.tsx")
+    assert f'accentDark: "{_hex(art.BJ_ACCENT)}"' in ctx
+    assert f'darkSurface: "{_hex(art.BJ_RIM)}"' in ctx
+    assert f'bonusDark: "{_hex(art.BJ_WIN)}"' in ctx
+    assert f'textOnAccent: "{_hex(art.BJ_ON)}"' in ctx
+    im = np.asarray(art.render("blackjack"))
+    assert _mask(im, _rgb(art.BJ_ACCENT), tol=6).sum() > 50  # the chips' faces
+
+
+# Hearts (pick C): hearts broken
+
+
+def test_hearts_heart_and_crack_are_the_games():
+    src = (REPO / "frontend/src/components/hearts/HeartsBrokenAnimation.tsx").read_text("utf-8")
+    first = art.HEART_CUBICS[0][0]
+    path = f"M {first[0]} {first[1]} " + " ".join(
+        "C " + " ".join(f"{x} {y}" for x, y in seg[1:]) for seg in art.HEART_CUBICS
+    )
+    assert f'"{path} Z"' in src
+    crack = " ".join(f"L{x} {y}" for x, y in art.HEART_CRACK[1:])
+    assert f'CRACK_POINTS = "{crack}"' in src
+    assert f"M{art.HEART_CRACK[0][0]} {art.HEART_CRACK[0][1]} " in src
+    assert f'HEARTS_BROKEN_HEART = "{_hex(art.HEARTS_BROKEN)}"' in _theme("theme.hearts.ts")
+
+
+def test_hearts_a_heart_is_played_and_the_heart_breaks_in_two():
+    assert art.HEARTS_PLAYED == "AH"  # a heart on the trick is what breaks hearts
+    im = np.asarray(art.render("hearts"))
+    red = _mask(im, _rgb(art.HEARTS_BROKEN), tol=6)
+    cy = art.HEARTS_CENTRE[1]
+    runs = np.diff(red[cy].astype(int))
+    assert (runs == 1).sum() == 2  # two halves across the middle, a gap between them
+    x, y = art.HEARTS_CARD_AT
+    assert _mask(im[y : y + 24, x : x + 44], _rgb(art.CARD_RED)).sum() > 20  # the A-hearts index
+
+
+# Mahjong (pick A): the free pair, by the game's rule
+
+
+def test_mahjong_free_rule_is_the_games():
+    src = (REPO / "frontend/src/game/mahjong/engine.ts").read_text("utf-8")
+    assert "t.layer > tile.layer && t.col === tile.col && t.row === tile.row" in src
+    assert "t.col === tile.col - 2" in src and "t.col === tile.col + 2" in src
+    slots = [(1, 0, 0), (3, 0, 0), (5, 0, 0), (3, 0, 1)]
+    assert not art.is_free((3, 0, 0), slots)  # covered
+    assert not art.is_free((3, 0, 1), [*slots, (1, 0, 1), (5, 0, 1)])  # both sides blocked
+    assert art.is_free((5, 0, 0), slots) and art.is_free((1, 0, 0), slots)
+
+
+def test_mahjong_selected_pair_matches_and_is_free_on_the_drawn_layers():
+    slots = [(c, r, l) for c, r, l, _ in art.MJ_SLOTS]
+    faces = {(c, r, l): k for c, r, l, k in art.MJ_SLOTS}
+    a, b = art.MJ_SELECTED
+    assert faces[a] == faces[b] and a != b  # a matching pair
+    assert art.is_free(a, slots) and art.is_free(b, slots)
+    assert len({l for _, _, l in slots}) == 2  # two layers
+    assert not art.is_free((2, 0, 0), slots)  # the middle bottom tile is blocked both sides
+
+
+def test_mahjong_draws_the_selected_pair_gold():
+    im = np.asarray(art.render("mahjong"))
+    w = art.MJ_TILE[0]
+    for col, _, layer in art.MJ_SELECTED:
+        x, y = (round(v) for v in art.mj_slot_xy(col, layer))
+        edge = im[y + 10 : y + 40, x + w - 2 : x + w + 2]  # the face's right border
+        assert _mask(edge, _rgb(art.MJ_SEL), tol=30).sum() > 30, (col, layer)
+
+
+def test_mahjong_colours_are_the_games():
+    src = _theme("theme.mahjong.ts")
+    for name, colour in (
+        ("MAHJONG_TILE_FACE", art.MJ_FACE),
+        ("MAHJONG_TILE_FACE_SELECTED", art.MJ_FACE_SEL),
+        ("MAHJONG_BORDER_NORMAL", art.MJ_BORDER),
+        ("MAHJONG_BORDER_SELECTED", art.MJ_SEL),
+        ("MAHJONG_SIDE_R", art.MJ_SIDE_R),
+        ("MAHJONG_SIDE_B", art.MJ_SIDE_B),
+        ("MAHJONG_SIDE_IVORY", art.MJ_SIDE_IV),
+    ):
+        assert f'{name} = "{_hex(colour)}"' in src, name
+    gen = (SCRIPT.parent / "gen_mahjong_tiles.py").read_text("utf-8")
+    for colour in (art.MJ_BLUE, art.MJ_GREEN, art.MJ_RED, art.MJ_IVORY, art.MJ_DARK_GREEN):
+        assert _hex(colour) in gen
+    assert (SCRIPT.parent / "mahjong_glyphs.OFL.txt").exists()  # 中 is Yuji Syuku, OFL
+
+
+# Star Swarm (pick B): the swarm dives, drawn from the shipped sprites
+
+
+def test_starswarm_is_drawn_from_the_shipped_sprites(monkeypatch):
+    red = Image.new("RGBA", (72, 72), (255, 0, 0, 255))
+    blue = Image.new("RGBA", (90, 90), (0, 0, 255, 255))
+    monkeypatch.setattr(art.starswarm, "grunt_wasp", lambda: red)
+    monkeypatch.setattr(art.starswarm, "compose_ship", lambda *_args: blue)
+    im = np.asarray(art.render("starswarm"))
+    for x, y in art.SS_GRUNTS:
+        assert tuple(im[y, x]) == (255, 0, 0, 255)
+    sx, sy = art.SS_SHIP_AT
+    assert tuple(im[sy, sx]) == (0, 0, 255, 255)
+
+
+def test_starswarm_grunts_dive_in_a_v_on_the_ship():
+    (lx, ly), (rx, ry), (mx, my) = art.SS_GRUNTS
+    assert ly == ry and my > ly and lx < mx < rx  # a V pointing down
+    assert art.SS_SHIP_AT[1] > max(y for _, y in art.SS_GRUNTS) + art.SS_GRUNT_PX
+    assert art.SS_SHIP[0] == "p1-arrow" and art.SS_SHIP[0] in art.starswarm.SHIPS
+
+
+def test_only_the_sprite_scene_skips_the_shared_outline():
+    """Star Swarm's sprites carry their own rims and armour outline, as the game draws them."""
+    assert {"starswarm"} == art.OUTLINE_EXEMPT
+
+
+# Cascade (pick A): the drop
+
+
+def test_cascade_drops_a_smaller_piece_onto_a_bigger_one():
+    assert art.CA_TIER["cherry"] < art.CA_TIER["melon"]
+    (cx, cy, cr), (mx, my, mr) = art.CA_CHERRY, art.CA_MELON
+    assert cx == mx and cy + cr < my - mr  # straight above it
+    (gx0, gy0), (gx1, gy1) = art.CA_GUIDE
+    assert gx0 == gx1 == cx and cy + cr < gy0 < gy1 < my - mr  # the guide between them
+
+
+def test_cascade_melon_rests_on_the_bin_floor_between_the_walls():
+    x0, x1, top, floor = art.CA_BIN
+    mx, my, mr = art.CA_MELON
+    inner_floor = floor - art.CA_BAND / 2
+    assert 0 <= inner_floor - (my + mr) <= 4
+    assert x0 + art.CA_BAND / 2 < mx - mr and mx + mr < x1 - art.CA_BAND / 2
+    cx, cy, cr = art.CA_CHERRY
+    assert top < cy and x0 < cx - cr and cx + cr < x1  # falling inside the bin
+
+
+def test_cascade_colours_are_the_games():
+    src = _theme("theme.cascade.ts")
+    for kind, theme_key in (("cherry", "cherry"), ("melon", "melon")):
+        b, l, d, o, _ = art.CA_FRUIT[kind]
+        assert f'{theme_key}: {{ b: "{b}", l: "{l}", d: "{d}", o: "{o}" }}' in src, kind
+    inks = re.search(r"ink: \[(.*?)\]", src, re.DOTALL)[1]
+    ink = re.findall(r'"(#[0-9a-f]{6})"', inks)
+    assert ink[art.CA_TIER["cherry"]] == art.CA_FRUIT["cherry"][4]
+    assert ink[art.CA_TIER["melon"]] == art.CA_FRUIT["melon"][4]
+    assert f'accent: "{_hex(art.CA_ACCENT)}"' in src
+    assert f'blushOpen: "{_hex(art.CA_BLUSH)}"' in src
 
 
 # --------------------------------------------------------------------------------------------

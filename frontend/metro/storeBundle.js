@@ -54,22 +54,16 @@ const HIDDEN_GAME_SCREENS = {
 };
 
 /**
- * Modules outside a hidden game's screens that would still pull its code into a store bundle,
- * and the stand-in each resolves to there. The home tile's Cascade icon (#3698) draws the piece
- * with Skia and the Cascade art; in a store bundle (Cascade hidden) it resolves to its
- * emoji-only variant, so neither ships. Keep it while Cascade is in HIDDEN_GAMES.
+ * Modules outside a hidden game's screens that would still pull its code or art into a store
+ * bundle, and the stand-in each resolves to there.
  *
- * The hidden games' lobby tile images (#4011) live in `hiddenGameTileArt.ts`, not in
+ * The hidden games' lobby tile images (#4011, #4013) live in `hiddenGameTileArt.ts`, not in
  * HomeScreen, so a store bundle can swap them for the image-free `.store.ts` stand-in: an image
- * HomeScreen imported would be packaged whether its tile renders or not.
+ * HomeScreen imported would be packaged whether its tile renders or not. (Cascade's tile was a
+ * Skia-drawn `CascadeTileIcon` with an emoji-only store variant until #4013 made it an image.)
  */
-const CASCADE_COMPONENTS = path.join(__dirname, "..", "src", "components", "cascade");
 const HOME_COMPONENTS = path.join(__dirname, "..", "src", "components", "home");
 const STUBBED_MODULES = new Map([
-  [
-    path.join(CASCADE_COMPONENTS, "CascadeTileIcon.tsx"),
-    path.join(CASCADE_COMPONENTS, "CascadeTileIcon.web.tsx"),
-  ],
   [
     path.join(HOME_COMPONENTS, "hiddenGameTileArt.ts"),
     path.join(HOME_COMPONENTS, "hiddenGameTileArt.store.ts"),

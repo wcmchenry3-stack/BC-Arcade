@@ -80,7 +80,6 @@ BUDGET_PICKUP = {
     "pickup-hull": 2010,  # 1,612
 }
 PICKUP_NAMES = list(BUDGET_PICKUP)
-BUDGET_TILE_BADGE = 3400  # #3599: the home tile icon, 2,698 measured 2026-11-11
 ROCK_SIZE = {
     "large": (44 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 132 px box (2 x r22) + padding
     "small": (24 * art.SCALE + 2 * art.ROCK_PAD,) * 2,  # 72 px box (2 x r12) + padding
@@ -100,8 +99,6 @@ def _tier(name: str) -> str:
 
 
 def _budget(name: str) -> int:
-    if name == "home-tile-badge":
-        return BUDGET_TILE_BADGE
     if name == "grunt-wasp":
         return BUDGET_GRUNT
     if name == "buddy-escort":
@@ -118,8 +115,6 @@ def _budget(name: str) -> int:
 
 
 def _size(name: str) -> tuple[int, int]:
-    if name == "home-tile-badge":
-        return (art.TILE_ICON_SIZE,) * 2
     if name == "buddy-escort":
         return BUDDY_SIZE
     if name in ENEMY_NAMES:
@@ -145,7 +140,6 @@ def test_registry_has_five_layers_per_ship_the_hive_buddy_the_rocks_shots_and_pi
         | set(ROCK_NAMES)
         | set(SHOT_NAMES)
         | set(PICKUP_NAMES)
-        | {"home-tile-badge"}
     )
 
 
@@ -541,7 +535,7 @@ def test_carrier_has_its_hangar_bay_under_the_abdomen():
 def test_contact_sheet_shows_every_enemy_look(tmp_path):
     art.main(tmp_path, [], sheet=True)
     sheet = Image.open(tmp_path / "contact-sheet.png")
-    sprites = [n for n in art.RECIPES if n not in art.ICON_RECIPES]  # icons are not on the sheet
+    sprites = list(art.RECIPES)
     rows_before = 2 * -(-len(sprites) // 9) + 2 * len(SHIP_NAMES)
     rows_looks = 2 * -(-len(art.ENEMY_LOOKS) // 9)
     rows_rocks = 2 * len(art.ROCK_PALETTES)  # #3596: every rock in each palette, then game 2x
@@ -1130,69 +1124,3 @@ def test_the_enemy_set_shrinks_with_the_bolder_wasp():
     The cap keeps the set under its pre-#3708 size."""
     total = sum((SHIPPED_ENEMIES / f).stat().st_size for f in SHIPPED_ENEMY_FILES.values())
     assert total < 20_338, total
-
-
-# --------------------------------------------------------------------------------------------
-# #3599: the home tile icon (owner pick I3, the Wasp Grunt in a hex badge)
-
-SHIPPED_TILE = REPO / "frontend/assets/home/starswarm-tile.webp"
-
-
-def test_the_badge_geometry_is_the_approved_one():
-    assert art.TILE_ICON_SIZE == 168
-    assert (art.TILE_BEVEL_R, art.TILE_FACE_R, art.TILE_GRUNT) == (80, 66, 104)
-    assert [c for _, c in art.TILE_FACE] == [art.hexrgb("#3a1f5c"), art.hexrgb("#120826")]
-    im = np.asarray(art.render("home-tile-badge")).astype(int)
-    mid = art.TILE_ICON_SIZE // 2
-    # hex vertices at k x 60 degrees: points left and right, flat top and bottom
-    assert im[mid, mid + 74, 3] == 255 and im[mid, mid + 83, 3] == 0  # vertex at r 80
-    assert im[mid - 67, mid, 3] == 255 and im[mid - 73, mid, 3] == 0  # flat top at 80 sin 60
-    for corner in (im[0, 0], im[0, -1], im[-1, 0], im[-1, -1]):
-        assert corner[3] == 0
-    bevel = im[mid, mid + 72]  # between the face (r 66) and the bevel's edge (r 80): silver
-    face = im[mid, 34]  # inside the face, left of the Grunt's canvas
-    assert bevel[:3].min() >= 110 and abs(int(bevel[0]) - int(bevel[2])) <= 30  # light grey
-    t = (mid + 0.5) / art.TILE_ICON_SIZE  # the face's vertical gradient at mid height
-    top, bottom = np.array([0x3A, 0x1F, 0x5C]), np.array([0x12, 0x08, 0x26])
-    assert np.abs(face[:3] - (top + (bottom - top) * t)).max() <= 2
-    assert face[3] == 255
-
-
-def test_the_badge_is_deterministic(tmp_path):
-    assert np.array_equal(
-        np.asarray(art.render("home-tile-badge")), np.asarray(art.render("home-tile-badge"))
-    )
-    for d in ("a", "b"):
-        art.main(tmp_path / d, ["home-tile-badge"])
-    a, b = ((tmp_path / d / "starswarm-home-tile-badge.webp").read_bytes() for d in ("a", "b"))
-    assert a == b
-
-
-def test_the_badge_embeds_the_grunt_recipe(monkeypatch):
-    """The badge is built from `grunt_wasp`, so a Grunt change re-renders the tile with it."""
-    mid = art.TILE_ICON_SIZE // 2
-    real = np.asarray(art.render("home-tile-badge")).astype(int)
-    grunt = np.asarray(
-        art.grunt_wasp().resize((art.TILE_GRUNT,) * 2, Image.LANCZOS)
-    )  # the Grunt as placed
-    off = (art.TILE_ICON_SIZE - art.TILE_GRUNT) // 2
-    solid = grunt[..., 3] == 255
-    region = real[off : off + art.TILE_GRUNT, off : off + art.TILE_GRUNT]
-    assert solid.sum() > 500
-    assert np.array_equal(region[solid], grunt[solid].astype(int))
-    red = art.Image.new("RGBA", art.grunt_wasp().size, (255, 0, 0, 255))
-    monkeypatch.setattr(art, "grunt_wasp", lambda: red)
-    swapped = np.asarray(art.render("home-tile-badge"))
-    assert tuple(swapped[mid, mid]) == (255, 0, 0, 255)
-
-
-def test_the_shipped_tile_icon_is_the_generator_output():
-    want = np.asarray(art.decode_webp(art.to_webp(art.render("home-tile-badge"))))
-    got = np.asarray(Image.open(SHIPPED_TILE).convert("RGBA"))
-    assert np.array_equal(want, got)
-    assert SHIPPED_TILE.stat().st_size <= BUDGET_TILE_BADGE
-
-
-def test_the_badge_is_left_off_the_sprite_contact_sheet():
-    assert "home-tile-badge" in art.RECIPES
-    assert set(art.ICON_RECIPES) == {"home-tile-badge"}
