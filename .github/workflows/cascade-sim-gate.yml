@@ -26,6 +26,19 @@ on:
         description: "Seeds per bot and frame rate: a positive integer, blank = 100 (anything else fails with exit 2). Other than 100 is informational: the table prints and band checks are skipped"
         required: false
         default: ""
+  # nightly.yml (#4054): the default nightly run (100 seeds, 60 and 120 Hz).
+  workflow_call:
+    inputs:
+      seeds:
+        description: "Same as the workflow_dispatch input (blank = 100)"
+        type: string
+        required: false
+        default: ""
+      nightly:
+        description: "true when nightly.yml calls this (#4054): own concurrency group, 7-day artifacts"
+        type: boolean
+        required: false
+        default: false
   # PRs that change the engine, its constants, the queue or the sim itself.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
@@ -43,7 +56,11 @@ on:
       - ".github/workflows/cascade-sim-gate.yml"
 
 concurrency:
-  group: cascade-sim-gate-${{ github.event_name }}-${{ github.ref }}
+  # The nightly's call (#4054) gets its own `nightly-<run id>-` prefix: inside a
+  # called workflow github.event_name and github.ref are the caller's
+  # (workflow_dispatch, refs/heads/dev), so without it a manual dispatch on dev
+  # would cancel the nightly's job (cancel-in-progress).
+  group: ${{ inputs.nightly && format('nightly-{0}-', github.run_id) || '' }}cascade-sim-gate-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -83,4 +100,5 @@ jobs:
         with:
           name: cascade-sim
           path: cascade-sim.*
-          retention-days: 30
+          # 7 days for the nightly (#4054), 30 otherwise.
+          retention-days: ${{ inputs.nightly && 7 || 30 }}

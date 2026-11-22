@@ -690,7 +690,8 @@ jobs:
              [[ "${{ github.base_ref }}" == "main" ]] || \
              [[ "${{ steps.filter.outputs.shared }}" == "true" ]] || \
              [[ "${{ steps.filter.outputs.playwright_shared }}" == "true" ]]; then
-            echo "projects=yacht blackjack twenty48 cascade mahjong freecell starswarm hearts solitaire sudoku sort daily_word cross logs-budget" >> "$GITHUB_OUTPUT"
+            # One full-suite list for this job and nightly.yml (#4054).
+            echo "projects=$(grep -v '^#' e2e/full-suite-projects.txt | xargs)" >> "$GITHUB_OUTPUT"
             echo "label=full suite (push/main/shared change)" >> "$GITHUB_OUTPUT"
           else
             projects="cross"

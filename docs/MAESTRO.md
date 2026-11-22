@@ -65,7 +65,19 @@ Where the files are, by platform:
 - **Android** (Maestro 1.39.13): in the working directory, so at the artifact's top level as `<name>.png` / `<name>.mp4`.
 - **iOS** (Maestro 2.12.1, run with `--debug-output maestro-debug/<dir> --flatten-debug-output`): in each flow's debug bundle, `maestro-debug/<dir>/<flow>/takeScreenshot/<name>.png` and `maestro-debug/<dir>/<flow>/startRecording/<name>.mp4`, kept at those paths in the artifact.
 
-In a `flows: cascade-demo` or `flows: mahjong-demo` dispatch the upload fails the job if it finds no media; on every other run an empty upload is ignored. The media artifact costs artifact storage only, bounded by its retention. To fetch it: Actions → the run → **Artifacts**, or `gh run download <run-id> -n maestro-android-media`.
+In the nightly run (`nightly: true`, #4054) the media artifact is kept 7 days instead of 14. In a `flows: cascade-demo` or `flows: mahjong-demo` dispatch the upload fails the job if it finds no media; on every other run an empty upload is ignored. The media artifact costs artifact storage only, bounded by its retention. To fetch it: Actions → the run → **Artifacts**, or `gh run download <run-id> -n maestro-android-media`.
+
+### Nightly full suite and retry (#4054)
+
+`nightly.yml` calls both smoke workflows (`workflow_call`, `flows: full`, `nightly: true`) on its pinned `dev` SHA, so both legs run the full suite every tested night ([CI-CHECKS.md](CI-CHECKS.md#nightly-dev-checks-nightlyyml-4054)). Inside a called workflow `github.event_name` is the caller's `workflow_dispatch`, so `detect-maestro-scope.yml` picks the full suite with no change of its own.
+
+With `nightly: true` (and only then):
+
+- **Each failed flow runs once more, on its own.** After the per-game loop, `e2e/maestro/retry.py plan <dir>` reads `maestro-results/<dir>/report.xml` and prints the failed flows (`e2e/maestro/flows/<dir>/<flow>.yaml`, from the JUnit case name, which is the flow's file name). A directory with no report, an unreadable one or a case it can't map to a file is re-run whole. Retry reports go to `maestro-retry/<dir>/` (in the results artifact) and logs to `maestro-debug/retry-<dir>/`. `retry.py verdict` then fails the step only if a flow failed in both rounds.
+- **The summary keeps a flaky flow visible:** a flow that failed and then passed shows as `🔁 PASS on retry`, with a "Passed on retry: N" line under the table. The count is also the workflow's `passed-on-retry` output, which the nightly run summary shows next to the job.
+- Media is kept 7 days, the PR media comment is skipped (a `dev` run would otherwise comment on the open release PR), and the run has its own concurrency group, so a manual dispatch on the same SHA can't cancel or displace it.
+
+PR, dispatch and weekly runs are unchanged: no retry, and a failed flow fails the job.
 
 ### Android: emulator image download
 

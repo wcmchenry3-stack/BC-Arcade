@@ -1,0 +1,5 @@
+# The Playwright projects a full-suite run passes as --project (one source, #4054).
+# Read by ci.yml's detect-e2e-scope (push, PRs into main, shared changes) and by
+# nightly.yml's playwright-full job. Must list every project in playwright.config.ts
+# (tools/nightly/tests/workflow_test.py fails otherwise). Lines starting with # are ignored.
+yacht blackjack twenty48 cascade mahjong freecell starswarm hearts solitaire sudoku sort daily_word cross logs-budget

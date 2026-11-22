@@ -17,6 +17,14 @@ on:
         description: "Games per matchup (blank = the gate's defaults)"
         required: false
         default: ""
+  # nightly.yml (#4054): the gate's default sample sizes.
+  workflow_call:
+    inputs:
+      nightly:
+        description: "true when nightly.yml calls this (#4054): own concurrency group, 7-day artifacts"
+        type: boolean
+        required: false
+        default: false
   # PRs that change the AI, the engine, or the gate itself.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
@@ -30,7 +38,11 @@ on:
       - ".github/workflows/yacht-sim-gate.yml"
 
 concurrency:
-  group: yacht-sim-gate-${{ github.ref }}
+  # The nightly's call (#4054) gets its own `nightly-<run id>-` prefix: inside a
+  # called workflow github.event_name and github.ref are the caller's
+  # (workflow_dispatch, refs/heads/dev), so without it a manual dispatch on dev
+  # would cancel the nightly's job (cancel-in-progress).
+  group: ${{ inputs.nightly && format('nightly-{0}-', github.run_id) || '' }}yacht-sim-gate-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -67,7 +79,7 @@ jobs:
         with:
           name: yacht-gate-${{ matrix.group }}
           path: yacht-gate-${{ matrix.group }}.*
-          retention-days: 30
+          retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)
 
   regret:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
