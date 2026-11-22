@@ -12,6 +12,10 @@
  *  - a game's measures ("facts") are what the server would store: the result
  *    block, then the creation metadata (non-null keys win, as in
  *    `merge_result_metadata`), then `final_score` and `duration_ms`;
+ *  - the premium games (Blackjack, Hearts, Star Swarm, Cascade) send no `won` /
+ *    `is_complete`: the server writes them into the result block from the completion's
+ *    `outcome` (`backend/games/result_flags.py`, #3996), so `SERVER_FLAGGED` applies the
+ *    same rule here, before the metadata merge (#4032). Free games keep their own;
  *  - the predicates mirror `definitions.py` (`completed`, `won`, `solved`,
  *    `chips_gained`, `<measure>_at_least`, `won_<measure>_at_most`). A kind this
  *    build does not know is never met locally;
@@ -40,12 +44,59 @@ export interface EndedGame {
   readonly facts: Facts;
 }
 
+/**
+ * How the server derives `won` / `is_complete` from the completion's `outcome`, per
+ * backend game type. Keep in step with `backend/games/result_flags.py` and each
+ * game's result model (`hearts`, `starswarm`, `blackjack`, `cascade` `models.py`).
+ * The app's own copy of either flag is always dropped for these games.
+ *  - `hasWin: false` (Star Swarm): only `is_complete`, never `won`.
+ *  - `legacyChipsWin` (Blackjack): outcome `completed` with `final_chips` > 0 is a win.
+ *  - `alwaysWon` (Cascade): `won` is written even with no outcome (then false);
+ *    `is_complete` still needs an outcome.
+ */
+interface FlagRule {
+  readonly hasWin?: boolean;
+  readonly legacyChipsWin?: boolean;
+  readonly alwaysWon?: boolean;
+}
+const SERVER_FLAGGED: Readonly<Record<string, FlagRule>> = {
+  blackjack: { legacyChipsWin: true },
+  hearts: {},
+  starswarm: { hasWin: false },
+  cascade: { alwaysWon: true },
+};
+
+/** `block` with the app's flags replaced by the ones the server writes for `gameType`. */
+export function withServerFlags(
+  gameType: string,
+  block: Record<string, unknown>,
+  outcome: unknown
+): Record<string, unknown> {
+  if (!Object.prototype.hasOwnProperty.call(SERVER_FLAGGED, gameType)) return block;
+  const rule = SERVER_FLAGGED[gameType]!;
+  const out = { ...block };
+  delete out.won;
+  delete out.is_complete;
+  const has = typeof outcome === "string";
+  if (has) out.is_complete = outcome !== "abandoned";
+  if (rule.hasWin !== false && (has || rule.alwaysWon)) out.won = outcome === "win";
+  if (rule.legacyChipsWin && outcome === "completed") {
+    const chips = out.final_chips;
+    if (typeof chips === "number" && chips > 0) out.won = true;
+  }
+  return out;
+}
+
 /** The measures the server would evaluate for this game, or null if it can't count. */
 export function factsOf(game: PendingGame): Facts | null {
   if (!game.completed || game.completedAt === null) return null;
   const summary = game.completeSummary ?? {};
   if (summary.outcome === "abandoned") return null;
-  const facts: Record<string, unknown> = isPlainRecord(summary.result) ? { ...summary.result } : {};
+  // The server writes the flags only into a non-empty result block
+  // (`games.sessions._validate_result` returns `{}` before the model runs).
+  const block: Record<string, unknown> = isPlainRecord(summary.result) ? { ...summary.result } : {};
+  const facts =
+    Object.keys(block).length > 0 ? withServerFlags(game.gameType, block, summary.outcome) : block;
   for (const [key, value] of Object.entries(game.metadata ?? {})) {
     if (value !== null && value !== undefined) facts[key] = value;
   }

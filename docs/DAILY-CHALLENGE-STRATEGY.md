@@ -19,7 +19,7 @@ and wins wherever the two differ. Sections superseded by what shipped are marked
 | [#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038) | #4028, #4039 | Bottle Sort relative "solve N new levels" goal, per-edition baselines, device key `@sort/day_start`.                                                                   |
 
 Open follow-ups: #3988 (PRODUCT.md data-use rule), #3989 ([`IAP.md`](IAP.md) premium model, blocked on an owner
-decision), #4032 (offline premium finish/win flags).
+decision).
 
 Related backlog: #2946 (goals tuned to the player's history: this doc is its design spike), #2458 (premium goal
 pools), #2459 (streak freezes), #2895 (schedule variety check), #3945 (Cascade targets).
@@ -497,7 +497,7 @@ on-device history is needed**. §9's ring buffer is dropped.
    game after 3 ignored suggestions" rule. Plus entitlements, for eligibility.
 4. **The 3-day offline window stays.** `/upcoming` becomes per-install: it returns today and the next 2 days,
    pinned. A device going offline has 3 days of its own goals, exactly as today. The device's progress display
-   (`localProgress.ts`) already evaluated queued games against cached goals. It needed only the bonus slot and, for Sort's relative goal, the device's day-start best (`@sort/day_start`, #4028). A premium finish or win goal cannot be shown as done offline until `/status` refreshes (#4032).
+   (`localProgress.ts`) already evaluated queued games against cached goals. It needed only the bonus slot and, for Sort's relative goal, the device's day-start best (`@sort/day_start`, #4028). A premium finish or win goal is derived offline from the completion's outcome by the same rule the server applies (#4032).
    - Trade-off: days +1 and +2 are pinned from the history known when they were first served, so their targets
      can be up to 2 days stale. That's accepted: the staleness is small and it keeps one pick per day per install.
 5. **New installs.** The first `/status` of an install with no history gets cold-start goals (§12), but as shipped
@@ -587,8 +587,7 @@ what each became.
 | 8   | Tuning query: the §8 metrics as a read-only SQL script for the dev/prod database (no new collection)                                        | Shipped: [#4023](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4023) (#3998), `backend/scripts/daily_challenge_metrics.py`                          |
 | 9   | Bottle Sort relative "solve N new levels" goal (added during the epic)                                                                      | Shipped: [#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038) (#4028, with #4039)                                                            |
 
-Open follow-ups: #3988 (PRODUCT.md data-use rule), #3989 (`IAP.md` premium model, blocked on an owner decision), #4032
-(offline premium finish/win flags).
+Open follow-ups: #3988 (PRODUCT.md data-use rule), #3989 (`IAP.md` premium model, blocked on an owner decision).
 
 [cbs]: https://business.columbia.edu/sites/default/files-efs/citation_file_upload/Personalized_games.pdf
 [dof-puzzles]: https://www.deconstructoroffun.com/blog/2024/9/23/daily-missions-in-puzzles-why-should-we-see-them-more-often
