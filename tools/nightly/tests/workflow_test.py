@@ -6,6 +6,7 @@ and the one Playwright full-suite list."""
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -40,7 +41,8 @@ def required_contexts():
 def test_trigger_concurrency_and_permissions():
     on = NIGHTLY[True]
     assert on["workflow_dispatch"]["inputs"]["force"]["default"] is False
-    assert "schedule" not in on  # story 3 of #4053 adds it
+    # The late fallback (#4056); the Render cron dispatches the real run at 08:00 UTC.
+    assert on["schedule"] == [{"cron": "37 8 * * *"}]
     assert NIGHTLY["concurrency"] == {"group": "nightly-dev", "cancel-in-progress": False}
     assert NIGHTLY["permissions"] == {"contents": "read"}
     writers = [j for j, job in JOBS.items() if "write" in (job.get("permissions") or {}).values()]
@@ -145,7 +147,13 @@ def test_gate_runs_the_script():
     run = "\n".join(s.get("run", "") for s in JOBS["gate"]["steps"])
     assert "tools/nightly/gate.py" in run
     assert "git/ref/tags/nightly/last-green" in run
-    assert set(JOBS["gate"]["outputs"]) == {"run", "reason", "last_green"}
+    assert set(JOBS["gate"]["outputs"]) == {
+        "run",
+        "reason",
+        "last_green",
+        "trigger_missed",
+        "duplicate",
+    }
 
 
 def test_no_nightly_job_reuses_a_required_check_name():
@@ -219,7 +227,7 @@ def test_android_release_smoke_keeps_its_ci_job_and_shares_the_action():
     job = load("ci.yml")["jobs"]["android-release-smoke"]
     assert "name" not in job  # the required context is the job id
     assert job["if"] == "github.event_name == 'pull_request'"
-    assert job["needs"] == ["test-python", "test-frontend"]
+    assert job["needs"] == ["test-python", "test-frontend", "detect-native-changes"]
     assert job["timeout-minutes"] == 30
     action_steps = [
         s for s in job["steps"] if s.get("uses") == "./.github/actions/android-release-smoke"
@@ -238,3 +246,147 @@ def test_composite_action_sets_working_directory_on_every_run_step():
         if "run" in step:
             assert step["shell"] == "bash"
             assert step["working-directory"] == "frontend"
+
+
+def test_android_release_smoke_builds_only_on_native_android_changes():
+    """#4058: native outputs, not package.json / the lockfile, decide the build."""
+    job = load("ci.yml")["jobs"]["android-release-smoke"]
+    step = next(s for s in job["steps"] if s.get("id") == "changes")
+    env = step["env"]
+    assert "needs.detect-native-changes.outputs.has_native_android" in env["HAS_NATIVE_ANDROID"]
+    assert (
+        "needs.detect-native-changes.outputs.android_files_changed" in env["ANDROID_FILES_CHANGED"]
+    )
+    assert step["env"]["BASE_REF"] == "${{ github.base_ref }}"
+    assert '[ "$BASE_REF" = "main" ]' in step["run"]  # release PRs always build
+    assert "git diff --name-only HEAD^1 HEAD" in step["run"]
+    assert "package.json" not in step["run"]
+    assert "package-lock" not in step["run"]
+    # the composite action's own path still triggers a build
+    assert ".github/actions/android-release-smoke/" in step["run"].replace("\\.", ".")
+    # the job starts on every PR (no path filter, no native-output `if`)
+    assert job["if"] == "github.event_name == 'pull_request'"
+
+
+def test_cascade_sim_gate_plays_20_seeds_on_prs_and_100_otherwise():
+    """#4058: PRs play a reduced, informational seed count; nightly/dispatch keep 100."""
+    run = next(
+        s["run"]
+        for s in load("cascade-sim-gate.yml")["jobs"]["gate"]["steps"]
+        if "simulate-cascade" in s.get("run", "")
+    )
+    assert re.search(r'"\$EVENT_NAME" = "pull_request"[^\n]*--seeds 20\)', run)
+    assert "--capstone-seeds" not in run
+    # a given seeds input still wins; blank keeps the harness default (100)
+    assert '--seeds "$SEEDS_INPUT"' in run
+    assert "--seeds 100" not in run
+
+
+SCRIPT = ROOT / "scripts" / "is-android-native-package.sh"
+
+
+def _native(tmp_path, name, files=(), dirs=()):
+    pkg = tmp_path / "node_modules" / name
+    pkg.mkdir(parents=True)
+    for d in dirs:
+        (pkg / d).mkdir(parents=True)
+    for f in files:
+        (pkg / f).parent.mkdir(parents=True, exist_ok=True)
+        (pkg / f).write_text("x")
+    return subprocess.run([str(SCRIPT), name, str(pkg)], check=False).returncode == 0
+
+
+def test_android_detection_finds_deep_kotlin_sources(tmp_path):
+    kt = "android/src/main/java/expo/modules/audio/AudioModule.kt"
+    assert _native(tmp_path, "expo-audio", files=[kt])
+
+
+def test_android_detection_finds_react_android_dir(tmp_path):
+    assert _native(tmp_path, "some-rn-fork", dirs=["ReactAndroid"])
+
+
+def test_android_detection_treats_react_native_and_expo_as_native_by_name(tmp_path):
+    assert _native(tmp_path, "react-native")
+    assert _native(tmp_path, "expo")
+
+
+def test_android_detection_ignores_pure_js_packages(tmp_path):
+    assert not _native(tmp_path, "lodash-like", files=["index.js", "lib/a.ts"])
+    # an android/ dir with no sources, or sources only under build/ or node_modules/
+    assert not _native(tmp_path, "assets-only", files=["android/README.md"])
+    assert not _native(tmp_path, "built", files=["android/build/gen/A.java"])
+    assert not _native(tmp_path, "vendored", files=["android/node_modules/x/B.kt"])
+    assert not _native(tmp_path, "missing-dir-pkg")
+
+
+def test_ci_uses_the_android_detection_script():
+    steps = load("ci.yml")["jobs"]["detect-native-changes"]["steps"]
+    run = next(s for s in steps if s.get("id") == "detect")["run"]
+    assert "./scripts/is-android-native-package.sh" in run
+
+
+# ---- Fallback schedule (#4056) and report email (#4055) ---------------------------------------
+
+
+def run_text(job):
+    return "\n".join(s.get("run", "") for s in JOBS[job]["steps"])
+
+
+def test_gate_can_read_the_runs_api_and_dedupes_only_the_schedule_event():
+    assert JOBS["gate"]["permissions"] == {"contents": "read", "actions": "read"}
+    run = run_text("gate")
+    assert "actions/workflows/nightly.yml/runs" in run
+    assert "created=>=${SINCE}" in run
+    assert "-f event=workflow_dispatch" in run
+    assert '-f branch="$DEFAULT_BRANCH"' in run and '--branch "$DEFAULT_BRANCH"' in run
+    assert "head_branch" in run
+    assert "{id, created_at, event, head_branch}" in run
+    assert "date -u -d '20 hours ago'" in run
+    assert '[ "$EVENT" = "schedule" ]' in run
+    assert "--runs runs.json" in run and '--run-id "$RUN_ID"' in run
+    decide = next(s for s in JOBS["gate"]["steps"] if s.get("id") == "decide")
+    assert decide["env"]["EVENT"] == "${{ github.event_name }}"
+    assert decide["env"]["RUN_ID"] == "${{ github.run_id }}"
+
+
+def test_summary_sends_the_email_last_after_the_summary_is_written():
+    steps = JOBS["summary"]["steps"]
+    names = [s.get("name") for s in steps]
+    assert names.index("Write the run summary") < names.index("Upload the report")
+    assert names.index("Upload the report") < names.index("Build and send the report email")
+    assert names[-1] == "Build and send the report email"
+    send = steps[-1]
+    assert "send_email.py" in send["run"] and "--email-out" in send["run"]
+    # A deduped fallback run is a no-op and sends nothing; a cancelled run sends nothing.
+    assert send["if"] == "${{ !cancelled() && needs.gate.outputs.duplicate != 'true' }}"
+    assert "continue-on-error" not in send  # a send failure must fail the job
+
+
+def test_email_secrets_and_variable_are_referenced_by_name_in_env_only():
+    text = (WORKFLOWS / "nightly.yml").read_text()
+    assert sorted(set(re.findall(r"secrets\.([A-Za-z_]+)", text))) == [
+        "NIGHTLY_HEARTBEAT_URL",
+        "RESEND_API_KEY",
+    ]
+    assert re.findall(r"vars\.([A-Za-z_]+)", text) == ["NIGHTLY_REPORT_TO"]
+    heartbeat = next(s for s in JOBS["summary"]["steps"] if s.get("name") == "Heartbeat")
+    assert heartbeat["env"] == {"NIGHTLY_HEARTBEAT_URL": "${{ secrets.NIGHTLY_HEARTBEAT_URL }}"}
+    assert 'if [ -n "$NIGHTLY_HEARTBEAT_URL" ]' in heartbeat["run"]  # unset: skip silently
+    for job in JOBS.values():
+        for step in job.get("steps", []):
+            assert "secrets." not in step.get("run", "")
+            assert "vars." not in step.get("run", "")
+
+
+@pytest.mark.parametrize("job", ["gate", "summary"])
+def test_no_expression_is_interpolated_into_a_run_body(job):
+    for step in JOBS[job]["steps"]:
+        assert "${{" not in step.get("run", ""), (job, step.get("name"))
+
+
+def test_email_payload_comes_from_report_py_and_the_to_address_from_the_variable():
+    send = JOBS["summary"]["steps"][-1]
+    assert send["env"]["NIGHTLY_REPORT_TO"] == "${{ vars.NIGHTLY_REPORT_TO }}"
+    assert send["env"]["RESEND_API_KEY"] == "${{ secrets.RESEND_API_KEY }}"
+    assert send["env"]["TRIGGER_MISSED"] == "${{ needs.gate.outputs.trigger_missed }}"
+    assert '--to "$NIGHTLY_REPORT_TO"' in send["run"]
