@@ -24,8 +24,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from sqlalchemy import event, select
 
+from daily_challenge import definitions, personal, service
 from daily_challenge import history as history_mod
-from daily_challenge import personal, service
 from daily_challenge.assignments import Assignment, derived_template_id, encode_goals
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
@@ -1400,7 +1400,7 @@ def test_a_day_the_game_was_not_played_is_no_miss() -> None:
 
 
 def test_a_sort_heavy_install_gets_a_relative_sort_goal(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(personal, "sort_catalog_goals_on", lambda: True)
+    monkeypatch.setattr(definitions, "sort_catalog_goals_on", lambda: True)
     assert "sort" in GAME_SPECS
     h = _history(_DAY, _profile_plays({"sort": 10, "yacht": 1}, _DAY))
     for i in range(100):
@@ -1414,7 +1414,7 @@ def test_a_sort_heavy_install_gets_a_relative_sort_goal(monkeypatch: pytest.Monk
 async def test_a_sort_heavy_install_gets_a_personal_sort_goal_every_day(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(personal, "sort_catalog_goals_on", lambda: True)
+    monkeypatch.setattr(definitions, "sort_catalog_goals_on", lambda: True)
     sid = str(uuid.uuid4())
     today = local_day(0).date
     await _seed_2048(sid, today)
@@ -1425,7 +1425,7 @@ async def test_a_sort_heavy_install_gets_a_personal_sort_goal_every_day(
                 "sort",
                 _noon(today - timedelta(days=back)) + timedelta(minutes=lvl),
                 final_score=10 * (6 - back) + lvl,
-                metadata={"won": True},
+                metadata={"won": True, "catalog_version": 1},
             )
     body = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
     assert len(await _rows_for(sid)) == 3

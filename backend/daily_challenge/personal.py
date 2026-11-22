@@ -25,8 +25,8 @@ day-start best, ``service.day_start_bests``). An absolute "reach level L" pinned
 today+1 and today+2 at today's first open could already be met by today's own solves;
 the relative goal cannot. N (``sort_new_levels``) is the median of the new levels solved
 per day of play in the affinity window, stretched and rounded, 1-3 (1 at cold start), one
-fewer after two misses, and at most the levels left in the catalog the install plays
-(``sort_levels_left``: 120, or 23 while ``SORT_CATALOG_EDITION_ENFORCED`` is off). With no
+fewer after two misses, and at most the levels left in the edition the install plays
+(``sort_levels_left``: 120 for the catalog, 23 for the pre-catalog levels). With no
 level left Sort offers nothing. Builds from before #4028 have no copy for the kind and
 word it "Play Bottle Sort"; they never mark it done offline (no ``new_levels`` fact).
 
@@ -122,13 +122,13 @@ from typing import TYPE_CHECKING, Literal
 
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
+    CATALOG_EDITION,
     FREE_GOAL_POOL,
     GOAL_POOLS,
     SALT,
     SORT_CATALOG_GOALS,
     Goal,
     goal_from_spec,
-    sort_catalog_goals_on,
 )
 from daily_challenge.game_specs import (  # noqa: F401 - re-exported as personal.*
     BLACKJACK_TABLES,
@@ -264,21 +264,24 @@ def sort_new_levels(per_day_new: Sequence[int], *, pct: int, stepped_down: bool 
     return max(MIN_NEW_LEVELS, n - 1) if stepped_down else n
 
 
-def sort_level_cap(catalog_on: bool) -> int:
-    """The last level the install's build can play: the catalog's, or 23 while
-    ``SORT_CATALOG_EDITION_ENFORCED`` is off (older builds stop there)."""
-    return LEVEL_COUNT if catalog_on else LEGACY_SORT_LEVELS
+def sort_level_cap(edition: int) -> int:
+    """The last level of the edition the install plays (``InstallHistory.sort_edition``):
+    the catalog's 120, or 23 for the random levels of builds from before the catalog. With
+    ``SORT_CATALOG_EDITION_ENFORCED`` on the edition is always the catalog; off, it is the
+    edition of the install's latest Sort row, so a catalog player past level 23 still gets
+    a goal while the switch is off."""
+    return LEVEL_COUNT if edition == CATALOG_EDITION else LEGACY_SORT_LEVELS
 
 
-def sort_levels_left(best: int, *, catalog_on: bool) -> int:
-    """The levels above ``best`` (the highest solved before the day) the build can still
-    solve: the most a "new levels" goal may ask for. 0 once the catalog is done."""
-    return max(0, sort_level_cap(catalog_on) - best)
+def sort_levels_left(best: int, *, edition: int) -> int:
+    """The levels above ``best`` (the highest solved before the day, in ``edition``) the
+    install can still solve: the most a "new levels" goal may ask for. 0 once done."""
+    return max(0, sort_level_cap(edition) - best)
 
 
-def sort_target(n: int, best: int, *, catalog_on: bool) -> int | None:
+def sort_target(n: int, best: int, *, edition: int) -> int | None:
     """``n`` capped at the levels left, or None when none are left (no Sort goal)."""
-    left = sort_levels_left(best, catalog_on=catalog_on)
+    left = sort_levels_left(best, edition=edition)
     return min(n, left) if left > 0 else None
 
 
@@ -414,9 +417,7 @@ def options_for(game: str, history: InstallHistory, day: date, *, pct: int) -> l
                 pct=pct,
                 stepped_down=stepped_down(history, game, gtype.name),
             )
-        target = sort_target(
-            n, history.best_final_score(game, day), catalog_on=sort_catalog_goals_on()
-        )
+        target = sort_target(n, history.best_final_score(game, day), edition=history.sort_edition)
         if target is not None:
             goals.append((gtype, target))
     elif len(recent) < MIN_FINISHED_GAMES:
@@ -605,9 +606,7 @@ def _discovery_goal(game: str) -> Goal:
 
 
 def _sort_levels_left(history: InstallHistory, day: date) -> int:
-    return sort_levels_left(
-        history.best_final_score("sort", day), catalog_on=sort_catalog_goals_on()
-    )
+    return sort_levels_left(history.best_final_score("sort", day), edition=history.sort_edition)
 
 
 def choose_bonus(

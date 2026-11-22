@@ -84,7 +84,6 @@ def _fresh_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 def _catalog(monkeypatch: pytest.MonkeyPatch, on: bool) -> None:
     """SORT_CATALOG_EDITION_ENFORCED, for both readers: the pick's cap and the editions
     a relative goal counts (``definitions.counted_editions``)."""
-    monkeypatch.setattr(personal, "sort_catalog_goals_on", lambda: on)
     monkeypatch.setattr(definitions, "sort_catalog_goals_on", lambda: on)
 
 
@@ -219,31 +218,35 @@ def test_n_is_the_per_day_pace_from_1_to_3(per_day: list[int], stepped: bool, ex
 
 
 @pytest.mark.parametrize(
-    "n,best,catalog_on,expected",
+    "n,best,edition,expected",
     [
-        (3, 0, True, 3),
-        (3, 117, True, 3),
-        (3, 118, True, 2),
-        (3, 119, True, 1),
-        (3, 120, True, None),  # the 120-level catalog is done: no Sort goal
-        (3, 20, False, 3),
-        (3, 21, False, 2),
-        (3, 22, False, 1),
-        (3, 23, False, None),  # the 23 legacy levels are done
-        (1, 40, False, None),  # past 23 on an old build's edition
+        (3, 0, CATALOG_EDITION, 3),
+        (3, 117, CATALOG_EDITION, 3),
+        (3, 118, CATALOG_EDITION, 2),
+        (3, 119, CATALOG_EDITION, 1),
+        (3, 120, CATALOG_EDITION, None),  # the 120-level catalog is done: no Sort goal
+        (3, 20, LEGACY_EDITION, 3),
+        (3, 21, LEGACY_EDITION, 2),
+        (3, 22, LEGACY_EDITION, 1),
+        (3, 23, LEGACY_EDITION, None),  # the 23 pre-catalog levels are done
+        (1, 40, LEGACY_EDITION, None),  # past 23 on an old build's edition
     ],
 )
-def test_the_catalog_caps_n(n: int, best: int, catalog_on: bool, expected: int | None) -> None:
-    assert sort_target(n, best, catalog_on=catalog_on) == expected
+def test_the_catalog_caps_n(n: int, best: int, edition: int, expected: int | None) -> None:
+    assert sort_target(n, best, edition=edition) == expected
 
 
-def _sort_history(per_day: dict[int, int], *, before: int = 0, day: date = _DAY) -> InstallHistory:
+def _sort_history(
+    per_day: dict[int, int], *, before: int = 0, day: date = _DAY, edition: dict | None = None
+) -> InstallHistory:
     """Sort played on the given days back (days back -> highest level solved that day),
-    three rows a day, with ``before`` solved before the affinity window."""
+    three rows a day, with ``before`` solved before the affinity window. Catalog rows
+    unless ``edition`` says otherwise (``{}``: pre-catalog rows)."""
+    meta = _CAT if edition is None else edition
     plays = []
     for back, best in per_day.items():
         d = day - timedelta(days=back)
-        plays += [("sort", d, {"won": True, "final_score": best, **_CAT}) for _ in range(3)]
+        plays += [("sort", d, {"won": True, "final_score": best, **meta}) for _ in range(3)]
     h = _history(day, plays)
     h.daily_best = {"sort": {day - timedelta(days=b): v for b, v in per_day.items()}}
     h.best_before_window = {"sort": before} if before else {}
@@ -274,16 +277,42 @@ def test_cold_start_is_one_new_level_and_still_capped(monkeypatch: pytest.Monkey
     assert options_for("sort", h, _DAY, pct=12) == []
 
 
-@pytest.mark.parametrize("catalog_on,cap", [(True, 120), (False, 23)])
+@pytest.mark.parametrize(
+    "catalog_on,edition,cap",
+    [
+        (True, None, 120),
+        # Review round 2 on #4038: the cap follows the install's edition, not the switch,
+        # so a catalog player past level 23 keeps a goal while the switch is off.
+        (False, None, 120),
+        (False, {}, 23),  # a pre-catalog build's 23 random levels
+    ],
+    ids=["switch on, catalog", "switch off, catalog", "switch off, pre-catalog"],
+)
 def test_the_pick_never_asks_past_the_catalog(
-    monkeypatch: pytest.MonkeyPatch, catalog_on: bool, cap: int
+    monkeypatch: pytest.MonkeyPatch, catalog_on: bool, edition: dict | None, cap: int
 ) -> None:
     _catalog(monkeypatch, catalog_on)
     fast = {3: cap - 21, 2: cap - 11, 1: cap - 1}  # ten new levels a day
-    [option] = options_for("sort", _sort_history(fast, before=max(0, cap - 31)), _DAY, pct=12)
+    h = _sort_history(fast, before=max(0, cap - 31), edition=edition)
+    [option] = options_for("sort", h, _DAY, pct=12)
     assert option.goal == _goal(1)  # N would be 3; one level is left
     done = {3: cap - 20, 2: cap - 10, 1: cap}
-    assert options_for("sort", _sort_history(done, before=max(0, cap - 30)), _DAY, pct=12) == []
+    h = _sort_history(done, before=max(0, cap - 30), edition=edition)
+    assert options_for("sort", h, _DAY, pct=12) == []
+
+
+def test_a_catalog_player_past_level_23_gets_a_goal_with_the_switch_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _catalog(monkeypatch, False)
+    h = _sort_history({3: 26, 2: 28, 1: 30}, before=24)
+    assert h.sort_edition == CATALOG_EDITION
+    [option] = options_for("sort", h, _DAY, pct=12)
+    assert option.goal == _goal(2)
+    # The same standings from a pre-catalog build: its 23 levels are done.
+    legacy = _sort_history({3: 26, 2: 28, 1: 30}, before=24, edition={})
+    assert legacy.sort_edition == LEGACY_EDITION
+    assert options_for("sort", legacy, _DAY, pct=12) == []
 
 
 def test_an_exhausted_catalog_is_never_offered_as_a_bonus(monkeypatch: pytest.MonkeyPatch) -> None:
