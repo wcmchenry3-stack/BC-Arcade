@@ -1,0 +1,15 @@
+# Human-edited input for the asset tools' lock (#4001). Do not install from this file: install
+# requirements.txt, which is generated from it with hashes. Procedure: docs/ASSETS.md ("Pinned generator libraries").
+#
+# Generator libraries are pinned exactly (#3672, #3816): the shipped sprites and sounds are their
+# output, and a release of any of them can move it (#3594: Pillow 12.x LANCZOS downscale differs from 13).
+# Upgrading one means regenerating every generated asset and reviewing the diff: docs/ASSETS.md.
+numpy==2.4.6
+scipy==1.17.1
+Pillow==13.0.0
+colour-science==0.4.7
+fonttools==4.68.0
+pytest==9.2.0
+pyyaml==6.0.3
+# The Star Swarm music recipe writes its bed as a 16-bit WAV with libsndfile, as Round 44 did.
+soundfile==0.14.0
