@@ -42,7 +42,8 @@ Fields the evaluators read, per game (the result each game must send):
                 completion's outcome (``games/result_flags.py``, #3996)
     hearts      won, is_complete                       (HeartsResult, same, #3996)
     mahjong     won, pairs, duration_ms (column)       (MahjongResult)
-                — premium since 2026-09-24
+                — premium since 2026-09-24; "won within" applies its 36 s
+                clear floor (``MIN_CLEAR_MS``, #4033)
     cascade     won, is_complete, max_tier, duration_ms (column)
                 (CascadeResult, #3700, #3996) — premium; "won within" applies
                 its 20 s win floor
