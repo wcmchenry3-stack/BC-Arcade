@@ -192,25 +192,20 @@ def safety_gain(ceiling: float, *signals: np.ndarray) -> float:
     return min(1.0, ceiling / peak)
 
 
-def build(log=print) -> dict[str, bytes]:
-    """Render the three stages. Returns their MP3s: {"bed", "intro", "mix"}."""
-    bed_mp3 = encode_mp3_pcm16_wav(bed.render(log))
-    bed_audio = decode_mp3(bed_mp3)
-    phrases = {name: render() for name, render in LAYERS.items()}
-    log("layers: " + ", ".join(f"{k} {v.shape[1] / SR:.0f} s" for k, v in phrases.items()))
-
-    # Stage 2: the intro.
+def mix_intro(bed_audio: np.ndarray, phrases: dict[str, np.ndarray]) -> np.ndarray:
+    """Stage 2 before its MP3 encode: the first INTRO_DUR s of the bed with the intro cues, float64."""
     n = INTRO_DUR * SR
     intro_bed = bed_audio[:, :n]
     intro = intro_bed.astype(np.float64).copy()
     for cue in INTRO_CUES:
         place(intro, cue, phrases[cue.layer])
-    gain = safety_gain(INTRO_PEAK, intro_bed, intro)
-    intro_mp3 = encode_mp3_f32(intro * gain)
-    intro_audio = decode_mp3(intro_mp3)[:, :n]
-    assert intro_audio.shape == (2, n)
+    return intro * safety_gain(INTRO_PEAK, intro_bed, intro)
 
-    # Stage 3: the full mix.
+
+def mix_full(
+    bed_audio: np.ndarray, intro_audio: np.ndarray, phrases: dict[str, np.ndarray]
+) -> np.ndarray:
+    """Stage 3 before its MP3 encode: the full mix, float64 (2, DUR * SR)."""
     n = DUR * SR
     full_bed = bed_audio[:, :n]
     assert full_bed.shape == (2, n)
@@ -229,9 +224,52 @@ def build(log=print) -> dict[str, bytes]:
         else:
             place(out, cue, phrases[cue.layer])
     out *= safety_gain(MIX_PEAK, out, full_bed)
-    mix_mp3 = encode_mp3_f32(out)
+    return out
+
+
+@dataclass
+class Stages:
+    """Everything `build_stages` renders.
+
+    `bed_pcm`, `phrases` and `dry_mix` are the encoder-free stages: pure numpy/scipy arithmetic
+    that no MP3 encoder touches. `dry_mix` is the arrangement laid over the un-encoded bed (the
+    real mix lays it over the bed after an MP3 round trip), so it pins every cue's level, window,
+    duck, fade and pitch without depending on libmp3lame. Nothing here changes the shipped audio.
+    """
+
+    bed_pcm: np.ndarray  # float32 (n, 2), what the bed's WAV/MP3 encode receives
+    phrases: dict[str, np.ndarray]  # float32 (2, n) per layer
+    dry_mix: np.ndarray | None  # float64 (2, DUR * SR); None unless asked for
+    mp3: dict[str, bytes]  # {"bed", "intro", "mix"}
+
+
+def build_stages(log=print, dry: bool = True) -> Stages:
+    bed_pcm = bed.render(log)
+    bed_mp3 = encode_mp3_pcm16_wav(bed_pcm)
+    bed_audio = decode_mp3(bed_mp3)
+    phrases = {name: render() for name, render in LAYERS.items()}
+    log("layers: " + ", ".join(f"{k} {v.shape[1] / SR:.0f} s" for k, v in phrases.items()))
+
+    # Stage 2: the intro.
+    intro_mp3 = encode_mp3_f32(mix_intro(bed_audio, phrases))
+    intro_audio = decode_mp3(intro_mp3)[:, : INTRO_DUR * SR]
+    assert intro_audio.shape == (2, INTRO_DUR * SR)
+
+    # Stage 3: the full mix.
+    mix_mp3 = encode_mp3_f32(mix_full(bed_audio, intro_audio, phrases))
     log("full mix rendered")
-    return {"bed": bed_mp3, "intro": intro_mp3, "mix": mix_mp3}
+
+    # The encoder-free twin of stages 2 and 3, for the reproducibility fingerprint.
+    dry_mix = None
+    if dry:
+        dry_bed = np.ascontiguousarray(bed_pcm.T)
+        dry_mix = mix_full(dry_bed, mix_intro(dry_bed, phrases), phrases)
+    return Stages(bed_pcm, phrases, dry_mix, {"bed": bed_mp3, "intro": intro_mp3, "mix": mix_mp3})
+
+
+def build(log=print) -> dict[str, bytes]:
+    """Render the three stages. Returns their MP3s: {"bed", "intro", "mix"}."""
+    return build_stages(log, dry=False).mp3
 
 
 def cue_sheet() -> list[dict]:

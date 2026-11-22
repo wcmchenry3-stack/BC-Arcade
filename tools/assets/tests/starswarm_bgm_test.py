@@ -1,12 +1,21 @@
 """The Star Swarm music recipe (`starswarm_bgm/`, `build_starswarm_bgm.py`) makes the shipped track.
 
-`test_recipe_rebuilds_the_shipped_track` renders the whole track (about a minute) and compares it
-with `frontend/assets/sounds/starswarm-bgm.mp3` on decoded samples. Under a matched ffmpeg /
-libmp3lame build (CI's Ubuntu 24.04 ffmpeg) the rebuild is byte-identical, so the tolerance is
-tight: it catches a changed cue level or layer, not only a wholesale change. An ffmpeg upgrade can
-move it, because the build encodes MP3 three times; then rebuild, listen, and refresh the shipped
-file (docs/games/starswarm-music-design.md). Locally the rebuild skips without ffmpeg or
-soundfile; under CI (`CI` set) it fails instead. The other tests need only numpy and scipy.
+The build encodes MP3 three times, and libmp3lame is chaotic: a one-ulp float difference upstream
+(another CPU's SIMD path) changes its quantiser choices and moves the decoded track by 2e-3 to 5e-3
+relative RMS without changing the sound (#4027: the same code and packages passed on one CI runner
+and failed on another with 2.08e-3). So the recipe is checked in two layers:
+
+1. `test_recipe_matches_the_reference_fingerprint` pins the encoder-free stages (the un-encoded bed,
+   each layer's phrase, and the arrangement laid over the un-encoded bed) against
+   `starswarm_bgm/reference_fingerprint.json` at 1e-6 relative. Float noise moves them by about
+   1e-12, a changed cue level, window, duck, fade, pitch or layer by orders of magnitude more.
+2. `test_recipe_rebuilds_the_shipped_track` compares the final MP3 with the shipped one at a
+   tolerance that allows encoder differences between machines: same length, relative RMS and
+   per-window loudness (justified at the constants below).
+
+Refresh after an intentional recipe change: docs/games/starswarm-music-design.md. Locally the
+rebuild skips without ffmpeg or soundfile; under CI (`CI` set) it fails instead. The other tests
+need only numpy and scipy.
 """
 
 import hashlib
@@ -25,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import itertools
 
 import build_starswarm_bgm
-from starswarm_bgm import arrange, shepard
+from starswarm_bgm import arrange, fingerprint, shepard
 from starswarm_bgm.common import SR
 
 REPO = Path(__file__).resolve().parents[3]
@@ -35,7 +44,23 @@ LOOP_SCRIPT_DOCS = (
     REPO / "frontend/assets/sounds/SOUND_CREDITS.md",
 )
 
-TOLERANCE = 1e-4  # relative RMS error of the decoded rebuild against the decoded shipped track
+# Final-file tolerances (the whole-track check is the loose one; the fingerprint is the tight one).
+# Evidence, all against the shipped track with identical code and packages:
+#   - CI, two runners a minute apart: byte-different MP3s at relative RMS 2.08e-3 (#4027).
+#   - Locally, perturbing the bed by 1e-9 noise (far below int16 resolution) before the first
+#     encode: 4.8e-3 and 5.0e-3, so encoder chaos saturates near 5e-3 and 2.08e-3 is typical.
+#   - The same perturbation moves any 10 s window's loudness by at most 0.0009 dB.
+# RMS_TOLERANCE is 3x the worst of those: it still fails a wholesale change (another layer, a
+# different bed or gain, truncation), which moves relative RMS to 1e-1 or more. A single cue
+# (0.5 dB louder on one 17 s window) moves relative RMS less than the noise does, which is why that
+# is the fingerprint's job; the loudness windows below catch it from the final file too.
+# WINDOW_DB_TOLERANCE is 20x the worst noise (0.0009 dB). A cue made 0.5 dB louder moves the
+# window holding it by only 0.028-0.044 dB (measured), so this check has about 1.4x margin at
+# 0.5 dB and does not see smaller cue changes: the fingerprint is the primary level guard, and
+# this is a coarse backstop on the shipped file.
+RMS_TOLERANCE = 1.5e-2
+WINDOW_S = 10
+WINDOW_DB_TOLERANCE = 0.02
 
 
 def test_cues_are_in_time_order_and_inside_the_track():
@@ -142,20 +167,120 @@ def _decode(path: Path) -> np.ndarray:
     return np.frombuffer(raw, dtype="<f4").astype(np.float64)
 
 
-def test_recipe_rebuilds_the_shipped_track(tmp_path):
+@pytest.fixture(scope="module")
+def rebuild(tmp_path_factory):
+    """Render the whole track once (about a minute): the MP3, its stage files and the fingerprint."""
     problem = _rebuild_problem()
     if problem:
         if os.environ.get("CI"):
             pytest.fail(f"{problem}; the CI test-tools job must provide it")
         pytest.skip(problem)
-    out = tmp_path / "starswarm-bgm.mp3"
-    build_starswarm_bgm.build(out, stages=tmp_path / "stages", log=lambda *_: None)
+    root = tmp_path_factory.mktemp("bgm")
+    out = root / "starswarm-bgm.mp3"
+    fp = build_starswarm_bgm.build(
+        out, stages=root / "stages", log=lambda *_: None, with_fingerprint=True
+    )
+    return out, root / "stages", fp
+
+
+def test_recipe_matches_the_reference_fingerprint(rebuild):
+    _, _, fp = rebuild
+    problems = fingerprint.differences(fp, fingerprint.load())
+    assert not problems, (
+        "the encoder-free stages moved; if the music change is intended, run "
+        "`python tools/assets/build_starswarm_bgm.py --write-fingerprint`:\n"
+        + "\n".join(problems[:20])
+    )
+
+
+def test_recipe_rebuilds_the_shipped_track(rebuild):
+    out, stages, _ = rebuild
     fresh, shipped = _decode(out), _decode(build_starswarm_bgm.SHIPPED)
     assert len(fresh) == len(shipped)
     err = np.sqrt(np.mean((fresh - shipped) ** 2) / np.mean(shipped**2))
-    assert err < TOLERANCE, f"rebuild differs from the shipped track: relative RMS {err:.2e}"
-    cues = json.loads((tmp_path / "stages" / "cues.json").read_text())
+    assert err < RMS_TOLERANCE, f"rebuild differs from the shipped track: relative RMS {err:.2e}"
+    w = WINDOW_S * SR * 2  # interleaved stereo samples
+    for k in range(0, len(shipped), w):  # the last window may be shorter
+        a, r = fresh[k : k + w], shipped[k : k + w]
+        db = 20 * np.log10(np.sqrt(np.mean(a**2)) / np.sqrt(np.mean(r**2)))
+        assert abs(db) < WINDOW_DB_TOLERANCE, f"{k // w * WINDOW_S}s window is {db:+.3f} dB"
+    cues = json.loads((stages / "cues.json").read_text())
     assert cues == arrange.cue_sheet()
+
+
+def _toy_stage(level: float) -> np.ndarray:
+    """A short stereo stage with one cue placed on it, to exercise the fingerprint's sensitivity."""
+    n = 12 * SR
+    t = np.arange(n) / SR
+    bed = 0.2 * np.sin(2 * np.pi * 220 * t)[None, :].repeat(2, axis=0)
+    phrase = 0.5 * np.sin(2 * np.pi * 330 * t)[None, :].repeat(2, axis=0)
+    cue = arrange.Cue("toy", "rise", 0, 2, 8, level, 0.25)
+    arrange.place(bed, cue, phrase)
+    return bed
+
+
+def test_fingerprint_catches_a_changed_cue_level_but_not_float_noise():
+    want = fingerprint.summarise(_toy_stage(0.7))
+    assert not fingerprint.differences(fingerprint.summarise(_toy_stage(0.7)), want)
+    # Float noise (a ulp-level difference between machines) is inside the tolerance.
+    noisy = _toy_stage(0.7) * (1 + 1e-12)
+    assert not fingerprint.differences(fingerprint.summarise(noisy), want)
+    # A 0.1 dB change to one cue is far outside it.
+    louder = fingerprint.summarise(_toy_stage(0.7 * 10 ** (0.1 / 20)))
+    assert fingerprint.differences(louder, want)
+
+
+def test_fingerprint_catches_a_moved_window_or_length():
+    want = fingerprint.summarise(_toy_stage(0.7))
+    shifted = np.roll(_toy_stage(0.7), 3 * SR, axis=1)
+    assert fingerprint.differences(fingerprint.summarise(shifted), want)
+    assert fingerprint.differences(fingerprint.summarise(_toy_stage(0.7)[:, :-SR]), want)
+
+
+def test_reference_fingerprint_is_compact_and_covers_every_stage():
+    ref = fingerprint.load()
+    assert set(ref) == {"window_s", "bed", "dry_mix", "phrases", "shipped_sha256"}
+    assert set(ref["phrases"]) == set(arrange.LAYERS)
+    assert ref["bed"]["samples"] == arrange.DUR * SR
+    assert ref["dry_mix"]["samples"] == arrange.DUR * SR
+    assert fingerprint.REFERENCE.stat().st_size < 16_384  # a fingerprint, not audio
+
+
+def test_reference_fingerprint_belongs_to_the_shipped_track():
+    # Refreshing the reference without replacing the MP3 would bless a recipe change the shipped
+    # track lacks; --write-fingerprint records the hash so this catches a stale pairing.
+    assert fingerprint.load()["shipped_sha256"] == build_starswarm_bgm.sha256(
+        build_starswarm_bgm.SHIPPED
+    ), "the shipped MP3 changed without --write-fingerprint (or the reference was edited alone)"
+
+
+def test_write_fingerprint_refuses_a_silent_refresh():
+    committed = {**_fp(1.0), "shipped_sha256": "a" * 64}
+    moved = _fp(1.1)
+    # The fingerprint moved and the shipped MP3 did not: refuse.
+    assert fingerprint.refuse_reason(moved, committed, "a" * 64)
+    # The documented order (MP3 replaced first, so its hash differs): allowed.
+    assert fingerprint.refuse_reason(moved, committed, "b" * 64) is None
+    # Nothing moved, or no reference yet: allowed.
+    assert fingerprint.refuse_reason(_fp(1.0), committed, "a" * 64) is None
+    assert fingerprint.refuse_reason(moved, None, "a" * 64) is None
+
+
+def test_write_fingerprint_cli_refuses_unless_forced(tmp_path, monkeypatch):
+    ref = tmp_path / "ref.json"
+    sha = build_starswarm_bgm.sha256(build_starswarm_bgm.SHIPPED)
+    fingerprint.write({**_fp(1.0), "shipped_sha256": sha}, ref)
+    monkeypatch.setattr(fingerprint, "REFERENCE", ref)
+    monkeypatch.setattr(build_starswarm_bgm, "build", lambda *_a, **_k: _fp(1.1))
+    assert build_starswarm_bgm.main(["--write-fingerprint"]) == 1
+    assert fingerprint.load(ref)["bed"] == _fp(1.0)["bed"]
+    assert build_starswarm_bgm.main(["--write-fingerprint", "--force"]) == 0
+    assert fingerprint.load(ref)["bed"] == _fp(1.1)["bed"]
+
+
+def _fp(level: float) -> dict:
+    stage = fingerprint.summarise(_toy_stage(0.7 * level))
+    return {"window_s": 5, "bed": stage, "dry_mix": stage, "phrases": {"rise": stage}}
 
 
 def test_documented_loop_script_hash_is_current():
