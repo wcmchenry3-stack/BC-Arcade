@@ -7,7 +7,13 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockSortApi, gotoSort, injectSortProgress, LEVEL_1_POUR } from "./helpers/sort";
+import {
+  mockSortApi,
+  gotoSort,
+  injectSortProgress,
+  resumeSortFromLobby,
+  LEVEL_1_POUR,
+} from "./helpers/sort";
 
 // The catalog's level 1 (#2761): a full bottle and an empty one.
 const { from, to } = LEVEL_1_POUR;
@@ -29,7 +35,9 @@ async function assertNoA11yViolations(
 }
 
 test.describe("Sort Puzzle — accessibility", () => {
-  test("level-select screen passes axe-core WCAG 2.2 AA scan", async ({ page }) => {
+  test("level-select screen passes axe-core WCAG 2.2 AA scan", async ({
+    page,
+  }) => {
     await mockSortApi(page);
     await gotoSort(page);
     await assertNoA11yViolations(
@@ -41,7 +49,9 @@ test.describe("Sort Puzzle — accessibility", () => {
     await mockSortApi(page);
     await gotoSort(page);
     await page.getByRole("button", { name: "Level 1", exact: true }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
+      timeout: 5_000,
+    });
     await assertNoA11yViolations(
       new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]),
     );
@@ -51,14 +61,18 @@ test.describe("Sort Puzzle — accessibility", () => {
     await mockSortApi(page);
     await gotoSort(page);
     await page.getByRole("button", { name: "Level 1", exact: true }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   test("bottles have descriptive accessible labels", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
     await page.getByRole("button", { name: "Level 1", exact: true }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
+      timeout: 5_000,
+    });
 
     // Filled bottles describe content
     await expect(
@@ -74,9 +88,13 @@ test.describe("Sort Puzzle — accessibility", () => {
     await mockSortApi(page);
     await gotoSort(page);
     await page.getByRole("button", { name: "Level 1", exact: true }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
+      timeout: 5_000,
+    });
 
-    await page.getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` }).click();
+    await page
+      .getByRole("button", { name: `Bottle ${from}, 4 of 4 filled` })
+      .click();
     await expect(
       page.getByRole("button", {
         name: `Bottle ${from} selected — tap another bottle to pour`,
@@ -97,20 +115,21 @@ test.describe("Sort Puzzle — accessibility", () => {
         selectedBottleIndex: null,
       },
     });
-    await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
-    await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Continue Level 1" }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
+    await resumeSortFromLobby(page);
     await expect(
       page.getByRole("button", { name: "Bottle 1, complete" }),
     ).toBeVisible({ timeout: 3_000 });
   });
 
-  test("undo button has aria-disabled when history is empty", async ({ page }) => {
+  test("undo button has aria-disabled when history is empty", async ({
+    page,
+  }) => {
     await mockSortApi(page);
     await gotoSort(page);
     await page.getByRole("button", { name: "Level 1", exact: true }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
+      timeout: 5_000,
+    });
 
     const undoBtn = page.getByRole("button", { name: "Undo" });
     await expect(undoBtn).toBeDisabled({ timeout: 3_000 });
@@ -118,7 +137,9 @@ test.describe("Sort Puzzle — accessibility", () => {
 
   // #3658 — Hint and Undo sit in a bar under the board; every control is at least 44x44
   // and the title is not truncated, on a 390x844 phone.
-  test("390x844: Hint, Undo and the menu are at least 44x44; the title fits", async ({ page }) => {
+  test("390x844: Hint, Undo and the menu are at least 44x44; the title fits", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await mockSortApi(page);
     await gotoSort(page);
@@ -130,7 +151,11 @@ test.describe("Sort Puzzle — accessibility", () => {
     // Hint and Undo are drawn at least 44x44. The shared header's "More options"
     // button is drawn 32x32 with hitSlop={8} (AppHeader), a 48x48 tap target that
     // a bounding box can't show, so its drawn box plus the slop is checked.
-    const minDrawn: Record<string, number> = { Hint: 44, Undo: 44, "More options": 44 - 2 * 8 };
+    const minDrawn: Record<string, number> = {
+      Hint: 44,
+      Undo: 44,
+      "More options": 44 - 2 * 8,
+    };
     for (const [name, min] of Object.entries(minDrawn)) {
       const box = await page.getByRole("button", { name }).boundingBox();
       expect(box, name).not.toBeNull();
@@ -138,8 +163,12 @@ test.describe("Sort Puzzle — accessibility", () => {
       expect(box!.height, `${name} height`).toBeGreaterThanOrEqual(min);
     }
     // The bar is under the board.
-    const hintBox = await page.getByRole("button", { name: "Hint" }).boundingBox();
-    expect(hintBox!.y).toBeGreaterThanOrEqual(boardBox!.y + boardBox!.height - 1);
+    const hintBox = await page
+      .getByRole("button", { name: "Hint" })
+      .boundingBox();
+    expect(hintBox!.y).toBeGreaterThanOrEqual(
+      boardBox!.y + boardBox!.height - 1,
+    );
 
     // The title is not clipped or ellipsised.
     const clipped = await page

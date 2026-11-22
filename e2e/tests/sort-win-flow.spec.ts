@@ -17,7 +17,12 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { mockSortApi, injectSortProgress, CATALOG_VERSION } from "./helpers/sort";
+import {
+  mockSortApi,
+  injectSortProgress,
+  resumeSortFromLobby,
+  CATALOG_VERSION,
+} from "./helpers/sort";
 
 const NEAR_SOLVED = {
   unlockedLevel: 1,
@@ -105,12 +110,8 @@ async function loadNearSolvedLevel(
     ] as const);
     await page.goto("/");
   }
-  await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
-  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Continue Level 1" }).click();
-  await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
-    timeout: 5_000,
-  });
+  // The lobby tile says Resume for the saved board and opens it directly (#4008).
+  await resumeSortFromLobby(page);
   return captured;
 }
 
@@ -195,7 +196,9 @@ test.describe("Sort Puzzle — win flow", () => {
 
     // Level 1's par is 10 and the solve took 6 moves: 3 stars.
     const card = page.getByTestId("sort-result");
-    await expect(card.getByLabel("3 of 3 stars. Moves 6, target 10.")).toBeVisible();
+    await expect(
+      card.getByLabel("3 of 3 stars. Moves 6, target 10."),
+    ).toBeVisible();
     await expect(card.getByText("Moves 6 · Target 10")).toBeVisible();
     // The completion is sent once the rank line shows, as in the test above.
     await expect(
