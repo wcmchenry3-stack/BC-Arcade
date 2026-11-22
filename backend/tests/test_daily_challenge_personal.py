@@ -63,7 +63,7 @@ needs_db = pytest.mark.skipif(
 )
 
 _EN_COPY = Path(__file__).resolve().parents[2] / "frontend/src/i18n/locales/en/daily_challenge.json"
-_FREE = sorted(GAME_SPECS)
+_FREE = sorted(g for g in GAME_SPECS if g in FREE_GOAL_POOL)  # the free games with specs
 _DAY = date(2026, 11, 21)
 _DW = FREE_GOAL_POOL[ALWAYS_PRESENT][0]
 
@@ -458,24 +458,20 @@ def test_a_one_game_player_with_one_goal_type_gets_a_cold_start_second_game() ->
     assert other.id in {o.goal.id for o in options_for(other.game_type, h, _DAY, pct=12)}
 
 
-def test_at_most_one_win_dependent_goal_a_day(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Mahjong's win goals are luck-dependent (not a solvable-deal game); give it and a
-    # second such game specs, played the most, to force the rule.
-    win = personal.GoalType("mahjong", "win", "skill", "won")
-    within = personal.GoalType(
-        "mahjong", "win_time", "stretch", "won_duration_ms_at_most", "duration_ms", True, 1, 1000
-    )
-    monkeypatch.setitem(GAME_SPECS, "mahjong", personal.GameSpec("mahjong", (win, within), "win"))
-    assert _won("mahjong", "easy").is_win and _won_within("mahjong", "x", 1, "easy").is_win
+def test_at_most_one_win_dependent_goal_a_day() -> None:
+    # Hearts' and Blackjack's wins are luck-dependent (#3996; Mahjong's no longer is):
+    # played the most, they would both be drawn without the rule.
+    assert _won("hearts", "easy").is_win and _won("blackjack", "easy").is_win
     plays = [
-        ("mahjong", d, {"won": True, "duration_ms": 300_000})
+        (game, d, {"won": True, "is_complete": True, "starting_chips": 100})
+        for game in ("hearts", "blackjack")
         for d in _days_before(_DAY, 5)
         for _ in range(5)
     ]
     plays += _profile_plays({"yacht": 1}, _DAY)
     h = _history(_DAY, plays)
     for i in range(60):
-        core = _core(h, sid=f"s{i}", eligible=[*_FREE, "mahjong"])
+        core = _core(h, sid=f"s{i}", eligible=[*_FREE, "hearts", "blackjack"])
         assert sum(g.is_win for g in core) <= 1
 
 
@@ -513,7 +509,6 @@ def test_every_spec_goal_kind_is_an_existing_kind_with_frontend_wording() -> Non
     copy = json.loads(_EN_COPY.read_text(encoding="utf-8"))
     existing = {"completed", "won", "solved", "chips_gained"}
     for spec in GAME_SPECS.values():
-        assert spec.game_type in FREE_GOAL_POOL  # premium specs arrive with #3996
         for t in spec.types:
             assert (
                 t.kind in existing
@@ -893,7 +888,7 @@ def _count_statements():
 
 
 @needs_db
-async def test_one_personal_pick_is_four_queries() -> None:
+async def test_one_personal_pick_is_five_queries() -> None:
     sid = str(uuid.uuid4())
     today = local_day(0).date
     await _seed_2048(sid, today)
@@ -913,9 +908,11 @@ async def test_one_personal_pick_is_four_queries() -> None:
         stop()
     assert picked.template.goals[0] == _DW
     # pinned assignments, recent games (+ probe days), per-day counts and bests,
-    # game creation times (always_pinnable).
-    assert len(statements) == 4, statements
+    # game creation times (always_pinnable), then which premium games with specs the
+    # install owns (#3996: eligible_games).
+    assert len(statements) == 5, statements
     assert "daily_challenge_assignments" in statements[0]
+    assert "game_entitlements" in statements[-1]
 
 
 @needs_db
@@ -1159,7 +1156,8 @@ async def test_a_context_asked_for_a_day_it_did_not_load_reloads() -> None:
 
 def test_a_kind_no_spec_names_is_its_own_goal_type() -> None:
     assert goal_type_name(_at_least("solitaire", "moves", 10, "easy")) == "moves_at_least"
-    assert goal_type_name(_won("mahjong", "easy")) == "won"
+    assert goal_type_name(_won("mahjong", "easy")) == "win"  # a spec names it (#3996)
+    assert goal_type_name(_won("yacht", "easy")) == "won"
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import logging
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
 
 from games.metadata import LegacyPlayerName
+from games.result_flags import with_outcome_flags
 from observability.report import report_event
 
 logger = logging.getLogger(__name__)
@@ -134,6 +135,16 @@ class HeartsResult(BaseModel):
     hand_scores: list[list[int]] | None = None
     final_scores: list[int] | None = None
     human_seat: int | None = None
+    # Written by the server from the completion's outcome, never the app's (#3996):
+    # ``won`` for a win (a draw is a finish, not a win), ``is_complete`` for any
+    # finish. The Daily Challenge's win and finish goals read them.
+    won: bool | None = None
+    is_complete: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _outcome_flags(cls, data: object, info: ValidationInfo) -> object:
+        return with_outcome_flags(data, (info.context or {}).get("outcome"))
 
     @model_validator(mode="before")
     @classmethod

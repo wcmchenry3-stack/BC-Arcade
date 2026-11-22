@@ -2701,3 +2701,7 @@ migration is additive (its downgrade deletes only `wave_timeline` rows).
   wave's `wave_completed` summary, its decoded timeline and the reconciliation between them (a sampled
   diagnostic, not a frame-by-frame or projectile replay). See
   [Reader and reconciliation](starswarm-diagnostics.md#reader-and-reconciliation-3395).
+
+## Daily Challenge (#3996)
+
+Premium players get Star Swarm goals through the personal pick ([DAILY-CHALLENGE.md §2a](../DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)); a free install never does. The game has no win, so: **finish a run** (`completed`, the cold-start goal; the run ended, an abandon does not count), **reach wave _T_** (`wave_reached_at_least`, from `wave_reached`; floor 3) and **score _T_+** (`final_score_at_least`; floor 1,000, rounded to 250). The wave and score targets use the stretched median of the last 10 runs **on the install's usual `difficulty_tier`** (the most common one, the newest on a tie; a run with none counts as `LieutenantJG`), capped at the best of those runs, and need 3 runs there. The goal itself is not tier-bound: no existing goal kind asks for a tier, so a run on an easier tier can meet it. A run with `dev_affected` never counts, for a goal, a target or the streak. The app sends `outcome: "completed"`, so `StarSwarmResult` writes `is_complete` from the completion's outcome (`backend/games/result_flags.py`).

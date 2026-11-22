@@ -51,7 +51,7 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from daily_challenge import assignments, schedule
+from daily_challenge import assignments, personal, schedule
 from daily_challenge.definitions import (
     GOAL_POOLS,
     Template,
@@ -63,7 +63,7 @@ from daily_challenge.definitions import (
 from daily_challenge.service import EndedGame, evaluate_template, slate_for_games
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import is_dev_override_active
-from games.filters import not_abandoned
+from games.filters import not_abandoned, not_dev_affected
 from settings import Settings
 
 # A day counts if at least this many of its goals are met.
@@ -98,7 +98,9 @@ async def compute_streak(
     lookback = lookback_days()
     today = local_day(tz_offset_minutes, utc_now)
     oldest = local_day_of(today.date - timedelta(days=lookback), tz_offset_minutes)
-    spec_games = {game for pool in GOAL_POOLS.values() for game in pool}
+    # Every game a pinned day may name: the pools' games, and the premium games'
+    # personal goals (#3996) that no pool lists.
+    spec_games = {game for pool in GOAL_POOLS.values() for game in pool} | set(personal.GAME_SPECS)
 
     # One query for the whole window …
     rows = (
@@ -120,6 +122,8 @@ async def compute_streak(
                 # Same rule as service.py — an abandoned game never earns a
                 # streak day (#2468 / #2472).
                 not_abandoned(),
+                # A run a dev-panel action touched never counts (#3510, #3996).
+                not_dev_affected(),
             )
         )
     ).all()

@@ -17,8 +17,30 @@ today+2 at the first open of today could already be met by today's own solves, s
 is deferred to #4028. Sort still appears on shared-template days.
 
 Every goal is one of the existing kinds with an absolute target (``final_score_at_least``,
-``highest_tile_at_least``, ``won``, ``won_moves_at_most``, ``solved``), so installed app
-builds word it and ``Goal.evaluate`` scores it with no per-player logic.
+``highest_tile_at_least``, ``won``, ``won_moves_at_most``, ``solved``, and for the premium
+games ``completed``, ``won_duration_ms_at_most``, ``wave_reached_at_least``,
+``starting_chips_at_least``), so installed app builds word it and ``Goal.evaluate`` scores
+it with no per-player logic.
+
+Premium games (#3996)
+---------------------
+Blackjack, Cascade, Hearts, Mahjong and Star Swarm have specs too. ``service.eligible_games``
+offers them only to an install entitled to the game, so a free install never gets one.
+Three things are specific to them:
+
+* **"Finish" and "win" read server-written facts** (``games/result_flags.py``): the apps
+  send no ``won`` / ``is_complete`` for Blackjack, Hearts or Star Swarm, so their result
+  models write them from the completion's outcome.
+* **Blackjack's "one table up"** is ``starting_chips_at_least`` on a table ladder
+  (``GoalType.ladder``: 100 / 250 / 500 chips). No existing kind says "win a run at a
+  table", so the goal is "finish a run at table T or higher", which is not luck-dependent.
+  T is the table above the usual one (the median of recent runs), but only once a recent
+  run at the usual table or higher reached its goal (the next table unlocks on a win);
+  otherwise the usual table.
+* **Star Swarm's targets are per tier** (``GameSpec.partition_key``): wave and score come
+  from the recent runs on the install's usual ``difficulty_tier`` (the most common one,
+  the newest on a tie), and the cap is the best of those runs. The goal itself is not
+  tier-bound: no existing kind asks for a tier, so a run on an easier tier can meet it.
 
 ``serves_shared`` sends a day to the shared frozen template instead: a new install
 (fewer than ``MIN_FINISHED_GAMES`` finished games of games with specs, or none in the
@@ -98,6 +120,16 @@ from daily_challenge.definitions import (
     Goal,
     goal_from_spec,
 )
+from daily_challenge.game_specs import (  # noqa: F401 - re-exported as personal.*
+    BLACKJACK_TABLES,
+    GAME_SPECS,
+    Archetype,
+    GameSpec,
+    GoalType,
+    build_goal,
+    goal_type_name,
+    personal_type_keys,
+)
 from settings import Settings
 
 if TYPE_CHECKING:
@@ -150,171 +182,6 @@ def discovery_share() -> float:
 
 
 # ---------------------------------------------------------------------------
-# Goal specs per game (§12 "Goals per game", the free games)
-# ---------------------------------------------------------------------------
-
-Archetype = Literal["finish", "stretch", "progress", "skill"]
-
-
-@dataclass(frozen=True)
-class GoalType:
-    """One kind of goal a game offers. ``measure`` is set for a personal target."""
-
-    game_type: str
-    name: str
-    archetype: Archetype
-    kind: str
-    measure: str | None = None
-    at_most: bool = False
-    # at_least: the lowest target; at_most: the lowest limit (a win needs more moves).
-    floor: int | None = None
-    unit: int = 1
-    power_of_two: bool = False
-
-    @property
-    def personal(self) -> bool:
-        return self.measure is not None
-
-
-@dataclass(frozen=True)
-class GameSpec:
-    game_type: str
-    types: tuple[GoalType, ...]
-    # The cold-start goal type; its target is ``cold_target`` (None for fixed goals).
-    cold_type: str
-    cold_target: int | None = None
-
-    def type(self, name: str) -> GoalType:
-        return next(t for t in self.types if t.name == name)
-
-
-def _easy_target(game: str) -> int:
-    target = FREE_GOAL_POOL[game][0].target
-    assert target is not None, game
-    return target
-
-
-GAME_SPECS: dict[str, GameSpec] = {
-    "twenty48": GameSpec(
-        "twenty48",
-        (
-            GoalType(
-                "twenty48",
-                "score",
-                "stretch",
-                "final_score_at_least",
-                "final_score",
-                floor=_easy_target("twenty48"),
-                unit=50,
-            ),
-            GoalType(
-                "twenty48",
-                "tile",
-                "skill",
-                "highest_tile_at_least",
-                "highest_tile",
-                floor=128,
-                power_of_two=True,
-            ),
-        ),
-        cold_type="score",
-        cold_target=_easy_target("twenty48"),
-    ),
-    "solitaire": GameSpec(
-        "solitaire",
-        (
-            GoalType("solitaire", "win", "finish", "won"),
-            GoalType(
-                "solitaire",
-                "win_moves",
-                "stretch",
-                "won_moves_at_most",
-                "moves",
-                at_most=True,
-                floor=60,
-                unit=5,
-            ),
-        ),
-        cold_type="win",
-    ),
-    "freecell": GameSpec(
-        "freecell",
-        (
-            GoalType("freecell", "win", "finish", "won"),
-            GoalType(
-                "freecell",
-                "win_moves",
-                "stretch",
-                "won_moves_at_most",
-                "moves",
-                at_most=True,
-                floor=60,
-                unit=5,
-            ),
-        ),
-        cold_type="win",
-    ),
-    "sudoku": GameSpec(
-        "sudoku",
-        (
-            GoalType("sudoku", "solve", "finish", "solved"),
-            GoalType(
-                "sudoku",
-                "score",
-                "stretch",
-                "final_score_at_least",
-                "final_score",
-                floor=100,
-                unit=10,
-            ),
-        ),
-        cold_type="solve",
-    ),
-    "yacht": GameSpec(
-        "yacht",
-        (
-            GoalType(
-                "yacht",
-                "score",
-                "stretch",
-                "final_score_at_least",
-                "final_score",
-                floor=_easy_target("yacht"),
-                unit=5,
-            ),
-        ),
-        cold_type="score",
-        cold_target=_easy_target("yacht"),
-    ),
-}
-
-
-# (game_type, kind) -> goal type name, for goals already pinned (shared templates
-# included). A kind no spec names maps to itself (e.g. the old "moves_at_least").
-def goal_type_name(goal: Goal) -> str:
-    spec = GAME_SPECS.get(goal.game_type)
-    if spec is not None:
-        for t in spec.types:
-            if t.kind == goal.kind:
-                return t.name
-    return goal.kind
-
-
-def personal_type_keys() -> list[tuple[str, str]]:
-    """Every (game, goal type) with a personal target: those that can step down."""
-    return [(t.game_type, t.name) for s in GAME_SPECS.values() for t in s.types if t.personal]
-
-
-def build_goal(gtype: GoalType, target: int | None) -> Goal:
-    """The wire goal for ``gtype`` with an absolute ``target``, through the same
-    builders as the pools (``goal_from_spec``), so a pinned goal rebuilds equal."""
-    tier = "medium" if gtype.personal else "easy"
-    return goal_from_spec(
-        {"game_type": gtype.game_type, "kind": gtype.kind, "target": target, "tier": tier}
-    )
-
-
-# ---------------------------------------------------------------------------
 # Targets (#3993)
 # ---------------------------------------------------------------------------
 
@@ -330,14 +197,20 @@ def personal_target(
     best: float,
     pct: int,
     stepped_down: bool = False,
+    can_step_up: bool = True,
 ) -> int:
     """The personal target for ``gtype`` from recent ``values`` of its measure.
 
     ``best`` is the personal best (the highest value for "at least", the fewest for
-    "at most"). See the module docstring for the rule; every step is tested."""
+    "at most"). ``can_step_up`` only matters for a ladder goal. See the module docstring
+    for the rule; every step is tested."""
     if not values:
         raise ValueError("personal_target needs at least one value")
     median = statistics.median(values)
+    if gtype.ladder:
+        usual = usual_rung(gtype, values)
+        higher = [rung for rung in gtype.ladder if rung > usual]
+        return higher[0] if higher and can_step_up and not stepped_down else usual
     up = 1 + pct / 100
     down = 1 - pct / 100
     floor = gtype.floor or 0
@@ -356,6 +229,32 @@ def personal_target(
     target = _round_half_up(raw, gtype.unit)
     best_cap = int(best // gtype.unit) * gtype.unit
     return max(min(target, best_cap), floor)
+
+
+def usual_rung(gtype: GoalType, values: Sequence[int | float]) -> int:
+    """The ladder rung at or below the median of ``values``: the install's usual table."""
+    median = statistics.median(values)
+    return max((rung for rung in gtype.ladder if rung <= median), default=gtype.ladder[0])
+
+
+def _usual_partition(spec: GameSpec, facts_list: Sequence[Mapping]) -> list[Mapping]:
+    """``facts_list`` (newest first) restricted to the runs on the install's usual value
+    of ``spec.partition_key``: the most common, the newest on a tie."""
+    key = spec.partition_key
+    if key is None:
+        return list(facts_list)
+
+    def value(facts: Mapping) -> object:
+        raw = facts.get(key)
+        return raw if isinstance(raw, str) and raw else spec.partition_default
+
+    values = [value(f) for f in facts_list]
+    if not values:
+        return []
+    counts = {v: values.count(v) for v in values}
+    top = max(counts.values())
+    usual = next(v for v in values if counts[v] == top)
+    return [f for f, v in zip(facts_list, values, strict=True) if v == usual]
 
 
 # ---------------------------------------------------------------------------
@@ -441,6 +340,20 @@ def stepped_down(history: InstallHistory, game: str, type_name: str) -> bool:
     return True
 
 
+def _table_unlocked(gtype: GoalType, facts_list: Iterable[Mapping], values: list) -> bool:
+    """Whether a ladder goal may step up: a recent run at the usual rung or higher reached
+    its goal (``won``), which is what unlocks the next Blackjack table. Always true off a
+    ladder (the argument is not read)."""
+    if not gtype.ladder:
+        return True
+    usual = usual_rung(gtype, values)
+    for facts in facts_list:
+        value = facts.get(gtype.measure or "")
+        if facts.get("won") is True and isinstance(value, (int, float)) and value >= usual:
+            return True
+    return False
+
+
 def options_for(game: str, history: InstallHistory, day: date, *, pct: int) -> list[Option]:
     """The goals ``game`` can offer on ``day``: its cold-start goal with fewer than
     ``MIN_FINISHED_GAMES`` finished games, else every type that has the data."""
@@ -450,16 +363,18 @@ def options_for(game: str, history: InstallHistory, day: date, *, pct: int) -> l
     if len(recent) < MIN_FINISHED_GAMES:
         goals.append((spec.type(spec.cold_type), spec.cold_target))
     else:
+        # Targets read the runs on the usual partition (Star Swarm's tier), if any.
+        target_facts = _usual_partition(spec, recent)
         for gtype in spec.types:
             if not gtype.personal:
                 goals.append((gtype, None))
                 continue
-            values = _values(gtype, recent)
+            values = _values(gtype, target_facts)
             if len(values) < MIN_FINISHED_GAMES:
                 continue
             if gtype.at_most:
                 best: int | float = min(values)
-            elif gtype.measure == "final_score":
+            elif gtype.measure == "final_score" and spec.partition_key is None:
                 best = max(max(values), history.best_final_score(game, day))
             else:
                 best = max(values)
@@ -469,6 +384,7 @@ def options_for(game: str, history: InstallHistory, day: date, *, pct: int) -> l
                 best=best,
                 pct=pct,
                 stepped_down=stepped_down(history, game, gtype.name),
+                can_step_up=_table_unlocked(gtype, target_facts, values),
             )
             goals.append((gtype, target))
     return [Option(game, t.name, t.archetype, build_goal(t, target)) for t, target in goals]

@@ -196,14 +196,15 @@ def test_free_pool_has_the_seven_free_games_and_never_a_premium_one() -> None:
 
 
 def test_pending_premium_goals_stay_out_of_every_live_pool() -> None:
-    # Blackjack went premium on 2026-09-23; its goals wait for #2458. In a live
-    # pool it would be picked for store builds, where the game does not exist.
+    # Mahjong went premium on 2026-09-24. In a live pool it would be picked for store
+    # builds, where the game does not exist. Blackjack's hand-count goals were removed
+    # from here in #3996 (its goals are personal picks now).
     for pool in GOAL_POOLS.values():
         assert set(pool).isdisjoint(PENDING_PREMIUM_GOALS)
     assert set(PENDING_PREMIUM_GOALS) <= set(ALL_PREMIUM_SLUGS)
+    assert "blackjack" not in PENDING_PREMIUM_GOALS
     # The one-win rule's easy-goal fallback must hold for them too.
     assert all(goals[0].is_win is False for goals in PENDING_PREMIUM_GOALS.values())
-    assert PENDING_PREMIUM_GOALS["blackjack"][1].is_win  # chips_gained is luck
 
 
 _GAME_VISIBILITY_TS = (
@@ -509,15 +510,7 @@ _EVALUATION_CASES = [
     ("sudoku", _MEDIUM, {"won": True, "final_score": 100, "difficulty": "easy"}, False),
     ("sudoku", _HARD, {"won": True, "final_score": 280, "difficulty": "hard"}, True),
     ("sudoku", _HARD, {"won": True, "final_score": 279, "difficulty": "hard"}, False),
-    # blackjack — premium, pending #2458 (PENDING_PREMIUM_GOALS)
-    ("blackjack", _EASY, {"hands_played": 3, "hands_won": 0}, True),
-    ("blackjack", _EASY, {"hands_played": 2}, False),
-    ("blackjack", _MEDIUM, {"starting_chips": 1000, "final_chips": 1001}, True),
-    ("blackjack", _MEDIUM, {"starting_chips": 1000, "final_chips": 1000}, False),
-    ("blackjack", _MEDIUM, {"final_chips": 1500}, False),
-    ("blackjack", _HARD, {"hands_won": 3}, True),
-    ("blackjack", _HARD, {"hands_won": 2}, False),
-    # mahjong — premium, pending #2458 (PENDING_PREMIUM_GOALS); duration_ms comes from the column
+    # mahjong — premium, pending (PENDING_PREMIUM_GOALS); duration_ms comes from the column
     ("mahjong", _EASY, {"won": False, "pairs": 10}, True),
     ("mahjong", _EASY, {"won": False, "pairs": 9}, False),
     ("mahjong", _MEDIUM, {"won": True, "pairs": 72}, True),

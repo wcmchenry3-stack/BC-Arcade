@@ -47,7 +47,9 @@ needs_db = pytest.mark.skipif(
 )
 
 _DAY = date(2026, 11, 21)
-_FREE = sorted(GAME_SPECS)
+_FREE = sorted(
+    g for g in GAME_SPECS if g in FREE_GOAL_POOL
+)  # the free games with specs (#3996 added premium specs)
 _DW = FREE_GOAL_POOL[ALWAYS_PRESENT][0]
 
 

@@ -35,13 +35,20 @@ Fields the evaluators read, per game (the result each game must send):
     sudoku      won, final_score, errors               (SudokuScreen; final_score =
                 difficulty base 100/200/300 minus 10 per error, sent only on a solve —
                 an abandoned row has won: false, no score, and is filtered by the service)
-    blackjack   hands_played, hands_won, starting_chips, final_chips (BlackjackResult)
-                — premium since 2026-09-23, so not in the free pool (see below)
+    blackjack   won, is_complete, starting_chips, final_chips (BlackjackResult)
+                — premium; won / is_complete are written by the server from the
+                completion's outcome (``games/result_flags.py``, #3996)
+    hearts      won, is_complete                       (HeartsResult, same, #3996)
     mahjong     won, pairs, duration_ms (column)       (MahjongResult)
-                — premium since 2026-09-24, so not in the free pool (see below)
-    cascade     won, max_tier, duration_ms (column)    (CascadeResult, #3700)
-                — premium; no goals yet (they join with the other premium games'
-                in #2458); "won within" applies its 20 s win floor
+                — premium since 2026-09-24
+    cascade     won, is_complete, max_tier, duration_ms (column)
+                (CascadeResult, #3700, #3996) — premium; "won within" applies
+                its 20 s win floor
+    starswarm   is_complete, wave_reached, difficulty_tier, final_score
+                (StarSwarmResult) — premium; no win concept
+
+The premium games have goals only through the personal pick (``personal.GAME_SPECS``,
+#3996); ``PREMIUM_GOAL_POOL`` still equals the free pool (see Slates).
 
 Slates
 ------
@@ -50,9 +57,13 @@ a superset for sessions entitled to premium games. Which slate a session gets is
 decided from ``game_types.is_premium`` + entitlements (service layer, #2454) —
 never from a list in this module — when the install's day is first served, and is
 then pinned with that day (``daily_challenge_assignments``, #3992). Only unpinned
-days (an install that may not pin, or the kill switch off) resolve it per request. Premium-only goal specs are
-post-launch (#2458), so today the two pools hold the same games and both slates
-pick identically.
+days (an install that may not pin, or the kill switch off) resolve it per request.
+The premium games' goals (#3996) are personal-pick goals only (``personal.py``):
+``PREMIUM_GOAL_POOL`` is deliberately still the free pool, so the two slates pick
+identically. Giving it premium games would change a day ``resolve_slate`` already
+served an entitled install (it picks the slate from the *computed* templates while
+the frozen one is served, #2760) and every streak replay of an unfrozen day, for a
+shared template only an install without history sees.
 
 Daily Word's goal is always "complete today's word" (``completed``, win or lose);
 the easy / medium / hard rotation applies to the other two games (#3991).
@@ -182,13 +193,17 @@ def _completed(game_type: str, tier: Tier) -> Goal:
 
 # Games that deal only provably solvable deals (#3993): a win there is skill, not
 # luck, so their win goals are not luck-dependent and never use up the day's one
-# luck-dependent slot. Applied by the builders, so ``goal_from_spec`` rebuilds a
-# frozen or pinned goal with the same flag.
+# luck-dependent slot.
 SOLVABLE_DEAL_GAMES: frozenset[str] = frozenset({"solitaire", "freecell"})
+# Premium games whose wins are skill too (#3996): Cascade is a physics skill game and
+# a deadlocked Mahjong board can be undone. Blackjack and Hearts stay luck-dependent.
+# Applied by the builders, so ``goal_from_spec`` rebuilds a frozen or pinned goal
+# with the same flag.
+SKILL_WIN_GAMES: frozenset[str] = SOLVABLE_DEAL_GAMES | {"cascade", "mahjong"}
 
 
 def _won(game_type: str, tier: Tier) -> Goal:
-    is_win = game_type not in SOLVABLE_DEAL_GAMES
+    is_win = game_type not in SKILL_WIN_GAMES
     return Goal(game_type, "won", None, tier, is_win, lambda f: f.get("won") is True)
 
 
@@ -226,7 +241,7 @@ def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
             return False
         return floor is None or value >= floor
 
-    is_win = game_type not in SOLVABLE_DEAL_GAMES
+    is_win = game_type not in SKILL_WIN_GAMES
     return Goal(game_type, f"won_{measure}_at_most", limit, tier, is_win, check)
 
 
@@ -355,17 +370,14 @@ def sort_catalog_goals_on() -> bool:
     return edition_switch_on("sort_catalog_edition_enforced")
 
 
-# Blackjack moved to premium on 2026-09-23 (simulated gambling would raise the
-# app's age rating); Mahjong moved to premium on 2026-09-24 (owner decision,
-# traded for Sort going free). Their goals are kept here, outside every live
-# pool, so they join PREMIUM_GOAL_POOL with the other premium games in #2458.
-# Days frozen before either move still rebuild through ``goal_from_spec``.
+# Mahjong moved to premium on 2026-09-24 (owner decision, traded for Sort going free).
+# Its shared-template goals are kept here, outside every live pool: the premium games'
+# goals are personal-pick goals only (``personal.GAME_SPECS``, #3996) and
+# ``PREMIUM_GOAL_POOL`` still equals the free pool (module docstring, Slates).
+# Blackjack's hand-count goals ("play 3 hands", "win 3 hands") and "finish a session
+# up on chips" were removed in #3996: they do not fit the run-based pattern (the run
+# is the game). Days frozen with them still rebuild through ``goal_from_spec``.
 PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
-    "blackjack": (
-        _at_least("blackjack", "hands_played", 3, "easy"),
-        _chips_gained("blackjack", "medium"),
-        _at_least("blackjack", "hands_won", 3, "hard"),
-    ),
     "mahjong": (
         _at_least("mahjong", "pairs", 10, "easy"),
         _won("mahjong", "medium"),
@@ -373,8 +385,9 @@ PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
     ),
 }
 
-# Premium-only games' goals arrive with #2458; until then the premium slate is
-# the free pool. Kept as a separate name so the slate split is real, not implied.
+# The premium slate is the free pool, on purpose (#3996, module docstring): the premium
+# games' goals come from the personal pick. Kept as a separate name so the slate split
+# is real, not implied.
 PREMIUM_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {**FREE_GOAL_POOL}
 
 GOAL_POOLS: dict[str, dict[str, tuple[Goal, Goal, Goal]]] = {

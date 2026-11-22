@@ -14,7 +14,7 @@ Each challenge has exactly three **core** goals (and, on a personal day, one opt
 
 There are two ways a day's goals are chosen (`service.pick_for_install`):
 
-- **Personal pick** (#3993, #3994), for an install with at least 3 finished games of the games with personal goal specs (2048, Solitaire, FreeCell, Sudoku, Yacht; Daily Word and Bottle Sort do not count), at least one of them in the last `DAILY_CHALLENGE_AFFINITY_DAYS` (14), and continuous recent play (below): goals 2 and 3 come from the games the install plays, each with a personal target (§2a, §3a). This is what an active player sees.
+- **Personal pick** (#3993, #3994), for an install with at least 3 finished games of the games with personal goal specs (2048, Solitaire, FreeCell, Sudoku, Yacht, and the premium games Blackjack, Cascade, Hearts, Mahjong and Star Swarm; Daily Word and Bottle Sort do not count), at least one of them in the last `DAILY_CHALLENGE_AFFINITY_DAYS` (14), and continuous recent play (below): goals 2 and 3 come from the games the install plays, each with a personal target (§2a, §3a). This is what an active player sees.
 - **Bonus goal** (#3995): a personal day may carry one optional extra goal beside the three core goals (§3b). It never counts toward the streak, `completed_goals` or "day complete", and a shared-template day never has one.
 - **Shared template**, for every other install (a new install, or one back after a gap) and for everyone while the kill switch is off: the same three goals for every install, drawn from the per-game easy / medium / hard goals below (§2, §3). When such an install's day is pinned it is pinned as **exactly** the shared template (`shared_for_install`).
 
@@ -58,27 +58,34 @@ Solitaire's goals are win / win in at most 150 moves / win in at most 120 moves,
 
 Yacht's goals are `final_score` at least 100 / 175 / 250; abandoned games never count (the service filters them).
 
-Blackjack and Mahjong have goal definitions prepared in `PENDING_PREMIUM_GOALS`, but they are not in either live pool today.
+Mahjong has shared-template goal definitions prepared in `PENDING_PREMIUM_GOALS`, but they are not in either live pool today. Blackjack's old hand-count goals (play 3 hands, win 3 hands, finish a session up on chips) were removed from it in #3996; days frozen or pinned with them still rebuild through `goal_from_spec`.
 
 **Disabled games.** `rotation()` in `backend/daily_challenge/definitions.py` skips every game in `DISABLED_GAMES` (`backend/entitlements/service.py`, mirroring the frontend list in `gameVisibility.ts`), so a disabled game never reaches a slate even if a pool lists it (`test_a_disabled_game_added_to_a_pool_never_reaches_a_slate`). `test_disabled_games_are_in_no_goal_pool_and_stay_premium` is the backstop that no pool lists one, and `test_disabled_games_match_the_frontend_list` keeps the two lists equal. The Home card also drops any goal for a game `isGameVisible` hides. The list is empty today: Cascade was on it from #3001 until its rework shipped (#3703).
 
-**Cascade** is a premium game with no goals yet: like Hearts and Star Swarm, it has no goals in any pool or in `PENDING_PREMIUM_GOALS`. Its result block already carries what its goals will read: `won`, `max_tier` (0-10; 10 on a win) and the `duration_ms` column, and `_WON_WITHIN_FLOORS` gives any Cascade "won within" goal on `duration_ms` a 20 s floor (`CASCADE_MIN_WIN_MS`) so a forged quick win cannot pass. Its goals and their copy are tracked in #3945 and arrive with the premium goal pool (#2458); `test_cascade_is_no_longer_skipped_once_a_pool_lists_it` pins that the rotation will draw them.
+**The premium games** (Blackjack, Cascade, Hearts, Mahjong, Star Swarm) have goals in the personal pick only (#3996, §2a), not in any pool. `_WON_WITHIN_FLOORS` gives a Cascade "won within" goal on `duration_ms` a 20 s floor (`CASCADE_MIN_WIN_MS`) so a forged quick win cannot pass; `test_cascade_is_no_longer_skipped_once_a_pool_lists_it` pins that the rotation would draw Cascade if a pool listed it.
 
-`PREMIUM_GOAL_POOL` currently contains the same goal specs as `FREE_GOAL_POOL`, so the free and premium templates are presently identical. Broader premium/game-specific goal-pool work remains separate product backlog; this document describes the code that is live now.
+`PREMIUM_GOAL_POOL` still contains the same goal specs as `FREE_GOAL_POOL`, so the free and premium templates are identical, on purpose (#3996). Putting premium games in it would make `resolve_slate` name them for entitled installs on shared days (it picks the slate from the _computed_ templates while the frozen one is served, #2760, so a day already served could change), change every streak replay of an unfrozen day, and add frozen premium rows, all for a shared template that only an install without history sees. An entitled install with history gets premium goals from the personal pick, which does not use the pools. `test_the_shared_template_stays_the_free_pool` pins this.
 
 ### 2a. Personal goals per game (#3993)
 
-`backend/daily_challenge/personal.py` (`GAME_SPECS`) gives each free game its goal types. Every one is an existing goal kind with an absolute target, so installed app builds word it and the evaluator scores it with no per-player logic.
+`backend/daily_challenge/personal.py` (`GAME_SPECS`) gives each free game, and since #3996 each premium game, its goal types. Every one is an existing goal kind with an absolute target, so installed app builds word it and the evaluator scores it with no per-player logic.
 
-| Game        | Goal types (kind)                                                                                      | Personal measure                                               | Cold start (fewer than 3 finished games) |
-| ----------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------- |
-| Daily Word  | complete today's word (`completed`), always goal 1                                                     | none                                                           | same                                     |
-| 2048        | score at least _T_ (`final_score_at_least`, stretch) · reach tile _T_ (`highest_tile_at_least`, skill) | `final_score`; `highest_tile`                                  | score 500+                               |
-| Solitaire   | win (`won`, finish) · win in at most _T_ moves (`won_moves_at_most`, stretch)                          | `moves` on wins                                                | win                                      |
-| FreeCell    | win (`won`) · win in at most _T_ moves (`won_moves_at_most`)                                           | `moves` on wins                                                | win                                      |
-| Bottle Sort | none yet: deferred to #4028 (shared-template days only)                                                | –                                                              | –                                        |
-| Sudoku      | solve a puzzle (`solved`, finish) · score at least _T_ (`final_score_at_least`, stretch)               | `final_score` (difficulty base 100/200/300 minus 10 per error) | solve                                    |
-| Yacht       | score at least _T_ (`final_score_at_least`, stretch)                                                   | `final_score`                                                  | score 100+                               |
+| Game         | Goal types (kind)                                                                                                                           | Personal measure                                               | Cold start (fewer than 3 finished games) |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------- |
+| Daily Word   | complete today's word (`completed`), always goal 1                                                                                          | none                                                           | same                                     |
+| 2048         | score at least _T_ (`final_score_at_least`, stretch) · reach tile _T_ (`highest_tile_at_least`, skill)                                      | `final_score`; `highest_tile`                                  | score 500+                               |
+| Solitaire    | win (`won`, finish) · win in at most _T_ moves (`won_moves_at_most`, stretch)                                                               | `moves` on wins                                                | win                                      |
+| FreeCell     | win (`won`) · win in at most _T_ moves (`won_moves_at_most`)                                                                                | `moves` on wins                                                | win                                      |
+| Bottle Sort  | none yet: deferred to #4028 (shared-template days only)                                                                                     | –                                                              | –                                        |
+| Sudoku       | solve a puzzle (`solved`, finish) · score at least _T_ (`final_score_at_least`, stretch)                                                    | `final_score` (difficulty base 100/200/300 minus 10 per error) | solve                                    |
+| Yacht        | score at least _T_ (`final_score_at_least`, stretch)                                                                                        | `final_score`                                                  | score 100+                               |
+| Blackjack\*  | finish a run (`completed`) · win a run (`won`, luck-dependent) · finish at table _T_ or higher (`starting_chips_at_least`, 100 / 250 / 500) | `starting_chips` (the usual table, one up after a win there)   | finish a run                             |
+| Cascade\*    | finish a game (`completed`) · win a game (`won`) · win in at most _T_ minutes (`won_duration_ms_at_most`)                                   | `duration_ms` on wins (whole minutes, floor 2, 20 s win floor) | finish a game                            |
+| Hearts\*     | finish a game (`completed`) · win a game (`won`, luck-dependent)                                                                            | none                                                           | finish a game                            |
+| Mahjong\*    | clear a board (`won`) · clear in at most _T_ minutes (`won_duration_ms_at_most`)                                                            | `duration_ms` on clears (whole minutes, floor 4)               | clear a board                            |
+| Star Swarm\* | finish a run (`completed`) · reach wave _T_ (`wave_reached_at_least`) · score at least _T_ (`final_score_at_least`)                         | `wave_reached`, `final_score` on the usual `difficulty_tier`   | finish a run                             |
+
+\* premium: offered only to an install entitled to the game (`service.eligible_games`; the dev entitlement override counts as entitled), so a free install never gets one (`test_a_free_install_never_gets_a_premium_goal_whatever_its_history`). Hidden in store builds (`HIDDEN_GAMES`), where the card drops their goals.
 
 **Target rule** (`personal_target`), from the install's last `DAILY_CHALLENGE_HISTORY_GAMES` (10) finished, non-abandoned games of that game before the day starts:
 
@@ -87,6 +94,18 @@ Blackjack and Mahjong have goal definitions prepared in `PENDING_PREMIUM_GOALS`,
 - **capped at the personal best**, so beating it is never required (an "at least" target is at most the best, using the best `final_score` ever for score goals; an "at most" limit is at least the fewest moves in the recent wins);
 - **floored** at the game's minimum: 2048 score 500 and Yacht 100 (the pool's easy tier), Sudoku 100, a 2048 tile 128, and 60 moves for a win; the floor wins over the cap for a player whose best is below it;
 - **stepped down** after two consecutive misses: when, on the last two pinned days that held this (game, goal type) as a personal target, the install played the game and no finished game that day met it, the stretch goes the other way (at the default 12 %: median × 0.88 for "at least", × 1.12 for "at most") and a tile target halves. A day the game was not played is not a miss, and a pinned goal equal to a shared-pool goal (a pinned shared-template day) is not counted; a personal target that happens to equal one is skipped too, which only delays a step-down.
+
+**Premium goal notes (#3996).**
+
+- **Finish and win read server-written facts.** The evaluator reads the result block and the two columns, never `games.outcome`, and the apps send no `won` (Blackjack, Hearts) or `is_complete` (Blackjack, Hearts, Star Swarm, Cascade) of their own. Each result model writes them from the completion's outcome (`backend/games/result_flags.py`): `is_complete` for every outcome but `abandoned`, `won` for `win` only (a Hearts tie is a finish, not a win), none when the completion reports no outcome. Mahjong's app sends `won` itself. Rows from before #3996 lack the flags and meet neither goal (they still feed the Blackjack table target through `starting_chips`).
+- **Blackjack's "one table up".** No existing kind says "win a run at a table", so the goal is `starting_chips_at_least` on the table ladder: finish a run at table _T_ or higher, which is not luck-dependent. _T_ is the table above the usual one (the median `starting_chips` of the recent runs), stepping up only once a recent run at the usual table or higher reached its goal (the next table unlocks on a won run); otherwise the usual table; after two misses the usual table; the top table stays. Fewer than 3 runs: finish a run (at Beginner a table condition adds nothing).
+- **Luck.** Blackjack and Hearts wins are luck-dependent (at most one such goal a day, as before); Cascade and Mahjong wins are skill (`SKILL_WIN_GAMES`: a deadlocked Mahjong board can be undone); finish goals, Star Swarm and the table goal never are.
+- **Times** (Cascade, Mahjong) are whole minutes so the card shows `4 min`, not `4.25`. They use the wins only, are never below the fastest recent win, and are floored (Cascade 2 min, Mahjong 4 min). Only Cascade has a win floor against a forged clock.
+- **Star Swarm tiers.** Wave and score come from the recent runs on the install's usual `difficulty_tier` (the most common, the newest on a tie; none counts as `LieutenantJG`), need 3 runs there (else only the finish goal is offered), and the cap is the best of those runs. The goal itself is not tier-bound (no kind asks for one), so a run on an easier tier can meet it. Wave floor 3; score floor 1,000, rounded to 250.
+- **`dev_affected` runs never count**: not in the history (as before), and since #3996 not in `/status` or the streak either.
+- **Offline preview.** The Home card's offline progress (`localProgress.ts`) builds facts from the app's own result block, which has no `won` or `is_complete` for Blackjack, Hearts or Star Swarm, so it cannot show those finish and win goals as done until `/status` refreshes (follow-up #4032).
+- **Streak.** The streak query reads every game with a spec, not only the pools' games, so a pinned premium goal day scores.
+- Cost: an entitled-game check (one indexed query, once per request) runs on a personal pick, so a pick is at most five statements (the history's four, then `game_entitlements`); nothing is stored beyond the existing assignment row.
 
 **Bottle Sort has no personal goals yet.** The planned "solve _N_ new levels" goal (highest level solved before the day + _N_) cannot be pinned safely for today+1 and today+2: those days are pinned at the first open of today, so today's own solves could already meet them. It is deferred to #4028 (a relative "new levels" goal kind). Until then Sort is not an eligible game for a personal pick and does not count toward the 3 finished games; it still appears on shared-template days, with the absolute targets above (§2).
 
@@ -109,7 +128,7 @@ The salt is environment-specific. Its purpose is to make the future schedule sta
 
 `personal.choose_core` picks goals 2 and 3 for an install that has history:
 
-- **Eligible games** (`service.eligible_games`): the free games with goal specs, plus the premium games with specs the install is entitled to (the dev override counts as entitled). Never a game in `DISABLED_GAMES`. No premium game has specs yet (#3996), so today it is the free games and costs no query.
+- **Eligible games** (`service.eligible_games`): the free games with goal specs, plus the premium games with specs the install is entitled to (the dev override counts as entitled). Never a game in `DISABLED_GAMES`. Blackjack, Cascade, Hearts, Mahjong and Star Swarm have specs (#3996), so it reads the install's `game_entitlements` for them (one query, once per request; none under the dev override). A premium game never appears for an install that does not own it, whatever it has played.
 - **Affinity**: finished games on each of the last `DAILY_CHALLENGE_AFFINITY_DAYS` (14) local days, weighted 14 for yesterday, 13 for the day before, down to 1 for 14 days ago. Each slot is drawn with probability proportional to its game's affinity (a game's goal types share its weight).
 - **Variety guard**, as a ranking of the options (each rule only breaks ties left by the ones above it):
   1. at most one luck-dependent goal a day;
@@ -218,7 +237,7 @@ It does **not** send player-facing English copy.
 
 The frontend localizes each goal from `game_type + kind + target`. If a newer backend sends a goal kind the installed client does not know, the card falls back to generic "Play {game}" wording rather than exposing a raw translation key.
 
-The personal pick (#3993/#3994) adds no kind: it uses `completed`, `won`, `solved`, `final_score_at_least`, `highest_tile_at_least` and `won_moves_at_most`, each of which already has wording for the games that use it (`test_every_spec_goal_kind_is_an_existing_kind_with_frontend_wording`), so installed builds render every personal goal.
+The personal pick (#3993/#3994, #3996) adds no kind: it uses `completed`, `won`, `solved`, `final_score_at_least`, `highest_tile_at_least`, `won_moves_at_most`, and for the premium games `won_duration_ms_at_most`, `wave_reached_at_least` and `starting_chips_at_least`, each of which has wording for the games that use it in every locale (`test_every_spec_goal_kind_is_an_existing_kind_with_frontend_wording`, `test_every_premium_goal_has_wording_in_every_locale`), so installed builds that have the wording render every personal goal; an older build without a (game, kind) pair shows "Play {game}".
 
 **Dials** (server env vars, read lazily, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (12, 0–50), `DAILY_CHALLENGE_AFFINITY_DAYS` (14, 1–60) and `DAILY_CHALLENGE_HISTORY_GAMES` (10, 3–50), plus the kill switch `DAILY_CHALLENGE_PERSONALIZED` (§4), which serves the shared template to everyone.
 
@@ -237,7 +256,7 @@ The session-scoped `/status` route can resolve a premium slate. The slate is res
 
 A partly entitled player is never intentionally handed a challenge containing a game they cannot open.
 
-Today the two live pools are identical, so the slate distinction does not change the goals returned. The architecture remains in place for future premium-specific goal pools.
+Today the two live pools are identical, so the slate distinction does not change the goals returned (the premium games' personal goals do not use the pools; §2). The architecture remains in place for future premium-specific goal pools.
 
 A personal pick keeps the slate too: it is stored on the assignment, as for a shared day. Which games a personal pick may use is decided separately, by entitlement to each game with goal specs (§3a); the slate does not limit it.
 

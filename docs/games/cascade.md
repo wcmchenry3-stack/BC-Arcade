@@ -131,7 +131,7 @@ Cascade has no endpoints of its own: it uses the generic `/games` routes (the le
 - **Session.** `useGameRecorder("cascade")` (`useGameSync` plus the shared replay recorder): `POST /games` at the first drop, then `PATCH /games/{id}/complete`. The replay events it records (`game_started`, `drop`, `merge`, `game_ended`) are in [Recording and replay](#recording-and-replay-3858); the server validates `drop` and `merge` (`backend/cascade/events.py`) and holds a game to `CASCADE_CAP` in `backend/games/replay_caps.py` (128 events, 80 KB).
 - **Outcomes.** `win` (the capstone), `loss` (the lid or hard stop), `abandoned`. Builds before #3699 sent `completed` for both end states, which stays a finish with no winner.
 - **Result block** (`cascadeResultBlock`): `merge_score` and `max_tier` (app), `won`, `outcome`, `time_bonus`, `bonus_rule` and `final_score` (server, recomputed), plus `duration_ms`, `theme`, `total_drops`, `total_merges`. Table and rules: [The result block](cascade-decisions.md#the-result-block-3700). About 100 bytes more per game, on the existing row, uploaded once at game end.
-- **Daily Challenge.** The result block carries what Cascade goals will read: `won`, `max_tier` and the `duration_ms` column (win-within-time goals get a 20 s floor, `_WON_WITHIN_FLOORS`). Cascade has no goals in any pool yet; they join with the other premium games' goals (#2458, [DAILY-CHALLENGE.md](../DAILY-CHALLENGE.md) §2).
+- **Daily Challenge (#3996).** Premium players get Cascade goals through the personal pick ([DAILY-CHALLENGE.md §2a](../DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)); a free install never does: **finish a game** (`completed`, the cold-start goal: any end but an abandon), **win a game** (`won`, the capstone; not luck-dependent) and, lightly, **win in under _T_ minutes** (`won_duration_ms_at_most`, in whole minutes: the median of the last 10 wins x 0.88, never below the fastest of them, floor 2 minutes; offered after 3 wins, and with the 20 s win floor, `_WON_WITHIN_FLOORS`). Tier goals stay dropped. The result block carries `won` and, since #3996, `is_complete` (both written by the server from the completion's outcome, so a finish is a `win` or `loss`), and the `duration_ms` column.
 - **Time bonus source of truth:** `backend/cascade/time_bonus.py`, mirrored in `frontend/src/game/cascade/timeBonus.ts`, both checked against `backend/tests/fixtures/cascade_time_bonus.json`.
 
 ### 11. Stats and leaderboard
@@ -201,7 +201,7 @@ Cascade departs from the shared gameplay standards in these places. Each is inte
 - **Translations.** The English copies in other locales await translation (`frontend/scripts/i18n-english-copies.json`).
 - **Reduce Motion physics** is a deliberate deviation, in [section 14](#14-deviations-from-shared-standards).
 - **App version in recordings.** `game_started` records no app version yet; #3942 adds one for every game.
-- **No Daily Challenge goals yet.** See section 10; they arrive with the premium goal pool (#2458).
+- **Daily Challenge goals** are personal picks only (#3996, above): `PREMIUM_GOAL_POOL` still equals the free pool, so Cascade is not in a shared template.
 
 ### Recording and replay (#3858)
 
