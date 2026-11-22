@@ -1324,7 +1324,7 @@ export default function SolitaireScreen() {
               label={t("solitaire:action.hint")}
               onPress={handleHint}
               disabled={hintDisabled}
-              color={colors.bonus}
+              color={colors.bonusText}
             />
             <PillButton
               label={t("solitaire:action.undo")}
