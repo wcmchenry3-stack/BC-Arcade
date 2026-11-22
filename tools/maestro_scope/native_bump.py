@@ -16,11 +16,20 @@ from pathlib import Path
 DEP_SECTIONS = ("dependencies", "devDependencies")
 
 
+# Not Expo/RN by name, but they change what ships in the native bundle (the JS runtime, the
+# bundler and Expo's Babel preset), so a bump runs the full suite too (review of #4072).
+BUNDLE_PACKAGES = ("react", "babel-preset-expo")
+
+
 def is_native_package(name):
     """Expo or React Native package: expo, expo-*, @expo/*, or any name containing react-native
     (react-native, react-native-*, @react-native/*, @react-native-*/*, @shopify/react-native-skia,
-    @sentry/react-native, ...)."""
-    return name == "expo" or name.startswith(("expo-", "@expo/")) or "react-native" in name
+    @sentry/react-native, ...); plus react, babel-preset-expo and metro / metro-* (the bundler)."""
+    return (
+        name in ("expo", "metro", *BUNDLE_PACKAGES)
+        or name.startswith(("expo-", "@expo/", "metro-"))
+        or "react-native" in name
+    )
 
 
 def dependencies(text):

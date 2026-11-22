@@ -45,10 +45,16 @@ def test_expo_and_react_native_packages_are_native(name):
 
 
 @pytest.mark.parametrize(
-    "name", ["react-i18next", "intl-pluralrules", "react", "exponential", "@types/react"]
+    "name", ["react-i18next", "intl-pluralrules", "exponential", "@types/react", "metronome"]
 )
 def test_plain_js_packages_are_not_native(name):
     assert bump(name) == []
+
+
+@pytest.mark.parametrize("name", ["react", "metro", "metro-config", "babel-preset-expo"])
+def test_bundle_packages_count_as_native(name):
+    """react, the Metro bundler and Expo's Babel preset change the shipped bundle (#4072 review)."""
+    assert native_bump.is_native_package(name)
 
 
 def test_removed_native_package_is_native():
