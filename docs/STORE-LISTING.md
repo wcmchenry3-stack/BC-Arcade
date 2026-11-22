@@ -17,7 +17,7 @@ Hearts needs a fresh look.
 
 **Amended 2026-09-24 (owner): Mahjong and Sort swapped tiers** — Mahjong is now premium (migration
 `0022_swap_mahjong_sort` flips `game_types.is_premium`), Sort is free. Sort's daily-challenge goals
-take Mahjong's slot in the free pool; Mahjong's goals wait for #2458 alongside Blackjack's.
+take Mahjong's slot in the free pool; Mahjong's goals wait for #2458 alongside Blackjack's. _(Both shipped as personal goals in #3996.)_
 
 **Amended 2026-09-25 (owner): Sudoku moved to free, no compensating swap** — migration
 `0023_sudoku_free` flips `game_types.is_premium`. The 6/6 split was never a design target (see
@@ -55,7 +55,7 @@ risks rejection or later removal; over-declaring only costs audience.
 hidden in store builds until IAP (#822), like the other premium games — and **Yacht** (dice, no
 gambling, no betting) moved to free, so v1.0 still ships six games. Implemented in #2531
 (visibility + entitlement lists, migration `0020_swap_yacht_blackjack`, Yacht score goals in the daily
-challenge, Blackjack's goals parked for #2458). **The v1.0 rating is therefore 4+ / Everyone / PEGI 3,
+challenge, Blackjack's goals parked for #2458; since shipped as personal goals in #3996). **The v1.0 rating is therefore 4+ / Everyone / PEGI 3,
 and every answer below is the no-gambling answer.**
 
 Options that were considered, for when Blackjack returns in a paid update:

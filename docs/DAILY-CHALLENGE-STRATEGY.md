@@ -464,7 +464,7 @@ Owner decision (option 1): a **relative goal kind**, scored against the player's
 
 | Measure                                               | Server today                 | Device today                                | Gap                                                |
 | ----------------------------------------------------- | ---------------------------- | ------------------------------------------- | -------------------------------------------------- |
-| Recent finished games per game (scores, moves, times) | `games` rows (full history)  | only the personal best                      | small per-game ring buffer (§9)                    |
+| Recent finished games per game (scores, moves, times) | `games` rows (full history)  | only the personal best                      | none: read from `games` (ring buffer dropped, §13) |
 | Highest Sort level solved                             | `final_score` on solves      | Sort progress save                          | none                                               |
 | Sort stars per level                                  | not stored as a field        | `personal_best_v1:sort` (best moves) vs par | server: derive from moves and par, or skip offline |
 | Sudoku difficulty, errors                             | `games.metadata`             | personal best per variant                   | ring buffer                                        |
