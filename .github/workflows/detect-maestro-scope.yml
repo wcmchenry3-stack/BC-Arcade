@@ -12,11 +12,15 @@ name: Detect Maestro scope
 # job/file rather than folding into ci.yml so a mistake here can't destabilize
 # the Playwright gate.
 #
-# Full-suite triggers (#3546): `shared_app` (the app-wide half of Playwright's
-# `shared`) and `maestro_shared` (Maestro's own workflows/actions, the path
-# table, e2e/maestro, the English locale files flows assert on). Maestro does
-# NOT read `shared`, whose .github/workflows/** and .github/actions/** would
-# run the whole suite for any workflow edit.
+# PRs into dev (#4057, narrowing #3546): Maestro runs only for native paths /
+# Expo-RN bumps (`native_android`, `native_ios`) and Maestro's own files
+# (`maestro_infra`: workflows, actions, path table, e2e/maestro, the English
+# locale files flows assert on) -> full suite; and `maestro_drag`
+# (frontend/src/game/_shared/drag/**) -> the solitaire and freecell directories.
+# Nothing else does: not a game's own code, not shared_app, not the rest of
+# _shared/**; the nightly full suite covers those. PRs into main, push, schedule,
+# workflow_dispatch and the nightly's workflow_call always run the full suite.
+# Maestro does NOT read `shared` (Playwright's).
 #
 # iOS gate (#3547): with `platform: ios`, a PR into dev that changes no
 # `native_ios` path resolves to an empty `projects` (the iOS job is skipped)
@@ -78,7 +82,7 @@ jobs:
         # filter rather than depend on how it resolves a base for those events.
         if: github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
         with:
-          # One table for every scope job (game keys, `shared_app`, `maestro_shared`, `native_ios`) —
+          # One table for every scope job (`maestro_infra`, `maestro_drag`, `native_ios`, `native_android`; Playwright's game keys) —
           # see .github/paths/game-paths.yml (#2973). `daily_word` keeps its
           # underscore there (expression-safe) and is mapped to `daily-word` below.
           filters: .github/paths/game-paths.yml
@@ -87,7 +91,7 @@ jobs:
       # _shared) that isn't in the full-suite list below, or vice versa —
       # otherwise a newly added game's flows would silently never run on
       # either platform until someone remembers to update both this list
-      # and its matching key in .github/paths/game-paths.yml. The validated list
+      # (and a game's Playwright key in .github/paths/game-paths.yml). The validated list
       # is also exported as this step's `full_suite` output and is the
       # ONLY place the full-suite project set is spelled out — the `scope`
       # step below reads it back instead of hardcoding its own copy, so a
@@ -99,7 +103,7 @@ jobs:
           actual=$(ls e2e/maestro/flows | grep -v '^_shared$' | sort | tr '\n' ' ' | xargs)
           expected=$(echo "blackjack cascade daily-word freecell hearts home mahjong offline solitaire sort starswarm sudoku twenty48 yacht" | tr ' ' '\n' | sort | tr '\n' ' ' | xargs)
           if [[ "$actual" != "$expected" ]]; then
-            echo "::error::e2e/maestro/flows/ directories ($actual) don't match detect-maestro-scope.yml's hardcoded full-suite list ($expected). Update the full-suite list AND add/remove a matching key in .github/paths/game-paths.yml when a game's Maestro flows are added or removed."
+            echo "::error::e2e/maestro/flows/ directories ($actual) don't match detect-maestro-scope.yml's hardcoded full-suite list ($expected). Update the full-suite list (and the game's Playwright key in .github/paths/game-paths.yml) when a game's Maestro flows are added or removed."
             exit 1
           fi
           echo "full_suite=$expected" >> "$GITHUB_OUTPUT"
@@ -113,21 +117,10 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
           FLOWS: ${{ inputs.flows }}
           FULL_SUITE: ${{ steps.guard.outputs.full_suite }}
-          F_SHARED_APP: ${{ steps.filter.outputs.shared_app }}
-          F_MAESTRO_SHARED: ${{ steps.filter.outputs.maestro_shared }}
+          F_MAESTRO_INFRA: ${{ steps.filter.outputs.maestro_infra }}
+          F_MAESTRO_DRAG: ${{ steps.filter.outputs.maestro_drag }}
           F_NATIVE_IOS: ${{ steps.filter.outputs.native_ios }}
-          F_YACHT: ${{ steps.filter.outputs.yacht }}
-          F_BLACKJACK: ${{ steps.filter.outputs.blackjack }}
-          F_TWENTY48: ${{ steps.filter.outputs.twenty48 }}
-          F_CASCADE: ${{ steps.filter.outputs.cascade }}
-          F_MAHJONG: ${{ steps.filter.outputs.mahjong }}
-          F_FREECELL: ${{ steps.filter.outputs.freecell }}
-          F_STARSWARM: ${{ steps.filter.outputs.starswarm }}
-          F_HEARTS: ${{ steps.filter.outputs.hearts }}
-          F_SOLITAIRE: ${{ steps.filter.outputs.solitaire }}
-          F_SUDOKU: ${{ steps.filter.outputs.sudoku }}
-          F_DAILY_WORD: ${{ steps.filter.outputs.daily_word }}
-          F_SORT: ${{ steps.filter.outputs.sort }}
+          F_NATIVE_ANDROID: ${{ steps.filter.outputs.native_android }}
         run: |
           case "$PLATFORM" in
             android|ios) ;;
@@ -174,47 +167,30 @@ jobs:
             echo "### Maestro iOS: $label" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          # A shared path (app-wide or Maestro infra) runs the full suite.
-          if [[ "$F_SHARED_APP" == "true" ]] || [[ "$F_MAESTRO_SHARED" == "true" ]]; then
+          # PR into dev (#4057): Maestro runs only for native paths / Expo-RN
+          # bumps, Maestro's own files, and drag work. A game's own code,
+          # shared_app and the rest of _shared/** run nothing here: the nightly
+          # full suite covers them. (The iOS gate above already requires
+          # native_ios, so on iOS this is always the full suite.)
+          # The tooling selects whole flow directories, not single flows, so a
+          # drag PR runs the solitaire and freecell directories. offline only
+          # ever runs as part of the full suite.
+          native=false
+          [[ "$F_NATIVE_ANDROID" == "true" ]] && native=true
+          [[ "$PLATFORM" == "ios" ]] && [[ "$F_NATIVE_IOS" == "true" ]] && native=true
+          if [[ "$native" == "true" ]]; then
             echo "projects=$FULL_SUITE" >> "$GITHUB_OUTPUT"
-            echo "label=full suite (shared change)" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Build from matched game filters only — NOT seeded with "home",
-          # so a PR touching nothing Maestro-relevant (backend-only,
-          # docs-only) resolves to a genuinely empty string. That empty
-          # string is what lets mobile-smoke-{android,ios}.yml's
-          # `if: needs.detect-maestro-scope.outputs.projects != ''` skip
-          # the job entirely — no emulator/simulator boot for those PRs.
-          # offline is excluded from selective runs (Android-only, already
-          # excluded from the iOS job entirely) — full suite only.
-          projects=""
-          [[ "$F_YACHT"      == "true" ]] && projects="$projects yacht"
-          [[ "$F_BLACKJACK"  == "true" ]] && projects="$projects blackjack"
-          [[ "$F_TWENTY48"   == "true" ]] && projects="$projects twenty48"
-          [[ "$F_CASCADE"    == "true" ]] && projects="$projects cascade"
-          [[ "$F_MAHJONG"    == "true" ]] && projects="$projects mahjong"
-          [[ "$F_FREECELL"   == "true" ]] && projects="$projects freecell"
-          [[ "$F_STARSWARM"  == "true" ]] && projects="$projects starswarm"
-          [[ "$F_HEARTS"     == "true" ]] && projects="$projects hearts"
-          [[ "$F_SOLITAIRE"  == "true" ]] && projects="$projects solitaire"
-          [[ "$F_SUDOKU"     == "true" ]] && projects="$projects sudoku"
-          [[ "$F_DAILY_WORD" == "true" ]] && projects="$projects daily-word"
-          [[ "$F_SORT"       == "true" ]] && projects="$projects sort"
-          if [[ -n "$projects" ]]; then
-            # home is cheap and catches nav regressions — include it, but
-            # only once at least one real game matched (a docs/backend-only
-            # PR must still resolve to nothing).
-            projects="home$projects"
-            echo "label=selective:$projects" >> "$GITHUB_OUTPUT"
-          elif [[ "$PLATFORM" == "ios" ]]; then
-            # A native/iOS change that touches no game (a pod or native
-            # dependency bump, an Xcode project edit) can break any screen,
-            # so the iOS leg runs the full suite rather than nothing.
+            echo "label=full suite (native/Expo-RN change)" >> "$GITHUB_OUTPUT"
+          elif [[ "$F_MAESTRO_INFRA" == "true" ]]; then
             echo "projects=$FULL_SUITE" >> "$GITHUB_OUTPUT"
-            echo "label=full suite (native/iOS change, no game matched)" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "label=full suite (Maestro change)" >> "$GITHUB_OUTPUT"
+          elif [[ "$F_MAESTRO_DRAG" == "true" ]]; then
+            echo "projects=solitaire freecell" >> "$GITHUB_OUTPUT"
+            echo "label=selective: solitaire freecell (drag change)" >> "$GITHUB_OUTPUT"
           else
-            echo "label=nothing Maestro-relevant changed" >> "$GITHUB_OUTPUT"
+            # Empty string lets mobile-smoke-{android,ios}.yml's
+            # `if: needs.detect-maestro-scope.outputs.projects != ''` skip the
+            # job entirely: no emulator/simulator boot.
+            echo "projects=" >> "$GITHUB_OUTPUT"
+            echo "label=nothing Maestro-relevant changed (a PR into dev runs Maestro only for native, drag and Maestro changes)" >> "$GITHUB_OUTPUT"
           fi
-          echo "projects=$(xargs <<< "$projects")" >> "$GITHUB_OUTPUT"

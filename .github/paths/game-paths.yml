@@ -9,9 +9,10 @@
 # in `steps.filter.outputs.daily-word` as subtraction; detect-maestro-scope.yml
 # maps it back to the hyphenated `daily-word` flow directory).
 #
-# When adding a game, add its key here and wire it into the scope step of the
-# two consumers above (and the Maestro full-suite guard in
-# detect-maestro-scope.yml).
+# When adding a game, add its key here and wire it into ci.yml's scope step
+# (Playwright). Maestro no longer reads per-game keys (#4057): PRs into dev run
+# it only for native/Expo-RN changes, Maestro's own files and drag work; add the
+# flow directory to the full-suite guard in detect-maestro-scope.yml instead.
 
 yacht:
   - 'frontend/src/screens/GameScreen*'
@@ -96,12 +97,16 @@ logstore:
 # --- "Run everything" triggers. A match on a suite's common key OR its
 # --- suite-specific key below (OR-ed by each consumer) selects the full suite:
 # ---   Playwright (ci.yml):            shared            OR playwright_shared
-# ---   Maestro (detect-maestro-scope): shared_app        OR maestro_shared
+# ---   Maestro (detect-maestro-scope): full-suite events only (main PRs, push,
+# ---                                   schedule, dispatch, nightly); on a PR into
+# ---                                   dev see maestro_infra / maestro_drag below
 # `shared_app` is the app-wide part of `shared`. `shared` pulls it in through
 # the YAML anchor (dorny/paths-filter flattens nested lists), so Playwright's
 # full-suite trigger is unchanged. Maestro reads `shared_app` instead of
 # `shared` so that a workflow edit unrelated to Maestro (Playwright-only,
 # Render-only) no longer runs the whole Maestro suite on both legs (#3546).
+# Since #4057 Maestro reads neither on a PR into dev: `shared_app` is now
+# Playwright-only.
 shared_app: &shared_app
   - 'frontend/App.tsx'
   - 'frontend/app.json'
@@ -116,8 +121,13 @@ shared:
   - '.github/paths/**'
 playwright_shared:
   - 'e2e/**'
-maestro_shared:
-  - 'frontend/src/game/_shared/**'
+# --- Maestro on PRs into dev (#4057). Only native / Expo-RN bumps, Maestro's own
+# --- files and drag work run it; every other path (a game's own code, the replay
+# --- or other _shared code, assets) is covered by the nightly full suite.
+# `maestro_infra` runs the FULL suite; `maestro_drag` runs only the Solitaire and
+# FreeCell directories (the games with drag flows); `maestro_shared` is both,
+# the set of paths Maestro reacts to at all.
+maestro_infra: &maestro_infra
   # i18n (#3546): only the ENGLISH locale files a flow asserts text from. The
   # emulator/simulator run in English, so other locales never reach a flow and
   # must not trigger Maestro. Most assertions are testIDs now; these are the
@@ -159,6 +169,15 @@ maestro_shared:
   - '.github/actions/setup-frontend/**'  # both legs
   - '.github/actions/maestro-install/**' # both legs
   - '.github/paths/**'
+maestro_drag: &maestro_drag
+  # Shared drag code (#4057). Solitaire and FreeCell are the drag games; their
+  # flows are solitaire/drag*.yaml, freecell/drag*.yaml and _shared/assert-drag-ok.yaml.
+  # The tooling runs whole flow directories, so a drag PR runs `solitaire` and
+  # `freecell`. Deliberately NOT all of _shared/** (replay etc. are not Maestro's concern).
+  - 'frontend/src/game/_shared/drag/**'
+maestro_shared:
+  - *maestro_drag
+  - *maestro_infra
 
 # --- iOS leg gate (#3547). Read only by detect-maestro-scope.yml with
 # --- `platform: ios`: a PR into dev runs the iOS leg only when one of these
@@ -175,3 +194,13 @@ native_ios:
   - '.github/workflows/detect-maestro-scope.yml'
   - '.github/actions/maestro-install/**'
   - 'tools/ios_sim/**'
+
+# --- Android leg native gate (#4057). Read only by detect-maestro-scope.yml: a
+# --- PR into dev that changes one of these runs the full Android suite (a native
+# --- or Expo/React Native bump can break any screen). Mirrors native_ios.
+native_android:
+  - 'frontend/android/**'
+  - 'frontend/package.json'
+  - 'frontend/package-lock.json'
+  - 'frontend/app.json'
+  - 'frontend/app.config.*'
