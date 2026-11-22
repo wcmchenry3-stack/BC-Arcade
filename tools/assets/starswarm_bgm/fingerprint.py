@@ -8,7 +8,9 @@ un-encoded bed (`arrange.Stages.dry_mix`). Each is summarised as per-window RMS 
 peak, rounded to 9 significant digits, and `reference_fingerprint.json` holds those numbers.
 
 A changed cue level, window, duck, fade or pitch, or a changed layer or bed, moves some window by
-far more than TOLERANCE; float noise between machines moves it by about 1e-12.
+far more than TOLERANCE (a 0.09 dB cue change is about 1e-2 relative). Float noise between machines
+moves RMS values by about 1e-12, but a peak is one sample and moves more: 2.6e-6 relative on one CI
+runner (#4027, PR #4031), so TOLERANCE leaves 40x headroom over that and 100x under a real change.
 
 The file also records `shipped_sha256`, the hash of the shipped MP3 the reference belongs to.
 A refresh that changes the fingerprint while the shipped MP3 is unchanged would silently bless a
@@ -29,7 +31,7 @@ from .common import SR
 
 REFERENCE = Path(__file__).resolve().parent / "reference_fingerprint.json"
 WINDOW_S = 5  # s per RMS window
-TOLERANCE = 1e-6  # relative, per value (ATOL below for near-silent windows)
+TOLERANCE = 1e-4  # relative, per value (ATOL below for near-silent windows)
 ATOL = 1e-9  # absolute floor: RMS values this small are noise
 DIGITS = 9
 

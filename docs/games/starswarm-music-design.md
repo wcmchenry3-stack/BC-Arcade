@@ -35,7 +35,7 @@ with the pinned numpy, scipy and soundfile. `--check` rebuilds and compares the 
 `tools/assets/tests/starswarm_bgm_test.py` rebuilds it in CI and checks it two ways (#4027). The build
 encodes MP3 three times and libmp3lame is chaotic: the same code and packages gave MP3s that differed
 by 2e-3 relative RMS on two CI runners, with the same sound. So the test pins the encoder-free stages
-tightly (1e-6 relative): the un-encoded bed, each layer's phrase, and the arrangement laid over the
+tightly (1e-4 relative; float noise between machines is at most a few 1e-6, on a peak): the un-encoded bed, each layer's phrase, and the arrangement laid over the
 un-encoded bed, summarised as per-5 s-window RMS and peak in
 `tools/assets/starswarm_bgm/reference_fingerprint.json` (about 6 KB; no audio is stored). A changed cue
 level (even 0.09 dB), window, duck, fade, pitch or layer fails it. The final shipped MP3 is checked

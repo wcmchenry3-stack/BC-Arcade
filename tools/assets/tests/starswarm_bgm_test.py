@@ -7,8 +7,9 @@ and failed on another with 2.08e-3). So the recipe is checked in two layers:
 
 1. `test_recipe_matches_the_reference_fingerprint` pins the encoder-free stages (the un-encoded bed,
    each layer's phrase, and the arrangement laid over the un-encoded bed) against
-   `starswarm_bgm/reference_fingerprint.json` at 1e-6 relative. Float noise moves them by about
-   1e-12, a changed cue level, window, duck, fade, pitch or layer by orders of magnitude more.
+   `starswarm_bgm/reference_fingerprint.json` at 1e-4 relative. Float noise moves RMS values by
+   about 1e-12 and a single-sample peak by up to 2.6e-6 (seen on one CI runner); a changed cue
+   level, window, duck, fade, pitch or layer moves them by 1e-2 or more.
 2. `test_recipe_rebuilds_the_shipped_track` compares the final MP3 with the shipped one at a
    tolerance that allows encoder differences between machines: same length, relative RMS and
    per-window loudness (justified at the constants below).
@@ -225,6 +226,9 @@ def test_fingerprint_catches_a_changed_cue_level_but_not_float_noise():
     # Float noise (a ulp-level difference between machines) is inside the tolerance.
     noisy = _toy_stage(0.7) * (1 + 1e-12)
     assert not fingerprint.differences(fingerprint.summarise(noisy), want)
+    # So is the worst peak drift seen between CI runners (2.6e-6 relative), with headroom.
+    drifted = _toy_stage(0.7) * (1 + 1e-5)
+    assert not fingerprint.differences(fingerprint.summarise(drifted), want)
     # A 0.1 dB change to one cue is far outside it.
     louder = fingerprint.summarise(_toy_stage(0.7 * 10 ** (0.1 / 20)))
     assert fingerprint.differences(louder, want)
