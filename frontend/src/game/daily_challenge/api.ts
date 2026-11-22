@@ -16,7 +16,10 @@
  *    this install's pinned goals for each day (#3992; the shared client sends
  *    `X-Session-ID`), the same goals `/status` serves on that day. Only read to
  *    cache goals for offline play (#3228).
- * Every day payload may carry a `bonus` goal (#3995); this build ignores it.
+ * Every day payload may carry a `bonus` goal (#3995): one optional extra goal, never part
+ * of `goals`, never counted toward the day or the streak. `/status` adds its `completed`
+ * flag; `/today` and `/upcoming` give it not done. A malformed bonus is dropped (null),
+ * never an error: the three core goals are what matter.
  * A premium session's two responses can describe different goals, so the goal
  * list is never built from one and its completion read from the other.
  */
@@ -52,6 +55,11 @@ export interface DailyChallenge {
   readonly challengeId: string;
   readonly goals: readonly ChallengeGoal[];
   /**
+   * The optional bonus goal (#3995), or null/absent (a shared-template day, the bonus
+   * dial off, a cache saved before it existed). Not counted in any "N of 3".
+   */
+  readonly bonus?: ChallengeGoal | null;
+  /**
    * True when `/status` could not be read and this is only the free slate from
    * `/today`, with no progress. A consumer that already holds a real challenge
    * should keep it rather than replace it with this.
@@ -77,6 +85,7 @@ interface WireGoalStatus extends WireGoal {
 interface WireToday {
   readonly challenge_id: string;
   readonly goals: readonly WireGoal[];
+  readonly bonus?: WireGoal | null;
 }
 
 interface WireUpcoming {
@@ -86,6 +95,7 @@ interface WireUpcoming {
 interface WireStatus {
   readonly challenge_id: string;
   readonly goals: readonly WireGoalStatus[];
+  readonly bonus?: WireGoalStatus | null;
 }
 
 const MS_PER_MINUTE = 60_000;
@@ -109,6 +119,26 @@ export function wireTarget(goal: ChallengeGoal): number | null {
   return goal.kind.includes("duration_ms") ? Math.round(goal.target * MS_PER_MINUTE) : goal.target;
 }
 
+/** The bonus of a day payload, or null when absent or not a goal. Never throws. */
+function toBonus(bonus: unknown, hasStatus: boolean): ChallengeGoal | null {
+  const b = bonus as Partial<WireGoalStatus> | null | undefined;
+  if (
+    typeof b?.id !== "string" ||
+    typeof b.game_type !== "string" ||
+    typeof b.kind !== "string" ||
+    (b.target !== null && b.target !== undefined && typeof b.target !== "number")
+  ) {
+    return null;
+  }
+  return toGoal(b as WireGoal, hasStatus && b.completed === true);
+}
+
+/** `{ bonus }` for a payload that has one, else nothing: a day without a bonus is unchanged. */
+function bonusField(bonus: unknown, hasStatus: boolean): { bonus?: ChallengeGoal } {
+  const parsed = toBonus(bonus, hasStatus);
+  return parsed ? { bonus: parsed } : {};
+}
+
 /** Throws on a body that is not the `/status` contract, so the caller can degrade to `/today`. */
 function fromStatus(status: WireStatus): DailyChallenge {
   if (!Array.isArray(status.goals)) throw new Error("daily-challenge /status has no goals");
@@ -120,6 +150,7 @@ function fromStatus(status: WireStatus): DailyChallenge {
       }
       return toGoal(goal, goal.completed);
     }),
+    ...bonusField(status.bonus, true),
   };
 }
 
@@ -127,6 +158,7 @@ function fromToday(today: WireToday): DailyChallenge {
   return {
     challengeId: today.challenge_id,
     goals: today.goals.map((goal) => toGoal(goal, false)),
+    ...bonusField(today.bonus, false),
     isFallback: true,
   };
 }
@@ -135,7 +167,11 @@ function fromUpcomingDay(day: WireToday): DailyChallenge {
   if (typeof day?.challenge_id !== "string" || !Array.isArray(day.goals)) {
     throw new Error("daily-challenge /upcoming day is not a challenge");
   }
-  return { challengeId: day.challenge_id, goals: day.goals.map((goal) => toGoal(goal, false)) };
+  return {
+    challengeId: day.challenge_id,
+    goals: day.goals.map((goal) => toGoal(goal, false)),
+    ...bonusField(day.bonus, false),
+  };
 }
 
 export const dailyChallengeApi = {

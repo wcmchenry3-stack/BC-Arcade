@@ -71,9 +71,9 @@ class ChallengeStatus:
     slate: Slate
     template: Template
     goals: tuple[GoalStatus, ...]
-    # The optional bonus goal (#3995): never counted in ``completed_goals`` or the
-    # streak. Always None until #3995 fills it.
-    bonus: Goal | None = None
+    # The optional bonus goal (#3995), evaluated like a core goal: never counted in
+    # ``completed_goals``, ``completed`` or the streak.
+    bonus: GoalStatus | None = None
 
     @property
     def completed_goals(self) -> int:
@@ -239,7 +239,9 @@ async def pick_for_install(
       the slate ``resolve_slate`` chooses (``shared_for_install``), exactly, so goals a
       device already shows for the day never change when it is pinned.
     * **Otherwise**: Daily Word plus two personal goals (``personal.choose_core``),
-      on the slate ``resolve_slate`` chooses, stored with the day. No bonus (#3995).
+      on the slate ``resolve_slate`` chooses, stored with the day, plus the optional bonus
+      goal (``personal.choose_bonus``, #3995; none when ``DAILY_CHALLENGE_BONUS_ENABLED``
+      is off or nothing qualifies). The shared template never has one.
 
     Queries: the history (at most four, once per ``context``), then the entitlements
     (one, once per ``context``, none with the dev override) for a personal pick, and
@@ -276,7 +278,14 @@ async def pick_for_install(
             # shared template, never a failed /status.
             logger.warning("daily_challenge: no personal goals for %s; shared template", day)
         else:
-            result = Assignment(Template(derived_template_id(goals), goals), slate=slate)
+            bonus = (
+                personal.choose_bonus(install, day, ctx.eligible, goals, session_id=session_id)
+                if personal.bonus_enabled()
+                else None
+            )
+            result = Assignment(
+                Template(derived_template_id(goals), goals), slate=slate, bonus=bonus
+            )
     if result is None:
         result = await shared_for_install(session, session_id, day)
     install.pinned[day] = result
@@ -322,6 +331,8 @@ async def get_status_for_session(
     assignment = pinned[day.date]
     template = assignment.template
     game_types = {goal.game_type for goal in template.goals}
+    if assignment.bonus is not None:
+        game_types.add(assignment.bonus.game_type)
 
     rows = (
         await session.execute(
@@ -349,5 +360,5 @@ async def get_status_for_session(
         slate=assignment.slate,
         template=template,
         goals=evaluate_template(template, ended),
-        bonus=assignment.bonus,
+        bonus=None if assignment.bonus is None else evaluate_goal(assignment.bonus, ended),
     )

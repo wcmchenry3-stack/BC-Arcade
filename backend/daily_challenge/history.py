@@ -200,14 +200,19 @@ def _local_date(completed_at: datetime, tz_offset_minutes: int) -> date:
 
 def _probe_days(pinned: Mapping[date, Assignment], first_day: date) -> dict[str, set[date]]:
     """The finished days query 2 must read in full: the last two days each personal
-    goal type was pinned (step-down), and every bonus offer (rest rule)."""
+    goal type was pinned (step-down), and every discovery bonus offer (rest rule)."""
     probes: dict[str, set[date]] = defaultdict(set)
     history = InstallHistory(0, first_day, first_day, 1, pinned=dict(pinned))
     for game, type_name in personal.personal_type_keys():
         for d in personal.last_personal_occurrences(history, game, type_name, first_day):
             probes[game].add(d)
     for d, a in pinned.items():
-        if d < first_day and a.bonus is not None and a.bonus.game_type in personal.GAME_SPECS:
+        if (
+            d < first_day
+            and a.bonus is not None
+            and a.bonus.game_type in personal.GAME_SPECS
+            and personal.bonus_kind(a.bonus) == "discovery"
+        ):
             probes[a.bonus.game_type].add(d)
     return probes
 

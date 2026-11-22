@@ -422,6 +422,33 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "bonus.label": {
+    "component": "DailyChallengeCard",
+    "description": "Small uppercase label before the optional bonus goal chip, below the three core goals. The bonus is extra: it does not count toward the day or the streak.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown in capitals at 10px next to one chip. One short word, e.g. \"Bonus\"."
+  },
+  "bonus.doneA11y": {
+    "component": "DailyChallengeCard",
+    "description": "Screen-reader label for the optional bonus goal chip when it is done. {{goal}} is the chip's visible text.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": ["{{goal}}"],
+    "doNotTranslate": [],
+    "notes": "Say that it is a bonus and optional first, then the goal, then the state."
+  },
+  "bonus.todoA11y": {
+    "component": "DailyChallengeCard",
+    "description": "Screen-reader label for the optional bonus goal chip when it is not done yet. {{goal}} is the chip's visible text.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": ["{{goal}}"],
+    "doNotTranslate": [],
+    "notes": "Say that it is a bonus and optional first, then the goal, then the state."
+  },
   "loading.a11y": {
     "component": "DailyChallengeCard",
     "description": "Screen-reader label for the card while today's challenge is loading.",

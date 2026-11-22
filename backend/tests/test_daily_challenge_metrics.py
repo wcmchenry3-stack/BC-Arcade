@@ -361,3 +361,21 @@ async def test_several_chunks_cost_three_selects_each_plus_the_empty_page(
     assert report["install_days"] == 5
     assert len(seen) == 3 * 3 + 1  # 5 installs at chunk size 2 = 3 chunks
     assert all(stmt.startswith("SELECT") for stmt in seen)
+
+
+async def test_the_bonus_metric_splits_discovery_from_stretch_by_the_pinned_tier() -> None:
+    """A real #3995 bonus: tier "easy" marks a discovery goal, "medium" a stretch."""
+    d1, d2, s1 = (_new_install() for _ in range(3))
+    await _pin(d1, D1, bonus='["sudoku","solved",null,"easy"]')
+    await _pin(d2, D1, bonus='["sudoku","solved",null,"easy"]')
+    await _pin(s1, D1, bonus='["yacht","final_score_at_least",150,"medium"]')
+    await _play(d1, "sudoku", _at(D1), metadata={"won": True})
+    await _play(s1, "sort", _at(D1), final_score=4)
+    report = await _collect(D1, D1)
+    assert report["bonus_discovery"]["days_with_bonus"] == 3  # all bonuses, as before
+    assert report["bonus_by_kind"] == {
+        "discovery": {"days": 2, "played": 1, "share": 0.5},
+        "stretch": {"days": 1, "played": 0, "share": 0.0},
+    }
+    text = metrics.render(report)
+    assert "discovery: 1 / 2 played = 50.0%" in text and "stretch: 0 / 1 played" in text
