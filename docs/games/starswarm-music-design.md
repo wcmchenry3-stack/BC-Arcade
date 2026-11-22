@@ -84,10 +84,9 @@ Things to know before changing it:
   by its regions in order. Keep cues in time order, and treat any refactor of a layer as a change
   to verify (`--check`), not a tidy-up.
 - **Changing the music:** edit a layer or a cue, rebuild with `--stages` (or hear just the layer
-  with `--layers`), listen, then replace
-  `frontend/assets/sounds/starswarm-bgm.mp3` and update its SHA-256 and size here, in
-  `SOUND_CREDITS.md`, in `scripts/check_large_files.py` and in `EXPECTED_SHA256` in
-  `frontend/src/__tests__/starswarmBgm.test.ts`. Also run
+  with `--layers`), listen, then replace `frontend/assets/sounds/starswarm-bgm.mp3` and update
+  its SHA-256 and size here, in `SOUND_CREDITS.md`, in `scripts/check_large_files.py` and in
+  `EXPECTED_SHA256` in `frontend/src/__tests__/starswarmBgm.test.ts`. Also run
   `python tools/assets/build_starswarm_bgm.py --write-fingerprint` and commit the updated
   `tools/assets/starswarm_bgm/reference_fingerprint.json`: without it the CI fingerprint test fails
   on purpose. Do it after replacing the MP3: the file records the shipped MP3's SHA-256
