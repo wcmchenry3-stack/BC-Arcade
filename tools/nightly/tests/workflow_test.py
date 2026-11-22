@@ -262,7 +262,7 @@ def test_gate_can_read_the_runs_api_and_dedupes_only_the_schedule_event():
     assert "-f event=workflow_dispatch" in run
     assert '-f branch="$DEFAULT_BRANCH"' in run and '--branch "$DEFAULT_BRANCH"' in run
     assert "head_branch" in run
-    assert "{id, created_at, event}" in run
+    assert "{id, created_at, event, head_branch}" in run
     assert "date -u -d '20 hours ago'" in run
     assert '[ "$EVENT" = "schedule" ]' in run
     assert "--runs runs.json" in run and '--run-id "$RUN_ID"' in run
