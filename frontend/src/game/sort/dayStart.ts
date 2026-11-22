@@ -66,7 +66,10 @@ export async function recordSortSolve(day: string, bestBefore: number): Promise<
   if (stored?.day !== day) await slot.save({ day, best: Math.max(0, Math.floor(bestBefore)) });
 }
 
-/** Tests only: forget the in-memory day. */
+/**
+ * Tests only: forget the in-memory day.
+ * @internal
+ */
 export function resetSortDayStartForTests(): void {
   recordedDay = null;
 }
