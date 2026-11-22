@@ -118,3 +118,85 @@ describe("withLocalProgress", () => {
     expect(withLocalProgress({ ...challenge, bonus: undefined }, []).bonus).toBeUndefined();
   });
 });
+
+// #4032: the premium games send an outcome, not won / is_complete; the server writes
+// the flags (backend/games/result_flags.py) and the preview mirrors it.
+describe("factsOf — server-written outcome flags (#4032)", () => {
+  function facts(gameType: string, outcome: string | undefined, result: Record<string, unknown>) {
+    return factsOf(
+      pending({ gameType, completeSummary: { ...(outcome ? { outcome } : {}), result } })
+    );
+  }
+  const met = (
+    slug: string,
+    kind: string,
+    f: Record<string, unknown> | null,
+    target: number | null = null
+  ) => f !== null && goalMetBy(goal(kind, target, slug), f);
+
+  it.each(["blackjack", "hearts"])("%s: a win meets finish and win", (g) => {
+    const f = facts(g, "win", {});
+    expect(met(g, "completed", f)).toBe(true);
+    expect(met(g, "won", f)).toBe(true);
+  });
+
+  it.each(["blackjack", "hearts"])("%s: a loss finishes but is not a win", (g) => {
+    const f = facts(g, "loss", {});
+    expect(met(g, "completed", f)).toBe(true);
+    expect(met(g, "won", f)).toBe(false);
+  });
+
+  it("ignores the app's own won flag", () => {
+    const f = facts("hearts", "loss", { won: true, is_complete: false });
+    expect(f).toMatchObject({ won: false, is_complete: true });
+  });
+
+  it("writes neither flag without an outcome (non-cascade)", () => {
+    const f = facts("hearts", undefined, { won: true, is_complete: true });
+    expect(f).not.toHaveProperty("won");
+    expect(f).not.toHaveProperty("is_complete");
+  });
+
+  it("blackjack: a legacy 'completed' with chips left is a win", () => {
+    expect(facts("blackjack", "completed", { final_chips: 50 })).toMatchObject({
+      won: true,
+      is_complete: true,
+    });
+    expect(facts("blackjack", "completed", { final_chips: 0 })).toMatchObject({ won: false });
+    expect(facts("blackjack", "loss", { final_chips: 50 })).toMatchObject({ won: false });
+  });
+
+  it("starswarm: completed meets finish and never carries won", () => {
+    const f = facts("starswarm", "completed", { won: true });
+    expect(met("starswarm", "completed", f)).toBe(true);
+    expect(f).not.toHaveProperty("won");
+  });
+
+  it("cascade: win meets finish, win and the win-time limit", () => {
+    const f = facts("cascade", "win", {});
+    const limited = factsOf(
+      pending({
+        gameType: "cascade",
+        completeSummary: { outcome: "win", durationMs: 100_000, result: {} },
+      })
+    );
+    expect(met("cascade", "completed", f)).toBe(true);
+    expect(met("cascade", "won", f)).toBe(true);
+    expect(met("cascade", "won_duration_ms_at_most", limited, 2)).toBe(true);
+  });
+
+  it("cascade: a loss finishes only; no outcome is not won and not complete", () => {
+    const loss = facts("cascade", "loss", {});
+    expect(met("cascade", "completed", loss)).toBe(true);
+    expect(met("cascade", "won", loss)).toBe(false);
+    const none = facts("cascade", undefined, { won: true });
+    expect(none).toMatchObject({ won: false });
+    expect(none).not.toHaveProperty("is_complete");
+  });
+
+  it("leaves a free game's own flags unchanged", () => {
+    const f = facts("solitaire", "win", { won: false, is_complete: false });
+    expect(f).toMatchObject({ won: false, is_complete: false });
+    expect(facts("daily_word", undefined, { won: true })).toMatchObject({ won: true });
+  });
+});
