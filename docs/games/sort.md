@@ -67,6 +67,10 @@ The best moves per level are kept by the shared personal best (`game/_shared/per
 - **Only on this catalog.** The old key is moved in only when `@sort/catalog_version` is this build's catalog. Before the catalog migration it may hold the random levels' bests, which must never become catalog bests, so it is left exactly as stored for `catalogMigration.ts` (which reads it for the unlock and empties it in its one `setMany`); the next read then moves in the emptied `{}` and removes the key.
 - **Fail-safe.** A read that fails, or a newer build's record, gives the screen no bests to write back (`null`), so nothing it couldn't see is overwritten; failures are reported under the `personalBest` subsystem.
 
+### Daily Challenge: day-start best (#4028)
+
+The Daily Challenge's Sort goal is "solve N new levels" today: levels above the highest solved before the local day started ([DAILY-CHALLENGE.md §2a](../DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)). The bests keep only the current standing, so the day's first solve stores the standing before it (`game/sort/dayStart.ts`, `recordSortSolve`): `@sort/day_start`, `{"day":"YYYY-MM-DD","best":N}`, about 30 bytes, one write per day Sort is played, on the solve (never the frame path), and only while the bests could be read. The offline Daily Challenge check reads it (`localProgress.dayStartOn`); a record for another day means no baseline, so the goal waits for `/status`. The server reads its own baseline from the synced rows.
+
 ### Lobby tile: Resume (#4008)
 
 The Sort tile on the lobby says **Resume** (button "Resume", status "In progress") when a board is saved that the level grid's Continue would restore: `game/sort/lobbyStatus.ts` `isResumable` (a `currentLevelId` and an unfinished `currentState`), on this build's level catalog (`@sort/catalog_version`, else the screen would drop or not read the board). The grid's Continue button uses the same predicate. The tile shows **no best** (bests are one per level).
