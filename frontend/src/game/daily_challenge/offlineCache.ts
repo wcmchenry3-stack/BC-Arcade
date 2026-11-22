@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { offlineWindowExhausted } from "../_shared/lastConnected";
 import type { DailyChallenge } from "./api";
-import { queuedGamesEndedOn, type EndedGame } from "./localProgress";
+import { dayStartOn, queuedGamesEndedOn, type DayStart, type EndedGame } from "./localProgress";
 
 /**
  * The Daily Challenge goals kept on the device for offline play (#3228, #3043).
@@ -84,6 +84,8 @@ export interface OfflineDay {
   readonly base: DailyChallenge | null;
   /** The queued games finished on `day`, for `withLocalProgress`. */
   readonly ended: readonly EndedGame[];
+  /** The day-start bests for `day`'s relative goals (#4028); absent when nothing was read. */
+  readonly dayStart?: DayStart;
   /**
    * Show the shared "connect to get the latest puzzle" message: the 3-day
    * window is exhausted, or goals were cached but none cover `day`. False when
@@ -114,5 +116,11 @@ export async function loadOfflineDay(
     const hadCache = days.length > 0 || isChallenge(status?.challenge);
     return { day, base: null, ended: [], windowExhausted: hadCache };
   }
-  return { day, base, ended: await queuedGamesEndedOn(day, offsetMinutes), windowExhausted: false };
+  // Sort's day-start best (#4028), one small read: the hook may score today's own held
+  // `/status` goals instead of `base`, so it is read whatever `base` holds.
+  const [ended, dayStart] = await Promise.all([
+    queuedGamesEndedOn(day, offsetMinutes),
+    dayStartOn(day),
+  ]);
+  return { day, base, ended, dayStart, windowExhausted: false };
 }

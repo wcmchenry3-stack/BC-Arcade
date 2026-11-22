@@ -125,6 +125,24 @@
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. Despite the shared \"final_score_at_least\" kind name, Sort Puzzle's goal is worded as reaching a level, not a score; {{target}} is the level number."
   },
+  "goal.sort.new_levels_at_least_one": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: solve {{count}} level(s) the player has never solved before, today. Replaying an old level does not count. Singular form ({{count}} = 1).",
+    "tone": "functional",
+    "characterLimit": 48,
+    "placeholders": ["{{count}}", "{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Bottle Sort\". Chips wrap, but keep it compact. \"New\" means beyond the highest level already solved, not a newly added level. {{count}} is 1 to 3. Plural forms follow the i18next count rules for the language."
+  },
+  "goal.sort.new_levels_at_least_other": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: solve {{count}} levels the player has never solved before, today, e.g. \"Solve 3 new Bottle Sort levels\". Replaying an old level does not count. Plural form.",
+    "tone": "functional",
+    "characterLimit": 48,
+    "placeholders": ["{{count}}", "{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name such as \"Bottle Sort\". Chips wrap, but keep it compact. \"New\" means beyond the highest level already solved, not a newly added level. {{count}} is 1 to 3. Plural forms follow the i18next count rules for the language."
+  },
   "goal.solitaire.moves_at_least_one": {
     "component": "DailyChallengeCard",
     "description": "A goal chip: make at least {{count}} moves in one game. Wins are not required. Singular form ({{count}} = 1).",
