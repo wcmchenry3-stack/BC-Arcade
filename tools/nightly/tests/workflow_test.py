@@ -219,7 +219,7 @@ def test_android_release_smoke_keeps_its_ci_job_and_shares_the_action():
     job = load("ci.yml")["jobs"]["android-release-smoke"]
     assert "name" not in job  # the required context is the job id
     assert job["if"] == "github.event_name == 'pull_request'"
-    assert job["needs"] == ["test-python", "test-frontend"]
+    assert job["needs"] == ["test-python", "test-frontend", "detect-native-changes"]
     assert job["timeout-minutes"] == 30
     action_steps = [
         s for s in job["steps"] if s.get("uses") == "./.github/actions/android-release-smoke"
@@ -238,3 +238,34 @@ def test_composite_action_sets_working_directory_on_every_run_step():
         if "run" in step:
             assert step["shell"] == "bash"
             assert step["working-directory"] == "frontend"
+
+
+def test_android_release_smoke_builds_only_on_native_android_changes():
+    """#4058: native outputs, not package.json / the lockfile, decide the build."""
+    job = load("ci.yml")["jobs"]["android-release-smoke"]
+    step = next(s for s in job["steps"] if s.get("id") == "changes")
+    env = step["env"]
+    assert "needs.detect-native-changes.outputs.has_native_android" in env["HAS_NATIVE_ANDROID"]
+    assert (
+        "needs.detect-native-changes.outputs.android_files_changed" in env["ANDROID_FILES_CHANGED"]
+    )
+    assert "package.json" not in step["run"]
+    assert "package-lock" not in step["run"]
+    # the composite action's own path still triggers a build
+    assert ".github/actions/android-release-smoke/" in step["run"].replace("\\.", ".")
+    # the job starts on every PR (no path filter, no native-output `if`)
+    assert job["if"] == "github.event_name == 'pull_request'"
+
+
+def test_cascade_sim_gate_plays_20_seeds_on_prs_and_100_otherwise():
+    """#4058: PRs play a reduced, informational seed count; nightly/dispatch keep 100."""
+    run = next(
+        s["run"]
+        for s in load("cascade-sim-gate.yml")["jobs"]["gate"]["steps"]
+        if "simulate-cascade" in s.get("run", "")
+    )
+    assert re.search(r'"\$EVENT_NAME" = "pull_request"[^\n]*--seeds 20\)', run)
+    assert "--capstone-seeds" not in run
+    # a given seeds input still wins; blank keeps the harness default (100)
+    assert '--seeds "$SEEDS_INPUT"' in run
+    assert "--seeds 100" not in run
