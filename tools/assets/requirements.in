@@ -13,3 +13,8 @@ pytest==9.2.0
 pyyaml==6.0.3
 # The Star Swarm music recipe writes its bed as a 16-bit WAV with libsndfile, as Round 44 did.
 soundfile==0.14.0
+# Windows-only dependency of pytest. pip-compile resolves for the platform it runs on and evaluates
+# environment markers there, so a `; sys_platform == "win32"` line is dropped on Linux and the lock would
+# lack colorama. Listed without a marker it is pinned and hashed (and installed, harmlessly, on Linux/macOS)
+# so a --require-hashes install on Windows works (#4001).
+colorama==0.4.6
