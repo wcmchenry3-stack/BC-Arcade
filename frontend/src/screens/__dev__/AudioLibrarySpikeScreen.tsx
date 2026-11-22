@@ -188,9 +188,9 @@ function ApproachC() {
       const source = ctxRef.current.createBufferSource();
       source.buffer = bufferRef.current;
       source.loop = true;
-      source.onLoopEnded = () => setLoopCount((n) => n + 1);
+      source.onloopended = () => setLoopCount((n) => n + 1);
       source.connect(gainRef.current);
-      setLoopCount(0); // reset before start so any immediate onLoopEnded doesn't get wiped
+      setLoopCount(0); // reset before start so any immediate onloopended doesn't get wiped
       source.start(0);
       sourceRef.current = source;
       setPlaying(true);
