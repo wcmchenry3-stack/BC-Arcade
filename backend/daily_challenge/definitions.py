@@ -100,6 +100,7 @@ from typing import Any, Literal
 from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from entitlements.service import DISABLED_GAMES
 from games.boards.editions import edition_switch_on
+from mahjong.models import MIN_CLEAR_MS as MAHJONG_MIN_CLEAR_MS
 from settings import Settings
 from sort.catalog import CATALOG_VERSION as SORT_CATALOG_VERSION
 
@@ -226,10 +227,13 @@ def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
 # The lowest plausible value of a "won within" measure, per (game, measure): a
 # win under it is a broken clock or a forged result and never meets the goal.
 # Cascade's 20 s win floor (#3700), so a forged 1 s win can't pass a Cascade
-# "win in under N minutes". Read when the goal is built, by every path that
-# builds one (the pools and ``goal_from_spec``), so a frozen day keeps it.
+# "win in under N minutes". Mahjong's floor is its leaderboard floor (#4033), so a
+# forged 1 s clear can't pass a Mahjong "clear in at most N minutes". Read when the
+# goal is built, by every path that builds one (the pools and ``goal_from_spec``),
+# so a frozen day keeps it.
 _WON_WITHIN_FLOORS: dict[tuple[str, str], int] = {
     ("cascade", "duration_ms"): CASCADE_MIN_WIN_MS,
+    ("mahjong", "duration_ms"): MAHJONG_MIN_CLEAR_MS,
 }
 
 
