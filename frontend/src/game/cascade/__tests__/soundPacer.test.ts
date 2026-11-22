@@ -50,7 +50,7 @@ describe("one-shot sounds", () => {
     pacer.win();
     expect(played).toEqual([]);
     advance(0);
-    expect(names()).toEqual(["drop", "land-light", "merge-t2", "win"]);
+    expect(names()).toEqual(["drop", "land-light", "merge-t2", "merge-t11", "win"]);
   });
 
   it("a landing plays the light or heavy file at the tier's volume", () => {
@@ -72,7 +72,7 @@ describe("one-shot sounds", () => {
     pacer.land(4);
     advance(0);
     expect(played.map(([, n, v]) => [n, v])).toEqual([["land-heavy", expect.any(Number)]]);
-    expect(played[0]![2]).toBeCloseTo(0.6 + 0.4 * 0.7);
+    expect(played[0]![2]).toBeCloseTo(0.6 + 0.4 * (7 / 11));
     // A lighter one inside the gap is dropped; a heavier one still plays.
     advance(MOTION.sound.landGapMs - 20);
     pacer.land(3);
@@ -81,7 +81,7 @@ describe("one-shot sounds", () => {
     pacer.land(9);
     advance(0);
     expect(played).toHaveLength(2);
-    expect(played[1]![2]).toBeCloseTo(0.6 + 0.4 * 0.9);
+    expect(played[1]![2]).toBeCloseTo(0.6 + 0.4 * (9 / 11));
     // After the gap anything plays again.
     advance(MOTION.sound.landGapMs + 1);
     pacer.land(0);
@@ -152,7 +152,7 @@ describe("merges and chains", () => {
     pacer.reset();
     advance(100);
     expect(played).toEqual([]);
-    expect(stopped.sort()).toEqual(["game-over", "win"]);
+    expect(stopped.sort()).toEqual(["game-over", "merge-t11", "win"]);
   });
 });
 
@@ -166,10 +166,71 @@ describe("the end sounds", () => {
     pacer.setCalm(true);
     pacer.win();
     advance(0);
+    // The winning merge's own file always starts at 0; only the chord's file seeks.
     expect(played.map(([, n, , from]) => [n, from])).toEqual([
+      ["merge-t11", 0],
       ["win", 0],
+      ["merge-t11", 0],
       ["win", CALM_WIN_OFFSET_S],
     ]);
+  });
+
+  it("the winning merge plays merge-t11 with the win chord at the same instant (#3966)", () => {
+    const { pacer, played, advance } = pacerOnClock();
+    pacer.merge(10, 1);
+    advance(500);
+    pacer.win();
+    advance(0);
+    expect(played.map(([at, n, v, from]) => [at, n, v, from])).toEqual([
+      [0, "merge-t10", 1, 0],
+      [500, "merge-t11", 1, 0],
+      [500, "win", 1, 0],
+    ]);
+  });
+
+  it("the winning merge is not a paced merge: it needs no queue slot and no gap (#3966)", () => {
+    const { pacer, names, advance } = pacerOnClock();
+    // A full queue of chain links, then the win: merge-t11 and win still play.
+    for (let link = 2; link <= 12; link++) pacer.merge(link % 10, link);
+    pacer.win();
+    advance(0);
+    expect(names().slice(-2)).toEqual(["merge-t11", "win"]);
+  });
+
+  it("a plain merge never plays merge-t11 (#3966)", () => {
+    const { pacer, names, advance } = pacerOnClock();
+    for (let t = 0; t <= 10; t++) pacer.merge(t, 1);
+    advance(1000);
+    expect(names()).not.toContain("merge-t11");
+  });
+
+  it("a merge-t11 player that fails never silences the win chord (#3966)", () => {
+    const played: CascadeSoundName[] = [];
+    const timers: (() => void)[] = [];
+    const pacer = createSoundPacer({
+      now: () => 0,
+      schedule: (run) => {
+        timers.push(run);
+      },
+      play: (name) => {
+        if (name === "merge-t11") throw new Error("the lazy player could not be built");
+        played.push(name);
+      },
+      prewarm: () => {},
+      stop: () => {},
+    });
+    pacer.win();
+    expect(() => timers.forEach((run) => run())).not.toThrow();
+    expect(played).toEqual(["win"]);
+  });
+
+  it("a landing of tier 5 is light and tier 6 heavy (heavyLandTier 6, #3966)", () => {
+    const { pacer, names, advance } = pacerOnClock();
+    pacer.land(5);
+    advance(100);
+    pacer.land(6);
+    advance(0);
+    expect(names()).toEqual(["land-light", "land-heavy"]);
   });
 
   it("the end sounds play while quiet", () => {

@@ -435,8 +435,8 @@ frontend/src/
 
 **fruitSets.test.ts**
 
-- All 3 sets (fruits, gems, planets) define exactly 11 tiers
-- No duplicate tiers within a set; all tiers 0–10 covered
+- All 3 sets (fruits, gems, planets) define exactly 12 tiers
+- No duplicate tiers within a set; all tiers 0–11 covered
 - Every fruit has non-empty name, emoji, and color
 - Radii increase monotonically with tier
 - Radii are identical across all sets for the same tier (physics skin-agnostic)
@@ -1576,7 +1576,7 @@ The spec's `ALLOWLIST` entries are keyed by screen, locale, overflow kind, a sel
 - the lobby requests no `.wasm` and has no `CanvasKit`; opening Cascade requests `canvaskit.<hash>.wasm` once, from the app's own origin;
 - Mahjong and Star Swarm keep a Canvas 2D canvas and never load CanvasKit;
 - drop (`__cascade_dropAt`), merge (`__cascade_spawnTierAt` twice, score > 0) and game over (`__cascade_triggerGameOver`, the `cascade-result` card);
-- the win (#3699): `__cascade_setupWin` restores two tier-9 pieces about to merge; the state reports `won`, the card stays hidden while the celebration plays (#2201), then shows "You Win!" with Time and Merges, and Play Again starts a fresh game;
+- the win (#3699): `__cascade_setupWin` restores two tier-10 pieces about to merge; the state reports `won`, the card stays hidden while the celebration plays (#2201), then shows "You Win!" with Time and Merges, and Play Again starts a fresh game;
 - an aborted `.wasm` download shows `cascade-web-error` (an alert, not an endless spinner); Retry then loads the board.
 
 It needs the e2e web build (`EXPO_PUBLIC_TEST_HOOKS=1`) and no backend. `helpers/cascade.ts` has `openCascade` (to the header, while the route may still be loading CanvasKit), `waitForCascadeBoard` and `gotoCascade` (both), and `setupWin`.

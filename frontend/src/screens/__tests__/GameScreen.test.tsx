@@ -338,6 +338,34 @@ function makeGameOverState(): Record<string, unknown> {
 // GH #225 — "Play Again" reset correctness
 // ---------------------------------------------------------------------------
 
+describe("GameScreen — mode picker Lobby exit (#3969)", () => {
+  it("the Lobby chip returns to the lobby and does not start a game", async () => {
+    (mockNavigation.popToTop as jest.Mock).mockClear();
+    mockStartGame.mockClear();
+    (saveLastMode as jest.Mock).mockClear();
+    const result = await render(
+      <ThemeProvider>
+        <YachtScorecardProvider>
+          <GameScreen
+            navigation={mockNavigation}
+            route={
+              { params: { initialState: makeState() } } as unknown as Parameters<
+                typeof GameScreen
+              >[0]["route"]
+            }
+          />
+        </YachtScorecardProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    await fireEvent.press(result.getByRole("button", { name: "Go back to lobby" }));
+    expect(mockNavigation.popToTop).toHaveBeenCalledTimes(1);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(saveLastMode).not.toHaveBeenCalled();
+    expect(result.getByTestId("yacht-mode-solo")).toBeTruthy();
+  });
+});
+
 describe("GameScreen — last difficulty (#1129)", () => {
   it("playing Solo keeps the last VS difficulty for next time", async () => {
     (loadLastMode as jest.Mock).mockResolvedValueOnce({ mode: "vs", difficulty: "hard" });

@@ -12,8 +12,10 @@
  *   seed      1     2     3     4     5
  *   60 Hz   65.4  55.3  60.6  68.5  72.0   (16.67 ms frames)
  *   120 Hz  57.3  48.2  71.8  51.8  54.6   (8.33 ms frames)
- * That is the #3920 ladder (11 tiers, radii 11.5-98, drops 0-5, making the capstone is the win)
- * on #3904's overlap tuning, with danger mode scaling tiers 2-4 by 0.2 and tier 5 by 0.35.
+ * That table is the #3920 ladder (11 tiers, radii 11.5-98, drops 0-5, making the capstone is the
+ * win) on #3904's overlap tuning, with danger mode scaling tiers 2-4 by 0.2 and tier 5 by 0.35.
+ * #3967 (12 tiers, radii 11-98, weights 1 1 2 3 4 4, tier 5 x0.25 in danger): the longest spam
+ * game of the 100-seed full suite is 72.4 s at 60 Hz and 68.2 s at 120 Hz.
  * History: #3904's 5-98 ladder read 72-94 s here, #3697's lively ladder 40-105 s, the 12-tier
  * ladder on Matter.js (#3695) 39-68 s, the 10-tier ladder 34-46 s. The longest spam game of the
  * 100-seed full suite is 84.9 s at 60 Hz and 84.4 s at 120 Hz, so the bound below has about 40 %

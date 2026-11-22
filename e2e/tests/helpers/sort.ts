@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { Page } from "@playwright/test";
+import { expect, Page } from "@playwright/test";
 import { installEntitlementsMock } from "./api-mock";
 
 const STORAGE_KEY = "@sort/progress";
@@ -109,6 +109,17 @@ export async function gotoSort(page: Page): Promise<void> {
   await page.evaluate((key) => localStorage.removeItem(key), STORAGE_KEY);
   await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
   await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
+}
+
+// Open Sort from the lobby while a board is saved (#4008): the tile says Resume (button "Resume",
+// status "In progress"), and a tap lands straight in the saved level, never on the level grid.
+export async function resumeSortFromLobby(page: Page): Promise<void> {
+  const tile = page.getByRole("button", { name: /^Play Sort Puzzle/ });
+  await expect(tile).toHaveAccessibleName(/in progress/i, { timeout: 10_000 });
+  await expect(page.getByTestId("game-btn-sort")).toContainText("Resume");
+  await tile.click();
+  await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Choose a Level")).toHaveCount(0);
 }
 
 // Inject a SortProgress value into localStorage, as a save of the current

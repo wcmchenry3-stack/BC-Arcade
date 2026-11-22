@@ -1,8 +1,11 @@
 /**
  * Cascade haptics (#3701, owner pick: B's map plus C's danger warning).
  *
- *   - land: Light (Medium for tier 6 and up); landings closer than `landGapMs` are dropped;
- *   - merge: Medium (tiers 0-3), Heavy (4-6), Heavy twice `doubleGapMs` apart (7-9);
+ *   - land: Light (Medium for tier 7 and up); landings closer than `landGapMs` are dropped;
+ *   - merge: Medium (tiers 0-4), Heavy (5-7), Heavy twice `doubleGapMs` apart (8-10: the capstone's winning merge has no merge pulse);
+ *     The thresholds are per PIECE (owner pick #3701) and every piece above tier 1 moved up a tier
+ *     when the ladder grew to 12 (#3962), so each was shifted by one: the same piece feels as it did
+ *     before; the new tier-1 and tier-2 pieces take the lighter neighbouring feel;
  *   - chain: a rising run on the counter's paced steps (`MOTION.chain.stepMs`): ×2 Light, ×3
  *     Medium, ×4 and on Heavy; a chain link fires its chain pulse instead of a merge pulse;
  *   - danger: one Warning when the lid count passes `dangerAt` (again only after it has cleared);
@@ -47,13 +50,13 @@ export function fireCascadeHaptic(kind: CascadeHaptic): void {
 
 /** The landing pulse for a tier. */
 export function landHaptic(tier: number): CascadeHaptic {
-  return tier >= 6 ? "medium" : "light";
+  return tier >= 7 ? "medium" : "light";
 }
 
 /** A plain merge's pulse for the tier it made, and whether it is doubled. */
 export function mergeHaptic(tier: number): { kind: CascadeHaptic; double: boolean } {
-  if (tier <= 3) return { kind: "medium", double: false };
-  if (tier <= 6) return { kind: "heavy", double: false };
+  if (tier <= 4) return { kind: "medium", double: false };
+  if (tier <= 7) return { kind: "heavy", double: false };
   return { kind: "heavy", double: true };
 }
 

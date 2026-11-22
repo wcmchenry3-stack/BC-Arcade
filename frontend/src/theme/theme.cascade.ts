@@ -12,21 +12,22 @@
  */
 
 /**
- * Debug-only placeholder colour per tier of the ladder (`game/cascade/tiers.ts`, tiers 0-10,
- * #3920). Each is distinct from its neighbours so stacked circles stay readable.
+ * Debug-only placeholder colour per tier of the ladder (`game/cascade/tiers.ts`, tiers 0-11,
+ * #3960). Each is distinct from its neighbours so stacked circles stay readable.
  */
 export const CASCADE_PIECE_COLORS = [
   "#e63946", // 0 Cherry / Pluto
-  "#4361ee", // 1 Blueberry / Mercury
-  "#f9c80e", // 2 Lemon / Mars
-  "#6a0572", // 3 Grape / Venus
-  "#f77f00", // 4 Orange / Earth
-  "#7cc242", // 5 Apple (green, #3920) / Neptune
-  "#6f4e37", // 6 Coconut / Uranus
-  "#ff4d9d", // 7 Dragonfruit / Saturn
-  "#ffd166", // 8 Pineapple / Jupiter
-  "#2d6a4f", // 9 Watermelon / Sun
-  "#e76f00", // 10 Pumpkin / Milky Way (capstone)
+  "#e4546a", // 1 Lychee (#3964) / Moon
+  "#2f8f2a", // 2 Lime (#3964) / Mercury
+  "#f9c80e", // 3 Lemon / Mars
+  "#d63a5c", // 4 Plum (#3964) / Venus
+  "#f77f00", // 5 Orange / Earth
+  "#7cc242", // 6 Apple (green, #3920) / Neptune
+  "#c4262e", // 7 Pomegranate (#3964) / Uranus
+  "#ff4d9d", // 8 Dragonfruit / Saturn
+  "#ffd166", // 9 Pineapple / Jupiter
+  "#2d6a4f", // 10 Watermelon / Sun
+  "#e76f00", // 11 Pumpkin / Milky Way (capstone)
 ] as const;
 
 /** The lid and danger-state colours for one theme (#3694). All `#rrggbb`: the screen mixes them. */
@@ -78,21 +79,51 @@ export const CASCADE_ART = {
   blushClosed: "#ff6f91",
   fruits: {
     cherry: { b: "#d81e3a", l: "#ff5a6e", d: "#8a0b20", o: "#6e0718" },
-    blue: { b: "#3f55b8", l: "#7d93ea", d: "#1f2b6e", o: "#18204f" },
-    blueCalyx: "#141a3e",
+    /** #3964: the Lychee (tier 1): a bumpy red-pink shell with a pearly peeled window. */
+    lychee: { b: "#e4546a", l: "#ff9aa0", d: "#a8223c", o: "#6a1224" },
+    lycheeBump: { d: "#9a1f38", l: "#ff9ea4" },
+    lycheePeel: { rim: "#8a1f34", edge: "#f6b9b0", flesh: "#fff5ec", shade: "#f1d2c8" },
+    lycheeStem: "#8a5a2a",
+    /** Cheeks of the pink-faced pieces (Lychee, Mangosteen B). */
+    blushPink: "#ff7a9a",
     lemon: { b: "#f7d531", l: "#fff08a", d: "#c9a20a", o: "#9c7a06" },
-    grapeBg: { b: "#3e1a5e", l: "#5a2a84", d: "#24103a" },
-    grape: { b: "#8a45c0", l: "#c08aec", d: "#55237e", o: "#3b145c" },
+    /** #3964: the Lime (tier 2) is a cut slice: this is the rind ring (the body's tone). */
+    lime: { b: "#2f8f2a", l: "#5fc34a", d: "#17601a" },
+    limePith: { outer: "#f1f7c6", inner: "#d7ec8c", heart: "#eaf6b6" },
+    limeFlesh: ["#a8e046", "#9ed93a"],
     orange: { b: "#f58a1f", l: "#ffb766", d: "#c2560a", o: "#8f3c05" },
     orangeStem: "#3f8a2a",
     orangeStemDot: "#2c6a1c",
     /** #3920: a bright glossy apple green (Granny Smith), apart from the Lemon and Watermelon. */
     apple: { b: "#7cc242", l: "#c4ec7a", d: "#3f8a1e", o: "#2a5e12" },
+    /** Retired (#3964, `FRUIT_ART.retired`): the Blueberry, Fruits tier 1 until the 12-tier ladder (#3960). */
+    blueberry: { b: "#3f55b8", l: "#7d93ea", d: "#1f2b6e", o: "#18204f" },
+    blueberryCalyx: "#141a3e",
+    /** Retired (#3964): the Grape, Fruits tier 3 until #3960 (4 with the placeholder). */
+    grapeBg: { b: "#3e1a5e", l: "#5a2a84", d: "#24103a" },
+    grape: { b: "#8a45c0", l: "#c08aec", d: "#55237e", o: "#3b145c" },
     /** Retired by #3920 (kept for `FRUIT_ART.retired`, never drawn in play): the red Apple. */
     appleRed: { b: "#c8102e", l: "#f2505e", d: "#7a0616", o: "#5e0411" },
     /** Retired by #3920: the Peach. */
     peach: { b: "#ffb27a", l: "#ffd9b0", d: "#e46a4e", o: "#b8452f" },
     peachBlush: "#f2706a",
+    /** #3964: the Plum (tier 4), "Santa Rosa": violet shoulders fading to ruby red. */
+    plum: { b: "#d63a5c", l: "#f79aa6", d: "#8a1440" },
+    plumShoulder: ["#5a47b8", "#7c3fa8"],
+    plumBloom: "#f2dcff",
+    plumSpeck: "#fbe3dc",
+    plumSeam: "#4a0c30",
+    plumBlush: "#ff8aa8",
+    plumStem: "#7a5226",
+    /** #3964: the Pomegranate (tier 7), leathery red with a spiky tan-brown calyx. */
+    pomegranate: { b: "#c4262e", l: "#f2704a", d: "#7a0c18", o: "#4e0610" },
+    pomegranateBlush: "#f58a3a",
+    pomegranateWine: "#6a0a1c",
+    pomegranateCalyx: { b: "#b8541c", d: "#6a2a10", o: "#3e1408" },
+    /** The darker stem outline and the fresher leaf of the #3964 pieces (and the retired figs). */
+    stemDark: "#2e1a08",
+    leafFresh: { b: "#4aa03a", d: "#1b5a1b", o: "#124a12" },
+    /** Retired (#3964, `FRUIT_ART.retired`): the Coconut, Fruits tier 6 until #3960 (7 with the placeholder). */
     coconut: { b: "#6e4426", l: "#9b6b44", d: "#3e2312", o: "#2b170b" },
     coconutEye: "#24130a",
     pine: { b: "#f3b52a", l: "#ffdc72", d: "#bb7a14", o: "#8a5508" },
@@ -110,12 +141,13 @@ export const CASCADE_ART = {
     /** Face ink per tier (eyes, smile), and the dragonfruit's own blush. */
     ink: [
       "#3a1418",
-      "#0f1330",
+      "#5a2430", // lychee
+      "#2a3a06", // lime
       "#4a3205",
-      "#1c0830",
+      "#2a0828", // plum: dark ink (light ink read as white blobs on the red-violet)
       "#4a2003",
       "#1a3a06",
-      "#1a0c04",
+      "#3a0a0a", // pomegranate: dark ink
       "#3a1418",
       "#4a2a02",
       "#0a2a10",
@@ -123,10 +155,42 @@ export const CASCADE_ART = {
     ],
     dragonfruitBlush: "#b0103c",
     /** Face ink of the retired pieces (#3920). */
-    retiredInk: { appleRed: "#3a0208", peach: "#5a1a0c" },
+    retiredInk: {
+      appleRed: "#3a0208",
+      peach: "#5a1a0c",
+      blueberry: "#0f1330",
+      grape: "#1c0830",
+      coconut: "#1a0c04",
+      figB: "#4a1428",
+      figC: "#3a3410",
+      mangosteenB: "#2a0820",
+    },
+    /** Retired, never used (#3964): Fig B (halved) and Fig C (Kadota), proposed for tier 1. */
+    figB: { b: "#5a3470", l: "#8a64a8", d: "#2a1440" },
+    figBInner: {
+      rind: "#f6e4d0",
+      pulp: "#d63e5c",
+      pulpIn: "#e8627c",
+      vein: "#b82a4a",
+      seed: "#fbe08a",
+      hollow: "#ffd9d0",
+    },
+    figBlush: "#ff6f8f",
+    figStem: "#a98a52",
+    kadota: { b: "#a49c48", l: "#e0d884", d: "#5e5a22", o: "#3a380e" },
+    kadotaStreak: "#ece59a",
+    kadotaBlush: "#c98a38",
+    kadotaEye: "#d86a3a",
+    kadotaCheek: "#d8884a",
+    /** Retired, never used (#3964): Mangosteen B (halved), proposed for tier 1. */
+    mangosteen: { b: "#6e2358", l: "#a8508c", d: "#2e0c28", o: "#1c0418" },
+    mangosteenInner: { rind: "#d0589c", flesh: "#fff3ea", groove: "#e0c4c4" },
+    mangosteenSegments: ["#fffdf8", "#fff7ee"],
+    mangosteenCalyx: { b: "#58a83c", d: "#1f6a1c", o: "#144a12" },
+    mangosteenCalyxStem: "#2e3a10",
   },
   cosmos: {
-    /** Retired by #3920 (kept for `COSMOS_ART.retired`, never drawn in play): the Moon. */
+    /** The Moon (tier 1 again since #3960; archived by #3920 in between). */
     moon: { b: "#cfd0d4", l: "#f2f2f4", d: "#8e9098" },
     maria: "#9d9fa8",
     pluto: { b: "#c99d76", l: "#e9c9a6", d: "#8d6244" },
@@ -166,6 +230,7 @@ export const CASCADE_ART = {
     /** Face ink per tier. */
     ink: [
       "#3a2416",
+      "#2a2a33", // moon (#3960)
       "#1a1612",
       "#3a1004",
       "#4a3006",
@@ -177,8 +242,6 @@ export const CASCADE_ART = {
       "#6a2a00",
       "#f4eaff",
     ],
-    /** Face ink of the retired pieces (#3920). */
-    retiredInk: { moon: "#2a2a33" },
   },
 } as const;
 
@@ -285,12 +348,13 @@ export const CASCADE_MOTION: {
   tones: {
     fruits: [
       { b: F.cherry.b, l: F.cherry.l, d: F.cherry.d },
-      { b: F.blue.b, l: F.blue.l, d: F.blue.d },
+      { b: F.lychee.b, l: F.lychee.l, d: F.lychee.d },
+      { b: F.lime.b, l: F.lime.l, d: F.lime.d },
       { b: F.lemon.b, l: F.lemon.l, d: F.lemon.d },
-      { b: F.grape.b, l: F.grape.l, d: F.grape.d },
+      { b: F.plum.b, l: F.plum.l, d: F.plum.d },
       { b: F.orange.b, l: F.orange.l, d: F.orange.d },
       { b: F.apple.b, l: F.apple.l, d: F.apple.d },
-      { b: F.coconut.b, l: F.coconut.l, d: F.coconut.d },
+      { b: F.pomegranate.b, l: F.pomegranate.l, d: F.pomegranate.d },
       { b: F.dragonfruit.b, l: F.dragonfruit.l, d: F.dragonfruit.d },
       { b: F.pine.b, l: F.pine.l, d: F.pine.d },
       { b: F.melon.b, l: F.melon.l, d: F.melon.d },
@@ -298,6 +362,7 @@ export const CASCADE_MOTION: {
     ],
     cosmos: [
       { b: C.pluto.b, l: C.pluto.l, d: C.pluto.d },
+      { b: C.moon.b, l: C.moon.l, d: C.moon.d },
       { b: C.mercury.b, l: C.mercury.l, d: C.mercury.d },
       { b: C.mars.b, l: C.mars.l, d: C.mars.d },
       { b: C.venus.b, l: C.venus.l, d: C.venus.d },

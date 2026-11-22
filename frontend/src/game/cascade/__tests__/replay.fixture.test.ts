@@ -40,14 +40,16 @@ const BOT: Bot = { ...skilledBot, name: "skilled-2s", nextDelayMs: () => 2000 };
 const SEEDS = { queue: 1003, engine: 2003 };
 const BOT_SEED = 3;
 
-// Hand-written expectations for this seeded game: it ends in the win.
+// Hand-written expectations for this seeded game: it ends in the win. Re-recorded on the 12-tier
+// ladder (#3967 / #3975, owner decision #3974; was 143 drops, 132 merges, 6430, step 17450, 8
+// units on the 11-tier ladder with 20-drop units).
 const EXPECTED = {
   outcome: "win",
-  drops: 143,
-  merges: 132,
-  score: 6430,
-  capstoneStep: 17450,
-  units: 8,
+  drops: 271,
+  merges: 242,
+  score: 18862,
+  capstoneStep: 32799,
+  units: 10,
 };
 
 interface Golden {

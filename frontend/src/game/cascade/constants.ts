@@ -7,11 +7,11 @@ export const OVERFLOW_LINE_Y = 80; // y from top: the lid (game-over line, #3694
 
 /**
  * The physics tuning a game was played on (#3858), recorded in `game_started` as `tuning`: the
- * owner's "3 lively" tuning (#3697), the overlap tuning (#3904) and the 11-tier ladder (#3920).
+ * owner's "3 lively" tuning (#3697), the overlap tuning (#3904) and the 12-tier ladder (#3960).
  * Change it with any constant below, in `physicsWorld.ts` or in `tiers.ts` that moves a pile (and
  * bump `ENGINE_VERSION`, engine.ts): a replay rebuilds only the tuning it was recorded on.
  */
-export const CASCADE_TUNING_ID = "lively3.overlap1.ladder11";
+export const CASCADE_TUNING_ID = "lively3.overlap1.ladder12";
 
 // Physics (#3697: planck.js 1.4.2, the owner's "3 lively" tuning). The engine works in world
 // pixels and fixed steps; `physicsWorld.ts` converts to planck's metres and seconds.

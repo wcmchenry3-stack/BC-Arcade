@@ -31,6 +31,7 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from games.replay_caps import CAP_REPORT_WINDOW_S
+from games.result_flags import with_outcome_flags
 from observability.report import Throttle, report_event
 from settings import Settings
 
@@ -198,6 +199,15 @@ class StarSwarmResult(BaseModel):
     # it keeps the run off the boards and the /stats roll-ups. Builds before it,
     # and every clean run, send none.
     dev_affected: bool | None = None
+    # Written by the server from the completion's outcome, never the app's (#3996):
+    # true for any run that ended (not an abandon). Star Swarm has no win, so no
+    # ``won``. The Daily Challenge's "finish a run" goal reads it.
+    is_complete: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _outcome_flags(cls, data: Any, info: ValidationInfo) -> Any:
+        return with_outcome_flags(data, (info.context or {}).get("outcome"), has_win=False)
 
     @field_validator("dev_affected", mode="wrap")
     @classmethod

@@ -42,6 +42,8 @@ Two families, both loaded via `@expo-google-fonts` and mapped through `frontend/
 
 Import from `theme/typography.ts` — never hardcode font family strings in components.
 
+**Lobby tile type (#4006).** Title 16 pt / 20, description 12 pt / 16 (3 lines, 5 when text is enlarged), Play button 13 pt in sentence case with 0.2 letter-spacing; minimum 11 pt, and tile text scales with the system font size up to `LOBBY_MAX_FONT_SCALE` (1.5). Values live in `frontend/src/components/home/lobbyColumns.ts`.
+
 Load fonts **per weight, by subpath** (`import { Manrope_400Regular } from "@expo-google-fonts/manrope/400Regular"` in `App.tsx`), never from the package barrel (`@expo-google-fonts/manrope`). The barrel `require`s every weight's `.ttf`, so Metro would package all 12 (about 648 KB more, #3839). Adding a weight means adding its subpath import, its `useFonts` key and its `typography.ts` entry; `src/__tests__/fontImports.test.ts` fails on a barrel import or a family name that is styled but not loaded.
 
 Icons are Material Icons and Material Design Icons glyphs, imported from `src/components/icons/MaterialIcons` and `src/components/icons/MaterialCommunityIcons`, never from `@expo/vector-icons/<Family>` (#3843). Those modules ship subset fonts with only the glyphs listed in `src/components/icons/iconNames.ts`, so `name` is a union type and `tsc` rejects any other icon. To add an icon, add its name to the list and run `python tools/assets/subset_icon_fonts.py` (see `frontend/assets/fonts/CREDITS.md`); `src/__tests__/iconSubset.test.ts` fails if the subset is stale.
@@ -201,6 +203,23 @@ Rules:
 
 ---
 
+## Lobby tile accents and press feedback (#4007)
+
+Each game has one fixed accent pair, which fills the tile's top stripe and its Play button. It is chosen by game (`frontend/src/components/home/tileAccents.ts`), never by position, so hiding a game or reordering the lobby recolours nothing. Touching means next to each other in a row, or one above the other. On phones (1 and 2 columns) no two touching tiles share a pair, in the 7-tile store lobby or the 12-game one. Four pairs cannot avoid it at every width (across 1 to 4 columns the first five store tiles all touch each other), so tablets keep the proven minimum: store, one pair at 3 columns (Yacht, FreeCell) and one at 4 (2048, Sort Puzzle); 12-game lobby, four at 3 columns and one at 4. `tileAccents.test.ts` pins this, with column counts read from `lobbyColumns`. A new game must be added to `TILE_ACCENT_PAIR` (a `Record<GameType, ...>`, so it fails to compile otherwise).
+
+| Pair | Stops (left to right)      | Games                         |
+| ---- | -------------------------- | ----------------------------- |
+| 0    | `tertiary`, `secondary`    | Daily Word, Sudoku, Blackjack |
+| 1    | `secondary`, `accent`      | Yacht, FreeCell, Star Swarm   |
+| 2    | `accent`, `accentBright`   | Solitaire, Cascade, Mahjong   |
+| 3    | `accentBright`, `tertiary` | 2048, Sort Puzzle, Hearts     |
+
+**Label ink** is `textOnAccent` (`#0e0e13`) on every pair in both themes, at 4.5:1 or more on both stops (`tileAccents.test.ts`): dark 7.2 to 16.1, light 6.7 to 9.2. In light, `secondary` `#a34fc4` is only 4.1:1 under that ink (white is 4.7 on it but 2.1 to 2.7 on the teal and lime stops), so the light tile fill uses the dark theme's `secondary` `#d674ff` (7.2:1) in its place.
+
+**Press feedback.** A pressed tile (locked ones too) drops to opacity 0.85 and scale 0.97, through Pressable's `style` callback: no state and no animation loop in JS. With Reduce Motion on (`useReduceMotion`) it dims only. A light haptic fires on tap (`onPress`), not on touch-down, because a finger that starts a scroll on a tile gets the Pressable's responder first and must not buzz; it fires on iOS and Android, not on web, and not when "Sound effects" is off in Settings (the app has no separate haptics setting). The helper is `components/home/tileHaptic.ts`.
+
+---
+
 ## Stitch-as-basis rule
 
 The Stitch zip is the **structural basis** for a screen's redesign — layout, component hierarchy, spacing, and interaction intent — not just a source of colors and fonts to paint onto the existing implementation. Earlier we made the mistake of reskinning existing screens with BC Arcade tokens while keeping their old layouts; that's not the goal.
@@ -254,7 +273,7 @@ Performance: Arcade and Parlor render no SVG filters. Synthwave renders no filte
 
 ## Cascade-specific theming
 
-Cascade's pieces and bin are drawn in code (`frontend/src/game/cascade/art/`, #3698); the bitmap asset pipeline is gone. Art colours live in `CASCADE_ART` (#3920: the Apple is a bright glossy green, `fruits.apple`; the retired red Apple, Peach and Moon keep their tokens for the [retired recipes](games/cascade-decisions.md#retired-pieces-3920)), and the bin uses `CASCADE_BIN_PALETTE` in `theme/theme.cascade.ts`, which equals the theme's surface, accent and border tokens. The win celebration (#3699) uses `CASCADE_CELEBRATION`: per set, colours taken from `CASCADE_ART` and the bin; per theme, the dim (the `background` token) and the ring (the `celebration` gold), checked in `gamePalettes.test.ts`. See [`games/cascade.md`](games/cascade.md). [`research/CASCADE-THEMING.md`](research/CASCADE-THEMING.md) describes the old pipeline and is kept for history.
+Cascade's pieces and bin are drawn in code (`frontend/src/game/cascade/art/`, #3698); the bitmap asset pipeline is gone. Art colours live in `CASCADE_ART` (#3920: the Apple is a bright glossy green, `fruits.apple`; the retired pieces keep their tokens for the [retired recipes](games/cascade-decisions.md#retired-pieces-3920): the red Apple, Peach, Blueberry, Grape, Coconut, Fig B, Fig C and Mangosteen B; #3964's Lychee, Lime, Plum and Pomegranate are `fruits.lychee`, `fruits.lime`, `fruits.plum` and `fruits.pomegranate`, and the Moon is live since #3960), and the bin uses `CASCADE_BIN_PALETTE` in `theme/theme.cascade.ts`, which equals the theme's surface, accent and border tokens. The win celebration (#3699) uses `CASCADE_CELEBRATION`: per set, colours taken from `CASCADE_ART` and the bin; per theme, the dim (the `background` token) and the ring (the `celebration` gold), checked in `gamePalettes.test.ts`. See [`games/cascade.md`](games/cascade.md). [`research/CASCADE-THEMING.md`](research/CASCADE-THEMING.md) describes the old pipeline and is kept for history.
 
 ---
 

@@ -112,6 +112,9 @@ jest.mock("../../game/sort/useSortAudio", () => {
   return { useSortAudio: () => audio };
 });
 
+// The route's params (the lobby's Resume tile passes `resume`, #4008); none unless a test sets them.
+let mockRouteParams: { resume?: boolean } | undefined;
+const mockSetParams = jest.fn();
 const mockNavListeners = new Map<string, Set<() => void>>();
 const mockAddListener = jest.fn((event: string, cb: () => void) => {
   const set = mockNavListeners.get(event) ?? new Set();
@@ -126,8 +129,9 @@ jest.mock("@react-navigation/native", () =>
       popToTop: jest.fn(),
       navigate: jest.fn(),
       addListener: mockAddListener,
+      setParams: mockSetParams,
     }),
-    { actual: true }
+    { actual: true, useRoute: () => ({ params: mockRouteParams }) }
   )
 );
 

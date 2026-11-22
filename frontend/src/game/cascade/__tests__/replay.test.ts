@@ -81,7 +81,7 @@ describe("quantizeX and the seeds", () => {
 });
 
 describe("the replay log", () => {
-  it("hands over a unit every 20 drops: a drop event and a merge event", () => {
+  it("hands over a unit every CASCADE_DROPS_PER_UNIT drops: a drop event and a merge event", () => {
     const { units, sink } = unitsSink();
     const log = createCascadeLog(sink);
     log.start();
@@ -93,17 +93,19 @@ describe("the replay log", () => {
     expect(units[0]!.n).toBe(1);
     expect(units[0]!.events.map((e) => e.type)).toEqual(["drop", "merge"]);
     const d = units[0]!.events[0]!.data.d as number[][];
-    expect(d).toHaveLength(20);
+    expect(d).toHaveLength(CASCADE_DROPS_PER_UNIT);
     expect(d[1]).toEqual([60, 1005, 1]);
     // Each merge is the first of its drop's chain.
     expect(units[0]!.events[1]!.data.m).toContainEqual([90, 0, 1]);
-    log.drop(1300, 50, 2);
+    const nextStep = CASCADE_DROPS_PER_UNIT * 60 + 100; // after the unit's last drop (1300 at 20)
+    log.drop(nextStep, 50, 2);
     log.close();
     expect(units.map((u) => u.n)).toEqual([1, 2]);
-    // The 20th drop closed unit 1, so its merge went with the next unit.
+    // The unit's last drop closed unit 1, so its merge went with the next unit.
+    const lastMergeStep = (CASCADE_DROPS_PER_UNIT - 1) * 60 + 30; // 1170 at 20 drops, 1770 at 30
     expect(units[1]!.events).toEqual([
-      { type: "drop", data: { d: [[1300, 500, 2]] } },
-      { type: "merge", data: { m: [[1170, 0, 1]] } },
+      { type: "drop", data: { d: [[nextStep, 500, 2]] } },
+      { type: "merge", data: { m: [[lastMergeStep, 0, 1]] } },
     ]);
   });
 
@@ -119,7 +121,7 @@ describe("the replay log", () => {
     expect(units[0]!.events[1]!.data.m).toEqual([
       [20, 3, 1],
       [21, 4, 2],
-      [23, 9, 3],
+      [23, 10, 3],
     ]);
     expect(log.endData(40)).toEqual({ end_step: 40, capstone_step: 23 });
   });
@@ -225,7 +227,7 @@ describe("the replay log", () => {
     expect(engine.flushDanger()).toEqual([]);
     const pieces: { tier: number; x: number; y: number }[] = [];
     let bottom = WORLD_HEIGHT - FLOOR_THICKNESS;
-    for (const tier of [10, 9, 7, 4]) {
+    for (const tier of [11, 10, 8, 4]) {
       pieces.push({ tier, x: 121, y: bottom - tierRadius(tier) });
       bottom -= 2 * tierRadius(tier);
     }
@@ -346,11 +348,11 @@ describe("the engine's step counter and danger events", () => {
   });
 
   it("a pile held over the lid ends the game with one danger event at the threshold", () => {
-    // engine.lid.test.ts's COLUMN: a capstone and tiers 9, 7 and 4 stacked at x = 121, the top
+    // engine.lid.test.ts's COLUMN: a capstone and tiers 10, 8 and 4 stacked at x = 121, the top
     // edge over the lid, and a Cherry in the empty lane. Restore's grace, then the full count.
     const pieces: { tier: number; x: number; y: number }[] = [];
     let bottom = WORLD_HEIGHT - FLOOR_THICKNESS;
-    for (const tier of [10, 9, 7, 4]) {
+    for (const tier of [11, 10, 8, 4]) {
       pieces.push({ tier, x: 121, y: bottom - tierRadius(tier) });
       bottom -= 2 * tierRadius(tier);
     }
@@ -377,7 +379,7 @@ describe("the engine's step counter and danger events", () => {
     const engine = new CascadeEngine({ seed: 1 });
     const pieces: { tier: number; x: number; y: number }[] = [];
     let bottom = WORLD_HEIGHT - FLOOR_THICKNESS;
-    for (const tier of [10, 9, 7, 4]) {
+    for (const tier of [11, 10, 8, 4]) {
       pieces.push({ tier, x: 121, y: bottom - tierRadius(tier) });
       bottom -= 2 * tierRadius(tier);
     }

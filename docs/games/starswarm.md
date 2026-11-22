@@ -65,7 +65,7 @@ extraction — see [Wave Structure](#wave-structure)).
 
 - Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately. While the wave-clear autopilot flies the ship (#2842) the drag is ignored; a drag held through it picks up from the ship's new position rather than snapping back under the finger.
 - The ship auto-fires; there is no ammunition economy.
-- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape close it and return to the paused run (#3463); with no run under the picker (cold start, a finished run) they start a run like Start.
+- Pause suspends the run; leaving the screen (the header's Back) or the app, even with the New Game picker open, saves it for resume. On the picker, Android's hardware Back and web's Escape close it and return to the paused run (#3463); with no run under the picker (cold start, a finished run) they start a run like Start. The picker covers the header, so a "Lobby" chip floats over it near the Back arrow's position (mirrored in right-to-left) (#3969): it does what the header's Back does (saves a held run, then returns to the lobby) and never starts a run.
 - New Game starts a clean run and abandons the old server session if one is open.
 - Development-only tuning controls are test aids, not player rules.
 
@@ -340,7 +340,8 @@ helper for the armor state; the screen announces `a11y.carrierExposed` when it d
 GD1 Scarab, Carrier C1 Queen (#3593). Since #3708 the Grunt is the bolder Wasp, with heavier rims,
 more solid wings, a fuller body and a wider stinger so it does not blur into the violet nebula in
 motion, and the Elite's and the Carrier's membrane wings follow it. Art only: sizes, hitboxes and
-behaviour are unchanged. The same Wasp, in a hex badge, is the Star Swarm home tile icon (#3599).
+behaviour are unchanged. The same Wasp, in a hex badge, was the Star Swarm home tile icon (#3599)
+until #4013 redrew the tile as an open scene from these sprites: three Wasps diving on the Arrow.
 
 ## Wave Structure
 
@@ -1646,7 +1647,9 @@ Details:
   the saved run itself, abandoning its session once, in `startRun`. Android's hardware Back and
   web's Escape on the picker (its `onRequestClose`) close it and return to the run it covers
   (#3463, `CLOSE_PICKER`): the run is left paused, its save and session untouched, nothing
-  abandoned; a later leave saves it as above. With no run under the picker (the cold start's, or a
+  abandoned; a later leave saves it as above. The picker's Lobby chip (`ModalCard`'s `onHome`, #3969)
+  shares the header Back's `goHome` handler, so it saves a held run and returns to the lobby;
+  it never starts a run. With no run under the picker (the cold start's, or a
   finished run's) there is nothing to return to and they start a run like Start. The header's ⋯ menu already paused and
   saved the run as it opened (#2944); the gap was a run paused with the pause button (which
   doesn't save) and then sent to the picker from the pause overlay.
@@ -2699,3 +2702,7 @@ migration is additive (its downgrade deletes only `wave_timeline` rows).
   wave's `wave_completed` summary, its decoded timeline and the reconciliation between them (a sampled
   diagnostic, not a frame-by-frame or projectile replay). See
   [Reader and reconciliation](starswarm-diagnostics.md#reader-and-reconciliation-3395).
+
+## Daily Challenge (#3996)
+
+Premium players get Star Swarm goals through the personal pick ([DAILY-CHALLENGE.md §2a](../DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)); a free install never does. The game has no win, so: **finish a run** (`completed`, the cold-start goal; the run ended, an abandon does not count), **reach wave _T_** (`wave_reached_at_least`, from `wave_reached`; floor 3) and **score _T_+** (`final_score_at_least`; floor 1,000, rounded to 250). The wave and score targets use the stretched median of the last 10 runs **on the install's usual `difficulty_tier`** (the most common one, the newest on a tie; a run with none counts as `LieutenantJG`), capped at the best of those runs, and need 3 runs there. The goal itself is not tier-bound: no existing goal kind asks for a tier, so a run on an easier tier can meet it. A run with `dev_affected` never counts, for a goal, a target or the streak. The app sends `outcome: "completed"`, so `StarSwarmResult` writes `is_complete` from the completion's outcome (`backend/games/result_flags.py`).

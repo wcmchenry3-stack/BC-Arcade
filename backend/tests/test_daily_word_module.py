@@ -13,7 +13,7 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from daily_challenge.definitions import FREE_GOAL_POOL, game_facts
+from daily_challenge.definitions import FREE_GOAL_POOL, game_facts, goal_from_spec
 from daily_word.models import DailyWordMetadata, DailyWordResult
 from daily_word.module import module
 from games.protocol import GameModule
@@ -75,10 +75,9 @@ def test_result_does_not_cap_guesses_so_a_taller_board_cannot_dead_letter_a_game
     assert DailyWordResult.model_validate({"is_complete": True, "won": True, "guesses_used": 8})
 
 
-def _met(result: dict, tier: str) -> bool:
-    """Does a finished game reporting *result* meet Daily Word's *tier* goal?"""
+def _met(result: dict, goal: Any) -> bool:
+    """Does a finished game reporting *result* meet *goal*?"""
     facts = game_facts(DailyWordResult.model_validate(result).model_dump(), None, None)
-    (goal,) = (g for g in FREE_GOAL_POOL["daily_word"] if g.tier == tier)
     return goal.evaluate(facts)
 
 
@@ -88,11 +87,23 @@ def test_reported_result_drives_the_daily_challenge_goals() -> None:
     win_in_5 = {"is_complete": True, "won": True, "guesses_used": 5}
     loss = {"is_complete": True, "won": False, "guesses_used": 6}
     abandoned = {"is_complete": False, "won": False, "guesses_used": 2}
+    results = (win_in_3, win_in_5, loss, abandoned)
 
-    assert [_met(win_in_3, t) for t in ("easy", "medium", "hard")] == [True, True, True]
-    assert [_met(win_in_5, t) for t in ("easy", "medium", "hard")] == [True, True, False]
-    assert [_met(loss, t) for t in ("easy", "medium", "hard")] == [True, False, False]
-    assert [_met(abandoned, t) for t in ("easy", "medium", "hard")] == [False, False, False]
+    # #3991: the live goal is always "complete" - a loss counts, an abandon does not.
+    live = set(FREE_GOAL_POOL["daily_word"])
+    assert len(live) == 1
+    (goal,) = live
+    assert [_met(r, goal) for r in results] == [True, True, True, False]
+
+    # Days frozen before #3991 keep their old win goals, which read the same fields.
+    won = goal_from_spec(
+        {"game_type": "daily_word", "kind": "won", "target": None, "tier": "medium"}
+    )
+    within_4 = goal_from_spec(
+        {"game_type": "daily_word", "kind": "won_guesses_used_at_most", "target": 4, "tier": "hard"}
+    )
+    assert [_met(r, won) for r in results] == [True, True, False, False]
+    assert [_met(r, within_4) for r in results] == [True, False, False, False]
 
 
 # ---------------------------------------------------------------------------

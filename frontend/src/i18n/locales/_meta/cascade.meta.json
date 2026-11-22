@@ -107,6 +107,42 @@
     "doNotTranslate": [],
     "notes": "{{label}} is the fruit set name (e.g. Fruits, Tropical)."
   },
+  "theme.switchConfirm.title": {
+    "component": "CascadeScreen",
+    "description": "Title of the confirm shown when the player switches piece set (Fruits/Cosmos) mid-game.",
+    "tone": "brief question",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "theme.switchConfirm.body": {
+    "component": "CascadeScreen",
+    "description": "Body of that confirm: switching abandons the current game.",
+    "tone": "clear, reassuring",
+    "characterLimit": 130,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "theme.switchConfirm.confirm": {
+    "component": "CascadeScreen",
+    "description": "Confirm button: switch set and start a new game.",
+    "tone": "action label",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "theme.switchConfirm.cancel": {
+    "component": "CascadeScreen",
+    "description": "Cancel button: keep the current game and set.",
+    "tone": "action label",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "event.merged": {
     "component": "CascadeScreen",
     "description": "Live region announcement when two fruits merge.",
@@ -161,7 +197,16 @@
     "doNotTranslate": [],
     "notes": "A fruit."
   },
-  "pieces.fruits.blueberry": {
+  "pieces.fruits.lychee": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
+  "pieces.fruits.lime": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
     "tone": "neutral",
@@ -179,7 +224,7 @@
     "doNotTranslate": [],
     "notes": "A fruit."
   },
-  "pieces.fruits.grape": {
+  "pieces.fruits.plum": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
     "tone": "neutral",
@@ -198,15 +243,6 @@
     "notes": "A fruit."
   },
   "pieces.fruits.apple": {
-    "component": "NextFruitPreview",
-    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
-    "tone": "neutral",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "A fruit."
-  },
-  "pieces.fruits.coconut": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
     "tone": "neutral",
@@ -251,7 +287,25 @@
     "doNotTranslate": [],
     "notes": "A fruit."
   },
+  "pieces.fruits.pomegranate": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Fruits theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A fruit."
+  },
   "pieces.cosmos.pluto": {
+    "component": "NextFruitPreview",
+    "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A planet, moon or star; Milky Way is our galaxy."
+  },
+  "pieces.cosmos.moon": {
     "component": "NextFruitPreview",
     "description": "Name of a Cascade piece in the Cosmos theme: read by screen readers for the drop/next preview and the merge announcement.",
     "tone": "neutral",

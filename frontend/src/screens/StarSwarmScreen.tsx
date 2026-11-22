@@ -717,18 +717,22 @@ function StarSwarmGame() {
 
   const showPauseBtn = isLiveRun && scale > 0;
 
+  // Header back arrow and the picker's Lobby chip (#3969) share this: a held run
+  // is saved (#3270), never abandoned.
+  const goHome = () => {
+    if (isPaused || runUnderPicker) {
+      const state = canvasRef.current?.getState();
+      if (state) savePausedRun(state);
+    }
+    navigation.popToTop();
+  };
+
   return (
     <GameShell
       gameType="starswarm"
       title={t("game.title")}
       requireBack
-      onBack={() => {
-        if (isPaused || runUnderPicker) {
-          const state = canvasRef.current?.getState();
-          if (state) savePausedRun(state);
-        }
-        navigation.popToTop();
-      }}
+      onBack={goHome}
       onNewGame={handleRequestNewGame}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
@@ -810,6 +814,7 @@ function StarSwarmGame() {
             onRequestClose={handlePickerRequestClose}
             title={t("launch.title")}
             size="md"
+            onHome={goHome}
           >
             <ScrollView showsVerticalScrollIndicator={false} style={styles.pickerScroll}>
               <ShipPicker value={ship} onChange={setShip} />

@@ -180,6 +180,40 @@ describe("useDailyChallenge offline (#3228)", () => {
     expect(mockGetDailyChallenge).toHaveBeenCalledTimes(1); // only the online render
   });
 
+  it("caches the bonus with the day and marks it done from a queued game (#3995)", async () => {
+    const bonus = (day: string) => ({
+      id: `${day}:yacht`,
+      gameSlug: "yacht",
+      kind: "final_score_at_least",
+      target: 150,
+      completed: false,
+    });
+    mockGetUpcoming.mockResolvedValue([
+      { ...freeDay(D1), bonus: bonus(D1) },
+      { ...freeDay(D2), bonus: bonus(D2) },
+      freeDay(D3),
+    ]);
+    await cacheWhileOnline({ ...freeDay(D1), bonus: bonus(D1) });
+    expect(JSON.parse((await AsyncStorage.getItem(STATUS_KEY)) ?? "null").challenge.bonus).toEqual(
+      bonus(D1)
+    );
+
+    // Offline on D2: the bonus comes from the cached /upcoming day, not done.
+    mockNetwork.isOnline = false;
+    setNow(D2_NOON);
+    const first = await renderHook(() => useDailyChallenge());
+    await waitFor(() => expect(first.result.current.phase).toBe("ready"));
+    expect(first.result.current.challenge?.bonus).toEqual(bonus(D2));
+    expect(first.result.current.challenge?.goals).toHaveLength(2);
+    await first.unmount();
+
+    // A queued Yacht game that meets it completes the bonus, and only the bonus.
+    await finishGame("yacht", { finalScore: 170, outcome: "completed" }, D2_NOON - 30_000);
+    const { result } = await renderHook(() => useDailyChallenge());
+    await waitFor(() => expect(result.current.challenge?.bonus?.completed).toBe(true));
+    expect(result.current.challenge?.goals.every((g) => !g.completed)).toBe(true);
+  });
+
   it("counts games queued on the device that day, the way /status would", async () => {
     await cacheWhileOnline();
     mockNetwork.isOnline = false;

@@ -1,7 +1,7 @@
 """Cascade's replay events, ``drop`` and ``merge`` (#3858, epic #3273).
 
 The app records a Cascade game through the shared GameRecorder
-(``frontend/src/game/cascade/replay.ts``), one unit per 20 drops (fewer when the game
+(``frontend/src/game/cascade/replay.ts``), one unit per 30 drops (fewer when the game
 ends or the app goes to the background), each unit a ``drop`` and a ``merge`` event:
 
 - ``drop``: ``{"d": [[step, x_tenths, tier], ...], "z": [[start, peak], ...]?, "rs": 1?}``.
@@ -52,12 +52,12 @@ MERGE = "merge"
 SCHEMA_VERSION = 1
 
 MAX_DROP_BYTES = 1024
-"""Compact-JSON bytes one ``drop`` event may take: 20 drops, 32 danger moments and the
-envelope are about 740 B at the widest."""
+"""Compact-JSON bytes one ``drop`` event may take: 30 drops, 32 danger moments and the
+envelope are about 940 B at the widest."""
 MAX_MERGE_BYTES = 1024
 """Compact-JSON bytes one ``merge`` event (or part) may take."""
 MAX_DROPS_PER_EVENT = 32
-"""The app sends 20 (``CASCADE_DROPS_PER_UNIT``); the headroom is for a retuned unit."""
+"""The app sends 30 (``CASCADE_DROPS_PER_UNIT``, #3967; 20 before); the headroom is for a cut unit."""
 MAX_DANGER_PER_EVENT = 32
 """The app records at most 32 danger moments a game (``CASCADE_MAX_DANGER``)."""
 MAX_MERGES_PER_EVENT = 128
@@ -70,7 +70,8 @@ OVERFLOW_TICKS = 180
 """The lid's count ends the game at this many fixed steps (``OVERFLOW_TICKS_THRESHOLD``)."""
 
 Step = Annotated[StrictInt, Field(ge=0, le=INT32_MAX)]
-# Two tier-9 pieces make the capstone (tier 10): a merge is from 0..9, a drop is never the capstone.
+# Two tier-10 pieces make the capstone (tier 11, #3960): a merge is from 0..10, a drop is never the
+# capstone.
 Tier = Annotated[StrictInt, Field(ge=0, lt=MAX_TIER)]
 XTenths = Annotated[StrictInt, Field(ge=0, le=X_TENTHS_MAX)]
 Peak = Annotated[StrictInt, Field(ge=1, le=OVERFLOW_TICKS)]

@@ -1,10 +1,10 @@
 /**
- * Cascade's sound players (#3702): the active piece set's 21 sounds (`CASCADE_SOUNDS`) on the
+ * Cascade's sound players (#3702): the active piece set's 22 sounds (`CASCADE_SOUNDS`) on the
  * shared one-shot pool (`_shared/soundPool.ts`, one player per file, each holding the audio
  * session), driven by the pacer (`soundPacer.ts`). The frequent sounds get their player at mount
  * (8, see `LAZY_CASCADE_SOUNDS`); the rest on their first play, or ahead of it when they become
- * likely: the win once a tier-9 piece is on the board (`nearWin`, the celebration's pre-warm
- * trigger), danger and game over when the lid count first runs. A piece-set switch releases the
+ * likely: the win and the capstone's merge-t11 once a tier-10 piece (one below the capstone) is on
+ * the board (`nearWin`, the celebration's pre-warm trigger), danger and game over when the lid count first runs. A piece-set switch releases the
  * old set's players and takes the new set's. Silent while the game sound is muted
  * (`useSoundSettings`), sounds already waiting included; waiting sounds are dropped on unmount.
  */
@@ -101,7 +101,10 @@ export function useCascadeSounds(setId: string, reduceMotion = false, nearWin = 
   useEffect(() => pacer.setCalm(reduceMotion), [pacer, reduceMotion]);
   // The win is likely: create its player now, not at the winning merge (a set switch re-runs it).
   useEffect(() => {
-    if (nearWin) player.warm("win");
+    if (nearWin) {
+      player.warm("win");
+      player.warm("merge-t11");
+    }
   }, [player, nearWin, set]);
   useEffect(() => () => pacer.reset(), [pacer]);
   return pacer;

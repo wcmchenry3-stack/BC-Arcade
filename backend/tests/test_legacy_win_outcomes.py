@@ -88,6 +88,18 @@ def _mahjong(outcome: str, won: bool) -> dict:
     }
 
 
+def _stored(game_type: str, body: dict) -> dict:
+    """The metadata a completion is stored with: the result as sent, plus the Daily
+    Challenge flags Blackjack's result model writes from the outcome (#3996)."""
+    flags = {}
+    if game_type == "blackjack":
+        chips = body["result"]["final_chips"]
+        # An older build's Cash Out (``completed``, chips left) is stored as a win.
+        won = body["outcome"] == "win" or (body["outcome"] == "completed" and chips > 0)
+        flags = {"is_complete": body["outcome"] != "abandoned", "won": won}
+    return {**body["result"], **flags}
+
+
 def _blackjack(outcome: str, final_chips: int) -> dict:
     return {
         "final_score": final_chips,
@@ -119,6 +131,8 @@ async def test_an_older_mahjong_cleared_board_is_stored_as_a_win(
 async def test_an_older_blackjack_cash_out_is_stored_as_a_win(client: TestClient, sid: str) -> None:
     _, row = _play(client, sid, "blackjack", _blackjack("completed", 1500))
     assert row["outcome"] == "win"
+    # The Daily Challenge's win goal reads metadata, which agrees with the row (#3996).
+    assert row["metadata"]["won"] is True and row["metadata"]["is_complete"] is True
 
 
 async def test_an_older_twenty48_first_2048_is_stored_as_a_win(
@@ -164,7 +178,7 @@ async def test_an_older_build_finish_that_is_not_a_certain_win_is_unchanged(
 ) -> None:
     _, row = _play(client, sid, game_type, body, initial_board=board)
     assert row["outcome"] == body["outcome"]
-    assert row["metadata"] == body["result"]
+    assert row["metadata"] == _stored(game_type, body)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +204,7 @@ async def test_current_build_completions_are_unchanged(
 ) -> None:
     _, row = _play(client, sid, game_type, body, initial_board=_FRESH_BOARD)
     assert row["outcome"] == body["outcome"]
-    assert row["metadata"] == body["result"]
+    assert row["metadata"] == _stored(game_type, body)
 
 
 async def test_other_games_are_never_rewritten(client: TestClient, sid: str) -> None:

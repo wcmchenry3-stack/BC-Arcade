@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FruitSet, FRUIT_SETS, DEFAULT_FRUIT_SET } from "./fruitSets";
 
@@ -37,19 +37,19 @@ export function FruitSetProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {});
   }, []);
 
-  function setFruitSetById(id: string) {
+  // Stable, so callers (the screen's `requestFruitSet`, the memoized ThemeSelector) keep their identity.
+  const setFruitSetById = useCallback((id: string) => {
     if (!FRUIT_SETS[id]) return;
     AsyncStorage.setItem(STORAGE_KEY, id);
     setActiveId(id);
-  }
+  }, []);
 
-  return (
-    <FruitSetContext.Provider
-      value={{ activeFruitSet: FRUIT_SETS[activeId] ?? DEFAULT_FRUIT_SET_VALUE, setFruitSetById }}
-    >
-      {children}
-    </FruitSetContext.Provider>
+  const value = useMemo(
+    () => ({ activeFruitSet: FRUIT_SETS[activeId] ?? DEFAULT_FRUIT_SET_VALUE, setFruitSetById }),
+    [activeId, setFruitSetById]
   );
+
+  return <FruitSetContext.Provider value={value}>{children}</FruitSetContext.Provider>;
 }
 
 export function useFruitSet() {

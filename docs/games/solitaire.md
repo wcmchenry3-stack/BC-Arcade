@@ -29,6 +29,8 @@ Before a new deal the player chooses:
 
 Draw-1 and Draw-3 share one public leaderboard.
 
+The draw-mode modal covers the header's back arrow, so a labelled "Lobby" chip floats over the scrim near that spot (mirrored in right-to-left) (`ModalCard`'s `onHome`, #3969). It returns to the lobby without dealing a game.
+
 **Test builds** (`EXPO_PUBLIC_TEST_HOOKS=1`) always deal each draw mode's first seed-bank entry, and on native skip the picker and deal draw-1; the test-only button `solitaire-test-deal-draw3` (native) and `globalThis.__solitaire_deal(drawMode)` (web) deal the fixed draw-3 game instead (`game/solitaire/testHooks.ts`, #3532; see `docs/TESTING.md`).
 
 Live deals come from `frontend/src/game/solitaire/seeds.json`, a bank of **provably solvable** seeds generated offline by `backend/scripts/gen_solitaire_seeds.py`. A seed reproduces the same deal deterministically.
@@ -311,3 +313,5 @@ Triggers are in `frontend/src/screens/SolitaireScreen.tsx`. A completed suit has
 | `solitaire.invalidMove`                                                                       | `card-invalid-move.ogg` (shared with FreeCell)                                 | an illegal tap or a refused drop, except during Auto-Complete                                                                                                                                                                              | 1.0    |
 | `solitaire.multiCardMove`                                                                     | `card-multi-move.ogg` (shared with FreeCell; synthesized)                      | a run of two or more cards tapped tableau to tableau (engine event `multiCardMove`), instead of card place, its peak on the last contact; a dropped run plays card place; silent during Auto-Complete                                      | 1.0    |
 | `solitaire.gameWin`                                                                           | `card-game-won.ogg` (shared with FreeCell, Hearts)                             | the game is won, on the winning card's contact; after Auto-Complete, with the riffle's settle                                                                                                                                              | 1.0    |
+
+**Lobby tile status (#4008).** The lobby reads the saved game read-only (`SOLITAIRE_GAME_KEY`, `isSavedGame` exported from `storage.ts`) and shows **Resume** for a game that is not complete and has had a move, otherwise the best time (`m:ss`). See [ARCHITECTURE §10.7](../ARCHITECTURE.md).

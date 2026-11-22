@@ -40,7 +40,13 @@ The operational tunables (#3110, #3298) are read lazily through the owning modul
 own ``_settings``, like the ``ENTITLEMENT_*`` fields, so ``create_app(settings)`` does
 not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``STALE_GAME_AFTER_HOURS`` (``games.sweep``), ``MAX_RESULT_BYTES`` (``games.sessions``),
-``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``APPLE_REPLAY_WINDOW_HOURS``
+``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``DAILY_CHALLENGE_PERSONALIZED`` and
+``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` and ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``
+(``daily_challenge.assignments``, #3992), ``DAILY_CHALLENGE_STRETCH_PCT``,
+``DAILY_CHALLENGE_AFFINITY_DAYS`` and ``DAILY_CHALLENGE_HISTORY_GAMES``
+(``daily_challenge.personal``, #3993/#3994), ``DAILY_CHALLENGE_BONUS_ENABLED`` and
+``DAILY_CHALLENGE_DISCOVERY_SHARE`` (``daily_challenge.personal``, #3995),
+``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
 ``DB_PING_TIMEOUT_SECONDS`` (``routes.health``), plus the payload caps and retention of #3298:
 ``MAX_EVENT_DATA_BYTES``, ``MAX_EVENTS_PER_GAME``, ``MAX_EVENT_BYTES_PER_GAME``,
@@ -213,6 +219,42 @@ class Settings(BaseSettings):
     bug_log_retention_days: int = Field(default=90, alias="BUG_LOG_RETENTION_DAYS", ge=1, le=3650)
     # How far back the daily-challenge streak looks, and so its cap (daily_challenge.streak).
     streak_lookback_days: int = Field(default=60, alias="STREAK_LOOKBACK_DAYS", ge=1, le=365)
+    # Per-install pinned daily-challenge goals (#3992, daily_challenge.assignments).
+    # Kill switch: false serves every install the shared frozen template and reads or
+    # writes no daily_challenge_assignments rows.
+    daily_challenge_personalized: bool = Field(default=True, alias="DAILY_CHALLENGE_PERSONALIZED")
+    # How long a pinned assignment is kept (daily_challenge.retention). Unset means
+    # STREAK_LOOKBACK_DAYS + 1, so the streak can read every pinned day it looks back
+    # over in any timezone; a smaller value is rejected
+    # (see _assignment_retention_covers_the_streak).
+    daily_challenge_assignment_retention_days: int | None = Field(
+        default=None, alias="DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS", ge=1, le=365
+    )
+    # Write ceiling (daily_challenge.assignments): an install pins its days only if it
+    # has a games row created (server time) within this many hours.
+    daily_challenge_pin_recent_play_hours: int = Field(
+        default=48, alias="DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS", ge=1, le=720
+    )
+    # Personal picks (#3993/#3994, daily_challenge.personal / .history). The stretch
+    # above the player's recent median (an "at most" goal's limit drops by it).
+    daily_challenge_stretch_pct: int = Field(
+        default=12, alias="DAILY_CHALLENGE_STRETCH_PCT", ge=0, le=50
+    )
+    # How many local days of play count toward a game's affinity (core-slot weight).
+    daily_challenge_affinity_days: int = Field(
+        default=14, alias="DAILY_CHALLENGE_AFFINITY_DAYS", ge=1, le=60
+    )
+    # How many of an install's latest finished games per game a personal target reads.
+    daily_challenge_history_games: int = Field(
+        default=10, alias="DAILY_CHALLENGE_HISTORY_GAMES", ge=3, le=50
+    )
+    # The optional daily bonus goal (#3995, daily_challenge.personal): a dial to turn it
+    # off without an app release, and the share of bonuses that are a discovery goal
+    # (a game the install has not played lately) rather than a bigger stretch.
+    daily_challenge_bonus_enabled: bool = Field(default=True, alias="DAILY_CHALLENGE_BONUS_ENABLED")
+    daily_challenge_discovery_share: float = Field(
+        default=0.5, alias="DAILY_CHALLENGE_DISCOVERY_SHARE", ge=0, le=1
+    )
     # The App Store notification-history replay window (purchases.apple_notifications).
     # The one window is sent to every environment, and Sandbox only accepts a startDate
     # within 30 days (Production allows 180), so the cap is 720 h = 30 days.
@@ -316,6 +358,20 @@ class Settings(BaseSettings):
         if isinstance(value, SecretStr):
             return SecretStr(value.get_secret_value().strip())
         return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _assignment_retention_covers_the_streak(self) -> Settings:
+        # A pinned day pruned inside the streak window would be re-scored on the shared
+        # template, so a past streak day could flip from met to missed (#3992).
+        # One more day than the lookback: the prune cuts on the UTC date, and a client
+        # west of UTC is a local day behind it.
+        retention = self.daily_challenge_assignment_retention_days
+        if retention is not None and retention < self.streak_lookback_days + 1:
+            raise ValueError(
+                "DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS must be at least "
+                "STREAK_LOOKBACK_DAYS + 1"
+            )
+        return self
 
     @model_validator(mode="after")
     def _command_timeout_outlasts_statement_timeout(self) -> Settings:

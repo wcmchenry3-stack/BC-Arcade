@@ -11,7 +11,12 @@ import path from "path";
 
 import { isPreLaunchApiBuild, areTestHooksEnabled } from "../../game/_shared/envFlags";
 import { LAUNCH_LOCALE_CODES, LOCALES } from "../../i18n/locales";
-import { DISABLED_GAMES, HIDDEN_GAMES } from "../gameVisibility";
+import {
+  __forceStoreBuildForTests,
+  DISABLED_GAMES,
+  HIDDEN_GAMES,
+  isGameVisible,
+} from "../gameVisibility";
 import { PREMIUM_ROUTES } from "../premiumRoutes";
 
 type Resolution = { type: string; filePath?: string };
@@ -47,6 +52,11 @@ const LOCALE_FILES: Array<[string, string]> = LOCALES.flatMap(({ code }) =>
 );
 
 const STORE_ENV = { EXPO_PUBLIC_API_URL: "https://games-api.buffingchi.com" };
+
+// The hidden games' lobby tile images and their image-free store stand-in (#4011).
+const HOME_COMPONENTS = path.resolve(__dirname, "../../components/home");
+const TILE_ART = path.join(HOME_COMPONENTS, "hiddenGameTileArt.ts");
+const TILE_ART_STORE = path.join(HOME_COMPONENTS, "hiddenGameTileArt.store.ts");
 
 describe("isStoreBundle", () => {
   // Mutate, never replace, process.env: Expo's env shim holds the original object.
@@ -297,34 +307,141 @@ describe("Cascade test controls stay out of store bundles (#3719)", () => {
 });
 
 /**
- * The home tile's Cascade icon (#3698) draws the piece with Skia. HomeScreen ships in every build,
- * so a store bundle (Cascade hidden) resolves the icon to its emoji-only variant: no Skia, no art.
+ * Lobby tile images (#4011). Metro packages every image HomeScreen imports, whether its tile
+ * renders or not, so a hidden game's tile image lives in `hiddenGameTileArt.ts`, which a store
+ * bundle resolves to an image-free stand-in. `starswarm-tile.webp` used to be imported by
+ * HomeScreen directly and was packaged in store builds.
  */
-describe("the home tile's Cascade icon stays out of store bundles (#3698)", () => {
-  const COMPONENTS = path.resolve(__dirname, "../../components/cascade");
-  const drawn = path.join(COMPONENTS, "CascadeTileIcon.tsx");
-  const emoji = path.join(COMPONENTS, "CascadeTileIcon.web.tsx");
-  const resolve = (dev: boolean, env: Record<string, string | undefined>) =>
+describe("hidden games' lobby tile images stay out of store bundles (#4011)", () => {
+  const HOME_SCREEN = path.resolve(__dirname, "../../screens/HomeScreen.tsx");
+  const TILES_DIR = path.resolve(__dirname, "../../../assets/home");
+  const resolve = (dev: boolean, env: Record<string, string | undefined>, platform = "android") =>
     storeBundle.withStoreBundleExclusions({ resolver: {} }, env).resolver.resolveRequest!(
       {
         dev,
         resolveRequest: (_c: object, name: string) => ({ type: "sourceFile", filePath: name }),
       } as object,
-      drawn,
-      "android"
+      TILE_ART,
+      platform
     ).filePath;
+  /** Games a store build keeps out: HIDDEN_GAMES union DISABLED_GAMES, like `isGameVisible`. */
+  const STORE_EXCLUDED: ReadonlySet<string> = new Set([...HIDDEN_GAMES, ...DISABLED_GAMES]);
+  /** Problems with the tile-art module: a non-excluded slug in it, or an excluded tile not in it. */
+  const tileArtMismatches = (
+    artSlugs: string[],
+    onDisk: string[],
+    excluded: ReadonlySet<string>
+  ): string[] => [
+    ...artSlugs.filter((slug) => !excluded.has(slug)).map((slug) => `not excluded: ${slug}`),
+    ...onDisk
+      .filter((slug) => excluded.has(slug) && !artSlugs.includes(slug))
+      .map((slug) => `missing: ${slug}`),
+  ];
+  /** The excluded games' tiles that HomeScreen still imports directly. */
+  const homeScreenMismatches = (homeSlugs: string[], excluded: ReadonlySet<string>): string[] =>
+    homeSlugs.filter((slug) => excluded.has(slug));
+  /** The `assets/home/<slug>-tile.*` images a source file imports, by slug. */
+  const tileImports = (file: string): string[] =>
+    [...fs.readFileSync(file, "utf8").matchAll(/assets\/home\/([a-z0-9_]+)-tile\.\w+"/g)].map(
+      (m) => m[1]
+    );
 
-  it("maps exactly the drawn icon to the emoji variant, and both exist", () => {
-    expect([...storeBundle.STUBBED_MODULES]).toEqual([[drawn, emoji]]);
-    expect(fs.existsSync(drawn)).toBe(true);
-    expect(fs.existsSync(emoji)).toBe(true);
-    expect(fs.readFileSync(emoji, "utf8")).not.toMatch(/react-native-skia|FruitGlyph|\/art\//);
+  it("a store bundle gets the stand-in; dev, e2e and pre-launch bundles keep the art", () => {
+    for (const platform of ["android", "ios", "web"]) {
+      expect(resolve(false, STORE_ENV, platform)).toBe(TILE_ART_STORE);
+    }
+    expect(resolve(true, STORE_ENV)).toBe(TILE_ART);
+    expect(resolve(false, { ...STORE_ENV, EXPO_PUBLIC_TEST_HOOKS: "1" })).toBe(TILE_ART);
+    expect(resolve(false, { EXPO_PUBLIC_API_URL: "https://dev-games-api.buffingchi.com" })).toBe(
+      TILE_ART
+    );
   });
 
-  it("a store bundle gets the emoji; dev, e2e and pre-launch bundles draw the piece", () => {
-    expect(resolve(false, STORE_ENV)).toBe(emoji);
-    expect(resolve(true, STORE_ENV)).toBe(drawn);
-    expect(resolve(false, { ...STORE_ENV, EXPO_PUBLIC_TEST_HOOKS: "1" })).toBe(drawn);
+  it("the tile art is the only module a store bundle swaps for a stand-in (#4013)", () => {
+    // Cascade's Skia-drawn tile icon (#3698) and its emoji-only store variant are gone: its tile
+    // is an image in hiddenGameTileArt.ts like the other hidden games'.
+    expect([...storeBundle.STUBBED_MODULES]).toEqual([[TILE_ART, TILE_ART_STORE]]);
+    expect(
+      fs.existsSync(path.resolve(__dirname, "../../components/cascade/CascadeTileIcon.tsx"))
+    ).toBe(false);
+  });
+
+  it("the art and its stand-in hold exactly the hidden games, and the store resolves all five to the stand-in (#4013)", () => {
+    const keys = (file: string) =>
+      [...fs.readFileSync(file, "utf8").matchAll(/^\s{2}(\w+): /gm)].map((m) => m[1]).sort();
+    const hidden = [...HIDDEN_GAMES].sort();
+    expect(hidden).toEqual(["blackjack", "cascade", "hearts", "mahjong", "starswarm"]);
+    expect(keys(TILE_ART)).toEqual(hidden);
+    expect(keys(TILE_ART_STORE)).toEqual(hidden);
+    expect(tileImports(TILE_ART).sort()).toEqual(hidden);
+    expect(resolve(false, STORE_ENV)).toBe(TILE_ART_STORE);
+  });
+
+  it("HomeScreen pulls in no Cascade component, so no Skia or piece art reaches a store bundle", () => {
+    const src = fs.readFileSync(HOME_SCREEN, "utf8");
+    expect(src).not.toMatch(/components\/cascade\//);
+    expect(src).not.toMatch(/react-native-skia|FruitGlyph|game\/cascade\/art/);
+  });
+
+  it("the stand-in imports no image", () => {
+    const stub = fs.readFileSync(TILE_ART_STORE, "utf8");
+    expect(stub).not.toMatch(/\.(webp|png|jpe?g|svg)"/);
+    expect(stub).not.toMatch(/require\(/);
+    expect(stub).toMatch(/import type \{ HiddenGameTileArt \}/);
+  });
+
+  it("holds every hidden or disabled game's tile and only those", () => {
+    const slugs = tileImports(TILE_ART);
+    expect(slugs.length).toBeGreaterThan(0);
+    const onDisk = fs
+      .readdirSync(TILES_DIR)
+      .map((file) => /^([a-z0-9_]+)-tile\.\w+$/.exec(file)?.[1])
+      .filter((slug): slug is string => slug !== undefined);
+    expect(tileArtMismatches(slugs, onDisk, STORE_EXCLUDED)).toEqual([]);
+  });
+
+  it("a disabled-only game's tile counts as excluded art (#4017)", () => {
+    // `cascade` is only disabled here: its tile must live in hiddenGameTileArt.ts, not HomeScreen.
+    const excluded = new Set([...new Set(["starswarm"]), ...new Set(["cascade"])]);
+    expect(
+      tileArtMismatches(["starswarm", "cascade"], ["starswarm", "cascade", "yacht"], excluded)
+    ).toEqual([]);
+    // Tile art missing for the disabled game, or a disabled game's tile left in HomeScreen.
+    expect(tileArtMismatches(["starswarm"], ["starswarm", "cascade"], excluded)).not.toEqual([]);
+    expect(homeScreenMismatches(["yacht", "cascade"], excluded)).toEqual(["cascade"]);
+    expect(homeScreenMismatches(["yacht"], excluded)).toEqual([]);
+  });
+
+  // No module exports the store-excluded set, so STORE_EXCLUDED above is recomputed from the real
+  // sets; this ties it to the real rule (`isGameVisible` in a store build) so it cannot drift.
+  it("STORE_EXCLUDED matches what isGameVisible hides in a store build", () => {
+    __forceStoreBuildForTests(true);
+    try {
+      for (const slug of STORE_EXCLUDED) expect(isGameVisible(slug)).toBe(false);
+      for (const slug of ["yacht", "sudoku", "sort", "twenty48"]) {
+        expect(STORE_EXCLUDED.has(slug)).toBe(false);
+        expect(isGameVisible(slug)).toBe(true);
+      }
+    } finally {
+      __forceStoreBuildForTests(false);
+    }
+  });
+
+  it("HomeScreen imports no hidden or disabled game's tile image directly", () => {
+    const slugs = tileImports(HOME_SCREEN);
+    expect(slugs.sort()).toEqual([
+      "daily_word",
+      "freecell",
+      "solitaire",
+      "sort",
+      "sudoku",
+      "twenty48",
+      "yacht",
+    ]);
+    expect(homeScreenMismatches(slugs, STORE_EXCLUDED)).toEqual([]);
+    expect(fs.readFileSync(HOME_SCREEN, "utf8")).toMatch(
+      /from "\.\.\/components\/home\/hiddenGameTileArt"/
+    );
   });
 });
 

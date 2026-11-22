@@ -32,6 +32,8 @@ import { CASCADE_TUNING_ID, GROW_IN_STEPS } from "../../game/cascade/constants";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import { timeBonus } from "../../game/cascade/timeBonus";
 import i18n from "i18next";
+import * as cascadeStorage from "../../game/cascade/storage";
+import { isAppOverlayOpen } from "../../hooks/appOverlay";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getBest, storageKey } from "../../game/_shared/personalBest";
 import { AccessibilityInfo, AppState } from "react-native";
@@ -84,10 +86,16 @@ jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
 // Captures the fruit-set setter so tests can switch sets like the selector does.
 let mockSetFruitSetById: ((id: string) => void) | null = null;
+// The selector's tap handler (`onRequestSelect`, #3970): the screen's guard in front of the setter.
+let mockRequestFruitSet: ((id: string) => void) | undefined;
+let mockActiveSetId = "";
 jest.mock("../../components/cascade/ThemeSelector", () => {
   const { useFruitSet } = jest.requireActual("../../theme/FruitSetContext");
-  return function MockThemeSelector() {
-    mockSetFruitSetById = useFruitSet().setFruitSetById;
+  return function MockThemeSelector(props: { onRequestSelect?: (id: string) => void }) {
+    const fruitSet = useFruitSet();
+    mockSetFruitSetById = fruitSet.setFruitSetById;
+    mockActiveSetId = fruitSet.activeFruitSet.id;
+    mockRequestFruitSet = props.onRequestSelect;
     return null;
   };
 });
@@ -672,7 +680,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
       final_score: expect.any(Number),
       merge_score: expect.any(Number),
       time_bonus: 0,
-      bonus_rule: 1,
+      bonus_rule: 2,
       duration_ms: expect.any(Number),
       theme: "fruits",
       total_drops: 1,
@@ -801,7 +809,7 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
       final_score: expect.any(Number),
       merge_score: expect.any(Number),
       time_bonus: 0,
-      bonus_rule: 1,
+      bonus_rule: 2,
       duration_ms: expect.any(Number),
       theme: "fruits",
       total_drops: 1,
@@ -1178,7 +1186,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       jest.advanceTimersByTime(20_000);
     });
     await setAppState("background"); // the pause saves the board
-    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v7"))!);
+    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v8"))!);
     expect(saved.playedMs).toBe(20_000);
     await act(() => {
       first.unmount(); // the OS kills the app from here
@@ -1205,10 +1213,10 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
   // #3699: only a game that ended shows a card; a restored game is in progress.
   it("restores an in-progress game with no result card", async () => {
     await AsyncStorage.setItem(
-      "cascade_game_v7",
+      "cascade_game_v8",
       JSON.stringify({
-        version: 7,
-        pieces: [{ tier: 9, x: 120, y: 500 }],
+        version: 8,
+        pieces: [{ tier: 10, x: 120, y: 500 }],
         score: 900,
         savedAt: Date.now(),
         queue: { current: 0, next: 1 },
@@ -1236,9 +1244,9 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
   // the clock counts from the load. It must still restore the board.
   it("restores an older build's save without playedMs, counting from the load", async () => {
     await AsyncStorage.setItem(
-      "cascade_game_v7",
+      "cascade_game_v8",
       JSON.stringify({
-        version: 7,
+        version: 8,
         pieces: [{ tier: 0, x: 200, y: 500 }],
         score: 10,
         savedAt: Date.now() - 2 * 24 * 60 * 60_000,
@@ -1283,7 +1291,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       });
       await setAppState("background"); // a save, before the win
       await setAppState("active");
-      expect(await AsyncStorage.getItem("cascade_game_v7")).not.toBeNull();
+      expect(await AsyncStorage.getItem("cascade_game_v8")).not.toBeNull();
       pendingEngineEvents.push({ type: "win", x: 200, y: 400, id: 1 });
       mockEngineHasWon.mockReturnValue(true);
       await act(() => {
@@ -1454,7 +1462,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         const playedMs = summary.result.duration_ms as number;
         expect(playedMs).toBe(200_000);
         const bonus = timeBonus("win", playedMs);
-        expect(bonus).toBe(8_889);
+        expect(bonus).toBe(13_333); // #3967: rule 2, B = 30,000 (8,889 on rule 1)
         expect(card.outcome).toBe("win");
         // The score shown is the server's formula: merge score + time bonus.
         expect(card.hero).toEqual({ kind: "score", label: "Score", value: 9000 + bonus });
@@ -1472,7 +1480,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
             final_score: 9000 + bonus,
             merge_score: 9000,
             time_bonus: bonus,
-            bonus_rule: 1,
+            bonus_rule: 2,
             max_tier: CAPSTONE_TIER,
             won: true,
             outcome: "win",
@@ -1610,8 +1618,8 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
         }
       });
 
-      // iOS demo on #3924: the style is built ahead, once the board holds a tier-9 piece.
-      it("pre-warms the celebration on the first tier-9 piece, not before, off the render", async () => {
+      // iOS demo on #3924: the style is built ahead, once the board holds a tier-10 piece.
+      it("pre-warms the celebration on the first tier-10 piece, not before, off the render", async () => {
         __resetCelebrationStylesForTests();
         const build = jest.spyOn(celebrationStyles, "celebrationStyleFor");
         jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -1669,7 +1677,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
     it("clears the saved game and saves nothing after it, on pause or otherwise", async () => {
       const renderer = await renderScreen();
       await win(renderer);
-      expect(await AsyncStorage.getItem("cascade_game_v7")).toBeNull();
+      expect(await AsyncStorage.getItem("cascade_game_v8")).toBeNull();
       await setAppState("background");
       await act(() => {
         jest.advanceTimersByTime(10_000);
@@ -1677,7 +1685,7 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      expect(await AsyncStorage.getItem("cascade_game_v7")).toBeNull();
+      expect(await AsyncStorage.getItem("cascade_game_v8")).toBeNull();
       await act(() => {
         renderer.unmount();
       });
@@ -1775,5 +1783,203 @@ describe("CascadeGame — the lid (#3694)", () => {
       (n: any) => n.type === "NextFruitPreview"
     )[0]!;
     expect(lidOf(renderer).spawnerTier).toBe(preview.props.current.tier);
+  });
+});
+
+// #3970 — switching the piece set mid-game asks first.
+describe("CascadeScreen — piece-set switch confirm (#3970)", () => {
+  const PIECE = { id: 1, tier: 0, x: 200, y: 300, angle: 0 };
+  const findConfirm = (renderer: ReturnType<typeof create>, suffix: "confirm" | "cancel") =>
+    renderer.root.find(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) =>
+        node.props.testID === `cascade-switch-confirm-${suffix}` &&
+        typeof node.props.onPress === "function"
+    );
+  const confirmVisible = (renderer: ReturnType<typeof create>) =>
+    renderer.root.findAllByType(Modal).some((m) => m.props.visible === true);
+  /** Lets the session's deferred start (and other queued work) land before a test clears mocks. */
+  const settleAll = async () => {
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await jest.runOnlyPendingTimersAsync();
+      });
+    }
+  };
+  const request = async (id: string) => {
+    if (!mockRequestFruitSet) throw new Error("ThemeSelector got no onRequestSelect");
+    await act(() => {
+      mockRequestFruitSet?.(id);
+    });
+  };
+  /** A game in progress: a piece is on the board after a frame. */
+  async function midGame() {
+    mockEnginePieces = [PIECE];
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      advanceOneFrame();
+    });
+    await settleAll();
+    return renderer;
+  }
+  const liveScore = (renderer: ReturnType<typeof create>) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    renderer.root.find((n: any) => typeof n.props.store?.get === "function").props.store.get();
+  const startedWith = () => mockStartGame.mock.calls.map((c) => c[2]?.fruit_set);
+
+  // The chosen set persists (AsyncStorage): every test starts on Fruits.
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetReduceMotionForTests();
+    // Earlier describes leave their own engine state behind: report the board these tests set.
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: mockEnginePieces,
+      score: mockEngineScore,
+      gameOver: false,
+    }));
+    mockEngineHasWon.mockReturnValue(false);
+  });
+  afterEach(() => {
+    mockEnginePieces = [];
+  });
+
+  it("asks before switching mid-game, leaving the game alone and pausing under the dialog", async () => {
+    const renderer = await midGame();
+    const clear = jest.spyOn(cascadeStorage, "clearGame");
+    mockStartGame.mockClear();
+    mockCompleteGame.mockClear();
+    const instances = mockEngineInstanceCount;
+
+    await request("cosmos");
+
+    expect(confirmVisible(renderer)).toBe(true);
+    expect(findConfirm(renderer, "confirm")).toBeTruthy();
+    expect(isAppOverlayOpen()).toBe(true); // the clock and loop pause under it
+    expect(clear).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockEngineInstanceCount).toBe(instances);
+  });
+
+  it("Cancel closes the dialog with no reset, no abandoned session and the old set", async () => {
+    mockEngineScore = 42;
+    const renderer = await midGame();
+    const clear = jest.spyOn(cascadeStorage, "clearGame");
+    mockStartGame.mockClear();
+    mockCompleteGame.mockClear();
+    const instances = mockEngineInstanceCount;
+    expect(liveScore(renderer)).toBe(42);
+    await request("cosmos");
+
+    // Under the dialog the loop is paused: no engine steps.
+    mockEngineStep.mockClear();
+    await act(() => {
+      advanceOneFrame();
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+
+    await act(() => {
+      findConfirm(renderer, "cancel").props.onPress();
+    });
+    await act(() => {
+      advanceOneFrame();
+    });
+    await act(() => {
+      advanceOneFrame();
+    });
+    // The loop resumes; the board, score and set are as they were.
+    expect(mockEngineStep).toHaveBeenCalled();
+    expect(mockEngineInstanceCount).toBe(instances);
+    expect(mockActiveSetId).toBe("fruits");
+    expect(liveScore(renderer)).toBe(42);
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(isAppOverlayOpen()).toBe(false);
+    expect(clear).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockStartGame).not.toHaveBeenCalled();
+    // Still Fruits: the set did not change (a later same-set request is a no-op).
+    await request("fruits");
+    expect(confirmVisible(renderer)).toBe(false);
+  });
+
+  it("Confirm switches the set and starts a new game, abandoning the old one", async () => {
+    const renderer = await midGame();
+    const clear = jest.spyOn(cascadeStorage, "clearGame");
+    mockStartGame.mockClear();
+    mockCompleteGame.mockClear();
+    await request("cosmos");
+
+    await act(() => {
+      findConfirm(renderer, "confirm").props.onPress();
+    });
+    await act(() => {
+      advanceOneFrame();
+    });
+    await settleAll();
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
+    expect(clear).toHaveBeenCalled();
+    expect(startedWith()).toEqual(["cosmos"]);
+  });
+
+  it("switches at once, with no dialog, on a fresh board", async () => {
+    mockEnginePieces = [];
+    const renderer = await renderScreen();
+    await settleAll();
+    mockStartGame.mockClear();
+
+    await request("cosmos");
+    await act(() => {
+      advanceOneFrame();
+    });
+    await settleAll();
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(startedWith()).toEqual(["cosmos"]);
+  });
+
+  it("switches at once, with no dialog, after the game is over", async () => {
+    const renderer = await midGame();
+    await injectGameOver();
+    await settleAll();
+    mockStartGame.mockClear();
+
+    await request("cosmos");
+    await act(() => {
+      advanceOneFrame();
+    });
+    await settleAll();
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(startedWith()).toEqual(["cosmos"]);
+  });
+
+  it("a switch tapped right after New Game shows no dialog", async () => {
+    const renderer = await midGame();
+    const shell = renderer.root.find(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onNewGame === "function"
+    );
+    await act(() => {
+      shell.props.onNewGame();
+    });
+    await request("cosmos"); // no frame yet: the old pieces must not count
+
+    expect(confirmVisible(renderer)).toBe(false);
+  });
+
+  it("tapping the active set mid-game does nothing", async () => {
+    const renderer = await midGame();
+    mockStartGame.mockClear();
+
+    await request("fruits");
+
+    expect(confirmVisible(renderer)).toBe(false);
+    expect(isAppOverlayOpen()).toBe(false);
+    expect(mockStartGame).not.toHaveBeenCalled();
   });
 });

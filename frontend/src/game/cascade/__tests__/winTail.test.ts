@@ -9,7 +9,7 @@ import { WIN_SETTLE_MS, WIN_TAIL_MAX_FRAMES, createLoopGate, createWinTail } fro
 
 const FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;
 
-/** Two tier-9 pieces touching on the floor: they merge into the capstone on the first step. */
+/** Two tier-10 pieces touching on the floor: they merge into the capstone on the first step. */
 function aboutToWin(): CascadeEngine {
   const r = tierRadius(CAPSTONE_TIER - 1);
   const engine = new CascadeEngine({});

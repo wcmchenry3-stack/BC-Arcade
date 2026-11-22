@@ -37,9 +37,10 @@ describe("selectNextTier — distribution over 1000 samples", () => {
     }
   });
 
-  // #3920: the base weights over tiers 0-5 are 2 3 3 3 2 1 (owner decision), so tier 0 is not the
-  // most common: tiers 1-3 are, then tiers 0 and 4, and tier 5 is the rarest.
-  it("follows the base weights 2 3 3 3 2 1 (no danger)", () => {
+  // #3967 (balance pass for the 12-tier ladder): the base weights over tiers 0-5 are 1 1 2 3 4 4
+  // (#3920's were 2 3 3 3 2 1), so tiers 4 and 5 are the most common, then 3, then 2, and tiers 0
+  // and 1 are the rarest.
+  it("follows the base weights 1 1 2 3 4 4 (no danger)", () => {
     const rng = seededRng(42);
     const results: number[] = [];
     const running: number[] = [];
@@ -50,21 +51,22 @@ describe("selectNextTier — distribution over 1000 samples", () => {
     }
     const counts = DROPPABLE_PIECE_TIERS.map((t) => results.filter((r) => r === t).length);
     expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
-    const weight3 = counts.slice(1, 4);
-    expect(Math.max(counts[0]!, counts[4]!)).toBeLessThan(Math.min(...weight3));
-    expect(counts[5]!).toBeLessThan(Math.min(counts[0]!, counts[4]!));
+    const top = Math.min(counts[4]!, counts[5]!);
+    expect(counts[3]!).toBeLessThan(top);
+    expect(counts[2]!).toBeLessThan(counts[3]!);
+    expect(Math.max(counts[0]!, counts[1]!)).toBeLessThan(counts[2]!);
   });
 });
 
-describe("selectNextTier — exact weights (#3920)", () => {
+describe("selectNextTier — exact weights (#3920, weights #3967)", () => {
   // Every tier was seen in the last DROUGHT_WINDOW drops (no drought boost) and there is no streak,
-  // so the draw is the base weights, or in danger tiers 2-4 x 0.2 and tier 5 x 0.35, unrounded.
+  // so the draw is the base weights, or in danger tiers 2-4 x 0.2 and tier 5 x 0.25 (#3967), unrounded.
   const HISTORY = [0, 1, 2, 3, 4, 5];
   const pickAt = (u: number, danger: boolean) => selectNextTier(HISTORY, danger, () => u);
 
   it.each([
-    ["calm", false, [2, 3, 3, 3, 2, 1]],
-    ["danger", true, [2, 3, 3 * 0.2, 3 * 0.2, 2 * 0.2, 1 * 0.35]],
+    ["calm", false, [1, 1, 2, 3, 4, 4]],
+    ["danger", true, [1, 1, 2 * 0.2, 3 * 0.2, 4 * 0.2, 4 * 0.25]],
   ] as const)("%s: each tier's share of the draw is its weight", (_, danger, weights) => {
     const total = weights.reduce((a, b) => a + b, 0);
     let upTo = 0;

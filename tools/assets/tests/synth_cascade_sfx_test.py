@@ -23,7 +23,7 @@ SOUNDS_TS = (REPO / "frontend/src/game/cascade/sounds.ts").read_text(encoding="u
 
 NAMES = (
     ["drop", "land-light", "land-heavy"]
-    + [f"merge-t{n}" for n in range(11)]
+    + [f"merge-t{n}" for n in range(12)]
     + [f"chain-{k}" for k in range(1, 5)]
     + ["danger", "win", "game-over"]
 )
@@ -79,7 +79,7 @@ def test_every_sound_is_deterministic_and_in_range(stem):
     assert np.max(np.abs(a)) <= 1.0
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", [n for n in NAMES if n != "merge-t11"])
 def test_both_sets_are_equally_loud(name):
     # A skin switch never jumps in level: each sound sits at the same loudest-50-ms level.
     fruits, cosmos = _render(f"cascade-fruits-{name}"), _render(f"cascade-cosmos-{name}")
@@ -92,6 +92,26 @@ def test_the_merge_ladder_rises_a_step_per_tier_and_gets_louder(s):
     assert levels == sorted(levels)
     assert levels[-1] - levels[0] == pytest.approx(5.0, abs=0.3)
     assert [cascade.penta(n) for n in range(11)] == [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24]
+
+
+def test_the_capstone_merge_is_the_top_of_the_ladder_and_longer_than_t10():
+    """merge-t11 (#3966, owner option C): 0.75 s Fruits, 0.82 s Cosmos, a step above t10's level
+    (Fruits' strum gets FRUITS_T11_TRIM_DB on top), and no clipping."""
+    for s, dur in (("fruits", 0.75), ("cosmos", 0.82)):
+        x = _render(f"cascade-{s}-merge-t11")
+        assert len(x) / SR == pytest.approx(dur, abs=0.03)
+        assert _rms50_db(x) > _rms50_db(_render(f"cascade-{s}-merge-t10"))
+        assert np.max(np.abs(x)) <= 10 ** (-1.0 / 20) + 1e-6
+    fruits = _rms50_db(_render("cascade-fruits-merge-t11"))
+    cosmos = _rms50_db(_render("cascade-cosmos-merge-t11"))
+    assert fruits - cosmos == pytest.approx(cascade.FRUITS_T11_TRIM_DB, abs=0.3)
+
+
+def test_the_t0_to_t10_recipes_are_unchanged_by_the_capstone():
+    """t11 is its own voice: the t10 recipe still renders the t10 file (the shipped-files test
+    holds the bytes' decoded audio)."""
+    assert [cascade.penta(n) for n in range(11)] == [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24]
+    assert "cascade-fruits-merge-t11" in cascade.SOUNDS
 
 
 def test_timings_match_the_motion():

@@ -147,5 +147,26 @@
       "reason": "Cascade time-bonus formula parity (#3700), versioned by bonus_rule in the payload; not a replay log"
     }
   ],
-  "accepted_changes": []
+  "accepted_changes": [
+    {
+      "path": "backend/tests/fixtures/cascade_replay_v1.json",
+      "sha256": "8de89a1da1a8bb929f075d024a60a5cdb1a98d19cdca13da8110c21dc9a32015",
+      "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
+    },
+    {
+      "path": "backend/tests/test_cascade_replay_events.py",
+      "sha256": "b647dcb9c874c3fd0449c04006ba08634eb78070d6c6fee4771a825b83356625",
+      "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
+    },
+    {
+      "path": "backend/tests/test_replay_game_cascade.py",
+      "sha256": "4e9683963c3ea5f23d0e6f539067e4455382f70d07c35d63960ca84e8301ca22",
+      "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
+    },
+    {
+      "path": "frontend/src/game/cascade/__tests__/replay.fixture.test.ts",
+      "sha256": "446d45f9ad624b029c279ea9c74676ec0accc3ca59cc8d60e2d65c050b6e7322",
+      "reason": "12-tier ladder (#3960); hidden game, no production replays (verified 0 rows 2026-11-21, #3974)"
+    }
+  ]
 }

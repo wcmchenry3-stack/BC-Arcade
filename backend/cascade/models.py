@@ -8,11 +8,12 @@ from cascade.time_bonus import BONUS_RULE, time_bonus
 from games.metadata import LegacyPlayerName
 from int_bounds import INT32_MAX, Int32, NonNegInt32
 
-MAX_TIER = 10
-"""The capstone's tier (``MAX_TIER`` in ``frontend/src/game/cascade/tiers.ts``)."""
+MAX_TIER = 11
+"""The capstone's tier (``CAPSTONE_TIER`` in ``frontend/src/game/cascade/tiers.ts``; 11 on the
+12-tier ladder, #3960 / #3975)."""
 
 # Written by the server only: whatever the app sends for them is replaced.
-SERVER_KEYS = ("time_bonus", "bonus_rule")
+SERVER_KEYS = ("time_bonus", "bonus_rule", "is_complete")
 
 
 class CascadeMetadata(BaseModel):
@@ -31,7 +32,7 @@ class CascadeResult(BaseModel):
     """The result block sent on ``PATCH /games/{id}/complete`` (#3700).
 
     Sent by the app (``frontend/src/game/cascade/resultBlock.ts``):
-    ``merge_score`` (the merge points), ``max_tier`` (highest tier made, 10 on a
+    ``merge_score`` (the merge points), ``max_tier`` (highest tier made, 11 on a
     win), ``won`` / ``outcome``, and the keys sent before #3700: ``final_score``,
     ``duration_ms``, ``theme`` (the fruit set id), ``total_drops`` and
     ``total_merges``.
@@ -43,7 +44,9 @@ class CascadeResult(BaseModel):
     - ``time_bonus`` and ``bonus_rule`` (``cascade/time_bonus.py``), when the
       block carries ``merge_score``. A block without one (builds before #3700)
       gets neither: its score is kept as sent, with no bonus.
-    - ``won`` (``outcome == "win"``), which the Daily Challenge goals read, and
+    - ``won`` (``outcome == "win"``) and ``is_complete`` (any outcome but
+      ``abandoned``, left out when the completion has none), which the Daily
+      Challenge's win and finish goals read (#3996), and
       ``outcome`` for a ``win`` / ``loss`` (left out otherwise: the column has it).
     - ``final_score`` = ``merge_score + time_bonus`` (at most 2³¹−1) on a
       finished (not abandoned) game, the value
@@ -63,6 +66,7 @@ class CascadeResult(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     won: bool | None = None
+    is_complete: bool | None = None
     outcome: Literal["win", "loss"] | None = None
     merge_score: NonNegInt32 | None = None
     time_bonus: NonNegInt32 | None = None
@@ -83,6 +87,9 @@ class CascadeResult(BaseModel):
         outcome = (info.context or {}).get("outcome")
         block = {k: v for k, v in data.items() if k not in SERVER_KEYS and k != "outcome"}
         block["won"] = outcome == "win"
+        # The Daily Challenge's "finish a game" goal (#3996): any end but an abandon.
+        if outcome is not None:
+            block["is_complete"] = outcome != "abandoned"
         if outcome in ("win", "loss"):
             block["outcome"] = outcome
         if "duration_ms" in block and not _whole_ms(block["duration_ms"]):

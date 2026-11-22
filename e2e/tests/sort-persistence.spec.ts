@@ -10,6 +10,7 @@ import {
   mockSortApi,
   gotoSort,
   injectSortProgress,
+  resumeSortFromLobby,
   injectLegacySortSave,
   injectCatalogSaveWithOldBests,
   readSortBests,
@@ -36,19 +37,20 @@ test("Sort Puzzle — in-progress state survives navigate away and back", async 
   await page.goto("/");
   await page.getByRole("button", { name: "Play Sort Puzzle" }).waitFor({ timeout: 10_000 });
 
-  // Return to Sort
-  await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
-  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
+  // Return to Sort: the saved board is a Resume tile, which opens it directly (#4008)
+  await resumeSortFromLobby(page);
 
-  // The continue button should appear since game was saved
+  // Move count should still be 1
+  await expect(page.getByText(/Moves:\s*1/)).toBeVisible({ timeout: 3_000 });
+
+  // The level grid still offers Continue for the same board
+  await page.getByRole("button", { name: "Back to levels" }).click();
+  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
   await expect(
     page.getByRole("button", { name: "Continue Level 1" }),
   ).toBeVisible({ timeout: 5_000 });
-
   await page.getByRole("button", { name: "Continue Level 1" }).click();
   await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
-
-  // Move count should still be 1
   await expect(page.getByText(/Moves:\s*1/)).toBeVisible({ timeout: 3_000 });
 });
 

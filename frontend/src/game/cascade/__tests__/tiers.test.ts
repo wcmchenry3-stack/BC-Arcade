@@ -16,12 +16,12 @@ import { FRUIT_SETS } from "../../../theme/fruitSets";
 const INNER_WIDTH = WORLD_WIDTH - 2 * WALL_THICKNESS;
 
 describe("the ladder", () => {
-  // #3920 (owner decision): 11 tiers, the Peach and the Moon removed.
-  it("has 11 tiers, numbered 0..10", () => {
-    expect(TIER_COUNT).toBe(11);
-    expect(TIERS).toHaveLength(11);
-    expect(TIERS.map((t) => t.tier)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(CAPSTONE_TIER).toBe(10);
+  // #3960 (owner decision): 12 tiers, the Moon back at tier 1 and a new tier 2.
+  it("has 12 tiers, numbered 0..11", () => {
+    expect(TIER_COUNT).toBe(12);
+    expect(TIERS).toHaveLength(12);
+    expect(TIERS.map((t) => t.tier)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(CAPSTONE_TIER).toBe(11);
   });
 
   it("has strictly increasing radius and score", () => {
@@ -31,13 +31,16 @@ describe("the ladder", () => {
     }
   });
 
-  // #3920 (owner decision): one constant ratio for the whole ladder, unrounded, 11.5 to 98.
-  it("follows the documented constant-ratio series, radius(n) = 11.5 * (98 / 11.5)^(n / 10)", () => {
-    const k = (98 / 11.5) ** (1 / 10);
-    expect(k).toBeCloseTo(1.23895, 5);
-    TIERS.forEach((t) => expect(t.radius).toBeCloseTo(11.5 * k ** t.tier, 9));
-    expect(TIERS[0]!.radius).toBe(11.5);
+  // #3920 / #3960 (owner decision): one constant ratio for the whole ladder, unrounded, 11 to 98
+  // (R0 = 11 since #3967's balance pass, owner decision #3978; 11.5 before).
+  it("follows the documented constant-ratio series, radius(n) = 11 * (98 / 11)^(n / 11)", () => {
+    const k = (98 / 11) ** (1 / 11);
+    expect(k).toBeCloseTo(1.219968, 6);
+    TIERS.forEach((t) => expect(t.radius).toBeCloseTo(11 * k ** t.tier, 9));
+    expect(TIERS[0]!.radius).toBe(11);
+    // The capstone is exactly 98 (the table is built so, not just close to it).
     expect(TIERS[CAPSTONE_TIER]!.radius).toBeCloseTo(98, 9);
+    expect(Math.abs(TIERS[CAPSTONE_TIER]!.radius - 98)).toBeLessThan(1e-9);
     // Every tier-to-tier ratio is the same.
     for (let i = 1; i < TIERS.length; i++) {
       expect(TIERS[i]!.radius / TIERS[i - 1]!.radius).toBeCloseTo(k, 12);
@@ -54,14 +57,15 @@ describe("the ladder", () => {
     expect(TIERS[0]!.density).toBe(1);
   });
 
-  // #3920 (owner decision): tiers 0-5 drop.
+  // #3920 / #3960 (owner decision): tiers 0-5 drop.
   it("drops tiers 0-5 only; the capstone is never dropped", () => {
+    expect(TIERS.filter((t) => t.droppable).map((t) => t.tier)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(DROPPABLE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
     expect(DROPPABLE_PIECE_TIERS).toEqual([0, 1, 2, 3, 4, 5]);
     expect(TIERS[CAPSTONE_TIER]!.droppable).toBe(false);
   });
 
-  it("lets two tier-9 pieces sit side by side in the bin and touch, and fits the capstone", () => {
+  it("lets two tier-10 pieces sit side by side in the bin and touch, and fits the capstone", () => {
     expect(4 * TIERS[CAPSTONE_TIER - 1]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
     expect(2 * TIERS[CAPSTONE_TIER]!.radius).toBeLessThanOrEqual(INNER_WIDTH);
   });
@@ -102,12 +106,13 @@ describe("the ladder", () => {
   it("names every tier of both sets from the ladder's keys, in the owner's order", () => {
     expect(TIERS.map((t) => t.nameKeys.fruits)).toEqual([
       "cherry",
-      "blueberry",
+      "lychee",
+      "lime",
       "lemon",
-      "grape",
+      "plum",
       "orange",
       "apple",
-      "coconut",
+      "pomegranate",
       "dragonfruit",
       "pineapple",
       "watermelon",
@@ -115,6 +120,7 @@ describe("the ladder", () => {
     ]);
     expect(TIERS.map((t) => t.nameKeys.cosmos)).toEqual([
       "pluto",
+      "moon",
       "mercury",
       "mars",
       "venus",
@@ -126,6 +132,11 @@ describe("the ladder", () => {
       "sun",
       "milkyWay",
     ]);
+    // Unique per set, and the retired Blueberry / Coconut are off the live ladder (#3960).
+    expect(new Set(TIERS.map((t) => t.nameKeys.fruits)).size).toBe(12);
+    expect(new Set(TIERS.map((t) => t.nameKeys.cosmos)).size).toBe(12);
+    expect(TIERS.map((t) => t.nameKeys.fruits)).not.toContain("blueberry");
+    expect(TIERS.map((t) => t.nameKeys.fruits)).not.toContain("coconut");
     for (const set of Object.values(FRUIT_SETS)) {
       set.fruits.forEach((f) => {
         const key = TIERS[f.tier]!.nameKeys[set.id as "fruits" | "cosmos"];
@@ -152,12 +163,14 @@ describe("the engine reads the ladder", () => {
     }
   });
 
-  it("merges two tier-9 pieces into the capstone and scores it from the ladder", () => {
+  it("merges two tier-10 pieces into the capstone, scores it from the ladder and emits win", () => {
     const engine = new CascadeEngine({});
-    engine.drop(CAPSTONE_TIER - 1, 200);
-    engine.drop(CAPSTONE_TIER - 1, 200);
+    engine.drop(10, 200);
+    engine.drop(10, 200);
     const events = engine.step(16.67).events;
     expect(events.some((e) => e.type === "merge" && e.result === CAPSTONE_TIER)).toBe(true);
+    expect(events.filter((e) => e.type === "win")).toHaveLength(1);
+    expect(engine.hasWon()).toBe(true);
     const state = engine.getState();
     expect(state.pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER]);
     expect(state.score).toBe(TIERS[CAPSTONE_TIER]!.score);

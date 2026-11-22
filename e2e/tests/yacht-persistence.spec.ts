@@ -24,7 +24,7 @@ test.describe("Yacht — localStorage persistence (#183)", () => {
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /Roll/i }).click();
-    await page.getByRole("button", { name: /Chance: potential score/ }).click();
+    await page.getByRole("button", { name: /Chance: open, would score/ }).click();
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
     // Verify the key was written to localStorage
@@ -47,7 +47,7 @@ test.describe("Yacht — localStorage persistence (#183)", () => {
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /Roll/i }).click();
-    await page.getByRole("button", { name: /Chance: potential score/ }).click();
+    await page.getByRole("button", { name: /Chance: open, would score/ }).click();
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
     // Go back to Home via URL (Lobby tab pop-to-root not reliable on web)
@@ -72,7 +72,7 @@ test.describe("Yacht — localStorage persistence (#183)", () => {
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /Roll/i }).click();
-    await page.getByRole("button", { name: /Chance: potential score/ }).click();
+    await page.getByRole("button", { name: /Chance: open, would score/ }).click();
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
     // Hard reload (simulates app restart while game is in progress)
@@ -162,16 +162,16 @@ test.describe("Yacht — localStorage persistence (#183)", () => {
 
     // Previously scored categories show their values
     await expect(
-      page.getByRole("button", { name: /Ones: scored 3/ }),
+      page.getByRole("button", { name: /Ones: scored, 3/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Twos: scored 6/ }),
+      page.getByRole("button", { name: /Twos: scored, 6/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Threes: scored 9/ }),
+      page.getByRole("button", { name: /Threes: scored, 9/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Fours: scored 12/ }),
+      page.getByRole("button", { name: /Fours: scored, 12/ }),
     ).toBeVisible();
   });
 });

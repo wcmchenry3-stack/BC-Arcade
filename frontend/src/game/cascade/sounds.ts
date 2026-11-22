@@ -1,5 +1,5 @@
 /**
- * Cascade's sounds (#3702): one set of 21 files per piece set, synthesized in-house by
+ * Cascade's sounds (#3702): one set of 22 sounds per piece set, synthesized in-house by
  * `tools/assets/synth_cascade_sfx.py` (owner picks: Fruits "Juicy pops", Cosmos "Starlight
  * glass"). The Fruits / Cosmos toggle picks the set. What plays when, and how it is paced:
  * `soundPacer.ts`; the players: `useCascadeSounds.ts`. Design log:
@@ -24,6 +24,7 @@ export const CASCADE_SOUND_NAMES = [
   "merge-t8",
   "merge-t9",
   "merge-t10",
+  "merge-t11",
   "chain-1",
   "chain-2",
   "chain-3",
@@ -53,6 +54,7 @@ export const CASCADE_SOUNDS: Readonly<
     "merge-t8": require("../../../assets/sounds/cascade-fruits-merge-t8.ogg"),
     "merge-t9": require("../../../assets/sounds/cascade-fruits-merge-t9.ogg"),
     "merge-t10": require("../../../assets/sounds/cascade-fruits-merge-t10.ogg"),
+    "merge-t11": require("../../../assets/sounds/cascade-fruits-merge-t11.ogg"),
     "chain-1": require("../../../assets/sounds/cascade-fruits-chain-1.ogg"),
     "chain-2": require("../../../assets/sounds/cascade-fruits-chain-2.ogg"),
     "chain-3": require("../../../assets/sounds/cascade-fruits-chain-3.ogg"),
@@ -76,6 +78,7 @@ export const CASCADE_SOUNDS: Readonly<
     "merge-t8": require("../../../assets/sounds/cascade-cosmos-merge-t8.ogg"),
     "merge-t9": require("../../../assets/sounds/cascade-cosmos-merge-t9.ogg"),
     "merge-t10": require("../../../assets/sounds/cascade-cosmos-merge-t10.ogg"),
+    "merge-t11": require("../../../assets/sounds/cascade-cosmos-merge-t11.ogg"),
     "chain-1": require("../../../assets/sounds/cascade-cosmos-chain-1.ogg"),
     "chain-2": require("../../../assets/sounds/cascade-cosmos-chain-2.ogg"),
     "chain-3": require("../../../assets/sounds/cascade-cosmos-chain-3.ogg"),
@@ -88,7 +91,7 @@ export const CASCADE_SOUNDS: Readonly<
 
 /**
  * The rarer sounds (merges from tier 4 up, chain steps from ×3 up, danger, the win and the game
- * over): their players are created on the first play, or pre-warmed when they become likely
+ * over, and the capstone's merge-t11, played with the win): their players are created on the first play, or pre-warmed when they become likely
  * (`useCascadeSounds`; docs/PERFORMANCE.md, "SFX players"). The other 8 (drop, the landings,
  * merges t0-t3, the first chain step) are created when the screen mounts, so the sounds of every
  * turn have no creation latency.
@@ -101,6 +104,7 @@ export const LAZY_CASCADE_SOUNDS: ReadonlySet<CascadeSoundName> = new Set<Cascad
   "merge-t8",
   "merge-t9",
   "merge-t10",
+  "merge-t11",
   "chain-2",
   "chain-3",
   "chain-4",

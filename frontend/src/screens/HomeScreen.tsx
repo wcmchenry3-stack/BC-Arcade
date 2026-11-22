@@ -8,6 +8,8 @@
  *      on foreground and remembered for an offline Stats screen (#2635).
  *   3. Daily — the Daily Challenge card, and today's Daily Word cached for offline (#2925).
  *   4. Resume — Yacht opens its saved game, including a VS game mid computer turn (#2203).
+ *   5. Tile status — Resume, Done today or a personal best replaces a tile's description, read
+ *      from local storage after first paint (`useLobbyTileStatus`, #4008).
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -30,8 +32,11 @@ import * as Sentry from "@sentry/react-native";
 import type { HomeStackParamList, RootStackParamList } from "../types/navigation";
 import { newGame as newYachtGame } from "../game/yacht/engine";
 import { loadGame as loadYachtGame } from "../game/yacht/storage";
-import { isAiTurnPending } from "../game/yacht/vsTurn";
+import { isResumable as isYachtResumable } from "../game/yacht/lobbyStatus";
 import { useTheme } from "../theme/ThemeContext";
+import { useSoundSettings } from "../game/_shared/SoundContext";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
+import type { GameType } from "../api/vocab";
 import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
@@ -47,24 +52,50 @@ import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { getLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
-import starSwarmTile from "../../assets/home/starswarm-tile.webp";
-import CascadeTileIcon from "../components/cascade/CascadeTileIcon";
+import { useLobbyTileStatus } from "../hooks/useLobbyTileStatus";
+import type { TileStatus } from "../game/_shared/lobbyStatus";
+import { formatMs } from "../game/_shared/formatMs";
+import { formatNumber } from "../api/statsDisplay";
+import dailyWordTile from "../../assets/home/daily_word-tile.webp";
+import freecellTile from "../../assets/home/freecell-tile.webp";
+import solitaireTile from "../../assets/home/solitaire-tile.webp";
+import sortTile from "../../assets/home/sort-tile.webp";
+import sudokuTile from "../../assets/home/sudoku-tile.webp";
+import twenty48Tile from "../../assets/home/twenty48-tile.webp";
+import yachtTile from "../../assets/home/yacht-tile.webp";
+// Hidden games' tile images: never imported here, or a store build would package them (#4011).
+import { HIDDEN_GAME_TILE_ART } from "../components/home/hiddenGameTileArt";
+import { tileAccent } from "../components/home/tileAccents";
+import { tilePressHaptic } from "../components/home/tileHaptic";
+import {
+  lobbyColumns,
+  lobbyTileTextSizing,
+  LOBBY_BUTTON_SIZE,
+  LOBBY_DESCRIPTION_LINE_HEIGHT,
+  LOBBY_DESCRIPTION_SIZE,
+  LOBBY_MAX_FONT_SCALE,
+  LOBBY_TITLE_LINE_HEIGHT,
+  LOBBY_TITLE_SIZE,
+  TILE_ICON_ZONE,
+} from "../components/home/lobbyColumns";
 
-/** Below this viewport width the grid collapses to a single column. */
-const SINGLE_COL_BREAKPOINT = 360;
-
-// A tile's icon is an emoji, or a generated image drawn at the emoji's footprint (#3599), or
-// Cascade's code-drawn piece (#3698), which shows the emoji until it is ready (and on web).
-type GameCardIcon =
-  | { emoji: string; image?: undefined; drawn?: boolean }
-  | { image: ImageSourcePropType; emoji?: undefined; drawn?: undefined };
-
-type GameCard = GameCardIcon & {
+// Every tile's icon is a gameplay scene drawn by tools/assets/draw_lobby_tile_art.py (#4011-#4013),
+// shown at `cardArt` (64 pt, inside the 68 pt TILE_ICON_ZONE). The hidden games' scenes come
+// through `hiddenGameTileArt`, which a store bundle stubs (#4013).
+type GameCard = {
+  image: ImageSourcePropType;
   key: string;
-  slug: string;
+  slug: GameType;
   title: string;
+  /** Accessibility label of the tile, e.g. "Play Yacht". Lives on the entry, never keyed by title. */
+  playLabel: string;
   description: string;
   action: () => void;
+  /**
+   * What a tap does while the tile says Resume, for a game whose plain `action` would not land in
+   * the saved game (Sort opens its level grid). Omitted: `action` already resumes (#4008).
+   */
+  resumeAction?: () => void;
 };
 
 export default function HomeScreen() {
@@ -84,7 +115,10 @@ export default function HomeScreen() {
     "sort",
     "daily_word",
   ]);
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
+  const { muted } = useSoundSettings();
+  // Reduce Motion drops the press scale and keeps the dim (#4007).
+  const reduceMotion = useReduceMotion();
   const { canPlay } = useEntitlementGate();
   const insets = useSafeAreaInsets();
   // A locked premium tile opens the paywall modal (#841). It is on the root
@@ -95,9 +129,11 @@ export default function HomeScreen() {
       gameSlug,
     });
   };
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
 
-  const numColumns = width < SINGLE_COL_BREAKPOINT ? 1 : 2;
+  const numColumns = lobbyColumns(width);
+  // Tile text reserves room that grows with the system font scale instead of fixed points.
+  const textSizing = lobbyTileTextSizing(fontScale);
 
   useEffect(() => {
     if (APP_START_MS > 0) {
@@ -202,13 +238,9 @@ export default function HomeScreen() {
 
   async function startYacht() {
     const saved = await loadYachtGame();
-    // Resume an unfinished game, including a VS game where only the
-    // computer's last turn is left (#2203).
-    const resumable =
-      saved &&
-      (!saved.state.game_over ||
-        (!!saved.aiDifficulty && !!saved.aiState && isAiTurnPending(saved.state, saved.aiState)));
-    if (saved && resumable) {
+    // Resume an unfinished game, including a VS game where only the computer's last turn is
+    // left (#2203). The same rule gives the tile its "Resume" (game/yacht/lobbyStatus.ts).
+    if (isYachtResumable(saved)) {
       navigation.navigate("Game", {
         initialState: saved.state,
         aiDifficulty: saved.aiDifficulty ?? undefined,
@@ -221,152 +253,191 @@ export default function HomeScreen() {
   }
 
   const allGames: GameCard[] = [
+    // Fixed order (owner, #4009): Daily Word, the game played every day, comes first; every other
+    // game keeps its relative slot, so tiles never move under a player's muscle memory.
+    {
+      key: "daily_word",
+      slug: "daily_word",
+      image: dailyWordTile, // PIANO, FOCAL, then FINAL solved (answers in the en, es and fr lists)
+      title: t("daily_word:game.title"),
+      playLabel: t("daily_word:game.playLabel"),
+      description: t("daily_word:game.description"),
+      action: () => navigation.navigate("DailyWord"),
+    },
     {
       key: "yacht",
       slug: "yacht",
-      emoji: "🎲",
+      image: yachtTile, // five dice: four landed on fives, one still tumbling
       title: t("yacht:game.title"),
+      playLabel: t("yacht:game.playLabel"),
       description: t("yacht:game.description"),
       action: startYacht,
     },
     {
       key: "cascade",
       slug: "cascade",
-      emoji: "🍉",
-      drawn: true,
+      image: HIDDEN_GAME_TILE_ART.cascade, // a cherry dropping into the bin onto the watermelon
       title: t("cascade:game.title"),
+      playLabel: t("cascade:game.playLabel"),
       description: t("cascade:game.description"),
       action: () => navigation.navigate("Cascade"),
     },
     {
       key: "blackjack",
       slug: "blackjack",
-      emoji: "🃏",
+      image: HIDDEN_GAME_TILE_ART.blackjack, // a natural: A♠ K♥, 21, the bet's chips
       title: t("blackjack:game.title"),
+      playLabel: t("blackjack:game.playLabel"),
       description: t("blackjack:game.description"),
       action: () => navigation.navigate("BlackjackBetting"),
     },
     {
       key: "twenty48",
       slug: "twenty48",
-      emoji: "🔢",
+      image: twenty48Tile, // two 1024 tiles sliding together
       title: t("twenty48:game.title"),
+      playLabel: t("twenty48:game.playLabel"),
       description: t("twenty48:game.description"),
       action: () => navigation.navigate("Twenty48"),
     },
     {
       key: "solitaire",
       slug: "solitaire",
-      emoji: "♠",
+      image: solitaireTile, // stock and waste, the waste's 7♠ moving onto an 8♥
       title: t("solitaire:game.title"),
+      playLabel: t("solitaire:game.playLabel"),
       description: t("solitaire:game.description"),
       action: () => navigation.navigate("Solitaire"),
     },
     {
       key: "freecell",
       slug: "freecell",
-      emoji: "🂡",
+      image: freecellTile, // the deal: eight cascades, every card face up
       title: t("freecell:game.title"),
+      playLabel: t("freecell:game.playLabel"),
       description: t("freecell:game.description"),
       action: () => navigation.navigate("FreeCell"),
     },
     {
       key: "hearts",
       slug: "hearts",
-      emoji: "♥",
+      image: HIDDEN_GAME_TILE_ART.hearts, // hearts broken over the A♥ just played
       title: t("hearts:game.title"),
+      playLabel: t("hearts:game.playLabel"),
       description: t("hearts:game.description"),
       action: () => navigation.navigate("Hearts"),
     },
     {
       key: "sudoku",
       slug: "sudoku",
-      // twenty48 already owns 🔢 in the lobby; the puzzle-piece glyph
-      // keeps Sudoku visually distinct while staying puzzle-coded.
-      emoji: "🧩",
+      image: sudokuTile, // a 3x3 box with a digit just placed
       title: t("sudoku:game.title"),
+      playLabel: t("sudoku:game.playLabel"),
       description: t("sudoku:game.description"),
       action: () => navigation.navigate("Sudoku"),
     },
     {
       key: "starswarm",
       slug: "starswarm",
-      // The Wasp Grunt in a hex badge (#3599), drawn by tools/assets/draw_starswarm_art.py. It
-      // carries its own dark face, so it reads on the light and the dark theme.
-      image: starSwarmTile,
+      image: HIDDEN_GAME_TILE_ART.starswarm, // three Wasp Grunts diving on the Arrow
       title: t("starswarm:game.title"),
+      playLabel: t("starswarm:game.playLabel"),
       description: t("starswarm:game.description"),
       action: () => navigation.navigate("StarSwarm"),
     },
     {
       key: "mahjong",
       slug: "mahjong",
-      emoji: "🀄",
+      image: HIDDEN_GAME_TILE_ART.mahjong, // two layers, the free pair selected
       title: t("mahjong:game.title"),
+      playLabel: t("mahjong:game.playLabel"),
       description: t("mahjong:game.description"),
       action: () => navigation.navigate("Mahjong"),
     },
     {
       key: "sort",
       slug: "sort",
-      emoji: "🍾",
+      image: sortTile, // one flask pouring into another
       title: t("sort:game.title"),
+      playLabel: t("sort:game.playLabel"),
       description: t("sort:game.description"),
       action: () => navigation.navigate("Sort"),
-    },
-    {
-      key: "daily_word",
-      slug: "daily_word",
-      emoji: "📝",
-      title: t("daily_word:game.title"),
-      description: t("daily_word:game.description"),
-      action: () => navigation.navigate("DailyWord"),
+      // The tile says Resume only for a board the level grid would Continue: land in it.
+      resumeAction: () => navigation.navigate("Sort", { resume: true }),
     },
   ];
   // Store builds hide the premium games entirely (#2390) — see gameVisibility.ts.
   const games = allGames.filter((game) => isGameVisible(game.slug));
 
-  const playLabels: Record<string, string> = {
-    [t("yacht:game.title")]: t("yacht:game.playLabel"),
-    [t("cascade:game.title")]: t("cascade:game.playLabel"),
-    [t("blackjack:game.title")]: t("blackjack:game.playLabel"),
-    [t("twenty48:game.title")]: t("twenty48:game.playLabel"),
-    [t("solitaire:game.title")]: t("solitaire:game.playLabel"),
-    [t("freecell:game.title")]: t("freecell:game.playLabel"),
-    [t("hearts:game.title")]: t("hearts:game.playLabel"),
-    [t("sudoku:game.title")]: t("sudoku:game.playLabel"),
-    [t("starswarm:game.title")]: t("starswarm:game.playLabel"),
-    [t("mahjong:game.title")]: t("mahjong:game.playLabel"),
-    [t("sort:game.title")]: t("sort:game.playLabel"),
-    [t("daily_word:game.title")]: t("daily_word:game.playLabel"),
-  };
+  // Each tile's status from local saves and bests (#4008). Only the games this build shows are
+  // read; the grid never waits on it.
+  const tileStatus = useLobbyTileStatus(
+    games.map((game) => game.slug),
+    navigation
+  );
 
-  // Cycle through BC Arcade accent colors for the gradient top border on each card.
-  const cardGradients: [string, string][] = [
-    [colors.tertiary, colors.secondary],
-    [colors.secondary, colors.accent],
-    [colors.accent, colors.accentBright],
-    [colors.accentBright, colors.tertiary],
-  ];
+  function statusText(status: TileStatus): string {
+    switch (status.kind) {
+      case "resume":
+        return t("common:home.status.inProgress");
+      case "doneToday":
+        return t("common:home.status.doneToday");
+      case "best":
+        if (status.unit === "moves") {
+          return t("common:home.status.bestMoves", { value: formatNumber(t, status.value) });
+        }
+        return t("common:home.status.best", {
+          value: status.unit === "time" ? formatMs(status.value) : formatNumber(t, status.value),
+        });
+    }
+  }
 
-  function renderCard({ item, index }: { item: GameCard; index: number }) {
-    const gradient = cardGradients[index % cardGradients.length] ?? [
-      colors.secondary,
-      colors.accent,
-    ];
-    const [gradStart, gradEnd] = gradient;
+  function tileLabel(item: GameCard, isLocked: boolean, status: TileStatus | undefined): string {
+    if (isLocked) return t("common:home.locked.cardLabel", { title: item.title });
+    if (status?.kind === "resume") {
+      return t("common:home.resume.cardLabel", { label: item.playLabel });
+    }
+    return item.playLabel;
+  }
+
+  function statusColor(status: TileStatus): string {
+    if (status.kind === "resume") return colors.accentText;
+    if (status.kind === "doneToday") return colors.tertiaryText;
+    return colors.textMuted;
+  }
+
+  function renderCard({ item }: { item: GameCard }) {
+    // Fixed per game, never by position (#4007).
+    const accent = tileAccent(item.slug, colors, theme);
+    const [gradStart, gradEnd] = accent.stops;
     const isLocked = !canPlay(item.slug);
+    // A locked tile can't be played, so it shows no status. Otherwise the status takes the
+    // description's slot, which keeps its reserved lines, so the rows stay equal (#4008).
+    const status = isLocked ? undefined : tileStatus[item.slug];
+    const statusLabel = status ? statusText(status) : undefined;
 
     return (
       <View style={[styles.cardWrapper, numColumns === 1 && styles.cardWrapperFull]}>
         <Pressable
-          style={[styles.card, { backgroundColor: colors.surfaceHigh }]}
-          onPress={isLocked ? () => openPaywall(item.slug) : item.action}
+          style={({ pressed }) => [
+            styles.card,
+            { backgroundColor: colors.surfaceHigh },
+            // Resolved by Pressable on the UI side of the press: no state, no animation loop.
+            pressed && (reduceMotion ? styles.cardPressedStill : styles.cardPressed),
+          ]}
+          // The haptic is on tap, not touch-down: a finger that starts a scroll on a tile
+          // grants the Pressable the responder first and must not buzz (#4007).
+          onPress={() => {
+            tilePressHaptic(muted);
+            if (isLocked) openPaywall(item.slug);
+            else if (status?.kind === "resume" && item.resumeAction) item.resumeAction();
+            else item.action();
+          }}
           accessibilityRole="button"
-          accessibilityLabel={
-            isLocked
-              ? t("common:home.locked.cardLabel", { title: item.title })
-              : (playLabels[item.title] ?? item.title)
+          accessibilityLabel={tileLabel(item, isLocked, status)}
+          // Resume says its status in the label; Done today and Best are the tile's value.
+          accessibilityValue={
+            statusLabel && status?.kind !== "resume" ? { text: statusLabel } : undefined
           }
           accessibilityHint={item.description}
           testID={`game-tile-${item.slug}`}
@@ -379,56 +450,52 @@ export default function HomeScreen() {
             style={styles.gradientBorder}
           />
 
-          {/* Emoji icon zone */}
-          <View style={styles.emojiZone}>
-            {/* Not every icon is a colour emoji: "♠", "♥" and "🂡" are text-presentation
-                glyphs that take the Text colour, which defaults to black — invisible on
-                the dark theme. Colour emoji ignore `color`, so this is safe for the rest. */}
-            {item.image ? (
-              <Image
-                source={item.image}
-                style={styles.cardImage}
-                resizeMode="contain"
-                accessible={false}
-                testID={`game-icon-${item.slug}`}
-              />
-            ) : item.drawn ? (
-              <CascadeTileIcon
-                size={styles.cardImage.width}
-                testID={`game-art-${item.slug}`}
-                fallback={
-                  <Text
-                    style={[styles.cardEmoji, { color: colors.text }]}
-                    testID={`game-icon-${item.slug}`}
-                  >
-                    {item.emoji}
-                  </Text>
-                }
-              />
-            ) : (
-              <Text
-                style={[styles.cardEmoji, { color: colors.text }]}
-                testID={`game-icon-${item.slug}`}
-              >
-                {item.emoji}
-              </Text>
-            )}
+          {/* Icon zone: the tile's gameplay scene */}
+          <View style={styles.iconZone}>
+            <Image
+              source={item.image}
+              style={styles.cardArt}
+              resizeMode="contain"
+              accessible={false}
+              testID={`game-icon-${item.slug}`}
+            />
           </View>
 
           {/* Title */}
-          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={1}>
+          <Text
+            style={[styles.cardTitle, { color: colors.text, minHeight: textSizing.titleMinHeight }]}
+            numberOfLines={textSizing.titleLines}
+            maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+          >
             {item.title}
           </Text>
 
-          {/* Description */}
-          <Text style={[styles.cardDesc, { color: colors.textMuted }]} numberOfLines={2}>
-            {item.description}
+          {/* Description, or the status that replaces it (#4008) */}
+          <Text
+            style={[
+              styles.cardDesc,
+              {
+                color: status ? statusColor(status) : colors.textMuted,
+                minHeight: textSizing.descriptionMinHeight,
+              },
+            ]}
+            numberOfLines={textSizing.descriptionLines}
+            maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+            testID={status ? `game-status-${item.slug}` : undefined}
+          >
+            {statusLabel ?? item.description}
           </Text>
 
           {/* Play / Unlock button */}
           {isLocked ? (
-            <View style={[styles.playBtn, styles.playBtnLocked, { borderColor: colors.border }]}>
-              <Text style={[styles.playBtnText, { color: colors.textMuted }]}>
+            <View
+              style={[styles.playBtn, { borderColor: colors.border }]}
+              testID={`game-btn-${item.slug}`}
+            >
+              <Text
+                style={[styles.playBtnText, { color: colors.textMuted }]}
+                maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+              >
                 {t("common:home.locked.buttonLabel")}
               </Text>
             </View>
@@ -437,10 +504,14 @@ export default function HomeScreen() {
               colors={[gradStart, gradEnd]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.playBtn}
+              style={[styles.playBtn, styles.playBtnUnlocked]}
+              testID={`game-btn-${item.slug}`}
             >
-              <Text style={[styles.playBtnText, { color: colors.textOnAccent }]}>
-                {playLabels[item.title] ?? t("common:play", "Play")}
+              <Text
+                style={[styles.playBtnText, { color: accent.label }]}
+                maxFontSizeMultiplier={LOBBY_MAX_FONT_SCALE}
+              >
+                {status?.kind === "resume" ? t("common:home.resume.buttonLabel") : t("common:play")}
               </Text>
             </LinearGradient>
           )}
@@ -504,20 +575,31 @@ export default function HomeScreen() {
         <ConnectedOfflineBanner />
         <DailyChallengeCard />
         {numColumns === 1
-          ? games.map((item, index) => (
-              <React.Fragment key={item.key}>{renderCard({ item, index })}</React.Fragment>
+          ? games.map((item) => (
+              <React.Fragment key={item.key}>{renderCard({ item })}</React.Fragment>
             ))
-          : Array.from({ length: Math.ceil(games.length / numColumns) }, (_, rowIndex) => (
-              <View key={rowIndex} style={styles.row}>
-                {games
-                  .slice(rowIndex * numColumns, rowIndex * numColumns + numColumns)
-                  .map((item, colIndex) => (
-                    <React.Fragment key={item.key}>
-                      {renderCard({ item, index: rowIndex * numColumns + colIndex })}
-                    </React.Fragment>
+          : Array.from({ length: Math.ceil(games.length / numColumns) }, (_, rowIndex) => {
+              const rowGames = games.slice(rowIndex * numColumns, (rowIndex + 1) * numColumns);
+              return (
+                <View key={rowIndex} style={styles.row}>
+                  {rowGames.map((item) => (
+                    <React.Fragment key={item.key}>{renderCard({ item })}</React.Fragment>
                   ))}
-              </View>
-            ))}
+                  {/* Pad a short last row so every tile keeps the column width (#4005). */}
+                  {Array.from({ length: numColumns - rowGames.length }, (_, i) => (
+                    <View
+                      key={`spacer-${i}`}
+                      testID="lobby-spacer"
+                      style={styles.cardWrapper}
+                      accessible={false}
+                      importantForAccessibility="no-hide-descendants"
+                      accessibilityElementsHidden
+                      pointerEvents="none"
+                    />
+                  ))}
+                </View>
+              );
+            })}
       </ScrollView>
     </View>
   );
@@ -570,37 +652,41 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 8,
   },
+  // Press feedback (#4007): dim and shrink a little; Reduce Motion keeps the dim only.
+  cardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
+  },
+  cardPressedStill: {
+    opacity: 0.85,
+  },
   gradientBorder: {
     width: "100%",
     height: 3,
   },
-  emojiZone: {
-    height: 88,
+  iconZone: {
+    height: TILE_ICON_ZONE,
     alignItems: "center",
     justifyContent: "center",
   },
-  cardEmoji: {
-    fontSize: 48,
-  },
-  // The footprint of a 48 pt emoji glyph inside the 88 pt emojiZone
-  cardImage: {
-    width: 56,
-    height: 56,
+  // The lobby tile art's display size (#4011): the WebPs are drawn at 3x this (192 px) by
+  // tools/assets/draw_lobby_tile_art.py (its DISPLAY_PT), sized to sit in the icon zone.
+  cardArt: {
+    width: 64,
+    height: 64,
   },
   cardTitle: {
     fontFamily: typography.heading,
-    fontSize: 14,
-    lineHeight: 18,
-    height: 18,
+    fontSize: LOBBY_TITLE_SIZE,
+    lineHeight: LOBBY_TITLE_LINE_HEIGHT,
     letterSpacing: -0.3,
     paddingHorizontal: 8,
     textAlign: "center",
   },
   cardDesc: {
     fontFamily: typography.body,
-    fontSize: 10,
-    lineHeight: 14,
-    height: 28,
+    fontSize: LOBBY_DESCRIPTION_SIZE,
+    lineHeight: LOBBY_DESCRIPTION_LINE_HEIGHT,
     textAlign: "center",
     paddingHorizontal: 12,
   },
@@ -608,18 +694,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginHorizontal: 12,
     paddingVertical: 8,
+    borderWidth: 1,
     borderRadius: 20,
     alignSelf: "stretch",
     alignItems: "center",
   },
   playBtnText: {
     fontFamily: typography.label,
-    fontSize: 9,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    fontSize: LOBBY_BUTTON_SIZE,
+    letterSpacing: 0.2,
   },
-  playBtnLocked: {
-    borderWidth: 1,
+  // Both buttons carry a 1 pt border so locked and unlocked tiles measure the same (#4005).
+  playBtnUnlocked: {
+    borderColor: "transparent",
   },
   lockBadge: {
     position: "absolute",

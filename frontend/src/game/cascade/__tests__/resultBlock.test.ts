@@ -15,9 +15,9 @@ describe("cascadeResultBlock (#3700)", () => {
   it("a win: the merge score, the time bonus, its sum as the score, won and the capstone", () => {
     const block = cascadeResultBlock(PROGRESS, "win");
     expect(block).toEqual({
-      final_score: 7_954 + 8_278,
+      final_score: 7_954 + 12_417,
       merge_score: 7_954,
-      time_bonus: 8_278,
+      time_bonus: 12_417,
       bonus_rule: BONUS_RULE,
       duration_ms: 211_000,
       theme: "fruits",
@@ -60,7 +60,7 @@ describe("cascadeResultBlock (#3700)", () => {
     const block = cascadeResultBlock(PROGRESS, "win");
     const { summary, payload } = cascadeCompletion(block, "win");
     expect(summary).toEqual({
-      finalScore: 7_954 + 8_278,
+      finalScore: 7_954 + 12_417,
       outcome: "win",
       durationMs: 211_000,
       result: { ...block, outcome: "win" },

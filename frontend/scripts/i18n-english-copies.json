@@ -212,7 +212,8 @@
       ]
     },
     "cascade": {
-      "nl": ["score.display", "score.label"]
+      "nl": ["score.display", "score.label", "pieces.fruits.lychee"],
+      "fr-CA": ["pieces.fruits.lime"]
     },
     "feedback": {
       "nl": ["type_label"],
@@ -221,14 +222,17 @@
     "twenty48": {
       "nl": ["score.label"],
       "fr-CA": ["score.label"]
+    },
+    "daily_challenge": {
+      "de": ["bonus.label"],
+      "nl": ["bonus.label"],
+      "fr-CA": ["bonus.label"]
     }
   },
   "pending": {
     "cascade": {
       "fr-CA": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -244,9 +248,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "es": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -262,9 +264,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "hi": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -280,9 +280,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "ar": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -298,9 +296,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "zh": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -316,9 +312,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "ja": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -334,9 +328,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "ko": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -352,9 +344,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "pt": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -370,9 +360,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "he": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -388,9 +376,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "de": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -406,9 +392,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "nl": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
@@ -424,9 +408,7 @@
         "pieces.cosmos.milkyWay"
       ],
       "ru": [
-        "pieces.fruits.blueberry",
         "pieces.fruits.lemon",
-        "pieces.fruits.coconut",
         "pieces.fruits.dragonfruit",
         "pieces.fruits.pumpkin",
         "pieces.cosmos.pluto",
