@@ -122,7 +122,8 @@ describe("withLocalProgress", () => {
 // #4032: the premium games send an outcome, not won / is_complete; the server writes
 // the flags (backend/games/result_flags.py) and the preview mirrors it.
 describe("factsOf — server-written outcome flags (#4032)", () => {
-  function facts(gameType: string, outcome: string | undefined, result: Record<string, unknown>) {
+  function facts(gameType: string, outcome: string | undefined, raw: Record<string, unknown>) {
+    const result = { final_score: 1, ...raw }; // the server skips an empty block
     return factsOf(
       pending({ gameType, completeSummary: { ...(outcome ? { outcome } : {}), result } })
     );
@@ -177,7 +178,7 @@ describe("factsOf — server-written outcome flags (#4032)", () => {
     const limited = factsOf(
       pending({
         gameType: "cascade",
-        completeSummary: { outcome: "win", durationMs: 100_000, result: {} },
+        completeSummary: { outcome: "win", durationMs: 100_000, result: { final_score: 1 } },
       })
     );
     expect(met("cascade", "completed", f)).toBe(true);
@@ -198,5 +199,34 @@ describe("factsOf — server-written outcome flags (#4032)", () => {
     const f = facts("solitaire", "win", { won: false, is_complete: false });
     expect(f).toMatchObject({ won: false, is_complete: false });
     expect(facts("daily_word", undefined, { won: true })).toMatchObject({ won: true });
+  });
+
+  it.each(["blackjack", "hearts", "starswarm", "cascade"])(
+    "%s: an empty or missing result block gets no flags",
+    (g) => {
+      for (const result of [{}, undefined]) {
+        const f = factsOf(
+          pending({
+            gameType: g,
+            completeSummary: { outcome: "win", ...(result ? { result } : {}) },
+          })
+        );
+        expect(f).not.toHaveProperty("won");
+        expect(f).not.toHaveProperty("is_complete");
+        expect(met(g, "completed", f)).toBe(false);
+        expect(met(g, "won", f)).toBe(false);
+      }
+    }
+  );
+
+  it("lets non-null creation metadata override the derived flag (merge order)", () => {
+    const f = factsOf(
+      pending({
+        gameType: "hearts",
+        metadata: { won: true, is_complete: false },
+        completeSummary: { outcome: "loss", result: { final_score: 1 } },
+      })
+    );
+    expect(f).toMatchObject({ won: true, is_complete: false });
   });
 });

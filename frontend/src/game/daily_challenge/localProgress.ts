@@ -92,11 +92,11 @@ export function factsOf(game: PendingGame): Facts | null {
   if (!game.completed || game.completedAt === null) return null;
   const summary = game.completeSummary ?? {};
   if (summary.outcome === "abandoned") return null;
-  const facts = withServerFlags(
-    game.gameType,
-    isPlainRecord(summary.result) ? { ...summary.result } : {},
-    summary.outcome
-  );
+  // The server writes the flags only into a non-empty result block
+  // (`games.sessions._validate_result` returns `{}` before the model runs).
+  const block: Record<string, unknown> = isPlainRecord(summary.result) ? { ...summary.result } : {};
+  const facts =
+    Object.keys(block).length > 0 ? withServerFlags(game.gameType, block, summary.outcome) : block;
   for (const [key, value] of Object.entries(game.metadata ?? {})) {
     if (value !== null && value !== undefined) facts[key] = value;
   }
