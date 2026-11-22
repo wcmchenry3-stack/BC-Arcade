@@ -280,10 +280,6 @@ def _rgb(colour) -> list[int]:
 RANKS = ["A", *[str(n) for n in range(2, 11)], "J", "Q", "K"]
 
 
-def _value(face: str) -> int:
-    return RANKS.index(face[:-1]) + 1
-
-
 def _cards(name: str) -> list[str]:
     if name == "solitaire":
         return list(art.SOL_FACES)
