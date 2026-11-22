@@ -40,7 +40,7 @@ specs. Nothing is written. Local days use the client's UTC offset, as the streak
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
@@ -50,13 +50,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from daily_challenge import assignments, personal
 from daily_challenge.assignments import MAX_DAYS_AHEAD, Assignment
 from daily_challenge.definitions import (
+    CATALOG_EDITION,
+    DAY_START_MEASURES,
+    LEGACY_EDITION,
     Facts,
     Goal,
+    counted_editions,
+    edition_of,
     facts_for,
     game_facts,
     is_relative,
     local_day_of,
 )
+from daily_challenge.editions import edition_column
 from db.jsonx import plus_hours
 from db.models import Game, GameType
 from games.filters import not_abandoned, not_dev_affected
@@ -111,11 +117,18 @@ class InstallHistory:
     # Finished games per (game type, local day), over the affinity window.
     daily_counts: dict[str, dict[date, int]] = field(default_factory=dict)
     # Best final_score ever before each served day (and each probe day), per game type.
+    # For Sort, of the install's edition only (``sort_edition``).
     best_scores: dict[date, dict[str, int]] = field(default_factory=dict)
     # Best final_score per (game type, local day) over the affinity window, and the best
-    # before that window: Sort's per-day standings (``sort_new_levels_per_day``, #4028).
+    # before that window: Sort's per-day standings (``sort_new_levels_per_day``, #4028),
+    # of the install's edition only.
     daily_best: dict[str, dict[date, int]] = field(default_factory=dict)
     best_before_window: dict[str, int] = field(default_factory=dict)
+    # The day-start bests per (game type, Sort edition) of each served and probe day,
+    # every edition: what a relative goal is scored against (``met_on``).
+    edition_bests: dict[date, dict[tuple[str, int], int]] = field(default_factory=dict)
+    # The Sort edition the install's targets read (``_standing_edition``).
+    sort_edition: int = CATALOG_EDITION
     # Pinned assignments by local date; the pick adds the days it picks.
     pinned: dict[date, Assignment] = field(default_factory=dict)
     # Query 4 per served day, and the write ceiling's window. None: not read
@@ -193,13 +206,15 @@ class InstallHistory:
 
     def met_on(self, goal: Goal, day: date) -> bool:
         """Whether a finished game of ``day`` met ``goal`` (exact on probe days). A
-        relative goal (Sort "new levels") is scored against the best before ``day``
-        (query 3 reads it for every probe day)."""
-        day_start = (
-            {goal.game_type: self.best_final_score(goal.game_type, day)}
-            if is_relative(goal)
-            else None
-        )
+        relative goal (Sort "new levels") is scored against the best before ``day`` of
+        each row's edition (query 3 reads them for every probe day). A hand-built history
+        without them uses ``best_scores`` for both editions."""
+        day_start: dict[tuple[str, int], int] | None = None
+        if is_relative(goal):
+            day_start = self.edition_bests.get(day) or {
+                (goal.game_type, e): self.best_final_score(goal.game_type, day)
+                for e in (LEGACY_EDITION, CATALOG_EDITION)
+            }
         for g in self.games.get(goal.game_type, []):
             if g.local_date != day:
                 continue
@@ -215,8 +230,19 @@ class InstallHistory:
         """New Sort levels solved on each local day of play in the affinity window before
         ``day``: that day's best ``final_score`` (the standing after its last solve) minus
         the best before it. From per-day maxima (query 3), not from single rows, so a
-        player solving 10 levels a day reads as 10 a day (#4028)."""
-        dates = [day - timedelta(days=back) for back in range(self.affinity_window, 0, -1)]
+        player solving 10 levels a day reads as 10 a day (#4028). A day not over yet (today,
+        when the pick runs for today+1 or today+2) is left out: its standing so far is not a
+        day's pace."""
+        today = self.first_day
+        if self.now is not None:
+            today = _local_date(self.now, self.tz_offset_minutes)
+        dates = [
+            d
+            for back in range(self.affinity_window, 0, -1)
+            if (d := day - timedelta(days=back)) < today
+        ]
+        if not dates:
+            return []
         maxima = self.daily_best.get("sort", {})
         running = max(
             [self.best_before_window.get("sort", 0)]
@@ -388,9 +414,12 @@ async def load_install_history(
         + [best_before(count_windows[-1].start_utc)]
         + [best_before(local_day_of(d, tz_offset_minutes).start_utc) for d in best_days]
     )
+    # Grouped by Sort edition too (one more GROUP BY key, same statement): Sort's catalog
+    # and pre-catalog levels are numbered apart, so its standings are per edition.
+    edition = edition_column()
     agg = (
         await session.execute(
-            select(GameType.name, *columns)
+            select(GameType.name, edition, *columns)
             .select_from(Game)
             .join(GameType, Game.game_type_id == GameType.id)
             .where(
@@ -400,30 +429,65 @@ async def load_install_history(
                 not_abandoned(),
                 not_dev_affected(),
             )
-            .group_by(GameType.name)
+            .group_by(GameType.name, edition)
         )
     ).all()
-    n = len(count_days)
-    for name, *values in agg:
-        counts, day_bests = values[:n], values[n : 2 * n]
-        before_window, bests = values[2 * n], values[2 * n + 1 :]
-        history.daily_counts[name] = {
-            d: int(c) for d, c in zip(count_days, counts, strict=True) if c
-        }
-        history.daily_best[name] = {
-            d: int(b) for d, b in zip(count_days, day_bests, strict=True) if b is not None
-        }
-        if before_window is not None:
-            history.best_before_window[name] = int(before_window)
-        for d, best in zip(best_days, bests, strict=True):
-            if best is not None:
-                history.best_scores.setdefault(d, {})[name] = int(best)
+    _fold_counts_and_bests(history, agg, count_days, best_days)
 
     # 4. One aggregate row over game creations (skipped if every day is new anyway).
     history.creations = {}
     if not all(personal.is_new_install(history, d) for d in served):
         history.creations = await _creations(session, session_id, served, history.pin_window, now)
     return history
+
+
+def _fold_counts_and_bests(
+    history: InstallHistory, agg: Sequence, count_days: list[date], best_days: list[date]
+) -> None:
+    """Query 3's rows (one per game type and Sort edition) into ``history``: counts summed
+    over editions, every edition's day-start bests in ``edition_bests``, and Sort's
+    per-day standings and bests from the install's edition only (``sort_edition``)."""
+    history.sort_edition = _standing_edition(history)
+    n = len(count_days)
+    for name, ed, *values in agg:
+        counts, day_bests = values[:n], values[n : 2 * n]
+        before_window, bests = values[2 * n], values[2 * n + 1 :]
+        day_counts = history.daily_counts.setdefault(name, {})
+        for d, c in zip(count_days, counts, strict=True):
+            if c:
+                day_counts[d] = day_counts.get(d, 0) + int(c)
+        for d, best in zip(best_days, bests, strict=True):
+            if best is not None:
+                history.edition_bests.setdefault(d, {})[(name, int(ed))] = int(best)
+        if name in DAY_START_MEASURES and int(ed) != history.sort_edition:
+            continue  # the targets read the install's own edition only
+        _merge_max(
+            history.daily_best.setdefault(name, {}),
+            {d: b for d, b in zip(count_days, day_bests, strict=True) if b is not None},
+        )
+        if before_window is not None:
+            history.best_before_window[name] = max(
+                history.best_before_window.get(name, 0), int(before_window)
+            )
+        for d, best in zip(best_days, bests, strict=True):
+            if best is not None:
+                _merge_max(history.best_scores.setdefault(d, {}), {name: best})
+
+
+def _merge_max(into: dict, values: Mapping) -> None:
+    for key, value in values.items():
+        into[key] = max(into.get(key, 0), int(value))
+
+
+def _standing_edition(history: InstallHistory) -> int:
+    """The Sort edition the install's pace and levels left read: the catalog while
+    ``SORT_CATALOG_EDITION_ENFORCED`` is on (only it counts), else the edition of the
+    install's latest Sort row (the build it plays now; the catalog when it has none)."""
+    editions = counted_editions()
+    if len(editions) == 1:
+        return editions[0]
+    rows = history.games.get("sort", [])
+    return edition_of(rows[0].facts) if rows else CATALOG_EDITION
 
 
 def _as_datetime(value: datetime | None) -> datetime | None:

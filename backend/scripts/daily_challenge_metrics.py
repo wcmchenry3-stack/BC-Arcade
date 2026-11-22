@@ -27,7 +27,8 @@ d. next-day return: of qualifying install-days, the share where the same install
 
 Goals are rebuilt with ``goal_from_spec`` and scored with ``evaluate_goal`` against
 the games the install finished that day, exactly as the live status and the streak
-do (abandoned games never count: ``games.filters.not_abandoned``).
+do (abandoned and dev-affected games never count: ``games.filters.not_abandoned``,
+``not_dev_affected``, #4039).
 
 Approximation (documented, not silent): a pinned row stores only the install's local
 *date*, not its UTC offset. Every install is bucketed with one offset
@@ -82,7 +83,8 @@ from daily_challenge.definitions import (
     game_facts,
     local_day_of,
 )
-from daily_challenge.service import EndedGame, evaluate_goal
+from daily_challenge.editions import edition_column
+from daily_challenge.service import EndedGame, evaluate_goal, running_day_starts
 from daily_challenge.streak import GOALS_TO_QUALIFY
 from db.models import DailyChallengeAssignment, Game, GameType
 from games.filters import not_abandoned, not_dev_affected
@@ -127,32 +129,18 @@ def _local_date(completed_at: datetime, tz_offset_minutes: int) -> date:
     return (completed_at + timedelta(minutes=tz_offset_minutes)).date()
 
 
-def _day_starts(
-    before_window: dict[str, int], games: dict[date, list[EndedGame]], days: list[date]
-) -> dict[date, dict[str, int]]:
-    """The day-start best per relative game for each of ``days``: the best before the
-    window, then a running max over the window's own rows (as ``streak._day_starts``)."""
-    running = dict(before_window)
-    out: dict[date, dict[str, int]] = {}
-    for day in sorted({*days, *games}):
-        out[day] = dict(running)
-        for name, facts in games.get(day, []):
-            value = facts.get(DAY_START_MEASURES.get(name, ""))
-            if name in running and isinstance(value, int) and not isinstance(value, bool):
-                running[name] = max(running[name], value)
-    return out
-
-
 def _score_install(
     totals: _Totals,
     pinned: dict[date, tuple[str, str | None]],
     games: dict[date, list[EndedGame]],
     last_matured_day: date,
-    before_window: dict[str, int] | None = None,
+    before_window: dict[tuple[str, int], int] | None = None,
 ) -> None:
-    """``before_window``: the install's day-start best per relative game at the start of
-    the window (Sort "new levels", #4028), or None when no pinned row holds such a goal."""
-    day_starts = _day_starts(before_window, games, list(pinned)) if before_window else {}
+    """``before_window``: the install's day-start bests per (relative game, Sort edition)
+    at the start of the window (Sort "new levels", #4028), or None when no pinned row
+    holds such a goal. Later days' come from a running max over the window's games
+    (``service.running_day_starts``, as the streak)."""
+    day_starts = {} if before_window is None else running_day_starts(before_window, games, pinned)
     for day, (goals_text, bonus_text) in pinned.items():
         try:
             goals = decode_goals(goals_text)
@@ -245,6 +233,9 @@ async def _collect(
                 Game.completed_at >= first,
                 Game.completed_at < last,
                 not_abandoned(),
+                # A run a dev-panel action touched never counts, as in /status and the
+                # streak (#4039).
+                not_dev_affected(),
             )
         )
         games: dict[str, dict[date, list[EndedGame]]] = defaultdict(lambda: defaultdict(list))
@@ -259,10 +250,11 @@ async def _collect(
 
 async def _before_window(
     db: AsyncSession, pinned: dict[str, dict[date, tuple[str, str | None]]], first: datetime
-) -> dict[str, dict[str, int]]:
+) -> dict[str, dict[tuple[str, int], int]]:
     """Per install with a relative goal (Sort "new levels", #4028) in the chunk: its best
-    Sort level before the window, the baseline its first day is scored against. One
-    grouped SELECT per chunk, none when no pinned row of the chunk holds such a goal."""
+    Sort level before the window per Sort edition, the baselines its first day is scored
+    against. One grouped SELECT per chunk, none when no pinned row of the chunk holds
+    such a goal."""
     sids = [
         sid
         for sid, days in pinned.items()
@@ -271,8 +263,9 @@ async def _before_window(
     if not sids:
         return {}
     games = sorted(DAY_START_MEASURES)
+    edition = edition_column()
     rows = await db.execute(
-        select(Game.session_id, GameType.name, func.max(Game.final_score))
+        select(Game.session_id, GameType.name, edition, func.max(Game.final_score))
         .select_from(Game)
         .join(GameType, Game.game_type_id == GameType.id)
         .where(
@@ -283,12 +276,12 @@ async def _before_window(
             not_abandoned(),
             not_dev_affected(),
         )
-        .group_by(Game.session_id, GameType.name)
+        .group_by(Game.session_id, GameType.name, edition)
     )
-    out: dict[str, dict[str, int]] = {sid: dict.fromkeys(games, 0) for sid in sids}
-    for sid, name, best in rows:
+    out: dict[str, dict[tuple[str, int], int]] = {sid: {} for sid in sids}
+    for sid, name, ed, best in rows:
         if best is not None and str(sid) in out:
-            out[str(sid)][name] = int(best)
+            out[str(sid)][(name, int(ed))] = int(best)
     return out
 
 

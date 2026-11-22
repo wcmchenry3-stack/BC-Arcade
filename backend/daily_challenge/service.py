@@ -30,7 +30,7 @@ already have been shown unpinned, gets the shared template exactly
 from __future__ import annotations
 
 import logging
-from collections.abc import Collection
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -48,12 +48,14 @@ from daily_challenge.definitions import (
     LocalDay,
     Slate,
     Template,
+    edition_of,
     facts_for,
     game_facts,
     local_day,
     relative_games,
     template_for,
 )
+from daily_challenge.editions import edition_column
 from daily_challenge.history import InstallHistory
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import DISABLED_GAMES, is_dev_override_active
@@ -140,20 +142,23 @@ def evaluate_template(
 
 async def day_start_bests(
     session: AsyncSession, session_id: str, games: Collection[str], before: datetime
-) -> dict[str, int]:
-    """The install's best ``DAY_START_MEASURES`` value per game in ``games`` among its
-    finished games before ``before`` (0 for a game with none): the baseline a relative
-    goal is scored against (#4028). One aggregate statement, and none at all when
-    ``games`` is empty, so a day without a relative goal reads nothing more. The same
-    filters as the day's own games (abandoned and ``dev_affected`` rows never count)."""
+) -> dict[tuple[str, int], int] | None:
+    """The install's best ``DAY_START_MEASURES`` value per (game, edition) for the games
+    in ``games``, among its finished games before ``before`` (a missing key: none, so 0):
+    the baselines a relative goal is scored against (#4028). One aggregate statement
+    grouped by game and edition (``edition_column``), and none at all when ``games`` holds
+    no relative game (then ``None``), so a day without a relative goal reads nothing more.
+    The same filters as the day's own games (abandoned and ``dev_affected`` rows never
+    count)."""
     wanted = sorted(g for g in games if g in DAY_START_MEASURES)
     if not wanted:
-        return {}
+        return None
     # Every relative game reads ``final_score`` today; a new measure needs its own column.
     assert all(DAY_START_MEASURES[g] == "final_score" for g in wanted), wanted
+    edition = edition_column()
     rows = (
         await session.execute(
-            select(GameType.name, func.max(Game.final_score))
+            select(GameType.name, edition, func.max(Game.final_score))
             .select_from(Game)
             .join(GameType, Game.game_type_id == GameType.id)
             .where(
@@ -164,11 +169,32 @@ async def day_start_bests(
                 not_abandoned(),
                 not_dev_affected(),
             )
-            .group_by(GameType.name)
+            .group_by(GameType.name, edition)
         )
     ).all()
-    found = {name: int(best) for name, best in rows if best is not None}
-    return {g: found.get(g, 0) for g in wanted}
+    return {(name, int(ed)): int(best) for name, ed, best in rows if best is not None}
+
+
+def running_day_starts(
+    before: Mapping[tuple[str, int], int],
+    by_day: Mapping[date, list[EndedGame]],
+    days: Iterable[date],
+) -> dict[date, DayStart]:
+    """The day-start bests of each of ``days`` (and each day in ``by_day``), oldest first:
+    ``before`` (the bests before the earliest day), then a running max per (game,
+    edition) over the days' own rows. The streak and the metrics script read the rows of
+    their window anyway, so this needs no query per day."""
+    running = dict(before)
+    out: dict[date, DayStart] = {}
+    for day in sorted({*days, *by_day}):
+        out[day] = dict(running)
+        for name, facts in by_day.get(day, []):
+            measure = DAY_START_MEASURES.get(name)
+            value = None if measure is None else facts.get(measure)
+            if isinstance(value, int) and not isinstance(value, bool):
+                key = (name, edition_of(facts))
+                running[key] = max(running.get(key, 0), value)
+    return out
 
 
 async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Slate:

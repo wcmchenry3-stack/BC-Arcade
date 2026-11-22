@@ -20,13 +20,16 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from sqlalchemy import delete, event
 
-from daily_challenge import personal, service
+from daily_challenge import definitions, personal, service
 from daily_challenge.assignments import Assignment, derived_template_id, encode_goals
 from daily_challenge.definitions import (
+    CATALOG_EDITION,
     FREE_GOAL_POOL,
+    LEGACY_EDITION,
     NEW_LEVELS_KIND,
     Goal,
     Template,
+    edition_of,
     facts_for,
     goal_from_spec,
     goal_to_spec,
@@ -62,8 +65,14 @@ def _goal(n: int) -> Goal:
     return build_goal(_LEVELS, n)
 
 
-def _ended(solves: Sequence[int]) -> list[tuple[str, dict]]:
-    return [("sort", {"won": True, "final_score": s}) for s in solves]
+_CAT = {"catalog_version": 1}  # a row from the 120-level catalog (#2761)
+_CATALOG = ("sort", CATALOG_EDITION)
+_LEGACY = ("sort", LEGACY_EDITION)
+
+
+def _ended(solves: Sequence[int], edition: dict | None = None) -> list[tuple[str, dict]]:
+    meta = _CAT if edition is None else edition
+    return [("sort", {"won": True, "final_score": s, **meta}) for s in solves]
 
 
 @pytest.fixture(autouse=True)
@@ -73,7 +82,10 @@ def _fresh_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _catalog(monkeypatch: pytest.MonkeyPatch, on: bool) -> None:
+    """SORT_CATALOG_EDITION_ENFORCED, for both readers: the pick's cap and the editions
+    a relative goal counts (``definitions.counted_editions``)."""
     monkeypatch.setattr(personal, "sort_catalog_goals_on", lambda: on)
+    monkeypatch.setattr(definitions, "sort_catalog_goals_on", lambda: on)
 
 
 # ---------------------------------------------------------------------------
@@ -81,10 +93,14 @@ def _catalog(monkeypatch: pytest.MonkeyPatch, on: bool) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("on", [True, False], ids=["switch on", "switch off"])
 @pytest.mark.parametrize("case", _FIXTURE["cases"], ids=lambda c: c["name"])
-def test_new_levels_against_the_day_start_best(case: dict) -> None:
+def test_new_levels_against_the_day_start_best(
+    case: dict, on: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _catalog(monkeypatch, on)
     goal = _goal(case["target"])
-    status = service.evaluate_goal(goal, _ended(case["solves"]), {"sort": case["day_start_best"]})
+    status = service.evaluate_goal(goal, _ended(case["solves"]), {_CATALOG: case["day_start_best"]})
     assert status.completed is case["met"]
 
 
@@ -104,22 +120,79 @@ def test_the_goal_is_relative_and_rebuilds_equal() -> None:
     assert relative_games([_DW, goal]) == {"sort"}
 
 
-def test_without_the_day_start_best_it_is_never_met() -> None:
+def test_without_the_day_start_bests_it_is_never_met() -> None:
     goal = _goal(1)
-    assert not service.evaluate_goal(goal, _ended([50])).completed
-    assert not service.evaluate_goal(goal, _ended([50]), {}).completed
-    assert service.evaluate_goal(goal, _ended([50]), {"sort": 0}).completed
+    assert not service.evaluate_goal(goal, _ended([50])).completed  # not read
+    # Read, and no earlier row of the edition: the baseline is 0.
+    assert service.evaluate_goal(goal, _ended([50]), {}).completed
+    assert service.evaluate_goal(goal, _ended([50]), {_CATALOG: 0}).completed
 
 
 def test_a_client_sent_new_levels_value_is_ignored() -> None:
     goal = _goal(1)
-    forged = [("sort", {"won": True, "final_score": 10, "new_levels": 99})]
-    assert not service.evaluate_goal(goal, forged, {"sort": 10}).completed
-    assert facts_for(goal, forged[0][1], {"sort": 10})["new_levels"] == 0
+    forged = [("sort", {"won": True, "final_score": 10, "new_levels": 99, **_CAT})]
+    assert not service.evaluate_goal(goal, forged, {_CATALOG: 10}).completed
+    assert facts_for(goal, forged[0][1], {_CATALOG: 10})["new_levels"] == 0
     # A row with no score reads as nothing.
-    assert facts_for(goal, {"won": True}, {"sort": 10}) is None
+    assert facts_for(goal, {"won": True, **_CAT}, {_CATALOG: 10}) is None
     # Every other goal reads its facts unchanged.
     assert facts_for(_2048, {"final_score": 600}, None) == {"final_score": 600}
+
+
+@pytest.mark.parametrize(
+    "metadata,edition",
+    [
+        ({"catalog_version": 1}, CATALOG_EDITION),
+        ({}, LEGACY_EDITION),  # the random levels before the catalog
+        ({"catalog_version": 2}, LEGACY_EDITION),  # not this catalog
+        ({"catalog_version": True}, LEGACY_EDITION),  # a bool is not the version
+        ({"catalog_version": "1"}, LEGACY_EDITION),  # nor a string
+    ],
+)
+def test_a_rows_edition_is_read_as_the_leaderboard_reads_it(metadata, edition) -> None:
+    assert edition_of(metadata) == edition
+
+
+# A migrated install: best 18 on the random levels, then catalog levels 5 -> 7 today.
+_MIGRATED = {_LEGACY: 18, _CATALOG: 5}
+
+
+@pytest.mark.parametrize("on", [True, False], ids=["switch on", "switch off"])
+def test_a_migrated_install_counts_from_its_catalog_best(
+    on: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _catalog(monkeypatch, on)
+    # 7 - 5 = 2 new catalog levels, never 7 - 18.
+    assert service.evaluate_goal(_goal(2), _ended([6, 7]), _MIGRATED).completed
+    assert not service.evaluate_goal(_goal(3), _ended([6, 7]), _MIGRATED).completed
+
+
+def test_switch_on_ignores_pre_catalog_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    _catalog(monkeypatch, True)
+    legacy = _ended([20, 21], edition={})
+    # A pre-catalog row neither meets the goal nor counts against its own baseline.
+    assert not service.evaluate_goal(_goal(1), legacy, _MIGRATED).completed
+    assert facts_for(_goal(1), legacy[0][1], _MIGRATED) is None
+
+
+def test_switch_off_scores_each_edition_against_its_own_best(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _catalog(monkeypatch, False)
+    # A pre-catalog build: 20 on the random levels from 18 is 2 new levels there.
+    assert service.evaluate_goal(_goal(2), _ended([20], edition={}), _MIGRATED).completed
+    assert not service.evaluate_goal(_goal(3), _ended([20], edition={}), _MIGRATED).completed
+    # The two editions never add up: 1 new level in each is not 2.
+    both = _ended([19], edition={}) + _ended([6])
+    assert not service.evaluate_goal(_goal(2), both, _MIGRATED).completed
+
+
+def test_the_running_day_starts_keep_editions_apart() -> None:
+    d1, d2 = date(2026, 1, 1), date(2026, 1, 2)
+    by_day = {d1: _ended([30], edition={}) + _ended([6]), d2: _ended([7])}
+    out = service.running_day_starts(_MIGRATED, by_day, [d1, d2])
+    assert out[d1] == _MIGRATED
+    assert out[d2] == {_LEGACY: 30, _CATALOG: 6}  # the legacy 30 never raises the catalog
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +243,7 @@ def _sort_history(per_day: dict[int, int], *, before: int = 0, day: date = _DAY)
     plays = []
     for back, best in per_day.items():
         d = day - timedelta(days=back)
-        plays += [("sort", d, {"won": True, "final_score": best}) for _ in range(3)]
+        plays += [("sort", d, {"won": True, "final_score": best, **_CAT}) for _ in range(3)]
     h = _history(day, plays)
     h.daily_best = {"sort": {day - timedelta(days=b): v for b, v in per_day.items()}}
     h.best_before_window = {"sort": before} if before else {}
@@ -406,7 +479,13 @@ async def test_the_loader_reads_day_start_bests_for_the_step_down_days(
     sid = _sid()
     for back, level in ((4, 30), (3, 32), (2, 33), (1, 33)):
         d = _DAY - timedelta(days=back)
-        await _add(sid, "sort", datetime(d.year, d.month, d.day, 12, tzinfo=UTC), final_score=level)
+        await _add(
+            sid,
+            "sort",
+            datetime(d.year, d.month, d.day, 12, tzinfo=UTC),
+            final_score=level,
+            metadata=_CAT,
+        )
     for back in (2, 1):
         await _pin(sid, _DAY - timedelta(days=back), (_DW, _goal(2), _2048))
     async with get_session_factory()() as db:

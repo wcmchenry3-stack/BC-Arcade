@@ -101,6 +101,7 @@ from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from entitlements.service import DISABLED_GAMES
 from games.boards.editions import edition_switch_on
 from settings import Settings
+from sort.catalog import CATALOG_VERSION as SORT_CATALOG_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -259,10 +260,41 @@ NEW_LEVELS_KIND = f"{NEW_LEVELS_MEASURE}_at_least"
 # Per game with a relative goal: the measure whose best before the day is the baseline.
 DAY_START_MEASURES: dict[str, str] = {"sort": "final_score"}
 
-# {game_type: the best ``DAY_START_MEASURES`` value before the day starts, 0 for none}.
-DayStart = Mapping[str, int]
 # The goal itself is an "at least" goal on the derived measure (``_at_least``), so
 # ``goal_from_spec`` rebuilds a pinned one equal through its ``*_at_least`` rule.
+
+# Sort's levels come in two editions (#2761): the fixed catalog (rows sent with the current
+# ``catalog_version``, ``sort.module``'s board edition) and the random levels from before it
+# (no ``catalog_version``). Their numbers are unrelated, and a migrated save starts the
+# catalog over (``catalogMigration.ts`` empties the device's bests), so a baseline is per
+# edition: a row is only ever compared with rows of its own edition. Which editions count
+# follows ``SORT_CATALOG_EDITION_ENFORCED`` (``counted_editions``).
+SORT_EDITION: tuple[str, int] = ("catalog_version", SORT_CATALOG_VERSION)
+LEGACY_EDITION, CATALOG_EDITION = 0, 1
+
+# {(game_type, edition): the best ``DAY_START_MEASURES`` value before the day starts}. A
+# key that is missing means no such row (0); ``None`` instead of a mapping: not read.
+DayStart = Mapping[tuple[str, int], int]
+
+
+def edition_of(facts: Facts) -> int:
+    """A Sort row's edition: ``CATALOG_EDITION`` when it holds the current catalog version
+    (an int, as ``BoardDefinition.in_edition`` and the SQL ``edition_matches`` read it)."""
+    key, version = SORT_EDITION
+    held = facts.get(key)
+    is_int = isinstance(held, int) and not isinstance(held, bool)
+    return CATALOG_EDITION if is_int and held == version else LEGACY_EDITION
+
+
+def counted_editions() -> tuple[int, ...]:
+    """The editions whose rows a relative goal counts. Switch on: the catalog only, as
+    the leaderboard, so a pre-catalog row neither meets the goal nor raises a baseline.
+    Switch off: both, each against its own edition's baseline, which is what the device
+    playing that edition sees (a catalog build counts from its catalog bests, a pre-catalog
+    build from its 23 random levels)."""
+    if sort_catalog_goals_on():
+        return (CATALOG_EDITION,)
+    return (LEGACY_EDITION, CATALOG_EDITION)
 
 
 def is_relative(goal: Goal) -> bool:
@@ -278,14 +310,16 @@ def relative_games(goals: Iterable[Goal | None]) -> set[str]:
 def facts_for(goal: Goal, facts: Facts, day_start: DayStart | None) -> Facts | None:
     """The facts ``goal.evaluate`` reads for one finished game. Unchanged for every goal
     but a relative one, which gets ``new_levels`` = the row's measure minus the day-start
-    best (a client-sent ``new_levels`` is overwritten). ``None`` (never met) when the
-    day-start best was not read or the row has no measure."""
+    best of the row's own edition (a client-sent ``new_levels`` is overwritten). ``None``
+    (never met) when the day-start bests were not read, the row's edition does not count
+    (``counted_editions``) or the row has no measure."""
     if not is_relative(goal):
         return facts
-    baseline = None if day_start is None else day_start.get(goal.game_type)
+    edition = edition_of(facts)
     value = _number(facts, DAY_START_MEASURES[goal.game_type])
-    if baseline is None or value is None:
+    if day_start is None or value is None or edition not in counted_editions():
         return None
+    baseline = day_start.get((goal.game_type, edition), 0)
     return {**facts, NEW_LEVELS_MEASURE: value - baseline}
 
 

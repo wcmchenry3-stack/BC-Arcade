@@ -58,7 +58,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from daily_challenge import assignments, personal, schedule
 from daily_challenge.definitions import (
-    DAY_START_MEASURES,
     GOAL_POOLS,
     DayStart,
     Template,
@@ -72,6 +71,7 @@ from daily_challenge.service import (
     EndedGame,
     day_start_bests,
     evaluate_template,
+    running_day_starts,
     slate_for_games,
 )
 from db.models import Game, GameEntitlement, GameType
@@ -207,22 +207,16 @@ async def _day_starts(
     days: list[date],
     window_start: datetime,
 ) -> dict[date, DayStart]:
-    """The day-start best for each pinned day that holds a relative goal (Sort "new
-    levels", #4028). The best before the window is one aggregate (none when no pinned day
-    holds such a goal; shared templates never do); each later day's is a running max over
-    the window's own rows, already read. No query per day."""
+    """The day-start bests (per game and Sort edition) for the days of the window when a
+    pinned day holds a relative goal (Sort "new levels", #4028). The bests before the
+    window are one aggregate (none when no pinned day holds such a goal; shared templates
+    never do); each later day's is a running max over the window's own rows, already read
+    (``service.running_day_starts``). No query per day."""
     games = relative_games(g for a in pinned.values() for g in a.template.goals)
-    if not games:
+    before = await day_start_bests(session, session_id, games, window_start)
+    if before is None:
         return {}
-    running = dict(await day_start_bests(session, session_id, games, window_start))
-    out: dict[date, DayStart] = {}
-    for day in reversed(days):  # oldest first
-        out[day] = dict(running)
-        for name, facts in by_day.get(day, []):
-            value = facts.get(DAY_START_MEASURES.get(name, ""))
-            if name in running and isinstance(value, int) and not isinstance(value, bool):
-                running[name] = max(running[name], value)
-    return out
+    return running_day_starts(before, by_day, days)
 
 
 async def _premium_and_owned(session: AsyncSession, session_id: str) -> tuple[set[str], set[str]]:
