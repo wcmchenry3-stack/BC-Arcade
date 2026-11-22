@@ -235,7 +235,8 @@ def test_fingerprint_catches_a_changed_cue_level_but_not_float_noise():
     want = fingerprint.summarise(_toy_stage(0.7))
     assert not fingerprint.differences(fingerprint.summarise(_toy_stage(0.7)), want)
     # Cross-machine noise, at 3x the worst measured (fingerprint.py): every sample scaled by
-    # 2.3e-6 and the peak sample by a further 7.8e-6 (#4026 failed CI on a 2.6e-6 peak at 1e-6 tolerance).
+    # 2.3e-6 and the peak sample by a further 7.8e-6 (#4026 failed CI on a 2.6e-6 peak at the
+    # old 1e-6 tolerance).
     noisy = _toy_stage(0.7) * (1 + 3 * 7.7e-7)
     k = np.unravel_index(np.argmax(np.abs(noisy)), noisy.shape)
     noisy[k] *= 1 + 3 * 2.6e-6
