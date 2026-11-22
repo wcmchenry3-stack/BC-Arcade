@@ -90,7 +90,7 @@ describe("Sort's day-start best (game/sort/dayStart.ts)", () => {
     expect(await readSortDayStart()).toEqual({ day: "2026-11-22", best: 12 });
   });
 
-  it("writes about 40 bytes", async () => {
+  it("writes about 30 bytes", async () => {
     await recordSortSolve(DAY, 120);
     const raw = await AsyncStorage.getItem("@sort/day_start");
     expect(raw).not.toBeNull();

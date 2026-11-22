@@ -6,7 +6,7 @@
  * Sort's saves keep only the current standing (the best moves per level, so the highest
  * solved level), not when each level was first solved. So the day's first solve records
  * the standing before it: no level was solved earlier that day, so that standing is the
- * day-start best. One write of about 40 bytes (`{"day":"YYYY-MM-DD","best":N}`) per day
+ * day-start best. One write of about 30 B (`{"day":"YYYY-MM-DD","best":N}`, 29-31 B) per day
  * Sort is played, on the solve event (never on the frame path), and at most one read per
  * app run per day. Any failure is reported (subsystem `sort.storage`) and leaves the
  * offline check without a baseline, which then never marks the goal done: the next
@@ -58,6 +58,10 @@ export async function recordSortSolve(day: string, bestBefore: number): Promise<
   if (recordedDay === day) return;
   // Set first: a second solve before this write lands already includes the first one.
   recordedDay = day;
+  // Failure mode, safe by design: if this read fails (reported; `load` resolves null) on a
+  // day already recorded, the write below replaces that day's standing with a later,
+  // higher one. Offline then counts fewer new levels than the server, so it can miss a
+  // goal that is done, never show one done that is not; the next `/status` corrects it.
   const stored = await slot.load();
   if (stored?.day !== day) await slot.save({ day, best: Math.max(0, Math.floor(bestBefore)) });
 }
