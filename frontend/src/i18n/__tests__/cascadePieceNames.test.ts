@@ -82,6 +82,26 @@ describe("Cascade piece names", () => {
       expect(cascade["pieces.fruits.lime"]).not.toBe(cascade["pieces.fruits.lemon"]);
     });
 
+    it("no Cascade names are left pending in any locale (#3983)", () => {
+      expect(copies.pending.cascade).toBeUndefined();
+    });
+
+    it.each(nonEnglish)("%s: every piece name is a real translation (#3983)", (locale) => {
+      const cascade = read(path.join(LOCALES_DIR, locale, "cascade.json"));
+      const en = read(path.join(LOCALES_DIR, "en", "cascade.json"));
+      const accepted = copies.accepted.cascade?.[locale] ?? [];
+      for (const key of keys) {
+        if (cascade[key] === en[key]) {
+          // Same word in that language (German "Mars", French "Neptune") is reviewed, not pending.
+          // Cherry/Orange/Apple/Pineapple/Watermelon are glossary terms kept in English.
+          const glossaryKept = ["cherry", "orange", "apple", "pineapple", "watermelon"].some(
+            (f) => key === `pieces.fruits.${f}`
+          );
+          if (!glossaryKept) expect(accepted).toContain(key);
+        }
+      }
+    });
+
     it.each(localeDirs)("%s: retired Blueberry, Grape and Coconut names are gone", (locale) => {
       const cascade = read(path.join(LOCALES_DIR, locale, "cascade.json"));
       for (const retired of ["blueberry", "grape", "coconut"]) {
