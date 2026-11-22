@@ -1,22 +1,40 @@
-# Daily Challenge — Strategy (proposal)
+# Daily Challenge — Strategy (implemented)
 
-**Status: draft for owner review (2026-11-21).** This is the *why* and the *rules of thumb* for the next version of
-Daily Challenge. It does not describe live behaviour; [`DAILY-CHALLENGE.md`](DAILY-CHALLENGE.md) stays the contract
-for what the code does today. Once the strategy is settled, the per-game design (step 2) and the offline/data
-feasibility check (step 3) build on it, then stories are cut and shipped with `ship-story`.
+**Status: Implemented (epic #3990).** This is the _why_ and the _rules of thumb_ behind the personalized Daily
+Challenge. The design below was written as a proposal on 2026-11-21 and has shipped; read it as the rationale and the
+record of what changed on the way. [`DAILY-CHALLENGE.md`](DAILY-CHALLENGE.md) is the contract for what the code does,
+and wins wherever the two differ. Sections superseded by what shipped are marked "Superseded" below (§9, and §11 and
+§14 as plans).
+
+**Shipped PRs (epic #3990):**
+
+| PR                                                               | Story        | What shipped                                                                                                                                                           |
+| ---------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [#4002](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4002) | #3991        | Daily Word goal is "complete" only.                                                                                                                                    |
+| [#4015](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4015) | #3992        | Per-install pinned assignments: `daily_challenge_assignments` (Alembic 0048), recent-play gate, storage budget, retention, kill switch `DAILY_CHALLENGE_PERSONALIZED`. |
+| [#4023](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4023) | #3998        | Read-only tuning query, `backend/scripts/daily_challenge_metrics.py`.                                                                                                  |
+| [#4024](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4024) | #3993, #3994 | Personal targets and game selection for the free games.                                                                                                                |
+| [#4030](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4030) | #3995        | Optional bonus goal.                                                                                                                                                   |
+| [#4031](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4031) | #3996, #4025 | Premium games' goals; server-written result flags; `dev_affected` runs excluded.                                                                                       |
+| [#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038) | #4028, #4039 | Bottle Sort relative "solve N new levels" goal, per-edition baselines, device key `@sort/day_start`.                                                                   |
+
+Open follow-ups: #3988 (PRODUCT.md data-use rule), #3989 ([`IAP.md`](IAP.md) premium model, blocked on an owner
+decision), #4032 (offline premium finish/win flags), #4033 (Mahjong win-time floor).
 
 Related backlog: #2946 (goals tuned to the player's history: this doc is its design spike), #2458 (premium goal
 pools), #2459 (streak freezes), #2895 (schedule variety check), #3945 (Cascade targets).
 
 ## 1. What we are fixing
 
-| Problem today                                                                                              | Where it comes from                                                                                 |
-| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Daily Word sometimes asks for more than finishing ("solve in 4 guesses").                                  | The Daily Word *game* has no difficulty levels, but its *challenge goal* does: `FREE_GOAL_POOL` in `definitions.py` gives it complete / win / win in 4 guesses or fewer, picked by date. Of the 99 days the dev branch has frozen, 44 were complete, 33 win and 22 "in 4 guesses". Fixed by #3991. |
-| Targets ignore the player. "Reach Bottle Sort level 60" for someone on level 4, "score 500 in 2048" for an expert. | One fixed target per tier, the same for everyone; the tier rotates by date, not by player.          |
-| Goals can be for games the player never plays.                                                             | Games rotate through the whole pool by date.                                                        |
-| Premium has no plan.                                                                                       | `PREMIUM_GOAL_POOL` is a copy of the free pool; the slate rule is all-or-nothing on ownership.      |
-| Already-met goals ("reach level 10" when you are on 40).                                                   | Absolute targets. A relative target cannot be met before the day starts.                            |
+_As of the proposal (2026-11-21), before epic #3990. Every row is fixed on `dev`; what shipped is in the "Shipped" sections of §12 and in §13._
+
+| Problem today                                                                                                      | Where it comes from                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Daily Word sometimes asks for more than finishing ("solve in 4 guesses").                                          | The Daily Word _game_ has no difficulty levels, but its _challenge goal_ does: `FREE_GOAL_POOL` in `definitions.py` gives it complete / win / win in 4 guesses or fewer, picked by date. Of the 99 days the dev branch has frozen, 44 were complete, 33 win and 22 "in 4 guesses". Fixed by #3991. |
+| Targets ignore the player. "Reach Bottle Sort level 60" for someone on level 4, "score 500 in 2048" for an expert. | One fixed target per tier, the same for everyone; the tier rotates by date, not by player.                                                                                                                                                                                                         |
+| Goals can be for games the player never plays.                                                                     | Games rotate through the whole pool by date.                                                                                                                                                                                                                                                       |
+| Premium has no plan.                                                                                               | `PREMIUM_GOAL_POOL` is a copy of the free pool; the slate rule is all-or-nothing on ownership.                                                                                                                                                                                                     |
+| Already-met goals ("reach level 10" when you are on 40).                                                           | Absolute targets. A relative target cannot be met before the day starts.                                                                                                                                                                                                                           |
 
 ## 2. What the product rules already decide
 
@@ -35,7 +53,7 @@ From [`PRODUCT.md`](PRODUCT.md), and they bind this design:
 ## 3. What the research says (short version)
 
 - **Matching difficulty to the player is the biggest lever.** Frustration and boredom are the two main reasons
-  players churn. A large field study of a freemium mobile game found that *lowering* difficulty for struggling
+  players churn. A large field study of a freemium mobile game found that _lowering_ difficulty for struggling
   players raised both engagement and long-term retention ([Ascarza, Netzer & Runge, "Personalized games"][cbs]).
   So a "beat yourself" goal beats a fixed number.
 - **Aim for "likely, not certain".** Daily goals should be a small stretch of normal play, not a separate grind, and
@@ -43,11 +61,11 @@ From [`PRODUCT.md`](PRODUCT.md), and they bind this design:
   [Deconstructor of Fun: making of daily goals][dof-goals]).
 - **Few goals, distinct types, filtered to what the player can do.** The common practical pattern: about three
   daily goals, each of a different type, with goals the player can't realistically do filtered out. Variety of
-  *type* matters more than a large catalogue ([Roblox quest design guide][roblox]).
+  _type_ matters more than a large catalogue ([Roblox quest design guide][roblox]).
 - **Dailies feel like a job when they are mandatory and tied to progression.** Optional, varied goals and "just
   playing counts" are what players praise ([PC Gamer][pcg], [Engadget][eng], [MassivelyOP][mop]).
 - **Streaks work, and flexibility helps rather than hurts.** Duolingo reports that a 7-day streak makes a learner
-  several times more likely to come back the next day. Allowing a "freeze" (a day off) *raised* daily activity, and
+  several times more likely to come back the next day. Allowing a "freeze" (a day off) _raised_ daily activity, and
   the Penn/UCLA research it cites found some slack motivates more than rigid rules ([Duolingo: streak research][duo1],
   [Duolingo: how the streak builds habit][duo2]). The ethical line is a streak that serves the player versus one
   that traps them ([Yu-kai Chou on streak design][ykc]).
@@ -57,7 +75,7 @@ should treat the numbers in this doc as starting dials, not truths.
 
 ## 4. Proposed daily structure
 
-_The optional bonus goal below shipped in #3995 (docs/DAILY-CHALLENGE.md §3b)._
+_Shipped (epic #3990). Daily Word "complete" only: [#4002](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4002). Bonus goal: [#4030](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4030), docs/DAILY-CHALLENGE.md §3b. The bonus is `null` on shared-template days and when no candidate fits or the dial is off, so it is not shown literally every day (§10 item 2)._
 
 ```
 ┌───────────────────────────────────────────────────────────┐
@@ -85,12 +103,12 @@ _The optional bonus goal below shipped in #3995 (docs/DAILY-CHALLENGE.md §3b)._
 
 A small, fixed vocabulary of **goal archetypes**, with targets taken from the player's own recent results:
 
-| Archetype            | Shape                                                    | Example                                  | Win-dependent? |
-| -------------------- | -------------------------------------------------------- | ---------------------------------------- | -------------- |
-| **Finish**           | Complete a game, any result.                             | "Finish a game of Yacht"                 | No             |
-| **Personal stretch** | Beat a target set just above your recent typical result. | "Score 1,800+ in 2048" (typical: 1,500)  | No             |
-| **Progress**         | Advance from where you are, never an absolute number.    | "Solve 2 new Bottle Sort levels"         | No             |
-| **Skill**            | A win, or a win with a modest quality bar. Every game but Star Swarm has a clear win (§7a). | "Win a game of FreeCell"                 | Yes            |
+| Archetype            | Shape                                                                                       | Example                                 | Win-dependent? |
+| -------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------- | -------------- |
+| **Finish**           | Complete a game, any result.                                                                | "Finish a game of Yacht"                | No             |
+| **Personal stretch** | Beat a target set just above your recent typical result.                                    | "Score 1,800+ in 2048" (typical: 1,500) | No             |
+| **Progress**         | Advance from where you are, never an absolute number.                                       | "Solve 2 new Bottle Sort levels"        | No             |
+| **Skill**            | A win, or a win with a modest quality bar. Every game but Star Swarm has a clear win (§7a). | "Win a game of FreeCell"                | Yes            |
 
 Rules:
 
@@ -221,12 +239,12 @@ stretches. It is designed in step 2 with the other premium games.
 
 Deliberately small, from data we already have (frozen assignments plus `games` rows). No new client analytics.
 
-| Signal                                        | Target band (start)  | If outside                                             |
-| --------------------------------------------- | -------------------- | ------------------------------------------------------ |
-| Core goal completion rate, among players who attempt the game | 65–75%  | Turn the stretch step up or down                       |
-| Days with 2 of 3 core met / active days       | Watch                | If ~100%, 2 of 3 may be too easy. If low, too hard.    |
-| Bonus discovery: game played after suggestion | Watch                | Low means lower the discovery share                    |
-| Next-day return after a qualifying day        | Watch                | The real retention signal                              |
+| Signal                                                        | Target band (start) | If outside                                          |
+| ------------------------------------------------------------- | ------------------- | --------------------------------------------------- |
+| Core goal completion rate, among players who attempt the game | 65–75%              | Turn the stretch step up or down                    |
+| Days with 2 of 3 core met / active days                       | Watch               | If ~100%, 2 of 3 may be too easy. If low, too hard. |
+| Bonus discovery: game played after suggestion                 | Watch               | Low means lower the discovery share                 |
+| Next-day return after a qualifying day                        | Watch               | The real retention signal                           |
 
 **Current data reality:** production (`bc-arcade` `main`) holds almost nothing yet (52 games, 3 sessions). We launch
 on the heuristics above with **server-controlled dials** and tune once real players arrive.
@@ -248,6 +266,7 @@ target, a weight or a dial.** Those come from real players after launch. What it
   - Sort: median level 3.5, best 17, so the catalog goals of 30/60 are out of reach.
 
   This is exactly the "arbitrary" feel, and relative targets fix it.
+
 - **Sessions are bite-sized.** Median game length is 0.3–6 minutes depending on the game. On a typical active day:
   ~13 games, 4 different games, ~30 minutes in total. Two core goals of one to three games each fit the vision.
 - **Daily Word is already a habit.** 30 plays on 25 of 35 active days, so it works as the anchor.
@@ -259,6 +278,8 @@ target, a weight or a dial.** Those come from real players after launch. What it
   correctly an abandon, not a bug.
 
 ## 9. Cost, performance and offline: early read (superseded by §13)
+
+> **Superseded.** This early read was replaced by §13 and by what shipped in [#4015](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4015). The device ring buffer is not built (the server picks every goal and the device only caches), the assignment row is about 250 B (measured, not the ~200 B guessed here), and the dials and kill switch are the shipped env vars listed in §13. Kept for the reasoning only.
 
 The CLAUDE.md order applies: cost, then performance, then data. A first look:
 
@@ -282,16 +303,18 @@ The CLAUDE.md order applies: cost, then performance, then data. A first look:
 
 1. ~~Streak rule.~~ **Decided (owner, 2026-11-21):** keep 2 of 3 core goals.
 2. ~~Bonus slot.~~ **Decided (owner, 2026-11-21):** show the bonus goal every day; completing it gives nothing beyond
-   its checkmark (a reward can be revisited later).
+   its checkmark (a reward can be revisited later). _Shipped ([#4030](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4030)) with one qualification: it is shown on every personal day that has a candidate. A shared-template day (a new or lapsed install, the kill switch) has none, and so does a personal day when no game fits or `DAILY_CHALLENGE_BONUS_ENABLED` is off._
 3. ~~Analytics rule.~~ **Decided (owner, 2026-11-21):** in bounds. First-party data is used inside the app to
    personalize features and improve the games; it is not sold, not used for outside marketing, and not used to
    profile identifiable people. PRODUCT.md update: #3988.
 4. ~~Premium floor.~~ **Decided (owner, 2026-11-21):** premium unlocks every premium game, so a player is either free
-   or premium. No extra quota; premium games are picked by play, and unplayed ones surface in the bonus slot.
+   or premium. No extra quota; premium games are picked by play, and unplayed ones surface in the bonus slot. _Shipped as an entitlement check per game (`service.eligible_games`), which works with either purchase model. The single-purchase wording in `IAP.md` and the purchase code are #3989 (blocked on an owner decision)._
 5. ~~Ship order.~~ **Decided (owner, 2026-11-21):** all of this ships before go-live. "Daily Word = complete only" can
-   be the first story, since it's small, but it's not a separate release.
+   be the first story, since it's small, but it's not a separate release. _Done: every story in §14 has merged to `dev`._
 
-## 11. Next steps
+## 11. Next steps (done)
+
+_Superseded: all four steps are complete. The doc was reviewed and §10 resolved, the per-game design is §12, the offline and data design is §13, and the stories (§14) have shipped._
 
 1. **Owner review of this doc** → resolve §10 → mark as accepted.
 2. **Per-game design:** for each game, its 2–3 archetypes, what "recent typical" means (score, moves, level, time),
@@ -301,53 +324,55 @@ The CLAUDE.md order applies: cost, then performance, then data. A first look:
 4. **Cut stories** with `plan-issues` (update #2946 / #2458 instead of duplicating them), then ship with
    `ship-story`.
 
-## 12. Per-game design (draft for review)
+## 12. Per-game design
+
+> **Reading this section.** The tables below are the design as proposed. Where the build differs, the "Shipped" subsections after them say so, and DAILY-CHALLENGE.md §2a is the contract. Not built: 2048 "Finish a game", Yacht "Finish a game" and "Beat the computer", the Sudoku errors goal and Sort's stars goal. Sort's "new levels" is a relative kind, and Blackjack's table goal is "finish at table T or higher".
 
 Built from each game's spec in [`docs/games/`](games/) and its result fields. Every row follows §7a: win / loss /
 abandon as the game defines them, and abandons never count. **Target rules** use §5: the personal target is set
 from the player's last ~10 finished games of that game, pinned at the start of the day, capped below their best,
-and eases off after two misses. Numbers marked *start* are cold-start values, used until the player has about 3
+and eases off after two misses. Numbers marked _start_ are cold-start values, used until the player has about 3
 finished games, and are server dials.
 
 ### Ending rules per game
 
-| Game         | Win                               | Loss                              | Abandon                    | Finish = |
-| ------------ | --------------------------------- | --------------------------------- | -------------------------- | -------- |
-| Daily Word   | solve the word                    | out of guesses                    | leave unfinished           | win or loss |
-| 2048         | make the 2048 tile                | stuck before 2048                 | New Game / leave           | win or loss |
-| Solitaire    | clear the deal                    | **none**                          | redeal / leave             | **win only** |
-| FreeCell     | clear the deal                    | **none**                          | redeal / leave             | **win only** |
-| Bottle Sort  | solve the level                   | none                              | leave the level            | win only |
-| Sudoku       | solve the puzzle                  | none                              | leave / new puzzle         | win only |
-| Yacht        | vs computer: beat it; solo: n/a   | vs computer: lose                 | leave mid-game             | 13 rounds scored |
-| Hearts*      | lowest score at the end           | not lowest                        | leave mid-game             | win or loss |
-| Mahjong*     | clear the board                   | deadlock (recorded on leaving)    | leave mid-board            | win or loss |
-| Blackjack*   | reach the table's chip goal       | chips run out first               | quit before the goal       | win or loss |
-| Cascade*     | make the capstone                 | stack over the lid                | restart / switch set       | win or loss |
-| Star Swarm*  | **none** (endless run)            | game over                         | New Game mid-run           | game over |
+| Game         | Win                             | Loss                           | Abandon              | Finish =         |
+| ------------ | ------------------------------- | ------------------------------ | -------------------- | ---------------- |
+| Daily Word   | solve the word                  | out of guesses                 | leave unfinished     | win or loss      |
+| 2048         | make the 2048 tile              | stuck before 2048              | New Game / leave     | win or loss      |
+| Solitaire    | clear the deal                  | **none**                       | redeal / leave       | **win only**     |
+| FreeCell     | clear the deal                  | **none**                       | redeal / leave       | **win only**     |
+| Bottle Sort  | solve the level                 | none                           | leave the level      | win only         |
+| Sudoku       | solve the puzzle                | none                           | leave / new puzzle   | win only         |
+| Yacht        | vs computer: beat it; solo: n/a | vs computer: lose              | leave mid-game       | 13 rounds scored |
+| Hearts\*     | lowest score at the end         | not lowest                     | leave mid-game       | win or loss      |
+| Mahjong\*    | clear the board                 | deadlock (recorded on leaving) | leave mid-board      | win or loss      |
+| Blackjack\*  | reach the table's chip goal     | chips run out first            | quit before the goal | win or loss      |
+| Cascade\*    | make the capstone               | stack over the lid             | restart / switch set | win or loss      |
+| Star Swarm\* | **none** (endless run)          | game over                      | New Game mid-run     | game over        |
 
 \* premium. Solitaire and FreeCell deal only **provably solvable** deals, so their wins are skill, not luck.
 
 ### Goals per game
 
-| Game         | Goals (2–3 each)                                                                                              | Personal measure                     | Cold start (*start*)                | Win-dependent goal |
-| ------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ----------------------------------- | ------------------ |
-| Daily Word   | **Complete today's word** (only goal, always core 1)                                                          | none                                 | same                                | none               |
-| 2048         | Finish a game · Score at least *target* · Make the 2048 tile                                                  | `final_score`                        | Finish a game                       | 2048 tile          |
-| Solitaire    | Win a deal · Win in at most *target* moves                                                                    | `moves` on wins                      | Win a deal                          | none (solvable)    |
-| FreeCell     | Win a deal · Win in at most *target* moves                                                                    | `moves` on wins                      | Win a deal                          | none (solvable)    |
-| Bottle Sort  | Solve *N* new levels (N = 1–3) · Earn 3 stars on a level you've solved                                         | levels solved per day; stars         | Solve 1 new level                   | none               |
-| Sudoku       | Solve a puzzle · Solve one at your usual difficulty or one higher · Solve with at most *target* errors         | difficulty, `errors`                 | Solve an Easy puzzle                | none               |
-| Yacht        | Finish a game · Score at least *target* · Beat the computer                                                   | `final_score`                        | Finish a game                       | beat the computer  |
-| Hearts*      | Finish a game · Win a game                                                                                    | win rate (for picking, not target)   | Finish a game                       | win                |
-| Mahjong*     | Clear a board · Clear one in under *target* time                                                              | `duration_ms` on clears              | Clear a board                       | none (a deadlock can be undone) |
-| Blackjack*   | Finish a run · Win a run · Win a run one table up from your usual                                             | the table of your recent runs        | Finish a run at Beginner            | win a run          |
-| Cascade*     | Finish a game · Win a game · (light) Win in under *target* time                                               | `duration_ms` on wins                | Finish a game                       | none (skill game)  |
-| Star Swarm*  | Finish a run · Reach wave *target* · Score at least *target*                                                   | `wave_reached`, `final_score`        | Finish a run                        | none               |
+| Game         | Goals (2–3 each)                                                                                       | Personal measure                   | Cold start (_start_)     | Win-dependent goal              |
+| ------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------- | ------------------------ | ------------------------------- |
+| Daily Word   | **Complete today's word** (only goal, always core 1)                                                   | none                               | same                     | none                            |
+| 2048         | Finish a game · Score at least _target_ · Make the 2048 tile                                           | `final_score`                      | Finish a game            | 2048 tile                       |
+| Solitaire    | Win a deal · Win in at most _target_ moves                                                             | `moves` on wins                    | Win a deal               | none (solvable)                 |
+| FreeCell     | Win a deal · Win in at most _target_ moves                                                             | `moves` on wins                    | Win a deal               | none (solvable)                 |
+| Bottle Sort  | Solve _N_ new levels (N = 1–3) · Earn 3 stars on a level you've solved                                 | levels solved per day; stars       | Solve 1 new level        | none                            |
+| Sudoku       | Solve a puzzle · Solve one at your usual difficulty or one higher · Solve with at most _target_ errors | difficulty, `errors`               | Solve an Easy puzzle     | none                            |
+| Yacht        | Finish a game · Score at least _target_ · Beat the computer                                            | `final_score`                      | Finish a game            | beat the computer               |
+| Hearts\*     | Finish a game · Win a game                                                                             | win rate (for picking, not target) | Finish a game            | win                             |
+| Mahjong\*    | Clear a board · Clear one in under _target_ time                                                       | `duration_ms` on clears            | Clear a board            | none (a deadlock can be undone) |
+| Blackjack\*  | Finish a run · Win a run · Win a run one table up from your usual                                      | the table of your recent runs      | Finish a run at Beginner | win a run                       |
+| Cascade\*    | Finish a game · Win a game · (light) Win in under _target_ time                                        | `duration_ms` on wins              | Finish a game            | none (skill game)               |
+| Star Swarm\* | Finish a run · Reach wave _target_ · Score at least _target_                                           | `wave_reached`, `final_score`      | Finish a run             | none                            |
 
 Notes:
 
-- **Finish-only games.** For Solitaire, FreeCell, Sort and Sudoku a finished game *is* a win, so their base goal is
+- **Finish-only games.** For Solitaire, FreeCell, Sort and Sudoku a finished game _is_ a win, so their base goal is
   the win. That's fine because the deals and levels are always solvable. Their stretch is quality (fewer moves,
   fewer errors, a harder puzzle, stars), not score.
 - **Bottle Sort.** "Solve N new levels" counts levels above the highest level solved before today, so it can never
@@ -357,20 +382,20 @@ Notes:
 - **Hearts** games last longer (about 6 minutes), so it gets no score stretch. Winning is the stretch.
 - **Cascade** stretch goals stay light until the new tier's win rate is known (§7a).
 
-### What this changes in today's goal pool
+### What this changes in the goal pool (as proposed)
 
-- **Daily Word:** drop the "win" and "win in 4 guesses" goals (§4). _Shipped (#3991)._
+- **Daily Word:** drop the "win" and "win in 4 guesses" goals (§4). _Shipped ([#4002](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4002), #3991)._
 - **Solitaire / FreeCell:** "make 10 moves" and "make 5 moves" are not really easy goals. These games have no
   loss, so a finished row only exists for a win, and these goals already require one. They also wrongly mark
   Solitaire's win as luck-dependent: the code comment says "Klondike deals are not always winnable", but the deal
-  bank is provably solvable. _Shipped (#3993)._
+  bank is provably solvable. _Shipped ([#4024](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4024), #3993)._
 - **Yacht:** the comment "abandoned games count with their score so far" is out of date: abandons are filtered.
-  _Fixed (#3993)._
+  _Fixed ([#4024](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4024), #3993)._
 - **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Shipped for
-  the personal pick as a relative goal kind (#4028); the shared template keeps them (see "Shipped" below)._
-- **Blackjack:** the pending hand-count goals are dropped (§7a). _Shipped (#3996)._
+  the personal pick as a relative goal kind ([#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038), #4028); the shared template keeps them (see "Shipped" below)._
+- **Blackjack:** the pending hand-count goals are dropped (§7a). _Shipped ([#4031](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4031), #3996)._
 
-### Shipped for the free games (#3993, #3994)
+### Shipped for the free games ([#4024](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4024), #3993 + #3994)
 
 The personal pick is live (`backend/daily_challenge/personal.py`, `history.py`; contract in
 [DAILY-CHALLENGE.md §2a, §3a](DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993)). What shipped, and where it differs
@@ -379,10 +404,10 @@ from the tables above:
 - **Pool fixes, as proposed.** Solitaire / FreeCell lose "make 10 / 5 moves" and their wins are no longer flagged
   luck-dependent (provably solvable deals); the stale Solitaire and Yacht comments are fixed. The shared template
   keeps three tiers each: win / win in at most 150 (FreeCell 130) / at most 120 (100) moves.
-- **Bottle Sort personal goals deferred to #4028** (a relative "new levels" goal kind). "N new levels" pinned for today+1 and
-  today+2 at today's first open could already be met by today's solves, so Sort had no personal goals and was not
-  eligible for a personal pick. It keeps its absolute targets (3/8/15 and 10/30/60) on shared-template days.
-  _Shipped in #4028: see "Shipped for Bottle Sort" below._
+- **Bottle Sort personal goals were left out of this PR and shipped in [#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038) (#4028)** as a relative "new levels" goal kind.
+  "N new levels" pinned for today+1 and today+2 at today's first open could already be met by today's solves, so Sort had
+  no personal goals here and was not eligible for a personal pick. It keeps its absolute targets (3/8/15 and 10/30/60)
+  on shared-template days. See "Shipped for Bottle Sort" below.
 - **Cold start uses the pool's easy-tier goal where §12's "Finish a game" can't be evaluated.** 2048 cold start is
   score 500+ and Yacht's is score 100+ (a Yacht or 2048 "finish" has no fact the existing kinds read, and a
   `final_score_at_least 1` would read as "score 1+"). Sudoku's cold start is "solve a puzzle": the difficulty is in
@@ -404,12 +429,12 @@ from the tables above:
   automatic storage-guard pauses, the app's `/today` fallback and kill-switch periods (DAILY-CHALLENGE.md §1).
 - **The variety guard is strict at 3+ games with affinity**, so with exactly 3 or 4 games it sets the rotation more
   than affinity does. §6's "unless the player only plays one or two games" is the exception as written.
-- **Discovery** (`discovery_candidates`) and its rest rule are live (#3995): 3 ignored discovery offers within 30
+- **Discovery** (`discovery_candidates`) and its rest rule are live ([#4030](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4030), #3995): 3 ignored discovery offers within 30
   days rest a game for 30 days after the last one.
 - Dials shipped: `DAILY_CHALLENGE_STRETCH_PCT` (12), `DAILY_CHALLENGE_AFFINITY_DAYS` (14),
-  `DAILY_CHALLENGE_HISTORY_GAMES` (10).
+  `DAILY_CHALLENGE_HISTORY_GAMES` (10). The bonus dials came with [#4030](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4030) (§13).
 
-### Shipped for the premium games (#3996)
+### Shipped for the premium games ([#4031](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4031), #3996 + #4025)
 
 Personal-pick goals for Blackjack, Cascade, Hearts, Mahjong and Star Swarm (`GAME_SPECS`), offered only to an install entitled to the game. Contract and numbers: [DAILY-CHALLENGE.md §2a](DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993). Where it differs from the tables above:
 
@@ -421,7 +446,7 @@ Personal-pick goals for Blackjack, Cascade, Hearts, Mahjong and Star Swarm (`GAM
 - **`PREMIUM_GOAL_POOL` stays equal to `FREE_GOAL_POOL`.** Premium games in it would let `resolve_slate` change a day already served (#2760), change streak replays of unfrozen days, and add frozen rows, for a shared template only an install without history sees.
 - **Fixes it needed:** `/status` and the streak now skip `dev_affected` rows (the history already did), and the streak reads every game with a spec (it read only the pools' games, so a premium goal day could never score).
 
-### Shipped for Bottle Sort (#4028)
+### Shipped for Bottle Sort ([#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038), #4028 + #4039)
 
 Owner decision (option 1): a **relative goal kind**, scored against the player's best Sort level at the start of that day. Contract: [DAILY-CHALLENGE.md §2a, §5, §6](DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993). Where it differs from the tables above:
 
@@ -437,15 +462,15 @@ Owner decision (option 1): a **relative goal kind**, scored against the player's
 
 ### Data needed per measure (input to step 3)
 
-| Measure                            | Server today                    | Device today                              | Gap                                     |
-| ---------------------------------- | ------------------------------- | ----------------------------------------- | --------------------------------------- |
-| Recent finished games per game (scores, moves, times) | `games` rows (full history) | only the personal best                  | small per-game ring buffer (§9)         |
-| Highest Sort level solved          | `final_score` on solves         | Sort progress save                        | none                                    |
-| Sort stars per level               | not stored as a field           | `personal_best_v1:sort` (best moves) vs par | server: derive from moves and par, or skip offline |
-| Sudoku difficulty, errors          | `games.metadata`                | personal best per variant                 | ring buffer                             |
-| Blackjack table of recent runs     | `starting_chips` in metadata    | local run records                         | none                                    |
-| Star Swarm tier, wave              | result block                    | `starswarm.*` best                        | ring buffer                             |
-| Affinity (games played recently)   | `games` rows                    | none                                      | ring buffer gives it for free           |
+| Measure                                               | Server today                 | Device today                                | Gap                                                |
+| ----------------------------------------------------- | ---------------------------- | ------------------------------------------- | -------------------------------------------------- |
+| Recent finished games per game (scores, moves, times) | `games` rows (full history)  | only the personal best                      | none: read from `games` (ring buffer dropped, §13) |
+| Highest Sort level solved                             | `final_score` on solves      | Sort progress save                          | none                                               |
+| Sort stars per level                                  | not stored as a field        | `personal_best_v1:sort` (best moves) vs par | server: derive from moves and par, or skip offline |
+| Sudoku difficulty, errors                             | `games.metadata`             | personal best per variant                   | ring buffer                                        |
+| Blackjack table of recent runs                        | `starting_chips` in metadata | local run records                           | none                                               |
+| Star Swarm tier, wave                                 | result block                 | `starswarm.*` best                          | ring buffer                                        |
+| Affinity (games played recently)                      | `games` rows                 | none                                        | ring buffer gives it for free                      |
 
 ## 13. Offline, cost and data design (step 3)
 
@@ -459,12 +484,12 @@ on-device history is needed**. §9's ring buffer is dropped.
    the server picks that day's goals for that install and **stores them as a pinned assignment**. Every later read,
    on any device, returns the same pinned goals. This applies the existing frozen-day idea (§4 of
    DAILY-CHALLENGE.md) per install instead of per date.
-   - **Shipped in #3992** (storage and plumbing; the pick is still the shared template). Pinning starts only for
+   - **Shipped in [#4015](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4015) (#3992)** (storage and plumbing); the personal pick that fills it shipped in [#4024](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4024). Pinning starts only for
      an install with a `games` row created in the last `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (48), and only while
      storage is under budget: the fuller of replay events vs `REPLAY_STORAGE_BUDGET_MB` and the whole database vs `DATABASE_PLAN_MB`, at the replay recorder's 90 % turn-down point. Any other install is served the shared
      template and nothing is stored. The slate is pinned with the day.
 2. **Targets become plain numbers.** A personal target is resolved at pick time into an absolute value: "Score at
-   least 1,800", "Reach Sort level 23" (baseline 21 + 2 new levels), "Win in at most 104 moves". The existing
+   least 1,800", "Win in at most 104 moves". (Sort's "new levels" is the exception, a relative kind: see "Wire compatibility" below and [#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038).) The existing
    evaluator (`*_at_least`, `won_*_at_most`, `won`, `completed`) checks them with no per-player logic. Replaying a
    past day for the streak just reads the pinned row.
 3. **Inputs at pick time** (one windowed query): the install's last ~10 finished games per game type and the last
@@ -472,8 +497,7 @@ on-device history is needed**. §9's ring buffer is dropped.
    game after 3 ignored suggestions" rule. Plus entitlements, for eligibility.
 4. **The 3-day offline window stays.** `/upcoming` becomes per-install: it returns today and the next 2 days,
    pinned. A device going offline has 3 days of its own goals, exactly as today. The device's progress display
-   (`localProgress.ts`) already evaluates queued games against cached goals. It needs no change beyond knowing the
-   bonus slot.
+   (`localProgress.ts`) already evaluated queued games against cached goals. It needed only the bonus slot and, for Sort's relative goal, the device's day-start best (`@sort/day_start`, #4028). A premium finish or win goal cannot be shown as done offline until `/status` refreshes (#4032).
    - Trade-off: days +1 and +2 are pinned from the history known when they were first served, so their targets
      can be up to 2 days stale. That's accepted: the staleness is small and it keeps one pick per day per install.
 5. **New installs.** The first `/status` of an install with no history gets cold-start goals (§12), but as shipped
@@ -494,13 +518,13 @@ on-device history is needed**. §9's ring buffer is dropped.
 
 ### Cost (CLAUDE.md priority 1)
 
-| Item | Estimate | Bound |
-| --- | --- | --- |
-| Assignment row (install, date, 3 core goals, compact encoding) | **~250 B incl. index, measured** on Postgres 16 (193 B heap + 54 B index); a bonus goal adds ~40 B. The ~150 B first estimate was below the fixed per-row cost (~120 B) | 1 per recently active install per day served; at most 3 days ahead; none while over the storage budget |
-| Per 1,000 daily players | ~250 KB/day; **~15 MB** held at 60-day retention | prune after `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default and minimum `STREAK_LOOKBACK_DAYS` + 1, 61), daily batched delete like `daily_word_progress` |
-| Per 10,000 daily players | ~2.5 MB/day; **~150 MB** held | same prune. For scale: their `games` rows (~13 games/day, several hundred bytes each) grow many times faster |
-| Pick query | one windowed read of the install's recent games, **once per install per day** | later reads of that day are one row lookup |
-| Requests | none new: `/status` and `/upcoming` already exist and are called on Home focus | — |
+| Item                                                           | Estimate                                                                                                                                                                | Bound                                                                                                                                                         |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Assignment row (install, date, 3 core goals, compact encoding) | **~250 B incl. index, measured** on Postgres 16 (193 B heap + 54 B index); a bonus goal adds ~40 B. The ~150 B first estimate was below the fixed per-row cost (~120 B) | 1 per recently active install per day served; at most 3 days ahead; none while over the storage budget                                                        |
+| Per 1,000 daily players                                        | ~250 KB/day; **~15 MB** held at 60-day retention                                                                                                                        | prune after `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default and minimum `STREAK_LOOKBACK_DAYS` + 1, 61), daily batched delete like `daily_word_progress` |
+| Per 10,000 daily players                                       | ~2.5 MB/day; **~150 MB** held                                                                                                                                           | same prune. For scale: their `games` rows (~13 games/day, several hundred bytes each) grow many times faster                                                  |
+| Pick query                                                     | one windowed read of the install's recent games, **once per install per day**                                                                                           | later reads of that day are one row lookup                                                                                                                    |
+| Requests                                                       | none new: `/status` and `/upcoming` already exist and are called on Home focus                                                                                          | —                                                                                                                                                             |
 
 Abandoned or never-opened days cost nothing: a row exists only when a day is served to an install that has played
 in the last 48 h.
@@ -511,11 +535,13 @@ Server env vars, read lazily like the existing daily-challenge settings:
 
 - `DAILY_CHALLENGE_PERSONALIZED` (default on). **Kill switch**: off means every install gets the shared frozen
   template (today's behaviour with the Daily Word fix), and no assignment rows are written.
-- Shipped in #3992: `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default `STREAK_LOOKBACK_DAYS` + 1, 61; refused below
+- Shipped in [#4015](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4015) (#3992): `DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS` (default `STREAK_LOOKBACK_DAYS` + 1, 61; refused below
   that) and `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (48).
-- Shipped in #3993/#3994: `DAILY_CHALLENGE_STRETCH_PCT` (12), `DAILY_CHALLENGE_AFFINITY_DAYS` (14) and
+- Shipped in [#4024](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4024) (#3993/#3994): `DAILY_CHALLENGE_STRETCH_PCT` (12), `DAILY_CHALLENGE_AFFINITY_DAYS` (14) and
   `DAILY_CHALLENGE_HISTORY_GAMES` (10).
-- Shipped in #3995: `DAILY_CHALLENGE_DISCOVERY_SHARE` (0.5) and `DAILY_CHALLENGE_BONUS_ENABLED` (on).
+- Shipped in [#4030](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4030) (#3995): `DAILY_CHALLENGE_DISCOVERY_SHARE` (0.5) and `DAILY_CHALLENGE_BONUS_ENABLED` (on).
+
+All are listed with their ranges in [`RENDER.md`](RENDER.md).
 
 None of these touch the device, so the `/games/catalog` dial carrier isn't needed.
 
@@ -527,9 +553,9 @@ new computation: the pick runs on the server once per install per day.
 ### Privacy and Delete My Data
 
 - Assignment rows are keyed by install ID and derived only from that install's own games.
-- **Delete My Data (`DELETE /me`) must delete them.** That's a fail-safe test.
-- DATA-INVENTORY.md gets a row. No new store-privacy category: this is app functionality from first-party gameplay
-  data (#3988).
+- **Delete My Data (`DELETE /me`) deletes them** (`backend/me/router.py`; fail-safe test `test_delete_me_removes_the_installs_assignments`). The device caches are cleared too.
+- DATA-INVENTORY.md has the row and its [§2d](DATA-INVENTORY.md#2d-daily-challenge-assignments-3992). No new store-privacy category: this is app functionality from first-party gameplay
+  data. The PRODUCT.md rule and any store or legal wording still wait on #3988.
 
 ### Fail-safe tests (epic #3273 style)
 
@@ -544,21 +570,25 @@ new computation: the pick runs on the server once per install per day.
 - Offline: cached per-install days are used for 3 days; a goal met offline is credited when the game syncs.
 - The streak counts only core goals; the bonus never affects it.
 
-## 14. Proposed stories
+## 14. Stories
 
-The epic covers updating or replacing #2946, #2458 and #3945. Model choice per story is the ship-story default
-(cheapest capable). This is a suggestion.
+The epic (#3990) replaced #2946 and #2458 and covered #3945. The table keeps the proposal's story numbers and records
+what each became.
 
-| # | Story | Depends on | Size | Suggested model |
-| - | ----- | ---------- | ---- | --------------- |
-| 1 | Daily Word goal = "complete" only (pool change; frozen days untouched) | — | S | Sonnet |
-| 2 | Per-install pinned assignments: table, pin-on-serve for `/status` and `/upcoming`, prune, `DELETE /me`, streak replay reads it, kill switch | — | L | Opus |
-| 3 | Personal targets: per-game goal specs and target rules from §12 for the free games (incl. Sort "N new levels", Solitaire/FreeCell fixes) | 2 | M | Opus |
-| 4 | Game selection: eligible set (free vs premium), affinity weighting, variety guard, discovery rest rule | 2 | M | Sonnet |
-| 5 | ~~Bonus goal: `bonus` field, Home card UI (marked optional), i18n, offline progress, never in the streak~~ Shipped (#3995) | 2, 4 | M | Sonnet |
-| 6 | Premium games' goals (Blackjack, Cascade, Hearts, Mahjong, Star Swarm) per §12, replacing #2458 / #3945 | 3 | M | Sonnet |
-| 7 | Docs: DAILY-CHALLENGE.md (new contract), DATA-INVENTORY.md row, retire superseded sections of this proposal | 2–6 | S | Haiku |
-| 8 | Tuning query: the §8 metrics as a read-only SQL script for the dev/prod database (no new collection) | 2 | S | Sonnet |
+| #   | Story                                                                                                                                       | Result                                                                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Daily Word goal = "complete" only (pool change; frozen days untouched)                                                                      | Shipped: [#4002](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4002) (#3991)                                                                        |
+| 2   | Per-install pinned assignments: table, pin-on-serve for `/status` and `/upcoming`, prune, `DELETE /me`, streak replay reads it, kill switch | Shipped: [#4015](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4015) (#3992)                                                                        |
+| 3   | Personal targets: per-game goal specs and target rules from §12 for the free games (Solitaire/FreeCell fixes)                               | Shipped: [#4024](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4024) (#3993). Sort "N new levels" moved to story 9.                                 |
+| 4   | Game selection: eligible set (free vs premium), affinity weighting, variety guard, discovery rest rule                                      | Shipped: [#4024](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4024) (#3994)                                                                        |
+| 5   | Bonus goal: `bonus` field, Home card UI (marked optional), i18n, offline progress, never in the streak                                      | Shipped: [#4030](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4030) (#3995)                                                                        |
+| 6   | Premium games' goals (Blackjack, Cascade, Hearts, Mahjong, Star Swarm) per §12, replacing #2458 / #3945                                     | Shipped: [#4031](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4031) (#3996, with #4025: server-written result flags, `dev_affected` runs excluded) |
+| 7   | Docs: DAILY-CHALLENGE.md (new contract), DATA-INVENTORY.md row, retire superseded sections of this proposal                                 | Shipped: the docs pass (#3997)                                                                                                                           |
+| 8   | Tuning query: the §8 metrics as a read-only SQL script for the dev/prod database (no new collection)                                        | Shipped: [#4023](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4023) (#3998), `backend/scripts/daily_challenge_metrics.py`                          |
+| 9   | Bottle Sort relative "solve N new levels" goal (added during the epic)                                                                      | Shipped: [#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038) (#4028, with #4039)                                                            |
+
+Open follow-ups: #3988 (PRODUCT.md data-use rule), #3989 (`IAP.md` premium model, blocked on an owner decision), #4032
+(offline premium finish/win flags), #4033 (Mahjong win-time floor).
 
 [cbs]: https://business.columbia.edu/sites/default/files-efs/citation_file_upload/Personalized_games.pdf
 [dof-puzzles]: https://www.deconstructoroffun.com/blog/2024/9/23/daily-missions-in-puzzles-why-should-we-see-them-more-often
