@@ -1,13 +1,14 @@
 /**
  * Every Cascade piece name (#3695; #3960: 24 names, both capstones) has a key in every locale file and
- * its translator metadata. Names not yet translated carry the English copy, tracked in
- * scripts/i18n-english-copies.json (see docs/I18N.md).
+ * its translator metadata. Every name is translated (#3965, #3983); a word that really equals the
+ * English one is listed under `accepted` in scripts/i18n-english-copies.json (see docs/I18N.md).
  */
 import * as fs from "fs";
 import * as path from "path";
 
 import { TIERS } from "../../game/cascade/tiers";
 import { FRUIT_SETS } from "../../theme/fruitSets";
+import { doNotTranslateTerms } from "../glossary.js";
 
 const LOCALES_DIR = path.resolve(__dirname, "../locales");
 const localeDirs = fs
@@ -82,30 +83,38 @@ describe("Cascade piece names", () => {
       expect(cascade["pieces.fruits.lime"]).not.toBe(cascade["pieces.fruits.lemon"]);
     });
 
-    it("no Cascade names are left pending in any locale (#3983)", () => {
-      expect(copies.pending.cascade).toBeUndefined();
-    });
-
-    it.each(nonEnglish)("%s: every piece name is a real translation (#3983)", (locale) => {
-      const cascade = read(path.join(LOCALES_DIR, locale, "cascade.json"));
-      const en = read(path.join(LOCALES_DIR, "en", "cascade.json"));
-      const accepted = copies.accepted.cascade?.[locale] ?? [];
-      for (const key of keys) {
-        if (cascade[key] === en[key]) {
-          // Same word in that language (German "Mars", French "Neptune") is reviewed, not pending.
-          // Cherry/Orange/Apple/Pineapple/Watermelon are glossary terms kept in English.
-          const glossaryKept = ["cherry", "orange", "apple", "pineapple", "watermelon"].some(
-            (f) => key === `pieces.fruits.${f}`
-          );
-          if (!glossaryKept) expect(accepted).toContain(key);
-        }
-      }
-    });
-
     it.each(localeDirs)("%s: retired Blueberry, Grape and Coconut names are gone", (locale) => {
       const cascade = read(path.join(LOCALES_DIR, locale, "cascade.json"));
       for (const retired of ["blueberry", "grape", "coconut"]) {
         expect(cascade[`pieces.fruits.${retired}`]).toBeUndefined();
+      }
+    });
+  });
+
+  describe("every name translated (#3983)", () => {
+    const copies = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, "../../../scripts/i18n-english-copies.json"), "utf8")
+    ) as {
+      accepted: Record<string, Record<string, string[]>>;
+      pending: Record<string, Record<string, string[]>>;
+    };
+    const nonEnglish = localeDirs.filter((l) => l !== "en");
+    const glossaryTerms = new Set<string>(doNotTranslateTerms);
+
+    it("no Cascade names are left pending in any locale", () => {
+      expect(copies.pending.cascade).toBeUndefined();
+    });
+
+    it.each(nonEnglish)("%s: every piece name is a real translation", (locale) => {
+      const cascade = read(path.join(LOCALES_DIR, locale, "cascade.json"));
+      const en = read(path.join(LOCALES_DIR, "en", "cascade.json"));
+      const accepted = copies.accepted.cascade?.[locale] ?? [];
+      for (const key of keys) {
+        if (cascade[key] === en[key] && !glossaryTerms.has(en[key]!)) {
+          // The same word in that language (German "Mars", French "Neptune") is reviewed, not pending.
+          // Glossary terms (doNotTranslate, e.g. Cherry) stay in English by design.
+          expect(accepted).toContain(key);
+        }
       }
     });
   });
