@@ -405,18 +405,16 @@ jobs:
           while IFS= read -r PKG; do
             [ -z "$PKG" ] && continue
             PKG_DIR="frontend/node_modules/$PKG"
+            # Android detection (#4058) also covers react-native and expo by name and
+            # sources deeper than 4 levels; it feeds android-build-check too.
+            if ./scripts/is-android-native-package.sh "$PKG" "$PKG_DIR"; then
+              ANDROID_PKGS="${ANDROID_PKGS:+$ANDROID_PKGS }$PKG"
+            fi
             [ ! -d "$PKG_DIR" ] && continue
 
             # iOS native: presence of a .podspec signals CocoaPods integration
             if find "$PKG_DIR" -maxdepth 2 -name "*.podspec" 2>/dev/null | grep -q .; then
               IOS_PKGS="${IOS_PKGS:+$IOS_PKGS }$PKG"
-            fi
-
-            # Android native: android/ dir containing Java/Kotlin/C++ source
-            if [ -d "$PKG_DIR/android" ] && \
-               find "$PKG_DIR/android" -maxdepth 4 \
-                 \( -name "*.java" -o -name "*.kt" -o -name "*.cpp" \) 2>/dev/null | grep -q .; then
-              ANDROID_PKGS="${ANDROID_PKGS:+$ANDROID_PKGS }$PKG"
             fi
 
             # JSI: runtime binding installer patterns (Expo Go can't satisfy these)
@@ -1056,7 +1054,8 @@ jobs:
   #   has_native_android    an Expo / React Native / native-module bump (a package
   #                         with Java/Kotlin/C++ sources changed version)
   #   android_files_changed an edit under frontend/android/
-  # plus this job's own composite action. Plain JS bumps (Dependabot
+  # plus this job's own composite action, and always on release PRs into main
+  # (as android-build-check). Plain JS bumps (Dependabot
   # minor-and-patch) match none of these. If detect-native-changes fails to
   # detect, its safe defaults are false, the same fail-quiet convention as
   # android-build-check; the nightly still builds. It is a need, so on a draft
@@ -1085,14 +1084,16 @@ jobs:
         env:
           HAS_NATIVE_ANDROID: ${{ needs.detect-native-changes.outputs.has_native_android }}
           ANDROID_FILES_CHANGED: ${{ needs.detect-native-changes.outputs.android_files_changed }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           # The action's own path too (#4054), so a PR that edits the build steps runs them.
+          # HEAD is the PR merge commit, whose first parent is the current base tip, so
+          # HEAD^1..HEAD is exactly what the PR changes (as detect-native-file-changes.sh).
           ACTION_CHANGED=false
-          if git diff --name-only "$BASE_SHA"...HEAD | grep -q '^\.github/actions/android-release-smoke/'; then
+          if git diff --name-only HEAD^1 HEAD | grep -q '^\.github/actions/android-release-smoke/'; then
             ACTION_CHANGED=true
           fi
-          if [ "$HAS_NATIVE_ANDROID" = "true" ] || [ "$ANDROID_FILES_CHANGED" = "true" ] || [ "$ACTION_CHANGED" = "true" ]; then
+          if [ "$HAS_NATIVE_ANDROID" = "true" ] || [ "$ANDROID_FILES_CHANGED" = "true" ] || [ "$ACTION_CHANGED" = "true" ] || [ "$BASE_REF" = "main" ]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_run=false" >> "$GITHUB_OUTPUT"

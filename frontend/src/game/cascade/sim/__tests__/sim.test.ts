@@ -765,7 +765,7 @@ describe("baseline.json", () => {
     }
   });
 
-  it("widens the capstone bands, and only those, for a smaller capstone seed count (PR gate: 50)", () => {
+  it("widens the capstone bands, and only those, for a smaller capstone seed count (50 as an example)", () => {
     const full = baseline.suites["full"]!;
     const half = baselineForCapstoneSeeds(full, 50);
     expect(half.params.capstone!.seeds).toBe(50);
