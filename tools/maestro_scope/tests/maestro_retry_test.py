@@ -1,0 +1,182 @@
+"""pytest suite for the nightly Maestro retry (#4054): e2e/maestro/retry.py picks the failed
+flows to re-run once and decides the result, and e2e/maestro/summarize.py shows "PASS on retry"
+separately (and leaves the table unchanged when nothing was retried)."""
+
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parents[3]
+MAESTRO = ROOT / "e2e" / "maestro"
+WORKFLOWS = ROOT / ".github" / "workflows"
+
+
+def load(name):
+    spec = importlib.util.spec_from_file_location(name, MAESTRO / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+retry = load("retry")
+summarize = load("summarize")
+
+
+def junit(path, cases=(), suite_failures=None):
+    """Write a Maestro-style junit report. cases: (name, failed) pairs."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = "".join(
+        f'<testcase name="{n}">{"<failure>boom</failure>" if f else ""}</testcase>'
+        for n, f in cases
+    )
+    failures = suite_failures if suite_failures is not None else sum(f for _, f in cases)
+    path.write_text(
+        f'<testsuites><testsuite name="s" failures="{failures}">{body}</testsuite></testsuites>'
+    )
+
+
+@pytest.fixture
+def ws(tmp_path, monkeypatch):
+    """A workspace with flows e2e/maestro/flows/{home,yacht}/*.yaml, cwd set to it."""
+    for d, names in {"home": ["smoke", "nav"], "yacht": ["smoke"]}.items():
+        for n in names:
+            f = tmp_path / "e2e" / "maestro" / "flows" / d / f"{n}.yaml"
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("appId: x\n---\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    return tmp_path
+
+
+def test_plan_lists_only_the_failed_flows(ws):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", True)])
+    assert retry.plan("home") == [("e2e/maestro/flows/home/nav.yaml", "maestro-retry/home/nav.xml")]
+
+
+def test_plan_is_empty_when_everything_passed(ws):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", False)])
+    assert retry.plan("home") == []
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        lambda _ws: None,  # no report: a parse error or crashed runner
+        lambda ws: (ws / "maestro-results/home").mkdir(parents=True)
+        or (ws / "maestro-results/home/report.xml").write_text("<oops"),
+        lambda ws: junit(ws / "maestro-results/home/report.xml", [], suite_failures=1),
+        lambda ws: junit(ws / "maestro-results/home/report.xml", [("Renamed flow", True)]),
+        lambda ws: junit(ws / "maestro-results/home/report.xml", [("../../etc", True)]),
+    ],
+)
+def test_plan_falls_back_to_the_whole_directory(ws, setup):
+    setup(ws)
+    assert retry.plan("home") == [("e2e/maestro/flows/home/", "maestro-retry/home/__all__.xml")]
+
+
+def test_plan_rejects_unsafe_directory_names():
+    assert retry.plan("home; rm -rf /") == []
+    assert retry.plan("../x") == []
+
+
+def test_verdict_passes_when_the_retry_clears_every_failure(ws):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", True)])
+    junit(ws / "maestro-results/yacht/report.xml", [("smoke", False)])
+    junit(ws / "maestro-retry/home/nav.xml", [("nav", False)])
+    assert retry.remaining_failures(["home", "yacht"]) == []
+    assert retry.main(["verdict", "home", "yacht"]) == 0
+
+
+def test_verdict_fails_when_a_flow_fails_twice(ws, capsys):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", True), ("nav", True)])
+    junit(ws / "maestro-retry/home/nav.xml", [("nav", False)])
+    junit(ws / "maestro-retry/home/smoke.xml", [("smoke", True)])
+    assert retry.remaining_failures(["home"]) == ["home/smoke"]
+    assert retry.main(["verdict", "home"]) == 1
+    assert "::error::Maestro flow home/smoke failed" in capsys.readouterr().out
+
+
+def test_verdict_fails_when_a_failure_was_never_retried(ws):
+    junit(ws / "maestro-results/home/report.xml", [("nav", True)])
+    assert retry.remaining_failures(["home"]) == ["home/nav"]
+
+
+def test_verdict_for_a_directory_without_report(ws):
+    assert retry.remaining_failures(["yacht"]) == ["yacht"]
+    junit(ws / "maestro-retry/yacht/__all__.xml", [("smoke", False)])
+    assert retry.remaining_failures(["yacht"]) == []
+
+
+def test_unreadable_retry_report_does_not_count_as_a_pass(ws):
+    junit(ws / "maestro-results/home/report.xml", [], suite_failures=1)
+    (ws / "maestro-retry/home").mkdir(parents=True)
+    (ws / "maestro-retry/home/__all__.xml").write_text("<oops")
+    assert retry.remaining_failures(["home"]) == ["home"]
+
+
+def test_plan_cli_prints_path_pairs(ws):
+    junit(ws / "maestro-results/home/report.xml", [("nav", True), ("smoke", True)])
+    proc = subprocess.run(
+        [sys.executable, str(MAESTRO / "retry.py"), "plan", "home"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == [
+        "e2e/maestro/flows/home/nav.yaml maestro-retry/home/nav.xml",
+        "e2e/maestro/flows/home/smoke.yaml maestro-retry/home/smoke.xml",
+    ]
+
+
+def test_summary_without_retry_is_unchanged(ws):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", True)])
+    assert summarize.build_rows(["home", "yacht"]) == [
+        "| `home/smoke` | ✅ PASS |\n",
+        "| `home/nav` | ❌ FAIL |\n",
+        "| `yacht` | ❌ FAIL _(no report: flow parse error or runner crash)_ |\n",
+    ]
+
+
+def test_summary_marks_passed_on_retry_and_counts_it(ws, monkeypatch):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", True), ("nav", True)])
+    junit(ws / "maestro-retry/home/nav.xml", [("nav", False)])
+    junit(ws / "maestro-retry/home/smoke.xml", [("smoke", True)])
+    junit(ws / "maestro-retry/yacht/__all__.xml", [("smoke", False)])
+    summary, output = ws / "summary.md", ws / "output"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    summarize.main("Android", "full suite", ["home", "yacht"])
+    text = summary.read_text()
+    assert "| `home/smoke` | ❌ FAIL |" in text
+    assert "| `home/nav` | 🔁 PASS on retry |" in text
+    assert "| `yacht` | 🔁 PASS on retry _(no report" in text
+    assert "**Passed on retry:** 2 flow(s)" in text
+    assert output.read_text() == "passed_on_retry=2\n"
+
+
+def test_summary_writes_zero_when_nothing_was_retried(ws, monkeypatch):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False)])
+    summary, output = ws / "summary.md", ws / "output"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    summarize.main("iOS", "full suite", ["home"])
+    assert "Passed on retry" not in summary.read_text()
+    assert output.read_text() == "passed_on_retry=0\n"
+
+
+@pytest.mark.parametrize("name", ["mobile-smoke-android.yml", "mobile-smoke-ios.yml"])
+def test_smoke_workflows_retry_only_when_called_by_the_nightly(name):
+    data = yaml.safe_load((WORKFLOWS / name).read_text())
+    call = data[True]["workflow_call"]
+    assert call["inputs"]["nightly"]["default"] is False
+    assert "passed-on-retry" in call["outputs"]
+    job = next(j for j in data["jobs"].values() if "MAESTRO_RETRY" in (j.get("env") or {}))
+    assert job["env"]["MAESTRO_RETRY"] == "${{ inputs.nightly && 'true' || 'false' }}"
+    text = (WORKFLOWS / name).read_text()
+    assert "e2e/maestro/retry.py plan" in text and "e2e/maestro/retry.py verdict" in text

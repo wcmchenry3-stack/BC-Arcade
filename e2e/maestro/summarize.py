@@ -14,6 +14,11 @@ and writes one row per flow, labelled `<dir>/<flow>`.
 report.xml gets its own failure row: that is what a flow file that fails to
 parse, or a crashed runner, looks like (#2400). Without <projects>, only the
 directories that have a report are listed.
+
+Nightly retry (#4054): when the run retried failed flows (e2e/maestro/retry.py, reports in
+maestro-retry/<dir>/), a flow that failed and then passed shows as "PASS on retry" and is
+counted on its own line. The count also goes to $GITHUB_OUTPUT as `passed_on_retry`. Without
+a maestro-retry/ directory the table is exactly what it was before.
 """
 
 import glob
@@ -21,7 +26,13 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import retry  # sibling module; this file runs as a script
+
 RESULTS = "maestro-results"
+FAIL = "❌ FAIL"
+PASS = "✅ PASS"
+RETRY_PASS = "🔁 PASS on retry"
 
 
 def _count(suite: ET.Element, attr: str) -> int:
@@ -32,10 +43,18 @@ def _count(suite: ET.Element, attr: str) -> int:
         return 1
 
 
-def _dir_rows(directory: str, report: str) -> list[str]:
+def _result(failed: bool, name, retried: dict) -> str:
+    if not failed:
+        return PASS
+    return RETRY_PASS if retry.case_passed_on_retry(name, retried) else FAIL
+
+
+def _dir_rows(directory: str, report: str, retried: dict) -> list[str]:
     try:
         root = ET.parse(report).getroot()
     except ET.ParseError as exc:
+        if retry.dir_passed(retried):
+            return [f"| `{directory}` | {RETRY_PASS} _(parse error in {report}: {exc})_ |\n"]
         return [f"| `{directory}` | _(parse error in {report}: {exc})_ |\n"]
     suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
     rows = []
@@ -43,11 +62,11 @@ def _dir_rows(directory: str, report: str) -> list[str]:
         cases = suite.findall("testcase")
         if not cases:
             failed = _count(suite, "failures") + _count(suite, "errors")
-            rows.append(f'| `{directory}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
+            rows.append(f"| `{directory}` | {_result(bool(failed), None, retried)} |\n")
         for case in cases:
             name = case.get("name", "unknown")
             failed = case.find("failure") is not None or case.find("error") is not None
-            rows.append(f'| `{directory}/{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
+            rows.append(f"| `{directory}/{name}` | {_result(failed, name, retried)} |\n")
     return rows
 
 
@@ -60,12 +79,14 @@ def build_rows(projects: list[str]) -> list[str]:
     rows = []
     for directory in directories:
         report = reports.get(directory)
+        retried = retry.outcomes(directory)
         if report is None:
+            result = RETRY_PASS if retry.dir_passed(retried) else FAIL
             rows.append(
-                f"| `{directory}` | ❌ FAIL _(no report: flow parse error or runner crash)_ |\n"
+                f"| `{directory}` | {result} _(no report: flow parse error or runner crash)_ |\n"
             )
         else:
-            rows.extend(_dir_rows(directory, report))
+            rows.extend(_dir_rows(directory, report, retried))
     if not rows:
         rows.append(
             "| _(no reports — test runner may have crashed before any directory ran)_ | — |\n"
@@ -76,9 +97,16 @@ def build_rows(projects: list[str]) -> list[str]:
 def main(platform: str, label: str, projects: list[str]) -> None:
     out = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
     rows = build_rows(projects)
+    passed_on_retry = sum(RETRY_PASS in row for row in rows)
     with open(out, "a") as f:
         f.write(f"## Maestro {platform} Smoke ({label})\n\n| Flow | Result |\n|---|---|\n")
         f.writelines(rows)
+        if passed_on_retry:
+            f.write(f"\n**Passed on retry:** {passed_on_retry} flow(s) failed once, then passed.\n")
+    output = os.environ.get("GITHUB_OUTPUT")
+    if output:
+        with open(output, "a") as f:
+            f.write(f"passed_on_retry={passed_on_retry}\n")
 
 
 if __name__ == "__main__":

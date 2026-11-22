@@ -22,6 +22,14 @@ name: Mobile Smoke — Android
 #    restore (runs off `dev` are read-only, see setup-gradle below). A scheduled run
 #    is not attached to any PR or to a `main` commit, so it never gates a PR
 #    merge or a Render deploy.
+#  - workflow_call (#4054): nightly.yml runs the full suite on its pinned `dev`
+#    SHA with `nightly: true`. That retries each failed flow once
+#    (e2e/maestro/retry.py; the summary shows "PASS on retry" separately and
+#    the `passed-on-retry` output counts them), keeps media 7 days, skips the
+#    PR media comment and uses its own concurrency group, so a manual dispatch
+#    can't cancel or displace it. Inside a called workflow `github.event_name`
+#    is the caller's (workflow_dispatch), so detect-maestro-scope picks the
+#    full suite.
 # Deliberately NOT on push to main: prod auto-deploys `main` with Render's
 # "After CI Checks Pass" trigger, which waits for EVERY check on the commit, so a
 # red or slow smoke check here would block prod deploys (it blocked #2522).
@@ -39,6 +47,22 @@ on:
   schedule:
     # Mondays 09:23 UTC (off-peak; off the hour to dodge scheduler load).
     - cron: "23 9 * * 1"
+  workflow_call:
+    inputs:
+      flows:
+        description: "Same as the workflow_dispatch input: full, cascade-demo or mahjong-demo"
+        type: string
+        required: false
+        default: full
+      nightly:
+        description: "true when nightly.yml calls this (#4054): retry failed flows once, 7-day media, no PR comment, own concurrency group"
+        type: boolean
+        required: false
+        default: false
+    outputs:
+      passed-on-retry:
+        description: "Flows that failed and then passed on the nightly retry (0 when nothing was retried)"
+        value: ${{ jobs.maestro-android.outputs.passed-on-retry }}
 
 permissions:
   contents: read
@@ -49,8 +73,10 @@ permissions:
 
 concurrency:
   # A dispatch's group includes its `flows` input (#3705), so a demo dispatch
-  # neither queues behind nor cancels a full run on the same commit.
-  group: mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
+  # neither queues behind nor cancels a full run on the same commit. The
+  # nightly's call (#4054) gets its own `nightly-<run id>-` prefix, so a manual
+  # dispatch on the same SHA neither cancels it nor replaces it while pending.
+  group: ${{ inputs.nightly && format('nightly-{0}-', github.run_id) || '' }}mobile-smoke-android-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -73,7 +99,11 @@ jobs:
       # The opted-in media names and the media artifact's URL, for comment-media (#3805).
       media-names: ${{ steps.media-names.outputs.names }}
       media-url: ${{ steps.upload-media.outputs.artifact-url }}
+      # Flows that passed only on the nightly retry (#4054), from summarize.py.
+      passed-on-retry: ${{ steps.summary.outputs.passed_on_retry }}
     env:
+      # Retry each failed flow once, nightly only (#4054; e2e/maestro/retry.py).
+      MAESTRO_RETRY: ${{ inputs.nightly && 'true' || 'false' }}
       # One place for the emulator image: the pre-download step and the
       # emulator step both read these.
       EMULATOR_API_LEVEL: "34"
@@ -281,13 +311,22 @@ jobs:
           # $MAESTRO_TAG_ARG (job env) is --exclude-tags=demo, or
           # --include-tags=demo in a `flows: cascade-demo` or `flows: mahjong-demo`
           # dispatch (#3705, #3801).
+          # Nightly retry (#4054, MAESTRO_RETRY=true only when nightly.yml calls
+          # this): the per-game loop no longer exits non-zero; the next line
+          # re-runs each failed flow once (retry.py plan prints "<flow> <report>"
+          # pairs; stdin from /dev/null so maestro can't eat the loop's input)
+          # and retry.py verdict fails the step if any flow failed twice. Off
+          # the nightly, the loop exits $FAIL as before and the retry line is a
+          # no-op.
           script: |
             adb shell settings put global hide_error_dialogs 1
             adb shell settings put secure anr_show_background 0
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in $MAESTRO_PROJECTS; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output $MAESTRO_TAG_ARG "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; exit $FAIL
+            FAIL=0; for d in $MAESTRO_PROJECTS; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output $MAESTRO_TAG_ARG "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; if [ "$MAESTRO_RETRY" != "true" ]; then exit $FAIL; fi
+            if [ "$MAESTRO_RETRY" = "true" ]; then for d in $MAESTRO_PROJECTS; do python3 e2e/maestro/retry.py plan "$d" | while read -r F O; do echo "::group::Retry $F"; mkdir -p "$(dirname "$O")"; maestro test --format junit --test-suite-name "$d" --output "$O" --debug-output "maestro-debug/retry-$d" --flatten-debug-output $MAESTRO_TAG_ARG "$F" < /dev/null || true; echo "::endgroup::"; done; done; python3 e2e/maestro/retry.py verdict $MAESTRO_PROJECTS; fi
 
       - name: Write job summary
+        id: summary
         if: always()
         run: python3 e2e/maestro/summarize.py "Android" "$MAESTRO_LABEL" "$MAESTRO_PROJECTS"
 
@@ -315,6 +354,7 @@ jobs:
           name: maestro-android-results
           path: |
             maestro-results/
+            maestro-retry/
             maestro-debug/
             ~/.maestro/tests/
           if-no-files-found: warn
@@ -340,7 +380,8 @@ jobs:
           # A demo dispatch exists to produce media, so none is an error there;
           # normal runs are unaffected.
           if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
-          retention-days: 14
+          # 7 days for the nightly (#4054), 14 otherwise.
+          retention-days: ${{ inputs.nightly && 7 || 14 }}
 
       # Names of the media the PR comment lists (opt-in prefixes live in media_comment.py).
       - name: List opted-in media names
@@ -367,12 +408,15 @@ jobs:
   # PR, or on the one open PR for a dispatched branch (#3805). A separate job so the
   # emulator job keeps `contents: read` only; the job's own `permissions` replace the
   # workflow's, so it names both. Skipped for fork PRs (read-only token) and when the run
-  # has no opted-in media; the script itself never fails the job.
+  # has no opted-in media; the script itself never fails the job. Skipped for the
+  # nightly (#4054): a dispatch on dev would otherwise comment on the open
+  # release PR. The nightly's calling job still has to grant pull-requests: write,
+  # because a called workflow can't declare more than its caller grants.
   comment-media:
     name: Comment Maestro Android media
     needs: maestro-android
     if: |
-      !cancelled() && needs.maestro-android.outputs.media-names != '' &&
+      !cancelled() && !inputs.nightly && needs.maestro-android.outputs.media-names != '' &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
