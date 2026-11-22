@@ -15,22 +15,15 @@ test.describe("Sort Puzzle — smoke tests", () => {
     await gotoSort(page);
   });
 
-  test("navigates from Home to Sort Puzzle level-select screen", async ({
-    page,
-  }) => {
+  test("navigates from Home to Sort Puzzle level-select screen", async ({ page }) => {
     // The Home card underneath the stack also reads "Sort Puzzle" (hidden).
     await expect(
-      page
-        .getByText("Sort Puzzle", { exact: true })
-        .filter({ visible: true })
-        .first(),
+      page.getByText("Sort Puzzle", { exact: true }).filter({ visible: true }).first(),
     ).toBeVisible();
     await expect(page.getByText("Choose a Level")).toBeVisible();
   });
 
-  test("level-select screen shows level grid on fresh install", async ({
-    page,
-  }) => {
+  test("level-select screen shows level grid on fresh install", async ({ page }) => {
     await expect(
       page.getByRole("button", { name: "Level 1", exact: true }),
     ).toBeVisible({ timeout: 5_000 });
@@ -53,22 +46,15 @@ test.describe("Sort Puzzle — smoke tests", () => {
     await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
     await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
     await page.getByRole("button", { name: "Level 1", exact: true }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
-      timeout: 5_000,
-    });
+    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
     // The grid holds the whole catalog: 120 levels.
     await page.getByRole("button", { name: "Back to levels" }).click();
-    await expect(
-      page.getByRole("button", { name: "Level 120, locked", exact: true }),
-    ).toBeAttached();
+    await expect(page.getByRole("button", { name: "Level 120, locked", exact: true })).toBeAttached();
     expect(levelRequests).toEqual([]);
   });
 
   test("locked levels show progression gate", async ({ page }) => {
-    const lockedBtn = page.getByRole("button", {
-      name: "Level 2, locked",
-      exact: true,
-    });
+    const lockedBtn = page.getByRole("button", { name: "Level 2, locked", exact: true });
     await expect(lockedBtn).toBeVisible({ timeout: 5_000 });
     await expect(lockedBtn).toBeDisabled();
   });

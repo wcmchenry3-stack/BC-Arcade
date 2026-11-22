@@ -43,9 +43,7 @@ test.describe("Sort Puzzle — leaderboard screen", () => {
   });
 
   test("has no inline Leaderboard tab any more", async ({ page }) => {
-    await expect(page.getByRole("tab", { name: /Leaderboard/i })).toHaveCount(
-      0,
-    );
+    await expect(page.getByRole("tab", { name: /Leaderboard/i })).toHaveCount(0);
   });
 
   test("renders top-10 player names", async ({ page }) => {
@@ -57,12 +55,12 @@ test.describe("Sort Puzzle — leaderboard screen", () => {
   });
 
   test("each row announces its rank, name and level", async ({ page }) => {
-    await expect(page.getByLabel(/^Rank 1, Player1, Level 10, /)).toBeVisible({
-      timeout: 5_000,
-    });
-    await expect(page.getByLabel(/^Rank 10, Player10, Level 1, /)).toBeVisible({
-      timeout: 5_000,
-    });
+    await expect(
+      page.getByLabel(/^Rank 1, Player1, Level 10, /),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByLabel(/^Rank 10, Player10, Level 1, /),
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test("Back returns to the level select", async ({ page }) => {

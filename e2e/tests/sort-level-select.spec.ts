@@ -6,23 +6,13 @@
  */
 
 import { test, expect } from "@playwright/test";
-import {
-  mockSortApi,
-  gotoSort,
-  injectSortProgress,
-  resumeSortFromLobby,
-} from "./helpers/sort";
+import { mockSortApi, gotoSort, injectSortProgress, resumeSortFromLobby } from "./helpers/sort";
 
 test.describe("Sort Puzzle — level select", () => {
-  test("locked levels are disabled and labelled as locked", async ({
-    page,
-  }) => {
+  test("locked levels are disabled and labelled as locked", async ({ page }) => {
     await mockSortApi(page);
     await gotoSort(page);
-    const lockedBtn = page.getByRole("button", {
-      name: "Level 2, locked",
-      exact: true,
-    });
+    const lockedBtn = page.getByRole("button", { name: "Level 2, locked", exact: true });
     await expect(lockedBtn).toBeVisible({ timeout: 5_000 });
     await expect(lockedBtn).toBeDisabled();
   });
@@ -31,9 +21,7 @@ test.describe("Sort Puzzle — level select", () => {
     await mockSortApi(page);
     await gotoSort(page);
     await page.getByRole("button", { name: "Level 1", exact: true }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
-      timeout: 5_000,
-    });
+    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
   });
 
   test("level 1 is always unlocked on a fresh install", async ({ page }) => {
@@ -44,9 +32,7 @@ test.describe("Sort Puzzle — level select", () => {
     ).not.toBeDisabled({ timeout: 5_000 });
   });
 
-  test("continue button appears when a level is in progress", async ({
-    page,
-  }) => {
+  test("continue button appears when a level is in progress", async ({ page }) => {
     await mockSortApi(page);
     await injectSortProgress(page, {
       unlockedLevel: 1,
@@ -69,9 +55,7 @@ test.describe("Sort Puzzle — level select", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test("the lobby Resume tile opens the saved level, not the level grid", async ({
-    page,
-  }) => {
+  test("the lobby Resume tile opens the saved level, not the level grid", async ({ page }) => {
     await mockSortApi(page);
     await injectSortProgress(page, {
       unlockedLevel: 1,

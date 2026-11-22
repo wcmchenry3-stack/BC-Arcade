@@ -42,19 +42,13 @@ export function catalogLevel(id: number): string[][] {
 
 function topRun(bottle: string[]): number {
   let n = 0;
-  while (
-    n < bottle.length &&
-    bottle[bottle.length - 1 - n] === bottle[bottle.length - 1]
-  )
-    n++;
+  while (n < bottle.length && bottle[bottle.length - 1 - n] === bottle[bottle.length - 1]) n++;
   return n;
 }
 
 const LEVEL_1 = catalogLevel(1);
 const FULL = LEVEL_1.map((b, i) => (b.length > 0 ? i + 1 : 0)).filter(Boolean);
-const EMPTY = LEVEL_1.map((b, i) => (b.length === 0 ? i + 1 : 0)).filter(
-  Boolean,
-);
+const EMPTY = LEVEL_1.map((b, i) => (b.length === 0 ? i + 1 : 0)).filter(Boolean);
 
 /**
  * Level 1's first full bottle poured into its first empty one (1-based
@@ -124,9 +118,7 @@ export async function resumeSortFromLobby(page: Page): Promise<void> {
   await expect(tile).toHaveAccessibleName(/in progress/i, { timeout: 10_000 });
   await expect(page.getByTestId("game-btn-sort")).toContainText("Resume");
   await tile.click();
-  await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
-    timeout: 10_000,
-  });
+  await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("Choose a Level")).toHaveCount(0);
 }
 
