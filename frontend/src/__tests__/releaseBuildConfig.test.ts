@@ -299,6 +299,16 @@ describe("Android release cannot silently fall back to debug signing (#2783)", (
     .readdirSync(workflowsDir)
     .filter((f) => /\.ya?ml$/.test(f))
     .map((f) => ({ name: f, text: fs.readFileSync(path.join(workflowsDir, f), "utf-8") }));
+  // #4054: the smoke step moved from ci.yml into a composite action, shared by ci.yml's
+  // android-release-smoke job and nightly.yml; local actions are scanned too.
+  const actionsDir = path.join(frontendRoot, "../.github/actions");
+  const actions = fs
+    .readdirSync(actionsDir)
+    .filter((d) => fs.existsSync(path.join(actionsDir, d, "action.yml")))
+    .map((d) => ({
+      name: `actions/${d}`,
+      text: fs.readFileSync(path.join(actionsDir, d, "action.yml"), "utf-8"),
+    }));
 
   it("release-artifact tasks fail without a real upload keystore unless explicitly opted out", () => {
     expect(gradle).toContain("ALLOW_DEBUG_SIGNED_RELEASE");
@@ -312,15 +322,15 @@ describe("Android release cannot silently fall back to debug signing (#2783)", (
   });
 
   it("only the CI android-release-smoke step opts into debug-signed release", () => {
-    const optIns = workflows.flatMap((w) =>
+    const optIns = [...workflows, ...actions].flatMap((w) =>
       w.text
         .split("\n")
         .filter((l) => l.includes("ALLOW_DEBUG_SIGNED_RELEASE"))
         .map(() => w.name)
     );
-    expect(optIns).toEqual(["ci.yml"]);
+    expect(optIns).toEqual(["actions/android-release-smoke"]);
 
-    const ci = workflows.find((w) => w.name === "ci.yml")!.text;
+    const ci = actions.find((w) => w.name === "actions/android-release-smoke")!.text;
     // The flag must sit inside the assembleRelease command of the smoke step
     // (a single shell command ending at the first blank line / next step).
     const start = ci.indexOf("./gradlew assembleRelease");

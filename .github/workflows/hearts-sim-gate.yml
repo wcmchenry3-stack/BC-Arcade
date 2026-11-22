@@ -41,6 +41,15 @@ on:
         description: "Legacy gate only: block cap per group (blank = the gate's defaults)"
         required: false
         default: ""
+  # nightly.yml (#4054): the default nightly run (10,000 hands, 2,000 games per
+  # matchup). legacy_gate is not an input here, so the legacy gate stays off.
+  workflow_call:
+    inputs:
+      nightly:
+        description: "true when nightly.yml calls this (#4054): own concurrency group, 7-day artifacts"
+        type: boolean
+        required: false
+        default: false
   # PRs that change the AI, the engine, the spec or the gate itself.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
@@ -56,7 +65,11 @@ on:
       - ".github/workflows/hearts-sim-gate.yml"
 
 concurrency:
-  group: hearts-sim-gate-${{ github.ref }}
+  # The nightly's call (#4054) gets its own `nightly-<run id>-` prefix: inside a
+  # called workflow github.event_name and github.ref are the caller's
+  # (workflow_dispatch, refs/heads/dev), so without it a manual dispatch on dev
+  # would cancel the nightly's job (cancel-in-progress).
+  group: ${{ inputs.nightly && format('nightly-{0}-', github.run_id) || '' }}hearts-sim-gate-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -92,7 +105,7 @@ jobs:
         with:
           name: hearts-principles
           path: hearts-principles.*
-          retention-days: 30
+          retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)
 
   game-report:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
@@ -127,7 +140,7 @@ jobs:
         with:
           name: hearts-game-report
           path: hearts-game-report.*
-          retention-days: 30
+          retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)
 
   gate:
     # Legacy gate v2 (#2238), on demand only.
@@ -159,4 +172,4 @@ jobs:
         with:
           name: hearts-gate-${{ matrix.group }}
           path: hearts-gate-${{ matrix.group }}.*
-          retention-days: 30
+          retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)

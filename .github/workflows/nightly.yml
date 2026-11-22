@@ -1,0 +1,341 @@
+name: Nightly dev checks
+
+# One place that runs the heavy checks against one pinned `dev` SHA (#4054, epic #4053), so a
+# result and "last green" mean an exact commit.
+#
+# - Pinned SHA: the default branch is `dev`, so `github.sha` is dev HEAD when the run starts.
+#   Every job checks out that SHA (never `ref: dev`), and the local reusable workflows below run
+#   at that commit with the same `github.sha`, so a merge to `dev` during the run changes nothing
+#   that is tested.
+# - `gate` skips the heavy jobs when dev HEAD equals the SHA of tag `nightly/last-green`, unless
+#   it is a Monday (UTC) or the dispatch sets `force` (tools/nightly/gate.py). A skipped night is
+#   reported as "skipped, dev unchanged", not green. A red night never moves the tag, so an
+#   unchanged dev after a red night runs again the next night (it re-tests flakes).
+# - Heavy jobs: Playwright (every project), Maestro Android and iOS (full suite, each failed flow
+#   retried once), the Cascade (100 seeds, 60 and 120 Hz), Hearts and Yacht sims, the org iOS and
+#   Android build checks, the Android release smoke (always built here) and perf (the deployed
+#   dev backend, warm-up first). Called workflows get `nightly: true`, which gives them their own
+#   concurrency group (a manual dispatch of, say, cascade-sim-gate.yml on dev can't cancel the
+#   nightly's job) and 7-day artifacts.
+# - Job ids here deliberately differ from the required checks in
+#   .github/rulesets/protect-main-dev.json (`Playwright E2E`, `android-release-smoke`): check
+#   runs from this workflow land on the dev SHA, which is also the release PR's head.
+# - `tag-last-green` moves `nightly/last-green` to the SHA only when every heavy job succeeded.
+# - `summary` writes the SHA, the commit range since the last green night and every job's result
+#   and duration to the run summary (tools/nightly/report.py).
+#
+# Cost: the repo is public, so GitHub-hosted runners (Linux and macOS) are not billed; the sims,
+# Maestro and builds cost runner slots only (about 20 concurrent jobs, 5 macOS). Data: perf's
+# game-flow scenario (YachtGameUser, 1 user, 90 s, paced to one game per ~4.3 s) writes about 21
+# Yacht games to the dev database per run: ~21 `games` rows and ~550 event rows (13 batches of a
+# roll and a score each), about 170 KB at ~300 B an event row. Event rows are replay events,
+# pruned after REPLAY_RETENTION_DAYS (30); game rows stay. Until story 6 (#4059) removes
+# perf.yml's own `0 6 * * *` schedule, perf runs twice a day (about 340 KB/day, ~10 MB of event
+# rows at steady state), and the sim and Maestro schedules also still run on their own.
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the heavy jobs even when dev is unchanged since the last green night"
+        type: boolean
+        required: false
+        default: false
+  # No schedule yet: story 3 of epic #4053 adds the fallback schedule and the dedupe with the
+  # external trigger. Until then the run is started by workflow_dispatch only.
+
+concurrency:
+  group: nightly-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      reason: ${{ steps.decide.outputs.reason }}
+      last_green: ${{ steps.decide.outputs.last_green }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: tools/nightly
+          persist-credentials: false
+
+      - name: Decide whether to run
+        id: decide
+        shell: bash # explicit shell = pipefail, so tee can't mask a gate.py error
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          # A missing tag (404) means the first tracked night: the gate then runs everything.
+          LAST=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly/last-green" \
+            --jq 'select(.object.type == "commit") | .object.sha' 2>/dev/null || true)
+          # gh can print an error body on a 404; anything but a SHA counts as no tag (so: run).
+          if [[ ! "$LAST" =~ ^[0-9a-f]{40}$ ]]; then
+            [ -n "$LAST" ] && echo "::warning::Could not read nightly/last-green; running the heavy jobs"
+            LAST=""
+          fi
+          python3 tools/nightly/gate.py --head "$HEAD_SHA" --last-green "$LAST" \
+            --force "${FORCE:-false}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Say what the gate decided
+        env:
+          RUN: ${{ steps.decide.outputs.run }}
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          echo "### Nightly gate: run=$RUN ($REASON)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Heavy jobs ---------------------------------------------------------------------------
+
+  # Steps copied from ci.yml's `e2e` job (the required `Playwright E2E` check, which stays
+  # there), with every project. The project list is e2e/full-suite-projects.txt, shared with
+  # ci.yml's detect-e2e-scope.
+  playwright-full:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04 # #3514: Playwright 1.58 does not support ubuntu26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: ./.github/actions/setup-frontend
+
+      - name: Build Expo web
+        run: npx expo export --platform web
+        working-directory: frontend
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:8000
+          EXPO_PUBLIC_TEST_HOOKS: "1"
+          EXPO_PUBLIC_SENTRY_DSN: ""
+
+      - name: Install E2E deps
+        run: npm ci
+        working-directory: e2e
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: e2e
+
+      - name: Run Playwright tests (full suite)
+        run: |
+          read -r -a PROJECTS <<< "$(grep -v '^#' full-suite-projects.txt | xargs)"
+          ARGS=()
+          for p in "${PROJECTS[@]}"; do ARGS+=(--project "$p"); done
+          npx playwright test "${ARGS[@]}"
+        working-directory: e2e
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+
+  maestro-android:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: ./.github/workflows/mobile-smoke-android.yml
+    # A called workflow gets at most what its caller job grants: paths-filter in
+    # detect-maestro-scope.yml asks for pull-requests: read, and the comment-media job (skipped
+    # for the nightly) declares pull-requests: write.
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      flows: full
+      nightly: true
+
+  maestro-ios:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: ./.github/workflows/mobile-smoke-ios.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      flows: full
+      nightly: true
+
+  cascade-sim:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: ./.github/workflows/cascade-sim-gate.yml
+    with:
+      nightly: true
+
+  hearts-sim:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: ./.github/workflows/hearts-sim-gate.yml
+    with:
+      nightly: true
+
+  yacht-sim:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: ./.github/workflows/yacht-sim-gate.yml
+    with:
+      nightly: true
+
+  # The org reusables, with the same inputs and `secrets: inherit` as ci.yml's ios-build-check /
+  # android-build-check (kept identical; narrowing it is a change for both, see the security
+  # review on #4064). The local workflows above read no secret, so they are passed none.
+  ios-build:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: wcmchenry3-stack/.github/.github/workflows/called-ios-build-check.yml@main
+    with:
+      working-directory: frontend
+      workspace-name: "GamingApp.xcworkspace"
+      scheme: "GamingApp"
+    secrets: inherit
+
+  android-build:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: wcmchenry3-stack/.github/.github/workflows/called-android-build-check.yml@main
+    with:
+      working-directory: frontend
+    secrets: inherit
+
+  # ci.yml's android-release-smoke builds only when a PR changes Android-relevant files; the
+  # nightly always builds. Same steps (.github/actions/android-release-smoke).
+  android-release-smoke-forced:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    # Same limit as ci.yml's job: headroom for a cold Gradle cache.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: ./.github/actions/android-release-smoke
+
+  perf:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: ./.github/workflows/perf.yml
+    with:
+      nightly: true
+
+  # ---- Bookkeeping --------------------------------------------------------------------------
+
+  # Moves nightly/last-green to the tested SHA only when every heavy job succeeded. `!cancelled()`
+  # replaces the implicit success(), so every result is checked explicitly: a failed, cancelled
+  # or skipped heavy job leaves the tag where it was. A dispatch on any branch but the default
+  # (`dev`) never moves it.
+  tag-last-green:
+    needs:
+      - gate
+      - playwright-full
+      - maestro-android
+      - maestro-ios
+      - cascade-sim
+      - hearts-sim
+      - yacht-sim
+      - ios-build
+      - android-build
+      - android-release-smoke-forced
+      - perf
+    if: >-
+      !cancelled() && needs.gate.outputs.run == 'true' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      # Only the commit object is needed (depth 1); the checkout's token pushes the tag.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: tools/nightly
+
+      - name: Move nightly/last-green
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          git tag -f nightly/last-green "$SHA"
+          git push -f origin refs/tags/nightly/last-green
+          echo "### nightly/last-green moved to \`$SHA\`" >> "$GITHUB_STEP_SUMMARY"
+
+  summary:
+    needs:
+      - gate
+      - playwright-full
+      - maestro-android
+      - maestro-ios
+      - cascade-sim
+      - hearts-sim
+      - yacht-sim
+      - ios-build
+      - android-build
+      - android-release-smoke-forced
+      - perf
+      - tag-last-green
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # The jobs API, for durations.
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: tools/nightly
+          persist-credentials: false
+
+      - name: Write the run summary
+        # Everything reaches the script through env and files, never `${{ }}` in the run body.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          SHA: ${{ github.sha }}
+          LAST_GREEN: ${{ needs.gate.outputs.last_green }}
+          GATE_REASON: ${{ needs.gate.outputs.reason }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s' "$NEEDS_JSON" > needs.json
+          # Durations: a called workflow's jobs are named "<job id> / <inner name>".
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs" \
+            --paginate --jq '.jobs[] | {name, started_at, completed_at} | tojson' > jobs.jsonl || true
+          if [ -n "$LAST_GREEN" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/compare/${LAST_GREEN}...${SHA}" \
+              --jq '{total_commits, commits: [.commits[] | {sha, message: .commit.message}]}' \
+              > compare.json || true
+          fi
+          python3 tools/nightly/report.py --needs needs.json --sha "$SHA" --jobs jobs.jsonl \
+            --compare compare.json --last-green "$LAST_GREEN" --gate-reason "$GATE_REASON" \
+            --run-url "$RUN_URL" > nightly-report.md
+          cat nightly-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-report
+          path: |
+            nightly-report.md
+            needs.json
+          if-no-files-found: ignore
+          retention-days: 7

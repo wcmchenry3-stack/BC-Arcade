@@ -310,8 +310,11 @@ package is bumped, and (since #3213) when a PR edits anything under `frontend/an
 
 The `android-release-smoke` CI job runs `./gradlew assembleRelease` for a single
 ABI (arm64-v8a) on PRs that change Android-relevant files (`frontend/android/`,
-`frontend/package.json`, `frontend/package-lock.json`). This catches release-only
-failures that the debug build cannot detect:
+`frontend/package.json`, `frontend/package-lock.json`, or the composite action
+itself). Its build steps live in `.github/actions/android-release-smoke` (#4054), so
+the nightly (`nightly.yml`, job `android-release-smoke-forced`) runs the same build on
+every tested night whatever changed; the CI job keeps its name, which is a required
+check. This catches release-only failures that the debug build cannot detect:
 
 - Sentry source map upload issues (only runs on release builds)
 - Release CMake configuration errors (e.g. JDK compatibility)

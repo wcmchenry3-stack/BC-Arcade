@@ -26,6 +26,13 @@ name: Mobile Smoke — iOS
 #   `flows: mahjong-demo` only that game's demo flows (#3705, #3801;
 #   docs/MAESTRO.md, "Cascade demo flows", "Mahjong demo flows"). Every other
 #   run leaves the `demo`-tagged flows out.
+# - workflow_call (#4054): nightly.yml runs the full suite on its pinned `dev`
+#   SHA with `nightly: true`: each failed flow is retried once
+#   (e2e/maestro/retry.py; "PASS on retry" shows separately in the summary and
+#   the `passed-on-retry` output counts them), media is kept 7 days, the PR
+#   media comment is skipped and the run has its own concurrency group. Inside
+#   a called workflow `github.event_name` is the caller's (workflow_dispatch),
+#   so detect-maestro-scope picks the full suite.
 # - NOT push to main (2026-09-23): prod auto-deploys `main` with Render's "After
 #   CI Checks Pass" trigger, which waits for EVERY check on the commit, so a red
 #   smoke check here would block prod deploys (it blocked #2522). PR runs gate
@@ -58,6 +65,22 @@ on:
         type: choice
         options: [full, cascade-demo, mahjong-demo]
         default: full
+  workflow_call:
+    inputs:
+      flows:
+        description: "Same as the workflow_dispatch input: full, cascade-demo or mahjong-demo"
+        type: string
+        required: false
+        default: full
+      nightly:
+        description: "true when nightly.yml calls this (#4054): retry failed flows once, 7-day media, no PR comment, own concurrency group"
+        type: boolean
+        required: false
+        default: false
+    outputs:
+      passed-on-retry:
+        description: "Flows that failed and then passed on the nightly retry (0 when nothing was retried)"
+        value: ${{ jobs.maestro-ios.outputs.passed-on-retry }}
 
 permissions:
   contents: read
@@ -67,8 +90,10 @@ permissions:
 
 concurrency:
   # A dispatch's group includes its `flows` input (#3705), so a demo dispatch
-  # neither queues behind nor cancels a full run on the same commit.
-  group: mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
+  # neither queues behind nor cancels a full run on the same commit. The
+  # nightly's call (#4054) gets its own `nightly-<run id>-` prefix, so a manual
+  # dispatch on the same SHA neither cancels it nor replaces it while pending.
+  group: ${{ inputs.nightly && format('nightly-{0}-', github.run_id) || '' }}mobile-smoke-ios-${{ github.event_name == 'pull_request' && github.event.pull_request.number || format('{0}-{1}', github.sha, inputs.flows || 'full') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -97,7 +122,11 @@ jobs:
       # The opted-in media names and the media artifact's URL, for comment-media (#3805).
       media-names: ${{ steps.media-names.outputs.names }}
       media-url: ${{ steps.upload-media.outputs.artifact-url }}
+      # Flows that passed only on the nightly retry (#4054), from summarize.py.
+      passed-on-retry: ${{ steps.summary.outputs.passed_on_retry }}
     env:
+      # Retry each failed flow once, nightly only (#4054; e2e/maestro/retry.py).
+      MAESTRO_RETRY: ${{ inputs.nightly && 'true' || 'false' }}
       # Major version of Xcode to select. 26 ships Swift 6.2 (needed by an SPM
       # dependency); 27 hard-errors on pod targets below iOS 15, so don't float
       # to it without checking the Pods project first.
@@ -314,9 +343,33 @@ jobs:
               --debug-output "maestro-debug/$d" \
               --flatten-debug-output \
               $MAESTRO_TAG_ARG \
-              "e2e/maestro/flows/$d/" || FAIL=1
+              "e2e/maestro/flows/$d/" || { FAIL=1; touch "maestro-results/$d/maestro-failed"; }
           done
-          exit $FAIL
+          # Nightly only (#4054): re-run each failed flow once (retry.py plan
+          # prints "<flow> <report>" pairs; stdin from /dev/null so maestro
+          # can't eat the loop's input), then fail only if a flow failed twice.
+          # A non-zero maestro exit leaves a marker (maestro-failed, or
+          # <report>.failed for a retry) that the verdict reads, so an exit the
+          # report doesn't explain, or a report with no case, still fails.
+          if [ "$MAESTRO_RETRY" != "true" ]; then exit $FAIL; fi
+          for d in $MAESTRO_PROJECTS; do
+            [ "$d" = "offline" ] && continue
+            python3 e2e/maestro/retry.py plan "$d" | while read -r F O; do
+              echo "::group::Retry $F"
+              mkdir -p "$(dirname "$O")"
+              maestro --device "$SIM_UDID" test \
+                --format junit \
+                --test-suite-name "$d" \
+                --output "$O" \
+                --debug-output "maestro-debug/retry-$d" \
+                --flatten-debug-output \
+                $MAESTRO_TAG_ARG \
+                "$F" < /dev/null || touch "$O.failed"
+              echo "::endgroup::"
+            done
+          done
+          read -r -a PROJECTS_IOS <<< "$(echo "$MAESTRO_PROJECTS" | tr ' ' '\n' | grep -vx offline | xargs)"
+          python3 e2e/maestro/retry.py verdict "${PROJECTS_IOS[@]}"
 
       - name: Maestro failure details
         # Artifacts can't always be fetched, so print the failed command, the
@@ -336,6 +389,7 @@ jobs:
             --predicate 'process == "GamingApp"' 2>&1 | tail -80 || true
 
       - name: Write job summary
+        id: summary
         if: always()
         # offline/ never runs on iOS, so leave it out of the expected-projects
         # list (summarize.py would otherwise report it as missing).
@@ -359,6 +413,7 @@ jobs:
           name: maestro-ios-results
           path: |
             maestro-results/
+            maestro-retry/
             maestro-debug/
             ~/.maestro/tests/
           if-no-files-found: warn
@@ -386,7 +441,8 @@ jobs:
           # A demo dispatch exists to produce media, so none is an error there;
           # normal runs are unaffected.
           if-no-files-found: ${{ needs.detect-maestro-scope.outputs.demo == 'true' && 'error' || 'ignore' }}
-          retention-days: 14
+          # 7 days for the nightly (#4054), 14 otherwise.
+          retention-days: ${{ inputs.nightly && 7 || 14 }}
 
       # Names of the media the PR comment lists (opt-in prefixes live in media_comment.py).
       - name: List opted-in media names
@@ -410,12 +466,15 @@ jobs:
   # PR, or on the one open PR for a dispatched branch (#3805). A separate job so the
   # emulator job keeps `contents: read` only; the job's own `permissions` replace the
   # workflow's, so it names both. Skipped for fork PRs (read-only token) and when the run
-  # has no opted-in media; the script itself never fails the job.
+  # has no opted-in media; the script itself never fails the job. Skipped for the
+  # nightly (#4054): a dispatch on dev would otherwise comment on the open
+  # release PR. The nightly's calling job still has to grant pull-requests: write,
+  # because a called workflow can't declare more than its caller grants.
   comment-media:
     name: Comment Maestro iOS media
     needs: maestro-ios
     if: |
-      !cancelled() && needs.maestro-ios.outputs.media-names != '' &&
+      !cancelled() && !inputs.nightly && needs.maestro-ios.outputs.media-names != '' &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest

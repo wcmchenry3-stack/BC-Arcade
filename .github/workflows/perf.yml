@@ -26,7 +26,19 @@ on:
         required: false
         default: false
 
-# No PR trigger — perf tests are never a merge gate.
+  # nightly.yml (#4054): the default run against the deployed dev backend (warm-up
+  # first). None of the workflow_dispatch inputs is declared here, so they read as
+  # empty: the default target URL, 60s, and no replay ingestion test.
+  workflow_call:
+    inputs:
+      nightly:
+        description: "true when nightly.yml calls this (#4054): 7-day artifacts"
+        type: boolean
+        required: false
+        default: false
+
+# No PR trigger — perf tests are never a merge gate. No concurrency group, so a
+# manual run can't cancel the nightly's call.
 
 env:
   DEFAULT_TARGET_URL: "https://dev-games-api.buffingchi.com"
@@ -76,6 +88,7 @@ jobs:
       run-time: 90s
       user-classes: YachtGameUser
       csv-prefix: perf-gameflow
+      artifact-retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)
 
   backend-perf-leaderboard:
     name: Load test — leaderboard concurrent
@@ -91,6 +104,7 @@ jobs:
       run-time: ${{ inputs.run_time || '60s' }}
       user-classes: LeaderboardUser
       csv-prefix: perf-leaderboard
+      artifact-retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)
 
   backend-perf-readonly:
     name: Load test — read-only polling
@@ -106,6 +120,7 @@ jobs:
       run-time: ${{ inputs.run_time || '60s' }}
       user-classes: ReadOnlyUser
       csv-prefix: perf-readonly
+      artifact-retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)
 
   # Replay ingestion (#3400): manual only. It writes games and events to the target
   # database, so it never runs on the nightly schedule (storage and cost, CLAUDE.md).
@@ -124,6 +139,7 @@ jobs:
       run-time: ${{ inputs.run_time || '60s' }}
       user-classes: ReplayIngestUser
       csv-prefix: perf-replay
+      artifact-retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)
 
   frontend-perf:
     name: Lighthouse CI
@@ -133,3 +149,4 @@ jobs:
       build-command: npx expo export --platform web
       dist-dir: dist
       lhci-config: lighthouserc.json
+      artifact-retention-days: ${{ inputs.nightly && 7 || 30 }} # 7 for the nightly (#4054)
