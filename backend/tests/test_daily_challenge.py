@@ -42,6 +42,7 @@ from daily_challenge.service import evaluate_goal
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import ALL_PREMIUM_SLUGS, DISABLED_GAMES
+from mahjong.models import MIN_CLEAR_MS as MAHJONG_MIN_CLEAR_MS
 from tests._helpers import session_headers as _headers
 from tests._helpers import set_dev_override
 
@@ -1368,7 +1369,39 @@ def test_cascade_won_within_applies_the_win_floor(duration_ms: int, expected: bo
     assert goal_from_spec(goal_to_spec(goal)).evaluate(facts) is expected
 
 
-def test_the_win_floor_is_cascades_only() -> None:
+def test_the_win_floors_are_per_game_and_per_measure() -> None:
+    # Cascade and Mahjong each floor their own duration_ms; a measure with no
+    # entry in _WON_WITHIN_FLOORS (Cascade's moves) has no floor.
+    assert definitions._WON_WITHIN_FLOORS == {
+        ("cascade", "duration_ms"): CASCADE_MIN_WIN_MS,
+        ("mahjong", "duration_ms"): MAHJONG_MIN_CLEAR_MS,
+    }
     fast = {"won": True, "duration_ms": 1_000}
-    assert _won_within("mahjong", "duration_ms", 480_000, "hard").evaluate(fast) is True
+    assert _won_within("cascade", "duration_ms", 480_000, "hard").evaluate(fast) is False
+    assert _won_within("mahjong", "duration_ms", 480_000, "hard").evaluate(fast) is False
     assert _won_within("cascade", "moves", 480_000, "hard").evaluate({"won": True, "moves": 1})
+
+
+# ---------------------------------------------------------------------------
+# Mahjong's 36 s clear floor in "clear in at most T minutes" (#4033). The floor is
+# MIN_CLEAR_MS, the same constant the leaderboard ranks by, so a forged 1 s clear
+# can't meet the goal, while a clear at or over the floor (and under the target) does.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "duration_ms,expected",
+    [
+        (1_000, False),  # a forged 1 s clear
+        (MAHJONG_MIN_CLEAR_MS - 1, False),
+        (MAHJONG_MIN_CLEAR_MS, True),
+        (480_000, True),
+        (480_001, False),
+    ],
+)
+def test_mahjong_won_within_applies_the_clear_floor(duration_ms: int, expected: bool) -> None:
+    goal = _won_within("mahjong", "duration_ms", 480_000, "hard")
+    facts = game_facts({"won": True}, final_score=None, duration_ms=duration_ms)
+    assert goal.evaluate(facts) is expected
+    # A frozen day's goal, rebuilt from its spec, keeps the floor.
+    assert goal_from_spec(goal_to_spec(goal)).evaluate(facts) is expected
