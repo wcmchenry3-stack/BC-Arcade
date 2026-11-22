@@ -234,8 +234,8 @@ def _toy_stage(level: float) -> np.ndarray:
 def test_fingerprint_catches_a_changed_cue_level_but_not_float_noise():
     want = fingerprint.summarise(_toy_stage(0.7))
     assert not fingerprint.differences(fingerprint.summarise(_toy_stage(0.7)), want)
-    # Cross-machine noise, at 3x the worst measured (fingerprint.py): every window's RMS moved by
-    # 2.3e-6 and the peak sample by 7.8e-6 (#4026 failed CI on a 2.6e-6 peak at 1e-6 tolerance).
+    # Cross-machine noise, at 3x the worst measured (fingerprint.py): every sample scaled by
+    # 2.3e-6 and the peak sample by a further 7.8e-6 (#4026 failed CI on a 2.6e-6 peak at 1e-6 tolerance).
     noisy = _toy_stage(0.7) * (1 + 3 * 7.7e-7)
     k = np.unravel_index(np.argmax(np.abs(noisy)), noisy.shape)
     noisy[k] *= 1 + 3 * 2.6e-6
@@ -245,14 +245,27 @@ def test_fingerprint_catches_a_changed_cue_level_but_not_float_noise():
     assert fingerprint.differences(louder, want)
 
 
+def test_peaks_get_the_looser_tolerance_and_windows_the_tighter():
+    # Between the two tolerances (1e-5 < 5e-5 < 1e-4): passes as a peak, fails as an RMS window.
+    want = fingerprint.summarise(_toy_stage(0.7))
+    peak_moved = {**want, "peak": want["peak"] * (1 + 5e-5)}
+    assert not fingerprint.differences(peak_moved, want)
+    rms_moved = {**want, "rms": [[v * (1 + 5e-5) for v in ch] for ch in want["rms"]]}
+    problems = fingerprint.differences(rms_moved, want)
+    assert problems and all(".rms[" in p for p in problems)
+
+
 def test_fingerprint_catches_the_smallest_real_cue_change(rebuild):
     # The real recipe, not a toy: the quiet distant-organ cue is the one whose level moves the
     # dry mix least (1.55e-4 at +0.1 dB, measured), so it is the margin that matters.
     _, _, fp, stages = rebuild
     dry_bed = np.ascontiguousarray(stages.bed_pcm.T)
-    k, organ = next(
-        (k, c) for k, c in enumerate(arrange.MAIN_CUES) if getattr(c, "layer", "") == "organ"
-    )
+    organs = [(k, c) for k, c in enumerate(arrange.MAIN_CUES) if getattr(c, "layer", "") == "organ"]
+    assert len(organs) == 1, "expected one organ cue in MAIN_CUES; update this test"
+    k, organ = organs[0]
+    # Control: the unchanged re-mix matches, so a difference below can only be the 0.1 dB.
+    same = arrange.mix_full(dry_bed, arrange.mix_intro(dry_bed, stages.phrases), stages.phrases)
+    assert not fingerprint.differences(fingerprint.summarise(same), fp["dry_mix"])
     louder = dataclasses.replace(organ, level=organ.level * 10 ** (0.1 / 20))
     cues = [*arrange.MAIN_CUES[:k], louder, *arrange.MAIN_CUES[k + 1 :]]
     with pytest.MonkeyPatch.context() as mp:
