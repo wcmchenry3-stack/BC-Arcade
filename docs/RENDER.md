@@ -497,6 +497,36 @@ PASSWORD …`, then update `DATABASE_URL` only. A migration that should run as a
 different role than the one in the script's `ALTER DEFAULT PRIVILEGES` leaves its
 new tables without grants for `bc_app` — re-run the script as that role.
 
+## Nightly trigger (`bc-arcade-nightly-trigger`)
+
+GitHub starts this repo's `schedule` crons 8 to 10 hours late, so the nightly dev checks (`.github/workflows/nightly.yml`, see [`CI-CHECKS.md`](CI-CHECKS.md#nightly-dev-checks-nightlyyml-4054)) are started by a Render cron job instead. It is not part of the API or the apps and has no effect on them.
+
+| Item            | Value                                                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Render cron job | `bc-arcade-nightly-trigger`                                                                                                                               |
+| Schedule        | `0 8 * * *` (UTC, fixed): 2 am CST, 3 am CDT                                                                                                              |
+| Env var         | `GH_DISPATCH_TOKEN` (a Render secret)                                                                                                                     |
+| Token           | Fine-grained personal access token, owner: the repository owner; repository access: BC-Arcade only; permission: **Actions: Read and write**, nothing else |
+| Token expiry    | **about 2027-11-22** (one year from creation on 2026-11-22, #4063); rotate before then (steps below)                                                      |
+| Cost            | One short HTTP call a day, billed per run-minute: a few cents a month                                                                                     |
+
+Start command (it must be exactly this one line; Render runs it as one line, so **no `\` continuations**: each one becomes a literal argument that curl reads as a URL and the run exits with status 3):
+
+```
+curl -fsS -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_DISPATCH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/wcmchenry3-stack/BC-Arcade/actions/workflows/nightly.yml/dispatches -d '{"ref":"dev"}'
+```
+
+GitHub answers `204` and the run starts within a minute. A second fire the same day is not deduped on this side; `nightly.yml`'s fallback `schedule` (about 08:37 UTC, usually hours late) checks whether a `workflow_dispatch` run was created in the last 20 hours and exits as a no-op if so. If the trigger stops working, the fallback runs the nightly late and the report email subject ends with "(external trigger missed)".
+
+Rotating the token:
+
+1. Create a new fine-grained token with the same scope (BC-Arcade only, Actions: Read and write) and note its expiry date here and on #4063.
+2. Update `GH_DISPATCH_TOKEN` on the Render cron job.
+3. Run the cron job once from the Render dashboard (or `gh workflow run nightly.yml -f force=true`) and confirm a `nightly.yml` run starts.
+4. Revoke the old token.
+
+A failed Render run (a 401 means an expired or revoked token, a 404 means `nightly.yml` is not on `dev`) emails the owner through Render's failed-cron notice.
+
 ## Health checks
 
 | Path             | Touches the DB | Used by                                                                |

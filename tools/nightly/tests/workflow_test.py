@@ -41,7 +41,8 @@ def required_contexts():
 def test_trigger_concurrency_and_permissions():
     on = NIGHTLY[True]
     assert on["workflow_dispatch"]["inputs"]["force"]["default"] is False
-    assert "schedule" not in on  # story 3 of #4053 adds it
+    # The late fallback (#4056); the Render cron dispatches the real run at 08:00 UTC.
+    assert on["schedule"] == [{"cron": "37 8 * * *"}]
     assert NIGHTLY["concurrency"] == {"group": "nightly-dev", "cancel-in-progress": False}
     assert NIGHTLY["permissions"] == {"contents": "read"}
     writers = [j for j, job in JOBS.items() if "write" in (job.get("permissions") or {}).values()]
@@ -146,7 +147,13 @@ def test_gate_runs_the_script():
     run = "\n".join(s.get("run", "") for s in JOBS["gate"]["steps"])
     assert "tools/nightly/gate.py" in run
     assert "git/ref/tags/nightly/last-green" in run
-    assert set(JOBS["gate"]["outputs"]) == {"run", "reason", "last_green"}
+    assert set(JOBS["gate"]["outputs"]) == {
+        "run",
+        "reason",
+        "last_green",
+        "trigger_missed",
+        "duplicate",
+    }
 
 
 def test_no_nightly_job_reuses_a_required_check_name():
@@ -316,3 +323,70 @@ def test_ci_uses_the_android_detection_script():
     steps = load("ci.yml")["jobs"]["detect-native-changes"]["steps"]
     run = next(s for s in steps if s.get("id") == "detect")["run"]
     assert "./scripts/is-android-native-package.sh" in run
+
+
+# ---- Fallback schedule (#4056) and report email (#4055) ---------------------------------------
+
+
+def run_text(job):
+    return "\n".join(s.get("run", "") for s in JOBS[job]["steps"])
+
+
+def test_gate_can_read_the_runs_api_and_dedupes_only_the_schedule_event():
+    assert JOBS["gate"]["permissions"] == {"contents": "read", "actions": "read"}
+    run = run_text("gate")
+    assert "actions/workflows/nightly.yml/runs" in run
+    assert "created=>=${SINCE}" in run
+    assert "-f event=workflow_dispatch" in run
+    assert '-f branch="$DEFAULT_BRANCH"' in run and '--branch "$DEFAULT_BRANCH"' in run
+    assert "head_branch" in run
+    assert "{id, created_at, event, head_branch}" in run
+    assert "date -u -d '20 hours ago'" in run
+    assert '[ "$EVENT" = "schedule" ]' in run
+    assert "--runs runs.json" in run and '--run-id "$RUN_ID"' in run
+    decide = next(s for s in JOBS["gate"]["steps"] if s.get("id") == "decide")
+    assert decide["env"]["EVENT"] == "${{ github.event_name }}"
+    assert decide["env"]["RUN_ID"] == "${{ github.run_id }}"
+
+
+def test_summary_sends_the_email_last_after_the_summary_is_written():
+    steps = JOBS["summary"]["steps"]
+    names = [s.get("name") for s in steps]
+    assert names.index("Write the run summary") < names.index("Upload the report")
+    assert names.index("Upload the report") < names.index("Build and send the report email")
+    assert names[-1] == "Build and send the report email"
+    send = steps[-1]
+    assert "send_email.py" in send["run"] and "--email-out" in send["run"]
+    # A deduped fallback run is a no-op and sends nothing; a cancelled run sends nothing.
+    assert send["if"] == "${{ !cancelled() && needs.gate.outputs.duplicate != 'true' }}"
+    assert "continue-on-error" not in send  # a send failure must fail the job
+
+
+def test_email_secrets_and_variable_are_referenced_by_name_in_env_only():
+    text = (WORKFLOWS / "nightly.yml").read_text()
+    assert sorted(set(re.findall(r"secrets\.([A-Za-z_]+)", text))) == [
+        "NIGHTLY_HEARTBEAT_URL",
+        "RESEND_API_KEY",
+    ]
+    assert re.findall(r"vars\.([A-Za-z_]+)", text) == ["NIGHTLY_REPORT_TO"]
+    heartbeat = next(s for s in JOBS["summary"]["steps"] if s.get("name") == "Heartbeat")
+    assert heartbeat["env"] == {"NIGHTLY_HEARTBEAT_URL": "${{ secrets.NIGHTLY_HEARTBEAT_URL }}"}
+    assert 'if [ -n "$NIGHTLY_HEARTBEAT_URL" ]' in heartbeat["run"]  # unset: skip silently
+    for job in JOBS.values():
+        for step in job.get("steps", []):
+            assert "secrets." not in step.get("run", "")
+            assert "vars." not in step.get("run", "")
+
+
+@pytest.mark.parametrize("job", ["gate", "summary"])
+def test_no_expression_is_interpolated_into_a_run_body(job):
+    for step in JOBS[job]["steps"]:
+        assert "${{" not in step.get("run", ""), (job, step.get("name"))
+
+
+def test_email_payload_comes_from_report_py_and_the_to_address_from_the_variable():
+    send = JOBS["summary"]["steps"][-1]
+    assert send["env"]["NIGHTLY_REPORT_TO"] == "${{ vars.NIGHTLY_REPORT_TO }}"
+    assert send["env"]["RESEND_API_KEY"] == "${{ secrets.RESEND_API_KEY }}"
+    assert send["env"]["TRIGGER_MISSED"] == "${{ needs.gate.outputs.trigger_missed }}"
+    assert '--to "$NIGHTLY_REPORT_TO"' in send["run"]
