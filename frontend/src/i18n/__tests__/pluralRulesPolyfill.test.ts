@@ -3,6 +3,7 @@
  * Android, has no Intl.PluralRules; without one i18next uses English's
  * one/other in every language. Node has it, so these tests remove it first.
  */
+import { shouldPolyfill } from "@formatjs/intl-pluralrules/should-polyfill.js";
 import { LOCALES } from "../locales";
 import { localeJson, localeOnlyT } from "./pluralTestUtils";
 
@@ -31,9 +32,17 @@ const LARGE = [1000, 1001, 1002, 1003, 1005, 1011, 1_000_000, 2_000_000, 1_000_0
 
 afterEach(() => setPluralRules(NATIVE));
 
-it("leaves a native Intl.PluralRules alone", () => {
+// v7 also replaces a native PluralRules that lacks source-precision support
+// (trailingZeroDisplay), which Node's does; the package's own check decides, so
+// the test asserts whatever it says rather than assuming Node is left alone.
+it("replaces a native Intl.PluralRules only when the package judges it unfit", () => {
+  const unfit = shouldPolyfill() !== undefined;
   loadPolyfill();
-  expect(Intl.PluralRules).toBe(NATIVE);
+  if (unfit) {
+    expect(Intl.PluralRules).not.toBe(NATIVE);
+  } else {
+    expect(Intl.PluralRules).toBe(NATIVE);
+  }
 });
 
 describe("on an engine without Intl.PluralRules, like Hermes", () => {
