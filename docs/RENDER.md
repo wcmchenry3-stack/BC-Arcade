@@ -507,7 +507,7 @@ GitHub starts this repo's `schedule` crons 8 to 10 hours late, so the nightly de
 | Schedule        | `0 8 * * *` (UTC, fixed): 2 am CST, 3 am CDT                                                                                                              |
 | Env var         | `GH_DISPATCH_TOKEN` (a Render secret)                                                                                                                     |
 | Token           | Fine-grained personal access token, owner: the repository owner; repository access: BC-Arcade only; permission: **Actions: Read and write**, nothing else |
-| Token expiry    | not yet recorded, see #4063                                                                                                                               |
+| Token expiry    | **about 2027-11-22** (one year from creation on 2026-11-22, #4063); rotate before then (steps below)                                                      |
 | Cost            | One short HTTP call a day, billed per run-minute: a few cents a month                                                                                     |
 
 Start command (it must be exactly this one line; Render runs it as one line, so **no `\` continuations**: each one becomes a literal argument that curl reads as a URL and the run exits with status 3):
