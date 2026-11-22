@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import delete, event, func, select
 
 from daily_challenge.assignments import encode_goals
-from daily_challenge.definitions import FREE_GOAL_POOL
+from daily_challenge.definitions import FREE_GOAL_POOL, _at_least
 from db.base import get_session_factory
 from db.models import DailyChallengeAssignment, Game, GameType
 
@@ -32,7 +32,7 @@ _spec.loader.exec_module(metrics)
 
 _SCORE = FREE_GOAL_POOL["twenty48"][0]  # final_score >= 500
 _LEVEL = FREE_GOAL_POOL["sort"][0]  # final_score >= 3
-_MOVES = FREE_GOAL_POOL["solitaire"][0]  # moves >= 10
+_MOVES = _at_least("solitaire", "moves", 10, "easy")  # the pre-#3993 easy goal
 _CORE = (_SCORE, _LEVEL, _MOVES)
 _BONUS = '["sort","final_score_at_least",8,"medium"]'
 

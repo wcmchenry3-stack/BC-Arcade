@@ -1,6 +1,6 @@
 # Daily Challenge
 
-Daily Challenge is BC Arcade's cross-game daily activity: **three goals per local day**, with Daily Word always present and two goals drawn from other eligible games.
+Daily Challenge is BC Arcade's cross-game daily activity: **three goals per local day**, with Daily Word always present and two goals drawn from other eligible games. An install with history gets **its own** two goals, from the games it plays, with targets set from its own results (#3993, #3994); a new install gets the shared template.
 
 This document is the current product/system source of truth. The implementation lives in `backend/daily_challenge/` and `frontend/src/game/daily_challenge/`.
 
@@ -9,21 +9,31 @@ This document is the current product/system source of truth. The implementation 
 Each challenge has exactly three goals:
 
 1. Daily Word. Its goal is always "complete today's word" (win or lose); it never asks for a win or a guess limit.
-2. A goal from one other eligible game.
-3. A goal from a different eligible game.
+2. A goal from an eligible game.
+3. A second goal, from a different eligible game where possible.
 
-The two rotating non-Daily-Word games do not repeat either of the previous day's two rotating games.
+There are two ways a day's goals are chosen (`service.pick_for_install`):
 
-Each game other than Daily Word owns three goal definitions (Daily Word has the one "complete" goal in every slot):
+- **Personal pick** (#3993, #3994), for an install with at least 3 finished games of the games with personal goal specs (2048, Solitaire, FreeCell, Sudoku, Yacht; Daily Word and Bottle Sort do not count), at least one of them in the last `DAILY_CHALLENGE_AFFINITY_DAYS` (14), and continuous recent play (below): goals 2 and 3 come from the games the install plays, each with a personal target (§2a, §3a). This is what an active player sees.
+- **Shared template**, for every other install (a new install, or one back after a gap) and for everyone while the kill switch is off: the same three goals for every install, drawn from the per-game easy / medium / hard goals below (§2, §3). When such an install's day is pinned it is pinned as **exactly** the shared template (`shared_for_install`).
+
+**Goals already shown never change.** An install can be shown a day's goals before that day is pinned: `assignments.may_pin` refuses to pin while the install has no `games` row created in the last `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (48), so a brand-new or lapsed install is served the shared template unpinned, and the device caches it (`/upcoming` covers today..today+2). So a day is picked personally only if that could not have happened (`InstallHistory.always_pinnable`, `personal.serves_shared`): from the earliest instant any client could have asked for the day (the start of local day − 2 in the easternmost time zone, UTC+14) until now, the install must have had a game created within the 48 h window before every instant. That needs a game created in the 48 h before that instant, no gap of more than 48 h between consecutive games since, and one in the last 48 h. Otherwise the day is the shared template, the same goals an unpinned request would have shown. A brand-new install therefore gets the shared template for its first few days, including the days its first `/upcoming` cached, and a lapsed install for the day it comes back and the two after. Exceptions (accepted, no extra state is kept for them):
+
+- **Storage-guard pauses.** `may_pin` also refuses while storage is over budget. That pause is automatic, not only an operator's: storage crossing the replay recorder's 90 % turn-down point, or a size reading that failed (remembered as over budget for 10 minutes, `SIZE_FAILURE_TTL`). During such a pause a day is served unpinned; once pinning resumes, that day can be pinned with personal goals, so the card can change mid-day.
+- **The `/today` fallback.** When `/status` fails with a non-network error, the app may show the shared `/today` goals for the day (not cached). The next successful `/status` may pin personal goals for that day.
+- **The kill switch.** Days served while `DAILY_CHALLENGE_PERSONALIZED` was off can be pinned with personal goals once it is back on.
+
+**Shared template rules.** Each game other than Daily Word owns three goal definitions (Daily Word has the one "complete" goal in every slot):
+
 - easy;
 - medium;
 - hard.
 
-The selected tiers rotate by day for the other two games, so a challenge mixes difficulty instead of always choosing the same tier for the same slot. Because Daily Word is never win-dependent, it does not use up the day's one win-dependent slot, so either of the other two games can hold it.
+The two rotating non-Daily-Word games do not repeat either of the previous day's two rotating games. The selected tiers rotate by day for the other two games, so a challenge mixes difficulty instead of always choosing the same tier for the same slot. Because Daily Word is never win-dependent, it does not use up the day's one win-dependent slot, so either of the other two games can hold it.
 
 Days already frozen before this rule (#3991) keep their stored goals. An old Daily Word "win" or "win within 4 guesses" goal still rebuilds from its stored spec and is evaluated as before, so past streak days do not change.
 
-At most one selected goal per day is allowed to be luck/win-dependent. If a second selected goal would require a win, it falls back to that game's easy goal, which is required to be non-win-dependent.
+At most one selected goal per day is allowed to be luck/win-dependent (both picks). If a second selected goal would require a win, it falls back to that game's easy goal, which is required to be non-win-dependent. Since #3993 no free goal is luck-dependent: Solitaire and FreeCell deal only provably solvable deals, so their wins are skill (`SOLVABLE_DEAL_GAMES`), like a Sudoku solve.
 
 ## 2. Current eligible goal pool
 
@@ -43,6 +53,10 @@ Sudoku's goals are difficulty-agnostic: solve a puzzle (`solved`, not luck-depen
 
 Bottle Sort's goals are `final_score` (highest level solved) at least 3 / 8 / 15 (easy / medium / hard, set for the old 23 levels) while `SORT_CATALOG_EDITION_ENFORCED` is off, and at least 10 / 30 / 60 (the middle of chapters 1 to 3 of the 120-level catalog) once it is on (#3728). The switch is the same one that resets the Sort leaderboard, because store builds from before the catalog top out at level 23 and could not reach 30 or 60. It is read at pick time (`template_for` passes it to the memoised `pick_template`), so it only affects days not yet frozen: a frozen day keeps the targets in its stored specs (`goal_from_spec` rebuilds from the spec, never the pool). A stopgap until the owner's pass over every game's goals.
 
+Solitaire's goals are win / win in at most 150 moves / win in at most 120 moves, and FreeCell's win / 130 / 100 (#3993). The old "make 10 moves" / "make 5 moves" easy goals are gone: these games have no loss, so a finished row only exists for a win and those goals needed one anyway. Days frozen with them still rebuild from their stored specs.
+
+Yacht's goals are `final_score` at least 100 / 175 / 250; abandoned games never count (the service filters them).
+
 Blackjack and Mahjong have goal definitions prepared in `PENDING_PREMIUM_GOALS`, but they are not in either live pool today.
 
 **Disabled games.** `rotation()` in `backend/daily_challenge/definitions.py` skips every game in `DISABLED_GAMES` (`backend/entitlements/service.py`, mirroring the frontend list in `gameVisibility.ts`), so a disabled game never reaches a slate even if a pool lists it (`test_a_disabled_game_added_to_a_pool_never_reaches_a_slate`). `test_disabled_games_are_in_no_goal_pool_and_stay_premium` is the backstop that no pool lists one, and `test_disabled_games_match_the_frontend_list` keeps the two lists equal. The Home card also drops any goal for a game `isGameVisible` hides. The list is empty today: Cascade was on it from #3001 until its rework shipped (#3703).
@@ -51,7 +65,35 @@ Blackjack and Mahjong have goal definitions prepared in `PENDING_PREMIUM_GOALS`,
 
 `PREMIUM_GOAL_POOL` currently contains the same goal specs as `FREE_GOAL_POOL`, so the free and premium templates are presently identical. Broader premium/game-specific goal-pool work remains separate product backlog; this document describes the code that is live now.
 
+### 2a. Personal goals per game (#3993)
+
+`backend/daily_challenge/personal.py` (`GAME_SPECS`) gives each free game its goal types. Every one is an existing goal kind with an absolute target, so installed app builds word it and the evaluator scores it with no per-player logic.
+
+| Game        | Goal types (kind)                                                                                      | Personal measure                                               | Cold start (fewer than 3 finished games) |
+| ----------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------- |
+| Daily Word  | complete today's word (`completed`), always goal 1                                                     | none                                                           | same                                     |
+| 2048        | score at least _T_ (`final_score_at_least`, stretch) · reach tile _T_ (`highest_tile_at_least`, skill) | `final_score`; `highest_tile`                                  | score 500+                               |
+| Solitaire   | win (`won`, finish) · win in at most _T_ moves (`won_moves_at_most`, stretch)                          | `moves` on wins                                                | win                                      |
+| FreeCell    | win (`won`) · win in at most _T_ moves (`won_moves_at_most`)                                           | `moves` on wins                                                | win                                      |
+| Bottle Sort | none yet: deferred to #4028 (shared-template days only)                                                | –                                                              | –                                        |
+| Sudoku      | solve a puzzle (`solved`, finish) · score at least _T_ (`final_score_at_least`, stretch)               | `final_score` (difficulty base 100/200/300 minus 10 per error) | solve                                    |
+| Yacht       | score at least _T_ (`final_score_at_least`, stretch)                                                   | `final_score`                                                  | score 100+                               |
+
+**Target rule** (`personal_target`), from the install's last `DAILY_CHALLENGE_HISTORY_GAMES` (10) finished, non-abandoned games of that game before the day starts:
+
+- the **median** of the measure, **stretched** by `DAILY_CHALLENGE_STRETCH_PCT` (12 %): up for "at least" goals, down for "at most" goals;
+- **rounded**: 2048 score to 50, Sudoku score to 10, Yacht score and moves to 5, a 2048 tile to the nearest power of two;
+- **capped at the personal best**, so beating it is never required (an "at least" target is at most the best, using the best `final_score` ever for score goals; an "at most" limit is at least the fewest moves in the recent wins);
+- **floored** at the game's minimum: 2048 score 500 and Yacht 100 (the pool's easy tier), Sudoku 100, a 2048 tile 128, and 60 moves for a win; the floor wins over the cap for a player whose best is below it;
+- **stepped down** after two consecutive misses: when, on the last two pinned days that held this (game, goal type) as a personal target, the install played the game and no finished game that day met it, the stretch goes the other way (at the default 12 %: median × 0.88 for "at least", × 1.12 for "at most") and a tile target halves. A day the game was not played is not a miss, and a pinned goal equal to a shared-pool goal (a pinned shared-template day) is not counted; a personal target that happens to equal one is skipped too, which only delays a step-down.
+
+**Bottle Sort has no personal goals yet.** The planned "solve _N_ new levels" goal (highest level solved before the day + _N_) cannot be pinned safely for today+1 and today+2: those days are pinned at the first open of today, so today's own solves could already meet them. It is deferred to #4028 (a relative "new levels" goal kind). Until then Sort is not an eligible game for a personal pick and does not count toward the 3 finished games; it still appears on shared-template days, with the absolute targets above (§2).
+
+A goal is only ever evaluated against that day's games (§5).
+
 ## 3. How a day is selected
+
+### Shared template
 
 For a day that has never been frozen before:
 
@@ -62,6 +104,27 @@ For a day that has never been frozen before:
 
 The salt is environment-specific. Its purpose is to make the future schedule stable for the environment without making the complete future rotation trivially derivable from public source alone.
 
+### 3a. Personal pick (#3994)
+
+`personal.choose_core` picks goals 2 and 3 for an install that has history:
+
+- **Eligible games** (`service.eligible_games`): the free games with goal specs, plus the premium games with specs the install is entitled to (the dev override counts as entitled). Never a game in `DISABLED_GAMES`. No premium game has specs yet (#3996), so today it is the free games and costs no query.
+- **Affinity**: finished games on each of the last `DAILY_CHALLENGE_AFFINITY_DAYS` (14) local days, weighted 14 for yesterday, 13 for the day before, down to 1 for 14 days ago. Each slot is drawn with probability proportional to its game's affinity (a game's goal types share its weight).
+- **Variety guard**, as a ranking of the options (each rule only breaks ties left by the ones above it):
+  1. at most one luck-dependent goal a day;
+  2. not one of yesterday's core games, while the install has 3 or more games with affinity;
+  3. a game with affinity before one without (a game the install has not played is used only when nothing else fits, with its cold-start goal);
+  4. two different games before the same game twice (a player of one game gets two goal types of that game);
+  5. a (game, goal type) not used in the last two days, so it never repeats within 3 days;
+  6. two different goal archetypes (finish, stretch, progress, skill).
+- **Determinism**: the draw is seeded from (session id, day, `DAILY_CHALLENGE_SALT`), never the clock.
+- With exactly 3 or 4 games with affinity, rule 2 sets the rhythm more than affinity does: two games one day, the other(s) the next.
+- `/upcoming` picks today, today+1 and today+2 in date order from one history read, so each day sees the day before it.
+
+**History** (`history.load_install_history`) is read with at most four queries, whatever the number of games: the install's pinned assignments for the last 60 days (the variety guard, the step-down and the rest rule below); its latest `DAILY_CHALLENGE_HISTORY_GAMES` finished games per game type before the first served day, and as many again within each later served day (so a day's own games never push the history before it out), plus every finished game on the days the step-down and rest rules look at; one grouped row per game type with its finished games per local day and its best `final_score` before each served day; and one aggregate row over the install's game creations since the first served day could be asked for (`LAG()` gives each served day's first creation, gaps over the pin window and the latest creation; the "goals already shown" rule, §1; skipped when every served day is a new-install day). Abandoned and `dev_affected` games never count. The pick runs at most once per install per day (pin on serve), writes nothing beyond the assignment row, and that row stays about 250 B (a personal day's goal text is 115–140 B, against 129 B measured for the shared template).
+
+**Discovery candidates** (for the bonus goal, #3995): `personal.discovery_candidates` returns the eligible games the install has not finished in the affinity window, minus resting games. A game offered as the bonus (`bonus` on the pinned row, always null until #3995) and not played that day 3 times within 30 days rests for 30 days after the last of them.
+
 ## 4. Frozen days
 
 The scheduling formula is only a proposal for a day no one has seen yet.
@@ -69,6 +132,7 @@ The scheduling formula is only a proposal for a day no one has seen yet.
 The first request for a `(date, slate)` pair stores that day's selected goal specs in `daily_challenge_days`. Every later request for that date/slate reads the frozen row instead of recomputing it.
 
 This means later changes to:
+
 - goal targets;
 - goal pools;
 - the salt;
@@ -82,13 +146,15 @@ Each frozen goal is stored as a self-contained spec rather than a pointer back i
 
 The same idea also applies per install. The first `/status` or `/upcoming` request that needs a `(session, local date)` asks `service.pick_for_install` for that install's goals and stores them in `daily_challenge_assignments` (`assignments.get_or_pin`). Every later request for that install and day, on any device, and the streak's replay of that day return the stored row unchanged.
 
-- **What the pick returns today:** the shared frozen template above, for the slate `resolve_slate` chooses, and no bonus goal. So in this release every install still sees the same goals as everyone else; the table is the plumbing that personal targets (#3993), game selection (#3994) and the bonus goal (#3995) build on.
+- **What the pick returns:** for an install with history, the personal pick (§3a) on the slate `resolve_slate` chooses; for a new install, exactly the shared frozen template above for that slate. No bonus goal yet (#3995). A day already pinned is never picked again.
 - **The slate is pinned with the day.** A purchase part-way through a day no longer swaps that day's goals; it applies from the next day not yet pinned. Invisible while the free and premium pools are identical.
 - **Write ceiling: only recently active installs pin, and only under the storage budget.** Before picking, `assignments.may_pin` checks two things, and only when a requested day is not pinned yet (a pinned day's read stays one SELECT):
+
   - **Recent play:** the session has a `games` row created (server time) within `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (default 48). One `EXISTS` on the `games_session_created_idx (session_id, created_at)` index.
   - **Storage budget:** storage is under budget: the fuller of replay events vs `REPLAY_STORAGE_BUDGET_MB` and the whole database vs `DATABASE_PLAN_MB`, at the replay recorder's 90 % turn-down point (`replay_storage.read_budget`). The size reading is cached in-process for an hour, so there is no size query per request. If the size cannot be read (a DB error or timeout), the install does not pin: that failure is remembered for 10 minutes (one warning per window), and the size query runs in a SAVEPOINT so `/status` still answers.
 
   An install that fails either is served the shared template (the `/upcoming` public path's one batched read, or `/status`'s slate-resolved frozen template) and nothing is written; `pick_for_install` never runs for it. A brand-new install's first day, and the days it caches for offline play, are therefore unpinned until its first game syncs; the next request then pins. A lapsed install stops pinning after 48 h without a game.
+
 - **Concurrent first requests** cannot store two different rows: the primary key is `(session_id, local_date)` and the insert is `ON CONFLICT DO NOTHING`, after which the stored row is read back and served.
 - **At most 3 days ahead:** only today..today+2 in the requesting client's local calendar are ever pinned (`MAX_DAYS_AHEAD`); `get_or_pin` refuses any other day.
 - **Encoding:** each goal is `[game_type, kind, target, tier]` (the spec `goal_from_spec` rebuilds) in compact JSON text; the session id is a native `uuid`; `template_id` and `slate` are stored only when they differ from the defaults (an id derived from the goals, the free slate), so they are NULL and free for every real day. About 250 B a row on disk including the primary-key index (measured on Postgres 16: 193 B heap + 54 B index, 129 B of it goal text; about 15 MB held at 60 days per 1,000 daily players, 150 MB per 10,000; see [DATA-INVENTORY.md §2d](DATA-INVENTORY.md#2d-daily-challenge-assignments-3992)).
@@ -101,13 +167,17 @@ The same idea also applies per install. The first `/status` or `/upcoming` reque
 A goal is evaluated against **one finished game row** of the matching game type.
 
 The evaluator sees a facts envelope made from:
+
 - the game's validated result fields merged into `games.metadata`;
 - `final_score`, when present;
 - `duration_ms`, when present.
 
 A goal is complete when any eligible game of that type during the local day satisfies its predicate.
 
+Personal goals (§2a) use the same kinds with absolute targets, so they are evaluated exactly like the shared ones.
+
 Examples of goal shapes include:
+
 - complete a puzzle/run;
 - win;
 - reach at least a score/level/move count;
@@ -124,6 +194,7 @@ This rule is intentionally stricter than simply trusting a result block's `won` 
 ## 6. Current goal vocabulary
 
 The wire contract sends:
+
 - `game_type`;
 - `kind`;
 - optional numeric `target`;
@@ -133,6 +204,10 @@ The wire contract sends:
 It does **not** send player-facing English copy.
 
 The frontend localizes each goal from `game_type + kind + target`. If a newer backend sends a goal kind the installed client does not know, the card falls back to generic "Play {game}" wording rather than exposing a raw translation key.
+
+The personal pick (#3993/#3994) adds no kind: it uses `completed`, `won`, `solved`, `final_score_at_least`, `highest_tile_at_least` and `won_moves_at_most`, each of which already has wording for the games that use it (`test_every_spec_goal_kind_is_an_existing_kind_with_frontend_wording`), so installed builds render every personal goal.
+
+**Dials** (server env vars, read lazily, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (12, 0–50), `DAILY_CHALLENGE_AFFINITY_DAYS` (14, 1–60) and `DAILY_CHALLENGE_HISTORY_GAMES` (10, 3–50), plus the kill switch `DAILY_CHALLENGE_PERSONALIZED` (§4), which serves the shared template to everyone.
 
 ## 7. Free and premium slates
 
@@ -151,13 +226,15 @@ A partly entitled player is never intentionally handed a challenge containing a 
 
 Today the two live pools are identical, so the slate distinction does not change the goals returned. The architecture remains in place for future premium-specific goal pools.
 
+A personal pick keeps the slate too: it is stored on the assignment, as for a shared day. Which games a personal pick may use is decided separately, by entitlement to each game with goal specs (§3a); the slate does not limit it.
+
 ## 8. API routes
 
-| Route | Scope | Purpose | Limit |
-| --- | --- | --- | ---: |
-| `GET /daily-challenge/today` | public / IP-keyed | Free slate for the local day, without player progress | 60/min |
+| Route                           | Scope                   | Purpose                                                                                                                                                                                        |  Limit |
+| ------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -----: |
+| `GET /daily-challenge/today`    | public / IP-keyed       | Free slate for the local day, without player progress                                                                                                                                          | 60/min |
 | `GET /daily-challenge/upcoming` | IP-keyed; session-aware | Today, today+1 and today+2 (`{"days": [...]}`, each shaped like `/today`). With a valid `X-Session-ID`: that install's pinned assignment for each day (§4). Without one: the shared free slate | 60/min |
-| `GET /daily-challenge/status` | `X-Session-ID` | This install's pinned goals for today (§4) plus completion/progress | 60/min |
+| `GET /daily-challenge/status`   | `X-Session-ID`          | This install's pinned goals for today (§4) plus completion/progress                                                                                                                            | 60/min |
 
 `/upcoming` takes the same `tz_offset_minutes` (-840..840) as the other routes and resolves each day from the client's local calendar. Without a session (or a header that is not a UUID, or with the kill switch off) it is the public route it always was: reading a day freezes it through `get_or_create_templates`, so a second read, another device, and a later `/today` all return the same goals. With a session it pins each day for that install, so `/status` later serves today exactly as `/upcoming` cached it. The app's shared HTTP client sends `X-Session-ID` on every request, `/upcoming` included. Scoring is unchanged: a completion is still checked against its own local day when it syncs.
 
@@ -174,6 +251,7 @@ A network failure is not followed by a second doomed `/today` request; the UI mo
 Daily Challenge appears near the top of Home.
 
 The card:
+
 - shows three localized goal chips and completion marks;
 - shows done/total progress;
 - shows a completion note when all visible goals are done;
@@ -226,10 +304,12 @@ The streak is returned on `GET /stats/me` alongside Arcade XP/level, but streak 
 **Current implementation uses a UTC offset supplied by the client (`tz_offset_minutes`), not an IANA timezone id.**
 
 For the live day:
+
 - the client's current offset is applied to UTC to determine the local date;
 - that same offset defines the day's UTC start/end window.
 
 For streak replay:
+
 - the same current offset is used across the entire lookback window.
 
 ### Known DST limitation
@@ -261,13 +341,15 @@ Daily Word is always one of the three Daily Challenge goals, but completing/play
 - `definitions.py` owns scheduling policy and live goal specs.
 - `schedule.py` owns day/slate freezing.
 - `assignments.py` owns per-install pinning and its kill switch; `retention.py` its prune.
-- `service.py` owns current-day evaluation, slate resolution and `pick_for_install`.
+- `service.py` owns current-day evaluation, slate resolution, eligibility and `pick_for_install`.
+- `personal.py` owns the per-game goal specs, the target rule and the selection (pure); `history.py` reads an install's history for it.
 - `streak.py` owns the streak calculation.
 - `router.py` owns the HTTP surface.
 - the frontend Daily Challenge client owns wire normalization/fallback;
 - the card owns presentation/localization, not goal semantics.
 
 When changing behavior:
+
 1. update the owning code/tests;
 2. update this document;
 3. do not duplicate the live rules into the release plan or Architecture;
@@ -307,4 +389,4 @@ Goals are rebuilt with `goal_from_spec` and scored with `evaluate_goal`, so the 
 - **2 of 3 share near 100%** means 2 of 3 may be too easy; a low share means too hard.
 - **Bonus discovery** low means lower the discovery share; **next-day return** is the retention signal to watch, with no target yet.
 
-**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (arrives with #3993) moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (arrives with #3995) controls how often the bonus suggests a game the player does not usually play. Re-run after a few days on the new value; one dial change at a time.
+**Dials** (server env vars, no app release): `DAILY_CHALLENGE_STRETCH_PCT` (live since #3993, default 12, 0–50; see §2a) moves the stretch step up (completion too high) or down (too low); `DAILY_CHALLENGE_DISCOVERY_SHARE` (arrives with #3995) controls how often the bonus suggests a game the player does not usually play. Re-run after a few days on the new value; one dial change at a time.

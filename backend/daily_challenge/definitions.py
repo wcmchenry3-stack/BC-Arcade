@@ -61,7 +61,13 @@ Rules the pick enforces (all tested): Daily Word is always present; the other tw
 games differ from each other and from the previous day's two; at most one goal
 per day is luck-dependent (a win, or a blackjack run ending in profit) — the slot
 rotates by day, and any other such goal is swapped for that game's easy goal
-(every game's easy goal is not luck-dependent).
+(every game's easy goal is not luck-dependent). Solitaire and FreeCell wins are
+not luck-dependent: their deals are provably solvable (``SOLVABLE_DEAL_GAMES``).
+
+This shared template is what an install sees until it has history: per-install
+picks with personal targets (#3993/#3994) live in ``personal.py``, and an install
+with fewer than 3 finished games (or none in the affinity window) is served this
+template exactly.
 Targets are tuned to be reachable and are marked ``tune post-launch``.
 SALT comes from the DAILY_CHALLENGE_SALT env var (default 0); changing it
 shifts the whole future schedule and reshuffles the game order.
@@ -174,8 +180,16 @@ def _completed(game_type: str, tier: Tier) -> Goal:
     return Goal(game_type, "completed", None, tier, False, lambda f: f.get("is_complete") is True)
 
 
+# Games that deal only provably solvable deals (#3993): a win there is skill, not
+# luck, so their win goals are not luck-dependent and never use up the day's one
+# luck-dependent slot. Applied by the builders, so ``goal_from_spec`` rebuilds a
+# frozen or pinned goal with the same flag.
+SOLVABLE_DEAL_GAMES: frozenset[str] = frozenset({"solitaire", "freecell"})
+
+
 def _won(game_type: str, tier: Tier) -> Goal:
-    return Goal(game_type, "won", None, tier, True, lambda f: f.get("won") is True)
+    is_win = game_type not in SOLVABLE_DEAL_GAMES
+    return Goal(game_type, "won", None, tier, is_win, lambda f: f.get("won") is True)
 
 
 def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
@@ -212,7 +226,8 @@ def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
             return False
         return floor is None or value >= floor
 
-    return Goal(game_type, f"won_{measure}_at_most", limit, tier, True, check)
+    is_win = game_type not in SOLVABLE_DEAL_GAMES
+    return Goal(game_type, f"won_{measure}_at_most", limit, tier, is_win, check)
 
 
 def _solved(game_type: str, tier: Tier) -> Goal:
@@ -280,12 +295,15 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _at_least("twenty48", "highest_tile", 512, "medium"),
         _at_least("twenty48", "final_score", 2500, "hard"),
     ),
-    # Klondike deals are not always winnable, so solitaire's win goals are the
-    # luck-dependent kind. A win takes at least 52 foundation moves, so the hard
-    # limit is well above that (a 60-move win is not realistic).
+    # Solitaire and FreeCell deal only provably solvable deals, so a win is skill,
+    # not luck (SOLVABLE_DEAL_GAMES), and their easy goal is the win itself. They
+    # have no loss: a finished row only exists for a win, so the old "make 10 / 5
+    # moves" goals already needed one and are gone (#3993; days frozen with them
+    # still rebuild through goal_from_spec). A win takes at least 52 foundation
+    # moves, so the limits are well above that. Medium limits: tune post-launch.
     "solitaire": (
-        _at_least("solitaire", "moves", 10, "easy"),
-        _won("solitaire", "medium"),
+        _won("solitaire", "easy"),
+        _won_within("solitaire", "moves", 150, "medium"),
         _won_within("solitaire", "moves", 120, "hard"),
     ),
     # final_score = the player's highest level solved, sent on every solved
@@ -299,12 +317,12 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _at_least("sort", "final_score", 15, "hard"),
     ),
     "freecell": (
-        _at_least("freecell", "moves", 5, "easy"),
-        _won("freecell", "medium"),
+        _won("freecell", "easy"),
+        _won_within("freecell", "moves", 130, "medium"),
         _won_within("freecell", "moves", 100, "hard"),
     ),
-    # Score only (Yacht sends no result block). A full solo game typically
-    # lands 150-250; abandoned games count with their score so far.
+    # Score only: a full solo game typically lands 150-250. Abandoned games never
+    # count (the service filters them).
     "yacht": (
         _at_least("yacht", "final_score", 100, "easy"),
         _at_least("yacht", "final_score", 175, "medium"),

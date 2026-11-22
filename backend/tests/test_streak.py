@@ -32,7 +32,7 @@ _TODAY = _NOW.date()
 
 _SCORE = FREE_GOAL_POOL["twenty48"][0]  # final_score >= 500
 _LEVEL = FREE_GOAL_POOL["sort"][0]  # final_score >= 3
-_MOVES = FREE_GOAL_POOL["solitaire"][0]  # moves >= 10
+_MOVES = _at_least("solitaire", "moves", 10, "easy")  # the pre-#3993 easy goal
 _TEMPLATE = Template("streak_for_tests", (_SCORE, _LEVEL, _MOVES))
 
 

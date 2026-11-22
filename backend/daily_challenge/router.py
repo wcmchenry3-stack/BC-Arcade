@@ -108,12 +108,16 @@ async def get_upcoming(
         # Per install (#3992): each day is pinned for this install on first read,
         # so /status serves today's exactly as cached here for offline play. An
         # install that may not pin (assignments.may_pin) gets the shared free slate.
+        # One PickContext: the install's history is read once for all three days.
+        ctx = service.PickContext(dates, tz_offset_minutes)
         result = await assignments.get_or_pin(
             db,
             sid,
             dates,
             today=today.date,
-            pick=lambda d: service.pick_for_install(db, sid, d),
+            pick=lambda d: service.pick_for_install(
+                db, sid, d, tz_offset_minutes=tz_offset_minutes, context=ctx
+            ),
             shared=shared_free,
         )
     else:

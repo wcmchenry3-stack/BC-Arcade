@@ -48,7 +48,7 @@ needs_db = pytest.mark.skipif(
 
 _SCORE = FREE_GOAL_POOL["twenty48"][0]  # final_score >= 500
 _LEVEL = FREE_GOAL_POOL["sort"][0]  # final_score >= 3
-_MOVES = FREE_GOAL_POOL["solitaire"][0]  # moves >= 10
+_MOVES = _at_least("solitaire", "moves", 10, "easy")  # the pre-#3993 easy goal
 _SHARED = Template("shared_for_tests", (_SCORE, _LEVEL, _MOVES))
 # Differs from the shared template: a twenty48 game with a 128 tile meets two of these.
 _TILE = _at_least("twenty48", "highest_tile", 64, "easy")
@@ -156,9 +156,9 @@ async def test_status_pins_today_once_and_returns_the_same_row(
     calls: list[date] = []
     real = service.pick_for_install
 
-    async def counting(db, sid, day) -> Assignment:
+    async def counting(db, sid, day, **kw) -> Assignment:
         calls.append(day)
-        return await real(db, sid, day)
+        return await real(db, sid, day, **kw)
 
     monkeypatch.setattr(service, "pick_for_install", counting)
     sid = await _played()
