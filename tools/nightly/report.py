@@ -42,8 +42,8 @@ ICONS = {
 def overall(needs: dict) -> str:
     """``skipped`` (dev unchanged), ``green`` (every heavy job succeeded) or ``red``.
 
-    A failed or missing gate is red: nothing was tested, and nothing says why. So is a failed
-    ``tag-last-green``: every check passed, but ``nightly/last-green`` did not move, so the next
+    A failed or missing gate is red: nothing was tested, and nothing says why. So is a failed or
+    cancelled ``tag-last-green``: every check passed, but ``nightly/last-green`` did not move, so the next
     night would test the same range again.
     """
     gate = needs.get("gate") or {}
@@ -52,7 +52,7 @@ def overall(needs: dict) -> str:
     if (gate.get("outputs") or {}).get("run") != "true":
         return "skipped"
     heavy = [v.get("result") for k, v in needs.items() if k not in NON_HEAVY]
-    if (needs.get("tag-last-green") or {}).get("result") == "failure":
+    if (needs.get("tag-last-green") or {}).get("result") in ("failure", "cancelled"):
         return "red"
     return "green" if heavy and all(r == "success" for r in heavy) else "red"
 
@@ -64,6 +64,8 @@ def tag_line(needs: dict, sha: str) -> str:
         return f"moved to `{sha[:12]}`"
     if result == "failure":
         return "**not moved: `tag-last-green` failed** (every check passed; re-run that job)"
+    if result == "cancelled":
+        return "**not moved: `tag-last-green` was cancelled** (every check passed; re-run that job)"
     return "not moved"
 
 

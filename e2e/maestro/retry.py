@@ -71,7 +71,7 @@ def parse_report(path: str) -> list[Case] | None:
     return cases
 
 
-def _needs_whole_dir(directory: str, cases: list[Case] | None, results: str) -> bool:
+def needs_whole_dir(directory: str, cases: list[Case] | None, results: str) -> bool:
     """No usable report, no test case at all, or a non-zero exit the report doesn't explain."""
     if cases is None or not any(name is not None for name, _ in cases):
         return True
@@ -87,7 +87,7 @@ def plan(
         return []
     whole = [(f"{flows}/{directory}/", f"{retry}/{directory}/{WHOLE_DIR}.xml")]
     cases = parse_report(os.path.join(results, directory, "report.xml"))
-    if _needs_whole_dir(directory, cases, results):
+    if needs_whole_dir(directory, cases, results):
         return whole
     pairs = []
     for name, failed in cases:
@@ -141,7 +141,7 @@ def remaining_failures(projects: list[str], results: str = RESULTS, retry: str =
     for directory in projects:
         retried = outcomes(directory, retry)
         cases = parse_report(os.path.join(results, directory, "report.xml"))
-        if _needs_whole_dir(directory, cases, results):
+        if needs_whole_dir(directory, cases, results):
             if not dir_passed(retried):
                 left.append(directory)
             continue

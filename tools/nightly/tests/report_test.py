@@ -206,3 +206,15 @@ def test_tag_line_for_moved_and_not_moved():
     )
     assert report.tag_line({"tag-last-green": {"result": "skipped"}}, SHA) == "not moved"
     assert report.tag_line({}, SHA) == "not moved"
+
+
+def test_cancelled_tag_job_makes_the_night_red_and_says_so():
+    needs = {
+        "gate": gate(),
+        "perf": {"result": "success"},
+        "tag-last-green": {"result": "cancelled"},
+    }
+    assert report.overall(needs) == "red"
+    md = report.build_report(sha=SHA, needs=needs, last_green=LAST)
+    assert md.startswith("## Nightly dev checks: ❌ red")
+    assert "**nightly/last-green:** **not moved: `tag-last-green` was cancelled**" in md

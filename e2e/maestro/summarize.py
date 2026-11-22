@@ -70,6 +70,29 @@ def _dir_rows(directory: str, report: str, retried: dict) -> list[str]:
     return rows
 
 
+def _whole_dir_rows(directory: str, report: str, retried: dict) -> list[str]:
+    """_dir_rows, corrected where retry.py would re-run the whole directory.
+
+    retry.needs_whole_dir is the same rule `retry.py verdict` applies, so the table and the step
+    result agree: a report with no test case, or a run that exited non-zero (the
+    `maestro-failed` marker) although no case in its report failed, is a directory failure. It
+    shows as FAIL, or as PASS on retry when the nightly's whole-directory retry passed. Off the
+    nightly (no retry) this only replaces what would otherwise be a false green."""
+    rows = _dir_rows(directory, report, retried)
+    cases = retry.parse_report(report)
+    if cases is None or not retry.needs_whole_dir(directory, cases, RESULTS):
+        return rows
+    status = RETRY_PASS if retry.dir_passed(retried) else FAIL
+    if not any(name is not None for name, _ in cases):
+        if any(failed for _, failed in cases):
+            return rows  # a suite-level failure: _dir_rows already shows it
+        return [f"| `{directory}` | {status} _(no test case in the report)_ |\n"]
+    return [
+        *rows,
+        f"| `{directory}` | {status} _(maestro exited non-zero, but no case in the report failed)_ |\n",
+    ]
+
+
 def build_rows(projects: list[str]) -> list[str]:
     reports = {
         os.path.basename(os.path.dirname(path)): path
@@ -86,7 +109,7 @@ def build_rows(projects: list[str]) -> list[str]:
                 f"| `{directory}` | {result} _(no report: flow parse error or runner crash)_ |\n"
             )
         else:
-            rows.extend(_dir_rows(directory, report, retried))
+            rows.extend(_whole_dir_rows(directory, report, retried))
     if not rows:
         rows.append(
             "| _(no reports — test runner may have crashed before any directory ran)_ | — |\n"

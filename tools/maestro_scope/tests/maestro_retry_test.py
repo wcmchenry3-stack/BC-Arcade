@@ -282,3 +282,65 @@ def test_android_job_timeout_is_60_off_the_nightly():
     assert job["timeout-minutes"] == "${{ inputs.nightly && 90 || 60 }}"
     # No step-level limit that would cut the nightly retry short.
     assert all("timeout-minutes" not in s for s in job["steps"])
+
+
+def summary_of(ws, monkeypatch, projects):
+    summary, output = ws / "summary.md", ws / "output"
+    for f in (summary, output):
+        f.write_text("")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    summarize.main("Android", "full suite", projects)
+    return summary.read_text(), output.read_text()
+
+
+EXIT_NOTE = "_(maestro exited non-zero, but no case in the report failed)_"
+
+
+def test_summary_nonzero_exit_all_pass_report_and_failed_retry_is_a_fail(ws, monkeypatch):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", False)])
+    (ws / "maestro-results/home/maestro-failed").write_text("")
+    junit(ws / "maestro-retry/home/__all__.xml", [("smoke", False), ("nav", True)])
+    text, output = summary_of(ws, monkeypatch, ["home"])
+    assert f"| `home` | ❌ FAIL {EXIT_NOTE} |" in text
+    assert "| `home/smoke` | ✅ PASS |" in text  # the first round's own rows stay
+    assert output == "passed_on_retry=0\n"
+    assert retry.remaining_failures(["home"]) == ["home"]  # agrees with the verdict
+
+
+def test_summary_nonzero_exit_all_pass_report_and_passing_retry(ws, monkeypatch):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", False)])
+    (ws / "maestro-results/home/maestro-failed").write_text("")
+    junit(ws / "maestro-retry/home/__all__.xml", [("smoke", False), ("nav", False)])
+    text, output = summary_of(ws, monkeypatch, ["home"])
+    assert f"| `home` | 🔁 PASS on retry {EXIT_NOTE} |" in text
+    assert "**Passed on retry:** 1 flow(s)" in text
+    assert output == "passed_on_retry=1\n"
+    assert retry.remaining_failures(["home"]) == []
+
+
+def test_summary_nonzero_exit_off_the_nightly_is_not_green(ws):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False)])
+    (ws / "maestro-results/home/maestro-failed").write_text("")
+    assert summarize.build_rows(["home"]) == [
+        "| `home/smoke` | ✅ PASS |\n",
+        f"| `home` | ❌ FAIL {EXIT_NOTE} |\n",
+    ]
+
+
+@pytest.mark.parametrize("retry_passes", [False, True])
+def test_summary_zero_case_report(ws, monkeypatch, retry_passes):
+    junit(ws / "maestro-results/home/report.xml", [], suite_failures=0)
+    if retry_passes:
+        junit(ws / "maestro-retry/home/__all__.xml", [("smoke", False), ("nav", False)])
+    text, output = summary_of(ws, monkeypatch, ["home"])
+    status = "🔁 PASS on retry" if retry_passes else "❌ FAIL"
+    assert f"| `home` | {status} _(no test case in the report)_ |" in text
+    assert "| `home` | ✅ PASS |" not in text
+    assert output == f"passed_on_retry={int(retry_passes)}\n"
+    assert (retry.remaining_failures(["home"]) == []) is retry_passes
+
+
+def test_summary_suite_level_failure_row_is_unchanged(ws):
+    junit(ws / "maestro-results/home/report.xml", [], suite_failures=1)
+    assert summarize.build_rows(["home"]) == ["| `home` | ❌ FAIL |\n"]
