@@ -405,18 +405,16 @@ jobs:
           while IFS= read -r PKG; do
             [ -z "$PKG" ] && continue
             PKG_DIR="frontend/node_modules/$PKG"
+            # Android detection (#4058) also covers react-native and expo by name and
+            # sources deeper than 4 levels; it feeds android-build-check too.
+            if ./scripts/is-android-native-package.sh "$PKG" "$PKG_DIR"; then
+              ANDROID_PKGS="${ANDROID_PKGS:+$ANDROID_PKGS }$PKG"
+            fi
             [ ! -d "$PKG_DIR" ] && continue
 
             # iOS native: presence of a .podspec signals CocoaPods integration
             if find "$PKG_DIR" -maxdepth 2 -name "*.podspec" 2>/dev/null | grep -q .; then
               IOS_PKGS="${IOS_PKGS:+$IOS_PKGS }$PKG"
-            fi
-
-            # Android native: android/ dir containing Java/Kotlin/C++ source
-            if [ -d "$PKG_DIR/android" ] && \
-               find "$PKG_DIR/android" -maxdepth 4 \
-                 \( -name "*.java" -o -name "*.kt" -o -name "*.cpp" \) 2>/dev/null | grep -q .; then
-              ANDROID_PKGS="${ANDROID_PKGS:+$ANDROID_PKGS }$PKG"
             fi
 
             # JSI: runtime binding installer patterns (Expo Go can't satisfy these)
@@ -485,7 +483,11 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-python.yml@main
     with:
       working-directory: backend
-      shard-count: 3 # #4061: sharded; merged coverage enforced against coverage-threshold
+      # #4061: pytest split across 3 shards (~8.6 min unsharded); the combined result must
+      # meet coverage-threshold (the org reusable's default is 80, which would silently lower
+      # pyproject.toml's --cov-fail-under=96), and the required context
+      # `test-python / Test Python (pytest)` is the job that gathers the shards.
+      shard-count: 3
       coverage-threshold: 96 # keep in step with pyproject.toml --cov-fail-under
     secrets: inherit
 
@@ -646,7 +648,11 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-frontend.yml@main
     with:
       working-directory: frontend
-      shard-count: 3 # #4061: merged coverage enforced against package.json coverageThreshold
+      # #4061: jest split across 4 shards (~19 min unsharded); the combined result is checked
+      # against package.json's global coverageThreshold, and the required context
+      # `test-frontend / Test frontend (jest/vitest)` is the job that gathers the shards
+      # (wcmchenry3-stack/.github#383). Per-file thresholds are not enforced after merging.
+      shard-count: 4
     secrets: inherit
 
   cve-python:
@@ -1048,14 +1054,28 @@ jobs:
             exit 1
           fi
 
-  # Android release smoke test — path-filtered, runs on PRs only.
-  # The debug build check cannot catch release-only failures (Sentry upload,
-  # release CMake config, ProGuard). Runs assembleRelease for a single ABI
-  # (.github/actions/android-release-smoke; nightly.yml runs it unconditionally).
+  # Android release smoke test — runs on PRs only, builds only when native Android
+  # may be affected (#4058). The debug build check cannot catch release-only
+  # failures (Sentry upload, release CMake config, ProGuard). Runs assembleRelease
+  # for a single ABI (.github/actions/android-release-smoke; nightly.yml runs it
+  # unconditionally, so plain JS dependency bumps are covered there, not here).
+  #
+  # It is a required check, so the job must start on every PR and succeed when
+  # there is nothing to build. The build decision reuses detect-native-changes:
+  #   has_native_android    an Expo / React Native / native-module bump (a package
+  #                         with Java/Kotlin/C++ sources changed version)
+  #   android_files_changed an edit under frontend/android/
+  # plus this job's own composite action, and always on release PRs into main
+  # (as android-build-check). Plain JS bumps (Dependabot
+  # minor-and-patch) match none of these. If detect-native-changes fails to
+  # detect, its safe defaults are false, the same fail-quiet convention as
+  # android-build-check; the nightly still builds. It is a need, so on a draft
+  # (or an upstream lint failure) this job is skipped exactly as it already was
+  # through test-python / test-frontend, which skip on the same conditions.
 
   android-release-smoke:
     if: github.event_name == 'pull_request'
-    needs: [test-python, test-frontend]
+    needs: [test-python, test-frontend, detect-native-changes]
     runs-on: ubuntu-latest
     # 30 min gives headroom for a cold Gradle cache (~20 min); once the cache
     # is warm, runs finish well under that. A job killed by this timeout is
@@ -1070,21 +1090,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect Android-relevant changes
+      - name: Decide whether to build
         id: changes
+        env:
+          HAS_NATIVE_ANDROID: ${{ needs.detect-native-changes.outputs.has_native_android }}
+          ANDROID_FILES_CHANGED: ${{ needs.detect-native-changes.outputs.android_files_changed }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)
           # The action's own path too (#4054), so a PR that edits the build steps runs them.
-          if echo "$CHANGED" | grep -qE 'frontend/android/|frontend/package\.json|frontend/package-lock\.json|\.github/actions/android-release-smoke/'; then
+          # HEAD is the PR merge commit, whose first parent is the current base tip, so
+          # HEAD^1..HEAD is exactly what the PR changes (as detect-native-file-changes.sh).
+          ACTION_CHANGED=false
+          if git diff --name-only HEAD^1 HEAD | grep -q '^\.github/actions/android-release-smoke/'; then
+            ACTION_CHANGED=true
+          fi
+          if [ "$HAS_NATIVE_ANDROID" = "true" ] || [ "$ANDROID_FILES_CHANGED" = "true" ] || [ "$ACTION_CHANGED" = "true" ] || [ "$BASE_REF" = "main" ]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No Android-relevant file changes — skipping release smoke test"
+            echo "::notice::No native Android change or native package bump: skipping the release smoke test (nightly.yml builds it every night)"
           fi
 
       # The build steps live in a composite action (#4054) so nightly.yml can run the
-      # same build with the change detection forced on. This job keeps its id, `if:`,
-      # `needs` and timeout: `android-release-smoke` is a required check
+      # same build with the change detection forced on. This job keeps its id, `if:`
+      # and timeout: `android-release-smoke` is a required check
       # (.github/rulesets/protect-main-dev.json), and a reusable workflow would rename it.
       - uses: ./.github/actions/android-release-smoke
         if: steps.changes.outputs.should_run == 'true'

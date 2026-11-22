@@ -303,7 +303,7 @@ export default function HomeScreen() {
     {
       key: "solitaire",
       slug: "solitaire",
-      image: solitaireTile, // stock and waste, the waste's 7♠ moving onto an 8♥
+      image: solitaireTile, // the Klondike deal: seven columns stepping down (#4076)
       title: t("solitaire:game.title"),
       playLabel: t("solitaire:game.playLabel"),
       description: t("solitaire:game.description"),
