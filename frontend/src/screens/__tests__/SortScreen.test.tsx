@@ -79,6 +79,9 @@ const mockGoBack = jest.fn();
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 // usePauseWhileAway's focus listeners (#3087), live so a test can blur the screen.
+// The route's params (the lobby's Resume tile passes `resume`, #4008); none unless a test sets them.
+let mockRouteParams: { resume?: boolean } | undefined;
+const mockSetParams = jest.fn();
 const mockNavListeners = new Map<string, Set<() => void>>();
 const mockAddListener = jest.fn((event: string, cb: () => void) => {
   const set = mockNavListeners.get(event) ?? new Set();
@@ -93,8 +96,9 @@ jest.mock("@react-navigation/native", () =>
       popToTop: mockPopToTop,
       navigate: mockNavigate,
       addListener: mockAddListener,
+      setParams: mockSetParams,
     }),
-    { actual: true }
+    { actual: true, useRoute: () => ({ params: mockRouteParams }) }
   )
 );
 
@@ -217,6 +221,7 @@ async function skipWinCascade() {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockRouteParams = undefined;
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
   mockStartGame.mockReturnValue("sort-game-id");
@@ -884,6 +889,61 @@ describe("SortScreen — result card (#2512)", () => {
     expect(completion(0).summary.durationMs).toBe(30_000);
     expect(completion(1).summary.result).toEqual(expect.objectContaining({ level: 2 }));
     expect(completion(1).summary.durationMs).toBe(15_000);
+  });
+
+  describe("opened from the lobby's Resume tile (#4008)", () => {
+    const saved = () => ({
+      unlockedLevel: 1,
+      currentLevelId: 1,
+      currentState: initState(LEVELS[0]!.bottles as (Color | "")[][]),
+    });
+
+    it("lands in the saved level, as Continue does, and drops the param", async () => {
+      mockRouteParams = { resume: true };
+      storage.loadProgress.mockResolvedValue(saved());
+      const r = await renderScreen();
+      expect(await r.findByTestId("sort-board")).toBeTruthy();
+      expect(r.queryByLabelText("Continue Level 1")).toBeNull();
+      expect(mockSetParams).toHaveBeenCalledWith({ resume: undefined });
+    });
+
+    it("continues the killed session like Continue (syncResume)", async () => {
+      mockRouteParams = { resume: true };
+      mockResumeGame.mockReturnValueOnce("killed-sort-id");
+      storage.loadProgress.mockResolvedValue(saved());
+      const r = await renderScreen();
+      await r.findByTestId("sort-board");
+      expect(mockResumeGame).toHaveBeenCalledTimes(1);
+      expect(mockStartGame).not.toHaveBeenCalled();
+    });
+
+    it("restores the board once: back on the level grid it does not run again", async () => {
+      mockRouteParams = { resume: true };
+      storage.loadProgress.mockResolvedValue(saved());
+      const r = await renderScreen();
+      await r.findByTestId("sort-board");
+      await act(async () => {
+        await fireEvent.press(await r.findByLabelText("Back to levels"));
+      });
+      await r.findByTestId("sort-level-1");
+      expect(r.queryByTestId("sort-board")).toBeNull();
+      expect(mockResumeGame).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays on the level grid when no board is saved", async () => {
+      mockRouteParams = { resume: true };
+      const r = await renderScreen();
+      expect(await r.findByTestId("sort-level-1")).toBeTruthy();
+      expect(r.queryByTestId("sort-board")).toBeNull();
+    });
+
+    it("shows the level grid without the param, even with a save", async () => {
+      storage.loadProgress.mockResolvedValue(saved());
+      const r = await renderScreen();
+      await r.findByLabelText("Continue Level 1");
+      expect(r.queryByTestId("sort-board")).toBeNull();
+      expect(mockSetParams).not.toHaveBeenCalled();
+    });
   });
 
   it("leaves time on the level grid out of a continued level's duration", async () => {

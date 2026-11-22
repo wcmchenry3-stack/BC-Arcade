@@ -32,7 +32,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { LayoutChangeEvent, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
@@ -115,6 +115,9 @@ export default function SortScreen() {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  // The lobby's Resume tile opens Sort with `resume`: land in the saved level (#4008).
+  const route = useRoute<RouteProp<HomeStackParamList, "Sort">>();
+  const resumeRequested = route.params?.resume === true;
 
   /**
    * The best moves per level: the one source of truth for every solve's card
@@ -407,6 +410,20 @@ export default function SortScreen() {
       if (levelId !== null && gameState) saveBoard(levelId, gameState);
     },
   });
+
+  // Opened from the lobby's Resume tile (#4008): once the progress has loaded, do what the level
+  // grid's Continue does, once, and drop the param so a re-render or coming back doesn't repeat it.
+  // The latest `handleContinue` is read through a ref, as the effect must run only when the view
+  // first becomes the level grid.
+  const handleContinueRef = useRef(handleContinue);
+  handleContinueRef.current = handleContinue;
+  const resumeHandledRef = useRef(false);
+  useEffect(() => {
+    if (!resumeRequested || view !== "select" || resumeHandledRef.current) return;
+    resumeHandledRef.current = true;
+    navigation.setParams({ resume: undefined });
+    handleContinueRef.current();
+  }, [resumeRequested, view, navigation]);
 
   // Unlock the next level, complete the session and show the result card as
   // soon as the puzzle is solved. Nothing here waits on the network or on

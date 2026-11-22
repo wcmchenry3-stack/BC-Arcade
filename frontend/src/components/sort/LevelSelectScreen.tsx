@@ -6,6 +6,7 @@ import { typography } from "../../theme/typography";
 import { LockableGrid } from "../shared/LockableGrid";
 import { CHAPTER_SIZE, type LevelData } from "../../game/sort/catalog";
 import type { BestMoves, SortProgress } from "../../game/sort/storage";
+import { isResumable } from "../../game/sort/lobbyStatus";
 import { bestStarsFor, type BestStars } from "../../game/sort/stars";
 import { StarRow } from "./StarRow";
 
@@ -41,7 +42,7 @@ export default function LevelSelectScreen({
     return map;
   }, [bestMoves, levels]);
 
-  const hasContinue = progress.currentLevelId !== null && progress.currentState !== null;
+  const hasContinue = isResumable(progress);
 
   return (
     <LockableGrid

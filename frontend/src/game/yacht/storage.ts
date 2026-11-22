@@ -30,21 +30,25 @@ export interface SavedGame {
   finishedGameId?: string;
 }
 
+export const YACHT_GAME_KEY = "yacht_game_v2";
+
+/** The shape check of a stored game: drift discards rather than crashes the screen. */
+export function isSavedGame(p: unknown): p is SavedGame {
+  const parsed = p as SavedGame;
+  return !(
+    !parsed.state ||
+    !Array.isArray(parsed.state.dice) ||
+    parsed.state.dice.length !== 5 ||
+    typeof parsed.state.round !== "number" ||
+    typeof parsed.state.scores !== "object" ||
+    parsed.state.scores === null
+  );
+}
+
 const gameSlot = createJsonSlot<SavedGame>({
-  key: "yacht_game_v2",
+  key: YACHT_GAME_KEY,
   subsystem: "yacht.storage",
-  // Sanity check — shape drift should discard rather than crash the screen.
-  isValid: (p): p is SavedGame => {
-    const parsed = p as SavedGame;
-    return !(
-      !parsed.state ||
-      !Array.isArray(parsed.state.dice) ||
-      parsed.state.dice.length !== 5 ||
-      typeof parsed.state.round !== "number" ||
-      typeof parsed.state.scores !== "object" ||
-      parsed.state.scores === null
-    );
-  },
+  isValid: isSavedGame,
   keepInvalid: true,
   onLoad: (parsed) => {
     // A bad finished-game id only costs the card its rank, not the game.

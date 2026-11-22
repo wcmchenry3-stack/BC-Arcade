@@ -7,8 +7,19 @@ encoder sees it: the un-encoded bed, each layer's phrase, and the arrangement la
 un-encoded bed (`arrange.Stages.dry_mix`). Each is summarised as per-window RMS per channel plus a
 peak, rounded to 9 significant digits, and `reference_fingerprint.json` holds those numbers.
 
-A changed cue level, window, duck, fade or pitch, or a changed layer or bed, moves some window by
-far more than TOLERANCE; float noise between machines moves it by about 1e-12.
+The stages are not bit-exact across machines either. numpy picks its sin/exp/... kernels by CPU
+(AVX-512, AVX2 or baseline SIMD) and those differ by a few ulp, mostly in the float32 layers. That
+moves a per-sample extreme (the peak) far more than a 5 s RMS, which averages the noise away.
+Measured by rebuilding with numpy's AVX-512, then AVX2, kernels disabled (`NPY_DISABLE_CPU_FEATURES`),
+the worst moves against the reference were (#4026's CI runner failed on exactly the first one):
+
+  - peak: 2.6e-6 relative (`phrases.rise`); every other peak 1.1e-7 or less
+  - window RMS: 7.7e-7 relative (`dry_mix`); phrases 1.2e-7 or less
+
+So peaks and RMS windows get separate tolerances: PEAK_TOLERANCE is about 40x the peak noise and
+RMS_TOLERANCE about 13x the RMS noise. The weakest real change measured, the quiet organ cue made
+0.1 dB louder, moves a dry-mix window by 1.55e-4 (15x RMS_TOLERANCE); every other cue made 0.1 dB
+louder moves one by 1.2e-3 or more. A changed window, duck, fade, pitch, layer or bed moves far more.
 
 The file also records `shipped_sha256`, the hash of the shipped MP3 the reference belongs to.
 A refresh that changes the fingerprint while the shipped MP3 is unchanged would silently bless a
@@ -29,7 +40,8 @@ from .common import SR
 
 REFERENCE = Path(__file__).resolve().parent / "reference_fingerprint.json"
 WINDOW_S = 5  # s per RMS window
-TOLERANCE = 1e-6  # relative, per value (ATOL below for near-silent windows)
+RMS_TOLERANCE = 1e-5  # relative, per RMS window (ATOL below for near-silent windows)
+PEAK_TOLERANCE = 1e-4  # relative, per stage peak: a single sample, so the noisiest value
 ATOL = 1e-9  # absolute floor: RMS values this small are noise
 DIGITS = 9
 
@@ -88,6 +100,10 @@ def refuse_reason(new: dict, committed: dict | None, shipped_sha256: str) -> str
     )
 
 
+def _tolerance(path: str) -> float:
+    return PEAK_TOLERANCE if path.endswith(".peak") else RMS_TOLERANCE
+
+
 def differences(got: dict, want: dict) -> list[str]:
     """Human-readable mismatches between two fingerprints (empty when they agree)."""
     problems: list[str] = []
@@ -111,7 +127,7 @@ def differences(got: dict, want: dict) -> list[str]:
         elif isinstance(b, int):
             if a != b:
                 problems.append(f"{path}: {a} != {b}")
-        elif abs(a - b) > TOLERANCE * abs(b) + ATOL:
+        elif abs(a - b) > _tolerance(path) * abs(b) + ATOL:
             problems.append(f"{path}: {a!r} vs reference {b!r}")
 
     walk("fingerprint", got, want)

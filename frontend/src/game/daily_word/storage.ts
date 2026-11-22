@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { DailyWordState } from "./types";
 import type { TodayResponse } from "./api";
+import { readSavedGame } from "../_shared/lobbyStatus";
 import { createJsonSlot } from "../_shared/storageSlot";
 
 // Boards are saved per puzzle (#3230): the screen loads the board for today's
@@ -63,6 +64,17 @@ export async function loadState(puzzleId: string): Promise<DailyWordState | null
   const saved = await boardSlot(boardKey(puzzleId)).load();
   // A board stored under another puzzle's key is not this puzzle's.
   return saved && saved.puzzle_id === puzzleId ? saved : null;
+}
+
+/**
+ * Whether `puzzleId`'s saved board is finished, won or lost (#4008): for the lobby tile. Unlike
+ * `loadState` it only reads: it moves no older board in, and removes or reports nothing, so an
+ * unreadable board reads as not finished. A board saved before #3230 (`daily_word_state_v1`) is
+ * seen once the screen has moved it.
+ */
+export async function isBoardFinished(puzzleId: string): Promise<boolean> {
+  const saved = await readSavedGame(boardKey(puzzleId), looksValid);
+  return !!saved && saved.puzzle_id === puzzleId && saved.is_complete;
 }
 
 /** Save `state` as its puzzle's board. */
