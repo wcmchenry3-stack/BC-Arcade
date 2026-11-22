@@ -6,6 +6,7 @@ and the one Playwright full-suite list."""
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -226,7 +227,7 @@ def test_android_release_smoke_keeps_its_ci_job_and_shares_the_action():
     job = load("ci.yml")["jobs"]["android-release-smoke"]
     assert "name" not in job  # the required context is the job id
     assert job["if"] == "github.event_name == 'pull_request'"
-    assert job["needs"] == ["test-python", "test-frontend"]
+    assert job["needs"] == ["test-python", "test-frontend", "detect-native-changes"]
     assert job["timeout-minutes"] == 30
     action_steps = [
         s for s in job["steps"] if s.get("uses") == "./.github/actions/android-release-smoke"
@@ -245,6 +246,83 @@ def test_composite_action_sets_working_directory_on_every_run_step():
         if "run" in step:
             assert step["shell"] == "bash"
             assert step["working-directory"] == "frontend"
+
+
+def test_android_release_smoke_builds_only_on_native_android_changes():
+    """#4058: native outputs, not package.json / the lockfile, decide the build."""
+    job = load("ci.yml")["jobs"]["android-release-smoke"]
+    step = next(s for s in job["steps"] if s.get("id") == "changes")
+    env = step["env"]
+    assert "needs.detect-native-changes.outputs.has_native_android" in env["HAS_NATIVE_ANDROID"]
+    assert (
+        "needs.detect-native-changes.outputs.android_files_changed" in env["ANDROID_FILES_CHANGED"]
+    )
+    assert step["env"]["BASE_REF"] == "${{ github.base_ref }}"
+    assert '[ "$BASE_REF" = "main" ]' in step["run"]  # release PRs always build
+    assert "git diff --name-only HEAD^1 HEAD" in step["run"]
+    assert "package.json" not in step["run"]
+    assert "package-lock" not in step["run"]
+    # the composite action's own path still triggers a build
+    assert ".github/actions/android-release-smoke/" in step["run"].replace("\\.", ".")
+    # the job starts on every PR (no path filter, no native-output `if`)
+    assert job["if"] == "github.event_name == 'pull_request'"
+
+
+def test_cascade_sim_gate_plays_20_seeds_on_prs_and_100_otherwise():
+    """#4058: PRs play a reduced, informational seed count; nightly/dispatch keep 100."""
+    run = next(
+        s["run"]
+        for s in load("cascade-sim-gate.yml")["jobs"]["gate"]["steps"]
+        if "simulate-cascade" in s.get("run", "")
+    )
+    assert re.search(r'"\$EVENT_NAME" = "pull_request"[^\n]*--seeds 20\)', run)
+    assert "--capstone-seeds" not in run
+    # a given seeds input still wins; blank keeps the harness default (100)
+    assert '--seeds "$SEEDS_INPUT"' in run
+    assert "--seeds 100" not in run
+
+
+SCRIPT = ROOT / "scripts" / "is-android-native-package.sh"
+
+
+def _native(tmp_path, name, files=(), dirs=()):
+    pkg = tmp_path / "node_modules" / name
+    pkg.mkdir(parents=True)
+    for d in dirs:
+        (pkg / d).mkdir(parents=True)
+    for f in files:
+        (pkg / f).parent.mkdir(parents=True, exist_ok=True)
+        (pkg / f).write_text("x")
+    return subprocess.run([str(SCRIPT), name, str(pkg)], check=False).returncode == 0
+
+
+def test_android_detection_finds_deep_kotlin_sources(tmp_path):
+    kt = "android/src/main/java/expo/modules/audio/AudioModule.kt"
+    assert _native(tmp_path, "expo-audio", files=[kt])
+
+
+def test_android_detection_finds_react_android_dir(tmp_path):
+    assert _native(tmp_path, "some-rn-fork", dirs=["ReactAndroid"])
+
+
+def test_android_detection_treats_react_native_and_expo_as_native_by_name(tmp_path):
+    assert _native(tmp_path, "react-native")
+    assert _native(tmp_path, "expo")
+
+
+def test_android_detection_ignores_pure_js_packages(tmp_path):
+    assert not _native(tmp_path, "lodash-like", files=["index.js", "lib/a.ts"])
+    # an android/ dir with no sources, or sources only under build/ or node_modules/
+    assert not _native(tmp_path, "assets-only", files=["android/README.md"])
+    assert not _native(tmp_path, "built", files=["android/build/gen/A.java"])
+    assert not _native(tmp_path, "vendored", files=["android/node_modules/x/B.kt"])
+    assert not _native(tmp_path, "missing-dir-pkg")
+
+
+def test_ci_uses_the_android_detection_script():
+    steps = load("ci.yml")["jobs"]["detect-native-changes"]["steps"]
+    run = next(s for s in steps if s.get("id") == "detect")["run"]
+    assert "./scripts/is-android-native-package.sh" in run
 
 
 # ---- Fallback schedule (#4056) and report email (#4055) ---------------------------------------

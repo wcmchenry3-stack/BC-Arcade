@@ -309,9 +309,11 @@ package is bumped, and (since #3213) when a PR edits anything under `frontend/an
 ## Release build smoke test (GitHub Actions)
 
 The `android-release-smoke` CI job runs `./gradlew assembleRelease` for a single
-ABI (arm64-v8a) on PRs that change Android-relevant files (`frontend/android/`,
-`frontend/package.json`, `frontend/package-lock.json`, or the composite action
-itself). Its build steps live in `.github/actions/android-release-smoke` (#4054), so
+ABI (arm64-v8a) on PRs into `main`, and on PRs into `dev` that edit `frontend/android/`
+or the composite action itself, or bump a native Android package (Expo, React Native or
+a module with Android sources, from `detect-native-changes`; #4058). The job always
+starts and passes without building otherwise, so plain JS dependency bumps and
+lockfile-only changes do not build it on PRs (the nightly does). Its build steps live in `.github/actions/android-release-smoke` (#4054), so
 the nightly (`nightly.yml`, job `android-release-smoke-forced`) runs the same build on
 every tested night whatever changed; the CI job keeps its name, which is a required
 check. This catches release-only failures that the debug build cannot detect:

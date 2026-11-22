@@ -12,8 +12,8 @@
  *                        (#3697: the skilled bot, 60 Hz, up to 10 simulated minutes
  *                        each, stopping at the win)
  *   --seeds N            override the seed count (the capstone runs' too); bands are skipped
- *   --capstone-seeds N   override the capstone runs' seed count only (the PR gate plays 50, the
- *                        nightly 100); the bands still apply, the capstone ones widened by
+ *   --capstone-seeds N   override the capstone runs' seed count only (a smaller sample; CI uses
+ *                        --seeds 20 on PRs since #4058, the nightly 100); the bands still apply, the capstone ones widened by
  *                        sqrt(100 / N) (baselineForCapstoneSeeds)
  *   --no-capstone        skip the capstone runs (a quicker look; bands are then skipped)
  *   --bots a,b           override the bots (heuristic, random, spam)
