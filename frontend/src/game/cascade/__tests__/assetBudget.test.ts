@@ -5,6 +5,9 @@
  * sprites deleted in #3698 must not come back. See docs/PERFORMANCE.md "Cascade size budget".
  *
  * ALLOWED_CASCADE_IMAGES is empty since #3698: any Cascade image file or folder fails here.
+ * The one exception is the lobby tile (#4013), pinned by exact path in LOBBY_TILE: it is lobby
+ * art, not piece art, capped here and by lobbyTileBudget.test.ts, and kept out of store builds
+ * by hiddenGameTileArt.ts.
  */
 import * as fs from "fs";
 import * as path from "path";
@@ -14,6 +17,10 @@ const REPO_ROOT = path.join(ASSETS_DIR, "../..");
 
 /** Folder (relative to frontend/assets) -> exact image files it may hold. Empty since #3698. */
 const ALLOWED_CASCADE_IMAGES: Record<string, string[]> = {};
+
+/** Cascade's lobby tile (#4013): the only Cascade image file allowed, by exact path. */
+const LOBBY_TILE = "home/cascade-tile.webp";
+const LOBBY_TILE_MAX_BYTES = 3_400;
 
 const IMAGE_EXT = /\.(png|webp|jpe?g|gif|svg|avif)$/i;
 // Name heuristic for "looks like Cascade art". If another game ever adds a folder
@@ -46,8 +53,21 @@ describe("Cascade asset budget guard (#3692)", () => {
         names.map((n) => `${dir}/${n}`)
       )
     );
-    const unexpected = cascadeImages.filter((f) => !allowed.has(f));
+    const unexpected = cascadeImages.filter((f) => !allowed.has(f) && f !== LOBBY_TILE);
     expect(unexpected).toEqual([]);
+  });
+
+  it("the lobby tile is the one Cascade image, within its budget, used only by the lobby (#4013)", () => {
+    expect(fs.statSync(path.join(ASSETS_DIR, LOBBY_TILE)).size).toBeLessThanOrEqual(
+      LOBBY_TILE_MAX_BYTES
+    );
+    // Cascade's own sources still import no image: the tile goes only through the lobby's
+    // hidden-game art module, which a store bundle stubs out.
+    const cascadeSrc = path.join(ASSETS_DIR, "../src/game/cascade");
+    const importers = listFiles(cascadeSrc).filter((f) =>
+      fs.readFileSync(path.join(cascadeSrc, f), "utf8").includes("cascade-tile")
+    );
+    expect(importers.filter((f) => !f.includes("__tests__"))).toEqual([]);
   });
 
   it("every pinned Cascade folder holds only its pinned files (no additions)", () => {
