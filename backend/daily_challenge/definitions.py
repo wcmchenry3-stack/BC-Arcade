@@ -29,7 +29,9 @@ Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)
     twenty48    final_score, highest_tile              (already sent)
     solitaire   won, moves                             (SolitaireResult)
-    sort        final_score (highest level solved)     (every solve, #2625)
+    sort        final_score (highest level solved)     (every solve, #2625); the
+                relative ``new_levels_at_least`` goal also reads the best before the
+                day started (``facts_for``, #4028)
     freecell    won, moves                             (#2452)
     yacht       final_score                            (already sent)
     sudoku      won, final_score, errors               (SudokuScreen; final_score =
@@ -89,7 +91,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
@@ -243,6 +245,48 @@ def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
 
     is_win = game_type not in SKILL_WIN_GAMES
     return Goal(game_type, f"won_{measure}_at_most", limit, tier, is_win, check)
+
+
+# Bottle Sort's relative goal (#4028): "solve N new levels" is met when the highest level
+# solved that day minus the highest solved before the day started is at least N. The
+# derived measure is in no result block: ``facts_for`` computes it from the row's
+# ``final_score`` (the highest level solved, sent on every solve, #2625) and the day-start
+# best the caller reads (``service.day_start_bests``). So the goal is relative to the day
+# it is scored on, not to when it was pinned (today+1 and today+2 are pinned at today's
+# first open). A replay reports the unchanged standing, so it is never a new level.
+NEW_LEVELS_MEASURE = "new_levels"
+NEW_LEVELS_KIND = f"{NEW_LEVELS_MEASURE}_at_least"
+# Per game with a relative goal: the measure whose best before the day is the baseline.
+DAY_START_MEASURES: dict[str, str] = {"sort": "final_score"}
+
+# {game_type: the best ``DAY_START_MEASURES`` value before the day starts, 0 for none}.
+DayStart = Mapping[str, int]
+# The goal itself is an "at least" goal on the derived measure (``_at_least``), so
+# ``goal_from_spec`` rebuilds a pinned one equal through its ``*_at_least`` rule.
+
+
+def is_relative(goal: Goal) -> bool:
+    """True for a goal scored against the day-start best (``facts_for``)."""
+    return goal.measure == NEW_LEVELS_MEASURE and goal.game_type in DAY_START_MEASURES
+
+
+def relative_games(goals: Iterable[Goal | None]) -> set[str]:
+    """The games among ``goals`` whose evaluation needs a day-start best."""
+    return {g.game_type for g in goals if g is not None and is_relative(g)}
+
+
+def facts_for(goal: Goal, facts: Facts, day_start: DayStart | None) -> Facts | None:
+    """The facts ``goal.evaluate`` reads for one finished game. Unchanged for every goal
+    but a relative one, which gets ``new_levels`` = the row's measure minus the day-start
+    best (a client-sent ``new_levels`` is overwritten). ``None`` (never met) when the
+    day-start best was not read or the row has no measure."""
+    if not is_relative(goal):
+        return facts
+    baseline = None if day_start is None else day_start.get(goal.game_type)
+    value = _number(facts, DAY_START_MEASURES[goal.game_type])
+    if baseline is None or value is None:
+        return None
+    return {**facts, NEW_LEVELS_MEASURE: value - baseline}
 
 
 def _solved(game_type: str, tier: Tier) -> Goal:

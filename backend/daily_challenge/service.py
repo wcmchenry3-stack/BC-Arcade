@@ -34,20 +34,24 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from daily_challenge import assignments, history, personal, schedule
 from daily_challenge.assignments import Assignment, derived_template_id
 from daily_challenge.definitions import (
+    DAY_START_MEASURES,
     FREE_GOAL_POOL,
+    DayStart,
     Facts,
     Goal,
     LocalDay,
     Slate,
     Template,
+    facts_for,
     game_facts,
     local_day,
+    relative_games,
     template_for,
 )
 from daily_challenge.history import InstallHistory
@@ -88,9 +92,15 @@ class ChallengeStatus:
 EndedGame = tuple[str, Facts]
 
 
-def evaluate_goal(goal: Goal, ended: list[EndedGame]) -> GoalStatus:
+def evaluate_goal(
+    goal: Goal, ended: list[EndedGame], day_start: DayStart | None = None
+) -> GoalStatus:
+    """``goal`` against one day's finished games. ``day_start`` is the day-start best per
+    game, read only for a relative goal (``definitions.facts_for``, #4028): without it
+    such a goal is never met."""
     mine = [facts for game_type, facts in ended if game_type == goal.game_type]
-    completed = any(goal.evaluate(facts) for facts in mine)
+    checked = (facts_for(goal, facts, day_start) for facts in mine)
+    completed = any(facts is not None and goal.evaluate(facts) for facts in checked)
     best_score: int | None = None
     if goal.measure == "final_score":
         scores = [f["final_score"] for f in mine if isinstance(f.get("final_score"), int)]
@@ -116,13 +126,49 @@ def slate_for_games(
     return "premium" if override or named <= set(owned) else "free"
 
 
-def evaluate_template(template: Template, ended: list[EndedGame]) -> tuple[GoalStatus, ...]:
+def evaluate_template(
+    template: Template, ended: list[EndedGame], day_start: DayStart | None = None
+) -> tuple[GoalStatus, ...]:
     """Every goal of ``template`` evaluated against one day's finished games.
 
     The one place a day is scored: ``get_status_for_session`` (today, live) and the
-    streak (past days, replayed) both call it, so they cannot disagree.
+    streak (past days, replayed) both call it, so they cannot disagree. ``day_start``
+    as for ``evaluate_goal``.
     """
-    return tuple(evaluate_goal(goal, ended) for goal in template.goals)
+    return tuple(evaluate_goal(goal, ended, day_start) for goal in template.goals)
+
+
+async def day_start_bests(
+    session: AsyncSession, session_id: str, games: Collection[str], before: datetime
+) -> dict[str, int]:
+    """The install's best ``DAY_START_MEASURES`` value per game in ``games`` among its
+    finished games before ``before`` (0 for a game with none): the baseline a relative
+    goal is scored against (#4028). One aggregate statement, and none at all when
+    ``games`` is empty, so a day without a relative goal reads nothing more. The same
+    filters as the day's own games (abandoned and ``dev_affected`` rows never count)."""
+    wanted = sorted(g for g in games if g in DAY_START_MEASURES)
+    if not wanted:
+        return {}
+    # Every relative game reads ``final_score`` today; a new measure needs its own column.
+    assert all(DAY_START_MEASURES[g] == "final_score" for g in wanted), wanted
+    rows = (
+        await session.execute(
+            select(GameType.name, func.max(Game.final_score))
+            .select_from(Game)
+            .join(GameType, Game.game_type_id == GameType.id)
+            .where(
+                Game.session_id == session_id,
+                GameType.name.in_(wanted),
+                Game.completed_at.is_not(None),
+                Game.completed_at < before,
+                not_abandoned(),
+                not_dev_affected(),
+            )
+            .group_by(GameType.name)
+        )
+    ).all()
+    found = {name: int(best) for name, best in rows if best is not None}
+    return {g: found.get(g, 0) for g in wanted}
 
 
 async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Slate:
@@ -355,10 +401,20 @@ async def get_status_for_session(
         (name, game_facts(metadata, final_score, duration_ms))
         for name, metadata, final_score, duration_ms in rows
     ]
+    # A relative goal (Sort "new levels", #4028) is scored against the best before the
+    # day started: one more aggregate, only on a day that holds one.
+    day_start = await day_start_bests(
+        session,
+        session_id,
+        relative_games((*template.goals, assignment.bonus)),
+        day.start_utc,
+    )
     return ChallengeStatus(
         day=day,
         slate=assignment.slate,
         template=template,
-        goals=evaluate_template(template, ended),
-        bonus=None if assignment.bonus is None else evaluate_goal(assignment.bonus, ended),
+        goals=evaluate_template(template, ended, day_start),
+        bonus=(
+            None if assignment.bonus is None else evaluate_goal(assignment.bonus, ended, day_start)
+        ),
     )

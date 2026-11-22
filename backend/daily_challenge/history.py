@@ -18,8 +18,10 @@ once for its three days):
    1 names (the step-down days and bonus days), so a miss or an ignored bonus is
    judged on that day's full play.
 3. **Per-day counts and bests**: one grouped row per game type, with the finished
-   games of each local day of the affinity window (``CASE`` sums, any dialect) and the
-   best ``final_score`` ever before each served day (the cap for score goals).
+   games and the best ``final_score`` of each local day of the affinity window (``CASE``
+   aggregates, any dialect), the best before that window (Sort's per-day pace, #4028),
+   and the best ``final_score`` ever before each served day and each probe day (the cap
+   for score goals, and the day-start best a Sort "new levels" goal is scored against).
 4. **Game creation summary**: one aggregate row over the install's ``games`` rows (any
    row, as ``assignments.may_pin`` reads them) created since the earliest instant a
    served day could have been requested, minus ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``.
@@ -47,7 +49,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from daily_challenge import assignments, personal
 from daily_challenge.assignments import MAX_DAYS_AHEAD, Assignment
-from daily_challenge.definitions import Facts, Goal, game_facts, local_day_of
+from daily_challenge.definitions import (
+    Facts,
+    Goal,
+    facts_for,
+    game_facts,
+    is_relative,
+    local_day_of,
+)
 from db.jsonx import plus_hours
 from db.models import Game, GameType
 from games.filters import not_abandoned, not_dev_affected
@@ -101,8 +110,12 @@ class InstallHistory:
     games: dict[str, list[PastGame]] = field(default_factory=dict)
     # Finished games per (game type, local day), over the affinity window.
     daily_counts: dict[str, dict[date, int]] = field(default_factory=dict)
-    # Best final_score ever before each served day, per game type.
+    # Best final_score ever before each served day (and each probe day), per game type.
     best_scores: dict[date, dict[str, int]] = field(default_factory=dict)
+    # Best final_score per (game type, local day) over the affinity window, and the best
+    # before that window: Sort's per-day standings (``sort_new_levels_per_day``, #4028).
+    daily_best: dict[str, dict[date, int]] = field(default_factory=dict)
+    best_before_window: dict[str, int] = field(default_factory=dict)
     # Pinned assignments by local date; the pick adds the days it picks.
     pinned: dict[date, Assignment] = field(default_factory=dict)
     # Query 4 per served day, and the write ceiling's window. None: not read
@@ -179,14 +192,44 @@ class InstallHistory:
         return any(g.local_date == day for g in self.games.get(game, []))
 
     def met_on(self, goal: Goal, day: date) -> bool:
-        """Whether a finished game of ``day`` met ``goal`` (exact on probe days)."""
-        return any(
-            g.local_date == day and goal.evaluate(g.facts)
-            for g in self.games.get(goal.game_type, [])
+        """Whether a finished game of ``day`` met ``goal`` (exact on probe days). A
+        relative goal (Sort "new levels") is scored against the best before ``day``
+        (query 3 reads it for every probe day)."""
+        day_start = (
+            {goal.game_type: self.best_final_score(goal.game_type, day)}
+            if is_relative(goal)
+            else None
         )
+        for g in self.games.get(goal.game_type, []):
+            if g.local_date != day:
+                continue
+            facts = facts_for(goal, g.facts, day_start)
+            if facts is not None and goal.evaluate(facts):
+                return True
+        return False
 
     def best_final_score(self, game: str, day: date) -> int:
         return self.best_scores.get(day, {}).get(game, 0)
+
+    def sort_new_levels_per_day(self, day: date) -> list[int]:
+        """New Sort levels solved on each local day of play in the affinity window before
+        ``day``: that day's best ``final_score`` (the standing after its last solve) minus
+        the best before it. From per-day maxima (query 3), not from single rows, so a
+        player solving 10 levels a day reads as 10 a day (#4028)."""
+        dates = [day - timedelta(days=back) for back in range(self.affinity_window, 0, -1)]
+        maxima = self.daily_best.get("sort", {})
+        running = max(
+            [self.best_before_window.get("sort", 0)]
+            + [v for d, v in maxima.items() if d < dates[0]]
+        )
+        out: list[int] = []
+        for d in dates:
+            best = maxima.get(d)
+            if best is None:
+                continue
+            out.append(max(0, best - running))
+            running = max(running, best)
+        return out
 
 
 def _aware(value: datetime) -> datetime:
@@ -289,7 +332,8 @@ async def load_install_history(
         .subquery()
     )
     probe_terms = []
-    for game, days in sorted(_probe_days(history.pinned, day).items()):
+    probes = _probe_days(history.pinned, day)
+    for game, days in sorted(probes.items()):
         windows = [local_day_of(d, tz_offset_minutes) for d in sorted(days)]
         probe_terms.append(
             and_(
@@ -323,28 +367,27 @@ async def load_install_history(
         )
     history.games = dict(by_game)
 
-    # 3. Finished games per local day of the affinity window; the best final_score
-    # before each served day.
+    # 3. Finished games and best final_score per local day of the affinity window; the
+    # best before that window; the best final_score before each served day and each
+    # probe day (a relative Sort goal's baseline, #4028).
     count_days = [
         through - timedelta(days=back) for back in range(1, window + (through - day).days + 1)
     ]
     count_windows = [local_day_of(d, tz_offset_minutes) for d in count_days]
+    best_days = sorted(set(served).union(*probes.values()))
 
     def in_window(w):
         return and_(Game.completed_at >= w.start_utc, Game.completed_at < w.end_utc)
 
-    columns = [func.sum(case((in_window(w), 1), else_=0)) for w in count_windows] + [
-        func.max(
-            case(
-                (
-                    Game.completed_at < local_day_of(d, tz_offset_minutes).start_utc,
-                    Game.final_score,
-                ),
-                else_=None,
-            )
-        )
-        for d in served
-    ]
+    def best_before(start: datetime):
+        return func.max(case((Game.completed_at < start, Game.final_score), else_=None))
+
+    columns = (
+        [func.sum(case((in_window(w), 1), else_=0)) for w in count_windows]
+        + [func.max(case((in_window(w), Game.final_score), else_=None)) for w in count_windows]
+        + [best_before(count_windows[-1].start_utc)]
+        + [best_before(local_day_of(d, tz_offset_minutes).start_utc) for d in best_days]
+    )
     agg = (
         await session.execute(
             select(GameType.name, *columns)
@@ -362,11 +405,17 @@ async def load_install_history(
     ).all()
     n = len(count_days)
     for name, *values in agg:
-        counts, bests = values[:n], values[n:]
+        counts, day_bests = values[:n], values[n : 2 * n]
+        before_window, bests = values[2 * n], values[2 * n + 1 :]
         history.daily_counts[name] = {
             d: int(c) for d, c in zip(count_days, counts, strict=True) if c
         }
-        for d, best in zip(served, bests, strict=True):
+        history.daily_best[name] = {
+            d: int(b) for d, b in zip(count_days, day_bests, strict=True) if b is not None
+        }
+        if before_window is not None:
+            history.best_before_window[name] = int(before_window)
+        for d, best in zip(best_days, bests, strict=True):
             if best is not None:
                 history.best_scores.setdefault(d, {})[name] = int(best)
 

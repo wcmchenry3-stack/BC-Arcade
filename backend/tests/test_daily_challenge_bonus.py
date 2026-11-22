@@ -91,7 +91,8 @@ def test_share_one_is_always_a_discovery_goal_of_an_unplayed_game() -> None:
         goal = choose_bonus(h, _DAY, _FREE, _core_of("twenty48"), session_id=f"s{seed}", share=1.0)
         assert goal is not None and bonus_kind(goal) == "discovery"
         assert goal.tier == DISCOVERY_TIER
-        assert goal.game_type in {"sudoku", "solitaire", "freecell"}  # never played, not core
+        # never played, not core (Sort is a spec game again, #4028)
+        assert goal.game_type in {"sudoku", "solitaire", "freecell", "sort"}
 
 
 def test_share_zero_is_always_a_stretch_in_an_affinity_game() -> None:

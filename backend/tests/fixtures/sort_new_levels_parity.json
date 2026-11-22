@@ -1,0 +1,17 @@
+{
+  "description": "Bottle Sort 'solve N new levels' (#4028). Read by backend/tests/test_daily_challenge_sort_levels.py (server evaluation) and frontend/src/game/daily_challenge/__tests__/sortNewLevels.test.ts (offline evaluation), so the two agree. day_start_best: the highest level solved before the local day started. solves: the final_score (highest level solved after the solve, sent on every solve, replays included) of each non-abandoned Sort row finished that day. target: N.",
+  "cases": [
+    { "name": "first ever solve, day-start best 0", "day_start_best": 0, "solves": [1], "target": 1, "met": true },
+    { "name": "one solve short of N from 0", "day_start_best": 0, "solves": [1], "target": 2, "met": false },
+    { "name": "exactly N from 0", "day_start_best": 0, "solves": [1, 2], "target": 2, "met": true },
+    { "name": "exactly N above the day-start best", "day_start_best": 10, "solves": [11, 12], "target": 2, "met": true },
+    { "name": "one short of N", "day_start_best": 10, "solves": [11], "target": 2, "met": false },
+    { "name": "more than N", "day_start_best": 10, "solves": [11, 12, 13, 14], "target": 3, "met": true },
+    { "name": "a replay of an old level is not new", "day_start_best": 10, "solves": [10], "target": 1, "met": false },
+    { "name": "many replays are not new", "day_start_best": 10, "solves": [10, 10, 10, 10], "target": 1, "met": false },
+    { "name": "replays then one new level", "day_start_best": 10, "solves": [10, 10, 11], "target": 1, "met": true },
+    { "name": "no Sort played", "day_start_best": 10, "solves": [], "target": 1, "met": false },
+    { "name": "the last legacy level", "day_start_best": 22, "solves": [23], "target": 1, "met": true },
+    { "name": "the last catalog level", "day_start_best": 117, "solves": [118, 119, 120], "target": 3, "met": true }
+  ]
+}
