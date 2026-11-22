@@ -13,6 +13,8 @@
   "goal.sudoku.final_score_at_least": "{{game}}で{{target}}点以上を獲得",
   "goal.sudoku.solved": "{{game}}を1問解く",
   "goal.sort.final_score_at_least": "{{game}}でレベル{{target}}に到達",
+  "goal.sort.new_levels_at_least_one": "{{game}}で新しいレベルを{{count}}つクリア",
+  "goal.sort.new_levels_at_least_other": "{{game}}で新しいレベルを{{count}}つクリア",
   "goal.solitaire.moves_at_least_one": "{{game}}で{{count}}手以上プレイ",
   "goal.solitaire.moves_at_least_other": "{{game}}で{{count}}手以上プレイ",
   "goal.solitaire.won": "{{game}}に勝利",

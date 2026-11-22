@@ -220,7 +220,7 @@ export function useDailyChallenge(): DailyChallengeResult {
   if (offlineToday) {
     // Today's own `/status` beats the cache; either way the queued games count.
     const base = heldToday ?? offlineToday.base;
-    challenge = base ? withLocalProgress(base, offlineToday.ended) : null;
+    challenge = base ? withLocalProgress(base, offlineToday.ended, offlineToday.dayStart) : null;
   }
 
   let phase: DailyChallengePhase;

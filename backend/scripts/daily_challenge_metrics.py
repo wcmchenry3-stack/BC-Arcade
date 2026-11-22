@@ -27,7 +27,8 @@ d. next-day return: of qualifying install-days, the share where the same install
 
 Goals are rebuilt with ``goal_from_spec`` and scored with ``evaluate_goal`` against
 the games the install finished that day, exactly as the live status and the streak
-do (abandoned games never count: ``games.filters.not_abandoned``).
+do (abandoned and dev-affected games never count: ``games.filters.not_abandoned``,
+``not_dev_affected``, #4039).
 
 Approximation (documented, not silent): a pinned row stores only the install's local
 *date*, not its UTC offset. Every install is bucketed with one offset
@@ -41,8 +42,11 @@ only: no install id is printed or returned. Reads ``DATABASE_URL`` the way the a
 does (``settings.Settings``, ``backend/.env``, the environment).
 
 Cost: per chunk of ``CHUNK_INSTALLS`` installs, three SELECTs (the next page of
-install ids, their pinned rows, their games), so the query count is
-``3 * ceil(installs / CHUNK_INSTALLS) + 1`` (the loop ends on an empty id page), never one per install or day, and only one
+install ids, their pinned rows, their games), plus a fourth only when a pinned row of the
+chunk holds a relative goal (Bottle Sort "solve N new levels", #4028): the best Sort level
+of those installs before the window, grouped per install; each later day's baseline is a
+running max over the chunk's games, already read. So the query count is at most
+``4 * ceil(installs / CHUNK_INSTALLS) + 1`` (the loop ends on an empty id page), never one per install or day, and only one
 chunk is in memory at a time. Rough size at 10k DAU over 60 days: ~30k distinct
 installs -> ~60 chunks, ~181 queries; ~600k pinned rows and a few million games
 streamed through, tens of MB resident (one chunk), about a minute against a
@@ -68,16 +72,22 @@ from typing import Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from daily_challenge import personal
 from daily_challenge.assignments import decode_goals
-from daily_challenge.definitions import game_facts, local_day_of
-from daily_challenge.service import EndedGame, evaluate_goal
+from daily_challenge.definitions import (
+    DAY_START_MEASURES,
+    NEW_LEVELS_KIND,
+    game_facts,
+    local_day_of,
+)
+from daily_challenge.editions import edition_column, edition_group
+from daily_challenge.service import EndedGame, evaluate_goal, running_day_starts
 from daily_challenge.streak import GOALS_TO_QUALIFY
 from db.models import DailyChallengeAssignment, Game, GameType
-from games.filters import not_abandoned
+from games.filters import not_abandoned, not_dev_affected
 
 DEFAULT_DAYS = 14
 CHUNK_INSTALLS = 500
@@ -124,7 +134,13 @@ def _score_install(
     pinned: dict[date, tuple[str, str | None]],
     games: dict[date, list[EndedGame]],
     last_matured_day: date,
+    before_window: dict[tuple[str, int], int] | None = None,
 ) -> None:
+    """``before_window``: the install's day-start bests per (relative game, Sort edition)
+    at the start of the window (Sort "new levels", #4028), or None when no pinned row
+    holds such a goal. Later days' come from a running max over the window's games
+    (``service.running_day_starts``, as the streak)."""
+    day_starts = {} if before_window is None else running_day_starts(before_window, games, pinned)
     for day, (goals_text, bonus_text) in pinned.items():
         try:
             goals = decode_goals(goals_text)
@@ -148,7 +164,7 @@ def _score_install(
             count.assigned += 1
             if goal.game_type in played_types:
                 count.offered += 1
-            if evaluate_goal(goal, ended).completed:
+            if evaluate_goal(goal, ended, day_starts.get(day)).completed:
                 count.met += 1
                 met_count += 1
         if bonus_type is not None:
@@ -217,6 +233,9 @@ async def _collect(
                 Game.completed_at >= first,
                 Game.completed_at < last,
                 not_abandoned(),
+                # A run a dev-panel action touched never counts, as in /status and the
+                # streak (#4039).
+                not_dev_affected(),
             )
         )
         games: dict[str, dict[date, list[EndedGame]]] = defaultdict(lambda: defaultdict(list))
@@ -224,8 +243,46 @@ async def _collect(
             games[sid][_local_date(completed_at, tz_offset_minutes)].append(
                 (name, game_facts(metadata, final_score, duration_ms))
             )
+        before = await _before_window(db, pinned, first)
         for sid, days in pinned.items():
-            _score_install(totals, days, games.get(sid, {}), last_matured_day)
+            _score_install(totals, days, games.get(sid, {}), last_matured_day, before.get(sid))
+
+
+async def _before_window(
+    db: AsyncSession, pinned: dict[str, dict[date, tuple[str, str | None]]], first: datetime
+) -> dict[str, dict[tuple[str, int], int]]:
+    """Per install with a relative goal (Sort "new levels", #4028) in the chunk: its best
+    Sort level before the window per Sort edition, the baselines its first day is scored
+    against. One grouped SELECT per chunk, none when no pinned row of the chunk holds
+    such a goal."""
+    sids = [
+        sid
+        for sid, days in pinned.items()
+        if any(NEW_LEVELS_KIND in goals_text for goals_text, _ in days.values())
+    ]
+    if not sids:
+        return {}
+    games = sorted(DAY_START_MEASURES)
+    edition = edition_column()
+    rows = await db.execute(
+        select(Game.session_id, GameType.name, edition, func.max(Game.final_score))
+        .select_from(Game)
+        .join(GameType, Game.game_type_id == GameType.id)
+        .where(
+            Game.session_id.in_(sids),
+            GameType.name.in_(games),
+            Game.completed_at.is_not(None),
+            Game.completed_at < first,
+            not_abandoned(),
+            not_dev_affected(),
+        )
+        .group_by(Game.session_id, GameType.name, edition_group())
+    )
+    out: dict[str, dict[tuple[str, int], int]] = {sid: {} for sid in sids}
+    for sid, name, ed, best in rows:
+        if best is not None and str(sid) in out:
+            out[str(sid)][(name, int(ed))] = int(best)
+    return out
 
 
 def _report(totals: _Totals, since: date, until: date, tz_offset_minutes: int) -> dict[str, Any]:

@@ -366,8 +366,8 @@ Notes:
   bank is provably solvable. _Shipped (#3993)._
 - **Yacht:** the comment "abandoned games count with their score so far" is out of date: abandons are filtered.
   _Fixed (#3993)._
-- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Deferred
-  to #4028; the shared template keeps them (see "Shipped" below)._
+- **Bottle Sort:** the absolute level targets (3/8/15 and 10/30/60) are replaced by "N new levels". _Shipped for
+  the personal pick as a relative goal kind (#4028); the shared template keeps them (see "Shipped" below)._
 - **Blackjack:** the pending hand-count goals are dropped (§7a). _Shipped (#3996)._
 
 ### Shipped for the free games (#3993, #3994)
@@ -380,8 +380,9 @@ from the tables above:
   luck-dependent (provably solvable deals); the stale Solitaire and Yacht comments are fixed. The shared template
   keeps three tiers each: win / win in at most 150 (FreeCell 130) / at most 120 (100) moves.
 - **Bottle Sort personal goals deferred to #4028** (a relative "new levels" goal kind). "N new levels" pinned for today+1 and
-  today+2 at today's first open could already be met by today's solves, so Sort has no personal goals and is not
+  today+2 at today's first open could already be met by today's solves, so Sort had no personal goals and was not
   eligible for a personal pick. It keeps its absolute targets (3/8/15 and 10/30/60) on shared-template days.
+  _Shipped in #4028: see "Shipped for Bottle Sort" below._
 - **Cold start uses the pool's easy-tier goal where §12's "Finish a game" can't be evaluated.** 2048 cold start is
   score 500+ and Yacht's is score 100+ (a Yacht or 2048 "finish" has no fact the existing kinds read, and a
   `final_score_at_least 1` would read as "score 1+"). Sudoku's cold start is "solve a puzzle": the difficulty is in
@@ -419,6 +420,20 @@ Personal-pick goals for Blackjack, Cascade, Hearts, Mahjong and Star Swarm (`GAM
 - **Star Swarm targets use the usual `difficulty_tier`**, separated in memory from the 10 recent runs (no extra query); the goal is not tier-bound because no existing kind asks for one.
 - **`PREMIUM_GOAL_POOL` stays equal to `FREE_GOAL_POOL`.** Premium games in it would let `resolve_slate` change a day already served (#2760), change streak replays of unfrozen days, and add frozen rows, for a shared template only an install without history sees.
 - **Fixes it needed:** `/status` and the streak now skip `dev_affected` rows (the history already did), and the streak reads every game with a spec (it read only the pools' games, so a premium goal day could never score).
+
+### Shipped for Bottle Sort (#4028)
+
+Owner decision (option 1): a **relative goal kind**, scored against the player's best Sort level at the start of that day. Contract: [DAILY-CHALLENGE.md §2a, §5, §6](DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993). Where it differs from the tables above:
+
+- **"Solve N new levels" is `new_levels_at_least` with target N**, not `final_score_at_least` with a pinned level (§13 "Wire compatibility"). It is met when the day's highest level solved minus the highest solved before the day started is at least N, so a day pinned two days ahead is still about that day's own solves, and a replay (which reports the unchanged standing) never counts.
+- **N** is the per-day pace (each day's best `final_score` minus the best before it, over the affinity window), stretched, rounded, 1–3; 1 at cold start; one fewer after two misses. It is capped by the levels left above the best before the day: 120 for the catalog edition, 23 for the pre-catalog random levels, following the install's edition (always the catalog with `SORT_CATALOG_EDITION_ENFORCED` on; its latest row's edition with it off). A player with no level left gets no Sort goal (core or bonus); the stars goal is still not built.
+- **Sort is eligible again** and counts toward the 3 finished games.
+- **Baselines are per Sort edition** (review round 1 on #4038): catalog rows and pre-catalog random-level rows are numbered apart, so a migrated install counts new levels from its catalog best, as its device does. Switch on: catalog rows only. Switch off: each row against its own edition's best. Same statements, one more `GROUP BY` key.
+- **Today's partial standing is not a day's pace** when today+1 or today+2 is picked.
+- **The metrics script skips `dev_affected` runs** like `/status` and the streak (#4039).
+- **Cost.** No new table or column. `/status` adds one aggregate only on a day with this goal; the streak one aggregate per call (the best before its window) and a running max in memory, only when a pinned day holds the goal; the metrics script one grouped SELECT per chunk that holds it; the pick reads per-day bests and the step-down days' baselines in its existing query 3. The device stores one record of about 30 B (`@sort/day_start`), written once per day Sort is played.
+- **Older builds** show "Play Bottle Sort" (no copy for the kind) and never mark it done offline; `/status` scores it for them.
+- **Accepted edge.** N is fixed when the day is pinned, from the best known then: a player at 118 pinned "2 new levels" for today+2 who reaches 120 before that day cannot meet it.
 
 ### Data needed per measure (input to step 3)
 
@@ -470,6 +485,9 @@ on-device history is needed**. §9's ring buffer is dropped.
 
 - Core goals keep the current shape (`game_type`, `kind`, `target`). Sort's "N new levels" is sent as
   `final_score_at_least` with the pinned level, so **older app builds render every new core goal correctly**.
+  _As shipped (#4028) it is instead the relative kind `new_levels_at_least` with target N, because a pinned level
+  for today+1 / today+2 could already be met by today's solves. Builds from before #4028 show it as "Play Bottle
+  Sort" and never mark it done offline; `/status` still scores it for them._
 - The bonus goal goes in a **new `bonus` field** that older builds ignore. They keep showing 3 goals and a correct
   done count.
 - Cross-game rules unchanged: at most one win-dependent goal a day, and abandons never count.

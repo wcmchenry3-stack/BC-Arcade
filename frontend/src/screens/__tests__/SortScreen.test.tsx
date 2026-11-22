@@ -13,6 +13,8 @@ import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroun
 import * as Haptics from "expo-haptics";
 import { WIN_CASCADE_MS } from "../../game/sort/motion";
 import { resetReduceMotionForTests } from "../../components/shared/useReduceMotion";
+import { readSortDayStart, resetSortDayStartForTests } from "../../game/sort/dayStart";
+import { localDayKey } from "../../game/daily_challenge/localDay";
 
 // ---------------------------------------------------------------------------
 // Mocks — factories must be self-contained (jest.mock is hoisted)
@@ -1026,6 +1028,21 @@ describe("SortScreen — result card (#2512)", () => {
       total_moves: 7,
       catalog_version: 1,
     });
+  });
+
+  // #4028: the Daily Challenge's offline "N new levels" counts from this standing.
+  it("records the standing before the day's first solve", async () => {
+    resetSortDayStartForTests();
+    storage.loadProgress.mockResolvedValue({
+      unlockedLevel: 3,
+      currentLevelId: null,
+      currentState: null,
+    });
+    storage.loadBestMoves.mockResolvedValue({ "1": 6 });
+    const r = await renderScreen();
+    await solveLevel(r, 2);
+    const today = localDayKey();
+    await waitFor(async () => expect(await readSortDayStart()).toEqual({ day: today, best: 1 }));
   });
 
   it("leaves total_moves out when a lower level has no best on record", async () => {

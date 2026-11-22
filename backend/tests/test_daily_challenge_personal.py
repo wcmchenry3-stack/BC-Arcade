@@ -24,8 +24,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from sqlalchemy import event, select
 
+from daily_challenge import definitions, personal, service
 from daily_challenge import history as history_mod
-from daily_challenge import personal, service
 from daily_challenge.assignments import Assignment, derived_template_id, encode_goals
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
@@ -201,6 +201,7 @@ def test_cold_start_goals_per_game() -> None:
         "sudoku": ["sudoku:solved"],
         "twenty48": ["twenty48:final_score_at_least:500"],
         "yacht": ["yacht:final_score_at_least:100"],
+        "sort": ["sort:new_levels_at_least:1"],
     }
 
 
@@ -221,6 +222,7 @@ def test_an_experienced_players_goals_per_game() -> None:
         "sudoku": ["sudoku:solved", "sudoku:final_score_at_least:200"],
         "twenty48": ["twenty48:final_score_at_least:1350", "twenty48:highest_tile_at_least:512"],
         "yacht": ["yacht:final_score_at_least:170"],
+        "sort": ["sort:new_levels_at_least:1"],
     }
 
 
@@ -295,6 +297,7 @@ _GAME_FACTS = {
     "freecell": st.builds(_win, st.integers(52, 300)),
     "sudoku": st.builds(lambda s: {"won": True, "final_score": s}, st.integers(0, 300)),
     "yacht": st.builds(_score, st.integers(0, 375)),
+    "sort": st.builds(lambda s: {"won": True, "final_score": s}, st.integers(1, 23)),
 }
 
 
@@ -319,6 +322,11 @@ def test_property_targets_are_bounded_and_progress_is_never_already_done(
             goal = option.goal
             pre_day = [f for g, _d, f in plays if g == game]
             gtype = GAME_SPECS[game].type(goal_type_name(goal))
+            if game == "sort":
+                # #4028: N new levels, 1-3, never more than the levels left (23 here).
+                best = max((f["final_score"] for f in pre_day), default=0)
+                assert goal.target is not None and 1 <= goal.target <= min(3, 23 - best)
+                continue
             if not gtype.personal or len(pre_day) < 3:
                 continue
             assert goal.target is not None
@@ -333,7 +341,6 @@ def test_property_targets_are_bounded_and_progress_is_never_already_done(
         core = _core(h, sid=str(sid), pct=pct)
         assert core[0] == _DW and len(core) == 3
         assert sum(g.is_win for g in core) <= 1
-        assert all(g.game_type != "sort" for g in core)
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +543,7 @@ def _with_bonus(game: str) -> Assignment:
 
 def test_discovery_candidates_are_eligible_games_not_played_in_the_window() -> None:
     h = _history(_DAY, _profile_plays({"twenty48": 1, "yacht": 1}, _DAY))
-    assert discovery_candidates(h, _FREE, _DAY) == ["freecell", "solitaire", "sudoku"]
+    assert discovery_candidates(h, _FREE, _DAY) == ["freecell", "solitaire", "sort", "sudoku"]
     assert discovery_candidates(h, ["yacht", "sudoku"], _DAY) == ["sudoku"]
 
 
@@ -1387,20 +1394,27 @@ def test_a_day_the_game_was_not_played_is_no_miss() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Review round 2: Bottle Sort personal goals are deferred to an owner decision
+# Review round 2 deferred Bottle Sort personal goals; #4028 brings them back as the
+# relative "solve N new levels" kind (more in test_daily_challenge_sort_levels.py).
 # ---------------------------------------------------------------------------
 
 
-def test_no_personal_pick_ever_contains_a_sort_goal() -> None:
-    assert "sort" not in GAME_SPECS
+def test_a_sort_heavy_install_gets_a_relative_sort_goal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(definitions, "sort_catalog_goals_on", lambda: True)
+    assert "sort" in GAME_SPECS
     h = _history(_DAY, _profile_plays({"sort": 10, "yacht": 1}, _DAY))
     for i in range(100):
-        core = _core(h, sid=f"s{i}", eligible=[*_FREE, "sort"])
-        assert all(g.game_type != "sort" for g in core)
+        core = _core(h, sid=f"s{i}", eligible=_FREE)
+        sort = [g for g in core if g.game_type == "sort"]
+        assert len(sort) == 1 and sort[0].kind == "new_levels_at_least"
+        assert 1 <= (sort[0].target or 0) <= 3
 
 
 @needs_db
-async def test_a_sort_heavy_install_never_gets_a_personal_sort_goal(client: TestClient) -> None:
+async def test_a_sort_heavy_install_gets_a_personal_sort_goal_every_day(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(definitions, "sort_catalog_goals_on", lambda: True)
     sid = str(uuid.uuid4())
     today = local_day(0).date
     await _seed_2048(sid, today)
@@ -1411,13 +1425,17 @@ async def test_a_sort_heavy_install_never_gets_a_personal_sort_goal(client: Test
                 "sort",
                 _noon(today - timedelta(days=back)) + timedelta(minutes=lvl),
                 final_score=10 * (6 - back) + lvl,
-                metadata={"won": True},
+                metadata={"won": True, "catalog_version": 1},
             )
     body = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
     assert len(await _rows_for(sid)) == 3
-    assert all(g["game_type"] != "sort" for day in body["days"] for g in day["goals"])
+    # 10 new levels a day (best 59 before today): N = 3 on every pinned day, today+1 and
+    # today+2 included, relative to each day's own start.
+    for day in body["days"]:
+        sort = [g for g in day["goals"] if g["game_type"] == "sort"]
+        assert [(g["kind"], g["target"]) for g in sort] == [("new_levels_at_least", 3)]
     async with get_session_factory()() as db:
-        assert "sort" not in await service.eligible_games(db, sid)
+        assert "sort" in await service.eligible_games(db, sid)
 
 
 @needs_db

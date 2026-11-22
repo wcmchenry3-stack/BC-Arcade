@@ -251,6 +251,19 @@ describe("DailyChallengeCard — goals", () => {
     expect(queryByText(/brand_new_kind/)).toBeNull();
   });
 
+  it("words Sort's relative goal by count, singular and plural (#4028)", async () => {
+    mockGetDailyChallenge.mockResolvedValue({
+      challengeId: "2026-09-27",
+      goals: [
+        { id: "a", gameSlug: "sort", kind: "new_levels_at_least", target: 1, completed: false },
+        { id: "b", gameSlug: "sort", kind: "new_levels_at_least", target: 3, completed: true },
+      ],
+    });
+    const { findByLabelText } = await renderCard();
+    expect(await findByLabelText("Solve 1 new Sort Puzzle level, not completed yet")).toBeTruthy();
+    expect(await findByLabelText("Solve 3 new Sort Puzzle levels, completed")).toBeTruthy();
+  });
+
   it("drops a goal for a game this build hides, and counts progress over what is shown", async () => {
     __forceStoreBuildForTests(true);
     mockGetDailyChallenge.mockResolvedValue({
