@@ -19,7 +19,9 @@ a. core goal completion per game and goal kind: ``met / offered`` ("among those 
 b. the share of install-days with any finished game that met at least 2 of the 3
    core goals (the streak rule, ``streak.GOALS_TO_QUALIFY``);
 c. bonus discovery: of pinned days with a bonus goal, the share where the bonus
-   game was played that day ("no bonus data yet" while no row has one, #3995);
+   game was played that day ("no bonus data yet" while no row has one), then split by
+   the bonus's kind: a discovery bonus is pinned with tier "easy", a stretch with
+   "medium" (``personal.bonus_kind``, #3995);
 d. next-day return: of qualifying install-days, the share where the same install
    finished a game the next day.
 
@@ -69,6 +71,7 @@ from dotenv import load_dotenv
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from daily_challenge import personal
 from daily_challenge.assignments import decode_goals
 from daily_challenge.definitions import game_facts, local_day_of
 from daily_challenge.service import EndedGame, evaluate_goal
@@ -99,6 +102,8 @@ class _Totals:
     returned: int = 0
     bonus_days: int = 0
     bonus_played: int = 0
+    # kind ("discovery" / "stretch") -> [days, played]
+    bonus_kinds: dict[str, list[int]] = field(default_factory=lambda: defaultdict(lambda: [0, 0]))
     skipped_rows: int = 0
     skipped_bonus: int = 0
 
@@ -127,9 +132,11 @@ def _score_install(
             totals.skipped_rows += 1
             continue
         bonus_type = None
+        bonus_tier = None
         if bonus_text is not None:
             try:
-                bonus_type = json.loads(bonus_text)[0]
+                parsed = json.loads(bonus_text)
+                bonus_type, bonus_tier = parsed[0], parsed[3]
             except (ValueError, KeyError, TypeError, IndexError):
                 totals.skipped_bonus += 1
         ended = games.get(day, [])
@@ -147,6 +154,9 @@ def _score_install(
         if bonus_type is not None:
             totals.bonus_days += 1
             totals.bonus_played += bonus_type in played_types
+            kind = "discovery" if bonus_tier == personal.DISCOVERY_TIER else "stretch"
+            totals.bonus_kinds[kind][0] += 1
+            totals.bonus_kinds[kind][1] += bonus_type in played_types
         if not ended:
             continue
         totals.install_days_played += 1
@@ -263,6 +273,10 @@ def _report(totals: _Totals, since: date, until: date, tz_offset_minutes: int) -
             "share": _rate(totals.qualified, totals.install_days_played),
         },
         "bonus_discovery": bonus,
+        "bonus_by_kind": {
+            kind: {"days": days, "played": played, "share": _rate(played, days)}
+            for kind, (days, played) in sorted(totals.bonus_kinds.items())
+        },
         "next_day_return": {
             "qualified_days": totals.qualified_matured,
             "returned": totals.returned,
@@ -319,6 +333,8 @@ def render(report: dict[str, Any]) -> str:
         )
     else:
         lines.append("Bonus discovery: no bonus data yet")
+    for kind, k in report["bonus_by_kind"].items():
+        lines.append(f"  {kind}: {k['played']} / {k['days']} played = {_pct(k['share'])}")
     r = report["next_day_return"]
     lines.append(
         f"Next-day return after a qualifying day: {r['returned']} / {r['qualified_days']} "

@@ -89,8 +89,8 @@ def retention_days() -> int:
 @dataclass(frozen=True)
 class Assignment:
     """One install's goals for one day: the core template (the streak's 3 goals),
-    the slate it came from, and the optional bonus goal (#3995; ``None`` for now,
-    and never counted toward the streak)."""
+    the slate it came from, and the optional bonus goal (#3995; ``None`` on a shared
+    day, and never counted toward the streak)."""
 
     template: Template
     slate: Slate = "free"

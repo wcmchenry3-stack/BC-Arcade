@@ -44,7 +44,8 @@ not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``DAILY_CHALLENGE_ASSIGNMENT_RETENTION_DAYS`` and ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS``
 (``daily_challenge.assignments``, #3992), ``DAILY_CHALLENGE_STRETCH_PCT``,
 ``DAILY_CHALLENGE_AFFINITY_DAYS`` and ``DAILY_CHALLENGE_HISTORY_GAMES``
-(``daily_challenge.personal``, #3993/#3994),
+(``daily_challenge.personal``, #3993/#3994), ``DAILY_CHALLENGE_BONUS_ENABLED`` and
+``DAILY_CHALLENGE_DISCOVERY_SHARE`` (``daily_challenge.personal``, #3995),
 ``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
 ``DB_PING_TIMEOUT_SECONDS`` (``routes.health``), plus the payload caps and retention of #3298:
@@ -246,6 +247,13 @@ class Settings(BaseSettings):
     # How many of an install's latest finished games per game a personal target reads.
     daily_challenge_history_games: int = Field(
         default=10, alias="DAILY_CHALLENGE_HISTORY_GAMES", ge=3, le=50
+    )
+    # The optional daily bonus goal (#3995, daily_challenge.personal): a dial to turn it
+    # off without an app release, and the share of bonuses that are a discovery goal
+    # (a game the install has not played lately) rather than a bigger stretch.
+    daily_challenge_bonus_enabled: bool = Field(default=True, alias="DAILY_CHALLENGE_BONUS_ENABLED")
+    daily_challenge_discovery_share: float = Field(
+        default=0.5, alias="DAILY_CHALLENGE_DISCOVERY_SHARE", ge=0, le=1
     )
     # The App Store notification-history replay window (purchases.apple_notifications).
     # The one window is sent to every environment, and Sandbox only accepts a startDate

@@ -503,6 +503,8 @@ async def test_a_stored_bonus_is_served_apart_from_the_core_goals(client: TestCl
         "game_type": "yacht",
         "kind": bonus.kind,
         "target": 100,
+        "completed": False,
+        "best_score": None,
     }
     assert body["total_goals"] == 3 and bonus.id not in _ids(body["goals"])
     up = client.get("/daily-challenge/upcoming", headers=_headers(sid)).json()
@@ -590,6 +592,15 @@ async def test_the_bonus_never_counts_toward_the_streak() -> None:
     tile_bonus = json.dumps(["twenty48", "highest_tile_at_least", 64, "easy"])
     await _pin(sid, _YESTERDAY, goals=_SHARED.goals, bonus=tile_bonus)
     assert await _streak(sid) == 0  # 1 core goal + the bonus is still 1 of 3
+
+
+@needs_db
+async def test_an_unmet_bonus_does_not_stop_a_day_qualifying() -> None:
+    sid = str(uuid.uuid4())
+    await _play_twenty48(sid, _YESTERDAY)  # meets 2 of the 3 pinned core goals
+    bonus = json.dumps(["yacht", "final_score_at_least", 100, "easy"])
+    await _pin(sid, _YESTERDAY, bonus=bonus)
+    assert await _streak(sid) == 1
 
 
 # ---------------------------------------------------------------------------

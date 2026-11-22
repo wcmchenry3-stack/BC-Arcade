@@ -13,8 +13,10 @@ Rate limits:
                  plus which it has met. For an entitled session these can differ
                  from /today.
 
-Every day payload carries ``bonus``: the optional bonus goal, reserved for #3995
-and always null until then. Older app builds ignore it.
+Every day payload carries ``bonus``: the optional bonus goal (#3995), null for a
+shared-template day or with ``DAILY_CHALLENGE_BONUS_ENABLED`` off. ``/status`` adds
+``completed`` and ``best_score`` to it, as for a core goal. It is never one of
+``goals``, so older app builds ignore it and keep a correct done count.
 """
 
 from __future__ import annotations
@@ -153,5 +155,13 @@ async def get_status(
         completed_goals=status.completed_goals,
         total_goals=len(status.goals),
         completed=status.completed,
-        bonus=None if status.bonus is None else GoalResponse(**_goal_fields(status.bonus)),
+        bonus=(
+            None
+            if status.bonus is None
+            else GoalStatusResponse(
+                **_goal_fields(status.bonus.goal),
+                completed=status.bonus.completed,
+                best_score=status.bonus.best_score,
+            )
+        ),
     )
