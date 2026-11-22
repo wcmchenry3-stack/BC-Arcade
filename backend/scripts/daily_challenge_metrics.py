@@ -83,7 +83,7 @@ from daily_challenge.definitions import (
     game_facts,
     local_day_of,
 )
-from daily_challenge.editions import edition_column
+from daily_challenge.editions import edition_column, edition_group
 from daily_challenge.service import EndedGame, evaluate_goal, running_day_starts
 from daily_challenge.streak import GOALS_TO_QUALIFY
 from db.models import DailyChallengeAssignment, Game, GameType
@@ -276,7 +276,7 @@ async def _before_window(
             not_abandoned(),
             not_dev_affected(),
         )
-        .group_by(Game.session_id, GameType.name, edition)
+        .group_by(Game.session_id, GameType.name, edition_group())
     )
     out: dict[str, dict[tuple[str, int], int]] = {sid: {} for sid in sids}
     for sid, name, ed, best in rows:

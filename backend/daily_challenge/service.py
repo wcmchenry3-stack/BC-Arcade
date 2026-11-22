@@ -55,7 +55,7 @@ from daily_challenge.definitions import (
     relative_games,
     template_for,
 )
-from daily_challenge.editions import edition_column
+from daily_challenge.editions import edition_column, edition_group
 from daily_challenge.history import InstallHistory
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import DISABLED_GAMES, is_dev_override_active
@@ -169,7 +169,7 @@ async def day_start_bests(
                 not_abandoned(),
                 not_dev_affected(),
             )
-            .group_by(GameType.name, edition)
+            .group_by(GameType.name, edition_group())
         )
     ).all()
     return {(name, int(ed)): int(best) for name, ed, best in rows if best is not None}

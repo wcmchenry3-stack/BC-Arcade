@@ -62,7 +62,7 @@ from daily_challenge.definitions import (
     is_relative,
     local_day_of,
 )
-from daily_challenge.editions import edition_column
+from daily_challenge.editions import edition_column, edition_group
 from db.jsonx import plus_hours
 from db.models import Game, GameType
 from games.filters import not_abandoned, not_dev_affected
@@ -127,8 +127,9 @@ class InstallHistory:
     # The day-start bests per (game type, Sort edition) of each served and probe day,
     # every edition: what a relative goal is scored against (``met_on``).
     edition_bests: dict[date, dict[tuple[str, int], int]] = field(default_factory=dict)
-    # The Sort edition the install's targets read (``_standing_edition``).
-    sort_edition: int = CATALOG_EDITION
+    # The Sort edition the install's targets read, as the loader fixed it for query 3
+    # (``_standing_edition``); None in a hand-built history (``sort_edition`` works it out).
+    read_sort_edition: int | None = None
     # Pinned assignments by local date; the pick adds the days it picks.
     pinned: dict[date, Assignment] = field(default_factory=dict)
     # Query 4 per served day, and the write ceiling's window. None: not read
@@ -168,6 +169,13 @@ class InstallHistory:
             return False
         now = self.now or datetime.now(UTC)
         return now - summary.latest <= self.pin_window
+
+    @property
+    def sort_edition(self) -> int:
+        """The Sort edition the pace, best and catalog cap read (``_standing_edition``)."""
+        if self.read_sort_edition is not None:
+            return self.read_sort_edition
+        return _standing_edition(self)
 
     def _start(self, day: date) -> datetime:
         return local_day_of(day, self.tz_offset_minutes).start_utc
@@ -429,7 +437,7 @@ async def load_install_history(
                 not_abandoned(),
                 not_dev_affected(),
             )
-            .group_by(GameType.name, edition)
+            .group_by(GameType.name, edition_group())
         )
     ).all()
     _fold_counts_and_bests(history, agg, count_days, best_days)
@@ -447,7 +455,7 @@ def _fold_counts_and_bests(
     """Query 3's rows (one per game type and Sort edition) into ``history``: counts summed
     over editions, every edition's day-start bests in ``edition_bests``, and Sort's
     per-day standings and bests from the install's edition only (``sort_edition``)."""
-    history.sort_edition = _standing_edition(history)
+    history.read_sort_edition = _standing_edition(history)
     n = len(count_days)
     for name, ed, *values in agg:
         counts, day_bests = values[:n], values[n : 2 * n]
