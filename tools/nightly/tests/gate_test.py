@@ -58,19 +58,18 @@ def test_every_non_monday_skips_when_unchanged(weekday):
     assert not gate.decide(A, A, weekday, force=False).run
 
 
-def test_outputs_include_range_and_last_green():
+def test_outputs_are_run_reason_and_last_green():
     lines = gate.outputs(B, A, TUESDAY, force=False)
     assert lines == [
         "run=true",
         "reason=dev changed since the last green night",
         f"last_green={A}",
-        f"commit_range={A[:12]}..{B[:12]}",
     ]
 
 
-def test_outputs_without_tag_have_empty_range():
+def test_outputs_without_tag_have_empty_last_green():
     lines = gate.outputs(B, "", TUESDAY, force=False)
-    assert "commit_range=" in lines and "last_green=" in lines
+    assert lines[-1] == "last_green="
 
 
 def run_cli(*args):

@@ -42,7 +42,9 @@ ICONS = {
 def overall(needs: dict) -> str:
     """``skipped`` (dev unchanged), ``green`` (every heavy job succeeded) or ``red``.
 
-    A failed or missing gate is red: nothing was tested, and nothing says why.
+    A failed or missing gate is red: nothing was tested, and nothing says why. So is a failed
+    ``tag-last-green``: every check passed, but ``nightly/last-green`` did not move, so the next
+    night would test the same range again.
     """
     gate = needs.get("gate") or {}
     if gate.get("result") != "success":
@@ -50,7 +52,19 @@ def overall(needs: dict) -> str:
     if (gate.get("outputs") or {}).get("run") != "true":
         return "skipped"
     heavy = [v.get("result") for k, v in needs.items() if k not in NON_HEAVY]
+    if (needs.get("tag-last-green") or {}).get("result") == "failure":
+        return "red"
     return "green" if heavy and all(r == "success" for r in heavy) else "red"
+
+
+def tag_line(needs: dict, sha: str) -> str:
+    """Whether ``nightly/last-green`` moved, from the ``tag-last-green`` result."""
+    result = (needs.get("tag-last-green") or {}).get("result")
+    if result == "success":
+        return f"moved to `{sha[:12]}`"
+    if result == "failure":
+        return "**not moved: `tag-last-green` failed** (every check passed; re-run that job)"
+    return "not moved"
 
 
 def _parse_time(value) -> dt.datetime | None:
@@ -133,6 +147,7 @@ def build_report(
         "",
         f"- **SHA:** `{sha}`",
         f"- **Commit range since last green:** {range_text}",
+        f"- **nightly/last-green:** {tag_line(needs, sha)}",
     ]
     if gate_reason:
         out.append(f"- **Gate:** {gate_reason}")

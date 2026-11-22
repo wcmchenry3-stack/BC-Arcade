@@ -32,7 +32,7 @@ def test_overall_green_red_skipped():
 
 
 def test_overall_ignores_bookkeeping_jobs_and_fails_without_gate():
-    needs = {"gate": gate(), "perf": {"result": "success"}, "tag-last-green": {"result": "failure"}}
+    needs = {"gate": gate(), "perf": {"result": "success"}, "tag-last-green": {"result": "skipped"}}
     assert report.overall(needs) == "green"
     assert report.overall({"gate": gate(result="failure")}) == "red"
     assert report.overall({}) == "red"
@@ -186,3 +186,23 @@ def test_cli_with_missing_needs_file_reports_red(tmp_path):
     )
     assert proc.returncode == 0
     assert "❌ red" in proc.stdout
+
+
+def test_failed_tag_job_makes_the_night_red_and_says_so():
+    needs = {
+        "gate": gate(),
+        "perf": {"result": "success"},
+        "tag-last-green": {"result": "failure"},
+    }
+    assert report.overall(needs) == "red"
+    md = report.build_report(sha=SHA, needs=needs, last_green=LAST)
+    assert md.startswith("## Nightly dev checks: ❌ red")
+    assert "**nightly/last-green:** **not moved: `tag-last-green` failed**" in md
+
+
+def test_tag_line_for_moved_and_not_moved():
+    assert (
+        report.tag_line({"tag-last-green": {"result": "success"}}, SHA) == f"moved to `{SHA[:12]}`"
+    )
+    assert report.tag_line({"tag-last-green": {"result": "skipped"}}, SHA) == "not moved"
+    assert report.tag_line({}, SHA) == "not moved"

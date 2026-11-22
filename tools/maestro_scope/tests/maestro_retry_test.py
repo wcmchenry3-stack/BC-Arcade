@@ -180,3 +180,105 @@ def test_smoke_workflows_retry_only_when_called_by_the_nightly(name):
     assert job["env"]["MAESTRO_RETRY"] == "${{ inputs.nightly && 'true' || 'false' }}"
     text = (WORKFLOWS / name).read_text()
     assert "e2e/maestro/retry.py plan" in text and "e2e/maestro/retry.py verdict" in text
+
+
+def test_nonzero_exit_without_a_failed_case_reruns_the_directory(ws):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", False)])
+    (ws / "maestro-results/home/maestro-failed").write_text("")
+    assert retry.plan("home") == [("e2e/maestro/flows/home/", "maestro-retry/home/__all__.xml")]
+    assert retry.remaining_failures(["home"]) == ["home"]
+    junit(ws / "maestro-retry/home/__all__.xml", [("smoke", False), ("nav", False)])
+    assert retry.remaining_failures(["home"]) == []
+
+
+def test_report_with_no_test_case_fails_even_with_exit_zero(ws):
+    junit(ws / "maestro-results/home/report.xml", [], suite_failures=0)
+    assert retry.plan("home") == [("e2e/maestro/flows/home/", "maestro-retry/home/__all__.xml")]
+    assert retry.remaining_failures(["home"]) == ["home"]
+    # An empty retry report is not a pass either.
+    junit(ws / "maestro-retry/home/__all__.xml", [], suite_failures=0)
+    assert retry.remaining_failures(["home"]) == ["home"]
+
+
+def test_retry_with_nonzero_exit_and_a_clean_report_is_not_a_pass(ws):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", True)])
+    (ws / "maestro-results/home/maestro-failed").write_text("")
+    junit(ws / "maestro-retry/home/nav.xml", [("nav", False)])
+    (ws / "maestro-retry/home/nav.xml.failed").write_text("")
+    assert retry.remaining_failures(["home"]) == ["home/nav"]
+
+
+def test_case_failure_with_exit_marker_still_retries_only_that_flow(ws):
+    junit(ws / "maestro-results/home/report.xml", [("smoke", False), ("nav", True)])
+    (ws / "maestro-results/home/maestro-failed").write_text("")
+    assert retry.plan("home") == [("e2e/maestro/flows/home/nav.yaml", "maestro-retry/home/nav.xml")]
+
+
+@pytest.mark.parametrize("name", ["mobile-smoke-android.yml", "mobile-smoke-ios.yml"])
+def test_smoke_workflows_record_nonzero_exits(name):
+    text = (WORKFLOWS / name).read_text()
+    assert 'FAIL=1; touch "maestro-results/$d/maestro-failed";' in text
+    assert '< /dev/null || touch "$O.failed"' in text
+
+
+def android_script_lines():
+    data = yaml.safe_load((WORKFLOWS / "mobile-smoke-android.yml").read_text())
+    step = next(
+        s
+        for s in data["jobs"]["maestro-android"]["steps"]
+        if str(s.get("uses", "")).startswith("reactivecircus/android-emulator-runner")
+    )
+    return step["with"]["script"].splitlines()
+
+
+def test_android_off_nightly_exits_with_the_loop_result():
+    lines = android_script_lines()
+    loop = next(ln for ln in lines if ln.startswith("FAIL=0; for d in $MAESTRO_PROJECTS"))
+    assert loop.endswith('; done; if [ "$MAESTRO_RETRY" != "true" ]; then exit $FAIL; fi')
+    retry_line = lines[lines.index(loop) + 1]
+    assert retry_line.startswith('if [ "$MAESTRO_RETRY" = "true" ]; then ')
+    assert retry_line.endswith("; fi")
+    # Off the nightly the retry line is a no-op (the emulator action runs each line in sh -c).
+    proc = subprocess.run(
+        ["sh", "-c", retry_line],
+        env={"MAESTRO_RETRY": "false", "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (proc.returncode, proc.stdout) == (0, "")
+
+
+def ios_retry_tail():
+    data = yaml.safe_load((WORKFLOWS / "mobile-smoke-ios.yml").read_text())
+    step = next(
+        s
+        for s in data["jobs"]["maestro-ios"]["steps"]
+        if s.get("name") == "Run Maestro flows on iOS Simulator"
+    )
+    run = step["run"]
+    marker = 'if [ "$MAESTRO_RETRY" != "true" ]; then exit $FAIL; fi'
+    assert run.count(marker) == 1
+    return run[run.index(marker) :]
+
+
+@pytest.mark.parametrize("fail", ["0", "1"])
+def test_ios_off_nightly_exits_with_the_loop_result(fail, tmp_path):
+    proc = subprocess.run(
+        ["bash", "-e", "-c", f"FAIL={fail}\n{ios_retry_tail()}"],
+        env={"MAESTRO_RETRY": "false", "PATH": "/usr/bin:/bin"},
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == int(fail)
+    assert proc.stdout == ""
+
+
+def test_android_job_timeout_is_60_off_the_nightly():
+    data = yaml.safe_load((WORKFLOWS / "mobile-smoke-android.yml").read_text())
+    job = data["jobs"]["maestro-android"]
+    assert job["timeout-minutes"] == "${{ inputs.nightly && 90 || 60 }}"
+    # No step-level limit that would cut the nightly retry short.
+    assert all("timeout-minutes" not in s for s in job["steps"])

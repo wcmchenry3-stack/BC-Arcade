@@ -24,8 +24,14 @@ name: Nightly dev checks
 # - `summary` writes the SHA, the commit range since the last green night and every job's result
 #   and duration to the run summary (tools/nightly/report.py).
 #
-# Cost: the repo is public, so GitHub-hosted runners (Linux and macOS) are not billed. No app
-# data, and no Supabase/Render/Sentry volume beyond the perf run that already ran nightly.
+# Cost: the repo is public, so GitHub-hosted runners (Linux and macOS) are not billed; the sims,
+# Maestro and builds cost runner slots only (about 20 concurrent jobs, 5 macOS). Data: perf's
+# game-flow scenario (YachtGameUser, 1 user, 90 s, paced to one game per ~4.3 s) writes about 21
+# Yacht games to the dev database per run: ~21 `games` rows and ~550 event rows (13 batches of a
+# roll and a score each), about 170 KB at ~300 B an event row. Event rows are replay events,
+# pruned after REPLAY_RETENTION_DAYS (30); game rows stay. Until story 6 (#4059) removes
+# perf.yml's own `0 6 * * *` schedule, perf runs twice a day (about 340 KB/day, ~10 MB of event
+# rows at steady state), and the sim and Maestro schedules also still run on their own.
 
 on:
   workflow_dispatch:
@@ -53,7 +59,6 @@ jobs:
       run: ${{ steps.decide.outputs.run }}
       reason: ${{ steps.decide.outputs.reason }}
       last_green: ${{ steps.decide.outputs.last_green }}
-      commit_range: ${{ steps.decide.outputs.commit_range }}
     steps:
       - uses: actions/checkout@v7
         with:

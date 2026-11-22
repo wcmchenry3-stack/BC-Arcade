@@ -9,8 +9,8 @@ Prints ``key=value`` lines for ``$GITHUB_OUTPUT``:
 
 - ``run``: ``true`` or ``false``.
 - ``reason``: one line saying why, e.g. ``skipped, dev unchanged``.
-- ``last_green``: the last-green SHA, or empty when the tag does not exist yet.
-- ``commit_range``: ``<last-green>..<head>`` (12-char SHAs), or empty without a last green.
+- ``last_green``: the last-green SHA, or empty when the tag does not exist yet. The summary
+  (report.py) shows the commit range from it.
 
 The rules (issue #4054):
 
@@ -56,17 +56,12 @@ def decide(head: str, last_green: str, weekday: int, force: bool) -> Decision:
     return Decision(False, SKIP_UNCHANGED)
 
 
-def commit_range(head: str, last_green: str) -> str:
-    return f"{last_green[:12]}..{head[:12]}" if last_green else ""
-
-
 def outputs(head: str, last_green: str, weekday: int, force: bool) -> list[str]:
     decision = decide(head, last_green, weekday, force)
     return [
         f"run={'true' if decision.run else 'false'}",
         f"reason={decision.reason}",
         f"last_green={last_green}",
-        f"commit_range={commit_range(head, last_green)}",
     ]
 
 

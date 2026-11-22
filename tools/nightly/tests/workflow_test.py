@@ -135,7 +135,7 @@ def test_gate_runs_the_script():
     run = "\n".join(s.get("run", "") for s in JOBS["gate"]["steps"])
     assert "tools/nightly/gate.py" in run
     assert "git/ref/tags/nightly/last-green" in run
-    assert set(JOBS["gate"]["outputs"]) == {"run", "reason", "last_green", "commit_range"}
+    assert set(JOBS["gate"]["outputs"]) == {"run", "reason", "last_green"}
 
 
 def test_no_nightly_job_reuses_a_required_check_name():

@@ -94,7 +94,9 @@ jobs:
     needs: detect-maestro-scope
     if: needs.detect-maestro-scope.outputs.projects != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 90 for the nightly (#4054): its retry pass runs inside this job, after a
+    # full run of about 50 min. PR, dispatch and weekly runs keep 60.
+    timeout-minutes: ${{ inputs.nightly && 90 || 60 }}
     outputs:
       # The opted-in media names and the media artifact's URL, for comment-media (#3805).
       media-names: ${{ steps.media-names.outputs.names }}
@@ -315,15 +317,18 @@ jobs:
           # this): the per-game loop no longer exits non-zero; the next line
           # re-runs each failed flow once (retry.py plan prints "<flow> <report>"
           # pairs; stdin from /dev/null so maestro can't eat the loop's input)
-          # and retry.py verdict fails the step if any flow failed twice. Off
+          # and retry.py verdict fails the step if any flow failed twice. A
+          # non-zero maestro exit leaves a marker file (maestro-failed in the
+          # results directory, <report>.failed for a retry) that the verdict
+          # reads, so an exit the report doesn't explain still fails. Off
           # the nightly, the loop exits $FAIL as before and the retry line is a
           # no-op.
           script: |
             adb shell settings put global hide_error_dialogs 1
             adb shell settings put secure anr_show_background 0
             adb install frontend/android/app/build/outputs/apk/debug/app-debug.apk
-            FAIL=0; for d in $MAESTRO_PROJECTS; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output $MAESTRO_TAG_ARG "e2e/maestro/flows/$d/" || { FAIL=1; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; if [ "$MAESTRO_RETRY" != "true" ]; then exit $FAIL; fi
-            if [ "$MAESTRO_RETRY" = "true" ]; then for d in $MAESTRO_PROJECTS; do python3 e2e/maestro/retry.py plan "$d" | while read -r F O; do echo "::group::Retry $F"; mkdir -p "$(dirname "$O")"; maestro test --format junit --test-suite-name "$d" --output "$O" --debug-output "maestro-debug/retry-$d" --flatten-debug-output $MAESTRO_TAG_ARG "$F" < /dev/null || true; echo "::endgroup::"; done; done; python3 e2e/maestro/retry.py verdict $MAESTRO_PROJECTS; fi
+            FAIL=0; for d in $MAESTRO_PROJECTS; do mkdir -p "maestro-results/$d"; adb logcat -c; T=$(adb shell date "+%Y-%m-%d\ %H:%M:%S" | tr -d "\r"); maestro test --format junit --test-suite-name "$d" --output "maestro-results/$d/report.xml" --debug-output "maestro-debug/$d" --flatten-debug-output $MAESTRO_TAG_ARG "e2e/maestro/flows/$d/" || { FAIL=1; touch "maestro-results/$d/maestro-failed"; echo "::group::logcat for $d (crash buffer + process deaths + app errors)"; adb logcat -d -b crash -v time | tail -n 200 | sed "s/^/  /"; adb logcat -d -b main,system,events -v time | grep -v " I/Maestro" | grep -E "AndroidRuntime|FATAL|F/libc|DEBUG  :|lowmemorykiller|lmkd|ActivityManager: (Process .*(died|has died)|Killing|Force|ANR)|ActivityManager: ANR in|E/ActivityManager|I/ActivityManager: .*(Killing|died)|am_anr|ActivityTaskManager: .*(Force|finish)|E/ReactNativeJS|W/ReactNativeJS|E/unknown:ReactNative" | tail -n 150 | sed "s/^/  /"; echo "::endgroup::"; echo "::group::ANR traces for $d (capped)"; { adb shell 'f=$(ls -t /data/anr/anr_* 2>/dev/null | head -n 1); if [ -n "$f" ] && [ -r "$f" ]; then echo "== $f"; cat "$f"; else echo "no readable /data/anr/anr_* file"; fi' 2>&1 | head -n 400; echo "== dropbox data_app_anr since $T"; adb shell dumpsys dropbox --print $T data_app_anr 2>&1 | head -n 400; } | sed "s/^/  /"; echo "::endgroup::"; }; done; if [ "$MAESTRO_RETRY" != "true" ]; then exit $FAIL; fi
+            if [ "$MAESTRO_RETRY" = "true" ]; then for d in $MAESTRO_PROJECTS; do python3 e2e/maestro/retry.py plan "$d" | while read -r F O; do echo "::group::Retry $F"; mkdir -p "$(dirname "$O")"; maestro test --format junit --test-suite-name "$d" --output "$O" --debug-output "maestro-debug/retry-$d" --flatten-debug-output $MAESTRO_TAG_ARG "$F" < /dev/null || touch "$O.failed"; echo "::endgroup::"; done; done; python3 e2e/maestro/retry.py verdict $MAESTRO_PROJECTS; fi
 
       - name: Write job summary
         id: summary

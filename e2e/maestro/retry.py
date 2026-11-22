@@ -17,6 +17,12 @@ case after its flow file when the flow sets no `name:`). When that is not possib
 an unparseable one, a suite-level failure, or a case name with no matching file), it re-runs
 the whole directory instead, into `maestro-retry/<dir>/__all__.xml`. Only names matching
 SAFE are ever printed, so the shell loop that reads them never sees anything but a path.
+
+Exit codes: the workflows touch `maestro-results/<dir>/maestro-failed` when a directory's
+`maestro test` exits non-zero, and `<retry report>.failed` when a retry does. A directory
+whose report has no test case at all, or whose run exited non-zero although its report shows
+no failed case, is re-run whole and counts as failed unless that retry passes. A retry report
+with no case, or with a non-zero exit, never counts as a pass.
 """
 
 from __future__ import annotations
@@ -31,9 +37,13 @@ RESULTS = "maestro-results"
 RETRY = "maestro-retry"
 FLOWS = "e2e/maestro/flows"
 WHOLE_DIR = "__all__"
+FAILED_MARKER = "maestro-failed"
 SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
-Case = tuple[str | None, bool]  # (test case name, or None for a suite with no cases; failed)
+# (test case name, or None for a suite with no cases; failed). A string, so `str | None` is
+# never evaluated at runtime: with `from __future__ import annotations` every annotation that
+# uses it stays a string too, and the runners' python3 may predate 3.10.
+Case = "tuple[str | None, bool]"
 
 
 def _count(suite: ET.Element, attr: str) -> int:
@@ -61,6 +71,14 @@ def parse_report(path: str) -> list[Case] | None:
     return cases
 
 
+def _needs_whole_dir(directory: str, cases: list[Case] | None, results: str) -> bool:
+    """No usable report, no test case at all, or a non-zero exit the report doesn't explain."""
+    if cases is None or not any(name is not None for name, _ in cases):
+        return True
+    exited_non_zero = os.path.exists(os.path.join(results, directory, FAILED_MARKER))
+    return exited_non_zero and not any(failed for _, failed in cases)
+
+
 def plan(
     directory: str, results: str = RESULTS, flows: str = FLOWS, retry: str = RETRY
 ) -> list[tuple[str, str]]:
@@ -69,7 +87,7 @@ def plan(
         return []
     whole = [(f"{flows}/{directory}/", f"{retry}/{directory}/{WHOLE_DIR}.xml")]
     cases = parse_report(os.path.join(results, directory, "report.xml"))
-    if cases is None:
+    if _needs_whole_dir(directory, cases, results):
         return whole
     pairs = []
     for name, failed in cases:
@@ -92,8 +110,12 @@ def outcomes(directory: str, retry: str = RETRY) -> dict[str | None, bool]:
     merged: dict[str | None, bool] = {}
     for path in sorted(glob.glob(os.path.join(retry, directory, "*.xml"))):
         cases = parse_report(path)
-        if cases is None:
-            # An unreadable retry report: whatever it ran did not pass.
+        if (
+            cases is None
+            or not any(name is not None for name, _ in cases)
+            or (os.path.exists(f"{path}.failed") and not any(failed for _, failed in cases))
+        ):
+            # Unreadable, empty, or a non-zero exit the report doesn't explain: not a pass.
             merged[f"<{os.path.basename(path)}>"] = False
             continue
         for name, failed in cases:
@@ -119,7 +141,7 @@ def remaining_failures(projects: list[str], results: str = RESULTS, retry: str =
     for directory in projects:
         retried = outcomes(directory, retry)
         cases = parse_report(os.path.join(results, directory, "report.xml"))
-        if cases is None:
+        if _needs_whole_dir(directory, cases, results):
             if not dir_passed(retried):
                 left.append(directory)
             continue

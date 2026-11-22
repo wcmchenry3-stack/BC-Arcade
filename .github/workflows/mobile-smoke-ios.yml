@@ -343,12 +343,15 @@ jobs:
               --debug-output "maestro-debug/$d" \
               --flatten-debug-output \
               $MAESTRO_TAG_ARG \
-              "e2e/maestro/flows/$d/" || FAIL=1
+              "e2e/maestro/flows/$d/" || { FAIL=1; touch "maestro-results/$d/maestro-failed"; }
           done
           # Nightly only (#4054): re-run each failed flow once (retry.py plan
           # prints "<flow> <report>" pairs; stdin from /dev/null so maestro
           # can't eat the loop's input), then fail only if a flow failed twice.
-          if [ "$MAESTRO_RETRY" != "true" ] || [ "$FAIL" = "0" ]; then exit $FAIL; fi
+          # A non-zero maestro exit leaves a marker (maestro-failed, or
+          # <report>.failed for a retry) that the verdict reads, so an exit the
+          # report doesn't explain, or a report with no case, still fails.
+          if [ "$MAESTRO_RETRY" != "true" ]; then exit $FAIL; fi
           for d in $MAESTRO_PROJECTS; do
             [ "$d" = "offline" ] && continue
             python3 e2e/maestro/retry.py plan "$d" | while read -r F O; do
@@ -361,7 +364,7 @@ jobs:
                 --debug-output "maestro-debug/retry-$d" \
                 --flatten-debug-output \
                 $MAESTRO_TAG_ARG \
-                "$F" < /dev/null || true
+                "$F" < /dev/null || touch "$O.failed"
               echo "::endgroup::"
             done
           done
