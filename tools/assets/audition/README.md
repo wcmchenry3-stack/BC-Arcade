@@ -6,7 +6,7 @@ Run every command from the **repo root**. One-time setup:
 
 ```bash
 python -m venv tools/.venv && source tools/.venv/bin/activate
-pip install -r tools/assets/requirements.txt      # numpy, for the Python tools
+pip install --require-hashes -r tools/assets/requirements.txt      # numpy, for the Python tools
 cd e2e && npm ci && npx playwright install chromium && cd ..   # Playwright, for run.js
 ```
 
