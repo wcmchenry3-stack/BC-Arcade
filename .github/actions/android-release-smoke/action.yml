@@ -1,0 +1,101 @@
+name: Android release smoke
+description: >
+  assembleRelease for a single ABI (arm64-v8a), debug-signed, then a non-blocking APK size
+  report in the step summary. The debug build check cannot catch release-only failures
+  (Sentry upload, release CMake config, ProGuard). Used by ci.yml's `android-release-smoke`
+  job (a required check: the job keeps its name and change detection, only its build steps
+  live here) and by nightly.yml, which runs it unconditionally (#4054). Call after
+  actions/checkout. Composite steps can't take `defaults.run.working-directory`, so each
+  step sets `working-directory: frontend` itself.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v6
+      with:
+        distribution: zulu
+        java-version: 17
+        cache: gradle
+        cache-dependency-path: frontend/android/**/*.gradle*
+
+    # metro-cache is shared with android-bundle-check (ci.yml) and mobile-smoke-android.yml.
+    - uses: ./.github/actions/setup-frontend
+      with:
+        metro-cache: "true"
+
+    - name: Generate debug keystore for smoke test
+      shell: bash
+      working-directory: frontend
+      run: |
+        keytool -genkey -v \
+          -keystore android/app/debug.keystore \
+          -alias androiddebugkey \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -storepass android \
+          -keypass android \
+          -dname "CN=Android Debug,O=Android,C=US"
+
+    - name: Release build smoke test (arm64-v8a only)
+      shell: bash
+      working-directory: frontend
+      run: |
+        cd android
+        ./gradlew assembleRelease \
+          -PreactNativeArchitectures=arm64-v8a \
+          -PUPLOAD_STORE_FILE=debug.keystore \
+          -PUPLOAD_STORE_PASSWORD=android \
+          -PUPLOAD_KEY_ALIAS=androiddebugkey \
+          -PUPLOAD_KEY_PASSWORD=android \
+          -PALLOW_DEBUG_SIGNED_RELEASE=true \
+          --no-daemon
+      # No SENTRY_AUTH_TOKEN: sentry.gradle skips source-map upload when the
+      # token is absent, so the smoke test validates the build chain only.
+      # Signing is pinned to the generated debug.keystore so the production
+      # upload keystore is never required in CI. The real UPLOAD_* values live
+      # only in the release machine's user-level ~/.gradle/gradle.properties
+      # (see docs/ANDROID-CI.md); the explicit -P flags keep this step
+      # independent of any gradle.properties defaults.
+
+    # Non-blocking size report (#2829). This is the only CI job that produces a release
+    # APK, so it is the cheapest place to see native-inclusive numbers. Caveats: arm64-v8a
+    # only, universal APK (not the Play AAB split), debug-signed. Use it for trends, not for
+    # the Play download size (see the native checklist in docs/PERFORMANCE.md).
+    - name: APK size report (non-blocking)
+      shell: bash
+      working-directory: frontend
+      continue-on-error: true
+      run: |
+        # `|| true`: an explicit `shell: bash` adds pipefail, and a missing APK must reach
+        # the warning below rather than end the step at `ls`.
+        APK=$(ls android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1 || true)
+        if [ -z "$APK" ]; then
+          echo "::warning::No release APK found under android/app/build/outputs/apk/release; skipping the size report."
+          exit 0
+        fi
+        # This job sets no EXPO_PUBLIC_API_URL / EXPO_PUBLIC_TEST_HOOKS, so the embedded
+        # bundle is a store bundle (hidden premium games excluded, #2830). Say so, so a
+        # future env change here explains a jump in the numbers.
+        CONFIG="store config"
+        if [ "${EXPO_PUBLIC_TEST_HOOKS:-}" = "1" ] || [[ "${EXPO_PUBLIC_API_URL:-}" == https://dev-games-api.buffingchi.com* ]]; then
+          CONFIG="all-games config"
+        fi
+        {
+          echo "### Release APK size (arm64-v8a, universal, debug-signed, ${CONFIG})"
+          echo
+          echo "APK: $(basename "$APK") — $(stat --printf='%s' "$APK") bytes (compressed, on disk)"
+          echo
+          echo "| Entry group | Uncompressed KB | Compressed KB |"
+          echo "|---|---:|---:|"
+          unzip -v "$APK" | awk 'NR>3 && NF>=8 && $1 ~ /^[0-9]+$/ {
+            n=$8; g="other";
+            if (n ~ /^lib\//) g="lib/ (native .so)";
+            else if (n ~ /^classes[0-9]*\.dex$/) g="classes*.dex";
+            else if (n ~ /^assets\/index\.android\.bundle$/) g="assets/index.android.bundle (JS or Hermes bytecode)";
+            else if (n ~ /^res\/raw\//) g="res/raw (sounds, fonts)";
+            else if (n ~ /^res\//) g="res/ (images, layouts)";
+            else if (n ~ /^assets\//) g="assets/ (other)";
+            u[g]+=$1; c[g]+=$3 }
+            END { for (g in u) printf "| %s | %.0f | %.0f |\n", g, u[g]/1024, c[g]/1024 }' | sort -t'|' -k4 -n -r
+        } | tee -a "$GITHUB_STEP_SUMMARY"
