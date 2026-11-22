@@ -326,7 +326,7 @@ def test_email_text_has_sha_range_dependabot_jobs_retries_and_links():
 
 def test_email_text_says_when_the_trigger_was_missed_and_when_no_dependabot():
     text = report.build_email_text(sha=SHA, needs=NEEDS_GREEN, trigger_missed=True)
-    assert "did not start a run in the last 26 hours" in text
+    assert "did not start a run in the last 20 hours" in text
     assert "bc-arcade-nightly-trigger" in text
     assert "Dependabot merges in the range:\n  none" in text
     assert "first tracked night" in text
@@ -371,3 +371,12 @@ def test_cli_writes_the_resend_payload(tmp_path):
         "[BC Arcade nightly] RED 2026-11-22 ccccccc (external trigger missed)"
     )
     assert payload["text"].startswith("Nightly dev checks: RED")
+
+
+def test_deduped_run_headline_is_not_dev_unchanged():
+    needs = {"gate": {"result": "success", "outputs": {"run": "false", "duplicate": "true"}}}
+    md = report.build_report(sha=SHA, needs=needs, last_green=LAST)
+    assert md.startswith("## Nightly dev checks: ⏭️ skipped, already ran today (external trigger)")
+    assert "dev unchanged" not in md.splitlines()[0]
+    unchanged = {"gate": {"result": "success", "outputs": {"run": "false", "duplicate": "false"}}}
+    assert "dev unchanged" in report.build_report(sha=SHA, needs=unchanged).splitlines()[0]

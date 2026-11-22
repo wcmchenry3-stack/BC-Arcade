@@ -32,8 +32,28 @@ def _one_line(text: str, limit: int = 200) -> str:
     return " ".join(text.split())[:limit]
 
 
-def send(payload_path: str, api_key: str, opener=urllib.request.urlopen) -> int:
-    """Return the process exit code. ``opener`` is injectable for tests."""
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect: the Bearer key must only ever go to api.resend.com."""
+
+    def redirect_request(self, *_args, **_kwargs):
+        return None  # the 3xx then surfaces as an HTTPError
+
+
+def _no_redirect_open(request, timeout):
+    return urllib.request.build_opener(_NoRedirect).open(request, timeout=timeout)
+
+
+def _error_message(exc: urllib.error.HTTPError) -> str:
+    """The ``message`` field of a JSON error body, one line, 200 chars; never the raw body."""
+    try:
+        message = json.loads(exc.read().decode("utf-8", "replace")).get("message")
+    except (OSError, ValueError, AttributeError):
+        return ""
+    return _one_line(message) if isinstance(message, str) else ""
+
+
+def send(payload_path: str, api_key: str, opener=_no_redirect_open, url: str = API_URL) -> int:
+    """Return the process exit code. ``opener`` and ``url`` are injectable for tests."""
     try:
         with open(payload_path, encoding="utf-8") as fh:
             payload = json.load(fh)
@@ -47,7 +67,7 @@ def send(payload_path: str, api_key: str, opener=urllib.request.urlopen) -> int:
         print("::warning::NIGHTLY_REPORT_TO is empty; not sending the nightly report email")
         return 0
     request = urllib.request.Request(
-        API_URL,
+        url,
         data=json.dumps(payload).encode("utf-8"),
         method="POST",
         headers={
@@ -60,8 +80,8 @@ def send(payload_path: str, api_key: str, opener=urllib.request.urlopen) -> int:
         with opener(request, timeout=TIMEOUT_SECONDS) as response:
             status = response.status
     except urllib.error.HTTPError as exc:
-        body = _one_line(exc.read().decode("utf-8", "replace")) if exc.fp else ""
-        print(f"::error::Resend rejected the nightly report email: HTTP {exc.code} {body}")
+        detail = f" {_error_message(exc)}" if exc.fp else ""
+        print(f"::error::Resend rejected the nightly report email: HTTP {exc.code}{detail}")
         return 1
     except (urllib.error.URLError, OSError) as exc:
         print(f"::error::Could not reach Resend: {type(exc).__name__}")

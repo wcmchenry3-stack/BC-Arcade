@@ -516,7 +516,7 @@ Start command (it must be exactly this one line; Render runs it as one line, so 
 curl -fsS -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_DISPATCH_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/wcmchenry3-stack/BC-Arcade/actions/workflows/nightly.yml/dispatches -d '{"ref":"dev"}'
 ```
 
-GitHub answers `204` and the run starts within a minute. A second fire the same day is not deduped on this side; `nightly.yml`'s fallback `schedule` (about 08:37 UTC, usually hours late) checks whether a run was created in the last 26 hours and exits as a no-op if so. If the trigger stops working, the fallback runs the nightly late and the report email subject ends with "(external trigger missed)".
+GitHub answers `204` and the run starts within a minute. A second fire the same day is not deduped on this side; `nightly.yml`'s fallback `schedule` (about 08:37 UTC, usually hours late) checks whether a `workflow_dispatch` run was created in the last 20 hours and exits as a no-op if so. If the trigger stops working, the fallback runs the nightly late and the report email subject ends with "(external trigger missed)".
 
 Rotating the token:
 

@@ -37,6 +37,7 @@ NON_HEAVY = frozenset({"gate", "tag-last-green"})
 EMAIL_FROM = "BC Arcade nightly <nightly@mail.buffingchi.com>"
 MAX_EMAIL_COMMITS = 30
 MAX_COMMITS = 50
+HEADLINE_DUPLICATE = "⏭️ skipped, already ran today (external trigger)"
 HEADLINES = {"green": "✅ green", "red": "❌ red", "skipped": "⏭️ skipped, dev unchanged"}
 ICONS = {
     "success": "✅ success",
@@ -161,7 +162,13 @@ def build_report(
     gate_reason: str = "",
     run_url: str = "",
 ) -> str:
-    headline = HEADLINES[overall(needs)]
+    state = overall(needs)
+    headline = HEADLINES[state]
+    if (
+        state == "skipped"
+        and str(((needs.get("gate") or {}).get("outputs") or {}).get("duplicate")) == "true"
+    ):
+        headline = HEADLINE_DUPLICATE
     range_text = f"`{last_green[:12]}..{sha[:12]}`" if last_green else "—"
     out = [
         f"## Nightly dev checks: {headline}",
@@ -229,7 +236,7 @@ def build_email_text(  # noqa: PLR0913 - one keyword per input, like build_repor
     out = [f"Nightly dev checks: {overall(needs).upper()}", ""]
     if trigger_missed:
         out.append(
-            "The external trigger (Render cron) did not start a run in the last 26 hours; this is "
+            "The external trigger (Render cron) did not start a run in the last 20 hours; this is "
             "the late GitHub fallback run. Check the Render cron job bc-arcade-nightly-trigger "
             "(docs/RENDER.md)."
         )

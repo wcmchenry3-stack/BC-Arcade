@@ -23,7 +23,7 @@ name: Nightly dev checks
 # - Trigger (#4056): GitHub starts this repo's crons 8-10 h late, so the real trigger is the Render
 #   cron `bc-arcade-nightly-trigger` (08:00 UTC, docs/RENDER.md), which dispatches this workflow
 #   on `dev`. The `schedule` below is a late fallback: on a `schedule` event the gate first lists
-#   the runs of this workflow created in the last 26 h (runs API, not the last-green tag: a red
+#   the runs of this workflow dispatched in the last 20 h (runs API, not the last-green tag: a red
 #   night does not move the tag). One exists: the run is a no-op ("already ran today"). None
 #   exists: the external trigger was missed, the nightly runs late and the report subject says so.
 # - `tag-last-green` moves `nightly/last-green` to the SHA only when every heavy job succeeded.
@@ -101,14 +101,14 @@ jobs:
             LAST=""
           fi
           # The fallback schedule asks the runs API whether this workflow already ran in the last
-          # 26 h (gate.py excludes this run and applies the window). If the call fails, runs.json
+          # 20 h (gate.py excludes this run and applies the window). If the call fails, runs.json
           # is missing and the gate runs without flagging anything.
           RUNS_ARGS=()
           if [ "$EVENT" = "schedule" ]; then
-            SINCE=$(date -u -d '26 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+            SINCE=$(date -u -d '20 hours ago' +%Y-%m-%dT%H:%M:%SZ)
             if gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/nightly.yml/runs" \
-              -f "created=>=${SINCE}" -F per_page=100 \
-              --jq '[.workflow_runs[] | {id, created_at}]' > runs.json; then
+              -f event=workflow_dispatch -f "created=>=${SINCE}" -F per_page=100 \
+              --jq '[.workflow_runs[] | {id, created_at, event}]' > runs.json; then
               RUNS_ARGS=(--runs runs.json --run-id "$RUN_ID")
             else
               echo "::warning::Could not list recent nightly runs; running without the dedupe"

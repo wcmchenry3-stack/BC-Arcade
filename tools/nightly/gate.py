@@ -17,7 +17,7 @@ Prints ``key=value`` lines for ``$GITHUB_OUTPUT``:
 The rules (issues #4054, #4056):
 
 0. On a ``schedule`` event (the late GitHub fallback; the real trigger is the Render cron, which
-   dispatches at 08:00 UTC): if another ``nightly.yml`` run was created in the last 26 hours, skip
+   dispatches at 08:00 UTC): if another ``nightly.yml`` run was dispatched (``workflow_dispatch``: the Render cron or a manual run) in the last 20 hours, skip
    with "skipped, already ran today (external trigger)" (``duplicate=true``). The runs API is used
    rather than the last-green tag, because a red night does not move the tag. If none exists the
    external trigger was missed: the rules below apply and ``trigger_missed=true`` (the report
@@ -47,7 +47,13 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 MONDAY = 1
 SKIP_UNCHANGED = "skipped, dev unchanged"
 SKIP_DUPLICATE = "skipped, already ran today (external trigger)"
-DEDUPE_HOURS = 26
+# Only dispatched runs dedupe a fallback: an earlier fallback (``schedule``) run that itself did
+# nothing must not hide a missed Render trigger. The window is 20 h: the fallback fires between
+# 08:37 UTC (on time) and about 08:00 + 10.6 h (late). Yesterday's 08:00 dispatch is at least
+# 24 h 37 m before it and must stay outside the window; today's 08:00 dispatch is at most
+# 10.6 h before it and must stay inside.
+DEDUPE_HOURS = 20
+DEDUPE_EVENT = "workflow_dispatch"
 
 
 @dataclass(frozen=True)
@@ -84,11 +90,11 @@ def _created(value) -> dt.datetime | None:
 def recent_other_runs(
     runs: list[dict], current_run_id: str, now: dt.datetime, hours: int = DEDUPE_HOURS
 ) -> int:
-    """Count runs (not the current one) created within ``hours`` of ``now``, edge inclusive."""
+    """Count dispatched runs (not the current one) created within ``hours`` of ``now``, edge inclusive."""
     cutoff = now - dt.timedelta(hours=hours)
     count = 0
     for run in runs:
-        if str(run.get("id")) == str(current_run_id):
+        if str(run.get("id")) == str(current_run_id) or run.get("event") != DEDUPE_EVENT:
             continue
         created = _created(run.get("created_at"))
         if created is not None and cutoff <= created <= now:

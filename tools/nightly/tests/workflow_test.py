@@ -259,7 +259,9 @@ def test_gate_can_read_the_runs_api_and_dedupes_only_the_schedule_event():
     run = run_text("gate")
     assert "actions/workflows/nightly.yml/runs" in run
     assert "created=>=${SINCE}" in run
-    assert "date -u -d '26 hours ago'" in run
+    assert "-f event=workflow_dispatch" in run
+    assert "{id, created_at, event}" in run
+    assert "date -u -d '20 hours ago'" in run
     assert '[ "$EVENT" = "schedule" ]' in run
     assert "--runs runs.json" in run and '--run-id "$RUN_ID"' in run
     decide = next(s for s in JOBS["gate"]["steps"] if s.get("id") == "decide")

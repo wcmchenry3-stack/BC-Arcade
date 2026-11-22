@@ -119,9 +119,9 @@ def test_cli_defaults_weekday_to_today():
 NOW = dt.datetime(2026, 11, 22, 16, 0, tzinfo=dt.UTC)
 
 
-def run_at(run_id, hours_ago, minutes_extra=0):
+def run_at(run_id, hours_ago, minutes_extra=0, event="workflow_dispatch"):
     created = NOW - dt.timedelta(hours=hours_ago, minutes=minutes_extra)
-    return {"id": run_id, "created_at": created.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    return {"id": run_id, "created_at": created.strftime("%Y-%m-%dT%H:%M:%SZ"), "event": event}
 
 
 def test_recent_runs_exclude_the_current_run():
@@ -131,10 +131,25 @@ def test_recent_runs_exclude_the_current_run():
     assert gate.recent_other_runs([run_at(1, 0)], "1", NOW) == 0
 
 
-def test_recent_runs_window_edge_is_inclusive_at_26_hours():
-    assert gate.recent_other_runs([run_at(2, 26)], "1", NOW) == 1
-    assert gate.recent_other_runs([run_at(2, 26, minutes_extra=1)], "1", NOW) == 0
-    assert gate.recent_other_runs([run_at(2, 25, minutes_extra=59)], "1", NOW) == 1
+def test_recent_runs_window_edge_is_inclusive_at_20_hours():
+    assert gate.recent_other_runs([run_at(2, 20)], "1", NOW) == 1
+    assert gate.recent_other_runs([run_at(2, 20, minutes_extra=1)], "1", NOW) == 0
+    assert gate.recent_other_runs([run_at(2, 19, minutes_extra=59)], "1", NOW) == 1
+
+
+def test_an_on_time_fallback_does_not_see_yesterdays_dispatch():
+    # Fallback at 08:37; yesterday's 08:00 dispatch was 24 h 37 m ago. Today's 08:00 was 37 m ago.
+    assert gate.recent_other_runs([run_at(2, 24, minutes_extra=37)], "1", NOW) == 0
+    assert gate.recent_other_runs([run_at(2, 10, minutes_extra=36)], "1", NOW) == 1
+
+
+def test_only_dispatched_runs_dedupe_not_earlier_fallback_runs():
+    schedule_run = run_at(2, 19, event="schedule")
+    assert gate.recent_other_runs([schedule_run], "1", NOW) == 0
+    assert gate.recent_other_runs([schedule_run, run_at(3, 8)], "1", NOW) == 1
+    assert gate.recent_other_runs([run_at(4, 8, event="push")], "1", NOW) == 0
+    no_event = {"id": 5, "created_at": run_at(5, 1)["created_at"]}
+    assert gate.recent_other_runs([no_event], "1", NOW) == 0
 
 
 def test_recent_runs_ignore_unparseable_dates():
@@ -187,8 +202,12 @@ def test_cli_schedule_dedupes_from_a_runs_file(tmp_path):
     runs.write_text(
         json.dumps(
             [
-                {"id": 7, "created_at": now.isoformat()},  # the current run
-                {"id": 6, "created_at": (now - dt.timedelta(hours=9)).isoformat()},
+                {"id": 7, "created_at": now.isoformat(), "event": "schedule"},  # this run
+                {
+                    "id": 6,
+                    "created_at": (now - dt.timedelta(hours=9)).isoformat(),
+                    "event": "workflow_dispatch",
+                },
             ]
         )
     )
@@ -199,7 +218,8 @@ def test_cli_schedule_dedupes_from_a_runs_file(tmp_path):
         "run=false",
         "reason=skipped, already ran today (external trigger)",
     ]
-    runs.write_text(json.dumps([{"id": 7, "created_at": now.isoformat()}]))
+    earlier = {"id": 5, "created_at": (now - dt.timedelta(hours=9)).isoformat()}
+    runs.write_text(json.dumps([{**earlier, "event": "schedule"}]))
     proc = run_cli(*args, "--runs", str(runs))
     assert "run=true" in proc.stdout and "trigger_missed=true" in proc.stdout
     proc = run_cli(*args, "--runs", str(tmp_path / "missing.json"))

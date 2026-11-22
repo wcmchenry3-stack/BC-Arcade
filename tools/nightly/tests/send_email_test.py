@@ -1,8 +1,10 @@
 """pytest suite for tools/nightly/send_email.py (#4055): the Resend send and its fail-safes."""
 
+import http.server
 import importlib.util
 import io
 import json
+import threading
 import urllib.error
 from pathlib import Path
 
@@ -106,3 +108,68 @@ def test_main_reads_the_key_from_the_environment(payload, monkeypatch, capsys):
     monkeypatch.delenv("RESEND_API_KEY", raising=False)
     assert send_email.main(["--payload", payload]) == 0
     assert "RESEND_API_KEY is empty" in capsys.readouterr().out
+
+
+def test_error_output_is_only_the_json_message_never_the_raw_body(payload, capsys):
+    secret_ish = "RAW-BODY-MARKER"
+
+    def opener(request, **_kwargs):
+        body = json.dumps({"message": "m" * 300, "extra": secret_ish}).encode()
+        raise urllib.error.HTTPError(request.full_url, 422, "x", {}, io.BytesIO(body))
+
+    assert send_email.send(payload, "k", opener) == 1
+    out = capsys.readouterr().out
+    assert "HTTP 422 " + "m" * 200 in out and "m" * 201 not in out
+    assert secret_ish not in out
+
+
+def test_error_output_for_a_non_json_body_is_only_the_status(payload, capsys):
+    def opener(request, **_kwargs):
+        raise urllib.error.HTTPError(
+            request.full_url, 500, "x", {}, io.BytesIO(b"<html>RAW</html>")
+        )
+
+    assert send_email.send(payload, "k", opener) == 1
+    out = capsys.readouterr().out
+    assert "HTTP 500" in out and "RAW" not in out
+
+
+def test_a_redirect_is_not_followed_and_the_key_never_reaches_another_host(payload, capsys):
+    hits = {"first": [], "second": []}
+
+    class Second(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            hits["second"].append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    second = http.server.HTTPServer(("127.0.0.1", 0), Second)
+    target = f"http://127.0.0.1:{second.server_port}/emails"
+
+    class First(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            hits["first"].append(self.headers.get("Authorization"))
+            self.send_response(307)  # 307 keeps the method and body
+            self.send_header("Location", target)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    first = http.server.HTTPServer(("127.0.0.1", 0), First)
+    servers = [first, second]
+    for server in servers:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{first.server_port}/emails"
+        assert send_email.send(payload, "re_secret", url=url) == 1
+    finally:
+        for server in servers:
+            server.shutdown()
+            server.server_close()
+    assert hits["first"] == ["Bearer re_secret"]
+    assert hits["second"] == []
+    assert "HTTP 307" in capsys.readouterr().out
