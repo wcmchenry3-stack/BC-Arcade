@@ -36,11 +36,11 @@ MEASURED = {
     "yacht": 3198,
     "twenty48": 3052,
     "sudoku": 2578,
-    "solitaire": 2916,  # #4012, the owner's round-2 picks
+    "solitaire": 3324,  # #4076, the Klondike deal (was 2916, #4012)
     "freecell": 3276,
     "daily_word": 3352,
     "blackjack": 2738,  # #4013, the owner's picks (hidden games)
-    "hearts": 3096,
+    "hearts": 2582,  # #4076, the penalty cards and a whole heart (was 3096, #4013)
     "mahjong": 2930,
     "starswarm": 3202,
     "cascade": 2954,
@@ -286,7 +286,7 @@ def _value(face: str) -> int:
 
 def _cards(name: str) -> list[str]:
     if name == "solitaire":
-        return [*art.SOL_WASTE, *art.SOL_COLUMN, art.SOL_MOVING]
+        return list(art.SOL_FACES)
     return [f for faces in art.FC_CASCADES for f in faces]
 
 
@@ -301,8 +301,9 @@ def test_every_card_is_a_real_card_drawn_once(name):
 @pytest.mark.parametrize("name", ["solitaire", "freecell"])
 def test_card_scenes_show_red_and_black_suits(name):
     im = np.asarray(art.render(name))
-    assert _mask(im, _rgb(art.CARD_RED)).sum() > 150
-    assert _mask(im, _rgb(art.CARD_INK)).sum() > 150
+    least = 60 if name == "solitaire" else 150  # #4076: Solitaire's face-up cards are bare pips
+    assert _mask(im, _rgb(art.CARD_RED)).sum() > least
+    assert _mask(im, _rgb(art.CARD_INK)).sum() > least
 
 
 def test_card_draws_its_index_in_the_suit_colour():
@@ -342,53 +343,45 @@ def test_pip_card_rejects_unknown_suits():
 
 
 # --------------------------------------------------------------------------------------------
-# Solitaire (Klondike; the owner's pick B, #4012): stock, waste, a card moving off the waste
+# Solitaire (Klondike; the owner's pick A, #4076): the deal's staircase
 
 
-def test_solitaire_column_alternates_and_descends_over_a_face_down_card():
-    assert art.SOL_COLUMN_DOWN >= 1
-    for a, b in itertools.pairwise(art.SOL_COLUMN):
+def _sol_col(col: int) -> tuple[int, int]:
+    """Column `col`'s top-left x, and the top y of its face-up card."""
+    x0, y0 = art.SOL_AT
+    return x0 + col * art.SOL_PITCH, y0 + col * art.SOL_STEP
+
+
+def test_solitaire_deals_seven_columns_of_alternating_colours():
+    assert len(art.SOL_FACES) == 7
+    for a, b in itertools.pairwise(art.SOL_FACES):
         assert art.is_red(a) != art.is_red(b), (a, b)
-        assert _value(a) - _value(b) == 1, (a, b)
 
 
-def test_solitaire_moving_card_is_the_wastes_and_a_legal_move_onto_the_column():
-    """The 7S came off the waste (Klondike's draw pile) and goes onto the 8H at the column's foot:
-    black on red, one rank down. It is drawn between the two: right of the column, below the
-    waste, lower than the waste's top and higher than where it lands."""
-    mv, target = art.SOL_MOVING, art.SOL_COLUMN[-1]
-    assert art.is_red(mv) != art.is_red(target) and _value(target) - _value(mv) == 1
-    w, _ = art.SOL_SIZE
-    mx, my = art.SOL_MOVING_AT
-    cx, cy = art.SOL_COLUMN_AT
-    landing = cy + art.SOL_COLUMN_DOWN * art.DOWN_STEP + len(art.SOL_COLUMN) * art.SOL_STEP
-    wx, wy = art.SOL_WASTE_AT
-    assert cx < mx < cx + w  # overlapping the column, offset to its right
-    assert wy < my < landing
-    assert mx >= wx + (len(art.SOL_WASTE) - 1) * art.SOL_WASTE_FAN  # past the waste's fan
-
-
-def test_solitaire_shows_the_stock_face_down():
-    """Klondike's tell, and what sets the tile apart from FreeCell: the stock's teal backs, and
-    the face-down card under the column's run."""
+def test_solitaire_column_n_has_n_backs_and_one_face_up_card():
+    """Down each column's centre line: n teal backs (one run of teal per back), then the white
+    face-up card, whose pip is in the column's suit colour."""
     im = np.asarray(art.render("solitaire"))
     back = _mask(im, _rgb(art.CARD_BACK))
-    sx, sy = art.SOL_STOCK_AT
+    red, ink = _mask(im, _rgb(art.CARD_RED)), _mask(im, _rgb(art.CARD_INK))
     w, h = art.SOL_SIZE
-    assert back[sy : sy + h, sx : sx + w].mean() > 0.5  # the stock's top card
-    cx, cy = art.SOL_COLUMN_AT
-    assert back[cy : cy + art.DOWN_STEP, cx : cx + w].sum() > 40  # under the run
+    for col, face in enumerate(art.SOL_FACES):
+        x, y = _sol_col(col)
+        cx = x + w // 2
+        line = back[:, cx].astype(int)
+        assert (np.diff(line) == 1).sum() == col, col  # one teal field per back
+        assert line[y + 2 : y + h].sum() == 0  # no teal on the face-up card
+        want, other = (red, ink) if art.is_red(face) else (ink, red)
+        box = (slice(y + 2, y + h), slice(x + 2, x + w - 2))
+        assert want[box].sum() > 8 and other[box].sum() == 0, face
 
 
-def test_solitaire_waste_is_fanned_face_up_beside_the_stock():
-    w, _ = art.SOL_SIZE
-    assert art.SOL_WASTE_AT[0] > art.SOL_STOCK_AT[0] + w  # its own pile
-    assert 0 < art.SOL_WASTE_FAN < w  # overlapping, each index showing
+def test_solitaire_face_down_teal_shows_in_every_column_but_the_first():
     im = np.asarray(art.render("solitaire"))
-    wx, wy = art.SOL_WASTE_AT
-    strip = (slice(wy + 2, wy + 2 * art.CARD_INDEX), slice(wx + 2, wx + art.SOL_WASTE_FAN))
-    ink = _rgb(art.CARD_RED if art.is_red(art.SOL_WASTE[0]) else art.CARD_INK)
-    assert _mask(im, ink)[strip].sum() > 20  # the first waste card's rank shows under the fan
+    back = _mask(im, _rgb(art.CARD_BACK))
+    w, _ = art.SOL_SIZE
+    shown = [back[:, _sol_col(c)[0] : _sol_col(c)[0] + w].sum() for c in range(7)]
+    assert shown[0] == 0 and min(shown[1:]) > 60 and shown == sorted(shown)
 
 
 # --------------------------------------------------------------------------------------------
@@ -552,28 +545,39 @@ def test_blackjack_colours_are_the_games():
 # Hearts (pick C): hearts broken
 
 
-def test_hearts_heart_and_crack_are_the_games():
+def test_hearts_heart_is_the_games():
     src = (REPO / "frontend/src/components/hearts/HeartsBrokenAnimation.tsx").read_text("utf-8")
     first = art.HEART_CUBICS[0][0]
     path = f"M {first[0]} {first[1]} " + " ".join(
         "C " + " ".join(f"{x} {y}" for x, y in seg[1:]) for seg in art.HEART_CUBICS
     )
     assert f'"{path} Z"' in src
-    crack = " ".join(f"L{x} {y}" for x, y in art.HEART_CRACK[1:])
-    assert f'CRACK_POINTS = "{crack}"' in src
-    assert f"M{art.HEART_CRACK[0][0]} {art.HEART_CRACK[0][1]} " in src
-    assert f'HEARTS_BROKEN_HEART = "{_hex(art.HEARTS_BROKEN)}"' in _theme("theme.hearts.ts")
+    assert f'HEARTS_BROKEN_HEART = "{_hex(art.HEARTS_RED)}"' in _theme("theme.hearts.ts")
 
 
-def test_hearts_a_heart_is_played_and_the_heart_breaks_in_two():
-    assert art.HEARTS_PLAYED == "AH"  # a heart on the trick is what breaks hearts
+def test_hearts_shows_the_ace_of_hearts_and_queen_of_spades_indexes():
+    """#4076: the penalty cards, both ranks readable; the A-hearts' pip red, the Q-spades' ink."""
+    assert [f for f, _ in art.HEARTS_CARDS] == ["AH", "QS"]
     im = np.asarray(art.render("hearts"))
-    red = _mask(im, _rgb(art.HEARTS_BROKEN), tol=6)
-    cy = art.HEARTS_CENTRE[1]
-    runs = np.diff(red[cy].astype(int))
-    assert (runs == 1).sum() == 2  # two halves across the middle, a gap between them
-    x, y = art.HEARTS_CARD_AT
-    assert _mask(im[y : y + 24, x : x + 44], _rgb(art.CARD_RED)).sum() > 20  # the A-hearts index
+    w, _ = art.HEARTS_CARD
+    for face, (x, y) in art.HEARTS_CARDS:
+        box = (slice(y, y + 24), slice(x, x + w))
+        ink = _mask(im, _rgb(art.CARD_RED if art.is_red(face) else art.CARD_INK))
+        assert ink[box].sum() > 40, face  # rank and suit pip
+
+
+def test_hearts_heart_is_whole_with_no_crack():
+    """Along the heart's centre line the red is one unbroken run (a crack would split it), and the
+    heart is a single run across its widest row too."""
+    im = np.asarray(art.render("hearts"))
+    red = _mask(im, _rgb(art.HEARTS_RED), tol=6)
+    cx, cy = art.HEARTS_CENTRE
+    for row in (cy - 6, cy, cy + 10):
+        assert (np.diff(red[row, : cx + 10].astype(int)) == 1).sum() == 1, row
+    col = red[:, cx].astype(int)
+    assert (np.diff(col) == 1).sum() == 1
+    for gone in ("HEART_CRACK", "HEARTS_SPLIT", "broken_heart_halves"):
+        assert not hasattr(art, gone)
 
 
 # Mahjong (pick A): the free pair, by the game's rule

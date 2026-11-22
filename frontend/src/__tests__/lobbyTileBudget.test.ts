@@ -26,9 +26,9 @@ const TILES: Record<string, number> = {
   "cascade-tile.webp": TILE_BUDGET, // 2,954 (#4013, hidden)
   "daily_word-tile.webp": TILE_BUDGET, // 3,352 (#4012)
   "freecell-tile.webp": TILE_BUDGET, // 3,276 (#4012)
-  "hearts-tile.webp": TILE_BUDGET, // 3,096 (#4013, hidden)
+  "hearts-tile.webp": TILE_BUDGET, // 2,582 (#4076 redraw, hidden; #4013 was 3,096)
   "mahjong-tile.webp": TILE_BUDGET, // 2,930 (#4013, hidden)
-  "solitaire-tile.webp": TILE_BUDGET, // 2,916 (#4012)
+  "solitaire-tile.webp": TILE_BUDGET, // 3,324 (#4076 redraw; #4012 was 2,916)
   "sort-tile.webp": TILE_BUDGET, // 3,030
   "starswarm-tile.webp": TILE_BUDGET, // 3,202 (#4013 redraw, hidden; the #3599 badge was 2,698)
   "sudoku-tile.webp": TILE_BUDGET, // 2,578
@@ -36,9 +36,9 @@ const TILES: Record<string, number> = {
   "yacht-tile.webp": TILE_BUDGET, // 3,198 (five dice)
 };
 
-/** The store tiles together: 21,402 B measured, about 15% headroom (unchanged by #4013). */
+/** The store tiles together: 21,810 B measured, about 13% headroom (Solitaire redrawn in #4076). */
 const STORE_TOTAL_BUDGET = 25000;
-/** The hidden tiles together: 14,920 B measured; five tiles at the per-tile budget. */
+/** The hidden tiles together: 14,406 B measured; five tiles at the per-tile budget. */
 const HIDDEN_TOTAL_BUDGET = 5 * TILE_BUDGET;
 
 /** Games a store build leaves out, as `isGameVisible` does there and size-report reads them. */

@@ -97,8 +97,7 @@ Daily Word letters are Space Grotesk Bold outlines (SIL OFL 1.1), extracted once
 licence in `lobby_numerals.OFL.txt`. The Daily Word tile spells real guesses (PIANO, FOCAL, then
 FINAL solved), chosen because all three are answers in the English, Spanish and French word lists,
 the languages the game is played in. A full-size playing card costs ~300 B of WebP, so the
-Solitaire tile shows only the few cards that tell its game and FreeCell's small cards show a suit
-pip only. The Mahjong tile draws its red dragon from `tools/assets/mahjong_glyphs.json` (Yuji
+Solitaire tile (the Klondike deal, #4076) and FreeCell's small cards show a suit pip only. The Mahjong tile draws its red dragon from `tools/assets/mahjong_glyphs.json` (Yuji
 Syuku, SIL OFL 1.1), as the game's own faces do, and lays its tiles out as the game's slots, so its
 selected pair is free by the game's rule. The Star Swarm tile is drawn from the game's own sprites
 (`draw_starswarm_art.py`), which keep their own rims and armour outline instead of the shared grey
