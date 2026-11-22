@@ -48,14 +48,6 @@ export const glossary = {
 
   // ─── Fruit names (data layer — appear in game events) ────────────────────
 
-  Cherry: {
-    category: "fruit",
-    doNotTranslate: true,
-    reason: "Fruit name used as game piece identifier in engine events.",
-    definition: "The smallest fruit tier in Cascade.",
-    notes: null,
-  },
-
   Strawberry: {
     category: "fruit",
     doNotTranslate: true,
@@ -69,22 +61,6 @@ export const glossary = {
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
     definition: "Tier 3 fruit in Cascade.",
-    notes: null,
-  },
-
-  Orange: {
-    category: "fruit",
-    doNotTranslate: true,
-    reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 4 fruit in Cascade.",
-    notes: null,
-  },
-
-  Apple: {
-    category: "fruit",
-    doNotTranslate: true,
-    reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 5 fruit in Cascade.",
     notes: null,
   },
 
@@ -104,27 +80,11 @@ export const glossary = {
     notes: null,
   },
 
-  Pineapple: {
-    category: "fruit",
-    doNotTranslate: true,
-    reason: "Fruit name used as game piece identifier.",
-    definition: "Tier 8 fruit in Cascade.",
-    notes: null,
-  },
-
   Melon: {
     category: "fruit",
     doNotTranslate: true,
     reason: "Fruit name used as game piece identifier.",
     definition: "Tier 9 fruit in Cascade.",
-    notes: null,
-  },
-
-  Watermelon: {
-    category: "fruit",
-    doNotTranslate: true,
-    reason: "Fruit name used as game piece identifier. Also the highest-tier merge goal.",
-    definition: "Tier 10 (max) fruit in Cascade.",
     notes: null,
   },
 };

@@ -121,8 +121,8 @@
       "nl": ["score.label"]
     },
     "sort": {
-      "de": ["color.gold", "color.indigo", "hud.level"],
-      "fr-CA": ["color.indigo"],
+      "de": ["color.gold", "color.indigo", "color.orange", "hud.level"],
+      "fr-CA": ["color.indigo", "color.orange"],
       "nl": ["action.hint", "color.indigo"]
     },
     "starswarm": {
@@ -227,7 +227,8 @@
         "pieces.cosmos.mars",
         "pieces.cosmos.neptune",
         "pieces.cosmos.uranus",
-        "pieces.fruits.lime"
+        "pieces.fruits.lime",
+        "pieces.fruits.orange"
       ],
       "de": [
         "pieces.cosmos.jupiter",
@@ -235,7 +236,8 @@
         "pieces.cosmos.pluto",
         "pieces.cosmos.saturn",
         "pieces.cosmos.uranus",
-        "pieces.cosmos.venus"
+        "pieces.cosmos.venus",
+        "pieces.fruits.orange"
       ],
       "es": ["pieces.cosmos.venus"]
     },
