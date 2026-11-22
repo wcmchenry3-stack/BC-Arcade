@@ -29,7 +29,9 @@ Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)
     twenty48    final_score, highest_tile              (already sent)
     solitaire   won, moves                             (SolitaireResult)
-    sort        final_score (highest level solved)     (every solve, #2625)
+    sort        final_score (highest level solved)     (every solve, #2625); the
+                relative ``new_levels_at_least`` goal also reads the best before the
+                day started (``facts_for``, #4028)
     freecell    won, moves                             (#2452)
     yacht       final_score                            (already sent)
     sudoku      won, final_score, errors               (SudokuScreen; final_score =
@@ -89,7 +91,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import random
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
@@ -99,6 +101,7 @@ from cascade.time_bonus import MIN_WIN_MS as CASCADE_MIN_WIN_MS
 from entitlements.service import DISABLED_GAMES
 from games.boards.editions import edition_switch_on
 from settings import Settings
+from sort.catalog import CATALOG_VERSION as SORT_CATALOG_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +246,81 @@ def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
 
     is_win = game_type not in SKILL_WIN_GAMES
     return Goal(game_type, f"won_{measure}_at_most", limit, tier, is_win, check)
+
+
+# Bottle Sort's relative goal (#4028): "solve N new levels" is met when the highest level
+# solved that day minus the highest solved before the day started is at least N. The
+# derived measure is in no result block: ``facts_for`` computes it from the row's
+# ``final_score`` (the highest level solved, sent on every solve, #2625) and the day-start
+# best the caller reads (``service.day_start_bests``). So the goal is relative to the day
+# it is scored on, not to when it was pinned (today+1 and today+2 are pinned at today's
+# first open). A replay reports the unchanged standing, so it is never a new level.
+NEW_LEVELS_MEASURE = "new_levels"
+NEW_LEVELS_KIND = f"{NEW_LEVELS_MEASURE}_at_least"
+# Per game with a relative goal: the measure whose best before the day is the baseline.
+DAY_START_MEASURES: dict[str, str] = {"sort": "final_score"}
+
+# The goal itself is an "at least" goal on the derived measure (``_at_least``), so
+# ``goal_from_spec`` rebuilds a pinned one equal through its ``*_at_least`` rule.
+
+# Sort's levels come in two editions (#2761): the fixed catalog (rows sent with the current
+# ``catalog_version``, ``sort.module``'s board edition) and the random levels from before it
+# (no ``catalog_version``). Their numbers are unrelated, and a migrated save starts the
+# catalog over (``catalogMigration.ts`` empties the device's bests), so a baseline is per
+# edition: a row is only ever compared with rows of its own edition. Which editions count
+# follows ``SORT_CATALOG_EDITION_ENFORCED`` (``counted_editions``).
+SORT_EDITION: tuple[str, int] = ("catalog_version", SORT_CATALOG_VERSION)
+LEGACY_EDITION, CATALOG_EDITION = 0, 1
+
+# {(game_type, edition): the best ``DAY_START_MEASURES`` value before the day starts}. A
+# key that is missing means no such row (0); ``None`` instead of a mapping: not read.
+DayStart = Mapping[tuple[str, int], int]
+
+
+def edition_of(facts: Facts) -> int:
+    """A Sort row's edition: ``CATALOG_EDITION`` when it holds the current catalog version
+    (an int, as ``BoardDefinition.in_edition`` and the SQL ``edition_matches`` read it)."""
+    key, version = SORT_EDITION
+    held = facts.get(key)
+    is_int = isinstance(held, int) and not isinstance(held, bool)
+    return CATALOG_EDITION if is_int and held == version else LEGACY_EDITION
+
+
+def counted_editions() -> tuple[int, ...]:
+    """The editions whose rows a relative goal counts. Switch on: the catalog only, as
+    the leaderboard, so a pre-catalog row neither meets the goal nor raises a baseline.
+    Switch off: both, each against its own edition's baseline, which is what the device
+    playing that edition sees (a catalog build counts from its catalog bests, a pre-catalog
+    build from its 23 random levels)."""
+    if sort_catalog_goals_on():
+        return (CATALOG_EDITION,)
+    return (LEGACY_EDITION, CATALOG_EDITION)
+
+
+def is_relative(goal: Goal) -> bool:
+    """True for a goal scored against the day-start best (``facts_for``)."""
+    return goal.measure == NEW_LEVELS_MEASURE and goal.game_type in DAY_START_MEASURES
+
+
+def relative_games(goals: Iterable[Goal | None]) -> set[str]:
+    """The games among ``goals`` whose evaluation needs a day-start best."""
+    return {g.game_type for g in goals if g is not None and is_relative(g)}
+
+
+def facts_for(goal: Goal, facts: Facts, day_start: DayStart | None) -> Facts | None:
+    """The facts ``goal.evaluate`` reads for one finished game. Unchanged for every goal
+    but a relative one, which gets ``new_levels`` = the row's measure minus the day-start
+    best of the row's own edition (a client-sent ``new_levels`` is overwritten). ``None``
+    (never met) when the day-start bests were not read, the row's edition does not count
+    (``counted_editions``) or the row has no measure."""
+    if not is_relative(goal):
+        return facts
+    edition = edition_of(facts)
+    value = _number(facts, DAY_START_MEASURES[goal.game_type])
+    if day_start is None or value is None or edition not in counted_editions():
+        return None
+    baseline = day_start.get((goal.game_type, edition), 0)
+    return {**facts, NEW_LEVELS_MEASURE: value - baseline}
 
 
 def _solved(game_type: str, tier: Tier) -> Goal:

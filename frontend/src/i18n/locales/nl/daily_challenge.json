@@ -13,6 +13,8 @@
   "goal.sudoku.final_score_at_least": "Scoor {{target}}+ in {{game}}",
   "goal.sudoku.solved": "Los een {{game}}-puzzel op",
   "goal.sort.final_score_at_least": "Bereik niveau {{target}} in {{game}}",
+  "goal.sort.new_levels_at_least_one": "Los {{count}} nieuw niveau op in {{game}}",
+  "goal.sort.new_levels_at_least_other": "Los {{count}} nieuwe niveaus op in {{game}}",
   "goal.solitaire.moves_at_least_one": "Doe een zet in {{game}}",
   "goal.solitaire.moves_at_least_other": "Doe {{count}}+ zetten in {{game}}",
   "goal.solitaire.won": "Win een potje {{game}}",

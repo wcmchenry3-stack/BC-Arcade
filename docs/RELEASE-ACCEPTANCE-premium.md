@@ -120,6 +120,8 @@ These apply to more than one premium game. Shared accessibility and localization
 | ---------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----- |
 | #2458 Premium daily-challenge goal pools | open  | Post-launch work retained under #2777 and #2789. Needs result envelopes for Star Swarm, Sort and others, three tiers per game, localization and premium goal specs. | **OWNER DECISION REQUIRED**, not proposed either way | #2789 says to decide whether it ships with the first premium update, and that it is neither silently cancelled nor a launch blocker. | [ ]   |
 
+> **Update (epic #3990):** the premium games' goals shipped as personal-pick goals, not as pool templates ([DAILY-CHALLENGE.md §2a](DAILY-CHALLENGE.md#2a-personal-goals-per-game-3993), #3996). `PREMIUM_GOAL_POOL` still equals the free pool, so the pool-based requirements below (odd rotation length, premium slate drift, per-pool streak cutoff) do not apply as written. Whether this ships in the first premium update, and the premium purchase model (#3989), remain owner decisions; the checkboxes below are unchanged.
+
 **Decision to record (not decided in this document):**
 
 - [ ] Ship #2458 with the first premium update

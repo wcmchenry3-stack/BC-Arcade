@@ -12,15 +12,23 @@ The day's three core goals
 2. and 3. Two goals chosen by **affinity** (``choose_core``), each with a personal
    **target** (``personal_target``).
 
-Bottle Sort has no personal goals for now: "solve N new levels" pinned for today+1 and
-today+2 at the first open of today could already be met by today's own solves, so it
-is deferred to #4028. Sort still appears on shared-template days.
+Every goal but Bottle Sort's is one of the existing kinds with an absolute target
+(``final_score_at_least``, ``highest_tile_at_least``, ``won``, ``won_moves_at_most``,
+``solved``, and for the premium games ``completed``, ``won_duration_ms_at_most``,
+``wave_reached_at_least``, ``starting_chips_at_least``), so installed app builds word it
+and ``Goal.evaluate`` scores it with no per-player logic.
 
-Every goal is one of the existing kinds with an absolute target (``final_score_at_least``,
-``highest_tile_at_least``, ``won``, ``won_moves_at_most``, ``solved``, and for the premium
-games ``completed``, ``won_duration_ms_at_most``, ``wave_reached_at_least``,
-``starting_chips_at_least``), so installed app builds word it and ``Goal.evaluate`` scores
-it with no per-player logic.
+Bottle Sort (#4028) gets **"solve N new levels"** (``new_levels_at_least``, target N), a
+relative kind: it is met when the day's highest level solved minus the highest solved
+before the day started is at least N (``definitions.facts_for``; the scorers read the
+day-start best, ``service.day_start_bests``). An absolute "reach level L" pinned for
+today+1 and today+2 at today's first open could already be met by today's own solves;
+the relative goal cannot. N (``sort_new_levels``) is the median of the new levels solved
+per day of play in the affinity window, stretched and rounded, 1-3 (1 at cold start), one
+fewer after two misses, and at most the levels left in the edition the install plays
+(``sort_levels_left``: 120 for the catalog, 23 for the pre-catalog levels). With no
+level left Sort offers nothing. Builds from before #4028 have no copy for the kind and
+word it "Play Bottle Sort"; they never mark it done offline (no ``new_levels`` fact).
 
 Premium games (#3996)
 ---------------------
@@ -62,7 +70,8 @@ games of that game before the day starts:
   the floor wins over the cap for a player whose best is below it;
 * **stepped down** after two consecutive misses: when, on the last two pinned days that
   held this (game, goal type) as a personal target, the game was played and the goal
-  missed, the stretch is applied the other way (a tile target halves).
+  missed, the stretch is applied the other way (a tile target halves, Sort asks one
+  level fewer).
   Shared-template days and days the game was not played never count.
 
 A game with fewer than ``MIN_FINISHED_GAMES`` finished games gets its cold-start goal
@@ -113,6 +122,7 @@ from typing import TYPE_CHECKING, Literal
 
 from daily_challenge.definitions import (
     ALWAYS_PRESENT,
+    CATALOG_EDITION,
     FREE_GOAL_POOL,
     GOAL_POOLS,
     SALT,
@@ -131,6 +141,7 @@ from daily_challenge.game_specs import (  # noqa: F401 - re-exported as personal
     personal_type_keys,
 )
 from settings import Settings
+from sort.catalog import LEVEL_COUNT
 
 if TYPE_CHECKING:
     from daily_challenge.assignments import Assignment
@@ -138,6 +149,10 @@ if TYPE_CHECKING:
 
 # A game (and an install) needs this many finished games for a personal target.
 MIN_FINISHED_GAMES = 3
+# Builds from before the 120-level catalog top out at 23 (SORT_CATALOG_EDITION_ENFORCED).
+LEGACY_SORT_LEVELS = 23
+# "Solve N new levels": N is 1-3.
+MIN_NEW_LEVELS, MAX_NEW_LEVELS = 1, 3
 # A (game, goal type) does not repeat within this many days (today included).
 NO_REPEAT_DAYS = 3
 # Discovery rest rule (``resting``, #3995): a game offered as the bonus and not played
@@ -235,6 +250,39 @@ def usual_rung(gtype: GoalType, values: Sequence[int | float]) -> int:
     """The ladder rung at or below the median of ``values``: the install's usual table."""
     median = statistics.median(values)
     return max((rung for rung in gtype.ladder if rung <= median), default=gtype.ladder[0])
+
+
+def sort_new_levels(per_day_new: Sequence[int], *, pct: int, stepped_down: bool = False) -> int:
+    """N for "solve N new levels": the median of the new levels solved per day of play,
+    stretched and rounded half up, 1-3; then one fewer after two misses (never under 1),
+    so a fast player who missed 3 twice is asked for 2. No day yet: 1."""
+    if per_day_new:
+        n = math.floor(statistics.median(per_day_new) * (1 + pct / 100) + 0.5)
+    else:
+        n = MIN_NEW_LEVELS
+    n = max(MIN_NEW_LEVELS, min(MAX_NEW_LEVELS, n))
+    return max(MIN_NEW_LEVELS, n - 1) if stepped_down else n
+
+
+def sort_level_cap(edition: int) -> int:
+    """The last level of the edition the install plays (``InstallHistory.sort_edition``):
+    the catalog's 120, or 23 for the random levels of builds from before the catalog. With
+    ``SORT_CATALOG_EDITION_ENFORCED`` on the edition is always the catalog; off, it is the
+    edition of the install's latest Sort row, so a catalog player past level 23 still gets
+    a goal while the switch is off."""
+    return LEVEL_COUNT if edition == CATALOG_EDITION else LEGACY_SORT_LEVELS
+
+
+def sort_levels_left(best: int, *, edition: int) -> int:
+    """The levels above ``best`` (the highest solved before the day, in ``edition``) the
+    install can still solve: the most a "new levels" goal may ask for. 0 once done."""
+    return max(0, sort_level_cap(edition) - best)
+
+
+def sort_target(n: int, best: int, *, edition: int) -> int | None:
+    """``n`` capped at the levels left, or None when none are left (no Sort goal)."""
+    left = sort_levels_left(best, edition=edition)
+    return min(n, left) if left > 0 else None
 
 
 def _usual_partition(spec: GameSpec, facts_list: Sequence[Mapping]) -> list[Mapping]:
@@ -360,7 +408,19 @@ def options_for(game: str, history: InstallHistory, day: date, *, pct: int) -> l
     spec = GAME_SPECS[game]
     recent = history.recent_facts(game, day, history_games())
     goals: list[tuple[GoalType, int | None]] = []
-    if len(recent) < MIN_FINISHED_GAMES:
+    if game == "sort":
+        gtype = spec.type("levels")
+        n = MIN_NEW_LEVELS
+        if len(recent) >= MIN_FINISHED_GAMES:
+            n = sort_new_levels(
+                history.sort_new_levels_per_day(day),
+                pct=pct,
+                stepped_down=stepped_down(history, game, gtype.name),
+            )
+        target = sort_target(n, history.best_final_score(game, day), edition=history.sort_edition)
+        if target is not None:
+            goals.append((gtype, target))
+    elif len(recent) < MIN_FINISHED_GAMES:
         goals.append((spec.type(spec.cold_type), spec.cold_target))
     else:
         # Targets read the runs on the usual partition (Star Swarm's tier), if any.
@@ -545,6 +605,10 @@ def _discovery_goal(game: str) -> Goal:
     )
 
 
+def _sort_levels_left(history: InstallHistory, day: date) -> int:
+    return sort_levels_left(history.best_final_score("sort", day), edition=history.sort_edition)
+
+
 def choose_bonus(
     history: InstallHistory,
     day: date,
@@ -567,7 +631,12 @@ def choose_bonus(
         for g in discovery_candidates(history, eligible, day)
         if g not in core_games
     ]
-    discovery = [g for g in discovery if not g.is_win]
+    # Not luck-dependent, and never a Sort goal once the install has no level left.
+    discovery = [
+        g
+        for g in discovery
+        if not g.is_win and (g.game_type != "sort" or _sort_levels_left(history, day) > 0)
+    ]
 
     affinity = history.affinity(day)
     stretch: list[Option] = []

@@ -78,6 +78,8 @@ import {
   withNoBoard,
 } from "../game/sort/useSortReplay";
 import { SORT_CATALOG_VERSION } from "../game/sort/catalog";
+import { recordSortSolve } from "../game/sort/dayStart";
+import { localDayKey } from "../game/daily_challenge/localDay";
 import { ORPHAN_GAME_ID_KEY } from "../game/_shared/pendingGamesStore";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
@@ -452,7 +454,8 @@ export default function SortScreen() {
     const moves = solved.moveCount;
     // Decided now, from the bests in memory, so the session completes before
     // the player can leave the card (#2625).
-    const { solve, bests } = applyLevelSolve(bestMovesRef.current, solvedLevel, moves);
+    const bestsBefore = bestMovesRef.current;
+    const { solve, bests } = applyLevelSolve(bestsBefore, solvedLevel, moves);
     bestMovesRef.current = bests;
     setBestMoves(bests);
     // The level's target (#3687). Every level in the shipped catalog has one.
@@ -476,6 +479,16 @@ export default function SortScreen() {
       // would drop) a level_reached above its cap.
       Math.max(levels.length, solvedLevel)
     );
+    // The standing before this solve, the same way: the Daily Challenge's "N new levels"
+    // counts from it offline (#4028). Stored on the day's first solve only, and only
+    // while the bests could be read (else memory would under-state it).
+    if (bestsStoredRef.current) {
+      const before = Math.min(
+        highestSolvedLevel(bestsBefore),
+        Math.max(levels.length, solvedLevel)
+      );
+      void recordSortSolve(localDayKey(), before);
+    }
     const result: Record<string, number | boolean> = {
       won: true,
       level: solvedLevel,

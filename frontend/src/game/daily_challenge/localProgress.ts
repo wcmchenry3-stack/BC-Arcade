@@ -14,7 +14,13 @@
  *    `merge_result_metadata`), then `final_score` and `duration_ms`;
  *  - the predicates mirror `definitions.py` (`completed`, `won`, `solved`,
  *    `chips_gained`, `<measure>_at_least`, `won_<measure>_at_most`). A kind this
- *    build does not know is never met locally.
+ *    build does not know is never met locally;
+ *  - Bottle Sort's relative `new_levels_at_least` (#4028) counts levels above the
+ *    highest solved before the day started, as `definitions.facts_for` does: the
+ *    baseline is the day-start best Sort records on the day's first solve
+ *    (`game/sort/dayStart.ts`). With no baseline for the day it is never met here.
+ *    Builds from before #4028 read the kind as `new_levels` "at least", a fact no
+ *    game sends, so they never mark it done either.
  *
  * This is a preview only. The server re-checks every completion when the queue
  * uploads, and its `/status` replaces whatever this computed once back online.
@@ -24,6 +30,7 @@ import { isPlainRecord, pendingGamesStore, type PendingGame } from "../_shared/p
 import { resolveDurationMs } from "../_shared/syncWorker";
 import { wireTarget, type ChallengeGoal, type DailyChallenge } from "./api";
 import { localDayKey } from "./localDay";
+import { readSortDayStart } from "../sort/dayStart";
 
 type Facts = Readonly<Record<string, unknown>>;
 
@@ -53,8 +60,40 @@ function numberIn(facts: Facts, name: string): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** The relative kind (#4028), mirroring `definitions.NEW_LEVELS_KIND`. */
+export const NEW_LEVELS_KIND = "new_levels_at_least";
+const NEW_LEVELS_MEASURE = "new_levels";
+/** Per game with a relative goal, the measure the baseline is the best of (`DAY_START_MEASURES`). */
+const DAY_START_MEASURES: Readonly<Record<string, string>> = { sort: "final_score" };
+
+/** `{ gameSlug: the best measure before the local day started }`, for relative goals. */
+export type DayStart = Readonly<Record<string, number>>;
+
+function dayStartMeasure(goal: ChallengeGoal): string | null {
+  if (goal.kind !== NEW_LEVELS_KIND) return null;
+  return Object.prototype.hasOwnProperty.call(DAY_START_MEASURES, goal.gameSlug)
+    ? DAY_START_MEASURES[goal.gameSlug]!
+    : null;
+}
+
+/**
+ * The facts `goal` is checked against, as `definitions.facts_for`: unchanged for every
+ * goal but a relative one, which gets `new_levels` = the game's measure minus the
+ * day-start best. Null (never met) without a baseline or a measure.
+ */
+export function factsFor(goal: ChallengeGoal, facts: Facts, dayStart?: DayStart): Facts | null {
+  const measure = dayStartMeasure(goal);
+  if (measure === null) return facts;
+  const baseline = dayStart?.[goal.gameSlug];
+  const value = numberIn(facts, measure);
+  if (typeof baseline !== "number" || value === null) return null;
+  return { ...facts, [NEW_LEVELS_MEASURE]: value - baseline };
+}
+
 /** True when the game these `facts` describe meets `goal` (see the header). */
-export function goalMetBy(goal: ChallengeGoal, facts: Facts): boolean {
+export function goalMetBy(goal: ChallengeGoal, gameFacts: Facts, dayStart?: DayStart): boolean {
+  const facts = factsFor(goal, gameFacts, dayStart);
+  if (facts === null) return false;
   const { kind } = goal;
   const target = wireTarget(goal);
   if (kind === "completed") return facts.is_complete === true;
@@ -95,16 +134,28 @@ export async function queuedGamesEndedOn(day: string, offsetMinutes: number): Pr
 }
 
 /**
+ * The day-start bests known on this device for local day `day`: Sort's, when its
+ * stored standing was taken at the start of that day (`game/sort/dayStart.ts`). Any
+ * other day's standing says nothing about `day`, so it is left out. Never rejects.
+ */
+export async function dayStartOn(day: string): Promise<DayStart> {
+  const sort = await readSortDayStart().catch(() => null);
+  return sort?.day === day ? { sort: sort.best } : {};
+}
+
+/**
  * `challenge` with every goal a game in `ended` meets marked done, the bonus goal
  * (#3995) included, the same way. A goal already done stays done: it came from the
  * last `/status` of the day, which counted the games that had already synced.
  */
 export function withLocalProgress(
   challenge: DailyChallenge,
-  ended: readonly EndedGame[]
+  ended: readonly EndedGame[],
+  dayStart?: DayStart
 ): DailyChallenge {
   const mark = (goal: ChallengeGoal): ChallengeGoal =>
-    goal.completed || !ended.some((g) => g.gameType === goal.gameSlug && goalMetBy(goal, g.facts))
+    goal.completed ||
+    !ended.some((g) => g.gameType === goal.gameSlug && goalMetBy(goal, g.facts, dayStart))
       ? goal
       : { ...goal, completed: true };
   return {

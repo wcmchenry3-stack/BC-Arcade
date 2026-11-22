@@ -143,7 +143,7 @@
     "expo-localization": "~57.0.2",
     "expo-modules-core": "~57.0.12",
     "fflate": "^0.8.3",
-    "i18next": "^26.5.2",
+    "i18next": "^27.2.1",
     "i18next-resources-to-backend": "^1.2.4",
     "planck": "1.5.1",
     "react": "19.2.8",

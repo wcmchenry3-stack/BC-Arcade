@@ -13,6 +13,8 @@
   "goal.sudoku.final_score_at_least": "Score {{target}}+ in {{game}}",
   "goal.sudoku.solved": "Solve a {{game}} puzzle",
   "goal.sort.final_score_at_least": "Reach level {{target}} in {{game}}",
+  "goal.sort.new_levels_at_least_one": "Solve {{count}} new {{game}} level",
+  "goal.sort.new_levels_at_least_other": "Solve {{count}} new {{game}} levels",
   "goal.solitaire.moves_at_least_one": "Make a move in {{game}}",
   "goal.solitaire.moves_at_least_other": "Make {{count}}+ moves in {{game}}",
   "goal.solitaire.won": "Win a game of {{game}}",

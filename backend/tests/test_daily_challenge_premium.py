@@ -146,7 +146,7 @@ def _ids(game: str, plays: list[tuple[str, date, dict]]) -> list[str]:
 def test_every_premium_game_has_a_spec_and_nothing_else_does() -> None:
     assert set(GAME_SPECS) & set(ALL_PREMIUM_SLUGS) == set(ALL_PREMIUM_SLUGS)
     free = set(GAME_SPECS) - set(ALL_PREMIUM_SLUGS)
-    assert free == {"twenty48", "solitaire", "freecell", "sudoku", "yacht"}
+    assert free == {"twenty48", "solitaire", "freecell", "sudoku", "yacht", "sort"}  # #4028
 
 
 def test_the_goal_types_per_premium_game() -> None:

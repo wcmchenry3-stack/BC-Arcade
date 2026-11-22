@@ -13,6 +13,8 @@
   "goal.sudoku.final_score_at_least": "{{game}}: {{target}}+ स्कोर करें",
   "goal.sudoku.solved": "{{game}} की एक पहेली हल करें",
   "goal.sort.final_score_at_least": "{{game}} में लेवल {{target}} तक पहुंचें",
+  "goal.sort.new_levels_at_least_one": "{{game}} में {{count}} नया लेवल हल करें",
+  "goal.sort.new_levels_at_least_other": "{{game}} में {{count}} नए लेवल हल करें",
   "goal.solitaire.moves_at_least_one": "{{game}} में एक चाल चलें",
   "goal.solitaire.moves_at_least_other": "{{game}} में {{count}}+ चालें चलें",
   "goal.solitaire.won": "{{game}} का एक गेम जीतें",

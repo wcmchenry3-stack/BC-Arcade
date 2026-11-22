@@ -10,6 +10,8 @@ from typing import Literal
 
 from daily_challenge.definitions import (
     FREE_GOAL_POOL,
+    NEW_LEVELS_KIND,
+    NEW_LEVELS_MEASURE,
     Goal,
     goal_from_spec,
 )
@@ -132,6 +134,27 @@ GAME_SPECS: dict[str, GameSpec] = {
             ),
         ),
         cold_type="win",
+    ),
+    # Bottle Sort (#4028): "solve N new levels", relative to the highest level solved before
+    # the day starts (``definitions.facts_for``), so a day pinned ahead is still about that
+    # day's own solves. N is the per-day pace, 1-3, capped by the levels left in the
+    # catalog (``personal.sort_new_levels`` / ``sort_levels_left``), not a median of the
+    # measure, so ``options_for`` has its own path for it. ``measure`` marks it personal:
+    # the step-down applies (one level fewer). Cold start: 1 new level.
+    "sort": GameSpec(
+        "sort",
+        (
+            GoalType(
+                "sort",
+                "levels",
+                "progress",
+                NEW_LEVELS_KIND,
+                NEW_LEVELS_MEASURE,
+                floor=1,
+            ),
+        ),
+        cold_type="levels",
+        cold_target=1,
     ),
     "sudoku": GameSpec(
         "sudoku",
