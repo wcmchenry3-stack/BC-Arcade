@@ -10,8 +10,8 @@ games' own (`frontend/src/theme/theme.*.ts`; the Yacht dice and the playing card
     yacht      all five dice: four landed on fives in a row, the fifth tumbling in
     twenty48   two 1024 tiles sliding together on a slice of the board, toward 2048
     sudoku     one 3x3 box: given digits, and a digit just placed in the selected cell
-    solitaire  the stock, the waste fanned, and the waste's seven of spades on its way onto the
-               eight of hearts at the foot of a tableau column
+    solitaire  the Klondike deal: seven tableau columns stepping down, column n with n face-down
+               cards under one face-up card that shows only its suit
     freecell   the deal: eight cascades of uneven length, every card face up
     daily_word three guesses at FINAL, scored: PIANO, FOCAL, then FINAL solved (all three words
                are answers in the English, Spanish and French lists)
@@ -19,7 +19,7 @@ games' own (`frontend/src/theme/theme.*.ts`; the Yacht dice and the playing card
 The hidden premium games (#4013; their tiles never reach a store bundle, see HIDDEN_GAMES):
 
     blackjack  a natural: A-spades and K-hearts, the green 21 pill, the bet's chips
-    hearts     hearts broken: the game's broken heart cracked in two over the A-hearts just played
+    hearts     the penalty cards: the A-hearts and the Q-spades fanned beside a whole heart
     mahjong    a corner of the board on two layers, the free pair of 3-coins selected in gold
     starswarm  the swarm dives: three Wasp Grunts in a V on the Arrow, the game's own sprites
     cascade    the drop: a cherry falling on its guide line into the bin, onto the watermelon
@@ -583,9 +583,8 @@ def sudoku_scene(c: TileCanvas) -> None:
 # --------------------------------------------------------------------------------------------
 # Playing cards (Solitaire, FreeCell): ThemeContext `cardFace` / `cardInk` / `cardRedSuit` and
 # the teal back `cardBack`. Laid out in canvas pixels and unrotated. A full-size card outline
-# costs ~300 B of WebP, so Solitaire shows only the few cards that tell its game and FreeCell's
-# small cards show a pip only; the cards sit on the half pixel with a 3 px corner (measured
-# ~100 B a card cheaper than whole pixels and 5 px).
+# costs ~300 B of WebP, so Solitaire's and FreeCell's small cards show a pip only; the cards sit
+# on the half pixel with a 3 px corner (measured ~100 B a card cheaper than whole pixels and 5 px).
 
 CARD_FACE = hexrgb("#ffffff")  # cardFace
 CARD_INK = hexrgb("#0e0e13")  # cardInk: ranks and black suits
@@ -676,57 +675,39 @@ def card(
     c.outline(body)
 
 
-def cascade(
-    c: TileCanvas, x: int, y: int, size: tuple[int, int], down: int, faces: Sequence[str], step: int
-) -> int:
-    """A tableau column from the top: `down` face-down cards DOWN_STEP apart, then `faces` face
-    up, `step` apart. Returns the top y of its last card."""
-    w, h = size
-    for _ in range(down):
-        card(c, x, y, w, h, None)
-        y += DOWN_STEP
-    for i, f in enumerate(faces):
-        if i:
-            y += step
-        card(c, x, y, w, h, f)
-    return y
-
-
-DOWN_STEP = 8  # px between face-down cards in a Klondike column
-
-
-def trail(c: TileCanvas, marks: Sequence[tuple[Point, Point]]) -> None:
-    """Motion marks given in canvas pixels."""
-    motion_marks(c, [((a[0] / K, a[1] / K), (b[0] / K, b[1] / K)) for a, b in marks])
-
-
 # --------------------------------------------------------------------------------------------
-# Solitaire (Klondike, owner's pick B in #4012's second round): the stock, the waste fanned from
-# a draw of three, and the waste's top card, the 7S, on its way onto the 8H at the foot of a
-# tableau column that sits over a face-down card.
+# Solitaire (Klondike; the owner's pick A in #4076, which replaces the #4012 stock-and-waste
+# scene): the deal's staircase. Seven tableau columns, left to right: column n has n face-down
+# cards, then one face-up card showing only its suit pip. The staircase is the image of Klondike
+# and is what sets the tile apart from FreeCell's eight face-up cascades.
 
-SOL_SIZE = (44, 62)  # card size (px)
-SOL_STOCK_AT, SOL_STOCK_DEPTH = (10, 10), 2  # the stock pile: two backs, 2 px apart
-SOL_WASTE_AT, SOL_WASTE_FAN = (64, 10), 18  # the waste's first card, and the fan step (px)
-SOL_WASTE = ["4C", "10D"]  # under the 7S, which has just been lifted off the fan
-SOL_COLUMN_AT, SOL_STEP = (64, 84), 22  # the tableau column's top, and its face-up overlap (px)
-SOL_COLUMN_DOWN, SOL_COLUMN = 1, ["9S", "8H"]  # face-down count, then the run
-SOL_MOVING, SOL_MOVING_AT = "7S", (104, 70)  # black on the red 8, one rank down
-SOL_TRAIL = (((148, 72), (156, 62)), ((160, 80), (170, 70)))  # back up toward the waste (px)
+SOL_SIZE = (22, 32)  # card size (px)
+SOL_AT, SOL_PITCH, SOL_STEP = (10, 28), 24, 10  # first column's top-left, column pitch, back step
+SOL_FACES = ["KS", "3H", "9C", "QD", "5S", "JH", "7C"]  # one face-up card per column, 7 columns
+SOL_R = 2.5  # corner radius (px)
+SOL_BACK_MARGIN = 2  # a back's white margin around its teal field (px)
+SOL_PIP = (9, 9)  # the face-up card's pip: size, and its centre's depth (px)
+
+
+def back_card(c: TileCanvas, x: int, y: int, w: int, h: int) -> None:
+    """A face-down card whose top-left corner is pixel (x, y): white margin, teal field."""
+    cx, cy = x + CARD_SNAP + w / 2, y + CARD_SNAP + h / 2
+    body = rounded_rect(cx, cy, w, h, SOL_R)
+    c.polygon(body, CARD_FACE)
+    m = 2 * SOL_BACK_MARGIN
+    c.polygon(rounded_rect(cx, cy, w - m, h - m, SOL_R - 1), CARD_BACK)
+    c.outline(body)
 
 
 def solitaire_scene(c: TileCanvas) -> None:
     w, h = SOL_SIZE
-    sx, sy = SOL_STOCK_AT
-    for i in range(SOL_STOCK_DEPTH - 1, -1, -1):
-        card(c, sx + 2 * i, sy + 2 * i, w, h, None)
-    wx, wy = SOL_WASTE_AT
-    for i, f in enumerate(SOL_WASTE):
-        card(c, wx + i * SOL_WASTE_FAN, wy, w, h, f)
-    x, y = SOL_COLUMN_AT
-    cascade(c, x, y, SOL_SIZE, SOL_COLUMN_DOWN, SOL_COLUMN, SOL_STEP)
-    trail(c, SOL_TRAIL)
-    card(c, *SOL_MOVING_AT, w, h, SOL_MOVING)
+    x0, y0 = SOL_AT
+    for col, face in enumerate(SOL_FACES):
+        x, y = x0 + col * SOL_PITCH, y0
+        for _ in range(col):
+            back_card(c, x, y, w, h)
+            y += SOL_STEP
+        pip_card(c, x, y, w, h, face, SOL_PIP)
 
 
 # --------------------------------------------------------------------------------------------
@@ -750,14 +731,23 @@ FC_CASCADES = [
 ]
 
 
-def pip_card(c: TileCanvas, x: int, y: int, w: int, h: int, face: str) -> None:
-    """A small face-up card showing only its suit pip, near its top: a cascade's strip shows it."""
+def pip_card(
+    c: TileCanvas,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    face: str,
+    pip: tuple[float, float] = (FC_PIP, FC_PIP_Y),
+) -> None:
+    """A small face-up card showing only its suit pip, near its top: a cascade's strip shows it.
+    `pip` is the pip's size and its centre's depth into the card (px)."""
     if face[-1:] not in CARD_SUITS:
         raise ValueError(f"card {face!r}: suit must be one of S, H, D, C")
     cx = x + CARD_SNAP + w / 2
     body = rounded_rect(cx, y + CARD_SNAP + h / 2, w, h, 2.5)
     c.polygon(body, CARD_FACE)
-    suit(c, face[-1], cx, y + CARD_SNAP + FC_PIP_Y, FC_PIP)
+    suit(c, face[-1], cx, y + CARD_SNAP + pip[1], pip[0])
     c.outline(body)
 
 
@@ -904,17 +894,15 @@ def blackjack_scene(c: TileCanvas) -> None:
 
 
 # --------------------------------------------------------------------------------------------
-# Hearts (pick C): hearts broken. The A-hearts has just been played, and the game's broken heart
-# (HeartsBrokenAnimation: its heart and crack paths in a 500-unit box, HEARTS_BROKEN_HEART) splits
-# in two along the crack above it.
+# Hearts (the owner's pick B in #4076, which replaces the #4013 broken-heart scene): the penalty
+# cards. The A-hearts and the Q-spades fanned, with a whole heart (the game's own heart outline,
+# HeartsBrokenAnimation's HEART in a 500-unit box) in the corner they leave open.
 
-HEARTS_BROKEN = hexrgb("#d0342c")  # HEARTS_BROKEN_HEART
-HEARTS_PLAYED = "AH"
-HEARTS_CARD_AT = (114, 112)  # the played card's top-left (px); a standard 44 x 62 card
-HEARTS_CARD = (44, 62)
-HEARTS_SCALE, HEARTS_CENTRE = 0.24, (96, 82)  # the 500-unit heart, scaled and centred (px)
-HEARTS_SPLIT = 4  # px each half moves apart along x (the right one 1 px down)
-# HeartsBrokenAnimation's HEART, as its cubic segments, and its CRACK polyline (500-unit box).
+HEARTS_RED = hexrgb("#d0342c")  # theme.hearts HEARTS_BROKEN_HEART: the heart's fill
+HEARTS_CARDS = (("AH", (72, 30)), ("QS", (110, 50)))  # the two cards, top-left corners (px)
+HEARTS_CARD = (50, 70)  # a card's size (px)
+HEARTS_SCALE, HEARTS_CENTRE = 0.2, (58, 120)  # the 500-unit heart, scaled and centred (px)
+# HeartsBrokenAnimation's HEART, as its cubic segments (500-unit box).
 HEART_CUBICS = (
     ((250, 450), (250, 450), (40, 310), (40, 180)),
     ((40, 180), (40, 95), (110, 55), (180, 75)),
@@ -923,11 +911,10 @@ HEART_CUBICS = (
     ((320, 75), (390, 55), (460, 95), (460, 180)),
     ((460, 180), (460, 310), (250, 450), (250, 450)),
 )
-HEART_CRACK = ((250, 130), (232, 190), (268, 240), (226, 300), (262, 360), (250, 450))
 
 
-def broken_heart_halves() -> tuple[list[Point], list[Point]]:
-    """The heart's left and right halves (canvas px), each closed along the crack."""
+def whole_heart() -> list[Point]:
+    """The whole heart's outline (canvas px)."""
     s, (ox, oy) = HEARTS_SCALE, HEARTS_CENTRE
 
     def at(x: float, y: float) -> Point:
@@ -936,18 +923,15 @@ def broken_heart_halves() -> tuple[list[Point], list[Point]]:
     body = [at(*HEART_CUBICS[0][0])]
     for p0, p1, p2, p3 in HEART_CUBICS:
         body += [at(x, y) for x, y in cubic(p0, p1, p2, p3, 10)]
-    crack = [at(x, y) for x, y in HEART_CRACK]
-    left = [p for p in body if p[0] <= ox] + crack[::-1]
-    right = [p for p in body if p[0] >= ox] + crack
-    d = HEARTS_SPLIT
-    return [(x - d, y) for x, y in left], [(x + d, y + 1) for x, y in right]
+    return body
 
 
 def hearts_scene(c: TileCanvas) -> None:
-    card(c, *HEARTS_CARD_AT, *HEARTS_CARD, HEARTS_PLAYED)
-    for half in broken_heart_halves():
-        c.polygon(half, HEARTS_BROKEN)
-        c.outline(half)
+    for face, at in HEARTS_CARDS:
+        card(c, *at, *HEARTS_CARD, face)
+    body = whole_heart()
+    c.polygon(body, HEARTS_RED)
+    c.outline(body)
 
 
 # --------------------------------------------------------------------------------------------
