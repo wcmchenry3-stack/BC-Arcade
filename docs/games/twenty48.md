@@ -294,3 +294,5 @@ Triggers are in `frontend/src/screens/Twenty48Screen.tsx`.
 | `twenty48.gameOver`                              | `game-over-2048.ogg` (synthesized, #3578)   | no moves are left; the chord lands as the result card shows (0.6 s, #3690)                          | 1.0    |
 
 Reopening a saved game plays nothing: a save keeps its last move's tile flags, so the tiles a restored game opens with are skipped (#3578). A fresh deal still plays its spawn.
+
+**Lobby tile status (#4008).** The save's key and shape check now live in `savedShape.ts` (moved from `storage.ts` unchanged), so the lobby can read a save without importing the engine. The tile shows **Resume** for a game that is not over and has had a move (`score > 0` or a recorded move), otherwise the best score. See [ARCHITECTURE §10.7](../ARCHITECTURE.md).

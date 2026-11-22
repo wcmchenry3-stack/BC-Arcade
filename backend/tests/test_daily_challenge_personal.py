@@ -872,6 +872,9 @@ async def test_a_personal_pick_keeps_the_resolved_slate(monkeypatch: pytest.Monk
         return "premium"
 
     monkeypatch.setattr(service, "resolve_slate", premium)
+    # The bonus (#3995) is on by default; this test is about the slate and core goals.
+    monkeypatch.setenv("DAILY_CHALLENGE_BONUS_ENABLED", "false")
+    monkeypatch.setattr(personal, "_settings", None)
     async with get_session_factory()() as db:
         picked = await service.pick_for_install(db, sid, today)
     assert picked.slate == "premium" and picked.bonus is None
@@ -957,10 +960,13 @@ async def test_upcoming_reads_the_history_once_for_three_days(
 
 @needs_db
 async def test_status_pins_personal_goals_and_the_streak_scores_them(
-    client: TestClient,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sid = str(uuid.uuid4())
     today = local_day(0).date
+    # The bonus (#3995) is on by default; this test is about the core goals and streak.
+    monkeypatch.setenv("DAILY_CHALLENGE_BONUS_ENABLED", "false")
+    monkeypatch.setattr(personal, "_settings", None)
     await _seed_2048(sid, today)
     body = client.get("/daily-challenge/status", headers=_headers(sid)).json()
     # Older-build shape: 3 goals, existing kinds only, the usual fields.

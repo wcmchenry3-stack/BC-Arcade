@@ -358,3 +358,5 @@ Tier TBD. If free: no entitlement check — daily puzzle is always accessible.
 The former rollover data-loss issue #2473 is already resolved in current code and tests and should not remain a documentation dependency.
 
 Active future timezone/day-boundary work should be documented here only when it changes the shipped behavior; do not mirror the general GitHub backlog into this file.
+
+**Lobby tile status (#4008).** The lobby shows **Done today** when today's cached meta (`loadTodayMeta`) exists and today's board is finished (won or lost), via the read-only `isBoardFinished(puzzleId)` in `storage.ts`. It never migrates the legacy slot or discards a corrupt board, unlike `loadState`. See [ARCHITECTURE §10.7](../ARCHITECTURE.md).

@@ -21,33 +21,14 @@ import type { Grid, NoteDigit, SudokuCell, SudokuState, Variant } from "./types"
 import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 import { recomputeConflicts } from "./engine";
 import { variantConfig } from "./types";
+import {
+  SUDOKU_GAME_KEY,
+  looksValid,
+  type SerializedCell,
+  type SerializedState,
+} from "./savedShape";
 
 const SUBSYSTEM = "sudoku.storage";
-
-interface SerializedCell {
-  value: number;
-  given: boolean;
-  notes: number[];
-  isError: boolean;
-}
-
-interface SerializedState {
-  _v: 1;
-  variant?: string;
-  difficulty: string;
-  puzzle: string;
-  solution: string;
-  grid: SerializedCell[][];
-  selectedRow: number | null;
-  selectedCol: number | null;
-  notesMode: boolean;
-  errorCount: number;
-  isComplete: boolean;
-  undoStack: Array<Omit<SerializedState, "undoStack"> & { undoStack: [] }>;
-  /** Replay entries recorded so far (#3288); absent on older saves. */
-  entryCount?: number;
-  replayRows?: number;
-}
 
 function serializeCell(c: SudokuCell): SerializedCell {
   return {
@@ -123,39 +104,6 @@ function restoreSnapshot(p: Omit<SerializedState, "undoStack">): Omit<SudokuStat
   };
 }
 
-/** Minimal structural validation — enough to catch truncated payloads
- * and version bumps without pulling in a schema library. */
-function looksValid(p: unknown): p is SerializedState {
-  if (p === null || typeof p !== "object") return false;
-  const o = p as Partial<SerializedState>;
-  if (o._v !== 1) return false;
-  if (o.difficulty !== "easy" && o.difficulty !== "medium" && o.difficulty !== "hard") {
-    return false;
-  }
-  const variant = o.variant ?? "classic";
-  if (variant !== "classic" && variant !== "mini") return false;
-  const size = variant === "mini" ? 6 : 9;
-  const total = size * size;
-  if (typeof o.puzzle !== "string" || o.puzzle.length !== total) return false;
-  if (typeof o.solution !== "string" || o.solution.length !== total) return false;
-  if (!Array.isArray(o.grid) || o.grid.length !== size) return false;
-  for (const row of o.grid) {
-    if (!Array.isArray(row) || row.length !== size) return false;
-    for (const cell of row) {
-      if (cell === null || typeof cell !== "object") return false;
-      if (typeof (cell as SerializedCell).value !== "number") return false;
-      if (typeof (cell as SerializedCell).given !== "boolean") return false;
-      if (!Array.isArray((cell as SerializedCell).notes)) return false;
-      if (typeof (cell as SerializedCell).isError !== "boolean") return false;
-    }
-  }
-  if (typeof o.notesMode !== "boolean") return false;
-  if (typeof o.errorCount !== "number") return false;
-  if (typeof o.isComplete !== "boolean") return false;
-  if (!Array.isArray(o.undoStack)) return false;
-  return true;
-}
-
 function restoreState(parsed: SerializedState): SudokuState {
   return {
     ...restoreSnapshot(parsed),
@@ -182,7 +130,7 @@ export const {
   load: loadGame,
   clear: clearGame,
 } = createJsonSlot<SudokuState, SerializedState>({
-  key: "sudoku_game",
+  key: SUDOKU_GAME_KEY,
   subsystem: SUBSYSTEM,
   isValid: looksValid,
   invalidWarning: () => ({ message: "sudoku.storage: invalid payload shape, discarding" }),

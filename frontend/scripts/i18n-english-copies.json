@@ -222,6 +222,11 @@
     "twenty48": {
       "nl": ["score.label"],
       "fr-CA": ["score.label"]
+    },
+    "daily_challenge": {
+      "de": ["bonus.label"],
+      "nl": ["bonus.label"],
+      "fr-CA": ["bonus.label"]
     }
   },
   "pending": {

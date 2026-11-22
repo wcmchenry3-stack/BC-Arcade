@@ -57,6 +57,8 @@ should treat the numbers in this doc as starting dials, not truths.
 
 ## 4. Proposed daily structure
 
+_The optional bonus goal below shipped in #3995 (docs/DAILY-CHALLENGE.md §3b)._
+
 ```
 ┌───────────────────────────────────────────────────────────┐
 │  Daily Challenge                                  🔥 12   │
@@ -131,6 +133,8 @@ describes one product per game with no bundle; the docs and the purchase code ar
   Finish goals, as today.
 
 ### Discovery lives in the optional slot
+
+_Shipped in #3995 (`personal.choose_bonus`, docs/DAILY-CHALLENGE.md §3b): about half discovery (a cold-start goal in a game not played in 14 days, minus resting games), the rest a stretch with double the stretch %, still capped at the personal best. Never a core game, never luck-dependent, null on shared-template days._
 
 - The bonus slot **mostly** (dial, start ~50%) suggests an eligible game the player **hasn't played in ~14 days or
   ever**, with a Finish goal: the lowest-friction ask.
@@ -399,8 +403,8 @@ from the tables above:
   automatic storage-guard pauses, the app's `/today` fallback and kill-switch periods (DAILY-CHALLENGE.md §1).
 - **The variety guard is strict at 3+ games with affinity**, so with exactly 3 or 4 games it sets the rotation more
   than affinity does. §6's "unless the player only plays one or two games" is the exception as written.
-- **Discovery** (`discovery_candidates`) and its rest rule are in place for #3995: 3 ignored offers within 30 days
-  rest a game for 30 days after the last one.
+- **Discovery** (`discovery_candidates`) and its rest rule are live (#3995): 3 ignored discovery offers within 30
+  days rest a game for 30 days after the last one.
 - Dials shipped: `DAILY_CHALLENGE_STRETCH_PCT` (12), `DAILY_CHALLENGE_AFFINITY_DAYS` (14),
   `DAILY_CHALLENGE_HISTORY_GAMES` (10).
 
@@ -481,8 +485,7 @@ Server env vars, read lazily like the existing daily-challenge settings:
   that) and `DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS` (48).
 - Shipped in #3993/#3994: `DAILY_CHALLENGE_STRETCH_PCT` (12), `DAILY_CHALLENGE_AFFINITY_DAYS` (14) and
   `DAILY_CHALLENGE_HISTORY_GAMES` (10).
-- Proposed for later stories: `DAILY_CHALLENGE_DISCOVERY_SHARE` (start 0.5), `DAILY_CHALLENGE_BONUS_ENABLED` (start
-  on).
+- Shipped in #3995: `DAILY_CHALLENGE_DISCOVERY_SHARE` (0.5) and `DAILY_CHALLENGE_BONUS_ENABLED` (on).
 
 None of these touch the device, so the `/games/catalog` dial carrier isn't needed.
 
@@ -522,7 +525,7 @@ The epic covers updating or replacing #2946, #2458 and #3945. Model choice per s
 | 2 | Per-install pinned assignments: table, pin-on-serve for `/status` and `/upcoming`, prune, `DELETE /me`, streak replay reads it, kill switch | — | L | Opus |
 | 3 | Personal targets: per-game goal specs and target rules from §12 for the free games (incl. Sort "N new levels", Solitaire/FreeCell fixes) | 2 | M | Opus |
 | 4 | Game selection: eligible set (free vs premium), affinity weighting, variety guard, discovery rest rule | 2 | M | Sonnet |
-| 5 | Bonus goal: `bonus` field, Home card UI (marked optional), i18n, offline progress, never in the streak | 2, 4 | M | Sonnet |
+| 5 | ~~Bonus goal: `bonus` field, Home card UI (marked optional), i18n, offline progress, never in the streak~~ Shipped (#3995) | 2, 4 | M | Sonnet |
 | 6 | Premium games' goals (Blackjack, Cascade, Hearts, Mahjong, Star Swarm) per §12, replacing #2458 / #3945 | 3 | M | Sonnet |
 | 7 | Docs: DAILY-CHALLENGE.md (new contract), DATA-INVENTORY.md row, retire superseded sections of this proposal | 2–6 | S | Haiku |
 | 8 | Tuning query: the §8 metrics as a read-only SQL script for the dev/prod database (no new collection) | 2 | S | Sonnet |

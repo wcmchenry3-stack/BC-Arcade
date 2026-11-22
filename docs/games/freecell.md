@@ -330,3 +330,5 @@ Triggers are in `frontend/src/screens/FreeCellScreen.tsx`, each timed to its car
 | `freecell.gameWin`                                                                         | `card-game-won.ogg` (shared with Solitaire and Hearts)                         | the game is won; with the riffle's settle, on the last card's contact                                                                                                                                         | 1.0    |
 
 "No moves available" has no sound. The old `freecell-invalid-move.mp3` was deleted in #3845.
+
+**Lobby tile status (#4008).** The lobby reads the saved game read-only (`FREECELL_GAME_KEY`, `isSavedGame` exported from `storage.ts`) and shows **Resume** for a game that is not complete and has `moveCount > 0`, otherwise "Best moves: N". See [ARCHITECTURE §10.7](../ARCHITECTURE.md).

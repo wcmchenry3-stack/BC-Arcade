@@ -29,6 +29,8 @@ import { createJsonSlot } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "solitaire.storage";
 
+export const SOLITAIRE_GAME_KEY = "solitaire_game";
+
 type ParsedSave = { -readonly [K in keyof SolitaireState]?: SolitaireState[K] };
 
 function stripNestedUndo(state: SolitaireState): SolitaireState {
@@ -48,7 +50,7 @@ function withoutEvents(state: SolitaireState): SolitaireState {
   return game;
 }
 
-function isSavedGame(p: unknown): p is ParsedSave {
+export function isSavedGame(p: unknown): p is ParsedSave {
   const parsed = p as ParsedSave;
   return !(
     parsed._v !== 1 ||
@@ -71,7 +73,7 @@ export const {
   load: loadGame,
   clear: clearGame,
 } = createJsonSlot<SolitaireState, ParsedSave>({
-  key: "solitaire_game",
+  key: SOLITAIRE_GAME_KEY,
   subsystem: SUBSYSTEM,
   isValid: isSavedGame,
   onLoad: (parsed) => {

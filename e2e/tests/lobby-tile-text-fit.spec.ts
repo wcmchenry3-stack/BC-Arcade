@@ -8,7 +8,8 @@
  * the default size, and the 5 lines it reserves at the 1.5x font-scale cap
  * (LOBBY_DESCRIPTION_LINES / _LARGE and LOBBY_MAX_FONT_SCALE in
  * frontend/src/components/home/lobbyColumns.ts). A string that needs more fails here, before
- * it is clamped with an ellipsis on a phone with large text.
+ * it is clamped with an ellipsis on a phone with large text. The lobby status strings that
+ * replace a description (#4008) are held to the same limit.
  */
 import { test, expect } from "@playwright/test";
 import { readFileSync, readdirSync } from "fs";
@@ -66,8 +67,53 @@ function descriptions(): Item[] {
       const text = json["game.description"];
       if (text) items.push({ locale, game, text });
     }
+    items.push(...statuses(locale));
   }
   return items;
+}
+
+// The status that replaces a description (#4008) sits in the same slot, so it must fit the same
+// lines. Measured with the longest values a tile shows: a 7-digit score, an h:mm:ss time, a
+// 4-digit move count (formatted with grouping separators; the widest locale separators are
+// close to these).
+function statuses(locale: string): Item[] {
+  let json: Record<string, string>;
+  try {
+    json = JSON.parse(
+      readFileSync(join(LOCALES_DIR, locale, "common.json"), "utf8"),
+    );
+  } catch {
+    return [];
+  }
+  const fill = (key: string, value: string) =>
+    (json[key] ?? "").replace("{{value}}", value);
+  return [
+    {
+      locale,
+      game: "status.inProgress",
+      text: json["home.status.inProgress"] ?? "",
+    },
+    {
+      locale,
+      game: "status.doneToday",
+      text: json["home.status.doneToday"] ?? "",
+    },
+    {
+      locale,
+      game: "status.best",
+      text: fill("home.status.best", "1,234,567"),
+    },
+    {
+      locale,
+      game: "status.bestTime",
+      text: fill("home.status.best", "1:23:45"),
+    },
+    {
+      locale,
+      game: "status.bestMoves",
+      text: fill("home.status.bestMoves", "1,234"),
+    },
+  ].filter((item) => item.text !== "");
 }
 
 test.describe("Lobby tile descriptions fit their reserved lines (#4006)", () => {

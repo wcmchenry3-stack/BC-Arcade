@@ -32,16 +32,19 @@ The track is rebuilt from code: `python tools/assets/build_starswarm_bgm.py OUT.
 about a minute, byte-identical to the shipped file under CI's ffmpeg (Ubuntu 24.04, ffmpeg 6.1.1)
 with the pinned numpy, scipy and soundfile. `--check` rebuilds and compares the SHA-256;
 `--stages DIR` also keeps the bed, intro and full mix renders and the cue sheet for listening.
-`tools/assets/tests/starswarm_bgm_test.py` rebuilds it in CI and checks it two ways (#4027). The build
-encodes MP3 three times and libmp3lame is chaotic: the same code and packages gave MP3s that differed
-by 2e-3 relative RMS on two CI runners, with the same sound. So the test pins the encoder-free stages
-tightly (1e-6 relative): the un-encoded bed, each layer's phrase, and the arrangement laid over the
-un-encoded bed, summarised as per-5 s-window RMS and peak in
-`tools/assets/starswarm_bgm/reference_fingerprint.json` (about 6 KB; no audio is stored). A changed cue
-level (even 0.09 dB), window, duck, fade, pitch or layer fails it. The final shipped MP3 is checked
-loosely (same length, relative RMS under 1.5e-2, every 10 s window within 0.02 dB of the shipped
-track), which tolerates encoder differences between machines but still catches a wholesale change.
-The thresholds and their evidence are in the test file.
+`tools/assets/tests/starswarm_bgm_test.py` rebuilds it in CI and checks it two ways (#4027). The
+build encodes MP3 three times and libmp3lame is chaotic: the same code and packages gave MP3s that
+differed by 2e-3 relative RMS on two CI runners, with the same sound. So the test pins the
+encoder-free stages tightly: the un-encoded bed, each layer's phrase, and the arrangement laid over
+the un-encoded bed, summarised as per-5 s-window RMS and peak in
+`tools/assets/starswarm_bgm/reference_fingerprint.json` (about 6 KB; no audio is stored). Window RMS
+must match to 1e-5 relative and peaks to 1e-4: numpy's CPU-specific SIMD kernels move a peak by up
+to 2.6e-6 between machines and a window by up to 7.7e-7 (#4026 failed CI at the old 1e-6), while a
+cue made 0.1 dB louder moves a window by 1.55e-4 or more. A changed cue level (0.1 dB on any cue),
+window, duck, fade, pitch or layer fails it. The final shipped MP3 is checked loosely (same length,
+relative RMS under 1.5e-2, every 10 s window within 0.02 dB of the shipped track), which tolerates
+encoder differences between machines but still catches a wholesale change. The thresholds and their
+evidence are in the test file.
 
 The approved track draws on six rounds. Each layer was copied out of its round with the arithmetic
 unchanged, minus the parts the final track never used:

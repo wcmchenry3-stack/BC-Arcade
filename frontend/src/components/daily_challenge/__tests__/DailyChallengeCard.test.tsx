@@ -569,3 +569,109 @@ describe("DailyChallengeCard — offline past the cached days (#3228)", () => {
     );
   });
 });
+
+describe("DailyChallengeCard — the optional bonus goal (#3995)", () => {
+  const hidden = { includeHiddenElements: true };
+  function withBonus(
+    done: boolean,
+    completedIds: string[] = [],
+    bonus: Partial<ChallengeGoal> = {}
+  ): DailyChallenge {
+    return {
+      ...challenge(completedIds),
+      bonus: {
+        id: "yacht:final_score_at_least:150",
+        gameSlug: "yacht",
+        kind: "final_score_at_least",
+        target: 150,
+        completed: done,
+        ...bonus,
+      },
+    };
+  }
+
+  it("shows no bonus row for a day without one", async () => {
+    const { findByText, queryByTestId, queryByText } = await renderCard();
+    await findByText("0 of 3 complete");
+    expect(queryByTestId("daily-challenge-bonus")).toBeNull();
+    expect(queryByText("Bonus")).toBeNull();
+  });
+
+  it("shows a labelled bonus row below the three core chips, not done", async () => {
+    mockGetDailyChallenge.mockResolvedValue(withBonus(false));
+    const { findByLabelText, getByText, getByTestId } = await renderCard();
+    expect(
+      await findByLabelText("Bonus, optional: Score 150+ in Yacht, not completed yet")
+    ).toBeTruthy();
+    expect(getByText("Bonus", hidden)).toBeTruthy();
+    expect(
+      getByTestId("daily-challenge-bonus-mark-yacht:final_score_at_least:150", hidden).props
+        .children
+    ).toBe("☆");
+    // The core chips are unchanged.
+    expect(getByTestId("daily-challenge-goal-g1")).toBeTruthy();
+  });
+
+  it("marks a done bonus with a filled star and the bonus (not the core accent) styling", async () => {
+    mockGetDailyChallenge.mockResolvedValue(withBonus(true));
+    const { findByLabelText, getByTestId } = await renderCard();
+    const chip = await findByLabelText("Bonus, optional: Score 150+ in Yacht, completed");
+    expect(
+      getByTestId("daily-challenge-bonus-mark-yacht:final_score_at_least:150", hidden).props
+        .children
+    ).toBe("★");
+    const style = JSON.stringify(chip.props.style);
+    expect(style).not.toContain("backgroundColor");
+    expect(style).not.toContain("dashed");
+    expect(style).toContain('"borderColor"');
+  });
+
+  it("draws the not-done bonus chip with a dashed border", async () => {
+    mockGetDailyChallenge.mockResolvedValue(withBonus(false));
+    const { findByLabelText } = await renderCard();
+    const chip = await findByLabelText("Bonus, optional: Score 150+ in Yacht, not completed yet");
+    expect(JSON.stringify(chip.props.style)).toContain('"borderStyle":"dashed"');
+  });
+
+  it("leaves the count and the all-done note to the core goals", async () => {
+    mockGetDailyChallenge.mockResolvedValue(withBonus(false, ["g1", "g2"]));
+    const { findByText, queryByText } = await renderCard();
+    expect(await findByText("2 of 3 complete")).toBeTruthy();
+    expect(queryByText(/A new challenge arrives tomorrow/)).toBeNull();
+  });
+
+  it("celebrates when the core goals are done even though the bonus is not", async () => {
+    mockGetDailyChallenge.mockResolvedValue(withBonus(false, ["g1", "g2", "g3"]));
+    const { findByText } = await renderCard();
+    expect(await findByText("3 of 3 complete")).toBeTruthy();
+    expect(await findByText("All done! A new challenge arrives tomorrow.")).toBeTruthy();
+  });
+
+  it("does not count a done bonus toward the total", async () => {
+    mockGetDailyChallenge.mockResolvedValue(withBonus(true));
+    const { findByText } = await renderCard();
+    expect(await findByText("0 of 3 complete")).toBeTruthy();
+  });
+
+  it("hides a bonus for a game this build hides", async () => {
+    __forceStoreBuildForTests(true);
+    mockGetDailyChallenge.mockResolvedValue(withBonus(false, [], { gameSlug: "hearts", id: "h" }));
+    const { findByText, queryByTestId } = await renderCard();
+    await findByText(/of 3 complete|of 2 complete|of 1 complete/);
+    expect(queryByTestId("daily-challenge-bonus")).toBeNull();
+  });
+
+  it("falls back to 'Play <game>' wording for a bonus kind this build does not know", async () => {
+    mockGetDailyChallenge.mockResolvedValue(withBonus(false, [], { kind: "brand_new_kind" }));
+    const { findByLabelText } = await renderCard();
+    expect(await findByLabelText("Bonus, optional: Play Yacht, not completed yet")).toBeTruthy();
+  });
+
+  it("hides the glyph and the label from screen readers", async () => {
+    mockGetDailyChallenge.mockResolvedValue(withBonus(false));
+    const { findByLabelText, getByText } = await renderCard();
+    await findByLabelText("Bonus, optional: Score 150+ in Yacht, not completed yet");
+    expect(getByText("Bonus", hidden).props.accessibilityElementsHidden).toBe(true);
+    expect(getByText("☆", hidden).props.accessibilityElementsHidden).toBe(true);
+  });
+});

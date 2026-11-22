@@ -1304,6 +1304,27 @@ show Daily Word, Yacht, 2048, Solitaire, FreeCell, Sudoku, Sort Puzzle. The orde
 with play history or saves (owner decision: muscle memory); hidden games keep their slots when
 unhidden (#2875).
 
+**Lobby tile status (#4008).** A tile can show one status line from this device's storage, in the
+description's slot (so it keeps the reserved lines and rows stay equal): **Resume** ("In progress",
+accent text, and the button reads "Resume", the label adds ", in progress, tap to resume") over
+**Done today** (Daily Word, tertiary text) over **Best** (muted, in the game's own unit: a score, a
+`m:ss` time for Solitaire, "Best moves" for FreeCell). A locked tile shows none. Each game
+contributes a `getLobbyStatus()` in `game/<name>/lobbyStatus.ts`, listed in
+`components/home/lobbyStatusReaders.ts`; `useLobbyTileStatus` runs them all in one `Promise.all`
+after first paint (`setTimeout(0)`), on mount, on Home's `focus` and on app foreground, and the grid never waits
+on them. The resume rule lives in the game's `lobbyStatus.ts` (`isResumable`); Yacht's is also what
+`startYacht` uses, so the tile and the tap agree (#2203). Most other screens always reopen a stored
+game, so their rule only decides the label: a game in progress is one that is not over and has had a
+move. **Sort is the second whose tap must match:** its screen opens on the level grid, so while the
+tile says Resume the tile navigates to `Sort` with `{ resume: true }`, and `SortScreen`, once its
+progress has loaded, runs the same `handleContinue()` as the level grid's Continue button (once, and
+the param is cleared). Sort's `isResumable` (a level plus an unfinished board, on this build's level
+catalog) is also what the grid uses to offer Continue. Shown for: Yacht, 2048, Solitaire, FreeCell,
+Sudoku, Sort (Resume), Daily Word (Done today), and Best for Yacht, 2048, Solitaire, FreeCell.
+**Not listed:** the hidden games (their storage is never imported or read, so a store bundle holds
+none of it); Sudoku and Sort show no best (one per mode and difficulty, one per level). The reads are silent and write-free: a save or best that cannot be read, parsed or checked reads as no status and is left as stored (no removal, no Sentry event, and an older-format best is not moved in: the best comes from `peekBests`, not `getBest`). They run on mount, on Home's `focus` and when the app returns to the foreground, so "Done today" is derived again against the current date (with Home open and the app in the foreground across midnight, it stays until the next focus or foreground; there is no timer). Keys read: `docs/DATA-INVENTORY.md` §3.
+
+
 ### 10.8 How the free/premium split is decided
 
 The split is **criteria-driven, not quota-driven.** The original 6/6 was an
@@ -1496,6 +1517,8 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `DAILY_CHALLENGE_STRETCH_PCT`                                        | `12` (0–50; personal target = recent median ± this %)                                                                                                                                                                                              | `daily_challenge/personal.py` (lazy)                                                                                                    |
 | `DAILY_CHALLENGE_AFFINITY_DAYS`                                      | `14` (1–60; days of play weighing a game's core slots)                                                                                                                                                                                             | `daily_challenge/personal.py` (lazy)                                                                                                    |
 | `DAILY_CHALLENGE_HISTORY_GAMES`                                      | `10` (3–50; latest finished games per game a target reads)                                                                                                                                                                                         | `daily_challenge/personal.py` (lazy)                                                                                                    |
+| `DAILY_CHALLENGE_BONUS_ENABLED`                                      | `true` (`false` pins no new optional bonus goal, #3995)                                                                                                                                                                                            | `daily_challenge/personal.py` (lazy)                                                                                                    |
+| `DAILY_CHALLENGE_DISCOVERY_SHARE`                                    | `0.5` (0-1; share of bonus goals that are a discovery game, the rest a bigger stretch, #3995)                                                                                                                                                      | `daily_challenge/personal.py` (lazy)                                                                                                    |
 | `APPLE_REPLAY_WINDOW_HOURS`                                          | `48` (1–720)                                                                                                                                                                                                                                       | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`)                                                                   |
 | `DB_PING_TIMEOUT_SECONDS`                                            | `5.0` (above 0, at most 60)                                                                                                                                                                                                                        | `routes/health.py` (lazy)                                                                                                               |
 | `DB_STATEMENT_TIMEOUT_SECONDS`                                       | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection)                                                                                                                                | `db/base.py` (with `DATABASE_URL`; Postgres only)                                                                                       |
