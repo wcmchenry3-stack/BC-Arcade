@@ -111,6 +111,10 @@
   "retired_games": {},
   "not_replay": [
     {
+      "path": "backend/tests/fixtures/sort_new_levels_parity.json",
+      "reason": "Daily Challenge goal-evaluation cases shared by the server and offline checks (#4028), not replay inputs"
+    },
+    {
       "path": "backend/tests/fixtures/starswarm_run_lieutenant_7w.json",
       "reason": "Star Swarm stores observations (wave stats, timelines) that carry their own v/ev, not inputs re-run through the engine"
     },
