@@ -130,19 +130,29 @@ describe("CapacityWarningToast", () => {
   });
 
   it("polls the check function at the configured interval", async () => {
-    const check = jest
-      .fn<Promise<boolean>, []>()
-      .mockResolvedValueOnce(false) // mount — hide
-      .mockResolvedValue(true); // subsequent ticks — show
-    const { queryByTestId, findByTestId } = await renderWith(check);
-    // Mount check: hidden.
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(queryByTestId("capacity-warning-toast")).toBeNull();
-    // After one or more poll intervals, a subsequent check fires → show.
-    await findByTestId("capacity-warning-toast");
-    expect(check.mock.calls.length).toBeGreaterThanOrEqual(2);
+    // Fake timers: with real timers a 50 ms poll tick could fire before the
+    // "still hidden" assertion on a loaded CI runner and flip the banner (#4027).
+    jest.useFakeTimers();
+    try {
+      const check = jest
+        .fn<Promise<boolean>, []>()
+        .mockResolvedValueOnce(false) // mount — hide
+        .mockResolvedValue(true); // subsequent ticks — show
+      const { queryByTestId } = await renderWith(check);
+      // Mount check: hidden, and no poll tick has run yet.
+      await flush();
+      expect(check).toHaveBeenCalledTimes(1);
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+      // Exactly one poll interval later, the next check fires → show.
+      await act(async () => {
+        jest.advanceTimersByTime(50);
+      });
+      await flush();
+      expect(check).toHaveBeenCalledTimes(2);
+      expect(queryByTestId("capacity-warning-toast")).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   // -------------------------------------------------------------------------

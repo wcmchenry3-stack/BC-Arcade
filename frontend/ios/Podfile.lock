@@ -2198,7 +2198,7 @@ PODS:
     - React-utils (= 0.86.3)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.86.3)
-  - RNAudioAPI (0.13.6):
+  - RNAudioAPI (1.0.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2219,10 +2219,9 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNAudioAPI/audioapi (= 0.13.6)
-    - RNWorklets
+    - RNAudioAPI/audioapi (= 1.0.1)
     - Yoga
-  - RNAudioAPI/audioapi (0.13.6):
+  - RNAudioAPI/audioapi (1.0.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2243,12 +2242,11 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNAudioAPI/audioapi/audioapi_dsp (= 0.13.6)
-    - RNAudioAPI/audioapi/ios (= 0.13.6)
-    - RNAudioAPI/audioapi/miniaudio_impl (= 0.13.6)
-    - RNWorklets
+    - RNAudioAPI/audioapi/audioapi_dsp (= 1.0.1)
+    - RNAudioAPI/audioapi/ios (= 1.0.1)
+    - RNAudioAPI/audioapi/miniaudio_impl (= 1.0.1)
     - Yoga
-  - RNAudioAPI/audioapi/audioapi_dsp (0.13.6):
+  - RNAudioAPI/audioapi/audioapi_dsp (1.0.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2269,9 +2267,8 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNWorklets
     - Yoga
-  - RNAudioAPI/audioapi/ios (0.13.6):
+  - RNAudioAPI/audioapi/ios (1.0.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2292,9 +2289,8 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNWorklets
     - Yoga
-  - RNAudioAPI/audioapi/miniaudio_impl (0.13.6):
+  - RNAudioAPI/audioapi/miniaudio_impl (1.0.1):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2315,7 +2311,6 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNWorklets
     - Yoga
   - RNGestureHandler (3.5.0):
     - hermes-engine
@@ -3066,7 +3061,7 @@ SPEC CHECKSUMS:
   ReactCodegen: 828f54f35f2bc4ee3f39345144ff0ec22c9535c2
   ReactCommon: 02f6a489d5eb4ab79d7deba5cd4434e0ba351a07
   ReactNativeDependencies: 6738e602b46fd24aa453cd58267ec3bb8bf29d27
-  RNAudioAPI: 8c5c995d028344e1a78a72cb96f635a433bfbd5a
+  RNAudioAPI: 89ff3f97291b2ed36243ba41601f3f392f9df1b5
   RNGestureHandler: 96c9b91fab76e7fd9c81928b168d4179277a36a5
   RNReanimated: 8e15e9c39a36a01b296bf9f7254a6a35ed9c5a6c
   RNScreens: 40b8d4fbffca379138edb3d8032ceaba316a65b2

@@ -6,8 +6,9 @@
  * he "two" and fr/es/pt "many" never apply.
  *
  * Import this before i18next initialises (first line of index.ts). It installs
- * only when the engine lacks PluralRules (or a broken one); where it exists
- * (Node, browsers) nothing changes, and the locale data below is a no-op.
+ * only when the engine lacks PluralRules (or one the package judges unfit:
+ * v7 also replaces a native one without source-precision support, as in Node);
+ * where a capable one exists nothing changes, and the locale data below is a no-op.
  *
  * @formatjs/intl-pluralrules rather than the smaller intl-pluralrules: the
  * latter (2.0.1) formats the number with digit grouping before applying the

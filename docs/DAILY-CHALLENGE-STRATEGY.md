@@ -19,7 +19,7 @@ and wins wherever the two differ. Sections superseded by what shipped are marked
 | [#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038) | #4028, #4039 | Bottle Sort relative "solve N new levels" goal, per-edition baselines, device key `@sort/day_start`.                                                                   |
 
 Open follow-ups: #3988 (PRODUCT.md data-use rule), #3989 ([`IAP.md`](IAP.md) premium model, blocked on an owner
-decision), #4033 (Mahjong win-time floor).
+decision).
 
 Related backlog: #2946 (goals tuned to the player's history: this doc is its design spike), #2458 (premium goal
 pools), #2459 (streak freezes), #2895 (schedule variety check), #3945 (Cascade targets).
@@ -587,7 +587,7 @@ what each became.
 | 8   | Tuning query: the §8 metrics as a read-only SQL script for the dev/prod database (no new collection)                                        | Shipped: [#4023](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4023) (#3998), `backend/scripts/daily_challenge_metrics.py`                          |
 | 9   | Bottle Sort relative "solve N new levels" goal (added during the epic)                                                                      | Shipped: [#4038](https://github.com/wcmchenry3-stack/BC-Arcade/pull/4038) (#4028, with #4039)                                                            |
 
-Open follow-ups: #3988 (PRODUCT.md data-use rule), #3989 (`IAP.md` premium model, blocked on an owner decision), #4033 (Mahjong win-time floor).
+Open follow-ups: #3988 (PRODUCT.md data-use rule), #3989 (`IAP.md` premium model, blocked on an owner decision).
 
 [cbs]: https://business.columbia.edu/sites/default/files-efs/citation_file_upload/Personalized_games.pdf
 [dof-puzzles]: https://www.deconstructoroffun.com/blog/2024/9/23/daily-missions-in-puzzles-why-should-we-see-them-more-often
