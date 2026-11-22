@@ -14,23 +14,33 @@ most paths — a 9,000-point Twenty48 run ended with "New Game" used to clear a
 result block reports ``won: false``; threshold goals were not, so the rows are
 filtered here instead of relying on each goal kind to notice.
 
-The only write here is indirect: ``schedule.get_or_create_template`` (#2493)
-freezes today's assignment into ``daily_challenge_days`` the first time it is
-requested, so tuning the goal pool or ``DAILY_CHALLENGE_SALT`` later can never
-change what a day already showed.
+The writes here are pins, never progress. ``schedule.get_or_create_template``
+(#2493) freezes a day's shared template into ``daily_challenge_days`` the first
+time it is requested, so tuning the goal pool or ``DAILY_CHALLENGE_SALT`` later can
+never change what a day already showed. ``assignments.get_or_pin`` (#3992) then
+pins the install's own goals for the day into ``daily_challenge_assignments``
+(``pick_for_install`` chooses them), so every later read returns the same goals.
+The pick (#3993/#3994) reads the install's history once per request
+(``history.load_install_history``, at most four queries) and chooses personal goals
+with ``personal.choose_core``; an install with too little history, or a day it could
+already have been shown unpinned, gets the shared template exactly
+(``personal.serves_shared``).
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from daily_challenge import schedule
+from daily_challenge import assignments, history, personal, schedule
+from daily_challenge.assignments import Assignment, derived_template_id
 from daily_challenge.definitions import (
+    FREE_GOAL_POOL,
     Facts,
     Goal,
     LocalDay,
@@ -40,9 +50,12 @@ from daily_challenge.definitions import (
     local_day,
     template_for,
 )
+from daily_challenge.history import InstallHistory
 from db.models import Game, GameEntitlement, GameType
-from entitlements.service import is_dev_override_active
+from entitlements.service import DISABLED_GAMES, is_dev_override_active
 from games.filters import not_abandoned
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -58,6 +71,9 @@ class ChallengeStatus:
     slate: Slate
     template: Template
     goals: tuple[GoalStatus, ...]
+    # The optional bonus goal (#3995): never counted in ``completed_goals`` or the
+    # streak. Always None until #3995 fills it.
+    bonus: Goal | None = None
 
     @property
     def completed_goals(self) -> int:
@@ -127,8 +143,11 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
     refreshed on every Home focus. Otherwise one statement: the template's games
     joined to this session's entitlements.
 
-    The slate choice is live and not stored: a mid-day entitlement change can
-    move the session to the other slate on the next call. Note that the choice
+    The slate is pinned with the day (#3992): ``pick_for_install`` calls this once,
+    when the install's day is first served (for a personal pick too), and the pinned
+    row keeps that slate, so a mid-day entitlement change applies from the next day not yet pinned. It
+    is resolved per request only for unpinned days (an install that may not pin,
+    or ``DAILY_CHALLENGE_PERSONALIZED`` off, via ``shared_for_install``). The choice
     is made from the *computed* templates (``template_for(day, "premium")`` and
     ``template_for(day, "free")``, from the current pool and salt), while the
     template the caller then serves is the *frozen* one for that (day, slate)
@@ -160,6 +179,125 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
     )
 
 
+@dataclass
+class PickContext:
+    """One request's picks: the days it may pick (so the history is loaded once,
+    for all of them) and the client's UTC offset. ``pick_for_install`` records each
+    day it picks in ``history.pinned``, so the next day's variety guard sees it
+    before it is stored. ``assignments.get_or_pin`` picks missing days in date order."""
+
+    days: list[date]
+    tz_offset_minutes: int = 0
+    history: InstallHistory | None = None
+    eligible: list[str] | None = field(default=None)
+
+
+async def eligible_games(session: AsyncSession, session_id: str) -> list[str]:
+    """The games an install's core goals may come from (#3994): every free game with
+    goal specs, plus the premium games with specs it is entitled to (the dev override
+    counts as entitled, as in ``resolve_slate``). Never a game in ``DISABLED_GAMES``.
+
+    No premium game has specs yet (#3996), so today this is the free games and runs
+    no query. A premium game must not get specs while store builds hide it."""
+    spec_games = [g for g in sorted(personal.GAME_SPECS) if g not in DISABLED_GAMES]
+    free = [g for g in spec_games if g in FREE_GOAL_POOL]
+    premium = [g for g in spec_games if g not in FREE_GOAL_POOL]
+    if not premium:
+        return free
+    if is_dev_override_active():
+        return free + premium
+    rows = (
+        await session.execute(
+            select(GameEntitlement.game_slug).where(
+                GameEntitlement.session_id == session_id,
+                GameEntitlement.game_slug.in_(premium),
+            )
+        )
+    ).scalars()
+    owned = set(rows)
+    return free + [g for g in premium if g in owned]
+
+
+async def pick_for_install(
+    session: AsyncSession,
+    session_id: str,
+    day: date,
+    *,
+    tz_offset_minutes: int = 0,
+    context: PickContext | None = None,
+) -> Assignment:
+    """Choose one install's goals for ``day``; ``assignments.get_or_pin`` stores
+    the result, so this runs at most once per (install, day) while the kill switch
+    is on, and never while it is off.
+
+    * **Shared** (``personal.serves_shared``): a new install (fewer than 3 finished
+      games of games with specs, or none in the affinity window), or a day the
+      install could already have been served unpinned (no game created in some
+      ``DAILY_CHALLENGE_PIN_RECENT_PLAY_HOURS`` window since the day could first be
+      asked for, ``InstallHistory.always_pinnable``). The shared frozen template for
+      the slate ``resolve_slate`` chooses (``shared_for_install``), exactly, so goals a
+      device already shows for the day never change when it is pinned.
+    * **Otherwise**: Daily Word plus two personal goals (``personal.choose_core``),
+      on the slate ``resolve_slate`` chooses, stored with the day. No bonus (#3995).
+
+    Queries: the history (at most four, once per ``context``), then none for a personal
+    pick while no premium game has specs and the two slates match; the shared path
+    adds the frozen template read (and an INSERT for a day never frozen).
+
+    Behaviour change from pinning: the slate is resolved once, when the day is
+    pinned, so a mid-day purchase no longer swaps that day's goals (it applies from
+    the next unpinned day). Invisible while the free and premium pools match.
+    """
+    ctx = context or PickContext([day], tz_offset_minutes)
+    if day not in ctx.days:
+        ctx.days = sorted({*ctx.days, day})
+        ctx.history = None
+    if ctx.history is None:
+        ctx.history = await history.load_install_history(
+            session, session_id, min(ctx.days), ctx.tz_offset_minutes, through=max(ctx.days)
+        )
+    install = ctx.history
+    result: Assignment | None = None
+    if not personal.serves_shared(install, day):
+        if ctx.eligible is None:
+            ctx.eligible = await eligible_games(session, session_id)
+        slate = await resolve_slate(session, session_id, day)
+        try:
+            goals = personal.choose_core(
+                install,
+                day,
+                ctx.eligible,
+                session_id=session_id,
+            )
+        except ValueError:
+            # Fewer than two goals to offer (every eligible game disabled, say): the
+            # shared template, never a failed /status.
+            logger.warning("daily_challenge: no personal goals for %s; shared template", day)
+        else:
+            result = Assignment(Template(derived_template_id(goals), goals), slate=slate)
+    if result is None:
+        result = await shared_for_install(session, session_id, day)
+    install.pinned[day] = result
+    return result
+
+
+async def shared_for_install(session: AsyncSession, session_id: str, day: date) -> Assignment:
+    """The shared frozen template for the slate ``resolve_slate`` chooses: what an
+    install that may not pin (``assignments.may_pin``) or any install while the
+    kill switch is off is served. Never written to ``daily_challenge_assignments``."""
+    slate = await resolve_slate(session, session_id, day)
+    template = await schedule.get_or_create_template(
+        session, day, slate, lambda: template_for(day, slate)
+    )
+    return Assignment(template=template, slate=slate, bonus=None)
+
+
+async def _shared_days(
+    session: AsyncSession, session_id: str, days: list[date]
+) -> dict[date, Assignment]:
+    return {d: await shared_for_install(session, session_id, d) for d in days}
+
+
 async def get_status_for_session(
     session: AsyncSession,
     *,
@@ -168,10 +306,19 @@ async def get_status_for_session(
     utc_now: datetime | None = None,
 ) -> ChallengeStatus:
     day = local_day(tz_offset_minutes, utc_now)
-    slate = await resolve_slate(session, session_id, day.date)
-    template = await schedule.get_or_create_template(
-        session, day.date, slate, lambda: template_for(day.date, slate)
+    ctx = PickContext([day.date], tz_offset_minutes)
+    pinned = await assignments.get_or_pin(
+        session,
+        session_id,
+        [day.date],
+        today=day.date,
+        pick=lambda d: pick_for_install(
+            session, session_id, d, tz_offset_minutes=tz_offset_minutes, context=ctx
+        ),
+        shared=lambda ds: _shared_days(session, session_id, ds),
     )
+    assignment = pinned[day.date]
+    template = assignment.template
     game_types = {goal.game_type for goal in template.goals}
 
     rows = (
@@ -195,7 +342,8 @@ async def get_status_for_session(
     ]
     return ChallengeStatus(
         day=day,
-        slate=slate,
+        slate=assignment.slate,
         template=template,
         goals=evaluate_template(template, ended),
+        bonus=assignment.bonus,
     )

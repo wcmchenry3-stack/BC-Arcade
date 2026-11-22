@@ -1,5 +1,5 @@
 import { TIERS, type TierSetId } from "../game/cascade/tiers";
-// Names, emoji and placeholder colours only: radius, score and density live in
+// Names and placeholder colours only: radius, score and density live in
 // game/cascade/tiers.ts (#3695); the pieces are drawn in code from game/cascade/art/ (#3698).
 import type { FruitDefinition as FruitDefinitionBase } from "./fruitSets.engine";
 
@@ -22,80 +22,69 @@ export interface FruitSet {
 const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[] }> = {
   fruits: {
     id: "fruits",
-    // TEMP(#3962): Lychee (blueberry art), Plum (grape art), Lime (recoloured lemon) and Pomegranate (coconut art)
-    // are stand-ins until #3964; the emoji and colours below are dev-panel / fallback only.
+    // The colours are live: they colour each merge's burst (`CascadeScreen`: `mergeBursts.add`), so
+    // keep them equal to the fruit's `CASCADE_PIECE_COLORS` entry. There are no emoji: the art is
+    // code-drawn, and the owner wants no stand-in emoji for the pieces Unicode lacks (#3964).
     label: "Fruits",
     fruits: [
       {
         tier: 0,
         name: "Cherry",
-        emoji: "🍒",
         color: "#dc2626",
       },
       {
         tier: 1,
         name: "Lychee",
-        emoji: "🫐",
-        color: "#6d28d9",
+        color: "#e4546a",
       },
       {
         tier: 2,
         name: "Lime",
-        emoji: "🍋",
-        color: "#84cc16",
+        color: "#2f8f2a",
       },
       {
         tier: 3,
         name: "Lemon",
-        emoji: "🍋",
         color: "#ca8a04",
       },
       {
         tier: 4,
         name: "Plum",
-        emoji: "🍇",
-        color: "#7c3aed",
+        color: "#d63a5c",
       },
       {
         tier: 5,
         name: "Orange",
-        emoji: "🍊",
         color: "#ea580c",
       },
       {
         tier: 6,
         name: "Apple",
-        emoji: "🍏",
         color: "#65a30d",
       },
       {
         tier: 7,
         name: "Pomegranate",
-        emoji: "🥥",
-        color: "#78716c",
+        color: "#c4262e",
       },
       {
         tier: 8,
         name: "Dragonfruit",
-        emoji: "🐉",
         color: "#db2777",
       },
       {
         tier: 9,
         name: "Pineapple",
-        emoji: "🍍",
         color: "#ca8a04",
       },
       {
         tier: 10,
         name: "Watermelon",
-        emoji: "🍉",
         color: "#16a34a",
       },
       {
         tier: 11,
         name: "Pumpkin",
-        emoji: "🎃",
         color: "#ea580c",
       },
     ],
@@ -107,73 +96,61 @@ const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[
       {
         tier: 0,
         name: "Pluto",
-        emoji: "🪨",
         color: "#94a3b8",
       },
       {
         tier: 1,
         name: "Moon",
-        emoji: "🌕",
         color: "#cbd5e1",
       },
       {
         tier: 2,
         name: "Mercury",
-        emoji: "🪨",
         color: "#9ca3af",
       },
       {
         tier: 3,
         name: "Mars",
-        emoji: "🔴",
         color: "#dc2626",
       },
       {
         tier: 4,
         name: "Venus",
-        emoji: "🟡",
         color: "#fbbf24",
       },
       {
         tier: 5,
         name: "Earth",
-        emoji: "🌍",
         color: "#2563eb",
       },
       {
         tier: 6,
         name: "Neptune",
-        emoji: "🔵",
         color: "#1d4ed8",
       },
       {
         tier: 7,
         name: "Uranus",
-        emoji: "🩵",
         color: "#67e8f9",
       },
       {
         tier: 8,
         name: "Saturn",
-        emoji: "🪐",
         color: "#ca8a04",
       },
       {
         tier: 9,
         name: "Jupiter",
-        emoji: "🟠",
         color: "#ea580c",
       },
       {
         tier: 10,
         name: "Sun",
-        emoji: "☀️",
         color: "#facc15",
       },
       {
         tier: 11,
         name: "Milky Way",
-        emoji: "🌌",
         color: "#7c3aed",
       },
     ],

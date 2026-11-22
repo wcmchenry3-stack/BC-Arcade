@@ -41,7 +41,7 @@ There are **12 fixed tiers** (0-11, #3960) and two piece sets, **Fruits** and **
 | 10   | Watermelon    | Sun       | 80.3   | 79.1  | 0.37    | 1024  | no        |
 | 11   | Pumpkin       | Milky Way | 98.0   | 96.5  | 0.34    | 2048  | no        |
 
-(#3962: the Fruits Lychee, Lime, Plum and Pomegranate draw placeholder art until #3964; see [Piece progression](cascade-decisions.md#piece-progression).)
+(#3964: the Fruits Lychee, Lime, Plum and Pomegranate have their own art; the Cosmos Moon is the owner-approved #3920 drawing back at tier 1, #3963. See [Piece progression](cascade-decisions.md#piece-progression).)
 
 Radii are world units (the bin is 400 x 600; its inner width is 360). This table is a copy of `frontend/src/game/cascade/tiers.ts`, the only place a tier's radius, score, density, droppable flag and name keys are defined; `tiers.test.ts` fails if another module defines one. How the radii, densities and drawn radii were chosen: [Piece progression](cascade-decisions.md#piece-progression).
 
@@ -143,9 +143,9 @@ Cascade has no endpoints of its own: it uses the generic `/games` routes (the le
 
 ### 12. Audio and accessibility
 
-**Audio** (owner picks, #3702). Fruits plays "Juicy pops", Cosmos plays "Starlight glass"; each set has 21 original, in-house synthesized sounds (42 files, about 345 KB; `tools/assets/synth_cascade_sfx.py`, credits in `SOUND_CREDITS.md`, reasoning in the [sound design log](cascade-sound-design.md)).
+**Audio** (owner picks, #3702). Fruits plays "Juicy pops", Cosmos plays "Starlight glass"; each set has 22 original, in-house synthesized sounds (44 files, about 365 KB; `tools/assets/synth_cascade_sfx.py`, credits in `SOUND_CREDITS.md`, reasoning in the [sound design log](cascade-sound-design.md)).
 
-- Events: drop, land (light or heavy by tier, volume rising with tier), merge (one pre-pitched file per tier, C-major pentatonic, louder up the ladder), chain (steps 1-4 with the link's merge sound, paced like the chain counter), danger (a tick on each on-beat of the blink), win (a run, a fizz and a chord timed to the card), game over (a falling line and a chord timed to the card). Table: [Sound](cascade-decisions.md#sound-3702).
+- Events: drop, land (light or heavy by tier, volume rising with tier), merge (one pre-pitched file per tier, C-major pentatonic, louder up the ladder; the winning merge's own t11 file plays with the win), chain (steps 1-4 with the link's merge sound, paced like the chain counter), danger (a tick on each on-beat of the blink), win (a run, a fizz and a chord timed to the card), game over (a falling line and a chord timed to the card). Table: [Sound](cascade-decisions.md#sound-3702).
 - Mute is the app-wide sound setting; there is no Cascade-only setting. Reduce Motion keeps every sound (the danger tick keeps its own timer). Nothing plays while a restored game settles or for a test fast-forward, except the win and game-over sounds. A covered board or a backgrounded app is silent.
 
 **Accessibility.** Cascade's board is a Skia canvas, outside the native accessibility tree, so the game states are carried by native elements beside it.

@@ -51,6 +51,7 @@
   "overflow.abandon.body": "Начав новую игру, вы потеряете прогресс в этом раунде. Общая статистика останется без изменений.",
   "overflow.abandon.keepPlaying": "Продолжить",
   "overflow.abandon.startNew": "Начать заново",
+  "play": "Играть",
   "home.locked.buttonLabel": "Разблокировать",
   "home.locked.cardLabel": "{{title}} — Закрыто, нажмите, чтобы открыть",
   "deleteData.label": "Удалить мои данные",

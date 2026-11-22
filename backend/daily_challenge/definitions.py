@@ -12,7 +12,7 @@ Goals are per game
 ------------------
 There is no one measurement that fits every game, so each game owns three goals
 (easy / medium / hard) worded in its own terms — moves, pairs, highest tile,
-chips, guesses. A ``Goal`` carries ``game_type`` + ``kind`` + ``target`` (never
+chips, guesses. Daily Word's three slots all hold its one ``completed`` goal. A ``Goal`` carries ``game_type`` + ``kind`` + ``target`` (never
 display copy — the client builds that in its own i18n namespace) and an
 ``evaluate(facts)`` predicate. ``facts`` is one finished game's measures: the
 result block the game reported on ``PATCH /games/{id}/complete`` (merged into
@@ -47,16 +47,27 @@ Slates
 ------
 ``FREE_GOAL_POOL`` holds the games a store build can show; ``PREMIUM_GOAL_POOL`` is
 a superset for sessions entitled to premium games. Which slate a session gets is
-decided per request from ``game_types.is_premium`` + entitlements (service layer,
-#2454) — never from a list in this module. Premium-only goal specs are
+decided from ``game_types.is_premium`` + entitlements (service layer, #2454) —
+never from a list in this module — when the install's day is first served, and is
+then pinned with that day (``daily_challenge_assignments``, #3992). Only unpinned
+days (an install that may not pin, or the kill switch off) resolve it per request. Premium-only goal specs are
 post-launch (#2458), so today the two pools hold the same games and both slates
 pick identically.
+
+Daily Word's goal is always "complete today's word" (``completed``, win or lose);
+the easy / medium / hard rotation applies to the other two games (#3991).
 
 Rules the pick enforces (all tested): Daily Word is always present; the other two
 games differ from each other and from the previous day's two; at most one goal
 per day is luck-dependent (a win, or a blackjack run ending in profit) — the slot
 rotates by day, and any other such goal is swapped for that game's easy goal
-(every game's easy goal is not luck-dependent).
+(every game's easy goal is not luck-dependent). Solitaire and FreeCell wins are
+not luck-dependent: their deals are provably solvable (``SOLVABLE_DEAL_GAMES``).
+
+This shared template is what an install sees until it has history: per-install
+picks with personal targets (#3993/#3994) live in ``personal.py``, and an install
+with fewer than 3 finished games (or none in the affinity window) is served this
+template exactly.
 Targets are tuned to be reachable and are marked ``tune post-launch``.
 SALT comes from the DAILY_CHALLENGE_SALT env var (default 0); changing it
 shifts the whole future schedule and reshuffles the game order.
@@ -169,8 +180,16 @@ def _completed(game_type: str, tier: Tier) -> Goal:
     return Goal(game_type, "completed", None, tier, False, lambda f: f.get("is_complete") is True)
 
 
+# Games that deal only provably solvable deals (#3993): a win there is skill, not
+# luck, so their win goals are not luck-dependent and never use up the day's one
+# luck-dependent slot. Applied by the builders, so ``goal_from_spec`` rebuilds a
+# frozen or pinned goal with the same flag.
+SOLVABLE_DEAL_GAMES: frozenset[str] = frozenset({"solitaire", "freecell"})
+
+
 def _won(game_type: str, tier: Tier) -> Goal:
-    return Goal(game_type, "won", None, tier, True, lambda f: f.get("won") is True)
+    is_win = game_type not in SOLVABLE_DEAL_GAMES
+    return Goal(game_type, "won", None, tier, is_win, lambda f: f.get("won") is True)
 
 
 def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
@@ -207,7 +226,8 @@ def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
             return False
         return floor is None or value >= floor
 
-    return Goal(game_type, f"won_{measure}_at_most", limit, tier, True, check)
+    is_win = game_type not in SOLVABLE_DEAL_GAMES
+    return Goal(game_type, f"won_{measure}_at_most", limit, tier, is_win, check)
 
 
 def _solved(game_type: str, tier: Tier) -> Goal:
@@ -260,25 +280,30 @@ def goal_from_spec(spec: Mapping[str, Any]) -> Goal:
     raise ValueError(f"cannot rebuild a goal of kind {kind!r}")
 
 
+_DAILY_WORD_GOAL = _completed("daily_word", "easy")
+
 # Easy / medium / hard per game. Every game's *easy* goal must not require a win
 # (the pick falls back to it) — tests enforce that. All numbers: tune post-launch.
 FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
-    "daily_word": (
-        _completed("daily_word", "easy"),
-        _won("daily_word", "medium"),
-        _won_within("daily_word", "guesses_used", 4, "hard"),
-    ),
+    # Daily Word's goal is always "complete today's word" (win or lose, #3991),
+    # so it is the same goal in all three slots and never takes the day's one
+    # win-dependent slot. Days frozen before #3991 may hold its old ``won`` /
+    # ``won_guesses_used_at_most`` specs; ``goal_from_spec`` still rebuilds them.
+    "daily_word": (_DAILY_WORD_GOAL, _DAILY_WORD_GOAL, _DAILY_WORD_GOAL),
     "twenty48": (
         _at_least("twenty48", "final_score", 500, "easy"),
         _at_least("twenty48", "highest_tile", 512, "medium"),
         _at_least("twenty48", "final_score", 2500, "hard"),
     ),
-    # Klondike deals are not always winnable, so solitaire's win goals are the
-    # luck-dependent kind. A win takes at least 52 foundation moves, so the hard
-    # limit is well above that (a 60-move win is not realistic).
+    # Solitaire and FreeCell deal only provably solvable deals, so a win is skill,
+    # not luck (SOLVABLE_DEAL_GAMES), and their easy goal is the win itself. They
+    # have no loss: a finished row only exists for a win, so the old "make 10 / 5
+    # moves" goals already needed one and are gone (#3993; days frozen with them
+    # still rebuild through goal_from_spec). A win takes at least 52 foundation
+    # moves, so the limits are well above that. Medium limits: tune post-launch.
     "solitaire": (
-        _at_least("solitaire", "moves", 10, "easy"),
-        _won("solitaire", "medium"),
+        _won("solitaire", "easy"),
+        _won_within("solitaire", "moves", 150, "medium"),
         _won_within("solitaire", "moves", 120, "hard"),
     ),
     # final_score = the player's highest level solved, sent on every solved
@@ -292,12 +317,12 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _at_least("sort", "final_score", 15, "hard"),
     ),
     "freecell": (
-        _at_least("freecell", "moves", 5, "easy"),
-        _won("freecell", "medium"),
+        _won("freecell", "easy"),
+        _won_within("freecell", "moves", 130, "medium"),
         _won_within("freecell", "moves", 100, "hard"),
     ),
-    # Score only (Yacht sends no result block). A full solo game typically
-    # lands 150-250; abandoned games count with their score so far.
+    # Score only: a full solo game typically lands 150-250. Abandoned games never
+    # count (the service filters them).
     "yacht": (
         _at_least("yacht", "final_score", 100, "easy"),
         _at_least("yacht", "final_score", 175, "medium"),
@@ -416,8 +441,9 @@ def pick_template(day: date, slate: Slate, salt: int, sort_catalog: bool = False
     # Consecutive goals get consecutive tiers, so a day mixes difficulty.
     picked = [pool[game][(ordinal + salt + i) % len(TIERS)] for i, game in enumerate(games)]
     final = list(picked)
-    # At most one win goal a day; who keeps it rotates by day so it is not always
-    # Daily Word's. Any other win goal falls back to that game's easy goal.
+    # At most one win goal a day; who keeps it rotates by day between the two
+    # rotating games (Daily Word's goal is never a win, #3991). Any other win
+    # goal falls back to that game's easy goal.
     win_taken = False
     for i in range(GOALS_PER_DAY):
         idx = (ordinal + i) % GOALS_PER_DAY

@@ -83,11 +83,13 @@ it("takes 8 players at mount (the sounds of every turn) and the rest on their fi
   expect(mockHolds.at(-1)!.lazy).toBe(true);
 });
 
-it("pre-warms the win once a tier-10 piece is on the board, and danger and game over when the count runs", async () => {
+it("pre-warms the win and merge-t11 once a tier-10 piece is on the board, and danger and game over when the count runs", async () => {
   const { result, rerender } = await mount();
   expect(holdOf("win")).toBeUndefined();
+  expect(holdOf("merge-t11")).toBeUndefined();
   await rerender({ id: "fruits", rm: false, nearWin: true });
   expect(holdOf("win")).toBeDefined();
+  expect(holdOf("merge-t11")).toBeDefined();
   expect(holdOf("game-over")).toBeUndefined();
   await act(async () => {
     result.current.danger(0.2, false);
@@ -127,6 +129,17 @@ it("is silent while muted, including sounds already waiting when mute goes on", 
     jest.advanceTimersByTime(500);
   });
   expect(played()).toEqual(["merge-t1", "merge-t2", "chain-1"]);
+});
+
+it("the win plays merge-t11 with it, from the start of its own file (#3966)", async () => {
+  const { result, rerender } = await mount();
+  await rerender({ id: "fruits", rm: true, nearWin: false });
+  await act(async () => {
+    result.current.win();
+    jest.advanceTimersByTime(0);
+  });
+  expect(holdOf("merge-t11")!.plays).toEqual([[1, 0]]);
+  expect(holdOf("win")!.plays).toEqual([[1, CALM_WIN_OFFSET_S]]);
 });
 
 it("a new game stops the end sounds; under Reduce Motion the win starts 0.5 s in", async () => {
