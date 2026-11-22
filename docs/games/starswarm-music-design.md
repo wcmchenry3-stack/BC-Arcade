@@ -39,7 +39,9 @@ from (or the whole Shepard tone, fades included), scaled to a 0.5 peak so the qu
 audible. Layer files are louder than they are in the mix and unpitched: no cue level, duck, fade,
 window or pitch is applied, so they are for hearing a sound, not for judging its level. The decoded
 files peak about 5% under 0.5 (the MP3 encode does that to any full-scale tone). `--layers` runs
-alone in about half a minute (the layer renders, not the bed or the full build); it can also go with `OUT.mp3` or `--stages`.
+alone in about half a minute (the layer renders, not the bed or the full build); it can also go
+with `OUT.mp3` or `--stages`. Existing files in DIR are overwritten; files left over from an
+earlier run are not removed.
 `tools/assets/tests/starswarm_bgm_test.py` rebuilds it in CI and checks it two ways (#4027). The
 build encodes MP3 three times and libmp3lame is chaotic: the same code and packages gave MP3s that
 differed by 2e-3 relative RMS on two CI runners, with the same sound. So the test pins the
@@ -81,8 +83,8 @@ Things to know before changing it:
 - **Float order matters.** The mix is a running float sum, and the bed's random generator is shared
   by its regions in order. Keep cues in time order, and treat any refactor of a layer as a change
   to verify (`--check`), not a tidy-up.
-- **Changing the music:** edit a layer or a cue, rebuild with `--stages` (or hear just the layer with
-  `--layers`), listen, then replace
+- **Changing the music:** edit a layer or a cue, rebuild with `--stages` (or hear just the layer
+  with `--layers`), listen, then replace
   `frontend/assets/sounds/starswarm-bgm.mp3` and update its SHA-256 and size here, in
   `SOUND_CREDITS.md`, in `scripts/check_large_files.py` and in `EXPECTED_SHA256` in
   `frontend/src/__tests__/starswarmBgm.test.ts`. Also run

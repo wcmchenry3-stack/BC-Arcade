@@ -138,6 +138,10 @@ def main(argv: list[str] | None = None) -> int:
         "OUT.mp3 or --stages is also given)",
     )
     args = ap.parse_args(argv)
+    if args.layers and args.write_fingerprint:
+        ap.error("--layers cannot be combined with --write-fingerprint")
+    if args.layers and args.layers.exists() and not args.layers.is_dir():
+        ap.error(f"--layers needs a directory; {args.layers} is a file")
     if args.write_fingerprint:
         fp = build(None, args.stages, with_fingerprint=True)
         shipped = sha256(SHIPPED)
