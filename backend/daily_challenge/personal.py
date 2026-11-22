@@ -659,6 +659,8 @@ def choose_bonus(
         if game not in GAME_SPECS or game in core_games or not affinity.get(game):
             continue
         spec = GAME_SPECS[game]
+        if len(history.recent_facts(game, day, history_games())) < MIN_FINISHED_GAMES:
+            continue  # options_for would return the cold-start goal, not a personal target
         for opt in options_for(game, history, day, pct=min(100, pct * 2)):
             if spec.type(opt.type_name).personal and not opt.goal.is_win:
                 stretch.append(opt)

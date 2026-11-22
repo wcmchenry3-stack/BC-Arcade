@@ -274,3 +274,29 @@ def test_the_two_dials_have_their_documented_defaults_and_ranges(
     monkeypatch.setenv("DAILY_CHALLENGE_DISCOVERY_SHARE", "0")
     monkeypatch.setattr(personal, "_settings", None)
     assert personal.discovery_share() == 0.0
+
+
+def test_a_stretch_bonus_is_never_a_cold_start_goal() -> None:
+    # yacht has 4 plays (a real target); twenty48 has 1 (only its cold-start goal).
+    plays = _plays("yacht", [100, 120, 140, 160]) + _plays("twenty48", [900])
+    h = _history(_DAY, plays)
+    cold = personal._discovery_goal("twenty48")
+    for seed in range(100):
+        goal = choose_bonus(h, _DAY, _FREE, _core_of("sudoku"), session_id=f"c{seed}", share=0.0)
+        assert goal is not None and goal.game_type == "yacht"
+        assert goal.id != cold.id
+
+
+def test_core_picks_are_identical_with_the_bonus_on_and_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _mixed_history()
+    for seed in range(100):
+        sid = f"core{seed}"
+        on = choose_core(h, _DAY, _FREE, session_id=sid)
+        monkeypatch.setenv("DAILY_CHALLENGE_BONUS_ENABLED", "false")
+        monkeypatch.setattr(personal, "_settings", None)
+        off = choose_core(h, _DAY, _FREE, session_id=sid)
+        monkeypatch.delenv("DAILY_CHALLENGE_BONUS_ENABLED")
+        monkeypatch.setattr(personal, "_settings", None)
+        assert on == off
