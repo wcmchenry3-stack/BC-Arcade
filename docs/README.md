@@ -23,7 +23,7 @@ The purpose of this index is to make one thing clear: **which document is the so
 | How do leaderboards, Stats, Scorecards, and Profile work?         | [LEADERBOARDS.md](LEADERBOARDS.md)                                                                                         |
 | How does Arcade XP / player level work?                           | [PROGRESSION.md](PROGRESSION.md)                                                                                           |
 | How does Daily Challenge work?                                    | [DAILY-CHALLENGE.md](DAILY-CHALLENGE.md)                                                                                   |
-| Where is Daily Challenge going (strategy proposal)?               | [DAILY-CHALLENGE-STRATEGY.md](DAILY-CHALLENGE-STRATEGY.md)                                                                 |
+| Why is Daily Challenge designed this way (strategy, implemented)? | [DAILY-CHALLENGE-STRATEGY.md](DAILY-CHALLENGE-STRATEGY.md)                                                                 |
 | How do player feedback and Sentry diagnostics work?               | [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md)                                                                     |
 | How does localization/i18n work?                                  | [I18N.md](I18N.md)                                                                                                         |
 | What are the shared gameplay/input/rendering standards?           | [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md)                                                                             |

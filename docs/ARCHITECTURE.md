@@ -1588,7 +1588,7 @@ entry, or a decorator that differs from the table.
 | `LIFECYCLE_CAP` / `RETENTION_KEEP_NAMES` | `games/replay_caps.py`                                | 4 started / 4 ended / 1,000 hand_resolved / 384 KB; keep `wave_completed`, `guess_submitted`                                                                                                              |
 | `PRUNE_BATCH_SIZE` / `PRUNE_MAX_BATCHES` | `games/replay_storage.py`                             | `5000` rows / `200` batches per run                                                                                                                                                                       |
 | `MAX_GUESSES`                            | `daily_word/progress.py`                              | `6`                                                                                                                                                                                                       |
-| `LOOKBACK_DAYS`                          | `daily_challenge/streak.py`                           | `60`                                                                                                                                                                                                      |
+| `STREAK_LOOKBACK_DAYS` (setting)         | `settings.py`, read by `daily_challenge/streak.py`    | `60`                                                                                                                                                                                                      |
 | `REPLAY_WINDOW`                          | `purchases/apple_notifications.py`                    | 48 hours                                                                                                                                                                                                  |
 | `VOIDED_WINDOW`                          | `purchases/google_jobs.py`                            | 48 hours                                                                                                                                                                                                  |
 | `ACK_SWEEP_MAX_AGE` / `ACK_SWEEP_LIMIT`  | `purchases/google_jobs.py`                            | 4 days / `500`                                                                                                                                                                                            |
@@ -1602,8 +1602,9 @@ entry, or a decorator that differs from the table.
 ## 12. Daily cross-game challenge
 
 Daily Challenge is a shared read-side product system built on completed
-`games` rows: three goals per local day, frozen per date/slate, plus an
-app-wide derived streak.
+`games` rows: three core goals per local day (a personal pick pinned per
+install, or the shared template frozen per date/slate), an optional bonus goal
+on a personal day, plus an app-wide derived streak.
 
 The current product rules, goal scheduling/evaluation, free/premium slate
 resolution, API behavior, streak algorithm, offline implications, and the

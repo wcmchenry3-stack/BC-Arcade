@@ -23,8 +23,8 @@ take Mahjong's slot in the free pool; Mahjong's goals wait for #2458 alongside B
 `0023_sudoku_free` flips `game_types.is_premium`. The 6/6 split was never a design target (see
 `docs/ARCHITECTURE.md` §10.8); this lands the v1.0 store build at **seven** free games (Yacht,
 Solitaire, FreeCell, Sort, Daily Word, 2048, Sudoku) and five premium (Blackjack, Cascade, Hearts,
-Star Swarm, Mahjong). Sudoku is not added to the daily-challenge free goal pool — see the migration's
-docstring for why. Every "six games" reference below the 2026-09-23 decision line predates this and
+Star Swarm, Mahjong). Sudoku was not added to the daily-challenge free goal pool at the time (see the migration's
+docstring); it was added later (#2949) and has personal goals since #3993. Every "six games" reference below the 2026-09-23 decision line predates this and
 describes the build as it stood then; the listing text and rating count later in this file are
 updated to seven.
 

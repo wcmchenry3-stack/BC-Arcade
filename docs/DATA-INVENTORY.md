@@ -385,9 +385,10 @@ served (`docs/DAILY-CHALLENGE.md` §4), so every later read and the streak see t
 
 - **What a row holds:** the install ID (native `uuid`), the local date, the 3 core goals as compact JSON
   (`[game_type, kind, target, tier]` each), an optional bonus goal (#3995; null on a shared-template day, and for a personal day with no candidate or the dial off), `template_id` and `slate`
-  only when they differ from the defaults (NULL otherwise), and `created_at`. Derived only from the server's own goal
-  pools today; from that install's own games once #3993/#3994 personalise the pick. No new store-privacy category: app
-  functionality from first-party gameplay data.
+  only when they differ from the defaults (NULL otherwise), and `created_at`. For a new or lapsed install it is derived only from the server's own goal
+  pools; otherwise it is the personal pick (#3993/#3994/#3995/#3996/#4028), derived from that install's own finished
+  games (see "Personalization" below). Nothing is stored beyond these columns: the games read to pick are the existing
+  `games` rows.
 - **Size:** measured on Postgres 16 with 20,000 real-pool rows: 129 B of goal text, 193 B of heap and 54 B of
   primary-key index per row, so **about 250 B a row** (a bonus goal adds about 40 B of text, 25-45 B in the row, so a personal day with a bonus is about 290 B; not re-measured on Postgres). The design aim was ~150 B; the
   fixed per-row cost (tuple header, line pointer, uuid, date, timestamp and the index entry) is already about 120 B, so
@@ -405,7 +406,17 @@ served (`docs/DAILY-CHALLENGE.md` §4), so every later read and the streak see t
   - 1 (the settings refuse it: a pinned day pruned inside the streak window would re-score a past streak day, and the
     prune cuts on the UTC date while a client west of UTC is a day behind), so lowering the lookback with it is how to
     free space on the next daily prune.
-- **Erasure:** Delete My Data (`DELETE /me`) deletes the install's rows.
+- **Erasure:** Delete My Data (`DELETE /me`, `backend/me/router.py`) deletes the install's rows with
+  `delete(DailyChallengeAssignment).where(session_id == <install uuid>)`, in the same transaction as its `games`, entitlement,
+  bug-log, Daily Word and player rows, whatever spelling of the UUID the header used
+  (`test_delete_me_removes_the_installs_assignments`). Retention is only a backstop. The device side is §3.
+- **Personalization (store-privacy position):** the personal pick reads only the install's own first-party game results
+  (scores, moves, durations, which games it played and when) to choose goals and targets shown back to that same install
+  inside the app. That is **App Functionality** use of data already declared, linked to the install ID, never shared,
+  sold or used for ads or profiling, so **no new store-privacy category or purpose applies** and
+  [`STORE-PRIVACY-ANSWERS.md`](STORE-PRIVACY-ANSWERS.md) and [`privacy-policy.html`](privacy-policy.html) are unchanged. The wording that records this
+  as a product rule (`PRODUCT.md`) and any legal copy follow in #3988 (open, owner review). The owner-only tuning query
+  `backend/scripts/daily_challenge_metrics.py` is read-only, collects and stores nothing, and prints aggregates without install IDs.
 - **Fail-safe tests:** `backend/tests/test_daily_challenge_assignments.py` (kill switch writes nothing, a session with
   no games, only stale games or over the storage budget writes nothing, prune boundary, 3-day cap, `DELETE /me`, concurrent first requests).
 - **Write ceiling (abuse):** session IDs are self-asserted (#1047), so one IP can mint sessions. A day is pinned only
@@ -431,8 +442,8 @@ Daily Word offline play (#3230): `daily_word_upcoming_<lang>` (today's and the n
 (RS256 entitlement JWT from `GET /entitlements`, 24 h TTL / 7 day grace); preferences (`settings.soundMuted`, `freecell_large_cards` (FreeCell Large cards, #3347), theme, language,
 `card_deck_id`, `gaming_app_fruit_set`); Hearts seat labels (`hearts_player_names`, typed by the player for the AI seats;
 local only, never sent). The in-memory feedback log buffer (last 200 `console.warn`/`console.error`, `SessionLogger.ts`).
-**Delete My Data** clears the install ID, pending games, the event store, the legacy score queue, the last-connected time, the last-known streak, the cached Daily Challenge goals and the local leaderboard
-name (`SettingsScreen.tsx:53-77`); local save files, stats and preferences stay until uninstall. Uninstalling removes all of it.
+**Delete My Data** clears the install ID, pending games, the event store, the legacy score queue, the last-connected time, the last-known streak, the cached Daily Challenge goals (`daily_challenge_upcoming_v1`, `daily_challenge_status_v1`) and the local leaderboard
+name (`handleDeleteData` in `SettingsScreen.tsx`); local save files, stats and preferences stay until uninstall, including `@sort/day_start` (a date and a level number, no identifier, kept with Sort's saves). Uninstalling removes all of it.
 
 ## 4. Diagnostics: Sentry (third-party processor)
 
