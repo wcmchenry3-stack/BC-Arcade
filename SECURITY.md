@@ -324,7 +324,7 @@ When a security check is added/removed, update this section only after verifying
 
 ## 16. Dependabot triage automation and Resend email
 
-Dependabot itself is configured in `.github/dependabot.yml` (weekly npm, pip and GitHub Actions updates; CVE fixes grouped as `security-updates`). This repo contains no email code and no Resend references.
+Dependabot itself is configured in `.github/dependabot.yml` (weekly npm, pip and GitHub Actions updates; CVE fixes grouped as `security-updates`). This repo sends one email of its own: the nightly report (below, "Nightly report email from this repo").
 
 Whether GitHub Dependabot security alerts are enabled is a repository setting and cannot be verified from the code. [OWNER TO CONFIRM: Dependabot alerts enabled in repo settings.] Do not treat them as a fallback for the triage email until that is confirmed.
 
@@ -347,6 +347,23 @@ The triage automation lives in the org-level repo `wcmchenry3-stack/.github`, no
 - An automated job can merge Dependabot PRs into BC Arcade. It is gated by the triage guard tests and BC Arcade's CI, but a compromised token or a weak guard means unreviewed dependency changes could reach `dev`.
 - `DEPENDABOT_TRIAGE_TOKEN` has pull-requests and contents access on the target repos only, deliberately without Administration or Actions access. Keep it that way.
 - No player data goes to Resend or Anthropic from this job; only repo, PR and dependency metadata. It is an internal developer notification.
+
+### Nightly report email from this repo (#4055)
+
+`.github/workflows/nightly.yml` (`tools/nightly/send_email.py`) sends one plain-text email a night through Resend's HTTP API, separate from the triage job above.
+
+| Item | Detail |
+| --- | --- |
+| Sender | `nightly@mail.buffingchi.com` (`BC Arcade nightly`), the same verified domain |
+| Recipient | The repo variable `NIGHTLY_REPORT_TO` (no address is recorded in docs) |
+| Key | `RESEND_API_KEY` in this repo's Actions secrets: a dedicated key with the same permissions as the triage key, not a copy of it, so either can be rotated or revoked without breaking the other |
+| Content | Commit SHA and range, Dependabot PR numbers, per-job results and durations, the run URL. No player data. |
+| Volume | One email a night, inside Resend's free tier |
+| Failure | Empty key or recipient: a `::warning::` and no email. A Resend error fails the `summary` job (after the summary is written), so the org Workflow Failure Monitor reports it. |
+
+The key is read only in the one workflow step that sends the email, from `env:`, and is never printed.
+
+Rotating this repo's key: create a new send-only key restricted to `mail.buffingchi.com`, update `RESEND_API_KEY` in the BC-Arcade repo secrets (Settings, Secrets and variables, Actions), run `gh workflow run nightly.yml -f force=true` and confirm the email arrives, then revoke the old key. The open item to confirm the key is send-only and domain-restricted covers this key too.
 
 ### Rotating the Resend key
 

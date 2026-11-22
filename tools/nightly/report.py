@@ -16,7 +16,11 @@ Usage (from the repo root, as the ``summary`` job of .github/workflows/nightly.y
   trimmed with ``--jq``) for the commit range since the last green night.
 
 Missing or unreadable optional files leave that part out; the report never fails the job.
-Story 2 (#4053) builds the email from ``build_report`` and ``overall``.
+
+Email (#4055): ``--email-out payload.json --to <address> [--trigger-missed true] [--date YYYY-MM-DD]``
+also writes the Resend request body (``from``, ``to``, ``subject``, plain ``text``) built by
+``email_subject`` and ``build_email_text``. send_email.py posts it. The body is plain text, so
+untrusted commit subjects need no HTML escaping. Repo, run and commit metadata only.
 """
 
 from __future__ import annotations
@@ -30,6 +34,8 @@ from pathlib import Path
 
 # Jobs that are bookkeeping, not checks: they do not decide whether the night is green.
 NON_HEAVY = frozenset({"gate", "tag-last-green"})
+EMAIL_FROM = "BC Arcade nightly <nightly@mail.buffingchi.com>"
+MAX_EMAIL_COMMITS = 30
 MAX_COMMITS = 50
 HEADLINES = {"green": "✅ green", "red": "❌ red", "skipped": "⏭️ skipped, dev unchanged"}
 ICONS = {
@@ -180,6 +186,91 @@ def build_report(
     return "\n".join(out)
 
 
+DEPENDABOT_SUBJECT = re.compile(r"^(?:Bump |(?:chore|build)\(deps)", re.IGNORECASE)
+PR_NUMBER = re.compile(r"\(#(\d+)\)\s*$")
+
+
+def dependabot_prs(compare: dict | None) -> list[tuple[str, str]]:
+    """``[(pr number, subject)]`` for Dependabot merges in the range, newest first.
+
+    A Dependabot squash-merge subject starts with ``Bump `` or ``chore(deps…)`` / ``build(deps…)``
+    and ends with ``(#NNNN)``.
+    """
+    found = []
+    for commit in reversed((compare or {}).get("commits") or []):
+        message = str(commit.get("message", ""))
+        subject = message.splitlines()[0] if message else ""
+        pr = PR_NUMBER.search(subject)
+        if pr and DEPENDABOT_SUBJECT.match(subject):
+            found.append((pr.group(1), subject[:100]))
+    return found
+
+
+def email_subject(*, needs: dict, sha: str, date: str, trigger_missed: bool = False) -> str:
+    """``[BC Arcade nightly] GREEN|RED|SKIPPED <date> <short sha>``, plus a missed-trigger note."""
+    subject = f"[BC Arcade nightly] {overall(needs).upper()} {date} {sha[:7]}"
+    if trigger_missed:
+        subject += " (external trigger missed)"
+    return subject
+
+
+def build_email_text(  # noqa: PLR0913 - one keyword per input, like build_report
+    *,
+    sha: str,
+    needs: dict,
+    api_jobs: list[dict] | None = None,
+    compare: dict | None = None,
+    last_green: str = "",
+    gate_reason: str = "",
+    run_url: str = "",
+    trigger_missed: bool = False,
+) -> str:
+    """Plain-text email body: SHA, range, Dependabot merges, per-job results, retries, links."""
+    out = [f"Nightly dev checks: {overall(needs).upper()}", ""]
+    if trigger_missed:
+        out.append(
+            "The external trigger (Render cron) did not start a run in the last 26 hours; this is "
+            "the late GitHub fallback run. Check the Render cron job bc-arcade-nightly-trigger "
+            "(docs/RENDER.md)."
+        )
+        out.append("")
+    out.append(f"SHA: {sha}")
+    out.append(
+        f"Commit range since last green: {last_green[:12] + '..' + sha[:12] if last_green else '-'}"
+    )
+    out.append(f"nightly/last-green: {tag_line(needs, sha).replace('`', '').replace('**', '')}")
+    if gate_reason:
+        out.append(f"Gate: {gate_reason}")
+    if run_url:
+        out.append(f"Run: {run_url}")
+    out += ["", "Dependabot merges in the range:"]
+    bots = dependabot_prs(compare)
+    out += [f"  #{pr} {subject}" for pr, subject in bots] or ["  none"]
+    out += ["", "Commits:"]
+    if not last_green:
+        out.append("  first tracked night (no nightly/last-green tag yet)")
+    elif not compare:
+        out.append("  (commit list unavailable)")
+    else:
+        commits = compare.get("commits") or []
+        total = compare.get("total_commits", len(commits))
+        out.append(f"  {total} commit(s) since the last green night")
+        for commit in commits[-MAX_EMAIL_COMMITS:][::-1]:
+            message = str(commit.get("message", ""))
+            subject = message.splitlines()[0] if message else ""
+            out.append(f"  {str(commit.get('sha', ''))[:7]} {subject[:100]}")
+        if total > MAX_EMAIL_COMMITS:
+            out.append(f"  ...and {total - MAX_EMAIL_COMMITS} older")
+    out += ["", "Jobs:"]
+    for job_id, info in needs.items():
+        result = info.get("result") or "unknown"
+        duration = format_duration(duration_seconds(job_id, api_jobs or []))
+        note = _note(info)
+        out.append(f"  {job_id}: {result}, {duration}" + (f" ({note})" if note else ""))
+    out.append("")
+    return "\n".join(out)
+
+
 def _load_json(path: str | None):
     if not path:
         return None
@@ -216,17 +307,43 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--last-green", default="")
     parser.add_argument("--gate-reason", default="")
     parser.add_argument("--run-url", default="")
+    parser.add_argument("--email-out", help="write the Resend request body (JSON) here")
+    parser.add_argument("--to", default="", help="email recipient (NIGHTLY_REPORT_TO)")
+    parser.add_argument("--trigger-missed", default="false")
+    parser.add_argument(
+        "--date", default="", help="YYYY-MM-DD for the subject (default: today UTC)"
+    )
     args = parser.parse_args(argv)
     needs = _load_json(args.needs)
     if not isinstance(needs, dict):
         needs = {}
     compare = _load_json(args.compare)
+    compare = compare if isinstance(compare, dict) else None
+    if args.email_out:
+        missed = args.trigger_missed.strip().lower() == "true"
+        date = args.date or dt.datetime.now(dt.UTC).date().isoformat()
+        payload = {
+            "from": EMAIL_FROM,
+            "to": args.to.strip(),
+            "subject": email_subject(needs=needs, sha=args.sha, date=date, trigger_missed=missed),
+            "text": build_email_text(
+                sha=args.sha,
+                needs=needs,
+                api_jobs=_load_jsonl(args.jobs),
+                compare=compare,
+                last_green=args.last_green,
+                gate_reason=args.gate_reason,
+                run_url=args.run_url,
+                trigger_missed=missed,
+            ),
+        }
+        Path(args.email_out).write_text(json.dumps(payload), encoding="utf-8")
     print(
         build_report(
             sha=args.sha,
             needs=needs,
             api_jobs=_load_jsonl(args.jobs),
-            compare=compare if isinstance(compare, dict) else None,
+            compare=compare,
             last_green=args.last_green,
             gate_reason=args.gate_reason,
             run_url=args.run_url,

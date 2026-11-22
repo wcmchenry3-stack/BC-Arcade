@@ -20,9 +20,18 @@ name: Nightly dev checks
 # - Job ids here deliberately differ from the required checks in
 #   .github/rulesets/protect-main-dev.json (`Playwright E2E`, `android-release-smoke`): check
 #   runs from this workflow land on the dev SHA, which is also the release PR's head.
+# - Trigger (#4056): GitHub starts this repo's crons 8-10 h late, so the real trigger is the Render
+#   cron `bc-arcade-nightly-trigger` (08:00 UTC, docs/RENDER.md), which dispatches this workflow
+#   on `dev`. The `schedule` below is a late fallback: on a `schedule` event the gate first lists
+#   the runs of this workflow created in the last 26 h (runs API, not the last-green tag: a red
+#   night does not move the tag). One exists: the run is a no-op ("already ran today"). None
+#   exists: the external trigger was missed, the nightly runs late and the report subject says so.
 # - `tag-last-green` moves `nightly/last-green` to the SHA only when every heavy job succeeded.
 # - `summary` writes the SHA, the commit range since the last green night and every job's result
-#   and duration to the run summary (tools/nightly/report.py).
+#   and duration to the run summary (tools/nightly/report.py), then (#4055) sends ONE plain-text
+#   email through Resend (tools/nightly/send_email.py; repo, run and commit metadata only) and
+#   pings the optional heartbeat URL. Secrets are read by name in `env:` of the steps that need
+#   them. A deduped fallback run sends nothing. A send failure fails the job, after the summary.
 #
 # Cost: the repo is public, so GitHub-hosted runners (Linux and macOS) are not billed; the sims,
 # Maestro and builds cost runner slots only (about 20 concurrent jobs, 5 macOS). Data: perf's
@@ -41,8 +50,9 @@ on:
         type: boolean
         required: false
         default: false
-  # No schedule yet: story 3 of epic #4053 adds the fallback schedule and the dedupe with the
-  # external trigger. Until then the run is started by workflow_dispatch only.
+  # Late fallback only (see above); the Render cron dispatches the real run at 08:00 UTC.
+  schedule:
+    - cron: "37 8 * * *"
 
 concurrency:
   group: nightly-dev
@@ -55,10 +65,16 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      # The runs API, for the dedupe of the fallback schedule.
+      actions: read
     outputs:
       run: ${{ steps.decide.outputs.run }}
       reason: ${{ steps.decide.outputs.reason }}
       last_green: ${{ steps.decide.outputs.last_green }}
+      trigger_missed: ${{ steps.decide.outputs.trigger_missed }}
+      duplicate: ${{ steps.decide.outputs.duplicate }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -73,6 +89,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.sha }}
           FORCE: ${{ inputs.force }}
+          EVENT: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           # A missing tag (404) means the first tracked night: the gate then runs everything.
           LAST=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly/last-green" \
@@ -82,8 +100,22 @@ jobs:
             [ -n "$LAST" ] && echo "::warning::Could not read nightly/last-green; running the heavy jobs"
             LAST=""
           fi
+          # The fallback schedule asks the runs API whether this workflow already ran in the last
+          # 26 h (gate.py excludes this run and applies the window). If the call fails, runs.json
+          # is missing and the gate runs without flagging anything.
+          RUNS_ARGS=()
+          if [ "$EVENT" = "schedule" ]; then
+            SINCE=$(date -u -d '26 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+            if gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/nightly.yml/runs" \
+              -f "created=>=${SINCE}" -F per_page=100 \
+              --jq '[.workflow_runs[] | {id, created_at}]' > runs.json; then
+              RUNS_ARGS=(--runs runs.json --run-id "$RUN_ID")
+            else
+              echo "::warning::Could not list recent nightly runs; running without the dedupe"
+            fi
+          fi
           python3 tools/nightly/gate.py --head "$HEAD_SHA" --last-green "$LAST" \
-            --force "${FORCE:-false}" | tee -a "$GITHUB_OUTPUT"
+            --force "${FORCE:-false}" --event "$EVENT" "${RUNS_ARGS[@]}" | tee -a "$GITHUB_OUTPUT"
 
       - name: Say what the gate decided
         env:
@@ -339,3 +371,36 @@ jobs:
             needs.json
           if-no-files-found: ignore
           retention-days: 7
+
+      # Not for a deduped fallback run: it did nothing, and the run it deferred to reports.
+      - name: Heartbeat
+        if: ${{ !cancelled() && needs.gate.outputs.duplicate != 'true' }}
+        env:
+          NIGHTLY_HEARTBEAT_URL: ${{ secrets.NIGHTLY_HEARTBEAT_URL }}
+        run: |
+          # Optional: a monitor that alerts when the ping stops. Unset: skip silently.
+          if [ -n "$NIGHTLY_HEARTBEAT_URL" ]; then
+            curl -fsS --max-time 20 "$NIGHTLY_HEARTBEAT_URL" > /dev/null 2>&1 \
+              || echo "::warning::Heartbeat ping failed"
+          fi
+
+      # Last: the summary and the artifact are already written when a send failure fails the job.
+      - name: Build and send the report email
+        if: ${{ !cancelled() && needs.gate.outputs.duplicate != 'true' }}
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          SHA: ${{ github.sha }}
+          LAST_GREEN: ${{ needs.gate.outputs.last_green }}
+          GATE_REASON: ${{ needs.gate.outputs.reason }}
+          TRIGGER_MISSED: ${{ needs.gate.outputs.trigger_missed }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NIGHTLY_REPORT_TO: ${{ vars.NIGHTLY_REPORT_TO }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          printf '%s' "$NEEDS_JSON" > needs.json
+          python3 tools/nightly/report.py --needs needs.json --sha "$SHA" --jobs jobs.jsonl \
+            --compare compare.json --last-green "$LAST_GREEN" --gate-reason "$GATE_REASON" \
+            --run-url "$RUN_URL" --trigger-missed "${TRIGGER_MISSED:-false}" \
+            --to "$NIGHTLY_REPORT_TO" --email-out email.json > /dev/null
+          python3 tools/nightly/send_email.py --payload email.json
