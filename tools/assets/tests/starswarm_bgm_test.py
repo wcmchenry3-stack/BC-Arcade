@@ -337,3 +337,192 @@ def test_documented_loop_script_hash_is_current():
             f"make_starswarm_bgm_loop.py; update it to {digest} (the hash must be refreshed "
             "whenever the loop script changes, even a docstring edit)"
         )
+
+
+# --layers (#4000): each layer and Shepard tone on its own, as an MP3.
+
+
+def _need_mp3_encoder() -> None:
+    """Skip locally, fail under CI, when ffmpeg/ffprobe cannot encode and measure MP3 (as the
+    rebuild test does)."""
+    problem = None
+    if shutil.which("ffmpeg") is None:
+        problem = "ffmpeg is not installed"
+    elif shutil.which("ffprobe") is None:
+        problem = "ffprobe is not installed"
+    elif (
+        "libmp3lame"
+        not in subprocess.run(
+            ["ffmpeg", "-v", "error", "-encoders"], check=False, capture_output=True, text=True
+        ).stdout
+    ):
+        problem = "ffmpeg has no libmp3lame encoder"
+    if problem:
+        if os.environ.get("CI"):
+            pytest.fail(f"{problem}; the CI test-tools job must provide it")
+        pytest.skip(problem)
+
+
+def _toy_phrase(secs: int) -> np.ndarray:
+    """A stereo tone `secs` long: stands in for a layer's phrase where the real one is too slow."""
+    t = np.arange(secs * SR) / SR
+    return (0.3 * np.sin(2 * np.pi * 330 * t))[None, :].repeat(2, axis=0).astype(np.float32)
+
+
+def _toy_layers(monkeypatch) -> None:
+    """Replace each layer with a short phrase of its own length (1 s, 2 s, ...). Keeps the real
+    names, so the file names are the real ones."""
+    layers = {name: (lambda secs=i: _toy_phrase(secs)) for i, name in enumerate(arrange.LAYERS, 1)}
+    monkeypatch.setattr(arrange, "LAYERS", layers)
+
+
+def _expected_layer_files() -> list[str]:
+    names = [f"{i:02d}-{name}.mp3" for i, name in enumerate(arrange.LAYERS, 1)]
+    n = len(names)
+    shepards = [c for c in arrange.MAIN_CUES if isinstance(c, arrange.ShepardCue)]
+    names += [f"{n + i:02d}-shepard-{c.at:g}s.mp3" for i, c in enumerate(shepards, 1)]
+    return names
+
+
+def test_peak_scaled_hits_the_target_peak_and_refuses_silence():
+    x = np.random.default_rng(0).standard_normal((2, 1000)) * 0.123
+    y = build_starswarm_bgm.peak_scaled(x)
+    assert y.dtype == np.float32 and y.shape == x.shape
+    assert np.max(np.abs(y)) == pytest.approx(build_starswarm_bgm.LAYER_PEAK, rel=1e-6)
+    with pytest.raises(ValueError):
+        build_starswarm_bgm.peak_scaled(np.zeros((2, 10)))
+
+
+def test_layers_writes_one_numbered_mp3_per_layer_and_shepard_cue(tmp_path, monkeypatch):
+    _need_mp3_encoder()
+    _toy_layers(monkeypatch)
+    out = tmp_path / "layers"
+    assert build_starswarm_bgm.main(["--layers", str(out)]) == 0
+    assert sorted(p.name for p in out.iterdir()) == sorted(_expected_layer_files())
+    assert [n for n in _expected_layer_files() if "shepard" in n] == [
+        "06-shepard-136s.mp3",
+        "07-shepard-333s.mp3",
+    ]
+
+
+def test_layers_alone_does_not_call_the_full_build(tmp_path, monkeypatch):
+    _need_mp3_encoder()
+    _toy_layers(monkeypatch)
+
+    def must_not_build(*_args, **_kwargs):
+        pytest.fail("--layers alone ran the full build")
+
+    monkeypatch.setattr(build_starswarm_bgm, "build", must_not_build)
+    assert build_starswarm_bgm.main(["--layers", str(tmp_path / "layers")]) == 0
+
+
+def test_layers_with_out_or_stages_also_runs_the_build(tmp_path, monkeypatch):
+    _need_mp3_encoder()
+    _toy_layers(monkeypatch)
+    calls = []
+    monkeypatch.setattr(build_starswarm_bgm, "build", lambda *a, **k: calls.append((a, k)))
+    layers, stages = tmp_path / "layers", tmp_path / "stages"
+    assert build_starswarm_bgm.main(["--layers", str(layers), "OUT.mp3"]) == 0
+    assert build_starswarm_bgm.main(["--layers", str(layers), "--stages", str(stages)]) == 0
+    assert calls == [((Path("OUT.mp3"), None), {}), ((None, stages), {})]
+    assert (layers / "01-rise.mp3").exists()
+
+
+def test_no_output_layers_or_check_is_rejected(monkeypatch):
+    def must_not_build(*_args, **_kwargs):
+        pytest.fail("built with nothing to write")
+
+    monkeypatch.setattr(build_starswarm_bgm, "build", must_not_build)
+    with pytest.raises(SystemExit) as exc:
+        build_starswarm_bgm.main([])
+    assert exc.value.code == 2  # argparse's ap.error: nothing to do
+
+
+def test_layers_rejects_write_fingerprint_and_a_file_path(tmp_path, monkeypatch):
+    def must_not_build(*_args, **_kwargs):
+        pytest.fail("built although --layers was refused")
+
+    monkeypatch.setattr(build_starswarm_bgm, "build", must_not_build)
+    out = tmp_path / "layers"
+    with pytest.raises(SystemExit) as exc:
+        build_starswarm_bgm.main(["--layers", str(out), "--write-fingerprint"])
+    assert exc.value.code == 2 and not out.exists()
+    # A file where DIR should be: refuse instead of a traceback, and leave the file alone.
+    f = tmp_path / "file.txt"
+    f.write_text("keep")
+    with pytest.raises(SystemExit) as exc:
+        build_starswarm_bgm.main(["--layers", str(f)])
+    assert exc.value.code == 2 and f.read_text() == "keep"
+
+
+def test_layers_hand_each_full_phrase_and_shepard_cue_to_the_encoder(tmp_path, monkeypatch):
+    # No ffmpeg: the encoder is stubbed, so this checks what each file is made from. The real
+    # encoder and decoder run in the test below.
+    _toy_layers(monkeypatch)
+    encoded = []
+
+    def fake_encode(x):
+        encoded.append(x)
+        return b"x"
+
+    monkeypatch.setattr(build_starswarm_bgm, "encode_mp3_f32", fake_encode)
+    rendered_cues = []
+    real_render = shepard.render
+
+    def spy_render(duration, rate=0.15, base=245.0, n=None):
+        rendered_cues.append((duration, rate, base))
+        return real_render(duration, rate, base, n)
+
+    monkeypatch.setattr(shepard, "render", spy_render)
+    out = tmp_path / "layers"
+    assert build_starswarm_bgm.main(["--layers", str(out)]) == 0
+
+    cues = [c for c in arrange.MAIN_CUES if isinstance(c, arrange.ShepardCue)]
+    assert rendered_cues == [(c.secs, c.rate, c.base) for c in cues]
+    assert len(encoded) == len(arrange.LAYERS) + len(cues)
+    peak = build_starswarm_bgm.LAYER_PEAK
+    for i in range(len(arrange.LAYERS)):
+        x = encoded[i]  # the whole toy phrase, i + 1 seconds long, at the target peak
+        assert x.shape == (2, (i + 1) * SR), x.shape
+        assert np.max(np.abs(x)) == pytest.approx(peak, rel=1e-5)
+    for j, cue in enumerate(cues):
+        x = encoded[len(arrange.LAYERS) + j]
+        assert x.shape == (2, round(cue.secs * SR)), cue
+        assert np.max(np.abs(x)) == pytest.approx(peak, rel=1e-5)  # not silent
+        # The fades are applied: the tone starts and ends at silence, as in the mix.
+        assert np.all(x[:, 0] == 0) and np.max(np.abs(x[:, -1])) < 1e-3 * peak, cue
+
+
+def _channels(path: Path) -> int:
+    done = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+         "stream=channels", "-of", "csv=p=0", str(path)],
+        check=True, capture_output=True, text=True,
+    )  # fmt: skip
+    return int(done.stdout.strip())
+
+
+def _duration(path: Path) -> float:
+    done = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        check=True, capture_output=True, text=True,
+    )  # fmt: skip
+    return float(done.stdout.strip())
+
+
+def test_layer_files_are_stereo_non_silent_and_roughly_at_the_target(tmp_path):
+    # The real renderers, end to end through ffmpeg. The float render peaks at exactly LAYER_PEAK
+    # (the test above checks it); libmp3lame at 128 kbps then decodes a full-scale sine at 0.475
+    # (measured), so the decoded peak gets only a loose sanity bound.
+    _need_mp3_encoder()
+    out = tmp_path / "layers"
+    assert build_starswarm_bgm.main(["--layers", str(out)]) == 0
+    assert sorted(p.name for p in out.iterdir()) == sorted(_expected_layer_files())
+    for path in sorted(out.iterdir()):
+        assert _channels(path) == 2, path.name
+        peak = float(np.max(np.abs(_decode(path))))
+        assert 0.40 <= peak <= 0.55, f"{path.name} decodes to a peak of {peak:.3f}"
+    shepard_names = _expected_layer_files()[len(arrange.LAYERS) :]
+    cues = [c for c in arrange.MAIN_CUES if isinstance(c, arrange.ShepardCue)]
+    for name, cue in zip(shepard_names, cues, strict=True):
+        assert abs(_duration(out / name) - cue.secs) < 0.1, name

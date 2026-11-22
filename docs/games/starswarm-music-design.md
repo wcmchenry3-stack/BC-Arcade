@@ -32,6 +32,16 @@ The track is rebuilt from code: `python tools/assets/build_starswarm_bgm.py OUT.
 about a minute, byte-identical to the shipped file under CI's ffmpeg (Ubuntu 24.04, ffmpeg 6.1.1)
 with the pinned numpy, scipy and soundfile. `--check` rebuilds and compares the SHA-256;
 `--stages DIR` also keeps the bed, intro and full mix renders and the cue sheet for listening.
+`--layers DIR` writes each layer on its own, as MP3: `01-rise.mp3`, `02-robots.mp3`,
+`03-gathering.mp3`, `04-electromagnetic.mp3`, `05-organ.mp3`, then one Shepard tone per Shepard cue
+(`06-shepard-136s.mp3`, `07-shepard-333s.mp3`). Each file is the whole phrase the arrangement draws
+from (or the whole Shepard tone, fades included), scaled to a 0.5 peak so the quiet layers are
+audible. Layer files are louder than they are in the mix and unpitched: no cue level, duck, fade,
+window or pitch is applied, so they are for hearing a sound, not for judging its level. The decoded
+files peak about 5% under 0.5 (the MP3 encode does that to any full-scale tone). `--layers` runs
+alone in about half a minute (the layer renders, not the bed or the full build); it can also go
+with `OUT.mp3` or `--stages`. Existing files in DIR are overwritten; files left over from an
+earlier run are not removed.
 `tools/assets/tests/starswarm_bgm_test.py` rebuilds it in CI and checks it two ways (#4027). The
 build encodes MP3 three times and libmp3lame is chaotic: the same code and packages gave MP3s that
 differed by 2e-3 relative RMS on two CI runners, with the same sound. So the test pins the
@@ -73,10 +83,10 @@ Things to know before changing it:
 - **Float order matters.** The mix is a running float sum, and the bed's random generator is shared
   by its regions in order. Keep cues in time order, and treat any refactor of a layer as a change
   to verify (`--check`), not a tidy-up.
-- **Changing the music:** edit a layer or a cue, rebuild with `--stages`, listen, then replace
-  `frontend/assets/sounds/starswarm-bgm.mp3` and update its SHA-256 and size here, in
-  `SOUND_CREDITS.md`, in `scripts/check_large_files.py` and in `EXPECTED_SHA256` in
-  `frontend/src/__tests__/starswarmBgm.test.ts`. Also run
+- **Changing the music:** edit a layer or a cue, rebuild with `--stages` (or hear just the layer
+  with `--layers`), listen, then replace `frontend/assets/sounds/starswarm-bgm.mp3` and update
+  its SHA-256 and size here, in `SOUND_CREDITS.md`, in `scripts/check_large_files.py` and in
+  `EXPECTED_SHA256` in `frontend/src/__tests__/starswarmBgm.test.ts`. Also run
   `python tools/assets/build_starswarm_bgm.py --write-fingerprint` and commit the updated
   `tools/assets/starswarm_bgm/reference_fingerprint.json`: without it the CI fingerprint test fails
   on purpose. Do it after replacing the MP3: the file records the shipped MP3's SHA-256
