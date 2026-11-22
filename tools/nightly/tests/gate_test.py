@@ -119,9 +119,14 @@ def test_cli_defaults_weekday_to_today():
 NOW = dt.datetime(2026, 11, 22, 16, 0, tzinfo=dt.UTC)
 
 
-def run_at(run_id, hours_ago, minutes_extra=0, event="workflow_dispatch"):
+def run_at(run_id, hours_ago, minutes_extra=0, event="workflow_dispatch", branch="dev"):
     created = NOW - dt.timedelta(hours=hours_ago, minutes=minutes_extra)
-    return {"id": run_id, "created_at": created.strftime("%Y-%m-%dT%H:%M:%SZ"), "event": event}
+    return {
+        "id": run_id,
+        "created_at": created.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "event": event,
+        "head_branch": branch,
+    }
 
 
 def test_recent_runs_exclude_the_current_run():
@@ -150,6 +155,16 @@ def test_only_dispatched_runs_dedupe_not_earlier_fallback_runs():
     assert gate.recent_other_runs([run_at(4, 8, event="push")], "1", NOW) == 0
     no_event = {"id": 5, "created_at": run_at(5, 1)["created_at"]}
     assert gate.recent_other_runs([no_event], "1", NOW) == 0
+
+
+def test_feature_branch_dispatch_does_not_stand_in_for_the_dev_nightly():
+    """Codex on #4070: a manual dispatch on another branch tests another SHA."""
+    feature = run_at(2, 3, branch="feat/x")
+    assert gate.recent_other_runs([feature], "1", NOW, branch="dev") == 0
+    assert gate.recent_other_runs([feature, run_at(3, 3)], "1", NOW, branch="dev") == 1
+    assert (
+        gate.recent_other_runs([{**run_at(4, 3), "head_branch": None}], "1", NOW, branch="dev") == 0
+    )
 
 
 def test_recent_runs_ignore_unparseable_dates():
@@ -221,6 +236,12 @@ def test_cli_schedule_dedupes_from_a_runs_file(tmp_path):
     earlier = {"id": 5, "created_at": (now - dt.timedelta(hours=9)).isoformat()}
     runs.write_text(json.dumps([{**earlier, "event": "schedule"}]))
     proc = run_cli(*args, "--runs", str(runs))
+    assert "run=true" in proc.stdout and "trigger_missed=true" in proc.stdout
+    # --branch: a feature-branch dispatch doesn't dedupe the default-branch fallback (#4070).
+    runs.write_text(
+        json.dumps([{**earlier, "event": "workflow_dispatch", "head_branch": "feat/x"}])
+    )
+    proc = run_cli(*args, "--runs", str(runs), "--branch", "dev")
     assert "run=true" in proc.stdout and "trigger_missed=true" in proc.stdout
     proc = run_cli(*args, "--runs", str(tmp_path / "missing.json"))
     assert "run=true" in proc.stdout and "trigger_missed=false" in proc.stdout

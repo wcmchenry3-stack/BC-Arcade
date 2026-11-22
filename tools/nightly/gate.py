@@ -88,13 +88,21 @@ def _created(value) -> dt.datetime | None:
 
 
 def recent_other_runs(
-    runs: list[dict], current_run_id: str, now: dt.datetime, hours: int = DEDUPE_HOURS
+    runs: list[dict],
+    current_run_id: str,
+    now: dt.datetime,
+    hours: int = DEDUPE_HOURS,
+    branch: str = "",
 ) -> int:
-    """Count dispatched runs (not the current one) created within ``hours`` of ``now``, edge inclusive."""
+    """Count dispatched runs (not the current one) created within ``hours`` of ``now``, edge
+    inclusive. With ``branch``, only runs on that branch count: a dispatch on a feature branch
+    tests another SHA and must not stand in for the default-branch nightly (Codex, #4070)."""
     cutoff = now - dt.timedelta(hours=hours)
     count = 0
     for run in runs:
         if str(run.get("id")) == str(current_run_id) or run.get("event") != DEDUPE_EVENT:
+            continue
+        if branch and run.get("head_branch") != branch:
             continue
         created = _created(run.get("created_at"))
         if created is not None and cutoff <= created <= now:
@@ -189,13 +197,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--force", default="false", type=_bool)
     parser.add_argument("--event", default="workflow_dispatch", help="github.event_name")
-    parser.add_argument("--runs", help="JSON list of recent nightly.yml runs ({id, created_at})")
+    parser.add_argument(
+        "--runs", help="JSON list of recent nightly.yml runs ({id, created_at, event, head_branch})"
+    )
     parser.add_argument("--run-id", default="", help="this run's id, excluded from the count")
+    parser.add_argument(
+        "--branch", default="", help="only runs on this branch count (the default branch)"
+    )
     args = parser.parse_args(argv)
     now = dt.datetime.now(dt.UTC)
     weekday = args.weekday or now.isoweekday()
     runs = _load_runs(args.runs)
-    other_runs = None if runs is None else recent_other_runs(runs, args.run_id, now)
+    other_runs = (
+        None if runs is None else recent_other_runs(runs, args.run_id, now, branch=args.branch)
+    )
     print(
         "\n".join(outputs(args.head, args.last_green, weekday, args.force, args.event, other_runs))
     )

@@ -260,6 +260,8 @@ def test_gate_can_read_the_runs_api_and_dedupes_only_the_schedule_event():
     assert "actions/workflows/nightly.yml/runs" in run
     assert "created=>=${SINCE}" in run
     assert "-f event=workflow_dispatch" in run
+    assert '-f branch="$DEFAULT_BRANCH"' in run and '--branch "$DEFAULT_BRANCH"' in run
+    assert "head_branch" in run
     assert "{id, created_at, event}" in run
     assert "date -u -d '20 hours ago'" in run
     assert '[ "$EVENT" = "schedule" ]' in run

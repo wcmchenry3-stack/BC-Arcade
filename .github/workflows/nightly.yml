@@ -91,6 +91,7 @@ jobs:
           FORCE: ${{ inputs.force }}
           EVENT: ${{ github.event_name }}
           RUN_ID: ${{ github.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           # A missing tag (404) means the first tracked night: the gate then runs everything.
           LAST=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly/last-green" \
@@ -107,9 +108,12 @@ jobs:
           if [ "$EVENT" = "schedule" ]; then
             SINCE=$(date -u -d '20 hours ago' +%Y-%m-%dT%H:%M:%SZ)
             if gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/nightly.yml/runs" \
-              -f event=workflow_dispatch -f "created=>=${SINCE}" -F per_page=100 \
-              --jq '[.workflow_runs[] | {id, created_at, event}]' > runs.json; then
-              RUNS_ARGS=(--runs runs.json --run-id "$RUN_ID")
+              -f event=workflow_dispatch -f branch="$DEFAULT_BRANCH" -f "created=>=${SINCE}" \
+              -F per_page=100 \
+              --jq '[.workflow_runs[] | {id, created_at, event, head_branch}]' > runs.json; then
+              # Only dispatches on the default branch count: a feature-branch dispatch tests
+              # another SHA and is no substitute for the dev nightly.
+              RUNS_ARGS=(--runs runs.json --run-id "$RUN_ID" --branch "$DEFAULT_BRANCH")
             else
               echo "::warning::Could not list recent nightly runs; running without the dedupe"
             fi
