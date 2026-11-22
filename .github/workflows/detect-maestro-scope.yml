@@ -13,7 +13,8 @@ name: Detect Maestro scope
 # the Playwright gate.
 #
 # PRs into dev (#4057, narrowing #3546): Maestro runs only for native paths /
-# Expo-RN bumps (`native_android`, `native_ios`) and Maestro's own files
+# Expo-RN bumps (`native_android`, `native_ios`, and on Android the package.json
+# check in tools/maestro_scope/native_bump.py) and Maestro's own files
 # (`maestro_infra`: workflows, actions, path table, e2e/maestro, the English
 # locale files flows assert on) -> full suite; and `maestro_drag`
 # (frontend/src/game/_shared/drag/**) -> the solitaire and freecell directories.
@@ -87,6 +88,21 @@ jobs:
           # underscore there (expression-safe) and is mapped to `daily-word` below.
           filters: .github/paths/game-paths.yml
 
+      # Expo / React Native bump check (#4057), Android on a PR into dev only. Compares
+      # frontend/package.json at the PR's base SHA and HEAD (no npm install): a changed
+      # expo, expo-*, @expo/*, react-native or *react-native* dependency is native and
+      # runs the full suite; plain JS bumps and lockfile-only changes are not. A missing
+      # or malformed package.json fails safe to true. Logic: tools/maestro_scope/native_bump.py.
+      - name: Detect Expo/React Native bump
+        id: bump
+        if: github.event_name == 'pull_request' && github.base_ref != 'main' && inputs.platform != 'ios'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" || true
+          git show "$BASE_SHA:frontend/package.json" > "$RUNNER_TEMP/base-package.json" 2>/dev/null || rm -f "$RUNNER_TEMP/base-package.json"
+          echo "native=$(python3 tools/maestro_scope/native_bump.py "$RUNNER_TEMP/base-package.json" frontend/package.json)" >> "$GITHUB_OUTPUT"
+
       # Fails loudly if e2e/maestro/flows/ has a directory (other than
       # _shared) that isn't in the full-suite list below, or vice versa —
       # otherwise a newly added game's flows would silently never run on
@@ -121,6 +137,7 @@ jobs:
           F_MAESTRO_DRAG: ${{ steps.filter.outputs.maestro_drag }}
           F_NATIVE_IOS: ${{ steps.filter.outputs.native_ios }}
           F_NATIVE_ANDROID: ${{ steps.filter.outputs.native_android }}
+          F_NATIVE_BUMP: ${{ steps.bump.outputs.native }}
         run: |
           case "$PLATFORM" in
             android|ios) ;;
@@ -177,6 +194,7 @@ jobs:
           # ever runs as part of the full suite.
           native=false
           [[ "$F_NATIVE_ANDROID" == "true" ]] && native=true
+          [[ "$F_NATIVE_BUMP" == "true" ]] && native=true
           [[ "$PLATFORM" == "ios" ]] && [[ "$F_NATIVE_IOS" == "true" ]] && native=true
           if [[ "$native" == "true" ]]; then
             echo "projects=$FULL_SUITE" >> "$GITHUB_OUTPUT"

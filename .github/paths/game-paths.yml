@@ -197,10 +197,10 @@ native_ios:
 
 # --- Android leg native gate (#4057). Read only by detect-maestro-scope.yml: a
 # --- PR into dev that changes one of these runs the full Android suite (a native
-# --- or Expo/React Native bump can break any screen). Mirrors native_ios.
+# --- or Expo/React Native bump can break any screen). Unlike native_ios it omits
+# --- package.json and the lockfile: a plain JS dependency bump must not run the
+# --- suite, so those are judged by tools/maestro_scope/native_bump.py instead.
 native_android:
   - 'frontend/android/**'
-  - 'frontend/package.json'
-  - 'frontend/package-lock.json'
   - 'frontend/app.json'
   - 'frontend/app.config.*'

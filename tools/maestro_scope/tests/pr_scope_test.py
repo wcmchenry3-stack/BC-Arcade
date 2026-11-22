@@ -61,7 +61,9 @@ def scope_script():
     return next(s for s in steps if s.get("id") == "scope")["run"]
 
 
-def run_scope(tmp_path, files=(), event="pull_request", base="dev", platform="android"):
+def run_scope(
+    tmp_path, files=(), event="pull_request", base="dev", platform="android", bump="false"
+):
     out = tmp_path / "out"
     out.write_text("")
     summary = tmp_path / "summary"
@@ -72,6 +74,7 @@ def run_scope(tmp_path, files=(), event="pull_request", base="dev", platform="an
         "PLATFORM": platform,
         "FLOWS": "",
         "FULL_SUITE": FULL_SUITE,
+        "F_NATIVE_BUMP": bump,
         "GITHUB_OUTPUT": str(out),
         "GITHUB_STEP_SUMMARY": str(summary),
         "PATH": "/usr/bin:/bin",
@@ -171,13 +174,39 @@ def test_drag_directories_hold_the_drag_flows():
     "files",
     [
         ["frontend/android/app/build.gradle"],
-        ["frontend/package.json"],  # Expo / React Native bump
-        ["frontend/package-lock.json"],
         ["frontend/app.json"],
+        ["frontend/app.config.ts"],
     ],
 )
-def test_native_or_expo_bump_runs_full_suite_on_android(tmp_path, files):
+def test_native_paths_run_full_suite_on_android(tmp_path, files):
     assert run_scope(tmp_path, files) == FULL_SUITE
+
+
+def test_android_native_key_excludes_package_json_and_lockfile():
+    patterns = list(flatten(table()["native_android"]))
+    assert "frontend/package.json" not in patterns
+    assert "frontend/package-lock.json" not in patterns
+    # iOS's gate is unchanged.
+    assert "frontend/package.json" in list(flatten(table()["native_ios"]))
+
+
+def test_expo_rn_bump_runs_full_suite_on_android(tmp_path):
+    files = ["frontend/package.json", "frontend/package-lock.json"]
+    assert run_scope(tmp_path, files, bump="true") == FULL_SUITE
+
+
+def test_plain_js_bump_or_lockfile_only_runs_no_maestro_on_android(tmp_path):
+    # native_bump.py said "false" for these; package.json/lockfile alone match no path key.
+    files = ["frontend/package.json", "frontend/package-lock.json"]
+    assert run_scope(tmp_path, files, bump="false") == ""
+    assert run_scope(tmp_path, ["frontend/package-lock.json"], bump="false") == ""
+
+
+def test_workflow_runs_the_bump_check_only_for_android_prs_into_dev():
+    steps = yaml.safe_load(WORKFLOW.read_text())["jobs"]["detect"]["steps"]
+    bump = next(s for s in steps if s.get("id") == "bump")
+    assert "pull_request" in bump["if"] and "!= 'main'" in bump["if"] and "ios" in bump["if"]
+    assert "native_bump.py" in bump["run"]
 
 
 @pytest.mark.parametrize(

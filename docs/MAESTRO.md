@@ -207,7 +207,8 @@ A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope
 
    | Key | Paths | Runs |
    | --- | --- | --- |
-   | `native_android` | `frontend/android/**`, `frontend/package.json`, `frontend/package-lock.json`, `frontend/app.json`, `frontend/app.config.*` (Expo / React Native bumps) | full suite (Android) |
+   | `native_android` | `frontend/android/**`, `frontend/app.json`, `frontend/app.config.*` | full suite (Android) |
+   | Expo / React Native bump (Android) | not a path key: `tools/maestro_scope/native_bump.py` compares `dependencies` + `devDependencies` of `frontend/package.json` at the PR base SHA and HEAD (no `npm install`). A changed, added or removed `expo`, `expo-*`, `@expo/*`, `react-native`, or any name containing `react-native` (`react-native-*`, `@react-native/*`, `@react-native-*/*`, `@shopify/react-native-skia`, `@sentry/react-native`) is native. Plain JS bumps (`react-i18next`, `intl-pluralrules`, ...) and lockfile-only changes are not; a missing or malformed base `package.json` fails safe to native with a warning | full suite (Android) |
    | `native_ios` | see rule 3 | full suite (iOS) |
    | `maestro_infra` | `e2e/maestro/**`, `tools/ios_sim/**`, the i18n runtime code (`frontend/src/i18n/*.ts`/`*.js`), Maestro's own workflows (`mobile-smoke-android.yml`, `mobile-smoke-ios.yml`, `detect-maestro-scope.yml`), the composite actions they use (`.github/actions/setup-frontend/**`, `.github/actions/maestro-install/**`), `.github/paths/**`, and the **English** locale files the flows assert text from (`locales/en/common.json` plus each game's `locales/en/<game>.json`, for its `game.title`) | full suite |
    | `maestro_drag` | `frontend/src/game/_shared/drag/**` | the `solitaire` and `freecell` directories (their `drag*.yaml` flows and `_shared/assert-drag-ok.yaml`); the tooling selects whole flow directories, not single flows, so their other flows run too |
