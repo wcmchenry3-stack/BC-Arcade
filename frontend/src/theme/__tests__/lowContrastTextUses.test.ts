@@ -5,9 +5,18 @@
  * `accentText` / `secondaryText` / `tertiaryText` / `goldText` / `errorText` (and `warnText` for the amber);
  * icons, borders, rings and fills keep the raw token (3:1 non-text rule).
  *
- * A TypeScript AST scan of every non-test source file under `src`. It flags a style property named
- * `color` (the text colour on a <Text>; `borderColor`, `backgroundColor`, `tintColor` and so on are
- * other names) whose value, over any number of lines, mentions:
+ * A TypeScript AST scan of every non-test source file under `src`. It flags a TEXT-colour slot whose
+ * value, over any number of lines, mentions a raw token. Text slots are (#3902):
+ *   - an object property named `color` (the text colour on a <Text>) or ending in `Color` that is
+ *     not a non-text name (`valueColor`, `labelColor`, `textColor`, `subtitleColor`, ...);
+ *   - a JSX attribute `color=` or `*Color=` on a non-icon element (`<Text color=...>`,
+ *     `<Stat valueColor=...>`).
+ * NON-TEXT slots stay allowed (3:1 rule): any name starting with an `isNonTextName` prefix
+ * (`icon`, `border`, `background`, `tint`, `fill`, `stroke`, `shadow`, `ring`, `glow`, `bar`,
+ * `dot`, `line`, `track`, `outline`, `overlay`, `underline`, `thumb`, `ripple`, `selection`,
+ * `placeholder`, `accent`, `chip`, `badge`), and the `color=` / `*Color=` attributes of an icon or SVG element
+ * (`ICON_TAG`: a tag ending in `Icon`/`Icons`/`Indicator`/`Pulse`/`Overlay`/`Chips`, `Ionicons`, `Feather`, `FontAwesome`, `Svg`, `Path`,
+ * `Circle`, `ActivityIndicator`, `...Pulse`, `...Overlay`, `FeltChips`, ...). The value must mention:
  *   - `colors.accent` / `bonus` / `secondary` / `tertiary` / `celebration` / `error` (also `c.accent`,
  *     `palette.bonus`, `colors["bonus"]`);
  *   - a raw amber / gold constant (`BLACKJACK_CHIPS_LOW`, `MAHJONG_BORDER_SELECTED`);
@@ -25,10 +34,11 @@
  * accents reach text through `accentAsText`. Do not add exemptions to get new low-contrast text
  * past this; text on a fixed dark surface would need a documented, commented entry here.
  *
- * Limits: it does not follow a raw colour through a function call, a prop or another file
- * (`accentColor` props, `colors[config.accentKey]`), and it ignores an icon's `color=` JSX prop,
- * which the 3:1 non-text rule allows. Aliases are matched by name across the whole file, not by
- * scope. Do not add exemptions to get new low-contrast text past this: use the Text token.
+ * Known limits: it does not follow a raw colour through a function call, a prop or another file
+ * (`colors[config.accentKey]`); a name bound only via a function parameter (`(c) => ({ color: c })`
+ * called with `colors.error`) is not tracked; a property assignment such as `obj.c = colors.error`
+ * is not tracked; a custom component that forwards a `*Color` prop to an icon is flagged unless its
+ * prop name is a non-text prefix. Aliases are matched by name across the whole file, not by scope. Do not add exemptions to get new low-contrast text past this: use the Text token.
  */
 import { readdirSync, readFileSync, statSync } from "fs";
 import { join, relative } from "path";
@@ -74,6 +84,19 @@ function anyNode(root: ts.Node, pred: (n: ts.Node) => boolean): boolean {
   };
   visit(root);
   return hit;
+}
+
+/** Non-text colour names (icons, borders, fills, ...): the 3:1 non-text rule allows the raw token. */
+const NON_TEXT_PREFIX =
+  /^(icon|border|background|bg|tint|fill|stroke|shadow|ring|glow|bar|dot|line|track|outline|overlay|underline|thumb|ripple|selection|placeholder|accent|chip|badge)/i;
+/** JSX tags that draw a glyph, not text: their `color` is an icon colour. */
+const ICON_TAG =
+  /(Icon|Icons|Indicator|Pulse|Overlay|Chips|Ionicons|Feather|FontAwesome\d?|Entypo|AntDesign|Svg|Path|Circle|Rect|Line|Polygon|Stop)$/;
+
+/** `color`, or a `...Color` name that is not a border / fill / icon colour. */
+function isTextColorName(name: string): boolean {
+  if (name === "color") return true;
+  return name.endsWith("Color") && !NON_TEXT_PREFIX.test(name);
 }
 
 function propName(p: ts.ObjectLiteralElementLike): string | undefined {
@@ -161,10 +184,17 @@ export function findOffenders(source: string, fileName = "x.tsx"): string[] {
     out.push(`${fileName}:${line}: ${n.getText(sf).replace(/\s+/g, " ")}`);
   };
   const scan = (n: ts.Node) => {
-    if (ts.isPropertyAssignment(n) && propName(n) === "color") {
-      if (mentionsRaw(n.initializer) && !isHintAction(n)) report(n);
-    } else if (ts.isShorthandPropertyAssignment(n) && n.name.text === "color") {
-      if (aliases.has("color")) report(n);
+    if (ts.isPropertyAssignment(n)) {
+      const name = propName(n);
+      if (name !== undefined && isTextColorName(name)) {
+        if (mentionsRaw(n.initializer) && !isHintAction(n)) report(n);
+      }
+    } else if (ts.isShorthandPropertyAssignment(n) && isTextColorName(n.name.text)) {
+      if (aliases.has(n.name.text)) report(n);
+    } else if (ts.isJsxAttribute(n) && ts.isIdentifier(n.name) && isTextColorName(n.name.text)) {
+      const tag = n.parent.parent.tagName.getText(sf);
+      const init = n.initializer;
+      if (!ICON_TAG.test(tag) && init && mentionsRaw(init)) report(n);
     }
     ts.forEachChild(n, scan);
   };
@@ -195,6 +225,23 @@ describe("the scan itself", () => {
       ["a plain tertiary", "const s = { color: colors.tertiary };"],
       ["the celebration gold", "const s = { color: colors.celebration };"],
       ["a plain error", "const s = { color: colors.error };"],
+      ["a raw token as valueColor", "const s = { valueColor: colors.error };"],
+      ["a raw token as labelColor", "const s = { labelColor: colors.accent };"],
+      ["a raw token as textColor", "const s = { textColor: colors.bonus };"],
+      [
+        "a raw token ternary as valueColor",
+        "const s = { valueColor: w ? colors.secondary : c.text };",
+      ],
+      [
+        "a destructured raw as a shorthand valueColor",
+        "const { error: valueColor } = colors;\nconst s = { valueColor };",
+      ],
+      ["a raw token on a Text colour prop", "const x = <Text color={colors.error}>x</Text>;"],
+      ["a raw token on a valueColor attribute", "const x = <Stat valueColor={colors.tertiary} />;"],
+      [
+        "a raw alias on a JSX attribute",
+        "const a = colors.celebration;\nconst x = <Label textColor={a} />;",
+      ],
       ["an error ternary", "const s = { color: bad ? colors.error : colors.text };"],
       ["a destructured error", "const { error } = colors;\nconst s = { color: error };"],
       [
@@ -254,16 +301,19 @@ describe("the scan itself", () => {
         "const a = { key: 'k', icon: 'x', color: colors.bonus };",
       ],
       [
-        "a bonus colour with a raw labelColor",
-        "const a = { key: 'k', icon: 'x', color: colors.bonus, labelColor: colors.bonus };",
-      ],
-      [
         "a bonus colour in a non-action object",
         "const a = { color: colors.bonus, labelColor: colors.bonusText };",
       ],
     ])("%s", (_n, code) => {
       expect(hits(code)).toBe(1);
     });
+  });
+
+  // Was a one-hit case before #3902; the raw labelColor is now flagged on its own as well.
+  it("a bonus colour with a raw labelColor: both the label and the icon colour", () => {
+    expect(
+      hits("const a = { key: 'k', icon: 'x', color: colors.bonus, labelColor: colors.bonus };")
+    ).toBe(2);
   });
 
   describe("ignores", () => {
@@ -274,7 +324,15 @@ describe("the scan itself", () => {
         "an error border and fill",
         "const s = [{ borderColor: colors.error }, { backgroundColor: colors.error }];",
       ],
+      // The scan reads JSX attributes (#3902): an icon's colour is the 3:1 non-text slot, a
+      // <Text>'s is not (see the flags case "a raw token on a Text colour prop").
       ["an error icon prop", "const x = <Icon color={colors.error} />;"],
+      ["an Ionicons colour prop", "const x = <Ionicons name='x' color={colors.error} />;"],
+      ["an icon colour property", "const s = { iconColor: colors.error };"],
+      ["a tint colour property", "const s = { tintColor: colors.accent };"],
+      ["a shadow colour property", "const s = { shadowColor: colors.bonus };"],
+      ["an error text token as valueColor", "const s = { valueColor: colors.errorText };"],
+      ["a JSX text token", "const x = <Text color={colors.errorText} />;"],
       [
         "an error alias used as a border",
         "let c;\nc = colors.error;\nconst s = { borderColor: c };",

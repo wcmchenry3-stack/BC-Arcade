@@ -778,7 +778,7 @@ export default function FreeCellScreen() {
             label={t("freecell:action.hint")}
             onPress={handleHint}
             disabled={hintDisabled}
-            color={colors.bonus}
+            color={colors.bonusText}
           />
           <PillButton
             label={t("freecell:action.undo")}
