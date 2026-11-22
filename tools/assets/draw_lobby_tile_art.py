@@ -1,4 +1,4 @@
-"""Deterministic lobby tile art: a gameplay vignette per game (#4011, #4012; style decided in #4010).
+"""Deterministic lobby tile art: a gameplay vignette per game (#4011-#4013; style decided in #4010).
 
 Each lobby tile shows a small drawn scene of the game being played, drawn straight on the tile:
 transparent background, no badge or frame, and a mid-grey outline (`OUTLINE`) so it reads on the
@@ -15,6 +15,14 @@ games' own (`frontend/src/theme/theme.*.ts`; the Yacht dice and the playing card
     freecell   the deal: eight cascades of uneven length, every card face up
     daily_word three guesses at FINAL, scored: PIANO, FOCAL, then FINAL solved (all three words
                are answers in the English, Spanish and French lists)
+
+The hidden premium games (#4013; their tiles never reach a store bundle, see HIDDEN_GAMES):
+
+    blackjack  a natural: A-spades and K-hearts, the green 21 pill, the bet's chips
+    hearts     hearts broken: the game's broken heart cracked in two over the A-hearts just played
+    mahjong    a corner of the board on two layers, the free pair of 3-coins selected in gold
+    starswarm  the swarm dives: three Wasp Grunts in a V on the Arrow, the game's own sprites
+    cascade    the drop: a cherry falling on its guide line into the bin, onto the watermelon
 
 Usage:
     python tools/assets/draw_lobby_tile_art.py [--out DIR] [--sheet] [name ...]
@@ -37,7 +45,8 @@ Grotesk Bold outlines, the face the games draw their numbers and the BC decks th
 `lobby_numerals.json` and A-Z into `lobby_glyphs.json`, so drawing needs neither the font nor
 fontTools. `extract` takes
 `frontend/node_modules/@expo-google-fonts/space-grotesk/700Bold/SpaceGrotesk_700Bold.ttf` (after
-`cd frontend && npm ci`) and needs fontTools.
+`cd frontend && npm ci`) and needs fontTools. The Mahjong tile's red dragon is drawn from
+`mahjong_glyphs.json` (Yuji Syuku, SIL OFL 1.1, `mahjong_glyphs.OFL.txt`), as the game's faces are.
 
 The pipeline is `draw_starswarm_art.py`'s: shapes rasterized at 8x, LANCZOS down, composited over
 premultiplied float RGBA, and the same WebP settings. The same code gives identical pixels.
@@ -46,6 +55,7 @@ premultiplied float RGBA, and the same WebP settings. The same code gives identi
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
 import string
@@ -59,12 +69,15 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import draw_starswarm_art as starswarm  # the shipped sprites, looked up at call time
 from draw_starswarm_art import (
     RGBA,
     SS,
     Canvas,
     Point,
+    Radial,
     decode_webp,
+    ellipse_pts,
     hexrgb,
     to_webp,
     xf,
@@ -626,10 +639,19 @@ def suit(c: TileCanvas, kind: str, cx: float, cy: float, s: float) -> None:
         c.polygon(stem, col)
 
 
-def card(c: TileCanvas, x: int, y: int, w: int, h: int, face: str | None) -> None:
+def card(
+    c: TileCanvas,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    face: str | None,
+    index: tuple[float, float, float] | None = None,
+) -> None:
     """A card whose top-left corner is pixel (x, y). `face` is rank + suit ("7H"), or None for a
     face-down card. A face shows its index only (the rank, the suit beside it): a cascade shows
-    each card's top strip, and the index is what a player reads there.
+    each card's top strip, and the index is what a player reads there. `index` sizes it for a
+    bigger card: (inset, rank cap, suit pip) px, default (CARD_INDEX, CARD_RANK_CAP, CARD_SUIT_PX).
 
     Raises ValueError for a rank other than A, 2-10, J, Q or K and for a suit other than S, H, D
     or C, before anything is drawn."""
@@ -646,10 +668,11 @@ def card(c: TileCanvas, x: int, y: int, w: int, h: int, face: str | None) -> Non
         inner = rounded_rect(cx, cy, w - 2 * CARD_MARGIN, h - 2 * CARD_MARGIN, CARD_R - 1)
         c.polygon(inner, CARD_BACK)
     else:
+        inset, cap, pip = index or (CARD_INDEX, CARD_RANK_CAP, CARD_SUIT_PX)
         ink = CARD_RED if is_red(face) else CARD_INK
-        ix, iy = x + CARD_SNAP + CARD_INDEX, y + CARD_SNAP + CARD_INDEX
-        text(c, face[:-1], ix / K, iy / K, CARD_RANK_CAP / K, ink)
-        suit(c, face[-1], x + CARD_SNAP + w - CARD_INDEX, iy, CARD_SUIT_PX)
+        ix, iy = x + CARD_SNAP + inset, y + CARD_SNAP + inset
+        text(c, face[:-1], ix / K, iy / K, cap / K, ink)
+        suit(c, face[-1], x + CARD_SNAP + w - inset, iy, pip)
     c.outline(body)
 
 
@@ -794,9 +817,431 @@ def dailyword_scene(c: TileCanvas) -> None:
 
 
 # --------------------------------------------------------------------------------------------
+# Batch 3 (#4013): the hidden premium games. Their tiles reach HomeScreen only through
+# `components/home/hiddenGameTileArt.ts`, which a store bundle stubs, so none of these ship in a
+# store build. The owner's picks from the #4013 proposals: Blackjack A, Hearts C, Mahjong A,
+# Star Swarm B, Cascade A.
+
+
+def pill(
+    c: TileCanvas,
+    box: tuple[float, float, float, float],
+    fill: RGBA,
+    label: str,
+    ink: RGBA,
+    cap: float,
+) -> None:
+    """A rounded pill (centre x, y, width, height in canvas px) with a centred label: Blackjack's
+    hand total."""
+    cx, cy, w, h = box
+    body = rounded_rect(cx, cy, w, h, h / 2)
+    c.polygon(body, fill)
+    c.outline(body)
+    text(c, label, cx / K, cy / K, cap / K, ink)
+
+
+# --------------------------------------------------------------------------------------------
+# Blackjack (pick A): a natural. The player's A-spades and K-hearts, the hand total pill in the
+# win colour (TableFelt's TotalPill: `bonus` for a win), and the bet: chips in the table accent
+# with the felt as their rim (ChipFace, the Classic table's `accent`).
+
+BJ_ACCENT = hexrgb("#8ff5ff")  # accent (dark): the Classic table's chips
+BJ_RIM = hexrgb("#19191f")  # surface (dark): a chip's rim
+BJ_WIN = hexrgb("#4ade80")  # bonus (dark): a won hand's total pill
+BJ_ON = hexrgb("#0e0e13")  # textOnAccent: the pill's label
+BJ_CARD = (58, 82)  # card size (px)
+BJ_INDEX = (13, 16, 15)  # the bigger cards' index: inset, rank cap, suit pip (px)
+BJ_HAND = (("AS", (38, 26)), ("KH", (92, 36)))  # the two cards, top-left corners (px)
+BJ_PILL = (96, 140, 44, 24)  # the total pill: centre, size (px)
+BJ_PILL_CAP = 14  # its label's cap height (px)
+BJ_CHIPS = (44, 150, 3)  # the chip stack: centre x, top chip's y, count
+BJ_CHIP_R, BJ_CHIP_TH = 15, 4  # a chip's radius and thickness (px)
+
+
+def blackjack_total(cards: Sequence[str]) -> int:
+    """A hand's best total, as the game counts it: aces 11 unless that busts, faces 10."""
+    total, aces = 0, 0
+    for f in cards:
+        rank = f[:-1]
+        if rank == "A":
+            total, aces = total + 11, aces + 1
+        else:
+            total += 10 if rank in ("J", "Q", "K") else int(rank)
+    while total > 21 and aces:
+        total, aces = total - 10, aces - 1
+    return total
+
+
+def chip_stack(c: TileCanvas, cx: float, top_y: float, n: int) -> None:
+    """A short stack of chips seen from the front and a little above: n chips, the top one's
+    face centred at (cx, top_y) after the stack is built up from the bottom."""
+    r, th = BJ_CHIP_R, BJ_CHIP_TH
+    ry = r * 0.42
+    for i in range(n):
+        y = top_y - i * th
+        side = [(cx - r, y), (cx + r, y)]
+        side += [
+            (cx + r * math.cos(a), y + th + ry * math.sin(a))
+            for a in [k * math.pi / 12 for k in range(13)]
+        ]
+        side += [(cx - r, y)]
+        c.polygon(side, BJ_ACCENT)
+        c.polygon(ellipse_pts(cx, y + th * 0.5, r, ry), (*BJ_RIM[:3], 0.35))
+        c.stroke(side, OUTLINE_W, OUTLINE)
+        top = ellipse_pts(cx, y, r, ry)
+        c.polygon(top, BJ_ACCENT)
+        c.stroke(ellipse_pts(cx, y, r * 0.66, ry * 0.66), 2.0, (*BJ_RIM[:3], 0.55))
+        c.stroke(top, OUTLINE_W, OUTLINE)
+
+
+def blackjack_scene(c: TileCanvas) -> None:
+    w, h = BJ_CARD
+    for face, (x, y) in BJ_HAND:
+        card(c, x, y, w, h, face, BJ_INDEX)
+    total = blackjack_total([f for f, _ in BJ_HAND])
+    pill(c, BJ_PILL, BJ_WIN, str(total), BJ_ON, BJ_PILL_CAP)
+    chip_stack(c, *BJ_CHIPS)
+
+
+# --------------------------------------------------------------------------------------------
+# Hearts (pick C): hearts broken. The A-hearts has just been played, and the game's broken heart
+# (HeartsBrokenAnimation: its heart and crack paths in a 500-unit box, HEARTS_BROKEN_HEART) splits
+# in two along the crack above it.
+
+HEARTS_BROKEN = hexrgb("#d0342c")  # HEARTS_BROKEN_HEART
+HEARTS_PLAYED = "AH"
+HEARTS_CARD_AT = (114, 112)  # the played card's top-left (px); a standard 44 x 62 card
+HEARTS_CARD = (44, 62)
+HEARTS_SCALE, HEARTS_CENTRE = 0.24, (96, 82)  # the 500-unit heart, scaled and centred (px)
+HEARTS_SPLIT = 4  # px each half moves apart along x (the right one 1 px down)
+# HeartsBrokenAnimation's HEART, as its cubic segments, and its CRACK polyline (500-unit box).
+HEART_CUBICS = (
+    ((250, 450), (250, 450), (40, 310), (40, 180)),
+    ((40, 180), (40, 95), (110, 55), (180, 75)),
+    ((180, 75), (210, 84), (235, 105), (250, 130)),
+    ((250, 130), (265, 105), (290, 84), (320, 75)),
+    ((320, 75), (390, 55), (460, 95), (460, 180)),
+    ((460, 180), (460, 310), (250, 450), (250, 450)),
+)
+HEART_CRACK = ((250, 130), (232, 190), (268, 240), (226, 300), (262, 360), (250, 450))
+
+
+def broken_heart_halves() -> tuple[list[Point], list[Point]]:
+    """The heart's left and right halves (canvas px), each closed along the crack."""
+    s, (ox, oy) = HEARTS_SCALE, HEARTS_CENTRE
+
+    def at(x: float, y: float) -> Point:
+        return (ox + (x - 250) * s, oy + (y - 250) * s)
+
+    body = [at(*HEART_CUBICS[0][0])]
+    for p0, p1, p2, p3 in HEART_CUBICS:
+        body += [at(x, y) for x, y in cubic(p0, p1, p2, p3, 10)]
+    crack = [at(x, y) for x, y in HEART_CRACK]
+    left = [p for p in body if p[0] <= ox] + crack[::-1]
+    right = [p for p in body if p[0] >= ox] + crack
+    d = HEARTS_SPLIT
+    return [(x - d, y) for x, y in left], [(x + d, y + 1) for x, y in right]
+
+
+def hearts_scene(c: TileCanvas) -> None:
+    card(c, *HEARTS_CARD_AT, *HEARTS_CARD, HEARTS_PLAYED)
+    for half in broken_heart_halves():
+        c.polygon(half, HEARTS_BROKEN)
+        c.outline(half)
+
+
+# --------------------------------------------------------------------------------------------
+# Mahjong (pick A): a corner of the board, two layers, the free pair of 3-coins selected. The
+# tiles are laid out as the game's slots (col, row, layer; a tile spans two columns, as in
+# `game/mahjong/engine.ts`), and the selected pair is free by the game's rule (`is_free`). The
+# tile is the game's (theme.mahjong: ivory face, brown border, bone sides with an ivory band, the
+# gold selected face); the faces are drawn as gen_mahjong_tiles.py draws them (coins, bamboo, and
+# the red dragon in Yuji Syuku, SIL OFL 1.1, from mahjong_glyphs.json).
+
+MJ_FACE = hexrgb("#f5f0e8")  # MAHJONG_TILE_FACE
+MJ_FACE_SEL = hexrgb("#fff8c0")  # MAHJONG_TILE_FACE_SELECTED
+MJ_BORDER = hexrgb("#8b7355")  # MAHJONG_BORDER_NORMAL
+MJ_SEL = hexrgb("#ffd700")  # MAHJONG_BORDER_SELECTED
+MJ_SIDE_R = hexrgb("#c8b48a")  # MAHJONG_SIDE_R
+MJ_SIDE_B = hexrgb("#a98f66")  # MAHJONG_SIDE_B
+MJ_SIDE_IV = hexrgb("#ece3cf")  # MAHJONG_SIDE_IVORY
+MJ_BLUE = hexrgb("#1f47a6")  # gen_mahjong_tiles.py's inks
+MJ_GREEN = hexrgb("#16773b")
+MJ_RED = hexrgb("#c3262e")
+MJ_IVORY = hexrgb("#fbf6e9")
+MJ_DARK_GREEN = hexrgb("#0b4a24")
+MJ_GLYPHS_FILE = HERE / "mahjong_glyphs.json"
+MJ_TILE = (36, 50, 6)  # face width, height, and the depth of the bone sides (px)
+MJ_ORIGIN = (20, 108)  # the face's top-left of the slot (col 0, layer 0), px
+MJ_COL_PX = 19  # one column (half a tile and a 1 px gap) in px
+MJ_LAYER_PX = (1, -42)  # how far up the board one layer up is drawn (px)
+# (col, row, layer, face): the bottom layer's three tiles and the two on top of them.
+MJ_SLOTS = (
+    (0, 0, 0, "b2"),
+    (2, 0, 0, "c2"),
+    (4, 0, 0, "c3"),
+    (1, 0, 1, "zhong"),
+    (3, 0, 1, "c3"),
+)
+MJ_SELECTED = ((4, 0, 0), (3, 0, 1))  # the matched pair, both free
+
+
+def is_free(slot: tuple[int, int, int], slots: Sequence[tuple[int, int, int]]) -> bool:
+    """`isFreeTile` (game/mahjong/engine.ts): nothing on top at the same position, and the left
+    or the right neighbour (two columns over, same row and layer) empty."""
+    col, row, layer = slot
+    if any(s[2] > layer and s[0] == col and s[1] == row for s in slots):
+        return False
+    left = (col - 2, row, layer) in slots
+    right = (col + 2, row, layer) in slots
+    return not (left and right)
+
+
+_MJ_GLYPHS: dict | None = None
+
+
+def _mj_glyph_contours(ch: str) -> tuple[list[list[Point]], list[float]]:
+    global _MJ_GLYPHS
+    if _MJ_GLYPHS is None:
+        _MJ_GLYPHS = json.loads(MJ_GLYPHS_FILE.read_text(encoding="utf-8"))["glyphs"]
+    out: list[list[Point]] = []
+    cur: list[Point] = []
+    for op in _MJ_GLYPHS[ch]["ops"]:
+        kind, v = op[0], op[1:]
+        if kind == "M":
+            cur = [(v[0], v[1])]
+        elif kind == "L":
+            cur.append((v[0], v[1]))
+        elif kind == "Q":
+            cur += quad(cur[-1], (v[0], v[1]), (v[2], v[3]), 6)
+        elif kind == "C":
+            cur += cubic(cur[-1], (v[0], v[1]), (v[2], v[3]), (v[4], v[5]), 8)
+        elif kind == "Z":
+            out.append(cur)
+            cur = []
+    return out, _MJ_GLYPHS[ch]["bounds"]
+
+
+def mj_glyph(c: TileCanvas, ch: str, cx: float, cy: float, size: float, fill: RGBA) -> None:
+    contours, (x0, y0, x1, y1) = _mj_glyph_contours(ch)
+    k = size / max(x1 - x0, y1 - y0)
+    mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+    c.compound([[(cx + (x - mx) * k, cy - (y - my) * k) for x, y in ct] for ct in contours], fill)
+
+
+def coin(c: TileCanvas, cx: float, cy: float, r: float, ring: RGBA) -> None:
+    c.ellipse(cx, cy, r, r, ring)
+    c.ellipse(cx, cy, r * 0.78, r * 0.78, MJ_IVORY)
+    c.ellipse(cx, cy, r * 0.42, r * 0.42, ring)
+
+
+def bamboo_stick(c: TileCanvas, cx: float, top: float, hgt: float, w: float) -> None:
+    c.polygon(rounded_rect(cx, top + hgt / 2, w, hgt, w / 2), MJ_GREEN)
+    for f in (0.0, 0.5, 1.0):
+        c.polygon(rounded_rect(cx, top + f * hgt, w * 1.5, 2.6, 1.3), MJ_DARK_GREEN)
+
+
+def mj_face_art(c: TileCanvas, kind: str, x: float, y: float, w: float, h: float) -> None:
+    """A face's art inside the face rectangle: 3-coins (diagonal, blue red green), 2-coins,
+    2-bamboo, or the red dragon."""
+    if kind == "c3":
+        for i, col in enumerate((MJ_BLUE, MJ_RED, MJ_GREEN)):
+            coin(c, x + w * (0.27 + 0.23 * i), y + h * (0.23 + 0.27 * i), w * 0.17, col)
+    elif kind == "c2":
+        coin(c, x + w / 2, y + h * 0.3, w * 0.2, MJ_GREEN)
+        coin(c, x + w / 2, y + h * 0.7, w * 0.2, MJ_BLUE)
+    elif kind == "b2":
+        bamboo_stick(c, x + w / 2, y + h * 0.12, h * 0.32, w * 0.2)
+        bamboo_stick(c, x + w / 2, y + h * 0.56, h * 0.32, w * 0.2)
+    elif kind == "zhong":
+        mj_glyph(c, "中", x + w / 2, y + h / 2, w * 0.78, MJ_RED)
+    else:
+        raise ValueError(f"unknown mahjong face {kind!r}")
+
+
+def mj_slot_xy(col: int, layer: int) -> Point:
+    """The face's top-left (px) of a tile at `col` on `layer` (one row is drawn)."""
+    x0, y0 = MJ_ORIGIN
+    return (x0 + col * MJ_COL_PX + layer * MJ_LAYER_PX[0], y0 + layer * MJ_LAYER_PX[1])
+
+
+def mj_tile(c: TileCanvas, x: float, y: float, kind: str, selected: bool) -> None:
+    """A tile whose face's top-left is (x, y); its bone sides show right and below."""
+    w, h, d = MJ_TILE
+    whole = rounded_rect(x + w / 2 + d / 2, y + h / 2 + d / 2, w + d, h + d, 4)
+    c.polygon(whole, MJ_SIDE_B)
+    c.polygon(rounded_rect(x + w / 2 + d / 2, y + h / 2 + d / 4, w + d, h + d / 2, 4), MJ_SIDE_R)
+    c.polygon(rounded_rect(x + w / 2 + 1, y + h / 2 + 1, w + 2, h + 2, 4), MJ_SIDE_IV)
+    face = rounded_rect(x + w / 2, y + h / 2, w, h, 3.5)
+    c.polygon(face, MJ_FACE_SEL if selected else MJ_FACE)
+    c.stroke(face, 2.6 if selected else 1.6, MJ_SEL if selected else MJ_BORDER)
+    mj_face_art(c, kind, x, y, w, h)
+    c.outline(whole)
+
+
+def mahjong_scene(c: TileCanvas) -> None:
+    for col, row, layer, kind in sorted(MJ_SLOTS, key=lambda s: (s[2], s[1], s[0])):
+        x, y = mj_slot_xy(col, layer)
+        mj_tile(c, x, y, kind, (col, row, layer) in MJ_SELECTED)
+
+
+# --------------------------------------------------------------------------------------------
+# Star Swarm (pick B): the swarm dives. Three Wasp Grunts in a V coming down on the Arrow, all
+# drawn by the game's own sprite code (draw_starswarm_art.py: `grunt_wasp`, and the P1 Arrow with
+# its second gun as `compose_ship` stacks it, armour outline included), scaled onto the tile. The
+# sprites carry their own rims and armour outline, as players see them, so this scene is exempt
+# from the shared grey outline (OUTLINE_EXEMPT).
+
+SS_GRUNTS = ((58, 52), (134, 52), (96, 76))  # centres (px)
+SS_GRUNT_PX = 40  # each Grunt's padded sprite, scaled to this (longest side, px)
+SS_SHIP = ("p1-arrow", 2, 0)  # ship, guns level, hull plating level
+SS_SHIP_AT, SS_SHIP_PX = (96, 152), 54
+
+
+def _sprite(im: Image.Image, size: int) -> Image.Image:
+    k = size / max(im.width, im.height)
+    return im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
+
+
+def starswarm_scene(_c: TileCanvas) -> list[tuple[Image.Image, Point]]:
+    """Returns sprite layers (image, centre px) for `render` to composite over the canvas."""
+    ss = starswarm
+    grunt = _sprite(ss.grunt_wasp(), SS_GRUNT_PX)
+    ship, guns, hull = SS_SHIP
+    layers = ["base"] + [f"guns{n}" for n in (2, 3) if guns >= n]
+    cache = {f"{ship}-{layer}": ss._ship_layer(ship, layer) for layer in layers}
+    arrow = _sprite(ss.compose_ship(ship, guns, hull, cache), SS_SHIP_PX)
+    return [(grunt, p) for p in SS_GRUNTS] + [(arrow, SS_SHIP_AT)]
+
+
+# --------------------------------------------------------------------------------------------
+# Cascade (pick A): the drop. A cherry (tier 0) falls on its guide line into the bin, onto the
+# watermelon (tier 10) resting on the floor. The pieces are the game's kawaii fruits (theme.cascade
+# CASCADE_ART: the body's radial tone l -> b -> d, the face with its ink, blush and glint, the
+# cherry's stem and leaf); the melon shows two of its stripes (four wavy ones cost ~600 B). The bin
+# is the game's thick rounded U band in the accent (game/cascade/art/bin.ts), here the light
+# theme's accent so it reads on both cards.
+
+CA_FRUIT = {  # body b, light l, dark d, outline o, face ink
+    "cherry": ("#d81e3a", "#ff5a6e", "#8a0b20", "#6e0718", "#3a1418"),
+    "melon": ("#2f9a3e", "#6bd06a", "#17602a", "#0f4a1f", "#0a2a10"),
+}
+CA_TIER = {"cherry": 0, "melon": 10}  # Fruits tiers (theme.cascade's ladder)
+CA_BLUSH = hexrgb("#ff3b6b")  # CASCADE_ART.blushOpen
+CA_LEAF = hexrgb("#4fae3c")  # leaf
+CA_STEM = hexrgb("#7a4a22")  # stem
+CA_ACCENT = hexrgb("#1bc5d4")  # CASCADE_BIN_PALETTE.light.accent
+CA_BIN = (24, 168, 30, 172)  # inner-ish left x, right x, top y, floor y (px): the band's centre
+CA_BAND = 7  # the band's width (px)
+CA_MELON = (96, 134, 32)  # centre, radius (px)
+CA_CHERRY = (96, 44, 12)
+CA_GUIDE = ((96, 60), (96, 92))  # the drop guide, dashed (px)
+
+
+def fruit(c: TileCanvas, kind: str, cx: float, cy: float, r: float) -> None:
+    b, l, d, o, ink = (hexrgb(h) for h in CA_FRUIT[kind])
+    if kind == "cherry":
+        stem = [
+            (cx + 0.04 * r, cy - 0.82 * r),
+            (cx + 0.18 * r, cy - 1.2 * r),
+            (cx + 0.3 * r, cy - 1.42 * r),
+        ]
+        c.stroke(stem, max(1.6, r * 0.12), CA_STEM, closed=False)
+        leaf = rounded_rect(cx + 0.55 * r, cy - 1.28 * r, 0.6 * r, 0.3 * r, 0.15 * r, -0.4)
+        c.polygon(leaf, CA_LEAF)
+    c.ellipse(
+        cx, cy, r, r, Radial((cx - 0.25 * r, cy - 0.35 * r), 1.35 * r, [(0, l), (0.55, b), (1, d)])
+    )
+    if kind == "melon":
+        for s in (-0.55, 0.55):
+            pts = []
+            y = -1.0
+            while y <= 1.0:
+                pts.append((cx + s * math.sqrt(max(0, 1 - y * y)) * r, cy + y * r))
+                y += 0.1
+            c.stroke(pts, max(1.5, 0.16 * r), (*o[:3], 0.9), closed=False)
+    c.outline(ellipse_pts(cx, cy, r, r))
+    s, fy = 1.15, cy + 0.08 * r  # the face: open eyes with glints, blush, a smile
+    for sx in (-1, 1):
+        c.ellipse(
+            cx + sx * 0.4 * s * r,
+            fy + 0.12 * s * r,
+            0.12 * s * r,
+            0.055 * s * r,
+            (*CA_BLUSH[:3], 0.3),
+        )
+        ex, ey = cx + sx * 0.36 * s * r, fy - 0.1 * s * r
+        c.ellipse(ex, ey, 0.13 * s * r, 0.13 * s * r, ink)
+        c.ellipse(ex - 0.04 * s * r, ey - 0.05 * s * r, 0.04 * s * r, 0.04 * s * r, (1, 1, 1, 1))
+    smile = quad(
+        (cx - 0.13 * s * r, fy + 0.04 * s * r),
+        (cx, fy + 0.17 * s * r),
+        (cx + 0.13 * s * r, fy + 0.04 * s * r),
+        8,
+    )
+    c.stroke(smile, max(1.2, 0.05 * s * r), ink, closed=False)
+    c.ellipse(cx - 0.42 * r, cy - 0.5 * r, 0.16 * r, 0.1 * r, (1, 1, 1, 0.6))  # gloss
+
+
+def bin_path() -> list[Point]:
+    """The bin's U: down the left wall, round the floor's corners, up the right wall."""
+    x0, x1, top, floor = CA_BIN
+    r = 18
+    pts: list[Point] = [(x0, top), (x0, floor - r)]
+    pts += [
+        (x0 + r - r * math.cos(a), floor - r + r * math.sin(a))
+        for a in [k * math.pi / 16 for k in range(9)]
+    ]
+    pts += [
+        (x1 - r + r * math.cos(a), floor - r + r * math.sin(a))
+        for a in [math.pi / 2 - k * math.pi / 16 for k in range(9)]
+    ]
+    return [*pts, (x1, top)]
+
+
+def dashes(pts: Sequence[Point], dash: float, gap: float) -> list[list[Point]]:
+    """An open path cut into dashes `dash` long, `gap` apart."""
+    out: list[list[Point]] = []
+    cur: list[Point] = []
+    on, left = True, dash
+    for a, b in itertools.pairwise(pts):
+        seg = math.dist(a, b)
+        t = 0.0
+        while seg - t > 1e-9:
+            step = min(left, seg - t)
+            p0 = (a[0] + (b[0] - a[0]) * t / seg, a[1] + (b[1] - a[1]) * t / seg)
+            t += step
+            p1 = (a[0] + (b[0] - a[0]) * t / seg, a[1] + (b[1] - a[1]) * t / seg)
+            if on:
+                cur = cur or [p0]
+                cur.append(p1)
+            left -= step
+            if left <= 1e-9:
+                if on:
+                    out.append(cur)
+                    cur = []
+                on, left = not on, (gap if on else dash)
+    if cur:
+        out.append(cur)
+    return out
+
+
+def cascade_scene(c: TileCanvas) -> None:
+    pts = bin_path()
+    c.stroke(pts, CA_BAND + 2 * OUTLINE_W, OUTLINE, closed=False)
+    c.stroke(pts, CA_BAND, CA_ACCENT, closed=False)
+    fruit(c, "melon", *CA_MELON)
+    for d in dashes(CA_GUIDE, 4, 4):
+        c.stroke(d, 1.6, OUTLINE, closed=False)
+    fruit(c, "cherry", *CA_CHERRY)
+
+
+# --------------------------------------------------------------------------------------------
 # Registry and output
 
-SCENES: dict[str, Callable[[TileCanvas], None]] = {
+Layers = list[tuple[Image.Image, Point]]  # sprites (image, centre px), composited last
+
+SCENES: dict[str, Callable[[TileCanvas], Layers | None]] = {
     "sort": sort_scene,
     "yacht": yacht_scene,
     "twenty48": twenty48_scene,
@@ -804,13 +1249,25 @@ SCENES: dict[str, Callable[[TileCanvas], None]] = {
     "solitaire": solitaire_scene,
     "freecell": freecell_scene,
     "daily_word": dailyword_scene,
+    "blackjack": blackjack_scene,
+    "hearts": hearts_scene,
+    "mahjong": mahjong_scene,
+    "starswarm": starswarm_scene,
+    "cascade": cascade_scene,
 }
+
+# Scenes drawn from a game's own sprites, which carry their own rims and armour outline (as the
+# game shows them) instead of the shared grey OUTLINE.
+OUTLINE_EXEMPT = frozenset({"starswarm"})
 
 
 def render(name: str) -> Image.Image:
     c = TileCanvas()
-    SCENES[name](c)
-    return c.image()
+    layers = SCENES[name](c)
+    im = c.image()
+    for sprite, (cx, cy) in layers or ():
+        im.alpha_composite(sprite, (round(cx - sprite.width / 2), round(cy - sprite.height / 2)))
+    return im
 
 
 def _card(im: Image.Image, bg: tuple[int, int, int, int], size: int) -> Image.Image:

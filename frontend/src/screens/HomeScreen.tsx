@@ -65,7 +65,6 @@ import twenty48Tile from "../../assets/home/twenty48-tile.webp";
 import yachtTile from "../../assets/home/yacht-tile.webp";
 // Hidden games' tile images: never imported here, or a store build would package them (#4011).
 import { HIDDEN_GAME_TILE_ART } from "../components/home/hiddenGameTileArt";
-import CascadeTileIcon from "../components/cascade/CascadeTileIcon";
 import { tileAccent } from "../components/home/tileAccents";
 import { tilePressHaptic } from "../components/home/tileHaptic";
 import {
@@ -80,15 +79,11 @@ import {
   TILE_ICON_ZONE,
 } from "../components/home/lobbyColumns";
 
-// A tile's icon is an emoji, or a generated image, or Cascade's code-drawn piece (#3698), which
-// shows the emoji until it is ready (and on web). Images are gameplay scenes drawn by
-// tools/assets/draw_lobby_tile_art.py (#4011, #4012), shown at `cardArt` (64 pt, inside the 68 pt
-// TILE_ICON_ZONE); a `badge` image is Star Swarm's hex badge (#3599), 56 pt until #4013 redraws it.
-type GameCardIcon =
-  | { emoji: string; image?: undefined; drawn?: boolean; badge?: undefined }
-  | { image: ImageSourcePropType; emoji?: undefined; drawn?: undefined; badge?: boolean };
-
-type GameCard = GameCardIcon & {
+// Every tile's icon is a gameplay scene drawn by tools/assets/draw_lobby_tile_art.py (#4011-#4013),
+// shown at `cardArt` (64 pt, inside the 68 pt TILE_ICON_ZONE). The hidden games' scenes come
+// through `hiddenGameTileArt`, which a store bundle stubs (#4013).
+type GameCard = {
+  image: ImageSourcePropType;
   key: string;
   slug: GameType;
   title: string;
@@ -281,8 +276,7 @@ export default function HomeScreen() {
     {
       key: "cascade",
       slug: "cascade",
-      emoji: "🍉",
-      drawn: true,
+      image: HIDDEN_GAME_TILE_ART.cascade, // a cherry dropping into the bin onto the watermelon
       title: t("cascade:game.title"),
       playLabel: t("cascade:game.playLabel"),
       description: t("cascade:game.description"),
@@ -291,7 +285,7 @@ export default function HomeScreen() {
     {
       key: "blackjack",
       slug: "blackjack",
-      emoji: "🃏",
+      image: HIDDEN_GAME_TILE_ART.blackjack, // a natural: A♠ K♥, 21, the bet's chips
       title: t("blackjack:game.title"),
       playLabel: t("blackjack:game.playLabel"),
       description: t("blackjack:game.description"),
@@ -327,7 +321,7 @@ export default function HomeScreen() {
     {
       key: "hearts",
       slug: "hearts",
-      emoji: "♥",
+      image: HIDDEN_GAME_TILE_ART.hearts, // hearts broken over the A♥ just played
       title: t("hearts:game.title"),
       playLabel: t("hearts:game.playLabel"),
       description: t("hearts:game.description"),
@@ -345,10 +339,7 @@ export default function HomeScreen() {
     {
       key: "starswarm",
       slug: "starswarm",
-      // The Wasp Grunt in a hex badge (#3599), drawn by tools/assets/draw_starswarm_art.py. It
-      // carries its own dark face, so it reads on the light and the dark theme.
-      image: HIDDEN_GAME_TILE_ART.starswarm,
-      badge: true,
+      image: HIDDEN_GAME_TILE_ART.starswarm, // three Wasp Grunts diving on the Arrow
       title: t("starswarm:game.title"),
       playLabel: t("starswarm:game.playLabel"),
       description: t("starswarm:game.description"),
@@ -357,7 +348,7 @@ export default function HomeScreen() {
     {
       key: "mahjong",
       slug: "mahjong",
-      emoji: "🀄",
+      image: HIDDEN_GAME_TILE_ART.mahjong, // two layers, the free pair selected
       title: t("mahjong:game.title"),
       playLabel: t("mahjong:game.playLabel"),
       description: t("mahjong:game.description"),
@@ -459,41 +450,15 @@ export default function HomeScreen() {
             style={styles.gradientBorder}
           />
 
-          {/* Emoji icon zone */}
-          <View style={styles.emojiZone}>
-            {/* The glyph colour now serves only Hearts (a hidden game, shown in internal
-                builds): its "♥" is a text-presentation glyph that takes the Text colour, which
-                defaults to black — invisible on the dark theme. Colour emoji ignore `color`, so
-                this is safe for the rest. Drop it once Hearts gets tile art (#4013). */}
-            {item.image ? (
-              <Image
-                source={item.image}
-                style={item.badge ? styles.cardImage : styles.cardArt}
-                resizeMode="contain"
-                accessible={false}
-                testID={`game-icon-${item.slug}`}
-              />
-            ) : item.drawn ? (
-              <CascadeTileIcon
-                size={styles.cardImage.width}
-                testID={`game-art-${item.slug}`}
-                fallback={
-                  <Text
-                    style={[styles.cardEmoji, { color: colors.text }]}
-                    testID={`game-icon-${item.slug}`}
-                  >
-                    {item.emoji}
-                  </Text>
-                }
-              />
-            ) : (
-              <Text
-                style={[styles.cardEmoji, { color: colors.text }]}
-                testID={`game-icon-${item.slug}`}
-              >
-                {item.emoji}
-              </Text>
-            )}
+          {/* Icon zone: the tile's gameplay scene */}
+          <View style={styles.iconZone}>
+            <Image
+              source={item.image}
+              style={styles.cardArt}
+              resizeMode="contain"
+              accessible={false}
+              testID={`game-icon-${item.slug}`}
+            />
           </View>
 
           {/* Title */}
@@ -699,18 +664,10 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 3,
   },
-  emojiZone: {
+  iconZone: {
     height: TILE_ICON_ZONE,
     alignItems: "center",
     justifyContent: "center",
-  },
-  cardEmoji: {
-    fontSize: 44,
-  },
-  // Fits inside the 68 pt TILE_ICON_ZONE with a 6 pt margin each side
-  cardImage: {
-    width: 56,
-    height: 56,
   },
   // The lobby tile art's display size (#4011): the WebPs are drawn at 3x this (192 px) by
   // tools/assets/draw_lobby_tile_art.py (its DISPLAY_PT), sized to sit in the icon zone.

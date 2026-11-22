@@ -198,44 +198,15 @@ describe("HomeScreen — game cards", () => {
     expect(queryByLabelText("Play Pachisi")).toBeNull();
   });
 
-  it("colours tile icons from the theme so text-presentation glyphs stay visible", async () => {
-    // Hearts' "♥" is not a colour emoji; without an explicit colour iOS draws it black, which
-    // disappeared on the dark theme. (Solitaire's "♠" and FreeCell's "🂡" are tile art since #4012.)
-    const { getByTestId } = await renderScreen();
-    for (const slug of ["hearts"]) {
-      const style = StyleSheet.flatten(getByTestId(`game-icon-${slug}`).props.style);
-      expect(style.color).toBeTruthy();
-      expect(style.color).not.toBe("#000");
-      expect(style.color).not.toBe("#000000");
-      expect(style.color).not.toBe("black");
-    }
-  });
-
   describe("Star Swarm tile icon (#3599)", () => {
-    it("shows the generated hex badge instead of the 👾 emoji", async () => {
+    it("shows the generated scene at cardArt (64 pt) instead of the 👾 emoji (#4013)", async () => {
       const { getByTestId, queryByText } = await renderScreen();
       const icon = getByTestId("game-icon-starswarm");
       expect(icon.type).not.toBe("Text");
       expect(icon.props.source).toBeTruthy();
       const style = StyleSheet.flatten(icon.props.style);
-      expect([style.width, style.height]).toEqual([56, 56]); // fits the 68 pt icon zone
+      expect([style.width, style.height]).toEqual([64, 64]); // fits the 68 pt icon zone
       expect(queryByText("👾")).toBeNull();
-    });
-
-    it("keeps the emoji on every other tile", async () => {
-      const { getByTestId } = await renderScreen();
-      // Yacht, 2048, Sudoku and Sort (#4011), Solitaire, FreeCell and Daily Word (#4012) show
-      // gameplay art (tested below).
-      const emojis: Record<string, string> = {
-        cascade: "🍉",
-        blackjack: "🃏",
-        hearts: "♥",
-        mahjong: "🀄",
-      };
-      for (const [slug, emoji] of Object.entries(emojis)) {
-        const icon = getByTestId(`game-icon-${slug}`);
-        expect(icon.props.children).toBe(emoji);
-      }
     });
 
     it("keeps the tile's accessibility label and hint, and hides the image from readers", async () => {
@@ -321,6 +292,56 @@ describe("HomeScreen — game cards", () => {
         expect(getByTestId(`game-tile-${slug}`).props.accessibilityLabel).toBe(label);
         expect(getByTestId(`game-icon-${slug}`).props.accessible).toBe(false);
       }
+    });
+  });
+
+  describe("hidden games' tile art (#4013)", () => {
+    const ART: Record<string, { label: string; emoji: string }> = {
+      blackjack: { label: "Play Blackjack", emoji: "🃏" },
+      hearts: { label: "Play Hearts", emoji: "♥" },
+      mahjong: { label: "Play Mahjong Solitaire", emoji: "🀄" },
+      starswarm: { label: "Play Star Swarm", emoji: "👾" },
+      cascade: { label: "Play Cascade", emoji: "🍉" },
+    };
+
+    it("a dev build draws all five as a 64 pt image, not the emoji or glyph", async () => {
+      const { getByTestId, queryByText } = await renderScreen();
+      for (const [slug, { emoji }] of Object.entries(ART)) {
+        const icon = getByTestId(`game-icon-${slug}`);
+        expect(icon.type).not.toBe("Text");
+        expect(icon.props.children).toBeUndefined();
+        expect(icon.props.source).toBeTruthy();
+        expect(icon.props.resizeMode).toBe("contain");
+        const style = StyleSheet.flatten(icon.props.style);
+        expect([style.width, style.height]).toEqual([64, 64]);
+        expect(queryByText(emoji)).toBeNull();
+      }
+    });
+
+    it("Cascade's tile is the image, not the Skia-drawn CascadeTileIcon", async () => {
+      const { getByTestId, queryByTestId } = await renderScreen();
+      expect(queryByTestId("game-art-cascade")).toBeNull();
+      expect(getByTestId("game-icon-cascade").props.source).toBeTruthy();
+    });
+
+    it("keeps the labels and hides the images from screen readers", async () => {
+      const { getByTestId } = await renderScreen();
+      for (const [slug, { label }] of Object.entries(ART)) {
+        expect(getByTestId(`game-tile-${slug}`).props.accessibilityLabel).toBe(label);
+        expect(getByTestId(`game-icon-${slug}`).props.accessible).toBe(false);
+      }
+    });
+
+    it("every tile in the lobby shows its own picture and no tile shows an emoji or glyph", async () => {
+      const { getAllByTestId } = await renderScreen();
+      const icons = getAllByTestId(/^game-icon-/);
+      expect(icons).toHaveLength(12);
+      for (const icon of icons) {
+        expect(icon.type).not.toBe("Text");
+        expect(icon.props.source).toBeTruthy();
+      }
+      const sources = icons.map((icon) => JSON.stringify(icon.props.source));
+      expect(new Set(sources).size).toBe(icons.length);
     });
   });
 
@@ -958,11 +979,12 @@ describe("HomeScreen — equal tiles, spacers and columns (#4005)", () => {
     expect(locked.paddingVertical).toBe(unlocked.paddingVertical);
   });
 
-  it("compacts the icon zone to TILE_ICON_ZONE (68) and the emoji to 44", async () => {
+  it("compacts the icon zone to TILE_ICON_ZONE (68) around the 64 pt art", async () => {
     const { getByTestId } = await renderScreen(390);
-    // Hearts still shows an emoji glyph; Yacht (#4011) and Solitaire (#4012) are tile art.
+    // Every tile is art since #4013, so the zone is checked around Hearts' scene.
     const icon = getByTestId("game-icon-hearts");
-    expect(StyleSheet.flatten(icon.props.style).fontSize).toBe(44);
+    const art = StyleSheet.flatten(icon.props.style);
+    expect([art.width, art.height]).toEqual([64, 64]);
     const zone = icon.parent;
     expect(StyleSheet.flatten(zone?.props.style).height).toBe(68);
   });

@@ -340,7 +340,8 @@ helper for the armor state; the screen announces `a11y.carrierExposed` when it d
 GD1 Scarab, Carrier C1 Queen (#3593). Since #3708 the Grunt is the bolder Wasp, with heavier rims,
 more solid wings, a fuller body and a wider stinger so it does not blur into the violet nebula in
 motion, and the Elite's and the Carrier's membrane wings follow it. Art only: sizes, hitboxes and
-behaviour are unchanged. The same Wasp, in a hex badge, is the Star Swarm home tile icon (#3599).
+behaviour are unchanged. The same Wasp, in a hex badge, was the Star Swarm home tile icon (#3599)
+until #4013 redrew the tile as an open scene from these sprites: three Wasps diving on the Arrow.
 
 ## Wave Structure
 
