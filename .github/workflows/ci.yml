@@ -483,10 +483,12 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-python.yml@main
     with:
       working-directory: backend
-      # #4061: pytest split across 3 shards (~8.6 min unsharded); coverage is enforced on
-      # the combined result and the required context `test-python / Test Python (pytest)`
-      # is the job that gathers the shards (wcmchenry3-stack/.github#383).
+      # #4061: pytest split across 3 shards (~8.6 min unsharded); the combined result must
+      # meet coverage-threshold (the org reusable's default is 80, which would silently lower
+      # pyproject.toml's --cov-fail-under=96), and the required context
+      # `test-python / Test Python (pytest)` is the job that gathers the shards.
       shard-count: 3
+      coverage-threshold: 96 # keep in step with pyproject.toml --cov-fail-under
     secrets: inherit
 
   # The request-hardening and access-control tests (`security` pytest marker, #3445)
@@ -646,9 +648,10 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-frontend.yml@main
     with:
       working-directory: frontend
-      # #4061: jest split across 4 shards (~19 min unsharded); coverage is enforced on the
-      # combined result and the required context `test-frontend / Test frontend
-      # (jest/vitest)` is the job that gathers the shards (wcmchenry3-stack/.github#383).
+      # #4061: jest split across 4 shards (~19 min unsharded); the combined result is checked
+      # against package.json's global coverageThreshold, and the required context
+      # `test-frontend / Test frontend (jest/vitest)` is the job that gathers the shards
+      # (wcmchenry3-stack/.github#383). Per-file thresholds are not enforced after merging.
       shard-count: 4
     secrets: inherit
 

@@ -390,3 +390,13 @@ def test_email_payload_comes_from_report_py_and_the_to_address_from_the_variable
     assert send["env"]["RESEND_API_KEY"] == "${{ secrets.RESEND_API_KEY }}"
     assert send["env"]["TRIGGER_MISSED"] == "${{ needs.gate.outputs.trigger_missed }}"
     assert '--to "$NIGHTLY_REPORT_TO"' in send["run"]
+
+
+def test_sharded_pytest_keeps_the_pyproject_coverage_bar():
+    """#4061: the org reusable's merged-coverage gate defaults to 80, so ci.yml must pass
+    pyproject.toml's --cov-fail-under or sharding silently lowers the bar."""
+    addopts = (ROOT / "backend" / "pyproject.toml").read_text()
+    bar = int(re.search(r"--cov-fail-under=(\d+)", addopts).group(1))
+    job = load("ci.yml")["jobs"]["test-python"]
+    assert job["with"]["shard-count"] >= 1
+    assert job["with"]["coverage-threshold"] == bar
