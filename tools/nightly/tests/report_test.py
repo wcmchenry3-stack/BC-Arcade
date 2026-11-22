@@ -105,7 +105,7 @@ def test_report_lists_sha_range_and_every_job():
     assert f"`{LAST[:12]}..{SHA[:12]}`" in md
     assert "2 commit(s) since the last green night" in md
     # Newest first, first line only, HTML neutralised.
-    assert md.index("`2222222` fix: &lt;b>newer&lt;/b>") < md.index("`1111111` feat: older")
+    assert md.index("`2222222` fix: &lt;b&gt;newer&lt;/b&gt;") < md.index("`1111111` feat: older")
     assert "body" not in md
     assert "| `cascade-sim` | ❌ failure | 50m 00s |  |" in md
     assert "| `maestro-android` | ✅ success | — | 2 flow(s) passed on retry |" in md
@@ -218,3 +218,31 @@ def test_cancelled_tag_job_makes_the_night_red_and_says_so():
     md = report.build_report(sha=SHA, needs=needs, last_green=LAST)
     assert md.startswith("## Nightly dev checks: ❌ red")
     assert "**nightly/last-green:** **not moved: `tag-last-green` was cancelled**" in md
+
+
+def test_commit_subjects_cannot_inject_markdown():
+    """Security review (#4064): a commit subject renders as plain text in the summary."""
+    compare = {
+        "total_commits": 1,
+        "commits": [
+            {
+                "sha": "3" * 40,
+                "message": "x ![img](https://evil.test/a.png) [click](https://evil.test) `code` | cell & more",
+            }
+        ],
+    }
+    md = report.build_report(
+        sha=SHA,
+        needs={"gate": {"result": "success", "outputs": {"run": "true"}}},
+        api_jobs=[],
+        compare=compare,
+        last_green=LAST,
+        gate_reason="dev changed since the last green night",
+        run_url="https://example.test/run/1",
+    )
+    line = next(l for l in md.splitlines() if l.startswith("- `3333333`"))
+    assert "](" not in line.replace("\\](", "").replace("\\]\\(", "")
+    assert "\\!\\[img\\]\\(https://evil.test/a.png\\)" in line
+    assert "\\[click\\]\\(https://evil.test\\)" in line
+    assert "\\`code\\`" in line
+    assert "\\| cell &amp; more" in line

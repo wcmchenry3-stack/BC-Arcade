@@ -55,7 +55,7 @@ def _dir_rows(directory: str, report: str, retried: dict) -> list[str]:
     except ET.ParseError as exc:
         if retry.dir_passed(retried):
             return [f"| `{directory}` | {RETRY_PASS} _(parse error in {report}: {exc})_ |\n"]
-        return [f"| `{directory}` | _(parse error in {report}: {exc})_ |\n"]
+        return [f"| `{directory}` | {FAIL} _(parse error in {report}: {exc})_ |\n"]
     suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
     rows = []
     for suite in suites:

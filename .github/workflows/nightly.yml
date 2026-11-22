@@ -158,7 +158,6 @@ jobs:
     with:
       flows: full
       nightly: true
-    secrets: inherit
 
   maestro-ios:
     needs: gate
@@ -170,7 +169,6 @@ jobs:
     with:
       flows: full
       nightly: true
-    secrets: inherit
 
   cascade-sim:
     needs: gate
@@ -178,7 +176,6 @@ jobs:
     uses: ./.github/workflows/cascade-sim-gate.yml
     with:
       nightly: true
-    secrets: inherit
 
   hearts-sim:
     needs: gate
@@ -186,7 +183,6 @@ jobs:
     uses: ./.github/workflows/hearts-sim-gate.yml
     with:
       nightly: true
-    secrets: inherit
 
   yacht-sim:
     needs: gate
@@ -194,9 +190,10 @@ jobs:
     uses: ./.github/workflows/yacht-sim-gate.yml
     with:
       nightly: true
-    secrets: inherit
 
-  # The org reusables, with the same inputs as ci.yml's ios-build-check / android-build-check.
+  # The org reusables, with the same inputs and `secrets: inherit` as ci.yml's ios-build-check /
+  # android-build-check (kept identical; narrowing it is a change for both, see the security
+  # review on #4064). The local workflows above read no secret, so they are passed none.
   ios-build:
     needs: gate
     if: needs.gate.outputs.run == 'true'
@@ -235,7 +232,6 @@ jobs:
     uses: ./.github/workflows/perf.yml
     with:
       nightly: true
-    secrets: inherit
 
   # ---- Bookkeeping --------------------------------------------------------------------------
 

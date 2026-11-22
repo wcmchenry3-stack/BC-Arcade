@@ -96,6 +96,16 @@ def test_local_reusables_get_nightly_true():
     assert called == CALLED_LOCAL
 
 
+def test_local_reusables_get_no_secrets():
+    """Security review (#4064): none of the local workflows reads a secret, so the nightly
+    passes them none. A callee that starts needing one gets it by name, not `inherit`."""
+    for job_id, job in JOBS.items():
+        if job.get("uses", "").startswith("./"):
+            assert "secrets" not in job, job_id
+    for name in CALLED_LOCAL:
+        assert "secrets." not in (WORKFLOWS / name).read_text(), name
+
+
 @pytest.mark.parametrize("job", ["ios-build", "android-build"])
 def test_org_build_checks_match_ci(job):
     ci = load("ci.yml")["jobs"][f"{job}-check"]

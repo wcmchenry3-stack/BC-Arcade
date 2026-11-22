@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -114,6 +115,19 @@ def _note(info: dict) -> str:
     return ""
 
 
+_MARKDOWN_SPECIALS = re.compile(r"([\\`*_\[\]()!|#~])")
+
+
+def _inline_text(text: str) -> str:
+    """Render untrusted text (a commit subject) as plain text in markdown.
+
+    HTML-escapes ``& < >`` and backslash-escapes markdown syntax, so a subject can't add a
+    link, an image, a code span or a table cell to the run summary (security review, #4064).
+    """
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return _MARKDOWN_SPECIALS.sub(r"\\\1", text)
+
+
 def _commit_lines(compare: dict | None, last_green: str) -> list[str]:
     if not last_green:
         return ["No `nightly/last-green` tag yet: this is the first tracked night."]
@@ -125,8 +139,7 @@ def _commit_lines(compare: dict | None, last_green: str) -> list[str]:
     for commit in commits[-MAX_COMMITS:][::-1]:
         sha = str(commit.get("sha", ""))[:7]
         subject = str(commit.get("message", "")).splitlines()[0] if commit.get("message") else ""
-        subject = subject.replace("<", "&lt;")[:100]
-        lines.append(f"- `{sha}` {subject}")
+        lines.append(f"- `{sha}` {_inline_text(subject[:100])}")
     if total > MAX_COMMITS:
         lines.append(f"- …and {total - MAX_COMMITS} older")
     return lines
