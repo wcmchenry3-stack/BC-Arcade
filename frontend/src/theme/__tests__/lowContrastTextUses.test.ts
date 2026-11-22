@@ -11,12 +11,15 @@
  *     not a non-text name (`valueColor`, `labelColor`, `textColor`, `subtitleColor`, ...);
  *   - a JSX attribute `color=` or `*Color=` on a non-icon element (`<Text color=...>`,
  *     `<Stat valueColor=...>`).
- * NON-TEXT slots stay allowed (3:1 rule): any name starting with an `isNonTextName` prefix
- * (`icon`, `border`, `background`, `tint`, `fill`, `stroke`, `shadow`, `ring`, `glow`, `bar`,
- * `dot`, `line`, `track`, `outline`, `overlay`, `underline`, `thumb`, `ripple`, `selection`,
- * `placeholder`, `accent`, `chip`, `badge`), and the `color=` / `*Color=` attributes of an icon or SVG element
- * (`ICON_TAG`: a tag ending in `Icon`/`Icons`/`Indicator`/`Pulse`/`Overlay`/`Chips`, `Ionicons`, `Feather`, `FontAwesome`, `Svg`, `Path`,
- * `Circle`, `ActivityIndicator`, `...Pulse`, `...Overlay`, `FeltChips`, ...). The value must mention:
+ * NON-TEXT slots stay allowed (3:1 rule), and only these: the whole names in `NON_TEXT_NAME`
+ * (`iconColor`, `border*Color`, `backgroundColor`, `bgColor`, `tintColor`, `fillColor`,
+ * `strokeColor`, `shadowColor`, `ringColor`, `glowColor`, `barColor`, `dotColor`, `lineColor`,
+ * `trackColor`, `outlineColor`, `overlayColor`, `underlineColor`, `thumbColor`, `rippleColor`,
+ * `selectionColor`, `accentColor`, `chipColor`, `badgeColor`), and the `color=` / `*Color=`
+ * attributes of the glyph / glow tags in `ICON_TAG` (`*Icon`, `*Icons`, `Ionicons`, `Feather`, the
+ * SVG shapes, `ActivityIndicator`, `GoalPulse`, `PulseOverlay`, `FeltChips`). A name containing
+ * `Text` or `Label` before `Color` (`placeholderTextColor`, `chipTextColor`, `iconLabelColor`) is
+ * text first, whatever it starts with. The value must mention:
  *   - `colors.accent` / `bonus` / `secondary` / `tertiary` / `celebration` / `error` (also `c.accent`,
  *     `palette.bonus`, `colors["bonus"]`);
  *   - a raw amber / gold constant (`BLACKJACK_CHIPS_LOW`, `MAHJONG_BORDER_SELECTED`);
@@ -30,15 +33,17 @@
  * green, the label is AA), directly or through a local `const`. `accentAsText(colors, x)` is a
  * sanitizer: its arguments are not scanned. `color: colors.accent` with any `labelColor` fails.
  *
- * No allow-list: every text use of these colours was moved to a text token in #3819. Table
- * accents reach text through `accentAsText`. Do not add exemptions to get new low-contrast text
- * past this; text on a fixed dark surface would need a documented, commented entry here.
+ * The name lists above are for NON-TEXT slots only; never extend them to get low-contrast text
+ * past the scan. Every text use of these colours was moved to a text token in #3819; table
+ * accents reach text through `accentAsText`. Text on a fixed dark surface would need a documented,
+ * commented entry here.
  *
  * Known limits: it does not follow a raw colour through a function call, a prop or another file
  * (`colors[config.accentKey]`); a name bound only via a function parameter (`(c) => ({ color: c })`
  * called with `colors.error`) is not tracked; a property assignment such as `obj.c = colors.error`
- * is not tracked; a custom component that forwards a `*Color` prop to an icon is flagged unless its
- * prop name is a non-text prefix. Aliases are matched by name across the whole file, not by scope. Do not add exemptions to get new low-contrast text past this: use the Text token.
+ * is not tracked; an `accentColor` prop is allowed and not followed into the component that reads it;
+ * a custom component that forwards a `*Color` prop to an icon is flagged unless its prop name is
+ * in `NON_TEXT_NAME`. Aliases are matched by name across the whole file, not by scope.
  */
 import { readdirSync, readFileSync, statSync } from "fs";
 import { join, relative } from "path";
@@ -86,17 +91,20 @@ function anyNode(root: ts.Node, pred: (n: ts.Node) => boolean): boolean {
   return hit;
 }
 
-/** Non-text colour names (icons, borders, fills, ...): the 3:1 non-text rule allows the raw token. */
-const NON_TEXT_PREFIX =
-  /^(icon|border|background|bg|tint|fill|stroke|shadow|ring|glow|bar|dot|line|track|outline|overlay|underline|thumb|ripple|selection|placeholder|accent|chip|badge)/i;
-/** JSX tags that draw a glyph, not text: their `color` is an icon colour. */
+/** Text first: a name with `Text` / `Label` before `Color` is text whatever else it starts with. */
+const TEXT_NAME = /(Text|Label)Color$/;
+/** Non-text colour names, whole names (icons, borders, fills, ...): the 3:1 rule allows the raw token. */
+const NON_TEXT_NAME =
+  /^(icon|border\w*|background|bg|tint|fill|stroke|shadow|ring|glow|bar|dot|line|track|outline|overlay|underline|thumb|ripple|selection|accent|chip|badge)Color$/;
+/** JSX tags that draw a glyph or a glow, not text: their `color` is a non-text colour. */
 const ICON_TAG =
-  /(Icon|Icons|Indicator|Pulse|Overlay|Chips|Ionicons|Feather|FontAwesome\d?|Entypo|AntDesign|Svg|Path|Circle|Rect|Line|Polygon|Stop)$/;
+  /^(\w*Icons?|Ionicons|Feather|FontAwesome\d?|Entypo|AntDesign|Svg|Path|Circle|Rect|Line|Polygon|Stop|ActivityIndicator|GoalPulse|PulseOverlay|FeltChips)$/;
 
 /** `color`, or a `...Color` name that is not a border / fill / icon colour. */
 function isTextColorName(name: string): boolean {
   if (name === "color") return true;
-  return name.endsWith("Color") && !NON_TEXT_PREFIX.test(name);
+  if (!name.endsWith("Color")) return false;
+  return TEXT_NAME.test(name) || !NON_TEXT_NAME.test(name);
 }
 
 function propName(p: ts.ObjectLiteralElementLike): string | undefined {
@@ -225,6 +233,16 @@ describe("the scan itself", () => {
       ["a plain tertiary", "const s = { color: colors.tertiary };"],
       ["the celebration gold", "const s = { color: colors.celebration };"],
       ["a plain error", "const s = { color: colors.error };"],
+      [
+        "a placeholderTextColor attribute",
+        "const x = <TextInput placeholderTextColor={colors.accent} />;",
+      ],
+      ["a chipTextColor property", "const s = { chipTextColor: colors.error };"],
+      ["a badgeLabelColor property", "const s = { badgeLabelColor: colors.bonus };"],
+      [
+        "a PillButton label colour (the #3902 bug)",
+        "const x = <PillButton color={colors.bonus} label='h' />;",
+      ],
       ["a raw token as valueColor", "const s = { valueColor: colors.error };"],
       ["a raw token as labelColor", "const s = { labelColor: colors.accent };"],
       ["a raw token as textColor", "const s = { textColor: colors.bonus };"],
@@ -328,6 +346,11 @@ describe("the scan itself", () => {
       // <Text>'s is not (see the flags case "a raw token on a Text colour prop").
       ["an error icon prop", "const x = <Icon color={colors.error} />;"],
       ["an Ionicons colour prop", "const x = <Ionicons name='x' color={colors.error} />;"],
+      [
+        "a chip fill, a track and a selection colour",
+        "const s = { chipColor: colors.accent, trackColor: colors.bonus, selectionColor: colors.accent };",
+      ],
+      ["an ActivityIndicator colour", "const x = <ActivityIndicator color={colors.accent} />;"],
       ["an icon colour property", "const s = { iconColor: colors.error };"],
       ["a tint colour property", "const s = { tintColor: colors.accent };"],
       ["a shadow colour property", "const s = { shadowColor: colors.bonus };"],
