@@ -69,7 +69,20 @@ class BlackjackResult(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _outcome_flags(cls, data: object, info: ValidationInfo) -> object:
-        return with_outcome_flags(data, (info.context or {}).get("outcome"))
+        outcome = (info.context or {}).get("outcome")
+        block = with_outcome_flags(data, outcome)
+        # An older build's winning Cash Out is sent as ``completed`` with chips left;
+        # ``games.legacy_outcomes`` stores the row as ``win`` (rule: outcome
+        # ``completed`` and ``final_chips`` a number above 0), so ``won`` agrees (#3996).
+        chips = block.get("final_chips") if isinstance(block, dict) else None
+        if (
+            outcome == "completed"
+            and isinstance(chips, (int, float))
+            and not isinstance(chips, bool)
+            and chips > 0
+        ):
+            block["won"] = True
+        return block
 
     @model_validator(mode="after")
     def _final_score_is_final_chips(self, info: ValidationInfo) -> BlackjackResult:

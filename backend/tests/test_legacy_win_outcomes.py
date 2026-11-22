@@ -93,7 +93,10 @@ def _stored(game_type: str, body: dict) -> dict:
     Challenge flags Blackjack's result model writes from the outcome (#3996)."""
     flags = {}
     if game_type == "blackjack":
-        flags = {"is_complete": body["outcome"] != "abandoned", "won": body["outcome"] == "win"}
+        chips = body["result"]["final_chips"]
+        # An older build's Cash Out (``completed``, chips left) is stored as a win.
+        won = body["outcome"] == "win" or (body["outcome"] == "completed" and chips > 0)
+        flags = {"is_complete": body["outcome"] != "abandoned", "won": won}
     return {**body["result"], **flags}
 
 
@@ -128,6 +131,8 @@ async def test_an_older_mahjong_cleared_board_is_stored_as_a_win(
 async def test_an_older_blackjack_cash_out_is_stored_as_a_win(client: TestClient, sid: str) -> None:
     _, row = _play(client, sid, "blackjack", _blackjack("completed", 1500))
     assert row["outcome"] == "win"
+    # The Daily Challenge's win goal reads metadata, which agrees with the row (#3996).
+    assert row["metadata"]["won"] is True and row["metadata"]["is_complete"] is True
 
 
 async def test_an_older_twenty48_first_2048_is_stored_as_a_win(

@@ -874,3 +874,29 @@ def test_evaluate_goal_never_counts_an_abandoned_facts_block_for_a_finish() -> N
     finish = _goal("starswarm", "finish")
     assert not evaluate_goal(finish, [("starswarm", _swarm("abandoned"))]).completed
     assert evaluate_goal(finish, [("starswarm", _swarm("completed"))]).completed
+
+
+@needs_db
+async def test_an_older_build_cash_out_meets_the_win_goal_and_unlocks_the_next_table(
+    client: TestClient,
+) -> None:
+    """Older builds send a winning Cash Out as ``completed`` with chips left; the server
+    stores the row as ``win`` and the metadata agrees (#3996 review)."""
+    sid = str(uuid.uuid4())
+    today = local_day(0).date
+    await _own(sid, "blackjack")
+    win = _goal("blackjack", "win")
+    await _pin_goals(sid, today, win, _goal("blackjack", "finish"))
+    block = {"hands_won": 9, "hands_played": 15, "starting_chips": 100, "final_chips": 260}
+    _complete(client, sid, "blackjack", outcome="completed", final_score=260, result=block)
+    assert _status(client, sid)[win.id] is True
+    async with get_session_factory()() as db:
+        row = (await db.execute(select(Game).where(Game.session_id == sid))).scalar_one()
+    assert row.outcome == "win" and row.game_metadata["won"] is True
+    # Three such runs at Beginner: the table goal steps up to the next table.
+    facts = game_facts(row.game_metadata, row.final_score, row.duration_ms)
+    plays = _runs("blackjack", [facts] * 3)
+    assert _ids("blackjack", plays)[-1] == "blackjack:starting_chips_at_least:250"
+    # A bust (no chips left) is not a win.
+    other = _facts(BlackjackResult, {**block, "final_chips": 0}, "completed", final_score=0)
+    assert other["won"] is False
