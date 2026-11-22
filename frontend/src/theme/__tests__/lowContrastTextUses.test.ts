@@ -15,7 +15,7 @@
  * (`iconColor`, `border*Color`, `backgroundColor`, `bgColor`, `tintColor`, `fillColor`,
  * `strokeColor`, `shadowColor`, `ringColor`, `glowColor`, `barColor`, `dotColor`, `lineColor`,
  * `trackColor`, `outlineColor`, `overlayColor`, `underlineColor`, `thumbColor`, `rippleColor`,
- * `selectionColor`, `accentColor`, `chipColor`, `badgeColor`), and the `color=` / `*Color=`
+ * `selectionColor`, `accentColor`, `chipColor`, `badgeColor`, `textShadowColor`, `stopColor`), and the `color=` / `*Color=`
  * attributes of the glyph / glow tags in `ICON_TAG` (`*Icon`, `*Icons`, `Ionicons`, `Feather`, the
  * SVG shapes, `ActivityIndicator`, `GoalPulse`, `PulseOverlay`, `FeltChips`). A name containing
  * `Text` or `Label` before `Color` (`placeholderTextColor`, `chipTextColor`, `iconLabelColor`) is
@@ -95,7 +95,7 @@ function anyNode(root: ts.Node, pred: (n: ts.Node) => boolean): boolean {
 const TEXT_NAME = /(Text|Label)Color$/;
 /** Non-text colour names, whole names (icons, borders, fills, ...): the 3:1 rule allows the raw token. */
 const NON_TEXT_NAME =
-  /^(icon|border\w*|background|bg|tint|fill|stroke|shadow|ring|glow|bar|dot|line|track|outline|overlay|underline|thumb|ripple|selection|accent|chip|badge)Color$/;
+  /^(icon|border\w*|background|bg|tint|fill|stroke|shadow|ring|glow|bar|dot|line|track|outline|overlay|underline|thumb|ripple|selection|accent|chip|badge|textShadow|stop)Color$/;
 /** JSX tags that draw a glyph or a glow, not text: their `color` is a non-text colour. */
 const ICON_TAG =
   /^(\w*Icons?|Ionicons|Feather|FontAwesome\d?|Entypo|AntDesign|Svg|Path|Circle|Rect|Line|Polygon|Stop|ActivityIndicator|GoalPulse|PulseOverlay|FeltChips)$/;
@@ -350,6 +350,9 @@ describe("the scan itself", () => {
         "a chip fill, a track and a selection colour",
         "const s = { chipColor: colors.accent, trackColor: colors.bonus, selectionColor: colors.accent };",
       ],
+      ["a text shadow colour", "const s = { textShadowColor: colors.error };"],
+      ["a border side colour", "const s = { borderTopColor: colors.bonus };"],
+      ["an SVG Stop colour", "const x = <Stop stopColor={colors.accent} />;"],
       ["an ActivityIndicator colour", "const x = <ActivityIndicator color={colors.accent} />;"],
       ["an icon colour property", "const s = { iconColor: colors.error };"],
       ["a tint colour property", "const s = { tintColor: colors.accent };"],
