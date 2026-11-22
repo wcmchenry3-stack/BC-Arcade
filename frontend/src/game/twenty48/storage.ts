@@ -22,6 +22,7 @@ import { Twenty48State } from "./types";
 import { seedNextTileId } from "./engine";
 import { clockForSave, clockOnLoad } from "../_shared/playClock";
 import { createJsonSlot } from "../_shared/storageSlot";
+import { TWENTY48_GAME_KEY, isSavedGame } from "./savedShape";
 
 const SUBSYSTEM = "twenty48.storage";
 
@@ -101,15 +102,10 @@ export const {
   load: loadGame,
   clear: clearGame,
 } = createJsonSlot<Twenty48State>({
-  key: "twenty48_game_v2",
+  key: TWENTY48_GAME_KEY,
   subsystem: SUBSYSTEM,
-  // Minimum viability check — only discard if the core fields are missing.
-  isValid: (p): p is Twenty48State => {
-    const parsed = p as Twenty48State;
-    return (
-      Array.isArray(parsed.board) && parsed.board.length === 4 && typeof parsed.score === "number"
-    );
-  },
+  // Only discard if the core fields are missing.
+  isValid: isSavedGame,
   keepInvalid: true,
   corruptExtra: "keyAndRaw",
   onLoad: restore,

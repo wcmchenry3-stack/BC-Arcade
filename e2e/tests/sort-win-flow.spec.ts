@@ -17,7 +17,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { mockSortApi, injectSortProgress, CATALOG_VERSION } from "./helpers/sort";
+import { mockSortApi, injectSortProgress, resumeSortFromLobby, CATALOG_VERSION } from "./helpers/sort";
 
 const NEAR_SOLVED = {
   unlockedLevel: 1,
@@ -105,12 +105,8 @@ async function loadNearSolvedLevel(
     ] as const);
     await page.goto("/");
   }
-  await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
-  await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Continue Level 1" }).click();
-  await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({
-    timeout: 5_000,
-  });
+  // The lobby tile says Resume for the saved board and opens it directly (#4008).
+  await resumeSortFromLobby(page);
   return captured;
 }
 

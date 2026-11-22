@@ -4,6 +4,8 @@ import { createJsonSlot } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "freecell.storage";
 
+export const FREECELL_GAME_KEY = "freecell_game";
+
 /**
  * `state` without its one-shot `events`: a save holds the game only, so a restore
  * never replays the last move's sound or motion (#3826, as Solitaire's #3093).
@@ -52,7 +54,7 @@ function dropBadClock(stored: unknown): unknown {
   return clock.accumulatedMs < 0 ? { ...rest, clock: { ...clock, accumulatedMs: 0 } } : parsed;
 }
 
-function isSavedGame(p: unknown): p is FreeCellState {
+export function isSavedGame(p: unknown): p is FreeCellState {
   const parsed = p as Partial<FreeCellState>;
   return !(
     parsed._v !== 1 ||
@@ -73,7 +75,7 @@ export const {
   load: loadGame,
   clear: clearGame,
 } = createJsonSlot<FreeCellState>({
-  key: "freecell_game",
+  key: FREECELL_GAME_KEY,
   subsystem: SUBSYSTEM,
   isValid: isSavedGame,
   migrate: dropBadClock,

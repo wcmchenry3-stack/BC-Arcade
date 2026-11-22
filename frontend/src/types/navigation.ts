@@ -63,7 +63,8 @@ export type HomeStackParamList = {
   Mahjong: undefined;
   MahjongLayoutInspector: undefined;
   MahjongLayoutDetail: { layoutId: string };
-  Sort: undefined;
+  /** `resume`: the lobby tile said Resume, so open the saved level (the level grid's Continue). */
+  Sort: { resume?: boolean } | undefined;
   DailyWord: undefined;
   Leaderboard: LeaderboardParams;
   GameStats: GameStatsParams;

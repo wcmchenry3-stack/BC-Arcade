@@ -67,6 +67,13 @@ The best moves per level are kept by the shared personal best (`game/_shared/per
 - **Only on this catalog.** The old key is moved in only when `@sort/catalog_version` is this build's catalog. Before the catalog migration it may hold the random levels' bests, which must never become catalog bests, so it is left exactly as stored for `catalogMigration.ts` (which reads it for the unlock and empties it in its one `setMany`); the next read then moves in the emptied `{}` and removes the key.
 - **Fail-safe.** A read that fails, or a newer build's record, gives the screen no bests to write back (`null`), so nothing it couldn't see is overwritten; failures are reported under the `personalBest` subsystem.
 
+### Lobby tile: Resume (#4008)
+
+The Sort tile on the lobby says **Resume** (button "Resume", status "In progress") when a board is saved that the level grid's Continue would restore: `game/sort/lobbyStatus.ts` `isResumable` (a `currentLevelId` and an unfinished `currentState`), on this build's level catalog (`@sort/catalog_version`, else the screen would drop or not read the board). The grid's Continue button uses the same predicate. The tile shows **no best** (bests are one per level).
+
+- **The tap matches the tile.** Home navigates to `Sort` with `{ resume: true }` only while the status is Resume. `SortScreen` reads the param, and once the progress has loaded (view `select`) it calls `handleContinue()` once (same path as the Continue button: `syncResume`, replay restore) and clears the param. With no board left it simply stays on the level grid.
+- **Silent reads.** The reader only reads `@sort/progress` (and the version key); an unreadable or misshapen save reads as no status, with no removal, write, migration or Sentry event.
+
 ### Stars (#3687)
 
 A solve earns 1 to 3 stars against the level's `par`, by moves alone (undo costs nothing; undos are still recorded):

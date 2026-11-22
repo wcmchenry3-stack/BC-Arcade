@@ -331,3 +331,5 @@ Triggers are in `frontend/src/components/sudoku/useSudokuSounds.ts`, called from
 | `sudoku.puzzleComplete`                              | `sudoku-puzzle-complete.ogg`         | the puzzle is solved, at the solving render; the only sound of that move | its chord lands at +1.0 s, as the card shows (`SOLVED_BEAT_MS`) |
 
 Notes, Erase, Undo and the Hint button are silent (a hint that fills a cell plays the place sound, as it places a digit). A game restored already solved, or a remount, is silent. The win is stopped by New Game, Play Again, Change Difficulty and unmount. The generator's timings (`SUDOKU_WIN_CARD_AT`, `SUDOKU_UNIT_SWEEP_START`, `SUDOKU_UNIT_SWEEP`) are checked against `motion.ts` in `frontend/src/game/sudoku/__tests__/sounds.test.ts`.
+
+**Lobby tile status (#4008).** The save's key and shape check now live in `savedShape.ts` (moved from `storage.ts` unchanged), so the lobby can read a save without importing the puzzle banks. The tile shows **Resume** for a game that is not complete and has had a move. No best is shown, as bests are per mode and difficulty. See [ARCHITECTURE §10.7](../ARCHITECTURE.md).

@@ -7,7 +7,13 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockSortApi, gotoSort, injectSortProgress, LEVEL_1_POUR } from "./helpers/sort";
+import {
+  mockSortApi,
+  gotoSort,
+  injectSortProgress,
+  resumeSortFromLobby,
+  LEVEL_1_POUR,
+} from "./helpers/sort";
 
 // The catalog's level 1 (#2761): a full bottle and an empty one.
 const { from, to } = LEVEL_1_POUR;
@@ -97,10 +103,7 @@ test.describe("Sort Puzzle — accessibility", () => {
         selectedBottleIndex: null,
       },
     });
-    await page.getByRole("button", { name: "Play Sort Puzzle" }).click();
-    await page.getByText("Choose a Level").waitFor({ timeout: 10_000 });
-    await page.getByRole("button", { name: "Continue Level 1" }).click();
-    await expect(page.getByLabel("Sort Puzzle board")).toBeVisible({ timeout: 5_000 });
+    await resumeSortFromLobby(page);
     await expect(
       page.getByRole("button", { name: "Bottle 1, complete" }),
     ).toBeVisible({ timeout: 3_000 });
