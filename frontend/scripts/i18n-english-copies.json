@@ -121,8 +121,8 @@
       "nl": ["score.label"]
     },
     "sort": {
-      "de": ["color.gold", "color.indigo", "hud.level"],
-      "fr-CA": ["color.indigo"],
+      "de": ["color.gold", "color.indigo", "color.orange", "hud.level"],
+      "fr-CA": ["color.indigo", "color.orange"],
       "nl": ["action.hint", "color.indigo"]
     },
     "starswarm": {
@@ -212,8 +212,34 @@
       ]
     },
     "cascade": {
-      "nl": ["score.display", "score.label", "pieces.fruits.lychee"],
-      "fr-CA": ["pieces.fruits.lime"]
+      "nl": [
+        "pieces.cosmos.jupiter",
+        "pieces.cosmos.mars",
+        "pieces.cosmos.pluto",
+        "pieces.cosmos.uranus",
+        "pieces.cosmos.venus",
+        "pieces.fruits.lychee",
+        "score.display",
+        "score.label"
+      ],
+      "fr-CA": [
+        "pieces.cosmos.jupiter",
+        "pieces.cosmos.mars",
+        "pieces.cosmos.neptune",
+        "pieces.cosmos.uranus",
+        "pieces.fruits.lime",
+        "pieces.fruits.orange"
+      ],
+      "de": [
+        "pieces.cosmos.jupiter",
+        "pieces.cosmos.mars",
+        "pieces.cosmos.pluto",
+        "pieces.cosmos.saturn",
+        "pieces.cosmos.uranus",
+        "pieces.cosmos.venus",
+        "pieces.fruits.orange"
+      ],
+      "es": ["pieces.cosmos.venus"]
     },
     "feedback": {
       "nl": ["type_label"],
@@ -229,200 +255,5 @@
       "fr-CA": ["bonus.label"]
     }
   },
-  "pending": {
-    "cascade": {
-      "fr-CA": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "es": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "hi": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "ar": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "zh": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "ja": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "ko": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "pt": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "he": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "de": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "nl": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ],
-      "ru": [
-        "pieces.fruits.lemon",
-        "pieces.fruits.dragonfruit",
-        "pieces.fruits.pumpkin",
-        "pieces.cosmos.pluto",
-        "pieces.cosmos.mercury",
-        "pieces.cosmos.mars",
-        "pieces.cosmos.venus",
-        "pieces.cosmos.earth",
-        "pieces.cosmos.neptune",
-        "pieces.cosmos.uranus",
-        "pieces.cosmos.saturn",
-        "pieces.cosmos.jupiter",
-        "pieces.cosmos.sun",
-        "pieces.cosmos.milkyWay"
-      ]
-    }
-  }
+  "pending": {}
 }
