@@ -10,6 +10,7 @@ import { CANVAS_W, CANVAS_H } from "../../game/starswarm/engine";
 import { applyDrag, clamp, DRAG_MAX_X, DRAG_MIN_X } from "../../game/starswarm/drag";
 import {
   endShipStuckSession,
+  flushShipStuckReport,
   noteShipDragBegin,
   noteShipDragEnd,
   noteShipDragIgnored,
@@ -226,6 +227,11 @@ export default function Controls({
   // #4079: leaving the screen sends a held stuck-ship event and forgets the drag, so a drag
   // that never saw onFinalize can't make a later visit look stuck.
   useEffect(() => endShipStuckSession, []);
+  // #4079: a held event goes out on pause, which is also what leaving the app does: the frame
+  // loop stops in the background, and the process may be killed there.
+  useEffect(() => {
+    if (isPaused) flushShipStuckReport();
+  }, [isPaused]);
 
   // Arrow-key movement for web (and external keyboards on iOS).
   useEffect(() => {

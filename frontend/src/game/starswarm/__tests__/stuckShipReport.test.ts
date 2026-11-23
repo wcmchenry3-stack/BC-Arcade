@@ -56,11 +56,12 @@ function runFrames(
   state: StarSwarmState,
   from: number,
   to: number,
-  ticking = true,
+  mode: "play" | "paused" | "countdown" = "play",
   step = 16
 ): number {
   let hits = 0;
-  for (let now = from; now <= to; now += step) if (checkShipStuck(now, state, ticking)) hits += 1;
+  for (let now = from; now <= to; now += step)
+    if (checkShipStuck(now, state, mode === "paused", mode === "countdown")) hits += 1;
   return hits;
 }
 
@@ -74,7 +75,7 @@ function staleAnchorDrag(fingerTx: number) {
 
 /** A held event is sent once the run stops being played: a paused frame. */
 function sendHeld(at = 100_000) {
-  return checkShipStuck(at, stateAt(MAX_X), false);
+  return checkShipStuck(at, stateAt(MAX_X), true, false);
 }
 
 beforeEach(() => {
@@ -108,17 +109,25 @@ describe("isShipOffCanvas", () => {
 });
 
 describe("inwardFingerPx", () => {
-  it("counts movement towards the centre from the half the ship is on", () => {
-    // Ship on the right: moving left (negative translation) is inward.
-    expect(inwardFingerPx(MAX_X, CANVAS_W, 100, 40, 1.5)).toBe(40);
-    expect(inwardFingerPx(MAX_X, CANVAS_W, 100, 160, 1.5)).toBe(-40);
-    // Ship on the left: moving right is inward.
-    expect(inwardFingerPx(HW, CANVAS_W, -100, -40, 1.5)).toBe(40);
+  it("near an edge, counts movement away from it only", () => {
+    // Ship at the right edge: moving left (negative translation) is inward.
+    expect(inwardFingerPx(MAX_X, HW, CANVAS_W, 100, 40, 1.5)).toBe(40);
+    expect(inwardFingerPx(MAX_X, HW, CANVAS_W, 100, 160, 1.5)).toBe(-40);
+    // 23 px from the left edge: moving right is inward, left is outward.
+    expect(inwardFingerPx(HW + 23, HW, CANVAS_W, -100, -40, 1.5)).toBe(40);
+    expect(inwardFingerPx(HW + 23, HW, CANVAS_W, -40, -100, 1.5)).toBe(-40);
+  });
+
+  it("24 px or more from both edges, counts movement either way", () => {
+    for (const x of [CANVAS_W / 2, HW + 24, MAX_X - 24, 100]) {
+      expect(inwardFingerPx(x, HW, CANVAS_W, 0, 60, 1.5)).toBe(40);
+      expect(inwardFingerPx(x, HW, CANVAS_W, 0, -60, 1.5)).toBe(40);
+    }
   });
 
   it("is NaN for an unusable scale", () => {
     for (const s of [0, -1, NaN, Infinity])
-      expect(inwardFingerPx(MAX_X, CANVAS_W, 0, -90, s)).toBeNaN();
+      expect(inwardFingerPx(MAX_X, HW, CANVAS_W, 0, -90, s)).toBeNaN();
   });
 });
 
@@ -200,12 +209,47 @@ describe("checkShipStuck — unresponsive", () => {
       scale: 1.5,
       wave: 1,
       dragActive: true,
-      msSinceLastChange: expect.any(Number),
+      msShipStill: expect.any(Number),
     });
-    expect(opts.extra.msSinceLastChange).toBeGreaterThanOrEqual(SHIP_STUCK_MIN_MS);
+    expect(opts.extra.msShipStill).toBeGreaterThanOrEqual(SHIP_STUCK_MIN_MS);
     // Numbers and booleans only, a few hundred bytes before the SDK's device context.
     for (const v of Object.values(opts.extra)) expect(typeof v).not.toBe("string");
     expect(JSON.stringify({ message, ...opts }).length).toBeLessThan(700);
+  });
+
+  it("a flick across the canvas inside one check window, then held at the edge, is silent", () => {
+    noteShipDragBegin(MAX_X, 1);
+    const ship = stateAt(MAX_X);
+    noteShipDragMove(MAX_X, MAX_X, MAX_X, 0, 1);
+    expect(runFrames(ship, 0, 0)).toBe(0); // baseline: ship at 343, finger at 0
+    // Within 250 ms: past the left edge, then back past the right with a small overshoot.
+    // applyDrag re-anchors on each clamp, so the commands go 17 then 343 while the finger ends
+    // 68 px left of where it started: the overshoots were thrown away. Without the re-baseline
+    // on a moved command that read as 68 px "inward" against a still ship.
+    noteShipDragMove(HW, -360, 40, -400, 1); // clamped at the left edge
+    noteShipDragMove(MAX_X, MAX_X + 6, MAX_X + 6 + 68, -68, 1); // back past the right edge
+    // The engine ship is back at 343 at the next check; the finger then pushes on outward.
+    for (let now = 250, tx = -68; now < 4000; now += 16, tx += 1) {
+      noteShipDragMove(MAX_X, MAX_X + 1, MAX_X - tx, tx, 1);
+      checkShipStuck(now, ship, false, false);
+    }
+    expect(flushShipStuckReport()).toBe(false);
+  });
+
+  it("a ship frozen near the centre is caught whichever way the finger moves", () => {
+    for (const dir of [1, -1]) {
+      resetSentryThrottle();
+      capture.mockClear();
+      noteShipDragBegin(CANVAS_W / 2, 1);
+      // A stale anchor in the middle: the command stays on the ship while the finger moves.
+      noteShipDragMove(CANVAS_W / 2, CANVAS_W / 2, CANVAS_W / 2, 0, 1);
+      const ship = stateAt(CANVAS_W / 2);
+      runFrames(ship, 0, 0);
+      noteShipDragMove(CANVAS_W / 2, CANVAS_W / 2, CANVAS_W / 2 - dir * 60, dir * 60, 1);
+      expect(runFrames(ship, 250, 900)).toBe(1);
+      sendHeld();
+      expect(shipStuckCalls()[0]![1].extra.fingerInwardPx).toBe(60);
+    }
   });
 
   it("waits out the full 500 ms of stillness", () => {
@@ -223,7 +267,7 @@ describe("checkShipStuck — unresponsive", () => {
     const ship = stateAt(MAX_X);
     for (let now = 0, tx = 50; now < 5000; now += 16, tx += 3) {
       noteShipDragMove(MAX_X, 300 + tx, 300, tx, 1);
-      checkShipStuck(now, ship, true);
+      checkShipStuck(now, ship, false, false);
     }
     expect(flushShipStuckReport()).toBe(false);
   });
@@ -239,7 +283,7 @@ describe("checkShipStuck — unresponsive", () => {
     for (let now = 0; now < 5000; now += 16) {
       const tx = -((now / 16) % 120);
       noteShipDragMove(180 + tx, 180 + tx, 180, tx, 1);
-      checkShipStuck(now, stateAt(180 + tx), true);
+      checkShipStuck(now, stateAt(180 + tx), false, false);
     }
     expect(flushShipStuckReport()).toBe(false);
   });
@@ -249,9 +293,10 @@ describe("checkShipStuck — unresponsive", () => {
     staleAnchorDrag(0);
     const ship = stateAt(MAX_X, "SwoopIn");
     staleAnchorDrag(-150);
-    expect(runFrames(ship, 0, 3000, false)).toBe(0);
+    expect(runFrames(ship, 0, 3000, "countdown")).toBe(0);
+    expect(runFrames(ship, 3000, 3200, "paused")).toBe(0);
     // Ticking again: the stillness and the finger's baseline start now.
-    expect(runFrames(ship, 3016, 6000)).toBe(0);
+    expect(runFrames(ship, 3216, 6000)).toBe(0);
     expect(flushShipStuckReport()).toBe(false);
   });
 
@@ -260,7 +305,7 @@ describe("checkShipStuck — unresponsive", () => {
     noteShipDragMove(200, 200, 200, 0, 1);
     for (let now = 0, tx = 0; now < 3000; now += 16, tx -= 2) {
       noteShipDragIgnored(tx, 1);
-      checkShipStuck(now, stateAt(120, "Extraction"), true);
+      checkShipStuck(now, stateAt(120, "Extraction"), false, false);
     }
     // Next wave: the ship is re-centred and the finger held still.
     expect(runFrames(stateAt(CANVAS_W / 2, "SwoopIn", 2), 3016, 6000)).toBe(0);
@@ -287,10 +332,10 @@ describe("checkShipStuck — unresponsive", () => {
         return state.player;
       },
     });
-    checkShipStuck(0, stateAt(100), true);
-    for (let now = 16; now < 250; now += 16) checkShipStuck(now, counted, true);
+    checkShipStuck(0, stateAt(100), false, false);
+    for (let now = 16; now < 250; now += 16) checkShipStuck(now, counted, false, false);
     expect(reads).toBe(0);
-    checkShipStuck(250, counted, true);
+    checkShipStuck(250, counted, false, false);
     expect(reads).toBeGreaterThan(0);
   });
 });
@@ -346,20 +391,24 @@ describe("no upload while the run is played", () => {
     runFrames(stateAt(NaN), 0, 0);
     expect(runFrames(stateAt(MAX_X), 250, 5000)).toBe(0);
     expect(capture).not.toHaveBeenCalled();
-    expect(runFrames(stateAt(MAX_X), 5250, 5250, false)).toBe(1);
-    expect(runFrames(stateAt(MAX_X), 5500, 9000, false)).toBe(0);
+    expect(runFrames(stateAt(MAX_X), 5250, 5250, "paused")).toBe(1);
+    expect(runFrames(stateAt(MAX_X), 5500, 9000, "paused")).toBe(0);
     expect(shipStuckCalls()).toHaveLength(1);
   });
 
-  it("…or until game over, or Extraction", () => {
+  it("…or until game over", () => {
     runFrames(stateAt(NaN), 0, 0);
     runFrames(stateAt(MAX_X, "GameOver"), 250, 250);
     expect(shipStuckCalls()).toHaveLength(1);
+  });
 
-    resetSentryThrottle();
-    capture.mockClear();
+  it("the countdown and Extraction are mid-run: the event stays held through both", () => {
     runFrames(stateAt(NaN), 0, 0);
-    runFrames(stateAt(MAX_X, "Extraction"), 250, 250);
+    runFrames(stateAt(MAX_X, "Extraction"), 250, 3000);
+    runFrames(stateAt(CANVAS_W / 2, "SwoopIn", 2), 3016, 6000, "countdown");
+    runFrames(stateAt(CANVAS_W / 2, "SwoopIn", 2), 6016, 8000);
+    expect(capture).not.toHaveBeenCalled();
+    sendHeld();
     expect(shipStuckCalls()).toHaveLength(1);
   });
 
@@ -387,7 +436,7 @@ describe("caps, sample and dial", () => {
       captureThrottledMessage(`other.${i}`, "other", { level: "warning" });
     capture.mockClear();
     runFrames(stateAt(NaN), 0, 0);
-    runFrames(stateAt(NaN), 250, 60_000, false);
+    runFrames(stateAt(NaN), 250, 60_000, "paused");
     expect(capture).not.toHaveBeenCalled();
     // One drop (the one attempt), not one per check.
     expect(sentryThrottle.droppedCount).toBe(1);
@@ -397,17 +446,17 @@ describe("caps, sample and dial", () => {
     expect(SHIP_STUCK_SAMPLE_RATE).toBe(0.25);
     __forceStoreBuildForTests(true);
     const out = jest.spyOn(Math, "random").mockReturnValue(0.25);
-    runFrames(stateAt(NaN), 0, 2000, false);
+    runFrames(stateAt(NaN), 0, 2000, "paused");
     noteShipDragBegin(MAX_X, 1.5);
     noteShipDragEnd(-300, stateAt(MAX_X));
-    runFrames(stateAt(NaN), 2016, 5000, false);
+    runFrames(stateAt(NaN), 2016, 5000, "paused");
     expect(capture).not.toHaveBeenCalled();
     expect(out).toHaveBeenCalledTimes(1);
     out.mockRestore();
 
     resetSentryThrottle();
     const inn = jest.spyOn(Math, "random").mockReturnValue(0.24);
-    runFrames(stateAt(NaN), 0, 2000, false);
+    runFrames(stateAt(NaN), 0, 2000, "paused");
     expect(shipStuckCalls()).toHaveLength(1);
     expect(inn).toHaveBeenCalledTimes(1);
   });
@@ -415,14 +464,14 @@ describe("caps, sample and dial", () => {
   it("store builds: a process sampled out returns before reading the state", () => {
     __forceStoreBuildForTests(true);
     jest.spyOn(Math, "random").mockReturnValue(0.9);
-    checkShipStuck(0, stateAt(NaN), true); // decides the sample (out)
+    checkShipStuck(0, stateAt(NaN), false, false); // decides the sample (out)
     const throwing = { ...stateAt(NaN) };
     Object.defineProperty(throwing, "player", {
       get: () => {
         throw new Error("state read");
       },
     });
-    expect(checkShipStuck(1000, throwing, true)).toBe(false);
+    expect(checkShipStuck(1000, throwing, false, false)).toBe(false);
     expect(capture).not.toHaveBeenCalled();
   });
 

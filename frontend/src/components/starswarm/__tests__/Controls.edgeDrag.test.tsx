@@ -509,6 +509,20 @@ describe("Controls and the stuck-ship tracker (#4079)", () => {
     expect(shipStuckCalls()[0]![1].tags.kind).toBe("noChange");
   });
 
+  it("a held event goes out when the run is paused (also what leaving the app does)", async () => {
+    const t = await setupRerender(1);
+    t.begin();
+    mockPan.current.onEnd?.({ y: DRAG_Y, translationX: 150 }); // no onChange arrived
+    expect(shipStuckCalls()).toHaveLength(0);
+    await t.rerender({ scale: 1, isPaused: true });
+    expect(shipStuckCalls()).toHaveLength(1);
+    expect(shipStuckCalls()[0]![1].tags.kind).toBe("noChange");
+    // Nothing held: resuming and pausing again sends nothing more.
+    await t.rerender({ scale: 1, isPaused: false });
+    await t.rerender({ scale: 1, isPaused: true });
+    expect(shipStuckCalls()).toHaveLength(1);
+  });
+
   it("a delivered drag ends silently", async () => {
     const t = await setupRerender(1);
     t.begin();

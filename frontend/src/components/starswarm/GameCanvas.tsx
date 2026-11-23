@@ -862,7 +862,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         checkShipStuck(
           timestamp,
           gameRef.current,
-          !isPausedRef.current && countdownMsRef.current === null
+          isPausedRef.current,
+          countdownMsRef.current !== null
         );
         // Starfield scrolls while the game is live; paused or over, the frame holds still (#2563).
         // #2963: it scrolls on the UI thread from this clock — no display-list rebuild for it.
