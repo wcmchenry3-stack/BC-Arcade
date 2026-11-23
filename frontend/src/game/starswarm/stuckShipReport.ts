@@ -42,7 +42,7 @@
  * the event once and holds it. It is sent only when the run is paused (which includes leaving
  * the app: Controls flushes when `isPaused` turns true), at game over, or when Controls
  * unmounts. The pre-wave countdown and Extraction are mid-run and keep it held.
-
+ *
  * Volume (CLAUDE.md: Cost → Performance → Data):
  * - A ship that follows the finger: nothing sent, nothing stored. Per game and per day: ≈ 0.
  * - `starswarm.shipStuck` event: numbers and enums only (no ids, no free text), about 2 KB with
@@ -336,7 +336,8 @@ export function flushShipStuckReport(): boolean {
 /**
  * The drag ended (Controls `onEnd` / `onFinalize`, the first of the two). `endTranslationX` is
  * the end event's translation; `state` the engine state then. Runs the once-per-gesture
- * `noChange` check; the event it may hold is sent once the run is not being played.
+ * `noChange` check; an event it holds is sent only on pause, at game over, or when Controls
+ * unmounts.
  */
 export function noteShipDragEnd(
   endTranslationX: number,
@@ -364,7 +365,8 @@ function mayUpload(state: StarSwarmState, paused: boolean): boolean {
 
 /**
  * The frame loop's check, after the tick. `paused`: the run is paused; `countdown`: the
- * pre-wave countdown is running (the engine ticks when neither is). Returns whether it detected or sent. One comparison between checks; nothing at
+ * pre-wave countdown is running (the engine ticks when neither is). Returns whether it detected
+ * or sent. One comparison between checks; nothing at
  * all once this process's cap is spent (and nothing is held) or its store sample came out
  * against it.
  */
