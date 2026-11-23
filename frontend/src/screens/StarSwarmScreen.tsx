@@ -636,8 +636,10 @@ function StarSwarmGame() {
     [startRun, rememberDifficulty, difficulty, rememberShip]
   );
 
-  // #4079: the test-build-only safe run (TestSafeRunControl): the dev panel's New Game with
-  // infinite lives, and the live switches for enemy missiles and asteroids turned off.
+  // #4079: the test-build-only safe run (TestSafeRunControl, in the picker beside Start): the
+  // dev panel's New Game with infinite lives, and the live switches for enemy missiles and
+  // asteroids turned off, so the run is safe from its first frame. Same bookkeeping as Start:
+  // startRun closes the picker, opens the session and bumps resetTick (the countdown).
   const handleTestSafeRun = useCallback(() => {
     setDevOptions((o) => ({
       ...o,
@@ -823,9 +825,6 @@ function StarSwarmGame() {
             <DevButton enabled={DEV_TOOLS} onPress={() => setDevOpen(true)} />
             {DEV_TOOLS && devOptions.frameReadout && <FrameStatsReadout read={readFrameStats} />}
             {areTestHooksEnabled() && <ShipXDebug read={readShipX} />}
-            {areTestHooksEnabled() && DEV_TOOLS && (
-              <TestSafeRunControl onPress={handleTestSafeRun} />
-            )}
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
@@ -862,6 +861,9 @@ function StarSwarmGame() {
                 onPress={handleStartFromPicker}
                 testID="starswarm-start-game"
               />
+              {areTestHooksEnabled() && DEV_TOOLS && (
+                <TestSafeRunControl onPress={handleTestSafeRun} />
+              )}
             </ModalActions>
           </ModalCard>
         )}

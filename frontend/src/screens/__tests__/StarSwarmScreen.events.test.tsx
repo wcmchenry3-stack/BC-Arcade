@@ -14,7 +14,7 @@ import { hapticPlayerHit, hapticWaveClear } from "../../components/starswarm/Con
 import { CANVAS_H, CANVAS_W, initStarSwarm } from "../../game/starswarm/engine";
 import type { CarrierEvent, UpgradeEvent } from "../../game/starswarm/types";
 import { audio, canvas, resetHarness } from "./helpers/starSwarmMocks";
-import { renderRun } from "./helpers/starSwarmHarness";
+import { renderRun, renderScreen, startRun } from "./helpers/starSwarmHarness";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -248,22 +248,34 @@ describe("E2E test hooks", () => {
     expect(hooks.__starswarm_getPlayerX).toBeUndefined();
   });
 
-  it("#4079: the safe-run button exists in a test build only", async () => {
+  it("#4079: the safe-run button is in the picker, in a test build only", async () => {
     delete process.env.EXPO_PUBLIC_TEST_HOOKS;
-    const plain = await renderRun();
+    const plain = await renderScreen();
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
     expect(screen.queryByTestId("starswarm-test-safe-run")).toBeNull();
     await plain.unmount();
     process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
-    await renderRun();
+    await renderScreen();
     expect(screen.getByTestId("starswarm-test-safe-run")).toBeTruthy();
+    // Not on the canvas once a run is going: only the picker has it.
+    await startRun();
+    expect(screen.queryByTestId("starswarm-test-safe-run")).toBeNull();
   });
 
-  it("#4079: the safe-run button starts a run nothing can end", async () => {
+  it("#4079: the picker's safe run starts, from its first frame, a run nothing can end", async () => {
     process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
-    await renderRun();
+    await renderScreen();
     const tickBefore = canvas.props.resetTick as number;
-    await fireEvent.press(screen.getByTestId("starswarm-test-safe-run"));
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-test-safe-run"));
+    });
+    // Start's bookkeeping: the picker closes and the canvas resets (the countdown) once.
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
     expect(canvas.props.resetTick).toBe(tickBefore + 1);
+    expect(canvas.props.isPaused).toBe(false);
+    // The props of that very reset carry the dev options GameCanvas's reset effect reads
+    // (infiniteLivesRef, and the live switches on every tick): GameCanvas.test.tsx proves a
+    // lost life is reverted with these.
     expect(canvas.props.devOptions).toMatchObject({
       wave: 1,
       infiniteLives: true,
@@ -271,7 +283,6 @@ describe("E2E test hooks", () => {
       enemyFireDisabled: true,
       asteroidsDisabled: true,
     });
-    expect(canvas.props.isPaused).toBe(false);
   });
 
   it("removes the hooks when the screen goes away", async () => {

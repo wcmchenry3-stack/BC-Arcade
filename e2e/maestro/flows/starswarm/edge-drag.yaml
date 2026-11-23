@@ -8,15 +8,17 @@ appId: com.buffingchi.games
 # to 17..343 by the ship's half width). It is polled at 4 Hz
 # (components/starswarm/ShipXDebug.tsx), never drawn in a store build.
 #
-# The run must not depend on surviving real play: on the CI emulator one swipe
-# took 14 s, the ship was shot down, and the result card (a Modal, which on
-# Android hides everything under it from Maestro) covered `ship-x`. So the
-# flow taps `starswarm-test-safe-run` (components/starswarm/TestSafeRunControl.tsx,
-# test builds with the dev tools only, i.e. built against the pre-launch API as
-# CI is): a dev run with infinite lives and enemy missiles and asteroids off.
-# Nothing can end it, and a hit doesn't move the ship. Before every `ship-x`
-# assert the flow checks the result card is not up, so a run that ends anyway
-# fails with a clear message.
+# The run must not depend on surviving real play: on the CI emulator a normal
+# run is shot down 20-30 s after Start (one swipe there took 14 s, one tap 16 s),
+# and the result card (a Modal, which on Android hides everything under it from
+# Maestro) then covers `ship-x`. Switching a live run to a safe one races that
+# death, so the flow never starts a normal run: in the difficulty picker it taps
+# `starswarm-test-safe-run` (components/starswarm/TestSafeRunControl.tsx, beside
+# Start; test builds with the dev tools only, i.e. built against the pre-launch
+# API as CI is) INSTEAD of Start. That starts a dev run with infinite lives and
+# enemy missiles and asteroids off from its first frame: nothing can end it, and
+# a hit doesn't move the ship. Before every `ship-x` assert the flow checks the
+# result card is not up, so a run that ends anyway fails with a clear message.
 #
 # A new run opens behind its 3 s pre-wave countdown. A drag during it still
 # commands the ship (the engine applies it once the countdown ends), and
@@ -26,9 +28,7 @@ appId: com.buffingchi.games
 # Coordinates are screen percentages. The canvas is scaled to fit and centred,
 # and its bottom 40% is the drag zone; 85% of the screen height sits inside it
 # on the CI phones (iOS 402x874 pt, Android 1080x2400 px). Do not tap the
-# canvas, as smoke.yaml does: a tap in its top 60% pauses the run. The
-# safe-run button sits on top of the canvas (not under the pan), so tapping it
-# is not a pause tap.
+# canvas, as smoke.yaml does: a tap in its top 60% pauses the run.
 - runFlow: ../_shared/launch.yaml
 - runFlow:
     file: ../_shared/tap-game-tile.yaml
@@ -36,15 +36,10 @@ appId: com.buffingchi.games
       gameSlug: "starswarm"
 - extendedWaitUntil:
     visible:
-      id: "starswarm-start-game"
-    timeout: 10000
-- tapOn:
-    id: "starswarm-start-game"
-- extendedWaitUntil:
-    visible:
       id: "starswarm-test-safe-run"
     timeout: 10000
-# The picker's run is still in its countdown here, so it can't have ended.
+# In the picker (a Modal), beside Start: tapping it closes the picker and
+# starts the safe run behind its countdown.
 - tapOn:
     id: "starswarm-test-safe-run"
 - assertNotVisible:

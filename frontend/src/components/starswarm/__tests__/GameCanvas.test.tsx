@@ -1548,6 +1548,41 @@ describe("Star Swarm GameCanvas (native) — stuck ship (#4079)", () => {
     expect(shipStuckCalls()[0]![1].tags).toMatchObject({ kind: "offCanvas", side: "unknown" });
   });
 
+  it("the picker's safe run (its dev options at reset): a lost life is reverted, fire is off", async () => {
+    const onGameOver = jest.fn();
+    const { ref, rerender } = await mount({ onGameOver });
+    // What StarSwarmScreen passes for a safe run: canvasDevOptions of the panel's New Game.
+    const safe = {
+      wave: 1,
+      infiniteLives: true,
+      devRun: true,
+      pauseStraggler: false,
+      playerFireDisabled: false,
+      enemyFireDisabled: true,
+      asteroidsDisabled: true,
+      dodgeDisabled: false,
+      flakDisabled: false,
+      routDisabled: false,
+    };
+    await rerender({ resetTick: 1, devOptions: safe });
+    await frame();
+    await frames(95, 33); // run out the countdown
+    const seen: StarSwarmState[] = [];
+    const lives = ref.current!.getState().player.lives;
+    nextTick((st) => {
+      seen.push(st);
+      return { ...st, phase: "GameOver", player: { ...st.player, lives: 0 } };
+    });
+    await frame();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.enemyFireDisabled).toBe(true);
+    expect(seen[0]!.asteroidsDisabled).toBe(true);
+    const state = ref.current!.getState();
+    expect(state.player.lives).toBe(lives);
+    expect(state.phase).not.toBe("GameOver");
+    expect(onGameOver).not.toHaveBeenCalled();
+  });
+
   it("a ship on the canvas sends nothing", async () => {
     await mount({ initialState: seeded() });
     await frames(60);
