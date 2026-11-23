@@ -169,12 +169,13 @@ export function useCascadeSounds(setId: string, reduceMotion = false, nearWin = 
   );
   useEffect(() => pacer.setCalm(reduceMotion), [pacer, reduceMotion]);
   // The win is likely: create its player now, not at the winning merge (a set switch re-runs it).
+  // Not while muted (nothing would play it); an unmute warms it.
   useEffect(() => {
-    if (nearWin) {
+    if (nearWin && !muted) {
       player.warm("win");
       player.warm("merge-t11");
     }
-  }, [player, nearWin, set]);
+  }, [player, nearWin, set, muted]);
   useEffect(() => () => pacer.reset(), [pacer]);
   return pacer;
 }

@@ -114,6 +114,7 @@ const HOOK_NAMES = [
   "__cascade_setupNearLid",
   "__cascade_fillBin",
   "__cascade_setupWin",
+  "__cascade_setupStorm",
 ] as const;
 
 async function mount() {

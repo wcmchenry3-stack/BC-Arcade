@@ -18,6 +18,7 @@ const NAMES = [
   "setupNearLid",
   "fillBin",
   "setupWin",
+  "setupStorm",
 ] as const;
 const g = globalThis as unknown as Record<string, unknown>;
 
@@ -52,7 +53,6 @@ afterEach(() => {
   if (ORIGINAL === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
   else process.env.EXPO_PUBLIC_TEST_HOOKS = ORIGINAL;
   for (const n of NAMES) delete g[`__cascade_${n}`];
-  delete g.__cascade_setupStorm;
 });
 
 describe("registerCascadeTestHooks", () => {
@@ -94,15 +94,15 @@ describe("registerCascadeTestHooks", () => {
     registerCascadeTestHooks(deps());
     for (const n of NAMES) expect(g[`__cascade_${n}`]).toBeUndefined();
   });
-});
 
-// #4082: the merge storm set-up (a big chain on a device).
-it("installs __cascade_setupStorm in a test build, wired to its dep", () => {
-  process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
-  const d = deps();
-  const cleanup = registerCascadeTestHooks(d);
-  (g.__cascade_setupStorm as () => void)();
-  expect(d.setupStorm).toHaveBeenCalledTimes(1);
-  cleanup();
-  expect(g.__cascade_setupStorm).toBeUndefined();
+  // #4082: the merge storm set-up (a big chain on a device).
+  it("installs __cascade_setupStorm in a test build, wired to its dep", () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    const d = deps();
+    const cleanup = registerCascadeTestHooks(d);
+    (g.__cascade_setupStorm as () => void)();
+    expect(d.setupStorm).toHaveBeenCalledTimes(1);
+    cleanup();
+    expect(g.__cascade_setupStorm).toBeUndefined();
+  });
 });

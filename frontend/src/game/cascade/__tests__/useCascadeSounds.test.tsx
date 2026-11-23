@@ -228,3 +228,16 @@ it("muted at mount: no chain players are warmed; an unmute starts the warm-up", 
   expect(live()).toHaveLength(8 + CHAIN_WARM_SOUNDS.length);
   expect(played()).toEqual([]);
 });
+
+// #4082 review: the near-win warm follows the same rule: nothing while muted; an unmute creates it.
+it("muted and nearWin: no win player is created; an unmute creates it", async () => {
+  mockMuted = true;
+  const { rerender } = await mount({ nearWin: true });
+  expect(holdOf("win")).toBeUndefined();
+  expect(holdOf("merge-t11")).toBeUndefined();
+  mockMuted = false;
+  await rerender({ id: "fruits", rm: false, nearWin: true });
+  expect(holdOf("win")).toBeDefined();
+  expect(holdOf("merge-t11")).toBeDefined();
+  expect(played()).toEqual([]);
+});
