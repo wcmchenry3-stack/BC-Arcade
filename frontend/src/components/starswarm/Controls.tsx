@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
@@ -8,6 +8,12 @@ import { typography } from "../../theme/typography";
 import type { GameCanvasHandle } from "./GameCanvas";
 import { CANVAS_W, CANVAS_H } from "../../game/starswarm/engine";
 import { applyDrag, clamp, DRAG_MAX_X, DRAG_MIN_X } from "../../game/starswarm/drag";
+import {
+  noteShipDragBegin,
+  noteShipDragEnd,
+  noteShipDragIgnored,
+  noteShipDragMove,
+} from "../../game/starswarm/stuckShipReport";
 import {
   STARSWARM_ACCENT,
   STARSWARM_PAUSE_LINK_BORDER,
@@ -31,6 +37,42 @@ interface Props {
 
 /** How far (px) the ship may sit from this drag's last command before it counts as moved. */
 const SHIP_MOVED_EPSILON_PX = 0.5;
+
+/** The pan gesture's test id, for `react-native-gesture-handler/jest-utils` (#4079). */
+export const STARSWARM_PAN_TEST_ID = "starswarm-pan";
+
+/** The first argument that is a finite number; the canvas centre when none is (#4079). */
+function firstFinite(...xs: (number | null | undefined)[]): number {
+  for (const x of xs) if (typeof x === "number" && Number.isFinite(x)) return x;
+  return CANVAS_W / 2;
+}
+
+/**
+ * Breadcrumb so Sentry captures boundary-overshoot context for any surrounding errors. Throttled
+ * to once per second — pan events fire at 60 fps and would flood the trail.
+ */
+function logBoundaryHit(
+  lastLogMsRef: { current: number },
+  rawX: number,
+  newX: number,
+  phase: string | undefined
+): void {
+  const now = Date.now();
+  if (now - lastLogMsRef.current <= 1000) return;
+  lastLogMsRef.current = now;
+  Sentry.addBreadcrumb({
+    category: "starswarm.player",
+    message: "ship hit canvas boundary",
+    level: "info",
+    data: {
+      rawX: Math.round(rawX * 10) / 10,
+      clampedX: Math.round(newX * 10) / 10,
+      overshootPx: Math.round((rawX - newX) * 10) / 10,
+      side: rawX > newX ? "right" : "left",
+      phase,
+    },
+  });
+}
 
 export default function Controls({
   canvasRef,
@@ -58,6 +100,18 @@ export default function Controls({
   // a different wave on a later move means the autopilot moved (and re-centred) the ship since —
   // re-anchor then, even if the finger was held still and sent no events through it.
   const anchorWaveRef = useRef<number | null>(null);
+  // #4079: the scale the current anchor was computed at. A layout change mid-drag re-anchors, so
+  // the ship carries on from where it is instead of jumping by the translation re-scaled.
+  const anchorScaleRef = useRef(scale);
+
+  // #4079: the gesture is built once (below) and reads everything that changes between renders
+  // through this ref, so a re-render mid-drag (score changes re-render the screen) can never
+  // hand the gesture handler a reconfigured gesture. Synced after every commit, before any
+  // later touch event can read it.
+  const liveRef = useRef({ scale, dragZoneY, isPaused, isLiveRun, onPause });
+  useLayoutEffect(() => {
+    liveRef.current = { scale, dragZoneY, isPaused, isLiveRun, onPause };
+  });
 
   const resetPlayerX = useCallback(() => {
     playerXRef.current = CANVAS_W / 2;
@@ -69,82 +123,102 @@ export default function Controls({
     onNewGame();
   }, [resetPlayerX, onNewGame]);
 
-  const panGesture = Gesture.Pan()
-    .runOnJS(true)
-    .minDistance(0)
-    .onBegin((e) => {
-      activeDragRef.current = e.y > dragZoneY;
-      if (activeDragRef.current) {
-        // Anchor on the canvas's commanded ship X, not getState().player.x: the engine only
-        // copies input into player.x on a tick, and ticks are frozen during the pre-wave
-        // countdown, so engine X can be stale there and the ship would jump back on touch.
-        const handle = canvasRef.current;
-        anchorWaveRef.current = handle?.getState()?.wave ?? null;
-        const anchorX =
-          handle?.getPlayerX?.() ?? handle?.getState()?.player.x ?? playerXRef.current;
-        playerXRef.current = anchorX;
-        shipXAtDragStartRef.current = anchorX;
-      }
-    })
-    .onChange((e) => {
-      if (!activeDragRef.current) return;
-      // #2842: the wave-clear autopilot moves the ship on its own (and the next wave re-centres
-      // it). A drag held through that is ignored, then re-anchored on the ship (the canvas
-      // keeps its commanded X on the autopilot's) so control resumes from where the ship is
-      // instead of snapping back under the finger. The wave change is what triggers the
-      // re-anchor, so it works whether or not any move arrived during the extraction.
-      // #3132: an extraction can also hand control back within the same wave (salvage while
-      // the ship still holds its lane), so the drag also re-anchors whenever the ship isn't
-      // where this drag last put it: something else moved it.
-      const handle = canvasRef.current;
-      const state = handle?.getState();
-      if (state?.phase === "Extraction") return;
-      const shipX = handle?.getPlayerX?.() ?? state?.player.x;
-      const waveChanged =
-        !!state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current;
-      const movedElsewhere =
-        shipX !== undefined && Math.abs(shipX - playerXRef.current) > SHIP_MOVED_EPSILON_PX;
-      if (state && shipX !== undefined && (waveChanged || movedElsewhere)) {
-        anchorWaveRef.current = state.wave;
-        shipXAtDragStartRef.current = shipX - e.translationX / scale;
-      }
-      const dragStart = shipXAtDragStartRef.current;
-      const { rawX, newX, nextDragStart } = applyDrag(dragStart, e.translationX, scale);
-      // Re-anchor so any reversal immediately moves the ship instead of replaying the overshoot.
-      shipXAtDragStartRef.current = nextDragStart;
-      if (rawX !== newX) {
-        // Breadcrumb so Sentry captures boundary-overshoot context for any surrounding errors.
-        // Throttled to once per second — pan events fire at 60 fps and would flood the trail.
-        const now = Date.now();
-        if (now - lastBoundaryLogMsRef.current > 1000) {
-          lastBoundaryLogMsRef.current = now;
-          Sentry.addBreadcrumb({
-            category: "starswarm.player",
-            message: "ship hit canvas boundary",
-            level: "info",
-            data: {
-              rawX: Math.round(rawX * 10) / 10,
-              clampedX: Math.round(newX * 10) / 10,
-              overshootPx: Math.round((rawX - newX) * 10) / 10,
-              side: rawX > newX ? "right" : "left",
-              phase: canvasRef.current?.getState()?.phase,
-            },
-          });
-        }
-      }
-      playerXRef.current = newX;
-      canvasRef.current?.setPlayerX(newX);
-    })
-    .onEnd((e) => {
-      if (!activeDragRef.current && e.y < dragZoneY && Math.abs(e.translationX) < 10) {
-        // Short tap in top zone → pause
-        if (!isPaused && isLiveRun) onPause();
-      }
-      activeDragRef.current = false;
-    })
-    .onFinalize(() => {
-      activeDragRef.current = false;
-    });
+  // #4079: memoised on the canvas ref alone (stable for the screen's lifetime). This stays on the
+  // builder API (`Gesture.Pan()`), which react-native-gesture-handler 3.5.0 still supports and
+  // whose callbacks the real-handler test (Controls.realGesture.test.tsx) drives; the v3 hook API
+  // would be a rewrite of the drag without a known defect in the builder to fix.
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .minDistance(0)
+        .withTestId(STARSWARM_PAN_TEST_ID)
+        .onBegin((e) => {
+          activeDragRef.current = e.y > liveRef.current.dragZoneY;
+          if (activeDragRef.current) {
+            // Anchor on the canvas's commanded ship X, not getState().player.x: the engine only
+            // copies input into player.x on a tick, and ticks are frozen during the pre-wave
+            // countdown, so engine X can be stale there and the ship would jump back on touch.
+            // #4079: each source only if it is a finite number, else the next, else the centre.
+            const handle = canvasRef.current;
+            anchorWaveRef.current = handle?.getState()?.wave ?? null;
+            const anchorX = firstFinite(
+              handle?.getPlayerX?.(),
+              handle?.getState()?.player.x,
+              playerXRef.current
+            );
+            playerXRef.current = anchorX;
+            shipXAtDragStartRef.current = anchorX;
+            anchorScaleRef.current = liveRef.current.scale;
+            noteShipDragBegin(anchorX);
+          }
+        })
+        .onChange((e) => {
+          if (!activeDragRef.current) return;
+          const scale = liveRef.current.scale;
+          // #2842: the wave-clear autopilot moves the ship on its own (and the next wave
+          // re-centres it). A drag held through that is ignored, then re-anchored on the ship
+          // (the canvas keeps its commanded X on the autopilot's) so control resumes from where
+          // the ship is instead of snapping back under the finger. The wave change is what
+          // triggers the re-anchor, so it works whether or not any move arrived during the
+          // extraction. #3132: an extraction can also hand control back within the same wave
+          // (salvage while the ship still holds its lane), so the drag also re-anchors whenever
+          // the ship isn't where this drag last put it: something else moved it.
+          const handle = canvasRef.current;
+          const state = handle?.getState();
+          if (state?.phase === "Extraction") {
+            noteShipDragIgnored();
+            return;
+          }
+          const shipX = handle?.getPlayerX?.() ?? state?.player.x;
+          const waveChanged =
+            !!state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current;
+          const movedElsewhere =
+            shipX !== undefined && Math.abs(shipX - playerXRef.current) > SHIP_MOVED_EPSILON_PX;
+          if (state && shipX !== undefined && (waveChanged || movedElsewhere)) {
+            anchorWaveRef.current = state.wave;
+            shipXAtDragStartRef.current = shipX - e.translationX / scale;
+            anchorScaleRef.current = scale;
+          }
+          // #4079: the layout changed under the finger: carry on from where the ship is.
+          if (scale !== anchorScaleRef.current) {
+            anchorScaleRef.current = scale;
+            shipXAtDragStartRef.current = playerXRef.current - e.translationX / scale;
+          }
+          const dragStart = shipXAtDragStartRef.current;
+          const { rawX, newX, nextDragStart } = applyDrag(
+            dragStart,
+            e.translationX,
+            scale,
+            playerXRef.current
+          );
+          // Re-anchor so any reversal immediately moves the ship instead of replaying the
+          // overshoot (and, #4079, on the held X after an unusable event).
+          shipXAtDragStartRef.current = nextDragStart;
+          if (Number.isFinite(rawX) && rawX !== newX)
+            logBoundaryHit(lastBoundaryLogMsRef, rawX, newX, state?.phase);
+          playerXRef.current = newX;
+          noteShipDragMove(newX, rawX, dragStart, e.translationX, scale, state?.wave ?? -1);
+          canvasRef.current?.setPlayerX(newX);
+        })
+        .onEnd((e) => {
+          if (
+            !activeDragRef.current &&
+            e.y < liveRef.current.dragZoneY &&
+            Math.abs(e.translationX) < 10
+          ) {
+            // Short tap in top zone → pause
+            if (!liveRef.current.isPaused && liveRef.current.isLiveRun) liveRef.current.onPause();
+          }
+          activeDragRef.current = false;
+          noteShipDragEnd();
+        })
+        .onFinalize(() => {
+          activeDragRef.current = false;
+          noteShipDragEnd();
+        }),
+    [canvasRef]
+  );
 
   // Arrow-key movement for web (and external keyboards on iOS).
   useEffect(() => {
