@@ -467,17 +467,17 @@ describe("aim guide (#3928)", () => {
   });
 
   it("the spawner piece leaves the ring for the finger; the ring stays centred", () => {
-    const ops = draw(frame, aimAt(AIM_STATE.aiming, MOTION.aim.pickUpMs, 300));
+    const ops = draw(frame, aimAt(AIM_STATE.aiming, MOTION.aim.inMs, 300));
     const t = ops.filter((o): o is Extract<Op, { k: "translate" }> => o.k === "translate");
     expect(t[t.length - 1]!.x).toBe(300);
     expect(circles(ops).some((c) => c.x === SPAWNER.cx && c.r === SPAWNER.ringRadius)).toBe(true);
   });
 
-  it("a press that is not yet a drag (a tap) draws no guide and keeps the piece in the ring", () => {
+  it("a press that is not yet a drag (a tap) draws no guide and the piece at the finger (#4081)", () => {
     const ops = draw(frame, aimAt(AIM_STATE.pressed, 50, 320));
     expect(guideLine(ops)).toBeUndefined();
     const t = ops.filter((o): o is Extract<Op, { k: "translate" }> => o.k === "translate");
-    expect(t[t.length - 1]!.x).toBe(SPAWNER.cx);
+    expect(t[t.length - 1]!.x).toBe(320);
   });
 
   it("the dashes march with the clock; under Reduce Motion they stand still and show at once", () => {
