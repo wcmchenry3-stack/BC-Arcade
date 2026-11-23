@@ -61,7 +61,7 @@ e2e/maestro/
     ├── twenty48/
     ├── sudoku/
     ├── daily-word/
-    ├── starswarm/
+    ├── starswarm/               # smoke.yaml + edge-drag.yaml (ship X via `starswarm-debug-shipx`, #4079)
     ├── mahjong/                 # smoke.yaml + demo-*.yaml (tag `demo`, see below)
     ├── sort/
     └── offline/                 # Offline mode: game logic without network

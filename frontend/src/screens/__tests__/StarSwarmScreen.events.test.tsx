@@ -7,7 +7,7 @@
  */
 
 import { AccessibilityInfo } from "react-native";
-import { act, screen } from "@testing-library/react-native";
+import { act, screen, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { hapticPlayerHit, hapticWaveClear } from "../../components/starswarm/Controls";
@@ -175,6 +175,7 @@ describe("E2E test hooks", () => {
   const hooks = globalThis as typeof globalThis & {
     __starswarm_getRunStats?: () => Record<string, unknown> | null;
     __starswarm_endRun?: (score: number, wave: number) => void;
+    __starswarm_getPlayerX?: () => number | null;
   };
   const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
 
@@ -218,6 +219,33 @@ describe("E2E test hooks", () => {
       score: 0,
       frame: null,
     });
+  });
+
+  it("#4079: in a test build, reads the engine ship's X, or null before there is an engine", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    await renderRun();
+    expect(hooks.__starswarm_getPlayerX!()).toBeNull();
+    const s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander");
+    canvas.state = { ...s, player: { ...s.player, x: 321.5 } };
+    expect(hooks.__starswarm_getPlayerX!()).toBe(321.5);
+  });
+
+  it("#4079: the ship-x line shows in a test build only, polled on a timer", async () => {
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    const plain = await renderRun();
+    expect(screen.queryByTestId("starswarm-debug-shipx")).toBeNull();
+    await plain.unmount();
+
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    const view = await renderRun();
+    const s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander");
+    canvas.state = { ...s, player: { ...s.player, x: 342.6 } };
+    // Polled at 4 Hz on a real timer: the next poll shows the new X.
+    await waitFor(() =>
+      expect(screen.getByTestId("starswarm-debug-shipx")).toHaveTextContent("ship-x: 343")
+    );
+    await view.unmount();
+    expect(hooks.__starswarm_getPlayerX).toBeUndefined();
   });
 
   it("removes the hooks when the screen goes away", async () => {

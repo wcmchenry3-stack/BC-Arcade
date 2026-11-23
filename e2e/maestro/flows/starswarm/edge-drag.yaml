@@ -1,0 +1,60 @@
+appId: com.buffingchi.games
+---
+# #4079: the ship follows a hard drag past the right edge and comes straight back.
+#
+# Test builds (EXPO_PUBLIC_TEST_HOOKS=1) show a small line, testID
+# `starswarm-debug-shipx`, in the canvas's top-left corner reading
+# `ship-x: <int>`: the engine ship's centre X in canvas units (0..360, clamped
+# to 17..343 by the ship's half width). It is polled at 4 Hz
+# (components/starswarm/ShipXDebug.tsx), never drawn in a store build.
+#
+# The run opens behind its 3 s pre-wave countdown. A drag during it still
+# commands the ship (the engine applies it once the countdown ends), and
+# `extendedWaitUntil` polls, so the asserts hold either way.
+#
+# Coordinates are screen percentages. The canvas is scaled to fit and centred,
+# and its bottom 40% is the drag zone; 85% of the screen height sits inside it
+# on the CI phones (iOS 402x874 pt, Android 1080x2400 px). Do not tap the
+# canvas first, as smoke.yaml does: a tap in its top 60% pauses the run.
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/tap-game-tile.yaml
+    env:
+      gameSlug: "starswarm"
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-start-game"
+    timeout: 10000
+- tapOn:
+    id: "starswarm-start-game"
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-canvas-outer"
+    timeout: 8000
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-debug-shipx"
+      text: "ship-x: 180"
+    timeout: 8000
+# Centre to the right edge and well past it: the ship pins at 343.
+- swipe:
+    start: "50%, 85%"
+    end: "99%, 85%"
+    duration: 500
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-debug-shipx"
+      text: "ship-x: 3(3[3-9]|4[0-3])"
+    timeout: 8000
+# A new drag left: it must move the ship at once, not first pay back the
+# overshoot (the "invisible rope", #1549) or leave it stuck at the edge (#4079).
+- swipe:
+    start: "90%, 85%"
+    end: "40%, 85%"
+    duration: 500
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-debug-shipx"
+      text: "ship-x: ([0-9]|[0-9][0-9]|1[0-9][0-9]|2[0-9][0-9])"
+    timeout: 8000
+- takeScreenshot: starswarm-edge-drag

@@ -64,9 +64,10 @@ import {
 } from "../game/starswarm/waveEvents";
 import { isRecordingEnabled } from "../game/_shared/replayDial";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
-import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
+import ShipXDebug from "../components/starswarm/ShipXDebug";
 import StarSwarmDevPanel, {
   DEFAULT_STARSWARM_DEV_OPTIONS,
   anyLiveSwitchOn,
@@ -515,6 +516,8 @@ function StarSwarmGame() {
 
   // #2567: stable, so the readout's poll timer is not restarted by screen re-renders
   const readFrameStats = useCallback(() => canvasRef.current?.getFrameStats() ?? null, []);
+  // #4079: the test-build-only ship X line Maestro reads (ShipXDebug); stable like the above
+  const readShipX = useCallback(() => canvasRef.current?.getState()?.player.x ?? null, []);
 
   const handleGameOverRef = useRef(handleGameOver);
   handleGameOverRef.current = handleGameOver;
@@ -806,6 +809,7 @@ function StarSwarmGame() {
             />
             <DevButton enabled={DEV_TOOLS} onPress={() => setDevOpen(true)} />
             {DEV_TOOLS && devOptions.frameReadout && <FrameStatsReadout read={readFrameStats} />}
+            {areTestHooksEnabled() && <ShipXDebug read={readShipX} />}
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
