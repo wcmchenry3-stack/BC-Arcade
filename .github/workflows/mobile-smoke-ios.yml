@@ -202,6 +202,23 @@ jobs:
           key: pods-ios-macos26-xcode${{ env.XCODE_MAJOR }}-${{ hashFiles('frontend/ios/Podfile', 'frontend/ios/Podfile.lock', 'frontend/ios/Podfile.properties.json') }}
           restore-keys: pods-ios-macos26-xcode${{ env.XCODE_MAJOR }}-
 
+      # react-native-audio-api (>= 1.0) gets its opus/ogg/vorbis xcframeworks from the pod's
+      # `prepare_command`, which CocoaPods only runs on a fresh install. When Pods/ is
+      # restored from the cache above and node_modules/ is fresh from `npm ci`, the
+      # xcframeworks are missing and the app fails to link (undefined _ogg_*/_op_*/_opus_*).
+      # So hydrate them first, the same way the podspec does (skipffmpeg: app.json sets
+      # disableFFmpeg). Idempotent; retried for transient download failures.
+      - name: Download react-native-audio-api prebuilt binaries
+        working-directory: frontend/node_modules/react-native-audio-api
+        run: |
+          for attempt in 1 2 3; do
+            bash scripts/download-prebuilt-binaries.sh ios skipffmpeg && exit 0
+            echo "::warning::audio-api binary download attempt $attempt failed"
+            sleep 10
+          done
+          echo "::error::react-native-audio-api prebuilt binary download failed after 3 attempts"
+          exit 1
+
       - name: Install CocoaPods dependencies
         working-directory: frontend/ios
         # Retried: the CocoaPods CDN and the RN prebuilt-artifact downloads
