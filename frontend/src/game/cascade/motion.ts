@@ -10,7 +10,7 @@
  *     spawner arrival, danger blink, game-over dim and flash;
  *   - `components/cascade/useBoardMotion.ts`: the UI-thread motion clock (lifetimes, phase);
  *   - `components/cascade/NextFruitPreview.tsx`: the DROP / NEXT chips;
- *   - `components/cascade/MergeBurst.tsx`: its spring and fade (as built, now named here);
+ *   - the merge burst (#2960's `MergeBurst`, drawn on the board since #4082): its spring and fade;
  *   - `game/cascade/haptics.ts`: the haptic pacing;
  *   - `components/cascade/useLossCard.ts`: when the loss card comes;
  *   - `game/cascade/aim.ts`, `render/drawAim.ts`, `components/cascade/useAimGesture.ts`: aiming
@@ -39,7 +39,7 @@ export const MOTION = {
   },
   /** Landing dust: puffs either side of the contact. */
   dust: { durationMs: 300, count: 6, alpha: 0.45 },
-  /** The merge pop, on top of the grow-in (#3697) and MergeBurst. */
+  /** The merge pop, on top of the grow-in (#3697) and the merge burst. */
   merge: {
     flashMs: 120,
     flashAlpha: 0.45,
@@ -56,7 +56,12 @@ export const MOTION = {
     /** px per ms². */
     gravity: 0.00035,
   },
-  /** MergeBurst (#2960), as built: a 40 pt disc springing out and fading. */
+  /**
+   * The merge burst (#2960's `MergeBurst`, as built): a 40 pt disc in the piece's colour springing
+   * out and fading. Since #4082 the board draws it (`drawMotion.ts`, UI thread, no React view per
+   * merge): the spring is Reanimated's `withSpring` (mass `BURST_SPRING_MASS`), the fade its
+   * `withTiming` default easing (in-out quad), worked out from the motion clock.
+   */
   burst: {
     size: 40,
     fromScale: 0.1,
@@ -289,11 +294,52 @@ export function chainPt(n: number): number {
   return Math.min(C.maxPt, C.pt0 + C.ptPerLink * Math.max(0, n - 2));
 }
 
+/**
+ * The mass of the burst's spring: Reanimated 4's `withSpring` default (its "gentle" config),
+ * which `MergeBurst` ran with since it set only damping and stiffness. Kept out of `MOTION.burst`
+ * so that block stays the numbers #2960 wrote down.
+ */
+export const BURST_SPRING_MASS = 4;
+
+/**
+ * The merge burst's scale `ms` after the merge: `MOTION.burst`'s damped spring from `fromScale` to
+ * `toScale` (at rest, no start velocity), the closed form of Reanimated's under-damped spring.
+ */
+export function burstScale(ms: number): number {
+  "worklet";
+  const B = MOTION.burst;
+  if (!(ms > 0)) return B.fromScale;
+  const t = ms / 1000;
+  const omega0 = Math.sqrt(B.stiffness / BURST_SPRING_MASS);
+  const zeta = B.damping / (2 * Math.sqrt(B.stiffness * BURST_SPRING_MASS));
+  const x0 = B.fromScale - B.toScale;
+  if (zeta >= 1) {
+    return B.toScale + Math.exp(-omega0 * t) * (x0 + x0 * omega0 * t);
+  }
+  const omega1 = omega0 * Math.sqrt(1 - zeta * zeta);
+  const decay = Math.exp(-zeta * omega0 * t);
+  return (
+    B.toScale +
+    decay * (x0 * Math.cos(omega1 * t) + ((zeta * omega0 * x0) / omega1) * Math.sin(omega1 * t))
+  );
+}
+
+/** The merge burst's opacity `ms` after the merge: `opacity` fading to 0 over `fadeMs`. */
+export function burstAlpha(ms: number): number {
+  "worklet";
+  const B = MOTION.burst;
+  if (!(ms >= 0) || ms >= B.fadeMs) return 0;
+  return B.opacity * (1 - easeInOutQuad(ms / B.fadeMs));
+}
+
 /** How long a merge with chain link `link` keeps the motion clock running, ms. */
 export function mergeLifetimeMs(link: number, reduceMotion: boolean): number {
   "worklet";
   const C = MOTION.chain;
-  const pop = reduceMotion ? MOTION.calm.mergeFlashMs : MOTION.merge.confettiMs;
+  // With motion, the burst (#4082) outlasts the pop's confetti.
+  const pop = reduceMotion
+    ? MOTION.calm.mergeFlashMs
+    : Math.max(MOTION.merge.confettiMs, MOTION.burst.fadeMs);
   if (link < 2) return pop;
   return Math.max(pop, C.stepMs * (link - 2) + C.popMs + C.holdMs + C.outMs);
 }

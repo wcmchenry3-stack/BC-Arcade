@@ -188,6 +188,7 @@ export function useCascadeTestSeams(d: CascadeTestSeamDeps) {
       setupNearLid: () => applySetup("nearLid"),
       fillBin: () => applySetup("fillBin"),
       setupWin: () => applySetup("win"),
+      setupStorm: () => applySetup("storm"),
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

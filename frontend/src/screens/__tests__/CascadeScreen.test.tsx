@@ -30,6 +30,12 @@ import { CELEBRATION_MAX_MS } from "../../components/shared/GameResultModal";
 import { HEADER_FIELD } from "../../game/cascade/render/frame";
 import { CASCADE_TUNING_ID, GROW_IN_STEPS } from "../../game/cascade/constants";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
+import {
+  MOTION_FIELD,
+  MOTION_KIND,
+  MOTION_SLOTS,
+  MOTION_STRIDE,
+} from "../../game/cascade/motionLog";
 import { timeBonus } from "../../game/cascade/timeBonus";
 import i18n from "i18next";
 import * as cascadeStorage from "../../game/cascade/storage";
@@ -1500,11 +1506,20 @@ describe("CascadeScreen — app background and relaunch (#2750)", () => {
 
       it("drops the merge burst for the winning merge only", async () => {
         const renderer = await renderScreen();
-        const bursts = () => renderer.root.findAll((n) => n.props.onDone !== undefined).length;
+        // #4082: the burst is drawn on the board from the merge's motion slot, no React view.
+        const bursts = () => {
+          const ev = board(renderer).props.motion.events.value as Float64Array;
+          let n = 0;
+          for (let i = 0; i < MOTION_SLOTS; i++) {
+            if (ev[i * MOTION_STRIDE + MOTION_FIELD.kind] === MOTION_KIND.merge) n++;
+          }
+          return n;
+        };
         await injectMerge(3, 100, 200);
         expect(bursts()).toBe(1);
         await injectMerge(CAPSTONE_TIER, 200, 400);
         expect(bursts()).toBe(1);
+        expect(renderer.root.findAll((n) => n.props.onDone !== undefined)).toHaveLength(0);
       });
 
       it("Reduce Motion: the calm version, and the card at 1.6 s", async () => {

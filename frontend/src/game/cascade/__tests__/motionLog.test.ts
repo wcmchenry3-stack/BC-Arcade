@@ -69,8 +69,9 @@ describe("UI-thread stamping", () => {
     pushMotion(log, MOTION_KIND.merge, 0, 0, 2, 1, 1);
     expect(motionLive(log.buf, emptyStamps(), 0, false)).toBe(true);
     const s = stampSlots(log.buf, emptyStamps(), 0)!;
-    expect(motionLive(log.buf, s, MOTION.merge.confettiMs - 1, false)).toBe(true);
-    expect(motionLive(log.buf, s, MOTION.merge.confettiMs, false)).toBe(false);
+    // A merge plays until its burst (#4082) has faded, after the pop's confetti.
+    expect(motionLive(log.buf, s, MOTION.burst.fadeMs - 1, false)).toBe(true);
+    expect(motionLive(log.buf, s, MOTION.burst.fadeMs, false)).toBe(false);
     // Reduce Motion: only the short in-place flash keeps it going.
     expect(motionLive(log.buf, s, MOTION.calm.mergeFlashMs, true)).toBe(false);
   });

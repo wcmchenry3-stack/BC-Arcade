@@ -103,4 +103,17 @@ describe("CascadeDevPanel step bench (#3697)", () => {
     const line = screen.getByTestId("cascade-step-bench-result");
     expect(line).toHaveTextContent(/^90 pieces · [\d.]+ ms mean · [\d.]+ p95/);
   });
+
+  // #4082: the merge storm, merges on.
+  it("runs the merge storm on press and shows its merges, mean and p95", async () => {
+    await renderPanel();
+    await fireEvent.press(screen.getByTestId("cascade-merge-storm"));
+    expect(screen.getByTestId("cascade-merge-storm-result")).toHaveTextContent("running…");
+    await act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    expect(screen.getByTestId("cascade-merge-storm-result")).toHaveTextContent(
+      /^storm: \d+ merges in \d+ f · [\d.]+ ms mean · [\d.]+ p95/
+    );
+  });
 });

@@ -31,6 +31,7 @@ import { pieceSprites } from "../../game/cascade/art/sprites";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import { binPicture } from "../../game/cascade/art/bin";
 import { CASCADE_MOTION, type CascadeLidPalette } from "../../theme/theme.cascade";
+import { DEFAULT_FRUIT_SET, FRUIT_SETS } from "../../theme/fruitSets";
 import { buildChainGlyphs } from "../../game/cascade/render/chainGlyphs";
 import type { BoardMotionValues } from "./useBoardMotion";
 import { useCelebrationStyle } from "./useCelebrationStyle";
@@ -70,6 +71,11 @@ export interface CascadeBoardProps {
   readonly motion?: BoardMotionValues;
   /** #3928: a screen reader's double-tap (its "activate" action) drops the next piece. */
   readonly onAccessibleDrop?: () => void;
+  /**
+   * #4082: the merge burst's colour per tier: the active piece set's `color`s (what `MergeBurst`
+   * drew with). Absent: looked up from `setId`.
+   */
+  readonly burstColors?: readonly string[];
 }
 
 /** No celebration (a board without the prop). */
@@ -101,6 +107,7 @@ function CascadeBoard({
   celebration = NO_CELEBRATION,
   motion,
   onAccessibleDrop,
+  burstColors: burstColorsProp,
 }: CascadeBoardProps) {
   const { t } = useTranslation("cascade");
   const style = useMemo(() => buildBoardStyle(lidPalette), [lidPalette]);
@@ -126,6 +133,12 @@ function CascadeBoard({
   const glyphs = useMemo(() => (sprites ? buildChainGlyphs() : null), [sprites]);
   const tones = CASCADE_MOTION.tones[setId === "cosmos" ? "cosmos" : "fruits"];
   const motionPalette = CASCADE_MOTION.themes[theme];
+  // #4082: the merge burst's colour per tier, the piece set's own (what `MergeBurst` drew with).
+  const setBurstColors = useMemo(
+    () => (FRUIT_SETS[setId] ?? FRUIT_SETS[DEFAULT_FRUIT_SET])?.fruits.map((f) => f.color) ?? [],
+    [setId]
+  );
+  const burstColors = burstColorsProp ?? setBurstColors;
   const {
     events,
     stamps,
@@ -159,6 +172,7 @@ function CascadeBoard({
           danger: danger.value,
           reduceMotion,
           tones,
+          burstColors,
           palette: motionPalette,
           ptPerUnit: scale,
           glyphs,
@@ -192,6 +206,7 @@ function CascadeBoard({
     hasMotion,
     reduceMotion,
     tones,
+    burstColors,
     motionPalette,
     scale,
     glyphs,

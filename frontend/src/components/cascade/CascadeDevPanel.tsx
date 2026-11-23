@@ -9,7 +9,8 @@
  *
  * #3697: the step bench (`game/cascade/stepBench.ts`): a button that times the planck engine's
  * step with ~90 pieces on this device, mean and p95, for the owner's device check
- * (docs/PERFORMANCE.md). It runs only when pressed, off the game's frame loop.
+ * (docs/PERFORMANCE.md). It runs only when pressed, off the game's frame loop. #4082 adds the
+ * merge storm beside it (`runMergeStormBench`: merges on, about 15 merges in a few frames).
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -21,7 +22,12 @@ import { PIECE_DEFS } from "../../game/cascade/pieceDefs";
 import { tierRadius } from "../../game/cascade/tiers";
 import type { FruitSet } from "../../theme/fruitSets";
 import { formatFrameStats } from "../../game/starswarm/render/frameStats";
-import { formatStepBench, runStepBench } from "../../game/cascade/stepBench";
+import {
+  formatMergeStorm,
+  formatStepBench,
+  runMergeStormBench,
+  runStepBench,
+} from "../../game/cascade/stepBench";
 import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 
 /** How often the open panel re-reads the frame stats. */
@@ -60,8 +66,19 @@ function FrameStatsLine({ read }: { read: () => FrameStatsSummary | null }) {
   );
 }
 
-/** The step bench: a button, then its result line. Runs after the "running" line has drawn. */
-function StepBench() {
+const runPileBench = () => formatStepBench(runStepBench({ pieces: STEP_BENCH_PIECES }));
+const runStormBench = () => formatMergeStorm(runMergeStormBench());
+
+/** A bench: a button, then its result line. Runs after the "running" line has drawn. */
+function StepBench({
+  label,
+  testID,
+  bench,
+}: {
+  readonly label: string;
+  readonly testID: string;
+  readonly bench: () => string;
+}) {
   const { colors } = useTheme();
   const [line, setLine] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,21 +94,14 @@ function StepBench() {
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
-      setLine(formatStepBench(runStepBench({ pieces: STEP_BENCH_PIECES })));
+      setLine(bench());
     }, 50);
   };
   return (
     <>
-      <DevActionButton
-        label={`Step bench (${STEP_BENCH_PIECES} pieces)`}
-        onPress={run}
-        testID="cascade-step-bench"
-      />
+      <DevActionButton label={label} onPress={run} testID={testID} />
       {line !== null ? (
-        <Text
-          style={[styles.frameStats, { color: colors.text }]}
-          testID="cascade-step-bench-result"
-        >
+        <Text style={[styles.frameStats, { color: colors.text }]} testID={`${testID}-result`}>
           {line}
         </Text>
       ) : null}
@@ -127,7 +137,12 @@ export default function CascadeDevPanel({
       ) : null}
 
       <DevSection title="Physics" color={colors.textMuted} />
-      <StepBench />
+      <StepBench
+        label={`Step bench (${STEP_BENCH_PIECES} pieces)`}
+        testID="cascade-step-bench"
+        bench={runPileBench}
+      />
+      <StepBench label="Merge storm" testID="cascade-merge-storm" bench={runStormBench} />
 
       <DevSection title="Engine Pieces" color={colors.textMuted} />
       <Text style={[styles.hint, { color: colors.textMuted }]}>

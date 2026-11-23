@@ -25,10 +25,10 @@
  *      first: `CascadeCelebration` animates `celebrationClock`, the board draws it, then the card.
  *      The score is the merge score plus a win's time bonus (`game/cascade/timeBonus.ts`, #3700),
  *      sent in the result block (`game/cascade/resultBlock.ts`); the server recomputes it.
- *   8. Audio, motion and haptics: merge bursts (`components/cascade/MergeBurst`; skipped under
- *      reduce motion, and for the winning merge, which the celebration replaces). #3701: the
- *      engine's land / merge / drop moments and the game over go to the board's motion
- *      (`useBoardMotion`, drawn on the UI thread), the paced haptics (`game/cascade/haptics.ts`)
+ *   8. Audio, motion and haptics. #3701: the engine's land / merge / drop moments and the game
+ *      over go to the board's motion (`useBoardMotion`, drawn on the UI thread: the merge pop and,
+ *      since #4082, the merge burst, both skipped for the winning merge, which the celebration
+ *      replaces; no React state per merge), the paced haptics (`game/cascade/haptics.ts`)
  *      and the piece set's paced sounds (`useCascadeSounds`, #3702); the loss card waits for
  *      the game-over sequence (`useLossCard`). All timings: `game/cascade/motion.ts`.
  *   9. The lid (#3694): the board draws the lid, the clock ring from `dangerRatio`, the red wash
@@ -77,8 +77,6 @@ import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import CascadeDevPanel from "../components/cascade/CascadeDevPanel";
 import CascadeBoard from "../components/cascade/CascadeBoard";
-import MergeBurst from "../components/cascade/MergeBurst";
-import { useMergeBursts } from "../components/cascade/useMergeBursts";
 import CascadeResultModal, {
   cardResult,
   type CascadeResult,
@@ -87,6 +85,7 @@ import { CASCADE_LID_PALETTE } from "../theme/theme.cascade";
 import { useGameRank } from "../game/_shared/useGameRank";
 import { clearGame as clearCascadeGame } from "../game/cascade/storage";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { useScreenReaderEnabled } from "../components/shared/useScreenReaderEnabled";
 import { useBoardMotion } from "../components/cascade/useBoardMotion";
 import { useLossCard } from "../components/cascade/useLossCard";
 import { useCascadeHaptics } from "../game/cascade/haptics";
@@ -144,8 +143,9 @@ function CascadeGame() {
   const [gameKey, setGameKey] = useState(0);
 
   // Animation state
-  const mergeBursts = useMergeBursts();
   const reduceMotion = useReduceMotion();
+  // #4082: merges are announced only while a screen reader is on.
+  const screenReader = useScreenReaderEnabled();
   // #3701: the board's motion (UI thread) and the paced haptics, fed from the engine's events.
   const sounds = useCascadeSounds(activeFruitSet.id, reduceMotion, nearWin); // #3702, paced
   const motion = useBoardMotion(reduceMotion, sounds.dangerOnset); // its blink times the tick
@@ -202,8 +202,6 @@ function CascadeGame() {
   const completedGameIdRef = useRef<string | null>(null);
   const settlingTicksLeftRef = useRef<number>(0);
 
-  // The latest layout (`calculateCascadeLayout`), for the merge bursts in the RAF loop.
-  const layoutRef = useRef({ scale: 0, offsetX: 0, offsetY: 0 });
   const piecesRef = useRef<PieceSnapshot[]>([]);
 
   // Pops queue.current, advances the queue, updates history. Returns the dropped tier.
@@ -336,21 +334,30 @@ function CascadeGame() {
     setContainerHeight(Math.floor(height));
   }, []);
 
-  const handleMerge = useCallback(
-    (event: { tier: FruitTier; x: number; y: number }) => {
-      // Score is tracked by engine; scoreRef.current is kept current by the RAF loop.
-      mergeCountRef.current += 1;
-      const merged = activeFruitSet.fruits[event.tier];
-      if (merged) {
-        AccessibilityInfo.announceForAccessibility(
-          t("cascade:event.merged", {
-            fruit: t(`cascade:pieces.${merged.i18nKey}`, { defaultValue: merged.name }),
-          })
-        );
-      }
-      saveGameThrottled();
+  const handleMerge = useCallback(() => {
+    // Score is tracked by engine; scoreRef.current is kept current by the RAF loop.
+    mergeCountRef.current += 1;
+    saveGameThrottled();
+  }, [saveGameThrottled, mergeCountRef]);
+
+  /**
+   * The screen reader hears one merge per step at most (#4082): the highest piece made, with the
+   * single-merge string. A 12-merge chain is 12 steps' announcements at most, never 12 per step.
+   * No screen reader on: no announcement and no string lookups. No debounce across steps: that
+   * would delay the feedback.
+   */
+  const announceMerged = useCallback(
+    (tier: number) => {
+      if (!screenReader) return;
+      const merged = activeFruitSet.fruits[tier];
+      if (!merged) return;
+      AccessibilityInfo.announceForAccessibility(
+        t("cascade:event.merged", {
+          fruit: t(`cascade:pieces.${merged.i18nKey}`, { defaultValue: merged.name }),
+        })
+      );
     },
-    [activeFruitSet, t, saveGameThrottled, mergeCountRef]
+    [activeFruitSet, t, screenReader]
   );
 
   /**
@@ -405,19 +412,15 @@ function CascadeGame() {
   );
 
   const onMerge = (tier: FruitTier, x: number, y: number, id: number, quiet: boolean) => {
-    handleMerge({ tier, x, y });
+    handleMerge();
     noteTier(tier);
     // The winning merge has no burst, pop or pulse: the celebration replaces them (#3699).
     if (tier === CAPSTONE_TIER) return;
     const link = quiet ? (chainLinkRef.current = 0) + 1 : ++chainLinkRef.current;
+    // The pop and the burst (#4082) are drawn from this on the UI thread: no React state.
     motion.push(MOTION_KIND.merge, x, y, tier, id, link);
     if (!quiet) haptics.merge(tier, link);
     if (!quiet) sounds.merge(tier, link);
-    const fruit = activeFruitSet.fruits[tier];
-    if (!reduceMotion && fruit) {
-      const { scale: s, offsetX, offsetY } = layoutRef.current;
-      mergeBursts.add(offsetX + x * s, offsetY + y * s, fruit.color);
-    }
   };
 
   /**
@@ -426,9 +429,11 @@ function CascadeGame() {
    */
   handleEventsRef.current = (events, quiet) => {
     rec.events(events); // merges and danger moments, for replays (#3858)
+    let announceTier = -1;
     for (const ev of events) {
       if (ev.type === "merge") {
         onMerge(ev.result as FruitTier, ev.x, ev.y, ev.id, quiet);
+        announceTier = Math.max(announceTier, ev.result);
       } else if (ev.type === "land") {
         motion.push(MOTION_KIND.land, ev.x, ev.y, ev.tier, ev.id, ev.speed);
         if (!quiet) haptics.land(ev.tier);
@@ -440,6 +445,7 @@ function CascadeGame() {
       }
       // "score" event — score is read from state; no separate handling needed.
     }
+    if (announceTier >= 0) announceMerged(announceTier);
     motion.publish();
   };
 
@@ -650,7 +656,6 @@ function CascadeGame() {
     containerWidth,
     containerHeight,
   });
-  layoutRef.current = { scale, offsetX, offsetY };
 
   // Hoisted (#2960) so the memoized children see the same props until something real changes.
   const goHome = useCallback(() => navigation.popToTop(), [navigation]);
@@ -688,6 +693,8 @@ function CascadeGame() {
     }),
     [offsetX, offsetY, boardWidth, boardHeight]
   );
+  // #4082: the board draws each merge's burst in the active set's own colours.
+  const burstColors = useMemo(() => activeFruitSet.fruits.map((f) => f.color), [activeFruitSet]);
   const openDevPanel = useCallback(() => setDevPanelOpen(true), []);
   const closeDevPanel = useCallback(() => setDevPanelOpen(false), []);
   const devSpawn = useCallback(
@@ -735,16 +742,11 @@ function CascadeGame() {
                 reduceMotion={reduceMotion}
                 celebration={celebrationClock}
                 motion={motion.values}
+                burstColors={burstColors}
                 onAccessibleDrop={dropMiddle}
               />
             </CascadeAimArea>
           )}
-
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {mergeBursts.bursts.map((burst) => (
-              <MergeBurst key={burst.id} {...burst} onDone={mergeBursts.remove} />
-            ))}
-          </View>
         </View>
 
         {areTestHooksEnabled() && (
@@ -754,6 +756,7 @@ function CascadeGame() {
             onNearLid={() => applySetup("nearLid")}
             onFillBin={() => applySetup("fillBin")}
             onWin={() => applySetup("win")}
+            onStorm={() => applySetup("storm")}
             onForceGameOver={forceGameOver}
           />
         )}

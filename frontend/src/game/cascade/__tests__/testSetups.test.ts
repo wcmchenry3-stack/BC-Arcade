@@ -6,6 +6,7 @@ import { CascadeEngine, type EngineEvent } from "../engine";
 import { OVERFLOW_LINE_Y, OVERFLOW_TICKS_THRESHOLD } from "../constants";
 import { CAPSTONE_TIER, tierRadius } from "../tiers";
 import { cascadeSetup, type CascadeSetupId } from "../testHooks";
+import { mergeStormPile } from "../stepBench";
 
 const STEP = 1000 / 60;
 
@@ -103,5 +104,23 @@ describe("cascadeSetup('win') (#3904; #3920: one capstone; #3960: tier 10 merges
     expect(engine.hasWon()).toBe(true);
     expect(engine.canDrop()).toBe(false);
     expect(engine.getState().pieces.map((p) => p.tier)).toEqual([CAPSTONE_TIER]);
+  });
+});
+
+// #4082: the big chain for the device check and the demo-storm flow.
+describe("cascadeSetup('storm')", () => {
+  it("is the merge-storm pile, played live (no settle)", () => {
+    const setup = cascadeSetup("storm");
+    expect(setup.pieces).toEqual(mergeStormPile());
+    expect(setup.settleMs).toBe(0);
+    expect(setup.queue).toBeUndefined();
+  });
+
+  it("chains a dozen-plus merges within a second on the live rules, with no game over", () => {
+    const { engine } = load("storm");
+    const merges = run(engine, 1).filter((e) => e.type === "merge");
+    expect(merges.length).toBeGreaterThanOrEqual(12);
+    expect(engine.getState().score).toBeGreaterThan(0);
+    expect(engine.getState().gameOver).toBe(false);
   });
 });
