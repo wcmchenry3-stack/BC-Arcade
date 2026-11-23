@@ -149,9 +149,6 @@ describe("the piece and the guide over time", () => {
     const drawn = xs.map((x) => aimPieceX(aiming, x, 0, 0, false, 15));
     // exactly the clamped finger x, at every sample
     expect(drawn).toEqual(xs.map((x) => aimDropX(x, 15)));
-    for (let i = 0; i < xs.length; i++) {
-      if (aimDropX(xs[i]!, 15) !== SPAWNER.cx) expect(drawn[i]).not.toBe(SPAWNER.cx);
-    }
   });
 
   it("the guide fades in, and out after a release or a cancel", () => {

@@ -96,7 +96,6 @@ export function useAimGesture({
           }
           // The finger may leave the board (above it, past a wall): the aim goes on, x clamped to
           // the walls by boardPxToWorldX (#4081). Only the system or a second finger cancels.
-          if (state === AIM_STATE.cancelled) return;
           const next = aimAfterMove(state, moved);
           if (next !== state) {
             aimState.set(next);
@@ -117,8 +116,9 @@ export function useAimGesture({
           pointerDown.set(false);
           const state = aimState.get();
           if (!success && (state === AIM_STATE.pressed || state === AIM_STATE.aiming)) {
-            // Cancelled by the system: glide back like a drag off the board.
-            aimFromX.set(state === AIM_STATE.aiming ? aimX.get() : NaN);
+            // Cancelled by the system or a second finger: the piece (drawn at the finger from the
+            // press) glides back to the ring from where it is, from a press as from an aim.
+            aimFromX.set(aimX.get());
             aimState.set(AIM_STATE.cancelled);
             aimAt.set(clock.get());
             return;

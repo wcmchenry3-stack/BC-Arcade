@@ -82,8 +82,8 @@ export function aimLive(state: number, msInState: number, reduceMotion: boolean)
  * Where the spawner piece is drawn (world x): at the finger from the first press (#4081, no glide
  * from the ring), in the ring when idle, or gliding back after a cancel. The finger's x is clamped
  * as the drop clamps it (`aimDropX`, radius `r`), so the piece, the guide and the drop agree at
- * the walls (review S4). A glide back with no start (a cancelled tap, `fromX` not finite) stays
- * in the ring.
+ * the walls (review S4). A glide back with no recorded start (`fromX` not finite) stays in the
+ * ring.
  */
 export function aimPieceX(
   state: number,

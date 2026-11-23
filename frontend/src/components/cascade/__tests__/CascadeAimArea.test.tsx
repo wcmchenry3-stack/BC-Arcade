@@ -12,7 +12,6 @@ import CascadeAimArea from "../CascadeAimArea";
 import * as keyboardModule from "../useAimKeyboard";
 import { useBoardMotion } from "../useBoardMotion";
 import { AIM_STATE, aimDropX, aimPieceX } from "../../../game/cascade/aim";
-import { SPAWNER } from "../../../game/cascade/lidVisuals";
 import { MOTION } from "../../../game/cascade/motion";
 import { WALL_THICKNESS, WORLD_WIDTH } from "../../../game/cascade/constants";
 import { detectedGesture, type DetectorRender } from "../../../test-utils/mockScreenDeps";
@@ -167,7 +166,6 @@ it("a drag past an edge and back keeps aiming and never draws the piece at the r
     expect(v.aimState.value).toBe(AIM_STATE.aiming);
     sample();
   }
-  expect(drawn.every((x) => x !== SPAWNER.cx)).toBe(true);
   const fingers = [40, 20, 0, -50, -80, -50, 0, 20, 40];
   expect(drawn).toEqual(fingers.map((px) => aimDropX(Math.max(WALL_THICKNESS, px / SCALE), r)));
   await m.release();
@@ -220,13 +218,13 @@ it("a held press becomes aiming after the tap window, through the motion clock",
 // FAILED (onFinalize(false) with no onEnd) and never dropped. With manual activation that order
 // cannot come from a single still finger any more; if it ever does (the system failed the gesture
 // before it activated), it is a cancel: nothing drops and the piece stays in the ring.
-it("a press that fails before activating drops nothing and stays in the ring", async () => {
+it("a press that fails before activating drops nothing and glides back from the press", async () => {
   const m = await mount();
   await act(() => m.pan().onBegin!({ x: 150, y: 200 }));
   await act(() => m.pan().onFinalize!({}, false));
   expect(m.onDrop).not.toHaveBeenCalled();
   expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
-  expect(Number.isNaN(m.motion.values.aimFromX.value)).toBe(true);
+  expect(m.motion.values.aimFromX.value).toBeCloseTo(150 / SCALE); // glides back from the press
 });
 
 // Review B2: iOS swipe-back, Android edge-back, a modal, the background, `enabled` flipping.
@@ -269,6 +267,30 @@ it("a second finger mid-drag fails the gesture and drops nothing", async () => {
   await m.systemCancel();
   expect(m.onDrop).not.toHaveBeenCalled();
   expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+  expect(m.motion.values.aimFromX.value).toBeCloseTo(200 / SCALE);
+});
+
+// The piece is drawn at the finger from the press, so a cancel from a press glides back from there.
+it("a second finger before the drag starts cancels from the press x and drops nothing", async () => {
+  const m = await mount();
+  await m.press(100);
+  const second = manager();
+  await act(() => m.pan().onTouchesDown!({ numberOfTouches: 2 }, second));
+  await m.systemCancel();
+  expect(m.onDrop).not.toHaveBeenCalled();
+  expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+  expect(m.motion.values.aimFromX.value).toBeCloseTo(100 / SCALE);
+  expect(m.motion.values.aimFromX.value).toBe(m.motion.values.aimX.value);
+});
+
+it("a non-finite move leaves the aim x alone and the drop still goes at the last good x", async () => {
+  const m = await mount();
+  await m.press(60);
+  await m.move(200);
+  await m.move(Number.NaN, Number.NaN);
+  expect(m.motion.values.aimX.value).toBeCloseTo(200 / SCALE);
+  await m.release();
+  expect(m.onDrop).toHaveBeenCalledWith(200 / SCALE);
 });
 
 // Review N4: a refused aimed release (the cooldown, the lid) glides back like a cancel.
