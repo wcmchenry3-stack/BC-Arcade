@@ -7,7 +7,6 @@ import {
   aimAfterTime,
   aimDropX,
   aimGuideAlpha,
-  aimInside,
   aimLive,
   aimPieceX,
   aimReleaseDrops,
@@ -41,13 +40,13 @@ const piece = (tier: number, x: number, y: number, scale = 1): FramePiece => ({
 
 describe("tap or drag", () => {
   it("a press released inside the tap window, without moving, drops (a tap)", () => {
-    expect(aimAfterMove(pressed, true, A.tapSlopPt)).toBe(pressed);
+    expect(aimAfterMove(pressed, A.tapSlopPt)).toBe(pressed);
     expect(aimAfterTime(pressed, A.guideDelayMs - 1)).toBe(pressed);
     expect(aimReleaseDrops(pressed, 120)).toBe(true);
   });
 
   it("moving past the slop, or holding past the delay, starts aiming", () => {
-    expect(aimAfterMove(pressed, true, A.tapSlopPt + 0.5)).toBe(aiming);
+    expect(aimAfterMove(pressed, A.tapSlopPt + 0.5)).toBe(aiming);
     expect(aimAfterTime(pressed, A.guideDelayMs)).toBe(aiming);
     expect(aimReleaseDrops(aiming, 300)).toBe(true);
   });
@@ -57,21 +56,21 @@ describe("tap or drag", () => {
   });
 });
 
-describe("cancel and re-arm", () => {
-  it("leaving the board cancels, from a press or an aim, and a release then drops nothing", () => {
-    expect(aimAfterMove(pressed, false, 3)).toBe(cancelled);
-    expect(aimAfterMove(aiming, false, 80)).toBe(cancelled);
+describe("cancel (system only; leaving the board never cancels, #4081)", () => {
+  it("a move never cancels: the aim state only ever goes pressed to aiming", () => {
+    expect(aimAfterMove(pressed, 3)).toBe(pressed);
+    expect(aimAfterMove(aiming, 80)).toBe(aiming);
+    expect(aimAfterMove(aiming, 10_000)).toBe(aiming);
+  });
+
+  it("a cancelled aim stays cancelled on a move (no re-arm) and a release drops nothing", () => {
+    expect(aimAfterMove(cancelled, 80)).toBe(cancelled);
     expect(aimReleaseDrops(cancelled, 200)).toBe(false);
   });
 
-  it("coming back onto the board aims again", () => {
-    expect(aimAfterMove(cancelled, true, 80)).toBe(aiming);
-    expect(aimAfterMove(cancelled, false, 80)).toBe(cancelled);
-  });
-
   it("an idle or released aim ignores moves; nothing drops from them", () => {
-    expect(aimAfterMove(idle, true, 50)).toBe(idle);
-    expect(aimAfterMove(released, false, 50)).toBe(released);
+    expect(aimAfterMove(idle, 50)).toBe(idle);
+    expect(aimAfterMove(released, 50)).toBe(released);
     expect(aimReleaseDrops(idle, 200)).toBe(false);
     expect(aimReleaseDrops(released, 200)).toBe(false);
   });
@@ -82,15 +81,7 @@ describe("cancel and re-arm", () => {
   });
 });
 
-describe("the board rect and the wall clamp", () => {
-  it("inside means within the board view; NaN is outside", () => {
-    expect(aimInside(0, 0, 300, 450)).toBe(true);
-    expect(aimInside(300, 450, 300, 450)).toBe(true);
-    expect(aimInside(-1, 10, 300, 450)).toBe(false);
-    expect(aimInside(10, 451, 300, 450)).toBe(false);
-    expect(aimInside(Number.NaN, 10, 300, 450)).toBe(false);
-  });
-
+describe("the wall clamp", () => {
   it("the drop x keeps the whole piece between the walls, as engine.drop does", () => {
     expect(aimDropX(0, 20)).toBe(WALL_THICKNESS + 20);
     expect(aimDropX(WORLD_WIDTH, 20)).toBe(WORLD_WIDTH - WALL_THICKNESS - 20);
@@ -142,14 +133,22 @@ describe("landing cast (first contact, straight down)", () => {
 });
 
 describe("the piece and the guide over time", () => {
-  it("the piece glides from the ring to the finger in pickUpMs, and back on a cancel in returnMs", () => {
-    expect(aimPieceX(aiming, 320, 0, 0, false, 15)).toBe(SPAWNER.cx);
-    expect(aimPieceX(aiming, 320, 0, A.pickUpMs, false, 15)).toBe(320);
+  it("the piece is at the finger from the first press: no glide from the ring (#4081)", () => {
+    for (const ms of [0, 1, 50, A.guideDelayMs, 10_000]) {
+      expect(aimPieceX(pressed, 320, 0, ms, false, 15)).toBe(320);
+      expect(aimPieceX(aiming, 320, 0, ms, false, 15)).toBe(320);
+    }
+    expect(aimPieceX(idle, 320, 0, 0, false, 15)).toBe(SPAWNER.cx);
+    // after a cancel it glides back to the ring in returnMs
     expect(aimPieceX(cancelled, 0, 320, 0, false, 15)).toBe(320);
     expect(aimPieceX(cancelled, 0, 320, A.returnMs, false, 15)).toBe(SPAWNER.cx);
-    // a tap never moves it
-    expect(aimPieceX(pressed, 320, 0, 50, false, 15)).toBe(SPAWNER.cx);
-    expect(aimPieceX(idle, 320, 0, 0, false, 15)).toBe(SPAWNER.cx);
+  });
+
+  it("a drag past an edge and back never draws the piece at the ring's centre", () => {
+    const xs = [100, 40, 0, -50, -50, 0, 40, 100, 200, 400, 900, 400, 200];
+    const drawn = xs.map((x) => aimPieceX(aiming, x, 0, 0, false, 15));
+    // exactly the clamped finger x, at every sample
+    expect(drawn).toEqual(xs.map((x) => aimDropX(x, 15)));
   });
 
   it("the guide fades in, and out after a release or a cancel", () => {
@@ -161,15 +160,16 @@ describe("the piece and the guide over time", () => {
   });
 
   // Review S4: the piece goes where the drop and the guide go, clamped by its radius.
-  it("the piece glides to the wall-clamped drop x, and back from it", () => {
-    expect(aimPieceX(aiming, 0, 0, A.pickUpMs, false, 15)).toBe(aimDropX(0, 15));
+  it("the piece is at the wall-clamped drop x, and glides back from it", () => {
+    expect(aimPieceX(aiming, 0, 0, 0, false, 15)).toBe(aimDropX(0, 15));
+    expect(aimPieceX(pressed, 999, 0, 0, false, 15)).toBe(aimDropX(999, 15));
     expect(aimPieceX(aiming, 999, 0, 0, true, 15)).toBe(aimDropX(999, 15));
     expect(aimPieceX(cancelled, 0, 999, 0, false, 15)).toBe(aimDropX(999, 15));
-    // A cancelled tap (no start) stays in the ring.
+    // Defensive: a cancel with no recorded start (fromX not finite) stays in the ring.
     expect(aimPieceX(cancelled, 0, Number.NaN, 0, false, 15)).toBe(SPAWNER.cx);
   });
 
-  it("Reduce Motion: the piece is at the finger at once, back in the ring at once; the guide shows and hides at once", () => {
+  it("Reduce Motion (unchanged): the piece is at the finger at once, back in the ring at once; the guide shows and hides at once", () => {
     expect(aimPieceX(aiming, 320, 0, 0, true, 15)).toBe(320);
     expect(aimPieceX(cancelled, 0, 320, 0, true, 15)).toBe(SPAWNER.cx);
     expect(aimGuideAlpha(aiming, 0, true)).toBe(1);
