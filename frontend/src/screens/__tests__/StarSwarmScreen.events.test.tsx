@@ -7,14 +7,14 @@
  */
 
 import { AccessibilityInfo } from "react-native";
-import { act, screen } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { hapticPlayerHit, hapticWaveClear } from "../../components/starswarm/Controls";
 import { CANVAS_H, CANVAS_W, initStarSwarm } from "../../game/starswarm/engine";
 import type { CarrierEvent, UpgradeEvent } from "../../game/starswarm/types";
 import { audio, canvas, resetHarness } from "./helpers/starSwarmMocks";
-import { renderRun } from "./helpers/starSwarmHarness";
+import { renderRun, renderScreen, startRun } from "./helpers/starSwarmHarness";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -175,6 +175,7 @@ describe("E2E test hooks", () => {
   const hooks = globalThis as typeof globalThis & {
     __starswarm_getRunStats?: () => Record<string, unknown> | null;
     __starswarm_endRun?: (score: number, wave: number) => void;
+    __starswarm_getPlayerX?: () => number | null;
   };
   const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
 
@@ -217,6 +218,70 @@ describe("E2E test hooks", () => {
       difficulty: "Commander",
       score: 0,
       frame: null,
+    });
+  });
+
+  it("#4079: in a test build, reads the engine ship's X, or null before there is an engine", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    await renderRun();
+    expect(hooks.__starswarm_getPlayerX!()).toBeNull();
+    const s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander");
+    canvas.state = { ...s, player: { ...s.player, x: 321.5 } };
+    expect(hooks.__starswarm_getPlayerX!()).toBe(321.5);
+  });
+
+  it("#4079: the ship-x line shows in a test build only, polled on a timer", async () => {
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    const plain = await renderRun();
+    expect(screen.queryByTestId("starswarm-debug-shipx")).toBeNull();
+    await plain.unmount();
+
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    const view = await renderRun();
+    const s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Commander");
+    canvas.state = { ...s, player: { ...s.player, x: 342.6 } };
+    // Polled at 4 Hz on a real timer: the next poll shows the new X.
+    await waitFor(() =>
+      expect(screen.getByTestId("starswarm-debug-shipx")).toHaveTextContent("ship-x: 343")
+    );
+    await view.unmount();
+    expect(hooks.__starswarm_getPlayerX).toBeUndefined();
+  });
+
+  it("#4079: the safe-run button is in the picker, in a test build only", async () => {
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    const plain = await renderScreen();
+    expect(screen.getByTestId("starswarm-start-game")).toBeTruthy();
+    expect(screen.queryByTestId("starswarm-test-safe-run")).toBeNull();
+    await plain.unmount();
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    await renderScreen();
+    expect(screen.getByTestId("starswarm-test-safe-run")).toBeTruthy();
+    // Not on the canvas once a run is going: only the picker has it.
+    await startRun();
+    expect(screen.queryByTestId("starswarm-test-safe-run")).toBeNull();
+  });
+
+  it("#4079: the picker's safe run starts, from its first frame, a run nothing can end", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    await renderScreen();
+    const tickBefore = canvas.props.resetTick as number;
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-test-safe-run"));
+    });
+    // Start's bookkeeping: the picker closes and the canvas resets (the countdown) once.
+    expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
+    expect(canvas.props.resetTick).toBe(tickBefore + 1);
+    expect(canvas.props.isPaused).toBe(false);
+    // The props of that very reset carry the dev options GameCanvas's reset effect reads
+    // (infiniteLivesRef, and the live switches on every tick): GameCanvas.test.tsx proves a
+    // lost life is reverted with these.
+    expect(canvas.props.devOptions).toMatchObject({
+      wave: 1,
+      infiniteLives: true,
+      devRun: true,
+      enemyFireDisabled: true,
+      asteroidsDisabled: true,
     });
   });
 

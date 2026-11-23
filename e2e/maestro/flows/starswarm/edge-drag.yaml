@@ -1,0 +1,77 @@
+appId: com.buffingchi.games
+---
+# #4079: the ship follows a hard drag past the right edge and comes straight back.
+#
+# Test builds (EXPO_PUBLIC_TEST_HOOKS=1) show a small line, testID
+# `starswarm-debug-shipx`, in the canvas's top-left corner reading
+# `ship-x: <int>`: the engine ship's centre X in canvas units (0..360, clamped
+# to 17..343 by the ship's half width). It is polled at 4 Hz
+# (components/starswarm/ShipXDebug.tsx), never drawn in a store build.
+#
+# The run must not depend on surviving real play: on the CI emulator a normal
+# run is shot down 20-30 s after Start (one swipe there took 14 s, one tap 16 s),
+# and the result card (a Modal, which on Android hides everything under it from
+# Maestro) then covers `ship-x`. Switching a live run to a safe one races that
+# death, so the flow never starts a normal run: in the difficulty picker it taps
+# `starswarm-test-safe-run` (components/starswarm/TestSafeRunControl.tsx, beside
+# Start; test builds with the dev tools only, i.e. built against the pre-launch
+# API as CI is) INSTEAD of Start. That starts a dev run with infinite lives and
+# enemy missiles and asteroids off from its first frame: nothing can end it, and
+# a hit doesn't move the ship. Before every `ship-x` assert the flow checks the
+# result card is not up, so a run that ends anyway fails with a clear message.
+#
+# A new run opens behind its 3 s pre-wave countdown. A drag during it still
+# commands the ship (the engine applies it once the countdown ends), and
+# `extendedWaitUntil` polls; the ship reaches the edge and stays there, so a
+# long wait doesn't weaken the check.
+#
+# Coordinates are screen percentages. The canvas is scaled to fit and centred,
+# and its bottom 40% is the drag zone; 85% of the screen height sits inside it
+# on the CI phones (iOS 402x874 pt, Android 1080x2400 px). Do not tap the
+# canvas, as smoke.yaml does: a tap in its top 60% pauses the run.
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/tap-game-tile.yaml
+    env:
+      gameSlug: "starswarm"
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-test-safe-run"
+    timeout: 10000
+# In the picker (a Modal), beside Start: tapping it closes the picker and
+# starts the safe run behind its countdown.
+- tapOn:
+    id: "starswarm-test-safe-run"
+- assertNotVisible:
+    id: "starswarm-result-title"
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-debug-shipx"
+      text: "ship-x: 180"
+    timeout: 10000
+# Centre to the right edge and well past it: the ship pins at 343.
+- swipe:
+    start: "50%, 85%"
+    end: "99%, 85%"
+    duration: 300
+- assertNotVisible:
+    id: "starswarm-result-title"
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-debug-shipx"
+      text: "ship-x: 3(3[3-9]|4[0-3])"
+    timeout: 20000
+# A new drag left: it must move the ship at once, not first pay back the
+# overshoot (the "invisible rope", #1549) or leave it stuck at the edge (#4079).
+- swipe:
+    start: "90%, 85%"
+    end: "40%, 85%"
+    duration: 300
+- assertNotVisible:
+    id: "starswarm-result-title"
+- extendedWaitUntil:
+    visible:
+      id: "starswarm-debug-shipx"
+      text: "ship-x: ([0-9]|[0-9][0-9]|1[0-9][0-9]|2[0-9][0-9])"
+    timeout: 20000
+- takeScreenshot: starswarm-edge-drag

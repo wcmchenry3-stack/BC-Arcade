@@ -99,6 +99,7 @@ import type { DrawOp } from "../../game/starswarm/render/frame";
 import { DEFAULT_SHIP_ID } from "../../game/starswarm/render/ship";
 import type { ShipId } from "../../game/starswarm/render/ship";
 import { newLoopFlags, updateLoops, type StarSwarmLoop } from "../../game/starswarm/soundLoops";
+import { checkShipStuck } from "../../game/starswarm/stuckShipReport";
 import {
   emitSoundCues,
   emitTickSounds,
@@ -597,7 +598,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       ref,
       () => ({
         setPlayerX(x) {
-          inputRef.current.playerX = x;
+          // #4079: a NaN or ±Infinity would reach the engine's clamp, which passes NaN through
+          if (Number.isFinite(x)) inputRef.current.playerX = x;
         },
         getPlayerX() {
           const hw = PLAYER_W / 2;
@@ -856,6 +858,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             }
           }
         }
+        // #4079: the stuck-ship check: one comparison per frame, a few every 250 ms
+        checkShipStuck(
+          timestamp,
+          gameRef.current,
+          isPausedRef.current,
+          countdownMsRef.current !== null
+        );
         // Starfield scrolls while the game is live; paused or over, the frame holds still (#2563).
         // #2963: it scrolls on the UI thread from this clock — no display-list rebuild for it.
         if (starfieldRuns(gameRef.current.phase, isPausedRef.current)) {

@@ -21,6 +21,9 @@ import {
 } from "../../../game/starswarm/engine";
 import type { StarSwarmState } from "../../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../../game/starswarm/engine";
+import * as Sentry from "@sentry/react-native";
+import { resetSentryThrottle } from "../../../game/_shared/sentryThrottle";
+import { flushShipStuckReport, noteShipDragEnd } from "../../../game/starswarm/stuckShipReport";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Handlers = Partial<Record<"onBegin" | "onChange" | "onEnd" | "onFinalize", (e: any) => void>>;
@@ -337,5 +340,217 @@ describe.each([1, 1.5])("Controls edge drag through canvas + engine (scale %s)",
     expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2, 5);
     t.moveTo((tx - 10) * scale);
     expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2 - 10, 5);
+  });
+});
+
+/** #4079: like `setup`, plus a re-render with new props mid-drag. */
+async function setupRerender(scale = 1) {
+  const canvas = new FakeCanvas();
+  const ref = { current: canvas.handle } as React.RefObject<GameCanvasHandle | null>;
+  const ui = (props: { scale: number; isPaused?: boolean; onPause?: () => void }) => (
+    <Controls
+      canvasRef={ref}
+      scale={props.scale}
+      isLiveRun
+      isPaused={props.isPaused ?? false}
+      onPause={props.onPause ?? jest.fn()}
+      onResume={jest.fn()}
+      onNewGame={jest.fn()}
+    />
+  );
+  const r = await render(ui({ scale }));
+  let current = scale;
+  const pan = () => mockPan.current;
+  return {
+    canvas,
+    ref,
+    rerender: async (props: { scale: number; isPaused?: boolean; onPause?: () => void }) => {
+      current = props.scale;
+      await r.rerender(ui(props));
+    },
+    begin: () => pan().onBegin?.({ y: DRAG_Y * current, translationX: 0 }),
+    moveTo: (translationX: number) => {
+      pan().onChange?.({ y: DRAG_Y * current, translationX });
+      canvas.frame();
+    },
+    release: (translationX: number) => {
+      pan().onEnd?.({ y: DRAG_Y * current, translationX });
+      pan().onFinalize?.({});
+    },
+  };
+}
+
+describe("Controls drag hardening (#4079)", () => {
+  it("a re-render mid-drag (same props) keeps the same gesture and the ship keeps tracking", async () => {
+    const t = await setupRerender(1);
+    const before = mockPan.current;
+    t.begin();
+    t.moveTo(40);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 40, 5);
+    await t.rerender({ scale: 1, onPause: jest.fn() });
+    // Built once: the re-render hands the detector the very same handlers.
+    expect(mockPan.current).toBe(before);
+    t.moveTo(60);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 60, 5);
+  });
+
+  it("a new scale mid-drag: no jump, and the ship carries on at the new scale", async () => {
+    const t = await setupRerender(1);
+    t.begin();
+    t.moveTo(40);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 40, 5);
+    await t.rerender({ scale: 2 });
+    // Same finger position: the ship stays put (it would jump 20 px left if the anchor were
+    // reused at the new scale).
+    t.moveTo(40);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 40, 5);
+    // 20 more screen px at scale 2 is 10 canvas px.
+    t.moveTo(60);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 50, 5);
+    // …and it still goes all the way to the edge and straight back.
+    t.moveTo(1000);
+    expect(t.canvas.x).toBe(MAX_X);
+    t.moveTo(990);
+    expect(t.canvas.x).toBeCloseTo(MAX_X - 5, 5);
+  });
+
+  it("props read through refs: a pause tap after a re-render uses the latest props", async () => {
+    const onPause = jest.fn();
+    const t = await setupRerender(1);
+    await t.rerender({ scale: 1, onPause, isPaused: false });
+    mockPan.current.onBegin?.({ y: 1, translationX: 0 });
+    mockPan.current.onEnd?.({ y: 1, translationX: 0 });
+    expect(onPause).toHaveBeenCalledTimes(1);
+    await t.rerender({ scale: 1, onPause, isPaused: true });
+    mockPan.current.onBegin?.({ y: 1, translationX: 0 });
+    mockPan.current.onEnd?.({ y: 1, translationX: 0 });
+    expect(onPause).toHaveBeenCalledTimes(1);
+  });
+
+  it("onBegin delivered twice without onFinalize re-anchors on the ship", async () => {
+    const t = await setupRerender(1);
+    t.begin();
+    t.moveTo(500);
+    expect(t.canvas.x).toBe(MAX_X);
+    // The library re-begins the same touch: translation restarts from 0.
+    t.begin();
+    t.moveTo(-1);
+    expect(t.canvas.x).toBeCloseTo(MAX_X - 1, 5);
+    t.moveTo(-100);
+    expect(t.canvas.x).toBeCloseTo(MAX_X - 100, 5);
+  });
+
+  it("a NaN from getPlayerX anchors on the engine ship, never NaN", async () => {
+    const t = await setupRerender(1);
+    t.canvas.input.playerX = 300;
+    t.canvas.frame();
+    t.canvas.handle.getPlayerX = () => NaN;
+    t.begin();
+    t.moveTo(-20);
+    expect(t.canvas.input.playerX).toBeCloseTo(280, 5);
+    expect(t.canvas.x).toBeCloseTo(280, 5);
+  });
+
+  it("NaN from getPlayerX and the engine: anchors on the centre", async () => {
+    const t = await setupRerender(1);
+    t.canvas.handle.getPlayerX = () => NaN;
+    t.canvas.state = { ...t.canvas.state, player: { ...t.canvas.state.player, x: NaN } };
+    t.begin();
+    t.moveTo(10);
+    expect(t.canvas.input.playerX).toBeCloseTo(CANVAS_W / 2 + 10, 5);
+  });
+
+  it("a scale of 0 mid-drag holds the ship, and it tracks again once the scale is back", async () => {
+    const t = await setupRerender(1);
+    t.begin();
+    t.moveTo(30);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 30, 5);
+    await t.rerender({ scale: 0 });
+    t.moveTo(60);
+    expect(Number.isFinite(t.canvas.input.playerX)).toBe(true);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 30, 5);
+    await t.rerender({ scale: 1 });
+    t.moveTo(70);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 30, 5);
+    t.moveTo(80);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 40, 5);
+  });
+});
+
+describe("Controls and the stuck-ship tracker (#4079)", () => {
+  const shipStuckCalls = () =>
+    (Sentry.captureMessage as jest.Mock).mock.calls.filter((c) => c[0] === "starswarm.shipStuck");
+  beforeEach(() => {
+    resetSentryThrottle();
+    (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+
+  it("a gesture whose moves never arrived is held as noChange and sent on unmount", async () => {
+    const canvas = new FakeCanvas();
+    const ref = { current: canvas.handle } as React.RefObject<GameCanvasHandle | null>;
+    const view = await render(
+      <Controls
+        canvasRef={ref}
+        scale={1}
+        isLiveRun
+        isPaused={false}
+        onPause={jest.fn()}
+        onResume={jest.fn()}
+        onNewGame={jest.fn()}
+      />
+    );
+    mockPan.current.onBegin?.({ y: DRAG_Y, translationX: 0 });
+    // No onChange: the library dropped every move of a 120 px drag.
+    mockPan.current.onEnd?.({ y: DRAG_Y, translationX: -120 });
+    mockPan.current.onFinalize?.({ translationX: -120 });
+    expect(shipStuckCalls()).toHaveLength(0); // held, not uploaded mid-run
+    await view.unmount();
+    expect(shipStuckCalls()).toHaveLength(1);
+    expect(shipStuckCalls()[0]![1].tags.kind).toBe("noChange");
+  });
+
+  it("a held event goes out when the run is paused (also what leaving the app does)", async () => {
+    const t = await setupRerender(1);
+    t.begin();
+    mockPan.current.onEnd?.({ y: DRAG_Y, translationX: 150 }); // no onChange arrived
+    expect(shipStuckCalls()).toHaveLength(0);
+    await t.rerender({ scale: 1, isPaused: true });
+    expect(shipStuckCalls()).toHaveLength(1);
+    expect(shipStuckCalls()[0]![1].tags.kind).toBe("noChange");
+    // Nothing held: resuming and pausing again sends nothing more.
+    await t.rerender({ scale: 1, isPaused: false });
+    await t.rerender({ scale: 1, isPaused: true });
+    expect(shipStuckCalls()).toHaveLength(1);
+  });
+
+  it("a delivered drag ends silently", async () => {
+    const t = await setupRerender(1);
+    t.begin();
+    t.moveTo(200);
+    t.release(200);
+    expect(flushShipStuckReport()).toBe(false);
+  });
+
+  it("unmounting mid-drag (no onFinalize) forgets the drag", async () => {
+    const canvas = new FakeCanvas();
+    const ref = { current: canvas.handle } as React.RefObject<GameCanvasHandle | null>;
+    const view = await render(
+      <Controls
+        canvasRef={ref}
+        scale={1}
+        isLiveRun
+        isPaused={false}
+        onPause={jest.fn()}
+        onResume={jest.fn()}
+        onNewGame={jest.fn()}
+      />
+    );
+    mockPan.current.onBegin?.({ y: DRAG_Y, translationX: 0 });
+    mockPan.current.onChange?.({ y: DRAG_Y, translationX: 300 });
+    await view.unmount();
+    // A late end for that drag (or the next screen's first check) finds no drag to judge: had
+    // the tracker kept it, this end 900 px past its last move would be held as noChange.
+    noteShipDragEnd(-600, canvas.state);
+    expect(flushShipStuckReport()).toBe(false);
   });
 });

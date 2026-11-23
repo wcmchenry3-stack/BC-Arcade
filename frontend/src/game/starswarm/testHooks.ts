@@ -7,6 +7,9 @@
  * #2516: `__starswarm_endRun(score, wave)` ends the run through the real game-over path
  * (result card, leaderboard submit, game sync) with the canvas frozen behind the card —
  * reaching game over by real play isn't practical in an E2E run.
+ * #4079: `__starswarm_getPlayerX()` -> the engine ship's X (`state.player.x`, what is drawn), or
+ * null before there is an engine. Maestro, which can't call JS, reads the same number from the
+ * test-build-only `starswarm-debug-shipx` text (components/starswarm/ShipXDebug.tsx).
  */
 import { registerTestHooks } from "../_shared/testHooksRegistry";
 import type { FrameStatsSummary } from "./render/frameStats";
@@ -61,5 +64,6 @@ export function registerStarSwarmTestHooks({
           }
         : null;
     },
+    getPlayerX: (): number | null => getCanvas()?.getState()?.player.x ?? null,
   });
 }

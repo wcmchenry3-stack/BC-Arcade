@@ -64,9 +64,11 @@ import {
 } from "../game/starswarm/waveEvents";
 import { isRecordingEnabled } from "../game/_shared/replayDial";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
-import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
+import ShipXDebug from "../components/starswarm/ShipXDebug";
+import TestSafeRunControl from "../components/starswarm/TestSafeRunControl";
 import StarSwarmDevPanel, {
   DEFAULT_STARSWARM_DEV_OPTIONS,
   anyLiveSwitchOn,
@@ -515,6 +517,8 @@ function StarSwarmGame() {
 
   // #2567: stable, so the readout's poll timer is not restarted by screen re-renders
   const readFrameStats = useCallback(() => canvasRef.current?.getFrameStats() ?? null, []);
+  // #4079: the test-build-only ship X line Maestro reads (ShipXDebug); stable like the above
+  const readShipX = useCallback(() => canvasRef.current?.getState()?.player.x ?? null, []);
 
   const handleGameOverRef = useRef(handleGameOver);
   handleGameOverRef.current = handleGameOver;
@@ -631,6 +635,20 @@ function StarSwarmGame() {
     },
     [startRun, rememberDifficulty, difficulty, rememberShip]
   );
+
+  // #4079: the test-build-only safe run (TestSafeRunControl, in the picker beside Start): the
+  // dev panel's New Game with infinite lives, and the live switches for enemy missiles and
+  // asteroids turned off, so the run is safe from its first frame. Same bookkeeping as Start:
+  // startRun closes the picker, opens the session and bumps resetTick (the countdown).
+  const handleTestSafeRun = useCallback(() => {
+    setDevOptions((o) => ({
+      ...o,
+      infiniteLives: true,
+      enemyFireDisabled: true,
+      asteroidsDisabled: true,
+    }));
+    handleDevNewGame({ wave: 1, infiniteLives: true });
+  }, [handleDevNewGame]);
 
   // Show difficulty picker — header "New Game", the pause overlay, and the
   // result card's Change Difficulty. The card steps aside for the picker.
@@ -806,6 +824,7 @@ function StarSwarmGame() {
             />
             <DevButton enabled={DEV_TOOLS} onPress={() => setDevOpen(true)} />
             {DEV_TOOLS && devOptions.frameReadout && <FrameStatsReadout read={readFrameStats} />}
+            {areTestHooksEnabled() && <ShipXDebug read={readShipX} />}
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
@@ -842,6 +861,9 @@ function StarSwarmGame() {
                 onPress={handleStartFromPicker}
                 testID="starswarm-start-game"
               />
+              {areTestHooksEnabled() && DEV_TOOLS && (
+                <TestSafeRunControl onPress={handleTestSafeRun} />
+              )}
             </ModalActions>
           </ModalCard>
         )}

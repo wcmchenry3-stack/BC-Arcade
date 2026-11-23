@@ -152,3 +152,61 @@ describe("applyDrag — scale conversion", () => {
     expect(newX).toBeCloseTo(180 + 50, 5); // 40 / 0.8 = 50
   });
 });
+
+// ---------------------------------------------------------------------------
+// #4079: non-finite input never yields a non-finite ship X
+// ---------------------------------------------------------------------------
+describe("applyDrag — non-finite input (#4079)", () => {
+  const BAD = [NaN, Infinity, -Infinity];
+
+  it.each([0, -1, ...BAD])("a scale of %s holds the last good X", (scale) => {
+    const { newX, nextDragStart } = applyDrag(180, 30, scale, 250);
+    expect(newX).toBe(250);
+    // No usable scale: the next good event re-anchors.
+    expect(nextDragStart).toBeNaN();
+  });
+
+  it.each(BAD)("a translationX of %s holds the last good X", (tx) => {
+    const { newX, nextDragStart } = applyDrag(180, tx, 1.5, 120);
+    expect(newX).toBe(120);
+    expect(nextDragStart).toBeNaN();
+  });
+
+  it.each(BAD)("an anchor of %s re-anchors on the last good X", (start) => {
+    const { newX, nextDragStart } = applyDrag(start, 30, 1.5, 120);
+    expect(newX).toBe(120);
+    // The next event moves relative to the held X: 15 more screen px is 10 canvas px.
+    expect(applyDrag(nextDragStart, 45, 1.5, newX).newX).toBeCloseTo(130, 5);
+  });
+
+  it("a bad event in the middle of a drag: the ship holds, then tracks from where it held", () => {
+    const first = applyDrag(180, 30, 1, 180);
+    expect(first.newX).toBe(210);
+    const bad = applyDrag(first.nextDragStart, 60, 0, first.newX);
+    expect(bad.newX).toBe(210);
+    const next = applyDrag(bad.nextDragStart, 70, 1, bad.newX);
+    expect(next.newX).toBe(210); // re-anchored: no jump by the translation the bad event carried
+    expect(applyDrag(next.nextDragStart, 80, 1, next.newX).newX).toBe(220);
+  });
+
+  it("a non-finite fallback falls back to the canvas centre, still on the canvas", () => {
+    for (const fb of BAD) expect(applyDrag(NaN, 0, 1, fb).newX).toBe(CANVAS_W / 2);
+    expect(applyDrag(NaN, 0, 1, 9999).newX).toBe(MAX_X);
+    expect(applyDrag(NaN, 0, 0).newX).toBe(CANVAS_W / 2);
+  });
+
+  it("never returns a non-finite newX for any mix of inputs", () => {
+    const values = [0, 1, -1, 1.5, 400, -400, ...BAD];
+    for (const a of values)
+      for (const tx of values)
+        for (const s of values) expect(Number.isFinite(applyDrag(a, tx, s, 100).newX)).toBe(true);
+  });
+});
+
+describe("clamp — non-finite input (#4079)", () => {
+  it("clamps ±Infinity to the bounds and NaN to the midpoint", () => {
+    expect(clamp(Infinity, MIN_X, MAX_X)).toBe(MAX_X);
+    expect(clamp(-Infinity, MIN_X, MAX_X)).toBe(MIN_X);
+    expect(clamp(NaN, MIN_X, MAX_X)).toBe(CANVAS_W / 2);
+  });
+});

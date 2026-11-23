@@ -838,7 +838,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       ref,
       () => ({
         setPlayerX(x) {
-          inputRef.current.playerX = x;
+          if (Number.isFinite(x)) inputRef.current.playerX = x; // #4079: as GameCanvas.tsx
         },
         getPlayerX() {
           const hw = PLAYER_W / 2;
