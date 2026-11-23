@@ -5,8 +5,8 @@
  * game, and the win started later in under Reduce Motion.
  */
 import { act, renderHook } from "@testing-library/react-native";
-import { useCascadeSounds } from "../useCascadeSounds";
-import { CASCADE_SOUND_NAMES, LAZY_CASCADE_SOUNDS } from "../sounds";
+import { CHAIN_WARM_DELAY_MS, useCascadeSounds } from "../useCascadeSounds";
+import { CASCADE_SOUND_NAMES, CHAIN_WARM_SOUNDS, LAZY_CASCADE_SOUNDS } from "../sounds";
 import { CALM_WIN_OFFSET_S } from "../soundPacer";
 
 // Jest maps every .ogg to one stub, so give each set's files distinct ids: fruits 100+, cosmos 200+.
@@ -177,4 +177,33 @@ it("releases every player on unmount, and a sound still waiting never plays or c
   expect(live()).toEqual([]);
   expect(mockHolds.length).toBe(before);
   expect(played()).toEqual(["merge-t1", "merge-t2", "chain-1"]);
+});
+
+// #4082: a chain's sounds get their players in idle time after the mount, never mid-chain.
+it("creates the chain's players one per idle slice after CHAIN_WARM_DELAY_MS, and stops on unmount", async () => {
+  const { unmount } = await mount();
+  expect(live()).toHaveLength(8);
+  await act(async () => {
+    jest.advanceTimersByTime(CHAIN_WARM_DELAY_MS - 1);
+  });
+  expect(live()).toHaveLength(8);
+  await act(async () => {
+    jest.advanceTimersByTime(100); // the delay ends; then one player per idle slice
+  });
+  expect(live().map((h) => nameOf(h.source))).toEqual(
+    expect.arrayContaining([...CHAIN_WARM_SOUNDS])
+  );
+  expect(live()).toHaveLength(8 + CHAIN_WARM_SOUNDS.length);
+  expect(played()).toEqual([]); // warmed, not played
+  expect(holdOf("danger")).toBeUndefined();
+  await unmount();
+
+  // Unmounted before the warm-up: it never runs.
+  mockHolds.length = 0;
+  const second = await mount();
+  await second.unmount();
+  await act(async () => {
+    jest.advanceTimersByTime(CHAIN_WARM_DELAY_MS + 1000);
+  });
+  expect(mockHolds).toHaveLength(8);
 });

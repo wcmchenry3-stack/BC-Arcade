@@ -9,8 +9,10 @@ import { Platform } from "react-native";
 import { act, fireEvent, render } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { createAudioPlayer } from "expo-audio";
 import CascadeScreen from "../CascadeScreen";
-import { useCascadeSounds } from "../../game/cascade/useCascadeSounds";
+import { CHAIN_WARM_DELAY_MS, useCascadeSounds } from "../../game/cascade/useCascadeSounds";
+import { CASCADE_SOUND_NAMES } from "../../game/cascade/sounds";
 
 const mockSounds = {
   drop: jest.fn(),
@@ -25,8 +27,17 @@ const mockSounds = {
   reset: jest.fn(),
 };
 jest.mock("../../game/cascade/useCascadeSounds", () => ({
+  ...jest.requireActual("../../game/cascade/useCascadeSounds"),
   useCascadeSounds: jest.fn(() => mockSounds),
 }));
+// Jest maps every .ogg to one stub: give each file its own id (fruits 100+, cosmos 200+), so the
+// real players (#4082's test below) are one per file, as on a device.
+jest.mock("../../game/cascade/sounds", () => {
+  const actual = jest.requireActual("../../game/cascade/sounds");
+  const ids = (base: number) =>
+    Object.fromEntries((actual.CASCADE_SOUND_NAMES as string[]).map((name, i) => [name, base + i]));
+  return { ...actual, CASCADE_SOUNDS: { fruits: ids(100), cosmos: ids(200) } };
+});
 
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
@@ -301,4 +312,41 @@ it("a covered board (Stats, the menu) stops the danger tick until the board is b
     mockNavListeners.get("focus")?.forEach((h) => h());
   });
   expect(calls(mockSounds.setAway)).toEqual([[true], [false]]);
+});
+
+// #4082: a big chain must create no audio player as it runs (each `createAudioPlayer` is a
+// synchronous native call). The chain's lazy sounds are created in idle time after the mount.
+describe("the real sound players during a 12-merge chain (#4082)", () => {
+  const actual = jest.requireActual("../../game/cascade/useCascadeSounds") as {
+    useCascadeSounds: typeof useCascadeSounds;
+  };
+  beforeEach(() => {
+    (useCascadeSounds as jest.Mock).mockImplementation(actual.useCascadeSounds);
+  });
+  afterEach(() => {
+    (useCascadeSounds as jest.Mock).mockImplementation(() => mockSounds);
+  });
+
+  it("creates every player a chain plays before the chain, none during it", async () => {
+    const create = createAudioPlayer as jest.Mock;
+    create.mockClear();
+    const view = await mount();
+    const atMount = create.mock.calls.length;
+    expect(atMount).toBe(8); // the sounds of every turn
+    // The chain's players come in idle time, after the mount.
+    await frames(CHAIN_WARM_DELAY_MS + 1000);
+    const warmed = create.mock.calls.map(([src]) => CASCADE_SOUND_NAMES[(src as number) - 100]);
+    expect(warmed).toEqual(
+      expect.arrayContaining(["merge-t4", "merge-t10", "chain-2", "chain-4", "merge-t11", "win"])
+    );
+    create.mockClear();
+    // A 12-merge chain over 12 frames, up to a tier-10 piece (the win's pre-warm trigger).
+    for (let i = 0; i < 12; i++) {
+      mockPendingEvents.push(merge(Math.min(10, 1 + i), 50 + i));
+      await frames(17);
+    }
+    await frames(2000); // the paced sounds play out
+    expect(create).not.toHaveBeenCalled();
+    view.unmount();
+  });
 });
