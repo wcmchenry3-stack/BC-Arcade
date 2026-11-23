@@ -11,7 +11,8 @@ import { act, render, renderHook, screen } from "@testing-library/react-native";
 import CascadeAimArea from "../CascadeAimArea";
 import * as keyboardModule from "../useAimKeyboard";
 import { useBoardMotion } from "../useBoardMotion";
-import { AIM_STATE } from "../../../game/cascade/aim";
+import { AIM_STATE, aimDropX, aimPieceX } from "../../../game/cascade/aim";
+import { SPAWNER } from "../../../game/cascade/lidVisuals";
 import { MOTION } from "../../../game/cascade/motion";
 import { WALL_THICKNESS, WORLD_WIDTH } from "../../../game/cascade/constants";
 import { detectedGesture, type DetectorRender } from "../../../test-utils/mockScreenDeps";
@@ -124,27 +125,63 @@ it("a small wobble stays a tap", async () => {
   expect(m.onDrop).toHaveBeenCalledTimes(1);
 });
 
-it("dragging off the board cancels: the piece glides back and a release drops nothing", async () => {
+// #4081: leaving the board never cancels: the aim goes on, x clamped to the walls.
+it("dragging below or above the board keeps aiming and a release drops at the finger's x", async () => {
   const m = await mount();
   await m.press(150);
   await m.move(200);
   await m.move(200, H + 30);
-  expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
-  expect(m.motion.values.aimFromX.value).toBeCloseTo(200 / SCALE);
-  await m.release();
-  expect(m.onDrop).not.toHaveBeenCalled();
-  expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
-});
-
-it("coming back onto the board before release re-arms", async () => {
-  const m = await mount();
-  await m.press(150);
-  await m.move(W + 40);
-  expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
-  await m.move(90);
+  expect(m.motion.values.aimState.value).toBe(AIM_STATE.aiming);
+  await m.move(210, -40);
   expect(m.motion.values.aimState.value).toBe(AIM_STATE.aiming);
   await m.release();
-  expect(m.onDrop).toHaveBeenCalledWith(90 / SCALE);
+  expect(m.onDrop).toHaveBeenCalledTimes(1);
+  expect(m.onDrop).toHaveBeenCalledWith(210 / SCALE);
+  expect(m.motion.values.aimState.value).toBe(AIM_STATE.released);
+});
+
+it("releasing past a side wall drops at the clamped x", async () => {
+  const m = await mount();
+  await m.press(150);
+  await m.move(W + 60, -20);
+  await m.release();
+  expect(m.onDrop).toHaveBeenCalledWith(WORLD_WIDTH - WALL_THICKNESS);
+  const n = await mount();
+  await n.press(150);
+  await n.move(-60, H + 40);
+  await n.release();
+  expect(n.onDrop).toHaveBeenCalledWith(WALL_THICKNESS);
+});
+
+it("a drag past an edge and back keeps aiming and never draws the piece at the ring centre", async () => {
+  const m = await mount();
+  const v = m.motion.values;
+  const r = 15;
+  const drawn: number[] = [];
+  const sample = () =>
+    drawn.push(aimPieceX(v.aimState.value, v.aimX.value, v.aimFromX.value, 0, false, r));
+  await m.press(40);
+  sample(); // from the first press the piece is at the finger
+  for (const x of [20, 0, -50, -80, -50, 0, 20, 40]) {
+    await m.move(x, -30);
+    expect(v.aimState.value).toBe(AIM_STATE.aiming);
+    sample();
+  }
+  expect(drawn.every((x) => x !== SPAWNER.cx)).toBe(true);
+  const fingers = [40, 20, 0, -50, -80, -50, 0, 20, 40];
+  expect(drawn).toEqual(fingers.map((px) => aimDropX(Math.max(WALL_THICKNESS, px / SCALE), r)));
+  await m.release();
+  expect(m.onDrop).toHaveBeenCalledWith(40 / SCALE);
+});
+
+it("from the first press the aim x follows the finger (no pin at the ring centre)", async () => {
+  const m = await mount();
+  await m.press(30);
+  expect(m.motion.values.aimState.value).toBe(AIM_STATE.pressed);
+  expect(m.motion.values.aimX.value).toBeCloseTo(30 / SCALE);
+  expect(aimPieceX(AIM_STATE.pressed, m.motion.values.aimX.value, NaN, 0, false, 15)).toBeCloseTo(
+    aimDropX(30 / SCALE, 15)
+  );
 });
 
 it("clamps to the walls", async () => {
@@ -221,26 +258,17 @@ it("a second finger fails the gesture: no drop at the centroid", async () => {
   expect(m.onDrop).not.toHaveBeenCalled();
 });
 
-// Review S1: re-arming after the glide back has stopped the clock starts it again.
-it("re-arming after the glide back wakes the motion clock again", async () => {
+// A second finger after the drag started fails the gesture (a cancel): nothing drops.
+it("a second finger mid-drag fails the gesture and drops nothing", async () => {
   const m = await mount();
-  await m.press(150);
+  await m.press(60);
   await m.move(200);
-  await m.move(200, H + 30);
-  await act(async () => {
-    jest.advanceTimersByTime(MOTION.aim.returnMs + MOTION.aim.outMs + 100);
-  });
-  const stopped = m.motion.values.clock.value;
-  await act(async () => {
-    jest.advanceTimersByTime(200);
-  });
-  expect(m.motion.values.clock.value).toBe(stopped); // idle while the finger is held off-board
-  await m.move(120);
-  expect(m.motion.values.aimState.value).toBe(AIM_STATE.aiming);
-  await act(async () => {
-    jest.advanceTimersByTime(100);
-  });
-  expect(m.motion.values.clock.value).toBeGreaterThan(stopped);
+  const second = manager();
+  await act(() => m.pan().onTouchesDown!({ numberOfTouches: 2 }, second));
+  expect(second.fail).toHaveBeenCalledTimes(1);
+  await m.systemCancel();
+  expect(m.onDrop).not.toHaveBeenCalled();
+  expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
 });
 
 // Review N4: a refused aimed release (the cooldown, the lid) glides back like a cancel.
@@ -350,19 +378,18 @@ describe("keyboard through the area (#3934)", () => {
     expect(Object.keys(node.l)).toHaveLength(0);
   });
 
-  it("a key during a mouse press that left the board is ignored, and the release drops nothing", async () => {
+  it("a key during a mouse drag that left the board is ignored, and the release drops at the clamped x", async () => {
     const { m, node } = await mountWeb();
     await m.press(150);
     await m.move(200);
-    await m.move(200, H + 30); // off the board: cancelled
-    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    await m.move(200, H + 30); // off the board: still aiming (#4081)
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.aiming);
     const e = k("ArrowLeft");
     await act(async () => node.l.keydown!(e as never));
     expect(e.preventDefault).toHaveBeenCalled(); // the page still does not scroll
-    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    expect(m.motion.values.aimX.value).toBeCloseTo(200 / SCALE); // the key did not move it
     await m.release();
-    expect(m.onDrop).not.toHaveBeenCalled();
-    expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+    expect(m.onDrop).toHaveBeenCalledWith(200 / SCALE);
   });
 
   it("once the pointer is up the keys work again, and after Escape too", async () => {

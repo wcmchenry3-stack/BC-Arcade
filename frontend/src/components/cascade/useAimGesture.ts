@@ -19,25 +19,23 @@
  * the background, `enabled` flipping): that is a cancel, and nothing drops (review B2).
  *
  * The rules are `game/cascade/aim.ts`: a press that lifts before `guideDelayMs` and within
- * `tapSlopPt` is a tap and drops at once at the press x with no guide; leaving the board cancels
- * (nothing drops on release), coming back aims again; x is clamped to the walls and a non-finite x
- * never reaches the drop (#3922).
+ * `tapSlopPt` is a tap and drops at once at the press x with no guide; leaving the board does not
+ * cancel (#4081): the piece follows the finger, x clamped to the walls, and a release anywhere
+ * drops at the clamped x. A non-finite x never reaches the drop (#3922).
  */
 import { useMemo } from "react";
 import { Gesture } from "react-native-gesture-handler";
 import { runOnJS, useSharedValue } from "react-native-reanimated";
 import { boardPxToWorldX } from "../../game/cascade/layout";
-import { AIM_STATE, aimAfterMove, aimInside, aimReleaseDrops } from "../../game/cascade/aim";
+import { AIM_STATE, aimAfterMove, aimReleaseDrops } from "../../game/cascade/aim";
 import { MOTION } from "../../game/cascade/motion";
 import type { BoardMotionValues } from "./useBoardMotion";
 
 export interface AimGestureOptions {
   readonly values: BoardMotionValues;
   readonly wake: () => void;
-  /** pt per world px, and the board view's size (pt). */
+  /** pt per world px. */
   readonly scale: number;
-  readonly width: number;
-  readonly height: number;
   /** False while play cannot take a drop at all (game over, a win). */
   readonly enabled: boolean;
   /** A release that drops: the world x, and whether it was aimed (not a tap). */
@@ -49,8 +47,6 @@ export function useAimGesture({
   values,
   wake,
   scale,
-  width,
-  height,
   enabled,
   onDrop,
   onDragStart,
@@ -80,7 +76,7 @@ export function useAimGesture({
           startY.set(e.y);
           dragged.set(false);
           const x = boardPxToWorldX(e.x, scale);
-          if (x === null || !aimInside(e.x, e.y, width, height)) {
+          if (x === null || !Number.isFinite(e.y)) {
             aimState.set(AIM_STATE.idle);
             return;
           }
@@ -98,19 +94,16 @@ export function useAimGesture({
             dragged.set(true);
             runOnJS(onDragStart)();
           }
-          const inside = aimInside(e.x, e.y, width, height);
-          const next = aimAfterMove(state, inside, moved);
+          // The finger may leave the board (above it, past a wall): the aim goes on, x clamped to
+          // the walls by boardPxToWorldX (#4081). Only the system or a second finger cancels.
+          if (state === AIM_STATE.cancelled) return;
+          const next = aimAfterMove(state, moved);
           if (next !== state) {
-            if (next === AIM_STATE.cancelled) aimFromX.set(aimX.get());
             aimState.set(next);
             aimAt.set(clock.get());
-            // A re-arm after the glide back: the clock may have stopped (review S1).
-            if (state === AIM_STATE.cancelled) runOnJS(wake)();
           }
-          if (inside) {
-            const x = boardPxToWorldX(e.x, scale);
-            if (x !== null) aimX.set(x);
-          }
+          const x = boardPxToWorldX(e.x, scale);
+          if (x !== null) aimX.set(x);
         })
         .onEnd((_e, success) => {
           "worklet";
@@ -141,8 +134,6 @@ export function useAimGesture({
     [
       enabled,
       scale,
-      width,
-      height,
       wake,
       onDrop,
       onDragStart,

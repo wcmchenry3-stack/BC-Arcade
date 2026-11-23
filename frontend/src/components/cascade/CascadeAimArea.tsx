@@ -53,8 +53,6 @@ export default function CascadeAimArea({
     values,
     wake,
     scale,
-    width: style.width,
-    height: style.height,
     enabled,
     onDrop: drop,
     onDragStart,

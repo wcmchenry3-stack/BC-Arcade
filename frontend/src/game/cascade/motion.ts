@@ -183,8 +183,7 @@ export const MOTION = {
   aim: {
     guideDelayMs: 90,
     tapSlopPt: 10,
-    /** The piece glides from the ring to the finger, and back to the ring on a cancel. */
-    pickUpMs: 120,
+    /** The piece glides back to the ring on a cancel (the piece follows the finger at once, #4081). */
     returnMs: 180,
     /** The guide fades in when aiming starts, out on a release or a cancel. */
     inMs: 120,

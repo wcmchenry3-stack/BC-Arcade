@@ -8,11 +8,15 @@
  *   - idle: no finger. The next piece waits in the ring.
  *   - pressed: a finger is down on the board, not yet a drag. Releasing now is a tap: it drops at
  *     the press x at once, and no guide was ever drawn (as tap-to-drop always did).
- *   - aiming: the press lasted `guideDelayMs` or moved more than `tapSlopPt`. The piece glides to
- *     the finger and the guide shows; releasing drops at the aim x.
- *   - cancelled: the finger left the board. The piece glides back to the ring; releasing drops
- *     nothing. Coming back onto the board aims again (re-arm).
+ *   - aiming: the press lasted `guideDelayMs` or moved more than `tapSlopPt`. The guide shows;
+ *     releasing drops at the aim x.
+ *   - cancelled: the system took the gesture over, a second finger came down, or a release was
+ *     refused. The piece glides back to the ring; releasing drops nothing. Leaving the board does
+ *     NOT cancel (#4081): the aim x clamps to the walls and the drag goes on.
  *   - released: the finger lifted after aiming; the guide fades out.
+ *
+ * The piece is drawn at the finger's (wall-clamped) x from the first press: it never starts from, or
+ * passes through, the ring's centre (#4081).
  *
  * Every time is a stamp of the board's motion clock (`useBoardMotion`), so the drawing and the
  * transitions share one UI-thread clock.
@@ -26,12 +30,6 @@ export const AIM_STATE = { idle: 0, pressed: 1, aiming: 2, cancelled: 3, release
 
 const FLOOR_TOP = WORLD_HEIGHT - FLOOR_THICKNESS;
 
-/** True when a point (px, in the board view) is on the board. */
-export function aimInside(x: number, y: number, width: number, height: number): boolean {
-  "worklet";
-  return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x <= width && y <= height;
-}
-
 /**
  * Where a piece of collider radius `r` falls at `x`: the engine's own clamp (its full circle
  * inside the walls, `engine.drop`), so the guide never promises a spot the drop cannot reach.
@@ -41,12 +39,12 @@ export function aimDropX(x: number, r: number): number {
   return Math.max(WALL_THICKNESS + r, Math.min(WORLD_WIDTH - WALL_THICKNESS - r, x));
 }
 
-/** The state after a move: re-arm, cancel, or the drag starting. */
-export function aimAfterMove(state: number, inside: boolean, movedPt: number): number {
+/**
+ * The state after a move: the drag starting. Where the finger is never matters (#4081): off the
+ * board it clamps to the wall. A cancelled aim (system, second finger) stays cancelled.
+ */
+export function aimAfterMove(state: number, movedPt: number): number {
   "worklet";
-  if (state === AIM_STATE.idle || state === AIM_STATE.released) return state;
-  if (!inside) return AIM_STATE.cancelled;
-  if (state === AIM_STATE.cancelled) return AIM_STATE.aiming;
   if (state === AIM_STATE.pressed && movedPt > MOTION.aim.tapSlopPt) return AIM_STATE.aiming;
   return state;
 }
@@ -81,10 +79,11 @@ export function aimLive(state: number, msInState: number, reduceMotion: boolean)
 }
 
 /**
- * Where the spawner piece is drawn (world x): at the ring, gliding to the finger, or back. The
- * finger's x is clamped as the drop clamps it (`aimDropX`, radius `r`), so the piece, the guide
- * and the drop agree at the walls (review S4). A glide back with no start (a cancelled tap,
- * `fromX` not finite) stays in the ring.
+ * Where the spawner piece is drawn (world x): at the finger from the first press (#4081, no glide
+ * from the ring), in the ring when idle, or gliding back after a cancel. The finger's x is clamped
+ * as the drop clamps it (`aimDropX`, radius `r`), so the piece, the guide and the drop agree at
+ * the walls (review S4). A glide back with no start (a cancelled tap, `fromX` not finite) stays
+ * in the ring.
  */
 export function aimPieceX(
   state: number,
@@ -96,10 +95,7 @@ export function aimPieceX(
 ): number {
   "worklet";
   const A = MOTION.aim;
-  if (state === AIM_STATE.aiming) {
-    const x = aimDropX(aimX, r);
-    return reduceMotion ? x : lerp(SPAWNER.cx, x, easeOutCubic(progress(msInState, 0, A.pickUpMs)));
-  }
+  if (state === AIM_STATE.pressed || state === AIM_STATE.aiming) return aimDropX(aimX, r);
   if (state === AIM_STATE.cancelled && !reduceMotion && Number.isFinite(fromX)) {
     const from = aimDropX(fromX, r);
     return lerp(from, SPAWNER.cx, easeOutCubic(progress(msInState, 0, A.returnMs)));
