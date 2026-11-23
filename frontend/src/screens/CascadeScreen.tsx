@@ -85,6 +85,7 @@ import { CASCADE_LID_PALETTE } from "../theme/theme.cascade";
 import { useGameRank } from "../game/_shared/useGameRank";
 import { clearGame as clearCascadeGame } from "../game/cascade/storage";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { useScreenReaderEnabled } from "../components/shared/useScreenReaderEnabled";
 import { useBoardMotion } from "../components/cascade/useBoardMotion";
 import { useLossCard } from "../components/cascade/useLossCard";
 import { useCascadeHaptics } from "../game/cascade/haptics";
@@ -143,6 +144,8 @@ function CascadeGame() {
 
   // Animation state
   const reduceMotion = useReduceMotion();
+  // #4082: merges are announced only while a screen reader is on.
+  const screenReader = useScreenReaderEnabled();
   // #3701: the board's motion (UI thread) and the paced haptics, fed from the engine's events.
   const sounds = useCascadeSounds(activeFruitSet.id, reduceMotion, nearWin); // #3702, paced
   const motion = useBoardMotion(reduceMotion, sounds.dangerOnset); // its blink times the tick
@@ -340,9 +343,12 @@ function CascadeGame() {
   /**
    * The screen reader hears one merge per step at most (#4082): the highest piece made, with the
    * single-merge string. A 12-merge chain is 12 steps' announcements at most, never 12 per step.
+   * No screen reader on: no announcement and no string lookups. No debounce across steps: that
+   * would delay the feedback.
    */
   const announceMerged = useCallback(
     (tier: number) => {
+      if (!screenReader) return;
       const merged = activeFruitSet.fruits[tier];
       if (!merged) return;
       AccessibilityInfo.announceForAccessibility(
@@ -351,7 +357,7 @@ function CascadeGame() {
         })
       );
     },
-    [activeFruitSet, t]
+    [activeFruitSet, t, screenReader]
   );
 
   /**
@@ -687,6 +693,8 @@ function CascadeGame() {
     }),
     [offsetX, offsetY, boardWidth, boardHeight]
   );
+  // #4082: the board draws each merge's burst in the active set's own colours.
+  const burstColors = useMemo(() => activeFruitSet.fruits.map((f) => f.color), [activeFruitSet]);
   const openDevPanel = useCallback(() => setDevPanelOpen(true), []);
   const closeDevPanel = useCallback(() => setDevPanelOpen(false), []);
   const devSpawn = useCallback(
@@ -734,6 +742,7 @@ function CascadeGame() {
                 reduceMotion={reduceMotion}
                 celebration={celebrationClock}
                 motion={motion.values}
+                burstColors={burstColors}
                 onAccessibleDrop={dropMiddle}
               />
             </CascadeAimArea>
@@ -747,6 +756,7 @@ function CascadeGame() {
             onNearLid={() => applySetup("nearLid")}
             onFillBin={() => applySetup("fillBin")}
             onWin={() => applySetup("win")}
+            onStorm={() => applySetup("storm")}
             onForceGameOver={forceGameOver}
           />
         )}

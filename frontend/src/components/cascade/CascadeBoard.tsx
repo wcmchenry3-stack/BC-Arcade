@@ -71,6 +71,11 @@ export interface CascadeBoardProps {
   readonly motion?: BoardMotionValues;
   /** #3928: a screen reader's double-tap (its "activate" action) drops the next piece. */
   readonly onAccessibleDrop?: () => void;
+  /**
+   * #4082: the merge burst's colour per tier: the active piece set's `color`s (what `MergeBurst`
+   * drew with). Absent: looked up from `setId`.
+   */
+  readonly burstColors?: readonly string[];
 }
 
 /** No celebration (a board without the prop). */
@@ -102,6 +107,7 @@ function CascadeBoard({
   celebration = NO_CELEBRATION,
   motion,
   onAccessibleDrop,
+  burstColors: burstColorsProp,
 }: CascadeBoardProps) {
   const { t } = useTranslation("cascade");
   const style = useMemo(() => buildBoardStyle(lidPalette), [lidPalette]);
@@ -128,10 +134,11 @@ function CascadeBoard({
   const tones = CASCADE_MOTION.tones[setId === "cosmos" ? "cosmos" : "fruits"];
   const motionPalette = CASCADE_MOTION.themes[theme];
   // #4082: the merge burst's colour per tier, the piece set's own (what `MergeBurst` drew with).
-  const burstColors = useMemo(
+  const setBurstColors = useMemo(
     () => (FRUIT_SETS[setId] ?? FRUIT_SETS[DEFAULT_FRUIT_SET])?.fruits.map((f) => f.color) ?? [],
     [setId]
   );
+  const burstColors = burstColorsProp ?? setBurstColors;
   const {
     events,
     stamps,

@@ -117,10 +117,11 @@ export const LAZY_CASCADE_SOUNDS: ReadonlySet<CascadeSoundName> = new Set<Cascad
 /**
  * The lazy sounds a chain can play (#4082): the merges from tier 4 up, the chain steps from ×3 up,
  * and the win (a chain can end in the capstone; until #4082 the win and merge-t11 were created
- * when a tier-10 piece first appeared, which can be mid-chain). A chain must not create players
+ * when a tier-10 piece first appeared, which can be mid-chain). A chain should not create players
  * as it runs (each `createAudioPlayer` is a synchronous native call), so `useCascadeSounds`
- * creates these in idle time a little after the screen mounts (and after a piece-set switch), one
- * per idle slice. Danger and the game over keep their own pre-warm (the lid count starting).
+ * creates these in idle time a little after the screen mounts (and after a piece-set switch or an
+ * unmute), one per idle slice. A chain in the first seconds after the mount, before that has run,
+ * can still create one. Danger and the game over keep their own pre-warm (the lid count starting).
  */
 export const CHAIN_WARM_SOUNDS: readonly CascadeSoundName[] = [
   "merge-t4",

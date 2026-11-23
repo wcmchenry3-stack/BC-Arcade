@@ -179,7 +179,7 @@ it("releases every player on unmount, and a sound still waiting never plays or c
   expect(played()).toEqual(["merge-t1", "merge-t2", "chain-1"]);
 });
 
-// #4082: a chain's sounds get their players in idle time after the mount, never mid-chain.
+// #4082: a chain's sounds get their players in idle time after the mount, so a later chain creates none.
 it("creates the chain's players one per idle slice after CHAIN_WARM_DELAY_MS, and stops on unmount", async () => {
   const { unmount } = await mount();
   expect(live()).toHaveLength(8);
@@ -206,4 +206,25 @@ it("creates the chain's players one per idle slice after CHAIN_WARM_DELAY_MS, an
     jest.advanceTimersByTime(CHAIN_WARM_DELAY_MS + 1000);
   });
   expect(mockHolds).toHaveLength(8);
+});
+
+// #4082 review: nothing to warm for while the game sound is muted; an unmute starts the warm-up.
+it("muted at mount: no chain players are warmed; an unmute starts the warm-up", async () => {
+  mockMuted = true;
+  const { rerender } = await mount();
+  await act(async () => {
+    jest.advanceTimersByTime(CHAIN_WARM_DELAY_MS + 1000);
+  });
+  expect(live()).toHaveLength(8);
+  mockMuted = false;
+  await rerender({ id: "fruits", rm: false, nearWin: false });
+  await act(async () => {
+    jest.advanceTimersByTime(CHAIN_WARM_DELAY_MS - 1);
+  });
+  expect(live()).toHaveLength(8);
+  await act(async () => {
+    jest.advanceTimersByTime(1000);
+  });
+  expect(live()).toHaveLength(8 + CHAIN_WARM_SOUNDS.length);
+  expect(played()).toEqual([]);
 });

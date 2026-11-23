@@ -1,0 +1,34 @@
+appId: com.buffingchi.games
+# Cascade demo flow (#4082): a big chain, the case that stalled phones for about a second. Tagged
+# `demo`, so only the `flows: cascade-demo` dispatch runs it (see demo-open.yaml).
+#
+# `cascade-test-storm` (test-build-only, see demo-loss.yaml) restores the step bench's merge-storm
+# pile (`mergeStormPile`): a tower of distinct tiers against each wall and a block of 16 cherries
+# in contact between them. Nothing is dropped: the cherries merge live, 8 at once, then 4, 2 and
+# 1 (15 merges in about 0.6 s, 64 points), with a burst and a pop for each. The video is what to
+# watch for a stall. The "before" screenshot is the fresh board (score 0), before the tap; the
+# score check after it accepts any two-digit score or more (a lone merge here scores at most 16),
+# so a small timing difference cannot fail it.
+tags:
+  - demo
+---
+- runFlow: ../_shared/launch.yaml
+- startRecording: cascade-demo-storm
+- runFlow: ../_shared/open-cascade.yaml
+- assertVisible:
+    id: "cascade-score"
+    text: "Score: 0([^0-9].*)?"
+- takeScreenshot: cascade-demo-storm-before
+- tapOn:
+    id: "cascade-test-storm"
+    retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 300
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible:
+      id: "cascade-score"
+      text: "Score: [1-9][0-9]+.*"
+    timeout: 10000
+- takeScreenshot: cascade-demo-storm-after
+- stopRecording

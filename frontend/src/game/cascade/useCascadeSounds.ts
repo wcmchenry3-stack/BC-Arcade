@@ -6,8 +6,10 @@
  * likely: the win and the capstone's merge-t11 once a tier-10 piece (one below the capstone) is on
  * the board (`nearWin`, the celebration's pre-warm trigger), danger and game over when the lid count first runs, and every sound
  * a chain can play (`CHAIN_WARM_SOUNDS`, #4082: merges t4-t11, chain steps ×3 up, the win) in idle
- * time `CHAIN_WARM_DELAY_MS` after mount, one per idle slice, so a big chain creates no player
- * mid-chain (the `nearWin` warm-up stays for a tier-10 piece that comes sooner). A piece-set switch releases the
+ * time `CHAIN_WARM_DELAY_MS` after mount (or after an unmute: never while muted), one per idle
+ * slice, so a chain after that creates no player as it runs. A chain in the first seconds after
+ * the mount can still create a lazy one (the `nearWin` warm-up stays for a tier-10 piece that
+ * comes sooner). A piece-set switch releases the
  * old set's players and takes the new set's. Silent while the game sound is muted
  * (`useSoundSettings`), sounds already waiting included; waiting sounds are dropped on unmount.
  */
@@ -156,10 +158,14 @@ export function useCascadeSounds(setId: string, reduceMotion = false, nearWin = 
 
   useEffect(() => player.setMuted(muted), [player, muted]);
   useEffect(() => player.take(set), [player, set]);
-  // A chain's players, ahead of the first big chain (#4082): in idle time, after the mount.
+  // A chain's players, ahead of the first big chain (#4082): in idle time, after the mount. Not
+  // while the game sound is muted (nothing would play them); an unmute starts it.
   useEffect(
-    () => warmInIdle(CHAIN_WARM_SOUNDS, (name) => player.warm(name), CHAIN_WARM_DELAY_MS),
-    [player, set]
+    () =>
+      muted
+        ? undefined
+        : warmInIdle(CHAIN_WARM_SOUNDS, (name) => player.warm(name), CHAIN_WARM_DELAY_MS),
+    [player, set, muted]
   );
   useEffect(() => pacer.setCalm(reduceMotion), [pacer, reduceMotion]);
   // The win is likely: create its player now, not at the winning merge (a set switch re-runs it).

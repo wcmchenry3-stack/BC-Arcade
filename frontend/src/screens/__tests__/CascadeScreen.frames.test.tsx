@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import CascadeScreen from "../CascadeScreen";
 import CascadeBoard from "../../components/cascade/CascadeBoard";
 import { FRAME_HEADER, FRAME_STRIDE, PIECE_FIELD } from "../../game/cascade/render/frame";
+import { FRUIT_SETS } from "../../theme/fruitSets";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -276,8 +277,13 @@ describe("CascadeScreen during a big chain (#4082)", () => {
   const burstViews = (renderer: ReturnType<typeof create>) =>
     renderer.root.findAll((n) => n.props.onDone !== undefined).length;
 
-  it("12 merges in one frame: at most 2 commits, no view per merge, 1 announcement", async () => {
+  /** VoiceOver / TalkBack on: the screen announces merges. */
+  const screenReaderOn = () =>
+    jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(true);
+
+  it("12 merges in one frame: no commit, no view per merge, 1 announcement", async () => {
     mockMakeState = settled;
+    screenReaderOn();
     const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
     const { renderer, commits } = await mountCounted();
     commits.count = 0;
@@ -292,12 +298,13 @@ describe("CascadeScreen during a big chain (#4082)", () => {
     expect(burstViews(renderer)).toBe(0);
     // …and nothing more as the bursts would have ended (MergeBurst's 1.1 s fade).
     await runFrames(90);
-    expect(commits.count).toBeLessThanOrEqual(2);
+    expect(commits.count).toBe(0);
     expect(burstViews(renderer)).toBe(0);
   });
 
-  it("1 merge a frame for 12 frames: at most 2 commits, at most 1 announcement a frame", async () => {
+  it("1 merge a frame for 12 frames: no commit, at most 1 announcement a frame", async () => {
     mockMakeState = settled;
+    screenReaderOn();
     const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
     const { renderer, commits } = await mountCounted();
     commits.count = 0;
@@ -311,6 +318,36 @@ describe("CascadeScreen during a big chain (#4082)", () => {
     }
     expect(announce).toHaveBeenCalledTimes(12);
     await runFrames(90);
-    expect(commits.count).toBeLessThanOrEqual(2);
+    expect(commits.count).toBe(0);
+  });
+
+  it("no screen reader: a chain makes no announcement at all", async () => {
+    mockMakeState = settled;
+    jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(false);
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    const { commits } = await mountCounted();
+    commits.count = 0;
+    announce.mockClear();
+    mockStep.mockReturnValueOnce({
+      events: Array.from({ length: 12 }, (_, i) => merge(1 + (i % 9), 300 + i)),
+    });
+    await runFrames(1);
+    for (let i = 0; i < 12; i++) {
+      mockStep.mockReturnValueOnce({ events: [merge(1 + (i % 9), 400 + i)] });
+      await runFrames(1);
+    }
+    expect(announce).not.toHaveBeenCalled();
+    expect(commits.count).toBe(0);
+  });
+
+  // #4082 review: the board draws each burst in the active piece set's own colours.
+  it("hands the board the active piece set's colours for the bursts", async () => {
+    mockMakeState = settled;
+    const { renderer } = await mountCounted();
+    const board = renderer.root.findAll(
+      (n) => n.props.frame !== undefined && n.props.scale !== undefined
+    )[0]!;
+    expect(board.props.setId).toBe("fruits");
+    expect(board.props.burstColors).toEqual(FRUIT_SETS.fruits!.fruits.map((f) => f.color));
   });
 });

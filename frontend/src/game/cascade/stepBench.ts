@@ -74,12 +74,18 @@ export function runStepBench(opts: StepBenchOptions = {}): StepBenchResult {
   const pieces = engine.getState().pieces.length;
   engine.destroy();
 
+  return { pieces, ...summarize(stats) };
+}
+
+/** The timed frames' count, mean, p95 and max, read back from the ring. */
+function summarize(
+  stats: ReturnType<typeof createFrameStats>
+): Pick<StepBenchResult, "frames" | "meanMs" | "p95Ms" | "maxMs"> {
   const n = Math.min(stats.frames, stats.frameMs.length);
   const costs = stats.frameMs.slice(0, n).sort();
   let sum = 0;
   for (let i = 0; i < n; i++) sum += costs[i]!;
   return {
-    pieces,
     frames: n,
     meanMs: n > 0 ? sum / n : 0,
     p95Ms: percentile(costs, 0.95),
@@ -197,16 +203,9 @@ export function runMergeStormBench(opts: MergeStormOptions = {}): MergeStormResu
   const pieces = engine.getState().pieces.length;
   engine.destroy();
 
-  const n = Math.min(stats.frames, stats.frameMs.length);
-  const costs = stats.frameMs.slice(0, n).sort();
-  let sum = 0;
-  for (let i = 0; i < n; i++) sum += costs[i]!;
   return {
     pieces,
-    frames: n,
-    meanMs: n > 0 ? sum / n : 0,
-    p95Ms: percentile(costs, 0.95),
-    maxMs: n > 0 ? costs[n - 1]! : 0,
+    ...summarize(stats),
     merges,
     peakMergesPerFrame: peak,
     stormFrames: first < 0 ? 0 : last - first + 1,
