@@ -1524,16 +1524,25 @@ describe("Star Swarm GameCanvas (native) — stuck ship (#4079)", () => {
     ref.current!.setPlayerX(100);
     for (const bad of [NaN, Infinity, -Infinity]) ref.current!.setPlayerX(bad);
     expect(ref.current!.getPlayerX()).toBe(100);
-    mockTick.mockImplementation((s: StarSwarmState, _dt: number, input: { playerX: number }) => {
-      expect(input.playerX).toBe(100);
-      return s;
+    // Record the inputs and assert after the frames: an expect inside the tick would be caught
+    // by the frame loop's try/catch and could never fail the test.
+    const inputs: number[] = [];
+    mockTick.mockImplementation((st: StarSwarmState, _dt: number, input: { playerX: number }) => {
+      inputs.push(input.playerX);
+      return st;
     });
     await frames(3);
+    expect(inputs.length).toBeGreaterThan(0);
+    expect(inputs.every((x) => x === 100)).toBe(true);
   });
 
-  it("the frame loop reports an engine ship that is off the canvas, once", async () => {
+  it("the frame loop reports an engine ship that is off the canvas, once, after play stops", async () => {
     const s = seeded();
-    await mount({ initialState: { ...s, player: { ...s.player, x: NaN } } });
+    const { rerender } = await mount({ initialState: { ...s, player: { ...s.player, x: NaN } } });
+    await frames(60);
+    // Detected and held: no upload while the run is played.
+    expect(shipStuckCalls()).toHaveLength(0);
+    await rerender({ initialState: { ...s, player: { ...s.player, x: NaN } }, isPaused: true });
     await frames(60);
     expect(shipStuckCalls()).toHaveLength(1);
     expect(shipStuckCalls()[0]![1].tags).toMatchObject({ kind: "offCanvas", side: "unknown" });

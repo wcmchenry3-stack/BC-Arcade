@@ -9,6 +9,7 @@ import type { GameCanvasHandle } from "./GameCanvas";
 import { CANVAS_W, CANVAS_H } from "../../game/starswarm/engine";
 import { applyDrag, clamp, DRAG_MAX_X, DRAG_MIN_X } from "../../game/starswarm/drag";
 import {
+  endShipStuckSession,
   noteShipDragBegin,
   noteShipDragEnd,
   noteShipDragIgnored,
@@ -150,7 +151,7 @@ export default function Controls({
             playerXRef.current = anchorX;
             shipXAtDragStartRef.current = anchorX;
             anchorScaleRef.current = liveRef.current.scale;
-            noteShipDragBegin(anchorX);
+            noteShipDragBegin(anchorX, liveRef.current.scale);
           }
         })
         .onChange((e) => {
@@ -167,7 +168,7 @@ export default function Controls({
           const handle = canvasRef.current;
           const state = handle?.getState();
           if (state?.phase === "Extraction") {
-            noteShipDragIgnored();
+            noteShipDragIgnored(e.translationX, scale);
             return;
           }
           const shipX = handle?.getPlayerX?.() ?? state?.player.x;
@@ -198,7 +199,7 @@ export default function Controls({
           if (Number.isFinite(rawX) && rawX !== newX)
             logBoundaryHit(lastBoundaryLogMsRef, rawX, newX, state?.phase);
           playerXRef.current = newX;
-          noteShipDragMove(newX, rawX, dragStart, e.translationX, scale, state?.wave ?? -1);
+          noteShipDragMove(newX, rawX, dragStart, e.translationX, scale);
           canvasRef.current?.setPlayerX(newX);
         })
         .onEnd((e) => {
@@ -211,14 +212,20 @@ export default function Controls({
             if (!liveRef.current.isPaused && liveRef.current.isLiveRun) liveRef.current.onPause();
           }
           activeDragRef.current = false;
-          noteShipDragEnd();
+          // #4079: the once-per-gesture check that every move was delivered
+          noteShipDragEnd(e.translationX, canvasRef.current?.getState());
         })
-        .onFinalize(() => {
+        .onFinalize((e) => {
           activeDragRef.current = false;
-          noteShipDragEnd();
+          // A no-op after onEnd; covers a gesture that is cancelled without one.
+          noteShipDragEnd(e?.translationX ?? NaN, canvasRef.current?.getState());
         }),
     [canvasRef]
   );
+
+  // #4079: leaving the screen sends a held stuck-ship event and forgets the drag, so a drag
+  // that never saw onFinalize can't make a later visit look stuck.
+  useEffect(() => endShipStuckSession, []);
 
   // Arrow-key movement for web (and external keyboards on iOS).
   useEffect(() => {

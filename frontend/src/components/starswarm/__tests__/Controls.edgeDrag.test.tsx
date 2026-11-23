@@ -21,6 +21,9 @@ import {
 } from "../../../game/starswarm/engine";
 import type { StarSwarmState } from "../../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../../game/starswarm/engine";
+import * as Sentry from "@sentry/react-native";
+import { resetSentryThrottle } from "../../../game/_shared/sentryThrottle";
+import { flushShipStuckReport, noteShipDragEnd } from "../../../game/starswarm/stuckShipReport";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Handlers = Partial<Record<"onBegin" | "onChange" | "onEnd" | "onFinalize", (e: any) => void>>;
@@ -471,5 +474,69 @@ describe("Controls drag hardening (#4079)", () => {
     expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 30, 5);
     t.moveTo(80);
     expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 40, 5);
+  });
+});
+
+describe("Controls and the stuck-ship tracker (#4079)", () => {
+  const shipStuckCalls = () =>
+    (Sentry.captureMessage as jest.Mock).mock.calls.filter((c) => c[0] === "starswarm.shipStuck");
+  beforeEach(() => {
+    resetSentryThrottle();
+    (Sentry.captureMessage as jest.Mock).mockClear();
+  });
+
+  it("a gesture whose moves never arrived is held as noChange and sent on unmount", async () => {
+    const canvas = new FakeCanvas();
+    const ref = { current: canvas.handle } as React.RefObject<GameCanvasHandle | null>;
+    const view = await render(
+      <Controls
+        canvasRef={ref}
+        scale={1}
+        isLiveRun
+        isPaused={false}
+        onPause={jest.fn()}
+        onResume={jest.fn()}
+        onNewGame={jest.fn()}
+      />
+    );
+    mockPan.current.onBegin?.({ y: DRAG_Y, translationX: 0 });
+    // No onChange: the library dropped every move of a 120 px drag.
+    mockPan.current.onEnd?.({ y: DRAG_Y, translationX: -120 });
+    mockPan.current.onFinalize?.({ translationX: -120 });
+    expect(shipStuckCalls()).toHaveLength(0); // held, not uploaded mid-run
+    await view.unmount();
+    expect(shipStuckCalls()).toHaveLength(1);
+    expect(shipStuckCalls()[0]![1].tags.kind).toBe("noChange");
+  });
+
+  it("a delivered drag ends silently", async () => {
+    const t = await setupRerender(1);
+    t.begin();
+    t.moveTo(200);
+    t.release(200);
+    expect(flushShipStuckReport()).toBe(false);
+  });
+
+  it("unmounting mid-drag (no onFinalize) forgets the drag", async () => {
+    const canvas = new FakeCanvas();
+    const ref = { current: canvas.handle } as React.RefObject<GameCanvasHandle | null>;
+    const view = await render(
+      <Controls
+        canvasRef={ref}
+        scale={1}
+        isLiveRun
+        isPaused={false}
+        onPause={jest.fn()}
+        onResume={jest.fn()}
+        onNewGame={jest.fn()}
+      />
+    );
+    mockPan.current.onBegin?.({ y: DRAG_Y, translationX: 0 });
+    mockPan.current.onChange?.({ y: DRAG_Y, translationX: 300 });
+    await view.unmount();
+    // A late end for that drag (or the next screen's first check) finds no drag to judge: had
+    // the tracker kept it, this end 900 px past its last move would be held as noChange.
+    noteShipDragEnd(-600, canvas.state);
+    expect(flushShipStuckReport()).toBe(false);
   });
 });
