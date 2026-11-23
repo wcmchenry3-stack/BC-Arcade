@@ -31,6 +31,7 @@ import { pieceSprites } from "../../game/cascade/art/sprites";
 import { CAPSTONE_TIER } from "../../game/cascade/tiers";
 import { binPicture } from "../../game/cascade/art/bin";
 import { CASCADE_MOTION, type CascadeLidPalette } from "../../theme/theme.cascade";
+import { DEFAULT_FRUIT_SET, FRUIT_SETS } from "../../theme/fruitSets";
 import { buildChainGlyphs } from "../../game/cascade/render/chainGlyphs";
 import type { BoardMotionValues } from "./useBoardMotion";
 import { useCelebrationStyle } from "./useCelebrationStyle";
@@ -126,6 +127,11 @@ function CascadeBoard({
   const glyphs = useMemo(() => (sprites ? buildChainGlyphs() : null), [sprites]);
   const tones = CASCADE_MOTION.tones[setId === "cosmos" ? "cosmos" : "fruits"];
   const motionPalette = CASCADE_MOTION.themes[theme];
+  // #4082: the merge burst's colour per tier, the piece set's own (what `MergeBurst` drew with).
+  const burstColors = useMemo(
+    () => (FRUIT_SETS[setId] ?? FRUIT_SETS[DEFAULT_FRUIT_SET])?.fruits.map((f) => f.color) ?? [],
+    [setId]
+  );
   const {
     events,
     stamps,
@@ -159,6 +165,7 @@ function CascadeBoard({
           danger: danger.value,
           reduceMotion,
           tones,
+          burstColors,
           palette: motionPalette,
           ptPerUnit: scale,
           glyphs,
@@ -192,6 +199,7 @@ function CascadeBoard({
     hasMotion,
     reduceMotion,
     tones,
+    burstColors,
     motionPalette,
     scale,
     glyphs,

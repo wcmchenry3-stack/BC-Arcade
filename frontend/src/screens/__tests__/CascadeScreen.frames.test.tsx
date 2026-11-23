@@ -1,7 +1,8 @@
 /**
  * #2960: the physics loop does not drive React. Per-frame data goes to a shared value read by the
  * board's Skia Picture, so stepping the engine commits nothing unless something the React tree
- * shows changes (the score, a merge burst, the queue after a drop).
+ * shows changes (the score, the queue after a drop). Since #4082 a merge is no exception: its
+ * burst is drawn on the board, so a 12-merge chain commits nothing per merge.
  *
  * Commits are counted with React's `Profiler` around the whole screen. Before #2960 the loop
  * called `setScore` / `setPieces` / `setDangerRatio` / `setCanDrop` every frame: 60 frames of
@@ -9,6 +10,7 @@
  * fresh pieces array per frame, so `setPieces` never bailed out).
  */
 import React, { Profiler } from "react";
+import { AccessibilityInfo } from "react-native";
 import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import CascadeScreen from "../CascadeScreen";
@@ -249,5 +251,66 @@ describe("CascadeScreen per-frame commits (#2960)", () => {
     score = 8;
     await runFrames(10);
     expect(read()).toMatchObject({ commitsPerSec: 1 });
+  });
+});
+
+// #4082: a 12-merge chain stalled a phone for ~1 s: each merge mounted a React `MergeBurst` view
+// (a commit of the whole screen) and each one's end committed again. The burst is drawn on the
+// board now, and the screen reader hears one merge per step at most.
+describe("CascadeScreen during a big chain (#4082)", () => {
+  const merge = (result: number, id: number) => ({
+    type: "merge",
+    result,
+    x: 100 + id * 10,
+    y: 400,
+    id,
+  });
+  const settled = () => ({
+    pieces: [piece(1, 0, 120, 500, true)],
+    score: 0,
+    gameOver: false,
+    dangerRatio: 0,
+    canDrop: true,
+  });
+  /** Burst views: anything still rendered with MergeBurst's `onDone`. */
+  const burstViews = (renderer: ReturnType<typeof create>) =>
+    renderer.root.findAll((n) => n.props.onDone !== undefined).length;
+
+  it("12 merges in one frame: at most 2 commits, no view per merge, 1 announcement", async () => {
+    mockMakeState = settled;
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    const { renderer, commits } = await mountCounted();
+    commits.count = 0;
+    announce.mockClear();
+    mockStep.mockReturnValueOnce({
+      events: Array.from({ length: 12 }, (_, i) => merge(1 + (i % 9), 100 + i)),
+    });
+    await runFrames(1);
+    expect(announce).toHaveBeenCalledTimes(1);
+    // The highest piece made that step (tier 9), with the single-merge string.
+    expect(announce.mock.calls[0]![0]).toMatch(/Pineapple/);
+    expect(burstViews(renderer)).toBe(0);
+    // …and nothing more as the bursts would have ended (MergeBurst's 1.1 s fade).
+    await runFrames(90);
+    expect(commits.count).toBeLessThanOrEqual(2);
+    expect(burstViews(renderer)).toBe(0);
+  });
+
+  it("1 merge a frame for 12 frames: at most 2 commits, at most 1 announcement a frame", async () => {
+    mockMakeState = settled;
+    const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    const { renderer, commits } = await mountCounted();
+    commits.count = 0;
+    announce.mockClear();
+    for (let i = 0; i < 12; i++) {
+      mockStep.mockReturnValueOnce({ events: [merge(1 + (i % 9), 200 + i)] });
+      const before = announce.mock.calls.length;
+      await runFrames(1);
+      expect(announce.mock.calls.length - before).toBeLessThanOrEqual(1);
+      expect(burstViews(renderer)).toBe(0);
+    }
+    expect(announce).toHaveBeenCalledTimes(12);
+    await runFrames(90);
+    expect(commits.count).toBeLessThanOrEqual(2);
   });
 });

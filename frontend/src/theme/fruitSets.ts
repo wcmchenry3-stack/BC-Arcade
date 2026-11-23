@@ -22,7 +22,7 @@ export interface FruitSet {
 const SET_DEFS: Record<TierSetId, Omit<FruitSet, "fruits"> & { fruits: SetFruit[] }> = {
   fruits: {
     id: "fruits",
-    // The colours are live: they colour each merge's burst (`CascadeScreen`: `mergeBursts.add`), so
+    // The colours are live: they colour each merge's burst (the board's `burstColors`, #4082), so
     // keep them equal to the fruit's `CASCADE_PIECE_COLORS` entry. There are no emoji: the art is
     // code-drawn, and the owner wants no stand-in emoji for the pieces Unicode lacks (#3964).
     label: "Fruits",

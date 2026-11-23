@@ -3,8 +3,11 @@
  * over) and the pure functions every motion reads them through.
  */
 import {
+  BURST_SPRING_MASS,
   DANGER_IDLE_PHASE,
   MOTION,
+  burstAlpha,
+  burstScale,
   chainPt,
   chainStep,
   chipAnimationMs,
@@ -88,7 +91,7 @@ describe("chain pacing (one step per chainStepMs, never ahead of the engine)", (
   });
 
   it("a chain link keeps the clock running for its counter", () => {
-    expect(mergeLifetimeMs(1, false)).toBe(MOTION.merge.confettiMs);
+    expect(mergeLifetimeMs(1, false)).toBe(MOTION.burst.fadeMs); // the burst outlasts the pop (#4082)
     expect(mergeLifetimeMs(4, false)).toBe(80 * 2 + 280 + 800 + 200);
     expect(mergeLifetimeMs(1, true)).toBe(MOTION.calm.mergeFlashMs);
   });
@@ -247,6 +250,54 @@ describe("helpers", () => {
       const v = hash01(i, i * 3);
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
+    }
+  });
+});
+
+// #4082: the merge burst, drawn on the board, follows the Reanimated spring and fade it ran as a view.
+describe("merge burst (MergeBurst's spring and fade, worked out from the clock)", () => {
+  const B = MOTION.burst;
+
+  /** Reanimated's withSpring as a physical spring: m·x'' = -k·(x - to) - c·x', from rest. */
+  function integrated(ms: number): number {
+    const dt = 0.0001;
+    let x = B.fromScale;
+    let v = 0;
+    for (let t = 0; t < ms / 1000 - 1e-9; t += dt) {
+      const a = (-B.stiffness * (x - B.toScale) - B.damping * v) / BURST_SPRING_MASS;
+      v += a * dt;
+      x += v * dt;
+    }
+    return x;
+  }
+
+  it("uses Reanimated 4's default spring mass (MergeBurst set only damping and stiffness)", () => {
+    expect(BURST_SPRING_MASS).toBe(4);
+  });
+
+  it("springs from fromScale towards toScale with the spring's shape", () => {
+    expect(burstScale(0)).toBe(B.fromScale);
+    expect(burstScale(-5)).toBe(B.fromScale);
+    for (const ms of [50, 200, 500, 800, 1100, 2000]) {
+      expect(burstScale(ms)).toBeCloseTo(integrated(ms), 2);
+    }
+    // Under-damped: it overshoots toScale before it settles, and it ends there.
+    let peak = 0;
+    for (let ms = 0; ms <= 3000; ms += 10) peak = Math.max(peak, burstScale(ms));
+    expect(peak).toBeGreaterThan(B.toScale);
+    expect(burstScale(10_000)).toBeCloseTo(B.toScale, 3);
+  });
+
+  it("fades from its opacity to nothing over fadeMs (in-out quad, withTiming's default)", () => {
+    expect(burstAlpha(0)).toBe(B.opacity);
+    expect(burstAlpha(B.fadeMs / 2)).toBeCloseTo(B.opacity / 2, 6);
+    expect(burstAlpha(B.fadeMs / 4)).toBeCloseTo(B.opacity * (1 - 2 * 0.25 ** 2), 6);
+    expect(burstAlpha(B.fadeMs)).toBe(0);
+    expect(burstAlpha(-1)).toBe(0);
+    let prev = Infinity;
+    for (let ms = 0; ms < B.fadeMs; ms += 25) {
+      expect(burstAlpha(ms)).toBeLessThanOrEqual(prev);
+      prev = burstAlpha(ms);
     }
   });
 });

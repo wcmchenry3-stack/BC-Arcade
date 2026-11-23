@@ -38,12 +38,12 @@ it("publishes pushed moments once, stamps them and runs the clock until they end
   await advance(100);
   const { events, stamps, clock } = m.values;
   expect(slotAge(events.value, stamps.value, 0, clock.value)).toBeGreaterThan(50);
-  // It stops after the pop's lifetime: the clock no longer moves.
-  await advance(MOTION.merge.confettiMs + 200);
+  // It stops after the merge's lifetime (its burst, #4082): the clock no longer moves.
+  await advance(MOTION.burst.fadeMs + 200);
   const stopped = m.values.clock.value;
   await advance(500);
   expect(m.values.clock.value).toBe(stopped);
-  expect(stopped).toBeGreaterThanOrEqual(MOTION.merge.confettiMs);
+  expect(stopped).toBeGreaterThanOrEqual(MOTION.burst.fadeMs);
 });
 
 it("the danger blink keeps the clock and phase running while the count runs, not under Reduce Motion", async () => {
@@ -76,7 +76,7 @@ it("after a new game (clear) the clock goes idle again and stays frozen", async 
   const m = result.current;
   m.push(MOTION_KIND.merge, 100, 200, 3, 7, 1);
   await act(async () => m.publish());
-  await advance(MOTION.merge.confettiMs + 200);
+  await advance(MOTION.burst.fadeMs + 200);
   const idle = m.values.clock.value;
   await advance(300);
   expect(m.values.clock.value).toBe(idle);
