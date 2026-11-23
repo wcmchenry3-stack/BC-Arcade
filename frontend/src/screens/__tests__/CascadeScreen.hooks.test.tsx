@@ -98,6 +98,7 @@ type Hooks = {
   __cascade_setupNearLid?: () => void;
   __cascade_fillBin?: () => void;
   __cascade_setupWin?: () => void;
+  __cascade_setupStorm?: () => void;
 };
 const hooks = globalThis as typeof globalThis & Hooks;
 const HOOK_NAMES = [
@@ -113,6 +114,7 @@ const HOOK_NAMES = [
   "__cascade_setupNearLid",
   "__cascade_fillBin",
   "__cascade_setupWin",
+  "__cascade_setupStorm",
 ] as const;
 
 async function mount() {
@@ -369,6 +371,27 @@ describe("test controls (#3719)", () => {
       await run(() => hooks.__cascade_setupWin!());
       expect(mockEngine.restore).toHaveBeenLastCalledWith(
         cascadeSetup("win").pieces,
+        expect.any(Number)
+      );
+    });
+
+    // #4082: the big chain on a device (Maestro demo-storm.yaml).
+    it("the storm button and hook restore the merge-storm pile, played live", async () => {
+      await mount();
+      expect(screen.getByTestId("cascade-test-storm")).toBeTruthy();
+      mockEngine.step.mockClear();
+      await act(async () => {
+        fireEvent.press(screen.getByTestId("cascade-test-storm"));
+      });
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("storm").pieces,
+        expect.any(Number)
+      );
+      expect(mockEngine.step).not.toHaveBeenCalled(); // no fast-forward: the storm plays live
+      mockEngine.restore.mockClear();
+      await run(() => hooks.__cascade_setupStorm!());
+      expect(mockEngine.restore).toHaveBeenLastCalledWith(
+        cascadeSetup("storm").pieces,
         expect.any(Number)
       );
     });

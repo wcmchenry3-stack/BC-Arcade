@@ -8,7 +8,8 @@
  * landing dust and the chain counter. With no motion (`null`), the board draws exactly as before.
  *
  * Cost (per frame, only while a moment plays): a merge pop is 14 draws (flash, ring, 12 confetti
- * dots), so 56 at the peak of a 4-chain; dust is 6 dots per landing; the counter 2 paths per glyph
+ * dots), so 56 at the peak of a 4-chain, plus 1 for its burst disc (#4082: 1.1 s, so up to 12
+ * discs through a 12-chain; bounded by the ring's `MOTION_SLOTS`); dust is 6 dots per landing; the counter 2 paths per glyph
  * plus up to 6 dots; the danger blink 2; game over 2. No blur, no gradient, no path built per
  * frame (the glyphs are built once, `chainGlyphs.ts`), one reused paint.
  */
@@ -29,6 +30,8 @@ import {
 import { LID_LINE, SPAWNER } from "../lidVisuals";
 import {
   MOTION,
+  burstAlpha,
+  burstScale,
   chainPt,
   chainStep,
   clamp01,
@@ -48,6 +51,7 @@ import {
   type SpawnerArrival,
 } from "../motion";
 import { MOTION_FIELD, MOTION_KIND, MOTION_SLOTS, MOTION_STRIDE, slotAge } from "../motionLog";
+import { CAPSTONE_TIER } from "../tiers";
 import type { BoardAim } from "./drawAim";
 
 /** The chain counter's glyphs (`chainGlyphs.ts`): centre-line paths in a 1-high em box. */
@@ -71,6 +75,11 @@ export interface BoardMotion {
   readonly reduceMotion: boolean;
   /** Per tier: the art's tones (the pop, the confetti, the counter's outline). */
   readonly tones: readonly CascadeMotionTone[];
+  /**
+   * Per tier: the merge burst's colour (#4082, the piece set's `color`, as `MergeBurst` used).
+   * Absent: the tone's base colour.
+   */
+  readonly burstColors?: readonly string[];
   readonly palette: CascadeMotionThemePalette;
   /** pt per world px (the board's scale): the counter is sized in pt. */
   readonly ptPerUnit: number;
@@ -375,7 +384,31 @@ function drawDust(
   }
 }
 
-/** The merge pops and the landing dust, over the pieces. */
+/**
+ * The merge burst (#2960's `MergeBurst`, on the board since #4082): a disc of `MOTION.burst.size`
+ * pt in the piece's colour, springing out from the merge point and fading. None under Reduce
+ * Motion, and none for the capstone, whose merge the win's celebration replaces (#3699).
+ */
+function drawBurst(
+  canvas: SkCanvas,
+  cache: MotionCache,
+  motion: BoardMotion,
+  x: number,
+  y: number,
+  tier: number,
+  age: number
+): void {
+  "worklet";
+  if (motion.reduceMotion || tier >= CAPSTONE_TIER || !(motion.ptPerUnit > 0)) return;
+  const alpha = burstAlpha(age);
+  if (alpha <= 0) return;
+  const hex = motion.burstColors?.[tier] ?? toneOf(motion, tier)?.b;
+  if (!hex) return;
+  const r = (MOTION.burst.size / 2 / motion.ptPerUnit) * burstScale(age);
+  canvas.drawCircle(x, y, r, fill(cache, hex, alpha));
+}
+
+/** The merge pops (each over its burst) and the landing dust, over the pieces. */
 export function drawMergeMotion(
   canvas: SkCanvas,
   motion: BoardMotion | null,
@@ -400,6 +433,7 @@ export function drawMergeMotion(
       drawDust(canvas, cache, motion, x, y, r, id, age);
       continue;
     }
+    drawBurst(canvas, cache, motion, x, y, tier, age);
     const tone = toneOf(motion, tier);
     if (tone && age < MOTION.merge.confettiMs)
       drawPop(canvas, cache, motion, x, y, r, tone, id, age);

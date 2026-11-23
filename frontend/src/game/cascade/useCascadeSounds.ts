@@ -4,16 +4,76 @@
  * session), driven by the pacer (`soundPacer.ts`). The frequent sounds get their player at mount
  * (8, see `LAZY_CASCADE_SOUNDS`); the rest on their first play, or ahead of it when they become
  * likely: the win and the capstone's merge-t11 once a tier-10 piece (one below the capstone) is on
- * the board (`nearWin`, the celebration's pre-warm trigger), danger and game over when the lid count first runs. A piece-set switch releases the
+ * the board (`nearWin`, the celebration's pre-warm trigger), danger and game over when the lid count first runs, and every sound
+ * a chain can play (`CHAIN_WARM_SOUNDS`, #4082: merges t4-t11, chain steps ×3 up, the win) in idle
+ * time `CHAIN_WARM_DELAY_MS` after mount (or after an unmute: never while muted), one per idle
+ * slice, so a chain after that creates no player as it runs. A chain in the first seconds after
+ * the mount can still create a lazy one (the `nearWin` warm-up stays for a tier-10 piece that
+ * comes sooner). A piece-set switch releases the
  * old set's players and takes the new set's. Silent while the game sound is muted
  * (`useSoundSettings`), sounds already waiting included; waiting sounds are dropped on unmount.
  */
 import { useEffect, useState } from "react";
 import { useSoundSettings } from "../_shared/SoundContext";
 import { acquireSound, type SoundHold } from "../_shared/soundPool";
-import { CASCADE_SOUNDS, LAZY_CASCADE_SOUNDS, soundSetFor, type CascadeSoundName } from "./sounds";
+import {
+  CASCADE_SOUNDS,
+  CHAIN_WARM_SOUNDS,
+  LAZY_CASCADE_SOUNDS,
+  soundSetFor,
+  type CascadeSoundName,
+} from "./sounds";
 import type { TierSetId } from "./tiers";
 import { createSoundPacer, type SoundPacer } from "./soundPacer";
+
+/**
+ * The chain's players are created this long after the screen mounts (or the set switches): after
+ * the first paint and the mount's own work, never on the frame path.
+ */
+export const CHAIN_WARM_DELAY_MS = 1500;
+/** Each idle slice waits at most this long for idle time before it runs anyway. */
+const IDLE_TIMEOUT_MS = 500;
+
+/** Runs `task` when the JS thread is idle (or after the deadline); returns a cancel. */
+function scheduleIdle(task: () => void): () => void {
+  const g = globalThis as {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+  };
+  if (typeof g.requestIdleCallback === "function") {
+    const id = g.requestIdleCallback(task, { timeout: IDLE_TIMEOUT_MS });
+    return () => g.cancelIdleCallback?.(id);
+  }
+  const id = setTimeout(task, 0);
+  return () => clearTimeout(id);
+}
+
+/**
+ * Creates `names`' players with `warm`, one per idle slice, starting `delayMs` from now; returns
+ * a cancel (an unmount or a set switch stops it).
+ */
+function warmInIdle(
+  names: readonly CascadeSoundName[],
+  warm: (name: CascadeSoundName) => void,
+  delayMs: number
+): () => void {
+  let cancelIdle: (() => void) | null = null;
+  let i = 0;
+  const next = () => {
+    cancelIdle = null;
+    const name = names[i++];
+    if (name === undefined) return;
+    warm(name);
+    cancelIdle = scheduleIdle(next);
+  };
+  const timer = setTimeout(() => {
+    cancelIdle = scheduleIdle(next);
+  }, delayMs);
+  return () => {
+    clearTimeout(timer);
+    cancelIdle?.();
+  };
+}
 
 /** What the pacer's player reads at play time; written by the hook's effects. */
 interface PlayerState {
@@ -98,14 +158,24 @@ export function useCascadeSounds(setId: string, reduceMotion = false, nearWin = 
 
   useEffect(() => player.setMuted(muted), [player, muted]);
   useEffect(() => player.take(set), [player, set]);
+  // A chain's players, ahead of the first big chain (#4082): in idle time, after the mount. Not
+  // while the game sound is muted (nothing would play them); an unmute starts it.
+  useEffect(
+    () =>
+      muted
+        ? undefined
+        : warmInIdle(CHAIN_WARM_SOUNDS, (name) => player.warm(name), CHAIN_WARM_DELAY_MS),
+    [player, set, muted]
+  );
   useEffect(() => pacer.setCalm(reduceMotion), [pacer, reduceMotion]);
   // The win is likely: create its player now, not at the winning merge (a set switch re-runs it).
+  // Not while muted (nothing would play it); an unmute warms it.
   useEffect(() => {
-    if (nearWin) {
+    if (nearWin && !muted) {
       player.warm("win");
       player.warm("merge-t11");
     }
-  }, [player, nearWin, set]);
+  }, [player, nearWin, set, muted]);
   useEffect(() => () => pacer.reset(), [pacer]);
   return pacer;
 }

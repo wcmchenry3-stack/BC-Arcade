@@ -15,6 +15,7 @@ import { useAimKeyboard } from "./useAimKeyboard";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { AIM_STATE } from "../../game/cascade/aim";
+import { SPAWNER } from "../../game/cascade/lidVisuals";
 
 export interface CascadeAimAreaProps {
   readonly style: ViewStyle & { width: number; height: number };
@@ -37,11 +38,13 @@ export default function CascadeAimArea({
   children,
 }: CascadeAimAreaProps) {
   const { values, wake } = motion;
-  // A refused aimed release (the cooldown, the lid): the piece glides back to the ring, as on a
-  // cancel (review N4). The UI thread stamps the start (`aimAt` NaN: "now", `useBoardMotion`).
+  // A refused release, tap or aimed (the cooldown, the lid): the piece, drawn at the finger from
+  // the press, glides back to the ring, as on a cancel (review N4, #4081). The UI thread stamps
+  // the start (`aimAt` NaN: "now", `useBoardMotion`).
   const drop = useCallback(
-    (x: number, aimed: boolean) => {
-      if (onDrop(x) || !aimed) return;
+    (x: number) => {
+      // A drop at the ring's centre has nowhere to glide back from: the piece is already there.
+      if (onDrop(x) || x === SPAWNER.cx) return;
       values.aimFromX.set(x);
       values.aimState.set(AIM_STATE.cancelled);
       values.aimAt.set(Number.NaN);
@@ -53,8 +56,6 @@ export default function CascadeAimArea({
     values,
     wake,
     scale,
-    width: style.width,
-    height: style.height,
     enabled,
     onDrop: drop,
     onDragStart,

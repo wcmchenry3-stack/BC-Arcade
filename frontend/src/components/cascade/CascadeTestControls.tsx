@@ -17,6 +17,7 @@
  * | `cascade-test-near-lid`    | pile over the lid, clock ring draining                 |
  * | `cascade-test-fill-bin`    | bin filled above the lid; the lid ends the game        |
  * | `cascade-test-win`         | two tier-10 pieces about to make the capstone: the win  |
+ * | `cascade-test-storm`       | merge-storm pile: ~15 merges at once, a big chain #4082 |
  * | `cascade-test-game-over`   | forces game over (an extra; the loss demo uses fill)   |
  *
  * The win's result card is #3699: today the win stops play (no more drops) and shows nothing.
@@ -32,6 +33,8 @@ export interface CascadeTestControlsProps {
   onNearLid: () => void;
   onFillBin: () => void;
   onWin: () => void;
+  /** #4082: the merge storm (a big chain). */
+  onStorm: () => void;
   onForceGameOver: () => void;
   /** Drops so far (#3928): Maestro reads it to see an aimed drop land and a cancel not. */
   drops?: number;
@@ -42,6 +45,7 @@ export default function CascadeTestControls({
   onNearLid,
   onFillBin,
   onWin,
+  onStorm,
   onForceGameOver,
   drops = 0,
 }: CascadeTestControlsProps) {
@@ -68,6 +72,12 @@ export default function CascadeTestControls({
         color={colors.textMuted}
       />
       <TestButton id="cascade-test-win" label="win" onPress={onWin} color={colors.textMuted} />
+      <TestButton
+        id="cascade-test-storm"
+        label="storm"
+        onPress={onStorm}
+        color={colors.textMuted}
+      />
       <TestButton
         id="cascade-test-game-over"
         label="end"
@@ -117,6 +127,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "center",
     gap: 8,
     opacity: 0.35,

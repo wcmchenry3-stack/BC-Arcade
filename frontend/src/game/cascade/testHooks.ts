@@ -13,9 +13,11 @@
  * also shows `CascadeTestControls`, a row of buttons that run the demo set-ups below (#3719).
  * The set-ups are data (`cascadeSetup`): the screen restores `pieces` into the real engine and
  * seeds `queue`, so the engine's rules (the lid ends the game) are what play out. Added hooks:
- * `seedQueue`, `setupChain`, `setupNearLid`, `fillBin`, `setupWin` (#3904; #3920 ladder).
+ * `seedQueue`, `setupChain`, `setupNearLid`, `fillBin`, `setupWin` (#3904; #3920 ladder),
+ * `setupStorm` (#4082).
  */
 import { registerTestHooks } from "../_shared/testHooksRegistry";
+import { mergeStormPile } from "./stepBench";
 import { CAPSTONE_TIER, tierRadius } from "./tiers";
 import {
   FIXED_STEP_MS,
@@ -58,9 +60,11 @@ export interface CascadeHookDeps {
   fillBin: () => void;
   /** Restores two tier-10 pieces about to merge into the capstone: the win follows at once. */
   setupWin: () => void;
+  /** Restores the merge storm's pile (#4082): about 15 merges play out at once, a big chain. */
+  setupStorm: () => void;
 }
 
-export type CascadeSetupId = "chain" | "nearLid" | "fillBin" | "win";
+export type CascadeSetupId = "chain" | "nearLid" | "fillBin" | "win" | "storm";
 
 export interface CascadeSetup {
   /** Restored into the engine (`CascadeEngine.restore`), replacing the board. */
@@ -142,6 +146,11 @@ function wallTower(tiers: number[], side: "left" | "right"): CascadeSetup["piece
  *    middle and 43 px higher than where it would first touch it. It falls onto it, and the merge
  *    that makes the capstone is the win (about 0.2 s after the restore). Nothing is forced. The
  *    result card is #3699.
+ *  - `storm` (#4082): the step bench's merge-storm pile (`mergeStormPile`): a tower of distinct
+ *    tiers against each wall and a block of 16 cherries in contact between them. Not settled: the
+ *    cherries merge 8 at once, then 4, 2 and 1, live, in the first 36 frames (15 merges, the
+ *    chain counter up to about ×15; 2 x 8 + 4 x 4 + 2 x 8 + 16 = 64 points). The big-chain case
+ *    on a device.
  */
 export function cascadeSetup(id: CascadeSetupId): CascadeSetup {
   const mid = WORLD_WIDTH / 2;
@@ -166,6 +175,8 @@ export function cascadeSetup(id: CascadeSetupId): CascadeSetup {
         pieces: [...leftTower, ...wallTower([10, 9, 8, 7, 6], "right")],
         settleMs: 0,
       };
+    case "storm":
+      return { pieces: mergeStormPile(), settleMs: 0 };
     case "win": {
       const tier = CAPSTONE_TIER - 1;
       const r = tierRadius(tier);
@@ -200,5 +211,6 @@ export function registerCascadeTestHooks(deps: CascadeHookDeps): () => void {
     setupNearLid: deps.setupNearLid,
     fillBin: deps.fillBin,
     setupWin: deps.setupWin,
+    setupStorm: deps.setupStorm,
   });
 }

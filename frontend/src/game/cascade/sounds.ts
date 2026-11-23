@@ -92,7 +92,8 @@ export const CASCADE_SOUNDS: Readonly<
 /**
  * The rarer sounds (merges from tier 4 up, chain steps from ×3 up, danger, the win and the game
  * over, and the capstone's merge-t11, played with the win): their players are created on the first play, or pre-warmed when they become likely
- * (`useCascadeSounds`; docs/PERFORMANCE.md, "SFX players"). The other 8 (drop, the landings,
+ * (`useCascadeSounds`; docs/PERFORMANCE.md, "SFX players"); the chain's ones in idle time after
+ * mount (`CHAIN_WARM_SOUNDS`, #4082). The other 8 (drop, the landings,
  * merges t0-t3, the first chain step) are created when the screen mounts, so the sounds of every
  * turn have no creation latency.
  */
@@ -112,6 +113,30 @@ export const LAZY_CASCADE_SOUNDS: ReadonlySet<CascadeSoundName> = new Set<Cascad
   "win",
   "game-over",
 ]);
+
+/**
+ * The lazy sounds a chain can play (#4082): the merges from tier 4 up, the chain steps from ×3 up,
+ * and the win (a chain can end in the capstone; until #4082 the win and merge-t11 were created
+ * when a tier-10 piece first appeared, which can be mid-chain). A chain should not create players
+ * as it runs (each `createAudioPlayer` is a synchronous native call), so `useCascadeSounds`
+ * creates these in idle time a little after the screen mounts (and after a piece-set switch or an
+ * unmute), one per idle slice. A chain in the first seconds after the mount, before that has run,
+ * can still create one. Danger and the game over keep their own pre-warm (the lid count starting).
+ */
+export const CHAIN_WARM_SOUNDS: readonly CascadeSoundName[] = [
+  "merge-t4",
+  "merge-t5",
+  "merge-t6",
+  "merge-t7",
+  "merge-t8",
+  "merge-t9",
+  "merge-t10",
+  "chain-2",
+  "chain-3",
+  "chain-4",
+  "merge-t11",
+  "win",
+];
 
 /** The skin's sound set: Cosmos for the Cosmos pieces, Fruits otherwise. */
 export function soundSetFor(setId: string): TierSetId {

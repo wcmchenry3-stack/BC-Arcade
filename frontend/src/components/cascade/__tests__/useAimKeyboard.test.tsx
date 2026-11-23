@@ -84,14 +84,14 @@ describe("useAimKeyboard", () => {
     await m.press(key("ArrowRight"));
     await m.press(key(k));
     expect(m.onDrop).toHaveBeenCalledTimes(1);
-    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx + 2 * A.keyStep, true);
+    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx + 2 * A.keyStep);
     expect(m.v.aimState.value).toBe(AIM_STATE.released);
   });
 
   it("Space with no aim drops in the middle, as the accessibility action does", async () => {
     const m = await mount();
     await m.press(key(" "));
-    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx, false);
+    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx);
     expect(m.v.aimState.value).toBe(AIM_STATE.idle);
   });
 
@@ -112,7 +112,7 @@ describe("useAimKeyboard", () => {
     expect(e.prevented).toBe(true);
     await m.press(key(" "));
     expect(m.onDrop).toHaveBeenCalledTimes(1); // only the unaimed middle drop
-    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx, false);
+    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx);
   });
 
   it("Escape with no aim does nothing and is left to the page", async () => {
@@ -187,7 +187,7 @@ describe("useAimKeyboard", () => {
       m.v.aimState.set(AIM_STATE.pressed);
       m.v.aimState.set(AIM_STATE.idle); // the tap ended
       await m.press(key(" "));
-      expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx, false);
+      expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx);
     });
 
     it("Escape after a pointer aim does nothing", async () => {
@@ -222,7 +222,7 @@ describe("useAimKeyboard", () => {
     m.onDrop.mockReturnValue(false);
     await m.press(key("ArrowRight"));
     await m.press(key("Enter"));
-    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx + A.keyStep, true);
+    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx + A.keyStep);
   });
 
   describe("attach (the DOM node)", () => {

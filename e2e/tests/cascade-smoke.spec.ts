@@ -201,8 +201,9 @@ test.describe("Cascade on web (CanvasKit)", () => {
   });
 
   // #3928: press, drag and release. A click is a tap and drops at once; a drag drops where it
-  // was released; a drag that leaves the board drops nothing. Real mouse input, no test hook.
-  test("aiming: a tap drops, a drag drops at the moved x, a drag off the board cancels", async ({
+  // was released; a drag that leaves the board does not cancel (#4081): it drops at the finger's
+  // x. Real mouse input, no test hook.
+  test("aiming: a tap drops, a drag drops at the moved x, a drag off the board drops at its x", async ({
     page,
   }) => {
     await gotoCascade(page);
@@ -234,15 +235,16 @@ test.describe("Cascade on web (CanvasKit)", () => {
     expect(Math.abs((await newest()).x - 320)).toBeLessThan(25);
     await page.waitForTimeout(1200);
 
-    // A drag off the bottom of the board, released there: nothing drops.
+    // A drag off the bottom of the board, released there: it still drops, at the finger's x
+    // (world x 200, the board's middle).
     await page.mouse.move(at(0.5).x, at(0.5).y);
     await page.mouse.down();
     for (let i = 1; i <= 12; i++) {
       await page.mouse.move(at(0.5).x, at(0.5, 0.5 + (0.7 * i) / 12).y);
     }
     await page.mouse.up();
-    await page.waitForTimeout(1000);
-    expect((await getState(page)).fruitCount).toBe(2);
+    await expect.poll(async () => (await getState(page)).fruitCount).toBe(3);
+    expect(Math.abs((await newest()).x - 200)).toBeLessThan(25);
   });
 
   // #3934: keyboard aiming (web). Focus the board, Left / Right (Shift: bigger) move the aim, Space

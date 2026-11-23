@@ -5,7 +5,8 @@ appId: com.buffingchi.games
 # A slow swipe across the board is a press-drag-release: while the finger is down, the next piece
 # follows it above the lid and the guide (a dashed plumb line and a dashed ghost where it will
 # land) shows; the release drops it there. A second swipe ends below the board: leaving the board
-# cancels, so nothing drops. The drop count in the test row (`cascade-test-drops`) checks both;
+# does not cancel (#4081), so it clamps and drops at the finger's x, and the drop count goes to 2.
+# The drop count in the test row (`cascade-test-drops`) checks both;
 # the recording shows the guide. The board spans the same percentages on both platforms, so one
 # set of coordinates serves iOS and Android (unlike Solitaire's per-platform card targets).
 # A plain `tapOn` still drops at once (demo-drop.yaml, smoke.yaml).
@@ -38,11 +39,11 @@ tags:
     duration: 2000
 - waitForAnimationToEnd:
     timeout: 3000
-- takeScreenshot: cascade-demo-aim-cancelled
-# …and that the cancel dropped nothing.
+- takeScreenshot: cascade-demo-aim-offboard
+# …and that the off-board release dropped at the clamped x.
 - assertVisible:
     id: "cascade-test-drops"
-    text: "(drops )?1"
+    text: "(drops )?2"
 - assertNotVisible:
     id: "cascade-result-title"
 - stopRecording

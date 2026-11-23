@@ -8,7 +8,7 @@ import { createFramePacker, packFrame, type FramePiece } from "../frame";
 import type { BoardMotion, ChainGlyphs } from "../drawMotion";
 import { CASCADE_LID_PALETTE, CASCADE_MOTION } from "../../../../theme/theme.cascade";
 import { LID_LINE, SPAWNER } from "../../lidVisuals";
-import { DANGER_IDLE_PHASE, MOTION } from "../../motion";
+import { DANGER_IDLE_PHASE, MOTION, burstAlpha, burstScale } from "../../motion";
 import { AIM_STATE } from "../../aim";
 import {
   MOTION_KIND,
@@ -18,7 +18,7 @@ import {
   stampSlots,
   type MotionKind,
 } from "../../motionLog";
-import { tierDrawnRadius } from "../../tiers";
+import { CAPSTONE_TIER, tierDrawnRadius } from "../../tiers";
 
 jest.mock("@shopify/react-native-skia", () => {
   const makePaint = () => {
@@ -217,6 +217,78 @@ describe("merge pop", () => {
   });
 });
 
+// #4082: the burst MergeBurst drew as a React view per merge, now drawn with the pop.
+describe("merge burst", () => {
+  const frame = frameOf([], 0, -1);
+  const BURST = "#123456";
+  const burstColors = Array.from({ length: CAPSTONE_TIER + 1 }, (_, t) =>
+    t === 4 ? BURST : "#000000"
+  );
+  const merge: Ev = [MOTION_KIND.merge, 200, 400, 4, 9, 1];
+  const ptPerUnit = 0.85;
+  const discs = (m: BoardMotion) => circles(draw(frame, m)).filter((c) => c.p.color === BURST);
+
+  it("draws one disc in the piece set's colour at the merge, sized in pt and springing out", () => {
+    for (const ms of [30, 300, 900]) {
+      const d = discs(motionAt([merge], ms, { burstColors, ptPerUnit }));
+      expect(d).toHaveLength(1);
+      expect(d[0]!.x).toBe(200);
+      expect(d[0]!.y).toBe(400);
+      expect(d[0]!.p.style).toBe("fill");
+      expect(d[0]!.r).toBeCloseTo((MOTION.burst.size / 2 / ptPerUnit) * burstScale(ms), 6);
+      expect(d[0]!.p.alpha).toBeCloseTo(burstAlpha(ms), 6);
+    }
+    const early = discs(motionAt([merge], 30, { burstColors, ptPerUnit }))[0]!;
+    const later = discs(motionAt([merge], 300, { burstColors, ptPerUnit }))[0]!;
+    expect(later.r).toBeGreaterThan(early.r);
+    expect(later.p.alpha).toBeLessThan(early.p.alpha);
+  });
+
+  it("is drawn under the pop, and outlives its confetti until the fade ends", () => {
+    const ops = circles(draw(frame, motionAt([merge], 30, { burstColors, ptPerUnit })));
+    const disc = ops.findIndex((c) => c.p.color === BURST);
+    const ring = ops.findIndex((c) => c.p.style === "stroke" && c.p.color === tones[4]!.b);
+    expect(disc).toBeGreaterThanOrEqual(0);
+    expect(disc).toBeLessThan(ring);
+    expect(discs(motionAt([merge], MOTION.merge.confettiMs + 100, { burstColors }))).toHaveLength(
+      1
+    );
+    expect(discs(motionAt([merge], MOTION.burst.fadeMs, { burstColors }))).toHaveLength(0);
+  });
+
+  it("one disc per merge: twelve merges in one step are twelve discs", () => {
+    const twelve = Array.from({ length: 12 }, (_, i): Ev => [
+      MOTION_KIND.merge,
+      60 + i * 25,
+      400,
+      4,
+      100 + i,
+      i + 1,
+    ]);
+    expect(discs(motionAt(twelve, 100, { burstColors }))).toHaveLength(12);
+  });
+
+  it("none under Reduce Motion", () => {
+    expect(discs(motionAt([merge], 30, { burstColors, reduceMotion: true }))).toHaveLength(0);
+  });
+
+  it("none for the capstone (the celebration replaces it, #3699)", () => {
+    const colors = Array.from({ length: CAPSTONE_TIER + 1 }, () => BURST);
+    const capstone: Ev = [MOTION_KIND.merge, 200, 400, CAPSTONE_TIER, 9, 1];
+    expect(discs(motionAt([capstone], 30, { burstColors: colors }))).toHaveLength(0);
+    const below: Ev = [MOTION_KIND.merge, 200, 400, CAPSTONE_TIER - 1, 9, 1];
+    expect(discs(motionAt([below], 30, { burstColors: colors }))).toHaveLength(1);
+  });
+
+  it("without the set's colours it takes the tone's base colour", () => {
+    // At 700 ms the pop's ring and confetti (also in the base colour) are gone.
+    const d = circles(draw(frame, motionAt([merge], 700))).filter(
+      (c) => c.p.style === "fill" && c.p.color === tones[4]!.b
+    );
+    expect(d).toHaveLength(1);
+  });
+});
+
 describe("chain counter", () => {
   const frame = frameOf([], 0, -1);
   const chain: Ev[] = [
@@ -395,17 +467,17 @@ describe("aim guide (#3928)", () => {
   });
 
   it("the spawner piece leaves the ring for the finger; the ring stays centred", () => {
-    const ops = draw(frame, aimAt(AIM_STATE.aiming, MOTION.aim.pickUpMs, 300));
+    const ops = draw(frame, aimAt(AIM_STATE.aiming, MOTION.aim.inMs, 300));
     const t = ops.filter((o): o is Extract<Op, { k: "translate" }> => o.k === "translate");
     expect(t[t.length - 1]!.x).toBe(300);
     expect(circles(ops).some((c) => c.x === SPAWNER.cx && c.r === SPAWNER.ringRadius)).toBe(true);
   });
 
-  it("a press that is not yet a drag (a tap) draws no guide and keeps the piece in the ring", () => {
+  it("a press that is not yet a drag (a tap) draws no guide and the piece at the finger (#4081)", () => {
     const ops = draw(frame, aimAt(AIM_STATE.pressed, 50, 320));
     expect(guideLine(ops)).toBeUndefined();
     const t = ops.filter((o): o is Extract<Op, { k: "translate" }> => o.k === "translate");
-    expect(t[t.length - 1]!.x).toBe(SPAWNER.cx);
+    expect(t[t.length - 1]!.x).toBe(320);
   });
 
   it("the dashes march with the clock; under Reduce Motion they stand still and show at once", () => {
