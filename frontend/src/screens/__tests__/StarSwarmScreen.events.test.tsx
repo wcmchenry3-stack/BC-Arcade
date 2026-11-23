@@ -7,7 +7,7 @@
  */
 
 import { AccessibilityInfo } from "react-native";
-import { act, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { hapticPlayerHit, hapticWaveClear } from "../../components/starswarm/Controls";
@@ -246,6 +246,32 @@ describe("E2E test hooks", () => {
     );
     await view.unmount();
     expect(hooks.__starswarm_getPlayerX).toBeUndefined();
+  });
+
+  it("#4079: the safe-run button exists in a test build only", async () => {
+    delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    const plain = await renderRun();
+    expect(screen.queryByTestId("starswarm-test-safe-run")).toBeNull();
+    await plain.unmount();
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    await renderRun();
+    expect(screen.getByTestId("starswarm-test-safe-run")).toBeTruthy();
+  });
+
+  it("#4079: the safe-run button starts a run nothing can end", async () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    await renderRun();
+    const tickBefore = canvas.props.resetTick as number;
+    await fireEvent.press(screen.getByTestId("starswarm-test-safe-run"));
+    expect(canvas.props.resetTick).toBe(tickBefore + 1);
+    expect(canvas.props.devOptions).toMatchObject({
+      wave: 1,
+      infiniteLives: true,
+      devRun: true,
+      enemyFireDisabled: true,
+      asteroidsDisabled: true,
+    });
+    expect(canvas.props.isPaused).toBe(false);
   });
 
   it("removes the hooks when the screen goes away", async () => {

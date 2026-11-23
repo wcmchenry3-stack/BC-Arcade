@@ -68,6 +68,7 @@ import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFla
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
 import ShipXDebug from "../components/starswarm/ShipXDebug";
+import TestSafeRunControl from "../components/starswarm/TestSafeRunControl";
 import StarSwarmDevPanel, {
   DEFAULT_STARSWARM_DEV_OPTIONS,
   anyLiveSwitchOn,
@@ -635,6 +636,18 @@ function StarSwarmGame() {
     [startRun, rememberDifficulty, difficulty, rememberShip]
   );
 
+  // #4079: the test-build-only safe run (TestSafeRunControl): the dev panel's New Game with
+  // infinite lives, and the live switches for enemy missiles and asteroids turned off.
+  const handleTestSafeRun = useCallback(() => {
+    setDevOptions((o) => ({
+      ...o,
+      infiniteLives: true,
+      enemyFireDisabled: true,
+      asteroidsDisabled: true,
+    }));
+    handleDevNewGame({ wave: 1, infiniteLives: true });
+  }, [handleDevNewGame]);
+
   // Show difficulty picker — header "New Game", the pause overlay, and the
   // result card's Change Difficulty. The card steps aside for the picker.
   const handleRequestNewGame = useCallback(() => dispatchRun({ type: "OPEN_PICKER" }), []);
@@ -810,6 +823,9 @@ function StarSwarmGame() {
             <DevButton enabled={DEV_TOOLS} onPress={() => setDevOpen(true)} />
             {DEV_TOOLS && devOptions.frameReadout && <FrameStatsReadout read={readFrameStats} />}
             {areTestHooksEnabled() && <ShipXDebug read={readShipX} />}
+            {areTestHooksEnabled() && DEV_TOOLS && (
+              <TestSafeRunControl onPress={handleTestSafeRun} />
+            )}
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
