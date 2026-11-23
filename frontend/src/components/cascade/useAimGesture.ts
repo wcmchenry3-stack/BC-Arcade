@@ -5,7 +5,7 @@
  * The JS thread hears about a gesture only at its edges:
  *   - `wake` on a press and on a re-arm (the motion clock starts),
  *   - `onDragStart` once per gesture, when the finger first moves past the tap slop (the haptic),
- *   - `onDrop(x, aimed)` on a release that drops (the screen's existing drop path: its gates,
+ *   - `onDrop(x)` on a release that drops (the screen's existing drop path: its gates,
  *     queue, session, sound and cooldown all apply, as for a tap).
  *
  * Activation (review B1): a native `Pan` activates only after a move (iOS in `touchesMoved`;
@@ -38,8 +38,8 @@ export interface AimGestureOptions {
   readonly scale: number;
   /** False while play cannot take a drop at all (game over, a win). */
   readonly enabled: boolean;
-  /** A release that drops: the world x, and whether it was aimed (not a tap). */
-  readonly onDrop: (worldX: number, aimed: boolean) => void;
+  /** A release that drops (a tap or an aim): the world x. */
+  readonly onDrop: (worldX: number) => void;
   readonly onDragStart: () => void;
 }
 
@@ -109,7 +109,7 @@ export function useAimGesture({
           if (!success) return; // the system took the gesture over: a cancel, never a drop
           const state = aimState.get();
           const x = aimX.get();
-          if (aimReleaseDrops(state, x)) runOnJS(onDrop)(x, state === AIM_STATE.aiming);
+          if (aimReleaseDrops(state, x)) runOnJS(onDrop)(x);
         })
         .onFinalize((_e, success) => {
           "worklet";

@@ -15,6 +15,7 @@ import { useAimKeyboard } from "./useAimKeyboard";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { AIM_STATE } from "../../game/cascade/aim";
+import { SPAWNER } from "../../game/cascade/lidVisuals";
 
 export interface CascadeAimAreaProps {
   readonly style: ViewStyle & { width: number; height: number };
@@ -42,7 +43,8 @@ export default function CascadeAimArea({
   // the start (`aimAt` NaN: "now", `useBoardMotion`).
   const drop = useCallback(
     (x: number) => {
-      if (onDrop(x)) return;
+      // A drop at the ring's centre has nowhere to glide back from: the piece is already there.
+      if (onDrop(x) || x === SPAWNER.cx) return;
       values.aimFromX.set(x);
       values.aimState.set(AIM_STATE.cancelled);
       values.aimAt.set(Number.NaN);

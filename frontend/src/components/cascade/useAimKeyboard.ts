@@ -46,8 +46,8 @@ export interface AimKeyboardOptions {
   readonly wake: () => void;
   /** False while play cannot take input (game over, a win): the keys do nothing. */
   readonly enabled: boolean;
-  /** The screen's drop path (aim-area's `drop`): the world x, and whether it was aimed. */
-  readonly onDrop: (worldX: number, aimed: boolean) => void;
+  /** The screen's drop path (aim-area's `drop`): the world x. */
+  readonly onDrop: (worldX: number) => void;
 }
 
 /** The aim x one step on, kept between the walls (the drop clamps by the piece's radius). */
@@ -135,9 +135,9 @@ export function useAimKeyboard({ values, wake, enabled, onDrop }: AimKeyboardOpt
             aimState.set(AIM_STATE.released);
             aimAt.set(Number.NaN);
             wake();
-            onDrop(x, true);
+            onDrop(x);
           } else {
-            onDrop(SPAWNER.cx, false); // no aim: the middle, as the accessibility action does
+            onDrop(SPAWNER.cx); // no aim: the middle, as the accessibility action does
           }
           return;
         }

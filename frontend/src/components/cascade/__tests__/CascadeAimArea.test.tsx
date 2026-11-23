@@ -12,6 +12,7 @@ import CascadeAimArea from "../CascadeAimArea";
 import * as keyboardModule from "../useAimKeyboard";
 import { useBoardMotion } from "../useBoardMotion";
 import { AIM_STATE, aimDropX, aimPieceX } from "../../../game/cascade/aim";
+import { SPAWNER } from "../../../game/cascade/lidVisuals";
 import { MOTION } from "../../../game/cascade/motion";
 import { WALL_THICKNESS, WORLD_WIDTH } from "../../../game/cascade/constants";
 import { detectedGesture, type DetectorRender } from "../../../test-utils/mockScreenDeps";
@@ -313,11 +314,16 @@ it("a refused aimed release glides the piece back to the ring", async () => {
 it("a refused tap glides the piece back to the ring from the press x", async () => {
   const m = await mount();
   accept = false;
+  await m.press(60);
+  await m.release();
+  expect(m.onDrop).toHaveBeenCalledWith(60 / SCALE);
+  expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+  expect(m.motion.values.aimFromX.value).toBeCloseTo(60 / SCALE);
+
+  // At the ring's centre there is nowhere to glide back from: it just ends (no stale guide).
   await m.press(150);
   await m.release();
-  expect(m.onDrop).toHaveBeenCalledWith(150 / SCALE);
-  expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
-  expect(m.motion.values.aimFromX.value).toBeCloseTo(150 / SCALE);
+  expect(m.motion.values.aimState.value).not.toBe(AIM_STATE.cancelled);
 });
 
 it("an accepted tap just ends", async () => {
@@ -385,6 +391,14 @@ describe("keyboard through the area (#3934)", () => {
     await act(async () => node.l.keydown!(k("Enter") as never));
     expect(m.onDrop).toHaveBeenCalled();
     expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+  });
+
+  it("a refused no-aim drop (Enter with no aim) stays idle: no stale guide, no glide", async () => {
+    const { m, node } = await mountWeb();
+    accept = false;
+    await act(async () => node.l.keydown!(k("Enter") as never));
+    expect(m.onDrop).toHaveBeenCalledWith(SPAWNER.cx);
+    expect(m.motion.values.aimState.value).toBe(AIM_STATE.idle);
   });
 
   it("an accepted drop releases the aim at the moved x", async () => {
