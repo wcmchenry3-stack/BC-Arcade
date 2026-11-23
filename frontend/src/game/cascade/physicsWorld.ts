@@ -1,5 +1,6 @@
 /**
- * Cascade physics world (#3697): planck.js (Box2D), pinned at 1.4.2, in the engine's units.
+ * Cascade physics world (#3697): planck.js (Box2D), pinned at 1.5.1 (`package.json`; #3697 chose
+ * 1.4.2, bumped with the dependency group in #3981), in the engine's units.
  *
  * `engine.ts` owns the rules (merges, the lid, the drop gate, combos, the win); this module owns
  * the planck `World`, the bin, and the conversions. Box2D works in metres, seconds and kilograms
@@ -8,9 +9,9 @@
  * world pixels, velocities in px per fixed step (`FIXED_STEP_MS`), angles in radians, angular
  * velocity in rad per fixed step. One fixed step is `PLANCK_STEPS_PER_FIXED_STEP` planck steps (#3904).
  *
- * Circles are true circles (no polygon facets). planck 1.4.2's `PolygonShape.computeMass` has a
- * typo (the centre of mass of a dynamic polygon is wrong; fixed in 1.5): Cascade only has dynamic
- * circles and static boxes, so it does not apply. A convex dynamic piece would need 1.5.
+ * Circles are true circles (no polygon facets). planck 1.4.2's `PolygonShape.computeMass` had a
+ * typo (the centre of mass of a dynamic polygon was wrong; fixed in 1.5, so in the version used
+ * now). Cascade only has dynamic circles and static boxes, so it never applied.
  *
  * Determinism: planck's solver uses no randomness and no clock (its only `Math.random` is the
  * public `math.random` helper, never called here), so the same calls give the same world.

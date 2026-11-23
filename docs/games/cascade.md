@@ -104,7 +104,7 @@ Everything is drawn in code on the board's Skia Picture on the UI thread; nothin
 | Aiming          | Piece glides to the finger; dashed guide and ghost                                                                        | At the finger at once; guide shows and hides at once; dashes stand still |
 | Drop            | Next piece drops into the spawner (320 ms)                                                                                | Fades in                                                                 |
 | Land            | Damped squash (7 % for a Cherry, +1.2 % a tier, 13 % for the largest droppable piece) and 6 dust puffs                    | None (sound and haptic still play)                                       |
-| Merge           | Grow-in, `MergeBurst`, white flash, ring to 2x radius, 12 confetti dots                                                   | A short flash in place (200 ms); no burst, ring or confetti              |
+| Merge           | Grow-in, burst disc in the piece's colour (1.1 s), white flash, ring to 2x radius, 12 confetti dots                       | A short flash in place (200 ms); no burst, ring or confetti              |
 | Chain           | "xN" counter from the second link, paced 80 ms a link, pops and sparkles                                                  | Fades in once, then the number swaps                                     |
 | Danger          | Ring, red wash, lid line, square-wave blink                                                                               | No blink; a tick sound keeps the warning                                 |
 | Game over       | Pile dims, lid flashes twice, card at 1,000 ms                                                                            | Dim fades in 300 ms, steady red lid, card at 1,000 ms                    |
@@ -114,6 +114,7 @@ Everything is drawn in code on the board's Skia Picture on the UI thread; nothin
 - **The win celebration** is owner pick "A Spotlight with C's cheering face" (#3699); the timeline table, the clock and why it is stepped are in [The celebration and the win card](cascade-decisions.md#the-celebration-and-the-win-card-3699). **The win card** is the shared `GameResultModal` with outcome `win` ("You Win!", the score, New best, Merge score, Time bonus, Time, Best, View leaderboard, Play Again, Home). A loss card is outcome `ended` ("Game Over": the score, Best, Merges, Time; no bonus line). The card never covers the animation.
 - **Haptics** (iOS and Android only, no setting): land Light or Medium by tier; merge Medium, Heavy or double Heavy by tier; chain steps Light, Medium, Heavy; one Warning when the lid count passes 0.5; the win's Success is the card's. Paced and best-effort. Table in [Motion and haptics](cascade-decisions.md#motion-and-haptics-3701).
 - The danger blink never exceeds 3 flashes a second (WCAG 2.3.1).
+- **Big chains (#4082).** A merge makes no React update besides the score: the burst disc is drawn on the board with the pop (it was a React `MergeBurst` view per merge, which stalled a 12-merge chain for about a second on a phone). The chain's sound players are created in idle time about 1.5 s after the screen opens, so a chain creates none.
 
 ### 9. Save, resume and abandon
 
@@ -152,7 +153,7 @@ Cascade has no endpoints of its own: it uses the generic `/games` routes (the le
 
 - **Score:** `ScoreDisplay` is a native `Text` with a polite live region and the label "Score: N", outside the canvas.
 - **Board:** a wrapping `View` with role `image`, the label `a11y.board`, a hint and an "activate" action that drops in the middle (a double-tap). The pieces are not individually exposed.
-- **Announcements:** each merge is announced with the new piece's name (`cascade:event.merged`); the result card announces a win or a game over (it is the shared accessible modal).
+- **Announcements:** a merge is announced with the new piece's name (`cascade:event.merged`), at most once per game step (#4082): when a step makes several merges (a big chain), only the highest piece made that step is announced. The result card announces a win or a game over (it is the shared accessible modal).
 - **Preview chips and the piece-set toggle** are labelled accessible elements.
 - **Reduce Motion** (the shared `useReduceMotion`) selects the calm path listed in section 8; the physics itself still runs (see [section 14](#14-deviations-from-shared-standards)).
 - **Flashing:** at most 3 flashes a second.
