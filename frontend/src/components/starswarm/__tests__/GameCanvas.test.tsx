@@ -34,6 +34,7 @@ import { typography } from "../../../theme/typography";
 import * as hudStyle from "../../../game/starswarm/render/hudStyle";
 import type { StarSwarmState } from "../../../game/starswarm/types";
 import { nebulaBlobs } from "../../../game/starswarm/render/nebula";
+import { resetSentryThrottle } from "../../../game/_shared/sentryThrottle";
 import {
   CANVAS_TEST_H as H,
   CANVAS_TEST_W as W,
@@ -1510,5 +1511,37 @@ describe("Star Swarm GameCanvas (native) — Shield, Buddy and Lightning sounds 
     ref.current!.triggerPowerUp("buddy");
     await step();
     expect(onSoundCue.mock.calls.at(-1)).toEqual(["buddyIn"]);
+  });
+});
+
+describe("Star Swarm GameCanvas (native) — stuck ship (#4079)", () => {
+  beforeEach(() => resetSentryThrottle());
+  const shipStuckCalls = () =>
+    (Sentry.captureMessage as jest.Mock).mock.calls.filter((c) => c[0] === "starswarm.shipStuck");
+
+  it("setPlayerX ignores a non-finite X: the ship keeps the last good one", async () => {
+    const { ref } = await mount({ initialState: seeded() });
+    ref.current!.setPlayerX(100);
+    for (const bad of [NaN, Infinity, -Infinity]) ref.current!.setPlayerX(bad);
+    expect(ref.current!.getPlayerX()).toBe(100);
+    mockTick.mockImplementation((s: StarSwarmState, _dt: number, input: { playerX: number }) => {
+      expect(input.playerX).toBe(100);
+      return s;
+    });
+    await frames(3);
+  });
+
+  it("the frame loop reports an engine ship that is off the canvas, once", async () => {
+    const s = seeded();
+    await mount({ initialState: { ...s, player: { ...s.player, x: NaN } } });
+    await frames(60);
+    expect(shipStuckCalls()).toHaveLength(1);
+    expect(shipStuckCalls()[0]![1].tags).toMatchObject({ kind: "offCanvas", side: "unknown" });
+  });
+
+  it("a ship on the canvas sends nothing", async () => {
+    await mount({ initialState: seeded() });
+    await frames(60);
+    expect(shipStuckCalls()).toHaveLength(0);
   });
 });
