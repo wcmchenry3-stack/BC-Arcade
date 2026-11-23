@@ -165,7 +165,7 @@ describe("the piece and the guide over time", () => {
     expect(aimPieceX(pressed, 999, 0, 0, false, 15)).toBe(aimDropX(999, 15));
     expect(aimPieceX(aiming, 999, 0, 0, true, 15)).toBe(aimDropX(999, 15));
     expect(aimPieceX(cancelled, 0, 999, 0, false, 15)).toBe(aimDropX(999, 15));
-    // A cancelled tap (no start) stays in the ring.
+    // Defensive: a cancel with no recorded start (fromX not finite) stays in the ring.
     expect(aimPieceX(cancelled, 0, Number.NaN, 0, false, 15)).toBe(SPAWNER.cx);
   });
 

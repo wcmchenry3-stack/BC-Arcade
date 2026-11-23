@@ -217,7 +217,7 @@ it("a held press becomes aiming after the tap window, through the motion clock",
 // Review B1: a native Pan used to activate only after a move, so a still tap ended BEGAN →
 // FAILED (onFinalize(false) with no onEnd) and never dropped. With manual activation that order
 // cannot come from a single still finger any more; if it ever does (the system failed the gesture
-// before it activated), it is a cancel: nothing drops and the piece stays in the ring.
+// before it activated), it is a cancel: nothing drops and the piece glides back from the press.
 it("a press that fails before activating drops nothing and glides back from the press", async () => {
   const m = await mount();
   await act(() => m.pan().onBegin!({ x: 150, y: 200 }));
@@ -309,9 +309,19 @@ it("a refused aimed release glides the piece back to the ring", async () => {
   expect(Number.isFinite(m.motion.values.aimAt.value)).toBe(true); // stamped by the UI clock
 });
 
-it("a refused tap just ends (the piece never left the ring)", async () => {
+// #4081: the piece is at the finger from the press, so a refused tap glides back like a refused aim.
+it("a refused tap glides the piece back to the ring from the press x", async () => {
   const m = await mount();
   accept = false;
+  await m.press(150);
+  await m.release();
+  expect(m.onDrop).toHaveBeenCalledWith(150 / SCALE);
+  expect(m.motion.values.aimState.value).toBe(AIM_STATE.cancelled);
+  expect(m.motion.values.aimFromX.value).toBeCloseTo(150 / SCALE);
+});
+
+it("an accepted tap just ends", async () => {
+  const m = await mount();
   await m.press(150);
   await m.release();
   expect(m.motion.values.aimState.value).toBe(AIM_STATE.idle);

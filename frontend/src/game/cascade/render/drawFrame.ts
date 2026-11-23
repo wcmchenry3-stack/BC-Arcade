@@ -276,7 +276,8 @@ function drawSpawner(
   const r = hasPiece ? spawnerPieceRadius(radius) : SPAWNER.maxPieceRadius;
   const pieceOpacity = canDrop ? 1 : GHOST_FILL_OPACITY;
 
-  // #3928: from the first press the piece is at the finger, and glides back to the ring on a cancel (the ring stays centred).
+  // #3928: from the first press the piece is at the finger, and glides back to the ring on a
+  // cancel (the ring stays centred).
   const aim = motion?.aim ?? null;
   const px = aim
     ? aimPieceX(aim.state, aim.x, aim.fromX, aim.ms, motion?.reduceMotion === true, radius)

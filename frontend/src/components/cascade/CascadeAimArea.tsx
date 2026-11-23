@@ -37,11 +37,12 @@ export default function CascadeAimArea({
   children,
 }: CascadeAimAreaProps) {
   const { values, wake } = motion;
-  // A refused aimed release (the cooldown, the lid): the piece glides back to the ring, as on a
-  // cancel (review N4). The UI thread stamps the start (`aimAt` NaN: "now", `useBoardMotion`).
+  // A refused release, tap or aimed (the cooldown, the lid): the piece, drawn at the finger from
+  // the press, glides back to the ring, as on a cancel (review N4, #4081). The UI thread stamps
+  // the start (`aimAt` NaN: "now", `useBoardMotion`).
   const drop = useCallback(
-    (x: number, aimed: boolean) => {
-      if (onDrop(x) || !aimed) return;
+    (x: number) => {
+      if (onDrop(x)) return;
       values.aimFromX.set(x);
       values.aimState.set(AIM_STATE.cancelled);
       values.aimAt.set(Number.NaN);
