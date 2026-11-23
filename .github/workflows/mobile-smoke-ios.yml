@@ -12,8 +12,7 @@ name: Mobile Smoke — iOS
 #   - PRs into dev (#3547): only when the PR changes a native/iOS path
 #     (`native_ios` in .github/paths/game-paths.yml: frontend/ios/**,
 #     frontend/package.json + lockfile, app.json/app.config.*, this file,
-#     tools/ios_sim/**). Then the full suite for a shared/Maestro-infra change
-#     or a native change that matches no game, else the touched games (+ home).
+#     tools/ios_sim/**). Then the full suite (#4057).
 #     Any other PR into dev skips the job (about 77 min saved; JS-only game
 #     changes are covered by the Android leg), and the detect job's summary
 #     says why.
