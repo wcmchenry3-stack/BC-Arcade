@@ -66,9 +66,14 @@ test.describe("Mahjong — motion never holds up play (#3613)", () => {
     // A match, then the next pair at once: within 100 ms, while the first still flies.
     await tapAt(page, FOUR_AT[0]!);
     await tapAt(page, FOUR_AT[1]!);
-    const matched = Date.now();
     await tapAt(page, FOUR_AT[2]!);
-    expect(Date.now() - matched).toBeLessThan(100);
+    // The app's own clock (#4098): Playwright's round trips are not the app's latency. The
+    // canvas records, in test builds, the click event -> tap handled time and whether the
+    // first match's burst was still flying at that tap.
+    const board = page.getByRole("img", { name: BOARD });
+    await expect(board).toHaveAttribute("data-tap-seq", "3");
+    expect(await board.getAttribute("data-tap-burst")).toBe("true");
+    expect(Number(await board.getAttribute("data-tap-ms"))).toBeLessThan(100);
     await tapAt(page, FOUR_AT[3]!);
 
     // Both pairs count; the result card follows the win cascade.
