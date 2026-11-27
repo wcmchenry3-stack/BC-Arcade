@@ -28,6 +28,8 @@ export interface SerializedState {
   /** Replay entries recorded so far (#3288); absent on older saves. */
   entryCount?: number;
   replayRows?: number;
+  /** Play time banked so far, in ms (#4089); absent on older saves. */
+  accumulatedMs?: number;
 }
 
 /** Minimal structural validation — enough to catch truncated payloads
