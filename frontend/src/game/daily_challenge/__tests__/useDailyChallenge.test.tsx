@@ -1,5 +1,6 @@
 import { AppState, type AppStateStatus } from "react-native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useDailyChallenge } from "../useDailyChallenge";
 import type { DailyChallenge } from "../api";
 
@@ -50,6 +51,7 @@ beforeEach(() => {
   focusListeners.clear();
   appStateListener = undefined;
   mockNetwork.isOnline = true;
+  mockNetwork.isInitialized = true;
   // Pin the device to UTC so the local day is the UTC day.
   jest.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(0);
   jest.spyOn(AppState, "addEventListener").mockImplementation((_type, listener) => {
@@ -188,5 +190,32 @@ describe("useDailyChallenge across local midnight (#2924)", () => {
       appStateListener?.("active");
     });
     expect(result.current.phase).toBe("offline");
+  });
+});
+
+describe("useDailyChallenge before NetInfo reports (#4090)", () => {
+  it("makes no request until the network status is initialized, then exactly one", async () => {
+    mockNetwork.isInitialized = false;
+    const { result, rerender } = await renderHook(() => useDailyChallenge());
+    expect(mockGetDailyChallenge).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe("loading");
+
+    mockNetwork.isInitialized = true;
+    await rerender({});
+    await waitFor(() => expect(result.current.phase).toBe("ready"));
+    expect(mockGetDailyChallenge).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes no request when initialized offline", async () => {
+    await AsyncStorage.clear(); // no cached status from earlier tests: the local view is what shows
+    mockNetwork.isInitialized = false;
+    const { result, rerender } = await renderHook(() => useDailyChallenge());
+    expect(mockGetDailyChallenge).not.toHaveBeenCalled();
+
+    mockNetwork.isInitialized = true;
+    mockNetwork.isOnline = false;
+    await rerender({});
+    await waitFor(() => expect(result.current.phase).toBe("offline"));
+    expect(mockGetDailyChallenge).not.toHaveBeenCalled();
   });
 });
