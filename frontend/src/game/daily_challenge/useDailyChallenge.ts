@@ -87,7 +87,7 @@ function cacheUpcoming(day: string): void {
  */
 export function useDailyChallenge(): DailyChallengeResult {
   const navigation = useNavigation();
-  const { isOnline } = useNetwork();
+  const { isOnline, isInitialized } = useNetwork();
   const [held, setHeld] = useState<HeldChallenge | null>(null);
   // Current local day, re-read on foreground / focus / midnight so a rollover re-renders.
   const [today, setToday] = useState(() => localDayKey());
@@ -112,8 +112,11 @@ export function useDailyChallenge(): DailyChallengeResult {
 
   // Skipped while known offline — a doomed request would only add Sentry
   // "network failure" noise (#2430); reconnecting re-runs it via `isOnline`.
+  // Also skipped until NetInfo's first report (#4090): `isOnline` defaults to true,
+  // so a cold start offline would otherwise fire a doomed request. The card shows
+  // its loading phase meanwhile; `isInitialized` flipping re-runs the mount fetch.
   const refresh = useCallback(() => {
-    if (!isOnline || inFlight.current) return;
+    if (!isInitialized || !isOnline || inFlight.current) return;
     inFlight.current = true;
     const requestDay = localDayKey();
     // Push a just-finished game first or the server reports its goal as undone.
@@ -153,7 +156,7 @@ export function useDailyChallenge(): DailyChallengeResult {
           setRetryTick((n) => n + 1);
         }
       });
-  }, [isOnline]);
+  }, [isOnline, isInitialized]);
 
   // Re-read the day even when `refresh` cannot run (offline), so a held challenge
   // from yesterday stops reading as ready.
