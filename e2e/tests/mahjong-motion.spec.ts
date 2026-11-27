@@ -6,7 +6,7 @@
  *
  * Tiles are found by where they sit on the board, as a fraction of the board canvas's box
  * (the camera refits and moves the canvas as the board clears, so the box is read at the
- * instant of the click: `tapAt` over CDP, or `tapLive` inside the page). The
+ * instant of each click: `tapAt`, or `tapLive`, which reads it inside the page). The
  * fractions come from the app's own layout (`calculateMahjongLayout` for the Turtle on a
  * 390 x 844 phone), at the centre of each tile's face, which is about 6% of the board wide.
  */
@@ -42,32 +42,28 @@ async function tapAt(
 }
 
 /**
- * A click on the board at `at`, with the canvas's box read and the click dispatched in one
- * step inside the page. The camera eases toward the remaining tiles for ~350 ms after a match
- * (auto-fit; the board grows ~1.9x here), so a box measured by a separate round trip is stale
- * by the next tap: this maps the fraction onto the live box, as the app's own hit test does,
- * and costs a single round trip, so back-to-back taps stay inside the match's burst.
+ * A real click on the board at `at`, aimed at the live canvas box. The camera eases toward the
+ * remaining tiles for ~350 ms after a match (auto-fit; the board grows ~1.9x here), so a box
+ * measured earlier is stale: the target is computed in the page from the box as it is now, as
+ * the app's own hit test maps it, then clicked through the browser's input pipeline
+ * (`page.mouse.click`), so the event's `timeStamp`, and `data-tap-ms`, include any time the
+ * input waited behind a busy main thread. A synthetic `dispatchEvent` would hide that.
  */
 async function tapLive(
   page: Page,
   at: { fx: number; fy: number },
 ): Promise<void> {
-  await page.evaluate(
+  const { x, y } = await page.evaluate(
     ({ fx, fy, label }) => {
       const canvas = Array.from(document.querySelectorAll("canvas")).find((c) =>
         new RegExp(label, "i").test(c.getAttribute("aria-label") ?? ""),
       )!;
       const r = canvas.getBoundingClientRect();
-      canvas.dispatchEvent(
-        new MouseEvent("click", {
-          bubbles: true,
-          clientX: r.left + fx * r.width,
-          clientY: r.top + fy * r.height,
-        }),
-      );
+      return { x: r.left + fx * r.width, y: r.top + fy * r.height };
     },
     { ...at, label: BOARD.source },
   );
+  await page.mouse.click(x, y);
 }
 
 test.describe("Mahjong — motion never holds up play (#3613)", () => {
