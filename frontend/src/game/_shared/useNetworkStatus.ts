@@ -37,10 +37,18 @@ export function useNetworkStatus(): NetworkStatus {
       setStatus({ isOnline: toOnline(state), isInitialized: true });
     });
     // Also do an immediate fetch in case the listener hasn't fired yet.
-    NetInfo.fetch().then((state) => {
-      if (cancelled) return;
-      setStatus({ isOnline: toOnline(state), isInitialized: true });
-    });
+    NetInfo.fetch()
+      .then((state) => {
+        if (cancelled) return;
+        setStatus({ isOnline: toOnline(state), isInitialized: true });
+      })
+      .catch(() => {
+        // A failed fetch must not leave the status uninitialized forever: gated
+        // requests (#4090) would never run. Keep the optimistic `isOnline` and
+        // let a later listener event correct it.
+        if (cancelled) return;
+        setStatus((prev) => (prev.isInitialized ? prev : { ...prev, isInitialized: true }));
+      });
     return () => {
       cancelled = true;
       unsubscribe();
