@@ -8,6 +8,7 @@ type Listener = (state: NetInfoState) => void;
 // from inside the hoisted jest.mock factory.
 const mockListeners: Listener[] = [];
 let mockFetchResult: Partial<NetInfoState> = { isConnected: true, isInternetReachable: true };
+let mockFetchRejects = false;
 
 jest.mock("@react-native-community/netinfo", () => ({
   __esModule: true,
@@ -19,7 +20,10 @@ jest.mock("@react-native-community/netinfo", () => ({
         if (i !== -1) mockListeners.splice(i, 1);
       };
     },
-    fetch: () => Promise.resolve(mockFetchResult as NetInfoState),
+    fetch: () =>
+      mockFetchRejects
+        ? Promise.reject(new Error("netinfo unavailable"))
+        : Promise.resolve(mockFetchResult as NetInfoState),
   },
 }));
 
@@ -27,6 +31,14 @@ describe("useNetworkStatus", () => {
   beforeEach(() => {
     mockListeners.length = 0;
     mockFetchResult = { isConnected: true, isInternetReachable: true };
+    mockFetchRejects = false;
+  });
+
+  it("becomes initialized (still optimistically online) when the first fetch rejects (#4090)", async () => {
+    mockFetchRejects = true;
+    const { result } = await renderHook(() => useNetworkStatus());
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+    expect(result.current.isOnline).toBe(true);
   });
 
   it("starts online/uninitialized, becomes initialized after first event", async () => {

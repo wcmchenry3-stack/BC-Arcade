@@ -1,9 +1,11 @@
 /**
  * NetInfo-backed hook exposing live network connectivity state.
  *
- * `isOnline` is conservatively false until NetInfo reports a definite
- * online state. `isInitialized` flips true after the first NetInfo
- * event so UI can avoid flashing an "offline" banner at boot.
+ * Before NetInfo's first report `isOnline` is optimistically true (so UI does
+ * not flash an "offline" banner at boot) and `isInitialized` is false.
+ * `isInitialized` flips true after the first NetInfo event. Code that must not
+ * fire a request while possibly offline (e.g. at cold start) should gate on
+ * `isInitialized && isOnline`, not `isOnline` alone (#4090).
  */
 
 import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
@@ -35,10 +37,18 @@ export function useNetworkStatus(): NetworkStatus {
       setStatus({ isOnline: toOnline(state), isInitialized: true });
     });
     // Also do an immediate fetch in case the listener hasn't fired yet.
-    NetInfo.fetch().then((state) => {
-      if (cancelled) return;
-      setStatus({ isOnline: toOnline(state), isInitialized: true });
-    });
+    NetInfo.fetch()
+      .then((state) => {
+        if (cancelled) return;
+        setStatus({ isOnline: toOnline(state), isInitialized: true });
+      })
+      .catch(() => {
+        // A failed fetch must not leave the status uninitialized forever: gated
+        // requests (#4090) would never run. Keep the optimistic `isOnline` and
+        // let a later listener event correct it.
+        if (cancelled) return;
+        setStatus((prev) => (prev.isInitialized ? prev : { ...prev, isInitialized: true }));
+      });
     return () => {
       cancelled = true;
       unsubscribe();
