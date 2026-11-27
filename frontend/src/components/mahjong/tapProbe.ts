@@ -31,7 +31,10 @@ export function matchBurstActive(now: number = performance.now()): boolean {
   return areTestHooksEnabled() && now - lastMatchAt < MATCH_MS;
 }
 
-/** Test seam: forget any match. */
+/**
+ * Test seam: forget any match.
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
+ */
 export function resetMatchProbe(): void {
   lastMatchAt = Number.NEGATIVE_INFINITY;
 }
