@@ -89,9 +89,14 @@ test.describe("Yacht — zero confirm (#4092)", () => {
     await expect(
       page.getByRole("button", { name: /Sixes: scored, 18/ }),
     ).toBeVisible();
+    // Round 2 has no roll yet, so the still-open Ones reads "not available" (a scratched 0 would
+    // read "Ones: scored, 0").
     await expect(
-      page.getByRole("button", { name: /Ones: open/ }),
+      page.getByRole("button", { name: /Ones: not available/ }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Ones: scored/ }),
+    ).toHaveCount(0);
   });
 
   test("holding a die disarms", async ({ page }) => {
