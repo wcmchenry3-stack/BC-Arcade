@@ -15,6 +15,7 @@ import MahjongScreen from "../MahjongScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import * as mahjongStorage from "../../game/mahjong/storage";
 import * as mahjongEngine from "../../game/mahjong/engine";
+import * as tapProbe from "../../components/mahjong/tapProbe";
 import type { MahjongState } from "../../game/mahjong/types";
 import { detectedGesture } from "../../test-utils/mockScreenDeps";
 import type { DetectorRender } from "../../test-utils/mockScreenDeps";
@@ -293,6 +294,17 @@ describe("board gestures", () => {
     await pinchTo(0.001);
     expect(transform().x).toBeCloseTo(0, 5);
     expect(transform().y).toBeCloseTo(0, 5);
+  });
+});
+
+describe("tap probe (#4098)", () => {
+  it("notes a match when one is applied, and not a plain selection", async () => {
+    const noteMatch = jest.spyOn(tapProbe, "noteMatch");
+    await mountOn(pairBoard());
+    await press("mock-tile-0");
+    expect(noteMatch).not.toHaveBeenCalled();
+    await press("mock-tile-1");
+    expect(noteMatch).toHaveBeenCalled();
   });
 });
 

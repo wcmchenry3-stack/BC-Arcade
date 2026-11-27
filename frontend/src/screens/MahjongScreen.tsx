@@ -524,7 +524,8 @@ export default function MahjongScreen() {
         if (!prev || (quickRepeat && prev.selected?.id === tileId)) return prev;
         const moved = selectTile(prev, tileId, freeIdsFor(free, prev.tiles));
         if (moved === prev) return prev;
-        if (moved.pairsRemoved > prev.pairsRemoved) noteMatch(); // #4098 test-build probe
+        // #4098 test-build probe: must stay idempotent, an updater can run twice.
+        if (moved.pairsRemoved > prev.pairsRemoved) noteMatch();
         // A first tap that lands while the player is away mustn't start the
         // clock running (#2750).
         const next = matchPresence(moved);

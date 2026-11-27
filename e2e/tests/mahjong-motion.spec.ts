@@ -5,7 +5,8 @@
  * once, and a tap during the deal-in lands the deal and still counts.
  *
  * Tiles are found by where they sit on the board, as a fraction of the board canvas's box
- * (taken again before each tap, since the camera moves the canvas as the board clears). The
+ * (the camera refits and moves the canvas as the board clears, so the box is read at the
+ * instant of the click: `tapAt` over CDP, or `tapLive` inside the page). The
  * fractions come from the app's own layout (`calculateMahjongLayout` for the Turtle on a
  * 390 x 844 phone), at the centre of each tile's face, which is about 6% of the board wide.
  */
@@ -40,6 +41,35 @@ async function tapAt(
   await page.mouse.click(box.x + at.fx * box.width, box.y + at.fy * box.height);
 }
 
+/**
+ * A click on the board at `at`, with the canvas's box read and the click dispatched in one
+ * step inside the page. The camera eases toward the remaining tiles for ~350 ms after a match
+ * (auto-fit; the board grows ~1.9x here), so a box measured by a separate round trip is stale
+ * by the next tap: this maps the fraction onto the live box, as the app's own hit test does,
+ * and costs a single round trip, so back-to-back taps stay inside the match's burst.
+ */
+async function tapLive(
+  page: Page,
+  at: { fx: number; fy: number },
+): Promise<void> {
+  await page.evaluate(
+    ({ fx, fy, label }) => {
+      const canvas = Array.from(document.querySelectorAll("canvas")).find((c) =>
+        new RegExp(label, "i").test(c.getAttribute("aria-label") ?? ""),
+      )!;
+      const r = canvas.getBoundingClientRect();
+      canvas.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          clientX: r.left + fx * r.width,
+          clientY: r.top + fy * r.height,
+        }),
+      );
+    },
+    { ...at, label: BOARD.source },
+  );
+}
+
 test.describe("Mahjong — motion never holds up play (#3613)", () => {
   test("a tap during a match's burst is taken at once", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -63,15 +93,11 @@ test.describe("Mahjong — motion never holds up play (#3613)", () => {
       timeout: 5_000,
     });
 
-    // A match, then the next pair at once: within 100 ms, while the first still flies.
-    // The board doesn't move, so look its box up once: taps 2 and 3 are then back-to-back
-    // clicks, well inside the match's burst (MATCH_MS = 440), even on a slow runner.
-    const box = (await page.getByRole("img", { name: BOARD }).boundingBox())!;
-    const clickAt = (at: { fx: number; fy: number }) =>
-      page.mouse.click(box.x + at.fx * box.width, box.y + at.fy * box.height);
-    await clickAt(FOUR_AT[0]!);
-    await clickAt(FOUR_AT[1]!);
-    await clickAt(FOUR_AT[2]!);
+    // A match, then the next pair at once: within 100 ms, while the first still flies. The
+    // camera refits after the match, so each tap reads the live box (see `tapLive`).
+    await tapLive(page, FOUR_AT[0]!);
+    await tapLive(page, FOUR_AT[1]!);
+    await tapLive(page, FOUR_AT[2]!);
     // The app's own clock (#4098): Playwright's round trips are not the app's latency. The
     // canvas records, in test builds, the click event -> tap handled time and whether the
     // first match's burst was still flying at that tap.
@@ -79,7 +105,7 @@ test.describe("Mahjong — motion never holds up play (#3613)", () => {
     await expect(board).toHaveAttribute("data-tap-seq", "3");
     expect(await board.getAttribute("data-tap-burst")).toBe("true");
     expect(Number(await board.getAttribute("data-tap-ms"))).toBeLessThan(100);
-    await tapAt(page, FOUR_AT[3]!);
+    await tapLive(page, FOUR_AT[3]!);
 
     // Both pairs count; the result card follows the win cascade.
     await expect(page.getByText(/^PAIRS\s+2\//).first()).toBeVisible({
