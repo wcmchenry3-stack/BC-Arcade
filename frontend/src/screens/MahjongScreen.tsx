@@ -82,6 +82,7 @@ import { getBests, judgeResult, recordResult, type Bests } from "../game/_shared
 import LayoutSelectScreen from "../components/mahjong/LayoutSelectScreen";
 import MahjongActionBar from "../components/mahjong/MahjongActionBar";
 import MahjongStatsLine from "../components/mahjong/MahjongStatsLine";
+import { noteMatch } from "../components/mahjong/tapProbe";
 import MahjongMiniMap from "../components/mahjong/MahjongMiniMap";
 import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
 import { DOUBLE_TAP_MS, useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
@@ -523,6 +524,8 @@ export default function MahjongScreen() {
         if (!prev || (quickRepeat && prev.selected?.id === tileId)) return prev;
         const moved = selectTile(prev, tileId, freeIdsFor(free, prev.tiles));
         if (moved === prev) return prev;
+        // #4098 test-build probe: must stay idempotent, an updater can run twice.
+        if (moved.pairsRemoved > prev.pairsRemoved) noteMatch();
         // A first tap that lands while the player is away mustn't start the
         // clock running (#2750).
         const next = matchPresence(moved);

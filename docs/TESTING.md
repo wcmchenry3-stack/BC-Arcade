@@ -115,6 +115,8 @@ The at-a-glance table is at the top of this guide. Web (Expo Web) is a supported
 
 E2E hooks (`window.__*`, `EXPO_PUBLIC_TEST_HOOKS=1` builds only) are installed through `registerTestHooks(namespace, hooks)` in `frontend/src/game/_shared/testHooksRegistry.ts`; per-game hooks live in `game/<game>/testHooks.ts`. Import `areTestHooksEnabled` from `game/_shared/envFlags`, never from the heavy `_shared/testHooks` module. `releaseBuildConfig.test.ts` asserts no release input enables the flag.
 
+Tap latency is measured in the app, not around Playwright calls (#4098): the Mahjong web canvas (`components/mahjong/tapProbe.ts`, test hooks on only) sets `data-tap-seq`, `data-tap-ms` (click event `timeStamp` to the tap handled, one `performance.now()` clock) and `data-tap-burst` (a match's ghost pair still flying) on itself. Assert on those, never on `Date.now()` around `page.mouse.click`.
+
 ## CI workflow structure (#2973)
 
 Shared pieces so a workflow change is made once:
