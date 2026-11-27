@@ -46,6 +46,37 @@ describe("sudoku storage", () => {
     expect(loaded!._v).toBe(1);
   });
 
+  describe("banked play time (#4089)", () => {
+    it("round-trips accumulatedMs", async () => {
+      const s = { ...loadPuzzle("easy", "classic", rng0), accumulatedMs: 65_000 };
+      await saveGame(s);
+      expect((await loadGame())!.accumulatedMs).toBe(65_000);
+    });
+
+    it("loads a save without the field as 0", async () => {
+      await saveGame(loadPuzzle("easy", "classic", rng0));
+      expect((await loadGame())!.accumulatedMs).toBe(0);
+    });
+
+    it.each([
+      ["negative", -5],
+      ["NaN", "NaN"],
+      ["a string", "12"],
+      ["null", null],
+    ])("loads a %s accumulatedMs as 0", async (_label, bad) => {
+      await saveGame(loadPuzzle("easy", "classic", rng0));
+      const raw = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
+      raw.accumulatedMs = bad;
+      await AsyncStorage.setItem(GAME_KEY, JSON.stringify(raw));
+      expect((await loadGame())!.accumulatedMs).toBe(0);
+    });
+
+    it("loads an Infinity accumulatedMs (stored as null by JSON) as 0", async () => {
+      await saveGame({ ...loadPuzzle("easy", "classic", rng0), accumulatedMs: Infinity });
+      expect((await loadGame())!.accumulatedMs).toBe(0);
+    });
+  });
+
   it("restores Set<NoteDigit> notes after a JSON round-trip", async () => {
     let s = loadPuzzle("easy", "classic", rng0);
     const { row, col } = findFirstEmpty(s);

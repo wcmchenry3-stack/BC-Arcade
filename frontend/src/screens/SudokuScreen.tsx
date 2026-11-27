@@ -165,13 +165,20 @@ export default function SudokuScreen() {
   // `state === null` is pre-game: nothing is saved, and the callers clear
   // the save. Called before the completion effect, so a solving move is saved
   // before the completion clears it. The restore is below.
+  // The play time the next save banks (#4089): read from the clock refs below at save time, so it
+  // is current for a move's save and the leave-time save. Null until the clock has started.
+  const bankedMsRef = useRef<() => number | null>(() => null);
+  const saveWithClock = useCallback((s: SudokuState) => {
+    const ms = bankedMsRef.current();
+    return saveGame(ms === null ? s : { ...s, accumulatedMs: Math.max(0, Math.floor(ms)) });
+  }, []);
   const game = usePersistedGameState<SudokuState>({
     load: async () => {
       const [saved, bests] = await Promise.all([loadGame(), getBests("sudoku")]);
       bestsRef.current = bests;
       return saved;
     },
-    save: saveGame,
+    save: saveWithClock,
     clear: clearGame,
   });
   const { state, setState, stateRef, loading, clear: clearSavedGame } = game;
@@ -350,6 +357,9 @@ export default function SudokuScreen() {
     // time: a completion then records no duration (below). The HUD clamps it.
     return (pausedAtRef.current ?? monotonicNow()) - startMsRef.current;
   }, []);
+  useEffect(() => {
+    bankedMsRef.current = playedMs;
+  }, [playedMs]);
   const syncClockActivity = useCallback(() => {
     clockActivity.set(startMsRef.current !== null && pausedAtRef.current === null);
   }, [clockActivity]);
@@ -383,6 +393,9 @@ export default function SudokuScreen() {
         (event.reason === "appState" && event.status === "background")
       ) {
         saveReplayNow();
+        // The state need not change on a departure, so write the latest play time itself.
+        const current = stateRef.current;
+        if (current && !current.isComplete) void saveWithClock(current).catch(() => {});
       }
     },
   });
@@ -413,10 +426,9 @@ export default function SudokuScreen() {
     const resumed = saved.isComplete
       ? false
       : syncResume({ difficulty: saved.difficulty, variant: saved.variant });
-    // Treat any resumed state that already has moves as "timer
-    // already started" — the player wants to see it ticking
-    // immediately on return.  Elapsed resets to 0 because we
-    // don't persist it; this is intentional per the issue.
+    // Treat any resumed state that already has moves (or banked play time) as "timer already
+    // started": the player wants to see it ticking immediately on return, from the play time the
+    // save banked (#4089), not from 0.
     const anyMoves =
       saved.errorCount > 0 ||
       saved.undoStack.length > 0 ||
@@ -424,11 +436,13 @@ export default function SudokuScreen() {
     skipReplayRef.current = cannotRebuildReplay(saved, anyMoves, resumed);
     // Already solved: its card shows at once, with no beat (#3774).
     if (saved.isComplete) skipSolveBeat();
-    if (anyMoves) {
-      startMsRef.current = monotonicNow();
+    const bankedMs = saved.accumulatedMs ?? 0;
+    if (anyMoves || bankedMs > 0) {
+      // Started `bankedMs` ago, so the elapsed reads what was played before the kill.
+      startMsRef.current = monotonicNow() - bankedMs;
       // A load that lands while the player is away (#2750) starts
       // paused, and resumes with everything else on return.
-      if (awayRef.current) pausedAtRef.current = startMsRef.current;
+      if (awayRef.current) pausedAtRef.current = monotonicNow();
     }
   });
 

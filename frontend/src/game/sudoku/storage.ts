@@ -69,6 +69,7 @@ function serializeState(s: SudokuState): SerializedState {
     // JSON drops undefined keys: a game that records nothing saves no count (#3288)
     ...(s.entryCount === undefined ? {} : { entryCount: s.entryCount }),
     ...(s.replayRows === undefined ? {} : { replayRows: s.replayRows }),
+    ...(s.accumulatedMs === undefined ? {} : { accumulatedMs: s.accumulatedMs }),
   };
 }
 
@@ -118,6 +119,11 @@ function restoreState(parsed: SerializedState): SudokuState {
     ...(Number.isSafeInteger(parsed.replayRows) && (parsed.replayRows as number) >= 0
       ? { replayRows: parsed.replayRows as number }
       : {}),
+    // Banked play time (#4089): a missing, negative or non-finite value restores as 0.
+    accumulatedMs:
+      typeof parsed.accumulatedMs === "number" && Number.isFinite(parsed.accumulatedMs)
+        ? Math.max(0, parsed.accumulatedMs)
+        : 0,
   };
 }
 
