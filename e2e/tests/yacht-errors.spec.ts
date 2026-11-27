@@ -12,7 +12,7 @@
  */
 
 import { test, expect } from "./fixtures";
-import { injectGameState, blankScores } from "./helpers/yacht";
+import { injectGameState, blankScores, scoreRow } from "./helpers/yacht";
 
 test.describe("Yacht — error paths and navigation", () => {
   test.beforeEach(async ({ page }) => {
@@ -75,7 +75,9 @@ test.describe("Yacht — error paths and navigation", () => {
 
     // Score Chance in round 1
     await page.getByRole("button", { name: /Roll/i }).click();
-    await page.getByRole("button", { name: /Chance: open, would score/ }).click();
+    await page
+      .getByRole("button", { name: /Chance: open, would score/ })
+      .click();
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
     // Chance row is now filled — it should be disabled
@@ -151,7 +153,10 @@ test.describe("Yacht — error paths and navigation", () => {
     for (let round = 0; round < 13; round++) {
       await expect(page.getByText(`Round ${round + 1} / 13`)).toBeVisible();
       await page.getByRole("button", { name: /Roll/i }).click();
-      await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
+      await scoreRow(
+        page,
+        page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first(),
+      );
     }
 
     // Modal should show final score and both action buttons
@@ -186,7 +191,7 @@ test.describe("Yacht — error paths and navigation", () => {
     const onesAvailable = await onesSelectable.isVisible();
 
     if (onesAvailable) {
-      await onesSelectable.click();
+      await scoreRow(page, onesSelectable);
       await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
       // The Ones row is now filled and disabled — can't re-score it
@@ -242,7 +247,10 @@ test.describe("Yacht — Play Again reset regression (GH #225)", () => {
         .getByText(`Round ${round + 1} / 13`)
         .waitFor({ timeout: 15000 });
       await page.getByRole("button", { name: /Roll/i }).click();
-      await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
+      await scoreRow(
+        page,
+        page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first(),
+      );
     }
     await page.getByTestId("yacht-result-title").waitFor({ timeout: 10000 });
   }

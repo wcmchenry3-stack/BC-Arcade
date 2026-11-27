@@ -2,7 +2,7 @@
  * Shared helpers for Yacht e2e tests.
  */
 
-import { Page } from "@playwright/test";
+import { Locator, Page } from "@playwright/test";
 import { installEntitlementsMock } from "./api-mock";
 
 /** Navigate from Home to Yacht game screen, clearing any saved state first. */
@@ -77,4 +77,16 @@ export function blankScores(): Record<string, number | null> {
     yacht: null,
     chance: null,
   };
+}
+
+/**
+ * Score a row. A row that would score 0 takes a second tap (#4092: the first arms it, with the
+ * label "Tap again to score 0"), and most specs roll random dice, so tap once and tap again when
+ * the row says it is armed.
+ */
+export async function scoreRow(page: Page, row: Locator): Promise<void> {
+  await row.click();
+  if (await page.getByText("Tap again to score 0").isVisible()) {
+    await row.click();
+  }
 }

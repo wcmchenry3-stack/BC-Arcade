@@ -21,6 +21,8 @@
   "category.chance": "찬스",
   "score.scored": "기록됨, {{score}}점",
   "score.potential": "미기록, {{potential}}점 가능, 더블탭하여 기록",
+  "score.armedInline": "다시 탭하면 0점 기록",
+  "score.armed": "0점 가능. 다시 탭하여 0점 기록",
   "score.notAvailable": "사용 불가",
   "score.label": "{{category}}: {{state}}",
   "score.you": "나",

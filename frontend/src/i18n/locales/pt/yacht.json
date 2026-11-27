@@ -21,6 +21,8 @@
   "category.chance": "Chance",
   "score.scored": "pontuado, {{score}}",
   "score.potential": "aberto, marcaria {{potential}}, toque duas vezes para marcar",
+  "score.armedInline": "Toque de novo para 0",
+  "score.armed": "valeria 0. Toque de novo para marcar 0",
   "score.notAvailable": "indisponível",
   "score.label": "{{category}}: {{state}}",
   "score.you": "Você",

@@ -21,6 +21,8 @@
   "category.chance": "Chance",
   "score.scored": "marqué, {{score}}",
   "score.potential": "ouvert, rapporterait {{potential}}, double-tapez pour marquer",
+  "score.armedInline": "Retouchez pour marquer 0",
+  "score.armed": "rapporterait 0. Retouchez pour marquer 0",
   "score.notAvailable": "non dispo",
   "score.label": "{{category}} : {{state}}",
   "score.you": "Vous",

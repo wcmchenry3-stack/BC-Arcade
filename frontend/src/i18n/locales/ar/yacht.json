@@ -21,6 +21,8 @@
   "category.chance": "فرصة",
   "score.scored": "مسجّل، {{score}}",
   "score.potential": "مفتوح، سيسجل {{potential}}، اضغط مرتين للتسجيل",
+  "score.armedInline": "اضغط مرة أخرى لتسجيل 0",
+  "score.armed": "سيسجل 0، اضغط مرة أخرى لتسجيل 0",
   "score.notAvailable": "غير متاح",
   "score.label": "{{category}}: {{state}}",
   "score.you": "أنت",

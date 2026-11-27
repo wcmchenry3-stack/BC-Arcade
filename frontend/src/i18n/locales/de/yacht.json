@@ -21,6 +21,8 @@
   "category.chance": "Chance",
   "score.scored": "gewertet, {{score}}",
   "score.potential": "offen, ergäbe {{potential}}, doppelt tippen zum Werten",
+  "score.armedInline": "Nochmal tippen: 0 werten",
+  "score.armed": "ergäbe 0. Nochmal tippen, um 0 zu werten",
   "score.notAvailable": "Nicht verfügbar",
   "score.label": "{{category}}: {{state}}",
   "score.you": "Du",

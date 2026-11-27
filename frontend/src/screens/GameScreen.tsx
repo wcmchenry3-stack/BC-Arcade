@@ -82,6 +82,7 @@ import DiceRow from "../components/DiceRow";
 import ScoreTable from "../components/yacht/ScoreTable";
 import GameActionBar from "../components/shared/GameActionBar";
 import { useYachtHint } from "../components/yacht/useYachtHint";
+import { useYachtZeroConfirm } from "../components/yacht/useYachtZeroConfirm";
 import { soloSubtitle } from "../game/yacht/scoreSummary";
 import { useLastScored } from "../game/yacht/useLastScored";
 import GameResultModal, { type GameOutcome } from "../components/shared/GameResultModal";
@@ -250,6 +251,9 @@ export default function GameScreen({ navigation, route }: Props) {
     active: activeHint,
     message: hintMessage,
   } = useYachtHint({ available: hintAvailable, gameState, disabled: hintDisabled });
+
+  // Zero confirm (#4092): the first tap on an open row that would score 0 arms it, the second scores it.
+  const zero = useYachtZeroConfirm({ gameState, possibleScores, isAiTurn, onHint });
 
   // A turn is one recorder unit holding one event (replay.ts): one storage
   // write, saved by the recorder at an idle moment, never in a handler.
@@ -472,7 +476,9 @@ export default function GameScreen({ navigation, route }: Props) {
   function handleScore(category: string) {
     if (isAiTurn || isLocked()) return;
     setError(null);
+    // A zero takes two taps (#4092): the first only arms the row; nothing else about the turn changes.
     clearHint();
+    if (zero.armOrConfirm(category)) return;
     try {
       const prev = gameState;
       const alternatives = enginePossibleScores(prev);
@@ -741,7 +747,7 @@ export default function GameScreen({ navigation, route }: Props) {
             color: colors.bonusText,
             disabled: hintDisabled,
             // Disabled (and inert) while your dice tumble (#3749): `hintDisabled` above.
-            onPress: onHint,
+            onPress: zero.onHint,
             testID: "yacht-hint-button",
           },
         ]
@@ -811,6 +817,7 @@ export default function GameScreen({ navigation, route }: Props) {
           onScore={handleScore}
           hintCategory={activeHint?.kind === "score" ? activeHint.category : null}
           cpuLastScored={cpuLastScored}
+          armedCategory={zero.armedCategory}
           inputLocked={rollingIndices.length > 0}
           still={motion.still}
         />

@@ -21,6 +21,8 @@
   "category.chance": "Kans",
   "score.scored": "gescoord, {{score}}",
   "score.potential": "open, zou {{potential}} scoren, dubbel tik om te scoren",
+  "score.armedInline": "Tik nogmaals voor 0",
+  "score.armed": "zou 0 scoren. Tik nogmaals om 0 te scoren",
   "score.notAvailable": "niet beschikbaar",
   "score.label": "{{category}}: {{state}}",
   "score.you": "Jij",

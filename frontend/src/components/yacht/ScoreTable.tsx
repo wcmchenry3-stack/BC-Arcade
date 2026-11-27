@@ -13,6 +13,12 @@
  * cue. The upper subtotal is a band of its own (not a score row, not tappable). Text ignores
  * system font scaling above 1.2x so the rows keep their height.
  *
+ * Zero confirm (#4092): the first tap on an open row whose points would be 0 only ARMS it
+ * (`armedCategory`, held by the screen): an amber wash and bar, an amber outline on the score cell
+ * and the label "Tap again to score 0"; the second tap scores it. Amber is the `warnText` token: it
+ * and the wash (`warnText` at 15% over the card) hold 7.3:1 dark and 4.7:1 light, so the label and
+ * the 0 read in both themes.
+ *
  * Motion (#3749, `scoreMotion.tsx`): a score's cell pops and the total counts up, for you and the
  * computer; the "+35" pulses when the upper bonus is earned. None of it under Reduce Motion.
  */
@@ -100,6 +106,8 @@ export interface ScoreTableProps {
   hintCategory?: string | null;
   /** The row the computer scored last. */
   cpuLastScored?: string | null;
+  /** The open row armed for a zero (#4092): tap it again to score the 0. The screen clears it. */
+  armedCategory?: string | null;
   /** Your dice are still tumbling (#3749): no row takes a press, though the rows keep their look. */
   inputLocked?: boolean;
   /** Scores land with no pop or count-up: the computer's last turn scored on reopening, under the card. */
@@ -118,6 +126,7 @@ export default function ScoreTable({
   onScore,
   hintCategory = null,
   cpuLastScored = null,
+  armedCategory = null,
   inputLocked = false,
   still = false,
 }: ScoreTableProps) {
@@ -180,19 +189,32 @@ export default function ScoreTable({
     const isBest = hasPotential && key === bestKey;
     const isHint = hot && key === hintCategory;
     const isCpuRow = isVs && key === cpuLastScored;
+    // Armed for a zero (#4092): only an open row that would score 0, on your turn.
+    const isArmed = hasPotential && possible === 0 && key === armedCategory;
 
     const stateText = filled
       ? t("score.scored", { score: playerScore })
-      : hasPotential
-        ? t("score.potential", { potential: possible })
-        : t("score.notAvailable");
+      : isArmed
+        ? t("score.armed")
+        : hasPotential
+          ? t("score.potential", { potential: possible })
+          : t("score.notAvailable");
 
-    const barColor = isCpuRow ? colors.secondary : isHint ? colors.outcomeWin : null;
-    const tint = isCpuRow
-      ? colors.secondary + "26"
-      : isHint
-        ? colors.outcomeWin + "26"
-        : "transparent";
+    // The armed row's amber wins over the Hint's green and the computer's purple.
+    const barColor = isArmed
+      ? colors.warnText
+      : isCpuRow
+        ? colors.secondary
+        : isHint
+          ? colors.outcomeWin
+          : null;
+    const tint = isArmed
+      ? colors.warnText + "26"
+      : isCpuRow
+        ? colors.secondary + "26"
+        : isHint
+          ? colors.outcomeWin + "26"
+          : "transparent";
 
     let playerText = "—";
     let playerColor = colors.textMuted;
@@ -205,7 +227,11 @@ export default function ScoreTable({
     } else if (hasPotential) {
       playerText = String(possible);
       // Zeros are dimmed: a wasted row reads quieter than a row with points in it.
-      playerColor = possible === 0 ? colors.textMuted : colors.potential;
+      playerColor = isArmed
+        ? colors.warnText
+        : possible === 0
+          ? colors.textMuted
+          : colors.potential;
       playerWeight = isBest ? "700" : "400";
     }
 
@@ -239,7 +265,13 @@ export default function ScoreTable({
         >
           {barColor !== null && (
             <View
-              testID={isCpuRow ? "yacht-cpu-row-bar" : "yacht-hint-row-bar"}
+              testID={
+                isArmed
+                  ? "yacht-armed-row-bar"
+                  : isCpuRow
+                    ? "yacht-cpu-row-bar"
+                    : "yacht-hint-row-bar"
+              }
               style={[styles.bar, { backgroundColor: barColor }]}
             />
           )}
@@ -259,6 +291,7 @@ export default function ScoreTable({
             style={[
               styles.label,
               filled && styles.labelAfterCheck,
+              isArmed && styles.labelArmed,
               { color: filled ? colors.textMuted : colors.text },
             ]}
             numberOfLines={1}
@@ -268,6 +301,21 @@ export default function ScoreTable({
           >
             {label}
           </Text>
+          {isArmed && (
+            <Text
+              testID={`yacht-row-${key}-armed`}
+              style={[styles.armedLabel, { color: colors.warnText }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              maxFontSizeMultiplier={MAX_FONT_SCALE}
+              // The row's own accessibilityLabel says it; this is the visible cue.
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
+              {t("score.armedInline")}
+            </Text>
+          )}
           <View style={styles.cell}>
             <Pop
               on={filled}
@@ -282,6 +330,7 @@ export default function ScoreTable({
                   borderColor: colors.accentText,
                   backgroundColor: colors.heldBg,
                 },
+                isArmed && { borderWidth: 2, borderColor: colors.warnText },
                 { height: rowH - 3 },
               ]}
             >
@@ -581,6 +630,9 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   label: { flex: 1, fontSize: 13, lineHeight: 15, fontWeight: "500", paddingLeft: 4 },
+  // Armed (#4092): the name keeps its own width so the amber label can take the rest of the row.
+  labelArmed: { flex: 0, flexShrink: 0 },
+  armedLabel: { flex: 1, minWidth: 0, fontSize: 11, lineHeight: 13, fontWeight: "700" },
   labelAfterCheck: { paddingLeft: 0 },
   check: { marginLeft: 3 },
   cell: { width: COL_W, alignItems: "center", justifyContent: "center" },

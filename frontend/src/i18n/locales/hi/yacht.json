@@ -21,6 +21,8 @@
   "category.chance": "मौका",
   "score.scored": "स्कोर किया, {{score}}",
   "score.potential": "खुला, {{potential}} अंक मिलेंगे, स्कोर करने के लिए डबल-टैप करें",
+  "score.armedInline": "0 स्कोर करने को फिर टैप करें",
+  "score.armed": "0 अंक मिलेंगे। 0 स्कोर करने के लिए फिर टैप करें",
   "score.notAvailable": "उपलब्ध नहीं",
   "score.label": "{{category}}: {{state}}",
   "score.you": "आप",

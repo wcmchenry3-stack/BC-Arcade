@@ -614,3 +614,96 @@ describe("clampRowHeight (#3968)", () => {
     expect(clampRowHeight(2000)).toBe(32);
   });
 });
+
+describe("ScoreTable — a row armed for a zero (#4092)", () => {
+  const armedProps = {
+    playerRollsUsed: 1,
+    playerPossibleScores: { ones: 0, twos: 12, full_house: 0, chance: 21 },
+    armedCategory: "ones",
+  };
+
+  it("the armed row has the amber wash, bar, outlined cell and the inline label", async () => {
+    const { getByTestId } = await renderTable(armedProps);
+    const row = getByTestId("score-row-ones");
+    expect(flat(row).backgroundColor).toBe(dark.warnText + "26");
+    const bar = within(row).getByTestId("yacht-armed-row-bar", HIDDEN);
+    expect(flat(bar).backgroundColor).toBe(dark.warnText);
+    const label = within(row).getByTestId("yacht-row-ones-armed", HIDDEN);
+    expect(label.props.children).toBe("Tap again to score 0");
+    expect(flat(label).color).toBe(dark.warnText);
+    expect(flat(within(row).getByText("0")).color).toBe(dark.warnText);
+    expect(row.props.accessibilityLabel).toBe("Ones: would score 0. Tap again to score 0");
+  });
+
+  it("only the armed row looks armed; other zero rows and rows with points do not", async () => {
+    const { getByTestId, queryByTestId } = await renderTable(armedProps);
+    expect(queryByTestId("yacht-row-full_house-armed", HIDDEN)).toBeNull();
+    expect(queryByTestId("yacht-row-twos-armed", HIDDEN)).toBeNull();
+    expect(flat(getByTestId("score-row-full_house")).backgroundColor).toBe("transparent");
+    expect(getByTestId("score-row-full_house").props.accessibilityLabel).toBe(
+      "Full House (25): open, would score 0, double-tap to score"
+    );
+  });
+
+  it("an armed category with points (a stale arm) shows nothing armed", async () => {
+    const { queryByTestId } = await renderTable({ ...armedProps, armedCategory: "twos" });
+    expect(queryByTestId("yacht-row-twos-armed", HIDDEN)).toBeNull();
+    expect(queryByTestId("yacht-armed-row-bar", HIDDEN)).toBeNull();
+  });
+
+  it("nothing is armed on the computer's turn", async () => {
+    const { queryByTestId } = await renderTable({ ...armedProps, isAiTurn: true });
+    expect(queryByTestId("yacht-row-ones-armed", HIDDEN)).toBeNull();
+  });
+
+  it("the armed row still presses through to onScore, at the unchanged row height", async () => {
+    const onScore = jest.fn();
+    const { getByTestId } = await renderTable({ ...armedProps, onScore });
+    await fireEvent.press(getByTestId("score-row-ones"));
+    expect(onScore).toHaveBeenCalledWith("ones");
+    expect(flat(getByTestId("score-row-ones")).minHeight).toBe(DEFAULT_ROW_HEIGHT);
+  });
+
+  describe("WCAG AA contrast of the amber label and the 0 on the armed wash", () => {
+    const lin = (c: number) => {
+      const v = c / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    const rgb = (hex: string): [number, number, number] => {
+      const n = parseInt(hex.slice(1, 7), 16);
+      return [n >> 16, (n >> 8) & 255, n & 255];
+    };
+    const lum = (hex: string) => {
+      const [r, g, b] = rgb(hex);
+      return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    };
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number];
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    // The wash is warnText at 0x26 (15%) over the card surface.
+    const wash = (fg: string, bg: string) => {
+      const f = rgb(fg);
+      const b = rgb(bg);
+      return (
+        "#" +
+        f
+          .map((c, i) =>
+            Math.round((c * 0x26) / 255 + b[i]! * (1 - 0x26 / 255))
+              .toString(16)
+              .padStart(2, "0")
+          )
+          .join("")
+      );
+    };
+
+    it.each([
+      ["dark", dark],
+      ["light", light],
+    ] as const)("%s: warnText and the row name reach 4.5:1 on the wash", (_n, c) => {
+      const bg = wash(c.warnText, c.surface);
+      expect(ratio(c.warnText, bg)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(c.text, bg)).toBeGreaterThanOrEqual(4.5);
+    });
+  });
+});

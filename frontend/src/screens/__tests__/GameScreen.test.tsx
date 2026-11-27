@@ -61,6 +61,28 @@ async function landDice() {
   await act(async () => {});
 }
 
+/**
+ * Scores a row. A row that would score 0 takes a second tap (#4092: the first arms it), and the
+ * dice are random here, so press once and press again when the row says it is armed.
+ */
+async function pressScoreRow(
+  getByRole: (
+    role: "button",
+    opts: { name: RegExp }
+  ) => import("react-test-renderer").ReactTestInstance,
+  name: RegExp
+) {
+  await act(async () => {
+    await fireEvent.press(getByRole("button", { name }));
+  });
+  const row = getByRole("button", { name });
+  if (/tap again/i.test(String(row.props.accessibilityLabel))) {
+    await act(async () => {
+      await fireEvent.press(row);
+    });
+  }
+}
+
 /** Lets the recorder's idle save (a macrotask, or requestIdleCallback) run. */
 async function flushIdle() {
   await act(async () => {
@@ -167,9 +189,7 @@ describe("GameScreen", () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     await landDice();
-    await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /ones/i }));
-    });
+    await pressScoreRow(getByRole, /ones/i);
     expect(getByText(/round.*2/i)).toBeTruthy();
   });
 
@@ -630,9 +650,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     await landDice();
-    await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /ones/i }));
-    });
+    await pressScoreRow(getByRole, /ones/i);
     await waitFor(() => expect(mockEnqueueEvents).toHaveBeenCalled());
     const types = mockEnqueueEvent.mock.calls.map((c) => c[1]?.type);
     expect(types).not.toContain("roll");
@@ -647,9 +665,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     await landDice();
     await flushIdle();
     expect(mockEnqueueEvents).not.toHaveBeenCalled();
-    await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /ones/i }));
-    });
+    await pressScoreRow(getByRole, /ones/i);
     await waitFor(() => expect(mockEnqueueEvents).toHaveBeenCalledTimes(1));
     const [gameId, events] = mockEnqueueEvents.mock.calls[0]!;
     expect(gameId).toBe("game-uuid-test");
@@ -718,9 +734,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
         await fireEvent.press(getByRole("button", { name: /roll dice/i }));
       });
       await landDice();
-      await act(async () => {
-        await fireEvent.press(getByRole("button", { name: category }));
-      });
+      await pressScoreRow(getByRole, category);
       await flushIdle();
     }
     expect(mockEnqueueEvents).toHaveBeenCalledTimes(2);
@@ -900,9 +914,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     await landDice();
-    await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /ones/i }));
-    });
+    await pressScoreRow(getByRole, /ones/i);
     await waitFor(() => expect(mockEnqueueEvents).toHaveBeenCalledTimes(1));
     expect(queryByText("boom")).toBeNull();
     // The next turn is still recorded.

@@ -197,6 +197,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "score.armedInline": {
+    "component": "ScoreTable",
+    "description": "Short visible label on a row whose score would be 0, after the first tap: the player must tap the row again to score the 0 (#4092). Sits between the category name and the score, one line.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.armed": {
+    "component": "ScoreTable",
+    "description": "Accessibility text of a row armed for a zero: reads as \"Full House: would score 0. Tap again to score 0\" (#4092).",
+    "tone": "functional",
+    "characterLimit": 65,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Used as {{state}} in score.label / score.labelVs."
+  },
   "score.notAvailable": {
     "component": "ScoreTable",
     "description": "Accessibility text when a category cannot be scored this turn.",

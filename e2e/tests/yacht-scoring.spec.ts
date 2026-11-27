@@ -10,6 +10,7 @@
  */
 
 import { test, expect } from "./fixtures";
+import { scoreRow } from "./helpers/yacht";
 
 // Categories in scorecard display order — matches yacht-full-game.spec.ts
 const CATEGORY_LABELS_IN_ORDER = [
@@ -95,13 +96,15 @@ test.describe("Yacht — scoring verification (#180)", () => {
   test("scoring Ones updates the upper subtotal", async ({ page }) => {
     await page.getByRole("button", { name: /Roll/i }).click();
 
-    const onesBtn = page.getByRole("button", { name: /Ones: open, would score/ });
+    const onesBtn = page.getByRole("button", {
+      name: /Ones: open, would score/,
+    });
     if (await onesBtn.isVisible()) {
       const label = (await onesBtn.getAttribute("aria-label")) ?? "";
       const match = label.match(/would score (\d+)/);
       const potentialValue = match ? parseInt(match[1], 10) : null;
 
-      await onesBtn.click();
+      await scoreRow(page, onesBtn);
 
       // The subtotal for the upper section should now reflect the scored Ones value
       if (potentialValue !== null) {
@@ -141,7 +144,10 @@ test.describe("Yacht — scoring verification (#180)", () => {
     for (let round = 0; round < 13; round++) {
       await expect(page.getByText(`Round ${round + 1} / 13`)).toBeVisible();
       await page.getByRole("button", { name: /Roll/i }).click();
-      await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
+      await scoreRow(
+        page,
+        page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first(),
+      );
     }
 
     await expect(page.getByTestId("yacht-result-title")).toBeVisible();
