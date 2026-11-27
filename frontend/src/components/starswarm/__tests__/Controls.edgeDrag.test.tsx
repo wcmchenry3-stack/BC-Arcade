@@ -26,7 +26,9 @@ import { resetSentryThrottle } from "../../../game/_shared/sentryThrottle";
 import { flushShipStuckReport, noteShipDragEnd } from "../../../game/starswarm/stuckShipReport";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type Handlers = Partial<Record<"onBegin" | "onChange" | "onEnd" | "onFinalize", (e: any) => void>>;
+type Handlers = Partial<
+  Record<"onBegin" | "onChange" | "onEnd" | "onFinalize", (e: any, success?: boolean) => void>
+>;
 const mockPan: { current: Handlers } = { current: {} };
 
 jest.mock("react-native-gesture-handler", () => ({
@@ -122,7 +124,8 @@ async function setup(scale = 1) {
       canvas.frame();
     },
     release: (translationX: number) => {
-      pan().onEnd?.({ y: DRAG_Y * scale, translationX });
+      // RNGH passes `success` (true for a normal lift, #4079 applies the lift-off position on it).
+      pan().onEnd?.({ y: DRAG_Y * scale, translationX }, true);
       pan().onFinalize?.({});
     },
   };
@@ -374,7 +377,8 @@ async function setupRerender(scale = 1) {
       canvas.frame();
     },
     release: (translationX: number) => {
-      pan().onEnd?.({ y: DRAG_Y * current, translationX });
+      // RNGH passes `success` (true for a normal lift, #4079 applies the lift-off position on it).
+      pan().onEnd?.({ y: DRAG_Y * current, translationX }, true);
       pan().onFinalize?.({});
     },
   };
