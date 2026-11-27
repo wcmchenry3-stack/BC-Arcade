@@ -21,6 +21,8 @@
   "category.chance": "Azar",
   "score.scored": "anotado, {{score}}",
   "score.potential": "abierto, valdría {{potential}}, toca dos veces para anotar",
+  "score.armedInline": "Toca otra vez: anotar 0",
+  "score.armed": "valdría 0. Toca otra vez para anotar 0",
   "score.notAvailable": "no disponible",
   "score.label": "{{category}}: {{state}}",
   "score.you": "Tú",

@@ -21,6 +21,8 @@
   "category.chance": "机会",
   "score.scored": "已计分，{{score}}",
   "score.potential": "未计分，可得 {{potential}} 分，双击得分",
+  "score.armedInline": "再点一次计 0 分",
+  "score.armed": "将得 0 分。再点一次以记 0 分",
   "score.notAvailable": "不可用",
   "score.label": "{{category}}: {{state}}",
   "score.you": "你",

@@ -21,6 +21,8 @@
   "category.chance": "チャンス",
   "score.scored": "記入済み、{{score}} 点",
   "score.potential": "未記入、{{potential}} 点になります、ダブルタップで得点",
+  "score.armedInline": "もう一度タップで0点",
+  "score.armed": "0 点になります。もう一度タップで 0 点を記入",
   "score.notAvailable": "利用不可",
   "score.label": "{{category}}: {{state}}",
   "score.you": "あなた",

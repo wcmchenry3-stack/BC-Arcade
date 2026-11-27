@@ -8,6 +8,7 @@
  */
 
 import { test, expect } from "./fixtures";
+import { scoreRow } from "./helpers/yacht";
 
 test.describe("Yacht — New Game button", () => {
   test.beforeEach(async ({ page }) => {
@@ -38,7 +39,7 @@ test.describe("Yacht — New Game button", () => {
 
     // Advance to round 2 by rolling and scoring Ones
     await page.getByRole("button", { name: /roll/i }).click();
-    await page.getByText("Ones").first().click();
+    await scoreRow(page, page.getByText("Ones").first());
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
     // Tap New Game — confirm dialog should appear
@@ -60,7 +61,7 @@ test.describe("Yacht — New Game button", () => {
 
     // Advance to round 2
     await page.getByRole("button", { name: /roll/i }).click();
-    await page.getByText("Ones").first().click();
+    await scoreRow(page, page.getByText("Ones").first());
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
 
     // Tap New Game → confirm

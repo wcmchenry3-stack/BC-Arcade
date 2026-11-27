@@ -148,6 +148,13 @@ async function playLastTurn(r: Rendered, categoryLabel: RegExp) {
   await act(async () => {
     await fireEvent.press(r.getAllByRole("button", { name: categoryLabel })[0]!);
   });
+  // A zero takes a second tap (#4092): the first arms the row.
+  const row = r.getAllByRole("button", { name: categoryLabel })[0]!;
+  if (/tap again/i.test(String(row.props.accessibilityLabel))) {
+    await act(async () => {
+      await fireEvent.press(row);
+    });
+  }
 }
 
 /** A solo game's card waits for its end beat, after the YACHT! celebration (#3749). */

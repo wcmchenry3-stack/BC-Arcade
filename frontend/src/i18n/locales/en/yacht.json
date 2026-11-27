@@ -21,6 +21,8 @@
   "category.chance": "Chance",
   "score.scored": "scored, {{score}}",
   "score.potential": "open, would score {{potential}}, double-tap to score",
+  "score.armedInline": "Tap again to score 0",
+  "score.armed": "would score 0. Tap again to score 0",
   "score.notAvailable": "not available",
   "score.label": "{{category}}: {{state}}",
   "score.you": "You",

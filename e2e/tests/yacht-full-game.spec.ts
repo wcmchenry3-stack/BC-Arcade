@@ -12,6 +12,7 @@
  */
 
 import { test, expect } from "./fixtures";
+import { scoreRow } from "./helpers/yacht";
 
 // Categories scored in order, matched to the scorecard display text.
 const CATEGORY_LABELS_IN_ORDER = [
@@ -66,7 +67,7 @@ test.describe("Yacht — full 13-round game journey", () => {
     await expect(page.getByText("Round 1 / 13")).toBeVisible();
 
     await page.getByRole("button", { name: /Roll/i }).click();
-    await page.getByText("Ones").first().click();
+    await scoreRow(page, page.getByText("Ones").first());
 
     await expect(page.getByText("Round 2 / 13")).toBeVisible();
   });
@@ -78,7 +79,10 @@ test.describe("Yacht — full 13-round game journey", () => {
     for (let round = 0; round < 13; round++) {
       await expect(page.getByText(`Round ${round + 1} / 13`)).toBeVisible();
       await page.getByRole("button", { name: /Roll/i }).click();
-      await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
+      await scoreRow(
+        page,
+        page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first(),
+      );
     }
 
     await expect(page.getByTestId("yacht-result-title")).toBeVisible();
@@ -93,7 +97,10 @@ test.describe("Yacht — full 13-round game journey", () => {
 
     for (let round = 0; round < 13; round++) {
       await page.getByRole("button", { name: /Roll/i }).click();
-      await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
+      await scoreRow(
+        page,
+        page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first(),
+      );
     }
 
     await expect(page.getByTestId("yacht-result-title")).toBeVisible();
@@ -111,7 +118,10 @@ test.describe("Yacht — full 13-round game journey", () => {
 
     for (let round = 0; round < 13; round++) {
       await page.getByRole("button", { name: /Roll/i }).click();
-      await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
+      await scoreRow(
+        page,
+        page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first(),
+      );
     }
 
     await expect(page.getByTestId("yacht-result-title")).toBeVisible();
@@ -152,7 +162,10 @@ test.describe("Yacht — full 13-round game journey", () => {
 
     for (let round = 0; round < 13; round++) {
       await page.getByRole("button", { name: /Roll/i }).click();
-      await page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first().click();
+      await scoreRow(
+        page,
+        page.getByText(CATEGORY_LABELS_IN_ORDER[round]).first(),
+      );
     }
 
     await expect(page.getByTestId("yacht-result-title")).toBeVisible();

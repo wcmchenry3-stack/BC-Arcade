@@ -21,6 +21,8 @@
   "category.chance": "סיכוי",
   "score.scored": "נרשם, {{score}}",
   "score.potential": "פתוח, ירשום {{potential}}, הקש פעמיים לניקוד",
+  "score.armedInline": "הקש שוב לניקוד 0",
+  "score.armed": "ירשום 0. הקש שוב כדי לרשום 0",
   "score.notAvailable": "לא זמין",
   "score.label": "{{category}}: {{state}}",
   "score.you": "אתה",
