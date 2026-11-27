@@ -460,9 +460,9 @@ export default function SudokuScreen() {
   // The completion transition (useCompletionTransition, #3087): complete the
   // gameSync session and clear the saved game so the next mount starts fresh.
   // Every step to complete runs it, a restored solved puzzle included: there
-  // is no once-per-game guard, as a restored one has no session to complete
-  // and no usable time (its clock restarts on load), so it records no time
-  // and no best: only its result card is filled in.
+  // is no once-per-game guard, as a restored one has no session to complete.
+  // Its clock restarts from the banked time (#4089), so it records that time
+  // and its best like any solve.
   useCompletionTransition(state, isComplete, (s) => {
     const score = computeScore(s.difficulty, s.errorCount);
     // A time is usable only when positive: a non-positive elapsed time

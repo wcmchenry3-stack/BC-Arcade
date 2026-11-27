@@ -1776,14 +1776,26 @@ describe("SudokuScreen — banked play time across a kill (#4089)", () => {
     const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
     try {
       await enterFirstEnabledDigit(r);
+      const fire = async (status: AppStateStatus) => {
+        await act(async () => {
+          for (const [type, listener] of appStateSpy.mock.calls) {
+            if (type === "change") (listener as (s: AppStateStatus) => void)(status);
+          }
+        });
+      };
       now += 20_000;
-      await act(async () => {
-        for (const [type, listener] of appStateSpy.mock.calls) {
-          if (type === "change") (listener as (s: AppStateStatus) => void)("background");
-        }
-      });
+      // The first departure flushes the replay entries, which changes the state.
+      await fire("background");
       await waitFor(async () => {
         expect((await loadGameForTest())?.accumulatedMs).toBe(20_000);
+      });
+      // The second has nothing left to flush: the state does not change, so only the
+      // departure's own save can bank the newer time.
+      await fire("active");
+      now += 15_000;
+      await fire("background");
+      await waitFor(async () => {
+        expect((await loadGameForTest())?.accumulatedMs).toBe(35_000);
       });
     } finally {
       nowSpy.mockRestore();
