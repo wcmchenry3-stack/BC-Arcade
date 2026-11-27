@@ -46,6 +46,13 @@ describe("formatClock", () => {
     expect(formatClock(3600)).toBe("1:00:00");
     expect(formatClock(3725)).toBe("1:02:05");
   });
+
+  it("reads 00:00 for a non-finite or negative input", () => {
+    expect(formatClock(NaN)).toBe("00:00");
+    expect(formatClock(Infinity)).toBe("00:00");
+    expect(formatClock(-Infinity)).toBe("00:00");
+    expect(formatClock(-5)).toBe("00:00");
+  });
 });
 
 describe("CascadeTimer", () => {
@@ -151,6 +158,18 @@ describe("the HUD row with the timer", () => {
     expect(screen.getByTestId("cascade-hud-time")).toBeTruthy();
     const left = screen.getByTestId("cascade-hud-left");
     expect(left).toHaveStyle({ flexDirection: "row" });
+  });
+
+  it("keeps the timer out of the score's live region, so a tick never re-announces the score", async () => {
+    await mountRow(STACK_TIMER_BELOW_W);
+    const score = screen.getByTestId("cascade-score");
+    expect(score).toHaveProp("accessibilityLiveRegion", "polite");
+    let node = screen.getByTestId("cascade-hud-time").parent;
+    while (node) {
+      const live = node.props?.accessibilityLiveRegion;
+      expect(live === undefined || live === "none").toBe(true);
+      node = node.parent;
+    }
   });
 
   it("stacks under the score on a narrow screen", async () => {

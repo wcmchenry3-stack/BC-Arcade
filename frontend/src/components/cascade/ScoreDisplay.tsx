@@ -55,17 +55,18 @@ function ScoreDisplay({ score: scoreProp = 0, store, children, timer }: Props) {
   }, [score, scale, reduceMotion]);
 
   return (
-    // testID: the Maestro Cascade demo waits on this view's accessibility label
-    // ("Score: N") to see a merge score points (#3705). The number Text below
-    // is hidden from accessibility, so Maestro may not see it on Android.
-    <View
-      testID="cascade-score"
-      style={styles.container}
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={t("score.display", { score: formatNumber(t, score) })}
-    >
+    <View style={styles.container}>
       <View testID="cascade-hud-left" style={stacked ? styles.leftStacked : styles.leftBeside}>
-        <View style={styles.scoreSection}>
+        {/* testID: the Maestro Cascade demo waits on this view's accessibility label
+            ("Score: N") to see a merge score points (#3705). The number Text below is hidden
+            from accessibility, so Maestro may not see it on Android. It alone is the live
+            region: the timer is its sibling, so a tick never re-announces the score (#4091). */}
+        <View
+          testID="cascade-score"
+          style={styles.scoreSection}
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={t("score.display", { score: formatNumber(t, score) })}
+        >
           <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.label")}</Text>
           <Animated.Text
             style={[styles.score, { color: colors.accentText, transform: [{ scale }] }]}
