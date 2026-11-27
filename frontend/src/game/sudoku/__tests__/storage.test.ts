@@ -55,7 +55,7 @@ describe("sudoku storage", () => {
 
     it("loads a save without the field as 0", async () => {
       await saveGame(loadPuzzle("easy", "classic", rng0));
-      expect((await loadGame())!.accumulatedMs).toBe(0);
+      expect((await loadGame())!.accumulatedMs ?? 0).toBe(0);
     });
 
     it.each([
@@ -68,12 +68,12 @@ describe("sudoku storage", () => {
       const raw = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
       raw.accumulatedMs = bad;
       await AsyncStorage.setItem(GAME_KEY, JSON.stringify(raw));
-      expect((await loadGame())!.accumulatedMs).toBe(0);
+      expect((await loadGame())!.accumulatedMs ?? 0).toBe(0);
     });
 
     it("loads an Infinity accumulatedMs (stored as null by JSON) as 0", async () => {
       await saveGame({ ...loadPuzzle("easy", "classic", rng0), accumulatedMs: Infinity });
-      expect((await loadGame())!.accumulatedMs).toBe(0);
+      expect((await loadGame())!.accumulatedMs ?? 0).toBe(0);
     });
   });
 

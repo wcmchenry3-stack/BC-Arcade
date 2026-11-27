@@ -119,11 +119,13 @@ function restoreState(parsed: SerializedState): SudokuState {
     ...(Number.isSafeInteger(parsed.replayRows) && (parsed.replayRows as number) >= 0
       ? { replayRows: parsed.replayRows as number }
       : {}),
-    // Banked play time (#4089): a missing, negative or non-finite value restores as 0.
-    accumulatedMs:
-      typeof parsed.accumulatedMs === "number" && Number.isFinite(parsed.accumulatedMs)
-        ? Math.max(0, parsed.accumulatedMs)
-        : 0,
+    // Banked play time (#4089): a missing, negative or non-finite value is dropped, which reads as
+    // 0 (the stored shape of a save without it does not move).
+    ...(typeof parsed.accumulatedMs === "number" &&
+    Number.isFinite(parsed.accumulatedMs) &&
+    parsed.accumulatedMs > 0
+      ? { accumulatedMs: parsed.accumulatedMs }
+      : {}),
   };
 }
 
