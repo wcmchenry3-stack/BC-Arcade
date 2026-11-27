@@ -129,100 +129,113 @@ export default function Controls({
   // builder API (`Gesture.Pan()`), which react-native-gesture-handler 3.5.0 still supports and
   // whose callbacks the real-handler test (Controls.realGesture.test.tsx) drives; the v3 hook API
   // would be a rewrite of the drag without a known defect in the builder to fix.
-  const panGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .runOnJS(true)
-        .minDistance(0)
-        .withTestId(STARSWARM_PAN_TEST_ID)
-        .onBegin((e) => {
-          activeDragRef.current = e.y > liveRef.current.dragZoneY;
-          if (activeDragRef.current) {
-            // Anchor on the canvas's commanded ship X, not getState().player.x: the engine only
-            // copies input into player.x on a tick, and ticks are frozen during the pre-wave
-            // countdown, so engine X can be stale there and the ship would jump back on touch.
-            // #4079: each source only if it is a finite number, else the next, else the centre.
-            const handle = canvasRef.current;
-            anchorWaveRef.current = handle?.getState()?.wave ?? null;
-            const anchorX = firstFinite(
-              handle?.getPlayerX?.(),
-              handle?.getState()?.player.x,
-              playerXRef.current
-            );
-            playerXRef.current = anchorX;
-            shipXAtDragStartRef.current = anchorX;
-            anchorScaleRef.current = liveRef.current.scale;
-            noteShipDragBegin(anchorX, liveRef.current.scale);
-          }
-        })
-        .onChange((e) => {
-          if (!activeDragRef.current) return;
-          const scale = liveRef.current.scale;
-          // #2842: the wave-clear autopilot moves the ship on its own (and the next wave
-          // re-centres it). A drag held through that is ignored, then re-anchored on the ship
-          // (the canvas keeps its commanded X on the autopilot's) so control resumes from where
-          // the ship is instead of snapping back under the finger. The wave change is what
-          // triggers the re-anchor, so it works whether or not any move arrived during the
-          // extraction. #3132: an extraction can also hand control back within the same wave
-          // (salvage while the ship still holds its lane), so the drag also re-anchors whenever
-          // the ship isn't where this drag last put it: something else moved it.
+  const panGesture = useMemo(() => {
+    const gesture = Gesture.Pan()
+      .runOnJS(true)
+      .minDistance(0)
+      .withTestId(STARSWARM_PAN_TEST_ID)
+      .onBegin((e) => {
+        activeDragRef.current = e.y > liveRef.current.dragZoneY;
+        if (activeDragRef.current) {
+          // Anchor on the canvas's commanded ship X, not getState().player.x: the engine only
+          // copies input into player.x on a tick, and ticks are frozen during the pre-wave
+          // countdown, so engine X can be stale there and the ship would jump back on touch.
+          // #4079: each source only if it is a finite number, else the next, else the centre.
           const handle = canvasRef.current;
-          const state = handle?.getState();
-          if (state?.phase === "Extraction") {
-            noteShipDragIgnored(e.translationX, scale);
-            return;
-          }
-          const shipX = handle?.getPlayerX?.() ?? state?.player.x;
-          const waveChanged =
-            !!state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current;
-          const movedElsewhere =
-            shipX !== undefined && Math.abs(shipX - playerXRef.current) > SHIP_MOVED_EPSILON_PX;
-          if (state && shipX !== undefined && (waveChanged || movedElsewhere)) {
-            anchorWaveRef.current = state.wave;
-            shipXAtDragStartRef.current = shipX - e.translationX / scale;
-            anchorScaleRef.current = scale;
-          }
-          // #4079: the layout changed under the finger: carry on from where the ship is.
-          if (scale !== anchorScaleRef.current) {
-            anchorScaleRef.current = scale;
-            shipXAtDragStartRef.current = playerXRef.current - e.translationX / scale;
-          }
-          const dragStart = shipXAtDragStartRef.current;
-          const { rawX, newX, nextDragStart } = applyDrag(
-            dragStart,
-            e.translationX,
-            scale,
+          anchorWaveRef.current = handle?.getState()?.wave ?? null;
+          const anchorX = firstFinite(
+            handle?.getPlayerX?.(),
+            handle?.getState()?.player.x,
             playerXRef.current
           );
-          // Re-anchor so any reversal immediately moves the ship instead of replaying the
-          // overshoot (and, #4079, on the held X after an unusable event).
-          shipXAtDragStartRef.current = nextDragStart;
-          if (Number.isFinite(rawX) && rawX !== newX)
-            logBoundaryHit(lastBoundaryLogMsRef, rawX, newX, state?.phase);
-          playerXRef.current = newX;
-          noteShipDragMove(newX, rawX, dragStart, e.translationX, scale);
-          canvasRef.current?.setPlayerX(newX);
-        })
-        .onEnd((e) => {
-          if (
-            !activeDragRef.current &&
-            e.y < liveRef.current.dragZoneY &&
-            Math.abs(e.translationX) < 10
-          ) {
-            // Short tap in top zone → pause
-            if (!liveRef.current.isPaused && liveRef.current.isLiveRun) liveRef.current.onPause();
-          }
-          activeDragRef.current = false;
-          // #4079: the once-per-gesture check that every move was delivered
-          noteShipDragEnd(e.translationX, canvasRef.current?.getState());
-        })
-        .onFinalize((e) => {
-          activeDragRef.current = false;
-          // A no-op after onEnd; covers a gesture that is cancelled without one.
-          noteShipDragEnd(e?.translationX ?? NaN, canvasRef.current?.getState());
-        }),
-    [canvasRef]
-  );
+          playerXRef.current = anchorX;
+          shipXAtDragStartRef.current = anchorX;
+          anchorScaleRef.current = liveRef.current.scale;
+          noteShipDragBegin(anchorX, liveRef.current.scale);
+        }
+      })
+      .onChange((e) => dragTo(e.translationX, false))
+      .onEnd((e, success) => {
+        // #4079: the lift-off translation, which no move carries (see dragTo). Not on a
+        // cancelled or failed gesture: there the finger's last position is not a command.
+        if (success) dragTo(e.translationX, true);
+        if (
+          !activeDragRef.current &&
+          e.y < liveRef.current.dragZoneY &&
+          Math.abs(e.translationX) < 10
+        ) {
+          // Short tap in top zone → pause
+          if (!liveRef.current.isPaused && liveRef.current.isLiveRun) liveRef.current.onPause();
+        }
+        activeDragRef.current = false;
+        // #4079: the once-per-gesture check that every move was delivered
+        noteShipDragEnd(e.translationX, canvasRef.current?.getState());
+      })
+      .onFinalize((e) => {
+        activeDragRef.current = false;
+        // A no-op after onEnd; covers a gesture that is cancelled without one.
+        noteShipDragEnd(e?.translationX ?? NaN, canvasRef.current?.getState());
+      });
+
+    // One step of the drag: the finger at `translationX` (screen px from where it went down).
+    // `onChange` calls it for every move; #4079: `onEnd` calls it once more with the lift-off
+    // translation (`release`), which neither platform's pan recogniser sends as a move. A lift
+    // beyond the last move (a fast flick, or an injected swipe whose moves fell behind) used to
+    // leave the ship part of the way there.
+    function dragTo(translationX: number, release: boolean): void {
+      if (!activeDragRef.current) return;
+      const scale = liveRef.current.scale;
+      // #2842: the wave-clear autopilot moves the ship on its own (and the next wave
+      // re-centres it). A drag held through that is ignored, then re-anchored on the ship
+      // (the canvas keeps its commanded X on the autopilot's) so control resumes from where
+      // the ship is instead of snapping back under the finger. The wave change is what
+      // triggers the re-anchor, so it works whether or not any move arrived during the
+      // extraction. #3132: an extraction can also hand control back within the same wave
+      // (salvage while the ship still holds its lane), so the drag also re-anchors whenever
+      // the ship isn't where this drag last put it: something else moved it.
+      const handle = canvasRef.current;
+      const state = handle?.getState();
+      if (state?.phase === "Extraction") {
+        if (!release) noteShipDragIgnored(translationX, scale);
+        return;
+      }
+      const shipX = handle?.getPlayerX?.() ?? state?.player.x;
+      const waveChanged =
+        !!state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current;
+      const movedElsewhere =
+        shipX !== undefined && Math.abs(shipX - playerXRef.current) > SHIP_MOVED_EPSILON_PX;
+      if (state && shipX !== undefined && (waveChanged || movedElsewhere)) {
+        anchorWaveRef.current = state.wave;
+        shipXAtDragStartRef.current = shipX - translationX / scale;
+        anchorScaleRef.current = scale;
+      }
+      // #4079: the layout changed under the finger: carry on from where the ship is.
+      if (scale !== anchorScaleRef.current) {
+        anchorScaleRef.current = scale;
+        shipXAtDragStartRef.current = playerXRef.current - translationX / scale;
+      }
+      const dragStart = shipXAtDragStartRef.current;
+      const { rawX, newX, nextDragStart } = applyDrag(
+        dragStart,
+        translationX,
+        scale,
+        playerXRef.current
+      );
+      // Re-anchor so any reversal immediately moves the ship instead of replaying the
+      // overshoot (and, #4079, on the held X after an unusable event).
+      shipXAtDragStartRef.current = nextDragStart;
+      if (Number.isFinite(rawX) && rawX !== newX)
+        logBoundaryHit(lastBoundaryLogMsRef, rawX, newX, state?.phase);
+      // #4079: a lift where the last move left the ship commands nothing new.
+      if (release && newX === playerXRef.current) return;
+      playerXRef.current = newX;
+      // The stuck-ship detector counts delivered moves only: noteShipDragEnd judges the lift.
+      if (!release) noteShipDragMove(newX, rawX, dragStart, translationX, scale);
+      canvasRef.current?.setPlayerX(newX);
+    }
+
+    return gesture;
+  }, [canvasRef]);
 
   // #4079: leaving the screen sends a held stuck-ship event and forgets the drag, so a drag
   // that never saw onFinalize can't make a later visit look stuck.
