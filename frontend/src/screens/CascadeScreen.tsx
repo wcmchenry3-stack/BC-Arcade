@@ -74,6 +74,7 @@ import { recordLoopFrame } from "../game/starswarm/render/frameStats";
 import { FRAME_STATS_ENABLED, useFrameReadout } from "../game/cascade/useFrameReadout";
 import NextFruitPreview from "../components/cascade/NextFruitPreview";
 import ScoreDisplay from "../components/cascade/ScoreDisplay";
+import CascadeTimer from "../components/cascade/CascadeTimer";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import CascadeDevPanel from "../components/cascade/CascadeDevPanel";
 import CascadeBoard from "../components/cascade/CascadeBoard";
@@ -705,6 +706,9 @@ function CascadeGame() {
     [noteTier]
   );
 
+  // The HUD timer (#4091): a stable element, so the memoized score row does not re-render for it.
+  const timer = useMemo(() => <CascadeTimer clock={clock} />, [clock]);
+
   const body = (
     <GameShell
       gameType="cascade"
@@ -716,7 +720,9 @@ function CascadeGame() {
       style={shellStyle}
     >
       <>
-        <ScoreDisplay store={scoreStore}>{preview}</ScoreDisplay>
+        <ScoreDisplay store={scoreStore} timer={timer}>
+          {preview}
+        </ScoreDisplay>
 
         <ThemeSelector onRequestSelect={requestFruitSet} />
 

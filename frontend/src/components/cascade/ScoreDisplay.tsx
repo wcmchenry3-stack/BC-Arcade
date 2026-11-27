@@ -5,7 +5,7 @@
  * so it re-renders once per new integer score and the screen does not re-render for it.
  */
 import React, { memo, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { View, Text, Animated, StyleSheet } from "react-native";
+import { View, Text, Animated, StyleSheet, useWindowDimensions } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { formatNumber } from "../../api/statsDisplay";
@@ -18,11 +18,22 @@ interface Props {
   /** The live score (#2960); takes precedence over `score`. */
   store?: ScoreStore;
   children?: React.ReactNode;
+  /** The play timer (#4091), shown by the score: beside it, or under it on a narrow screen. */
+  timer?: React.ReactNode;
 }
+
+/**
+ * Below this window width (pt) the timer stacks under the score instead of sitting beside it
+ * (#4091). Measured: at 390 the centre slot is 170 against the 152 preview, at 375 about 0 slack
+ * and at 360 it is 12 short, and the timer needs room beside the score, so stack under 390.
+ */
+export const STACK_TIMER_BELOW_W = 390;
 
 const noSubscription = () => () => {};
 
-function ScoreDisplay({ score: scoreProp = 0, store, children }: Props) {
+function ScoreDisplay({ score: scoreProp = 0, store, children, timer }: Props) {
+  const { width } = useWindowDimensions();
+  const stacked = width < STACK_TIMER_BELOW_W;
   const getSnapshot = useCallback(() => (store ? store.get() : scoreProp), [store, scoreProp]);
   const score = useSyncExternalStore(store ? store.subscribe : noSubscription, getSnapshot);
   const { t } = useTranslation("cascade");
@@ -53,14 +64,17 @@ function ScoreDisplay({ score: scoreProp = 0, store, children }: Props) {
       accessibilityLiveRegion="polite"
       accessibilityLabel={t("score.display", { score: formatNumber(t, score) })}
     >
-      <View style={styles.scoreSection}>
-        <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.label")}</Text>
-        <Animated.Text
-          style={[styles.score, { color: colors.accentText, transform: [{ scale }] }]}
-          importantForAccessibility="no"
-        >
-          {formatNumber(t, score)}
-        </Animated.Text>
+      <View testID="cascade-hud-left" style={stacked ? styles.leftStacked : styles.leftBeside}>
+        <View style={styles.scoreSection}>
+          <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.label")}</Text>
+          <Animated.Text
+            style={[styles.score, { color: colors.accentText, transform: [{ scale }] }]}
+            importantForAccessibility="no"
+          >
+            {formatNumber(t, score)}
+          </Animated.Text>
+        </View>
+        {timer}
       </View>
       {children ? <View style={styles.center}>{children}</View> : null}
       <View style={styles.scoreSection}>
@@ -82,6 +96,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 12,
   },
+  leftBeside: { flexDirection: "row", alignItems: "center", gap: 16 },
+  leftStacked: { alignItems: "center", gap: 2 },
   scoreSection: {
     alignItems: "center",
   },

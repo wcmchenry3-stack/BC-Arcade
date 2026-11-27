@@ -5,6 +5,8 @@
   "game.canvasLabel": "Cascade 게임 — 과일을 쌓아 같은 과일을 합치세요. 탭하거나 클릭하여 떨어뜨리세요.",
   "score.label": "점수",
   "score.display": "점수: {{score}}",
+  "score.time": "시간",
+  "hud.elapsed": "경과 시간 {{time}}",
   "preview.dropLabel": "떨어뜨리기",
   "preview.nextLabel": "다음",
   "preview.droppingNext": "다음 떨어질 것: {{name}}",

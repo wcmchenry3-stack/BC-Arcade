@@ -5,6 +5,8 @@
   "game.canvasLabel": "משחק Cascade — זרוק פירות לערימה כדי לשלב התאמות. הקש או לחץ כדי לזרוק.",
   "score.label": "ניקוד",
   "score.display": "ניקוד: {{score}}",
+  "score.time": "זמן",
+  "hud.elapsed": "זמן שחלף {{time}}",
   "preview.dropLabel": "זרוק",
   "preview.nextLabel": "הבא",
   "preview.droppingNext": "הבא לזרוק: {{name}}",

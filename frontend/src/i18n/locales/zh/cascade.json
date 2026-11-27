@@ -5,6 +5,8 @@
   "game.canvasLabel": "Cascade 游戏 — 掉落水果到堆叠中合并相同的。点击或轻触掉落。",
   "score.label": "得分",
   "score.display": "得分：{{score}}",
+  "score.time": "时间",
+  "hud.elapsed": "已用时间 {{time}}",
   "preview.dropLabel": "掉落",
   "preview.nextLabel": "下一个",
   "preview.droppingNext": "即将掉落：{{name}}",

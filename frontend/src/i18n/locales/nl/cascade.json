@@ -5,6 +5,8 @@
   "game.canvasLabel": "Cascade spel — laat fruit vallen om te matchen. Tik of klik om te laten vallen.",
   "score.label": "Score",
   "score.display": "Score: {{score}}",
+  "score.time": "Tijd",
+  "hud.elapsed": "Verstreken tijd {{time}}",
   "preview.dropLabel": "Loslaten",
   "preview.nextLabel": "Volgende",
   "preview.droppingNext": "Volgende: {{name}}",

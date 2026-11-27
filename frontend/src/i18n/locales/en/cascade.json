@@ -5,6 +5,8 @@
   "game.canvasLabel": "Cascade game — drop objects onto the stack to merge matching ones. Tap or click to drop.",
   "score.label": "Score",
   "score.display": "Score: {{score}}",
+  "score.time": "Time",
+  "hud.elapsed": "Elapsed time {{time}}",
   "preview.dropLabel": "Drop",
   "preview.nextLabel": "Next",
   "preview.droppingNext": "Dropping next: {{name}}",

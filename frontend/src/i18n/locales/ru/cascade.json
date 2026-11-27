@@ -5,6 +5,8 @@
   "game.canvasLabel": "Игра Cascade — сбрасывай фрукты на стопку, чтобы объединять одинаковые. Нажми, чтобы сбросить.",
   "score.label": "Очки",
   "score.display": "Очки: {{score}}",
+  "score.time": "Время",
+  "hud.elapsed": "Прошло времени: {{time}}",
   "preview.dropLabel": "Сброс",
   "preview.nextLabel": "След.",
   "preview.droppingNext": "Следующий: {{name}}",

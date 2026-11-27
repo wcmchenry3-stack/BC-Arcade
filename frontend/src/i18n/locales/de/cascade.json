@@ -5,6 +5,8 @@
   "game.canvasLabel": "Cascade Spiel — Früchte stapeln und kombinieren. Tippen oder klicken zum Fallenlassen.",
   "score.label": "Punkte",
   "score.display": "Punkte: {{score}}",
+  "score.time": "Zeit",
+  "hud.elapsed": "Vergangene Zeit: {{time}}",
   "preview.dropLabel": "Fallen",
   "preview.nextLabel": "Nächste",
   "preview.droppingNext": "Nächste fällt: {{name}}",

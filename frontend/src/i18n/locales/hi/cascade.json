@@ -5,6 +5,8 @@
   "game.canvasLabel": "Cascade गेम — मिलते-जुलते फलों को मिलाने के लिए स्टैक पर गिराएं। गिराने के लिए टैप या क्लिक करें।",
   "score.label": "स्कोर",
   "score.display": "स्कोर: {{score}}",
+  "score.time": "समय",
+  "hud.elapsed": "समय बीता {{time}}",
   "preview.dropLabel": "गिराएं",
   "preview.nextLabel": "अगला",
   "preview.droppingNext": "अगला गिर रहा है: {{name}}",

@@ -8,6 +8,15 @@ export function formatMs(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Formats whole seconds as `mm:ss`, or `h:mm:ss` from an hour up (a HUD clock, #4091). */
+export function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s % 60)}` : `${pad(m)}:${pad(s % 60)}`;
+}
+
 /** Milliseconds until `elapsedMs` next crosses a whole second (1000 on a boundary). */
 export function msToNextSecond(elapsedMs: number): number {
   return 1000 - (((elapsedMs % 1000) + 1000) % 1000);

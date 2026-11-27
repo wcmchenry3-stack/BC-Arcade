@@ -5,6 +5,8 @@
   "game.canvasLabel": "Jogo Cascade — solte frutas na pilha para combinar. Toque ou clique para soltar.",
   "score.label": "Pontos",
   "score.display": "Pontos: {{score}}",
+  "score.time": "Tempo",
+  "hud.elapsed": "Tempo decorrido {{time}}",
   "preview.dropLabel": "Soltar",
   "preview.nextLabel": "Próx.",
   "preview.droppingNext": "Soltando: {{name}}",
