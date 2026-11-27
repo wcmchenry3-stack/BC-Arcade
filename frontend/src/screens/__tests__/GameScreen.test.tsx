@@ -922,9 +922,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       await fireEvent.press(getByRole("button", { name: /roll dice/i }));
     });
     await landDice();
-    await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /twos/i }));
-    });
+    await pressScoreRow(getByRole, /twos/i);
     await waitFor(() => expect(mockEnqueueEvents.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 });

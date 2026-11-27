@@ -290,8 +290,10 @@ export default function ScoreTable({
           <Text
             style={[
               styles.label,
+              // Armed (#4092): the name keeps its natural width (no `flex: 1`) so the amber label
+              // can take the rest of the row.
+              isArmed ? styles.labelArmed : styles.labelFill,
               filled && styles.labelAfterCheck,
-              isArmed && styles.labelArmed,
               { color: filled ? colors.textMuted : colors.text },
             ]}
             numberOfLines={1}
@@ -629,9 +631,10 @@ const styles = StyleSheet.create({
     width: 3,
     borderRadius: 2,
   },
-  label: { flex: 1, fontSize: 13, lineHeight: 15, fontWeight: "500", paddingLeft: 4 },
-  // Armed (#4092): the name keeps its own width so the amber label can take the rest of the row.
-  labelArmed: { flex: 0, flexShrink: 0 },
+  label: { fontSize: 13, lineHeight: 15, fontWeight: "500", paddingLeft: 4 },
+  labelFill: { flex: 1 },
+  // No `flex` here: react-native-web reads `flex: 0` as a 0 basis, which collapsed the name to nothing.
+  labelArmed: { flexGrow: 0, flexShrink: 0 },
   armedLabel: { flex: 1, minWidth: 0, fontSize: 11, lineHeight: 13, fontWeight: "700" },
   labelAfterCheck: { paddingLeft: 0 },
   check: { marginLeft: 3 },

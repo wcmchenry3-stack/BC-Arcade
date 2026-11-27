@@ -83,10 +83,17 @@ export function blankScores(): Record<string, number | null> {
  * Score a row. A row that would score 0 takes a second tap (#4092: the first arms it, with the
  * label "Tap again to score 0"), and most specs roll random dice, so tap once and tap again when
  * the row says it is armed.
+ *
+ * The second tap goes to the armed label, which sits inside the same pressable row: arming changes
+ * the row's accessible name ("…: would score 0. Tap again to score 0"), so a caller's locator built
+ * on the open-row name would no longer match it.
  */
 export async function scoreRow(page: Page, row: Locator): Promise<void> {
   await row.click();
-  if (await page.getByText("Tap again to score 0").isVisible()) {
-    await row.click();
-  }
+  const armed = page.getByText("Tap again to score 0");
+  const isArmed = await armed
+    .waitFor({ state: "visible", timeout: 750 })
+    .then(() => true)
+    .catch(() => false);
+  if (isArmed) await armed.click();
 }
