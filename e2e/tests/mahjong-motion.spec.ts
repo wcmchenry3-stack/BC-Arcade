@@ -64,9 +64,14 @@ test.describe("Mahjong — motion never holds up play (#3613)", () => {
     });
 
     // A match, then the next pair at once: within 100 ms, while the first still flies.
-    await tapAt(page, FOUR_AT[0]!);
-    await tapAt(page, FOUR_AT[1]!);
-    await tapAt(page, FOUR_AT[2]!);
+    // The board doesn't move, so look its box up once: taps 2 and 3 are then back-to-back
+    // clicks, well inside the match's burst (MATCH_MS = 440), even on a slow runner.
+    const box = (await page.getByRole("img", { name: BOARD }).boundingBox())!;
+    const clickAt = (at: { fx: number; fy: number }) =>
+      page.mouse.click(box.x + at.fx * box.width, box.y + at.fy * box.height);
+    await clickAt(FOUR_AT[0]!);
+    await clickAt(FOUR_AT[1]!);
+    await clickAt(FOUR_AT[2]!);
     // The app's own clock (#4098): Playwright's round trips are not the app's latency. The
     // canvas records, in test builds, the click event -> tap handled time and whether the
     // first match's burst was still flying at that tap.

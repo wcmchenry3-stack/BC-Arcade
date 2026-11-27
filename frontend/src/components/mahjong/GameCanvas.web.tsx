@@ -23,7 +23,7 @@ import {
 } from "../../game/mahjong/motion";
 import type { MotionClock, Spark, TileLook } from "../../game/mahjong/motion";
 import { areTestHooksEnabled } from "../../game/_shared/envFlags";
-import { recordTap } from "./tapProbe";
+import { matchBurstActive, recordTap } from "./tapProbe";
 import { loadTileAssets } from "./tileAssetLoader";
 import { boardResolution } from "../../game/mahjong/zoom";
 import {
@@ -560,11 +560,11 @@ export default function GameCanvas({
       const tileId = hitTest(state.tiles, tapX, tapY, camera);
       if (tileId === null) return;
       // Test builds only (#4098); read before the press, which may start or end a burst.
-      const burstActive = areTestHooksEnabled() && motion.ghosts.length > 0;
+      const burstActive = matchBurstActive();
       onTilePress(tileId);
       recordTap(canvas, e.timeStamp, burstActive);
     },
-    [state.tiles, onTilePress, gameActive, camera, motion.ghosts]
+    [state.tiles, onTilePress, gameActive, camera]
   );
 
   return (

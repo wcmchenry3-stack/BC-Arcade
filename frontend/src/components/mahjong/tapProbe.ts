@@ -12,6 +12,29 @@
  */
 
 import { areTestHooksEnabled } from "../../game/_shared/envFlags";
+import { MATCH_MS } from "../../game/mahjong/motion";
+
+/**
+ * When the last match was applied (`performance.now()`), or -Infinity. Written when the match
+ * is applied, not when the burst's ghosts render, so a tap right behind a match sees the burst
+ * even before React has re-rendered it (back-to-back clicks).
+ */
+let lastMatchAt = Number.NEGATIVE_INFINITY;
+
+/** The board applied a match. A clock read and one write, test builds only. */
+export function noteMatch(): void {
+  if (areTestHooksEnabled()) lastMatchAt = performance.now();
+}
+
+/** True while the last match's flight and burst (MATCH_MS) is still playing. */
+export function matchBurstActive(now: number = performance.now()): boolean {
+  return areTestHooksEnabled() && now - lastMatchAt < MATCH_MS;
+}
+
+/** Test seam: forget any match. */
+export function resetMatchProbe(): void {
+  lastMatchAt = Number.NEGATIVE_INFINITY;
+}
 
 /** Attributes e2e reads off the canvas (`mahjong-motion.spec.ts`). */
 export const TAP_ATTR = {
@@ -24,9 +47,9 @@ export const TAP_ATTR = {
 } as const;
 
 /**
- * Record one handled tap on `el`. Call after the tap's handler ran (the selection is queued
- * and React flushes a discrete event's update on exit), so `ms` is the app's whole latency for
- * the tap. No-op unless test hooks are on.
+ * Record one handled tap on `el`. Call after the tap's handler ran (the selection is queued;
+ * React flushes it after the handler, and paint follows), so `ms` is the input delay plus the
+ * handler: event time to tap handled, not to paint. No-op unless test hooks are on.
  */
 export function recordTap(el: Element | null, eventTimeStamp: number, burstActive: boolean): void {
   if (!areTestHooksEnabled() || !el) return;

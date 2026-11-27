@@ -3,11 +3,13 @@
  */
 /** Gating and recording of the test-build-only tap probe (#4098). */
 
-import { recordTap, TAP_ATTR } from "../tapProbe";
+import { MATCH_MS } from "../../../game/mahjong/motion";
+import { matchBurstActive, noteMatch, recordTap, resetMatchProbe, TAP_ATTR } from "../tapProbe";
 
 describe("recordTap", () => {
   const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
   afterEach(() => {
+    resetMatchProbe();
     if (original === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
     else process.env.EXPO_PUBLIC_TEST_HOOKS = original;
   });
@@ -41,5 +43,40 @@ describe("recordTap", () => {
   it("tolerates a missing element", () => {
     process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
     expect(() => recordTap(null, 0, false)).not.toThrow();
+  });
+});
+
+describe("match burst signal", () => {
+  const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
+  afterEach(() => {
+    resetMatchProbe();
+    if (original === undefined) delete process.env.EXPO_PUBLIC_TEST_HOOKS;
+    else process.env.EXPO_PUBLIC_TEST_HOOKS = original;
+  });
+
+  it("is false before any match", () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    expect(matchBurstActive()).toBe(false);
+  });
+
+  it("is true right after a match, with no render in between", () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    noteMatch();
+    expect(matchBurstActive()).toBe(true);
+  });
+
+  it("is false once MATCH_MS has passed", () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    noteMatch();
+    expect(matchBurstActive(performance.now() + MATCH_MS + 1)).toBe(false);
+  });
+
+  it("does nothing when test hooks are off", () => {
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "0";
+    noteMatch();
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
+    expect(matchBurstActive()).toBe(false);
+    process.env.EXPO_PUBLIC_TEST_HOOKS = "0";
+    expect(matchBurstActive()).toBe(false);
   });
 });
