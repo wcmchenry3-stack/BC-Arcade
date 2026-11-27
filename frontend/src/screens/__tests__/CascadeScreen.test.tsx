@@ -373,6 +373,13 @@ describe("CascadeGame", () => {
     expect(JSON.stringify(renderer.toJSON())).toContain('"0"');
   });
 
+  it("shows the play timer by the score, at 00:00 before the first piece (#4091)", async () => {
+    const renderer = await renderScreen();
+    const json = JSON.stringify(renderer.toJSON());
+    expect(json).toContain("cascade-hud-time");
+    expect(json).toContain("00:00");
+  });
+
   it("the tappable board is the bin: exactly the world rect, bottom-anchored in the area (#3698)", async () => {
     const renderer = await renderScreen();
     // 300 x 600 area: scale 0.75 -> a 300 x 450 board, the 150 spare px above the bin.

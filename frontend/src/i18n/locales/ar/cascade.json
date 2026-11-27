@@ -5,6 +5,8 @@
   "game.canvasLabel": "لعبة Cascade — أسقط الفواكه على الكومة لدمج المتشابهة. اضغط أو انقر للإسقاط.",
   "score.label": "النقاط",
   "score.display": "النقاط: {{score}}",
+  "score.time": "الوقت",
+  "hud.elapsed": "الوقت المنقضي {{time}}",
   "preview.dropLabel": "إسقاط",
   "preview.nextLabel": "التالي",
   "preview.droppingNext": "الإسقاط التالي: {{name}}",

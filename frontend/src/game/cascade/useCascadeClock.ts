@@ -11,6 +11,7 @@
  *   load lands while the player is away.
  */
 import { useState } from "react";
+import { createClockActivity, type ClockActivity } from "../_shared/clockActivity";
 import { monotonicNow } from "../_shared/monotonicNow";
 import {
   clockElapsedMs,
@@ -36,6 +37,14 @@ interface CascadeClock {
   resume(): void;
   /** Play time so far, ms. */
   elapsed(): number;
+  /**
+   * Whether the clock is advancing (started, not paused or stopped), outside React state: the
+   * HUD's `ElapsedText` subscribes to it, so a first piece, a pause or the end never re-renders
+   * the screen (#4091, #2964).
+   */
+  activity: ClockActivity;
+  /** Bumped on every reset and restore (a jump in the time the text must re-read), not per tick. */
+  epoch: { subscribe(onChange: () => void): () => void; get(): number };
 }
 
 const NOT_STARTED: PlayClock = { startedAt: null, accumulatedMs: 0 };
@@ -46,10 +55,20 @@ function createCascadeClock(now: () => number = monotonicNow): CascadeClock {
   let away = false;
   // The game ended: no piece starts the clock again until a new or restored game.
   let stopped = false;
+  const activity = createClockActivity();
+  let epoch = 0;
+  const epochListeners = new Set<() => void>();
+  const sync = () => activity.set(clock.startedAt !== null);
+  const bumpEpoch = () => {
+    epoch += 1;
+    epochListeners.forEach((listener) => listener());
+  };
   return {
     reset: () => {
       clock = NOT_STARTED;
       stopped = false;
+      sync();
+      bumpEpoch();
     },
     restore: (accumulatedMs) => {
       stopped = false;
@@ -57,23 +76,37 @@ function createCascadeClock(now: () => number = monotonicNow): CascadeClock {
         clock.paused === true || away
           ? { accumulatedMs, startedAt: null, paused: true }
           : { accumulatedMs, startedAt: now() };
+      sync();
+      bumpEpoch();
     },
     start: () => {
       if (!stopped) clock = startClockOnMove(clock, now());
+      sync();
     },
     stop: () => {
       stopped = true;
       clock = stopClock(clock, now());
+      sync();
     },
     pause: () => {
       away = true;
       clock = pauseClock(clock, now());
+      sync();
     },
     resume: () => {
       away = false;
       clock = resumeClock(clock, now());
+      sync();
     },
     elapsed: () => clockElapsedMs(clock, now()),
+    activity,
+    epoch: {
+      subscribe: (onChange) => {
+        epochListeners.add(onChange);
+        return () => epochListeners.delete(onChange);
+      },
+      get: () => epoch,
+    },
   };
 }
 

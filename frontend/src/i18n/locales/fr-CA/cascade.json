@@ -5,6 +5,8 @@
   "game.canvasLabel": "Jeu Cascade — lâchez des fruits pour fusionner les identiques. Tapez ou cliquez pour lâcher.",
   "score.label": "Points",
   "score.display": "Points : {{score}}",
+  "score.time": "Temps",
+  "hud.elapsed": "Temps écoulé {{time}}",
   "preview.dropLabel": "Lâcher",
   "preview.nextLabel": "Suivant",
   "preview.droppingNext": "Prochain : {{name}}",

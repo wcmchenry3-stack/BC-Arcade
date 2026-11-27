@@ -95,6 +95,8 @@ The lid is the line at `OVERFLOW_LINE_Y` = 80. All counts are in fixed steps, ne
 
 Two chips above the board, left of the score: **DROP** (the piece the spawner holds, drawn 22 pt) and **NEXT** (the one after it, 16 pt), each with the piece's drawn glyph (`NextFruitPreview`, `FruitGlyph`, the same art as the board). After each drop NEXT hops into DROP in an arc and the new NEXT pops in (Reduce Motion: both fade in). The queue is the engine-independent `{ current, next }` pair of `pieceQueue.ts`; the piece after NEXT is drawn at the moment of the drop, so danger mode shapes it two drops ahead. The queue is saved and restored with the game. Both chips are screen-reader elements ("Dropping next: Cherry", "Coming up: Lemon").
 
+**The play timer (#4091).** The HUD row shows a muted **TIME** stat (`CascadeTimer`, `cascade-hud-time`, the value `cascade-hud-time-value`) beside SCORE: `mm:ss`, `h:mm:ss` from an hour (`formatClock`). It reads the same play clock as the result card (`useCascadeClock`): 00:00 before the first piece (#3700), running while the player plays, held while away (#2735, #2750), frozen at the game's end and the card's Time, and a restored game shows its banked time at once. On a window narrower than 390 pt (`STACK_TIMER_BELOW_W`: at 390 the centre slot is 170 pt for the 152 pt preview, at 375 about 0 spare, at 360 12 pt short) it stacks under SCORE instead (`cascade-hud-left`). The text owns its one-second tick (`ElapsedText`), and the clock tells it when it starts, pauses and stops (`clock.activity`) and when a new or restored game jumps the time (`clock.epoch`), so a tick re-renders only the timer, never the screen, the score row or the board (#2964). Screen-reader label: `cascade:hud.elapsed` ("Elapsed time 04:37").
+
 ### 8. Motion and celebration states
 
 Everything is drawn in code on the board's Skia Picture on the UI thread; nothing per frame goes through React. Every duration, easing, size and count is in `game/cascade/motion.ts` (`MOTION`) and `celebration.ts`.
@@ -152,6 +154,7 @@ Cascade has no endpoints of its own: it uses the generic `/games` routes (the le
 **Accessibility.** Cascade's board is a Skia canvas, outside the native accessibility tree, so the game states are carried by native elements beside it.
 
 - **Score:** `ScoreDisplay` is a native `Text` with a polite live region and the label "Score: N", outside the canvas.
+- **Timer:** `CascadeTimer`'s value is a native `Text` labelled "Elapsed time mm:ss" (not a live region, so it is read on focus, not every second).
 - **Board:** a wrapping `View` with role `image`, the label `a11y.board`, a hint and an "activate" action that drops in the middle (a double-tap). The pieces are not individually exposed.
 - **Announcements:** while a screen reader is on, a merge is announced with the new piece's name (`cascade:event.merged`), at most once per game step (#4082): when a step makes several merges (a big chain), only the highest piece made that step is announced. There is no debounce across steps, so the feedback is never late. With no screen reader on, nothing is announced (and no string is looked up). The result card announces a win or a game over (it is the shared accessible modal).
 - **Preview chips and the piece-set toggle** are labelled accessible elements.

@@ -448,5 +448,23 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Shown in a row of four short stat labels under a number; keep it short (it may wrap to two lines)."
+  },
+  "score.time": {
+    "component": "CascadeTimer",
+    "description": "Label above the play timer in the Cascade HUD, beside SCORE (#4091). Shown uppercase by the style.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One short word, same style as the SCORE label."
+  },
+  "hud.elapsed": {
+    "component": "CascadeTimer",
+    "description": "Screen reader label for the Cascade play timer (#4091), e.g. 'Elapsed time 04:37'.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{time}}"],
+    "doNotTranslate": [],
+    "notes": "Same wording as Sudoku's hud.elapsed."
   }
 }

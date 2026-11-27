@@ -5,6 +5,8 @@
   "game.canvasLabel": "Cascadeゲーム — フルーツを積んで合体させよう。タップまたはクリックで落とす。",
   "score.label": "スコア",
   "score.display": "スコア: {{score}}",
+  "score.time": "時間",
+  "hud.elapsed": "経過時間 {{time}}",
   "preview.dropLabel": "落とす",
   "preview.nextLabel": "次",
   "preview.droppingNext": "次に落とす: {{name}}",

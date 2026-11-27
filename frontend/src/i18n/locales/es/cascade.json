@@ -5,6 +5,8 @@
   "game.canvasLabel": "Juego Cascade — deja caer frutas para unirlas. Toca o haz clic para soltar.",
   "score.label": "Puntos",
   "score.display": "Puntos: {{score}}",
+  "score.time": "Tiempo",
+  "hud.elapsed": "Tiempo transcurrido {{time}}",
   "preview.dropLabel": "Soltar",
   "preview.nextLabel": "Próximo",
   "preview.droppingNext": "Soltando: {{name}}",

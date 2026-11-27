@@ -118,3 +118,29 @@ describe("useCascadeClock (#2750, #3700)", () => {
     mono.mockRestore();
   });
 });
+
+describe("useCascadeClock activity and epoch (#4091)", () => {
+  it("activity follows start, pause, resume and stop, notifying only on a change", async () => {
+    const clock = (await renderHook(() => useCascadeClock())).result.current;
+    const seen: boolean[] = [];
+    clock.activity.subscribe(() => seen.push(clock.activity.getSnapshot()));
+    expect(clock.activity.getSnapshot()).toBe(false);
+    clock.start();
+    clock.start();
+    clock.pause();
+    clock.resume();
+    clock.stop();
+    expect(seen).toEqual([true, false, true, false]);
+  });
+
+  it("epoch moves on reset and restore only", async () => {
+    const clock = (await renderHook(() => useCascadeClock())).result.current;
+    const before = clock.epoch.get();
+    clock.start();
+    clock.pause();
+    expect(clock.epoch.get()).toBe(before);
+    clock.restore(5_000);
+    clock.reset();
+    expect(clock.epoch.get()).toBe(before + 2);
+  });
+});

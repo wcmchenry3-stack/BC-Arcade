@@ -35,6 +35,9 @@ jest.mock("../../game/_shared/gameEventClient", () => mockScreenDeps().mockGameE
 jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
 jest.mock("../../components/cascade/ThemeSelector", () => () => null);
+// The HUD timer (#4091) commits once a second while the clock runs, by design; these tests count
+// the commits a chain or a score causes. Its own ticking is covered in CascadeTimer.test.tsx.
+jest.mock("../../components/cascade/CascadeTimer", () => () => null);
 jest.mock("@shopify/react-native-skia", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
