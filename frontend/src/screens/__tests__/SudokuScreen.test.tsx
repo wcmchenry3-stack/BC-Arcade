@@ -17,7 +17,7 @@ import SudokuScreen from "../SudokuScreen";
 import { dark as darkColors, ThemeProvider } from "../../theme/ThemeContext";
 import * as sudokuEngine from "../../game/sudoku/engine";
 import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
-import { saveGame } from "../../game/sudoku/storage";
+import { loadGame as loadGameForTest, saveGame } from "../../game/sudoku/storage";
 import {
   getBest,
   recordResult,
@@ -1651,5 +1651,166 @@ describe("SudokuScreen — play area too short for the board (#3773)", () => {
     expect(StyleSheet.flatten(scroll.props.contentContainerStyle)).toMatchObject({
       justifyContent: "flex-end",
     });
+  });
+});
+
+describe("SudokuScreen — banked play time across a kill (#4089)", () => {
+  async function enterFirstEnabledDigit(r: Awaited<ReturnType<typeof renderScreen>>) {
+    const emptyCells = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    for (let d = 1; d <= 9; d++) {
+      const button = r.getByLabelText(new RegExp(`enter digit ${d}`, "i"));
+      if (!button.props.accessibilityState?.disabled) {
+        await act(async () => {
+          await fireEvent.press(button);
+        });
+        return;
+      }
+    }
+  }
+
+  async function openNewGameModal(r: Awaited<ReturnType<typeof renderScreen>>) {
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start New"));
+    });
+  }
+
+  function almostSolved() {
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    const open = fresh.grid
+      .flatMap((cells, row) => cells.map((cell, col) => ({ cell, row, col })))
+      .find(({ cell }) => !cell.given)!;
+    return { fresh, open, state: fillAllExcept(fresh, open) };
+  }
+
+  it("a restored save shows its banked time, not 00:00", async () => {
+    await saveGame({ ...almostSolved().state, accumulatedMs: 65_000 });
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    expect(r.getByLabelText("Elapsed time 01:05")).toBeTruthy();
+  });
+
+  it("a solve after a restore reports the banked plus the new time", async () => {
+    const { fresh, open, state } = almostSolved();
+    await saveGame({ ...state, accumulatedMs: 65_000 });
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const r = await renderScreen();
+      await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+      now += 10_000;
+      const digit = fresh.solution.charCodeAt(open.row * 9 + open.col) - 48;
+      await act(async () => {
+        await fireEvent.press(
+          r
+            .getAllByRole("button")
+            .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")))[0]!
+        );
+      });
+      await act(async () => {
+        await fireEvent.press(r.getByLabelText(new RegExp(`enter digit ${digit}`, "i")));
+      });
+      await waitFor(() => expect(r.getByTestId("sudoku-result-title")).toBeTruthy());
+      expect(within(r.getByTestId("sudoku-result")).getAllByText("01:15").length).toBeGreaterThan(
+        0
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("a save loaded while the app is away starts paused with the banked time", async () => {
+    await saveGame({ ...almostSolved().state, accumulatedMs: 65_000 });
+    const original = Object.getOwnPropertyDescriptor(AppState, "currentState");
+    Object.defineProperty(AppState, "currentState", { value: "background", configurable: true });
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const r = await renderScreen();
+      await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+      now += 30 * 60_000;
+      await act(async () => {});
+      expect(r.getByLabelText("Elapsed time 01:05")).toBeTruthy();
+    } finally {
+      nowSpy.mockRestore();
+      if (original) Object.defineProperty(AppState, "currentState", original);
+      else delete (AppState as { currentState?: unknown }).currentState;
+    }
+  });
+
+  it("saves the play time when the game is saved after a move", async () => {
+    const r = await renderScreen();
+    await fireEvent.press(r.getByLabelText(/start/i));
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      await enterFirstEnabledDigit(r);
+      now += 42_000;
+      await act(async () => {
+        await fireEvent.press(r.getByTestId("sudoku-notes"));
+      });
+      await waitFor(async () => {
+        const saved = await loadGameForTest();
+        expect(saved?.accumulatedMs).toBe(42_000);
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("going to the background saves the latest play time without a state change", async () => {
+    const appStateSpy = jest.spyOn(AppState, "addEventListener");
+    const r = await renderScreen();
+    await fireEvent.press(r.getByLabelText(/start/i));
+    let now = performance.now();
+    const nowSpy = jest.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      await enterFirstEnabledDigit(r);
+      const fire = async (status: AppStateStatus) => {
+        await act(async () => {
+          for (const [type, listener] of appStateSpy.mock.calls) {
+            if (type === "change") (listener as (s: AppStateStatus) => void)(status);
+          }
+        });
+      };
+      now += 20_000;
+      // The first departure flushes the replay entries, which changes the state.
+      await fire("background");
+      await waitFor(async () => {
+        expect((await loadGameForTest())?.accumulatedMs).toBe(20_000);
+      });
+      // The second has nothing left to flush: the state does not change, so only the
+      // departure's own save can bank the newer time.
+      await fire("active");
+      now += 15_000;
+      await fire("background");
+      await waitFor(async () => {
+        expect((await loadGameForTest())?.accumulatedMs).toBe(35_000);
+      });
+    } finally {
+      nowSpy.mockRestore();
+      appStateSpy.mockRestore();
+    }
+  });
+
+  it("a new puzzle starts at 00:00 again", async () => {
+    await saveGame({ ...almostSolved().state, accumulatedMs: 65_000 });
+    const r = await renderScreen();
+    await waitFor(() => expect(r.getByLabelText("Elapsed time 01:05")).toBeTruthy());
+    await openNewGameModal(r);
+    await act(async () => {
+      await fireEvent.press(r.getByText("Start"));
+    });
+    await waitFor(() => expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy());
   });
 });

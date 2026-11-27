@@ -210,7 +210,7 @@ It pauses while:
 - the app is backgrounded; or
 - another screen such as Stats/Leaderboard covers the puzzle.
 
-A saved puzzle restores the board, notes, errors, and undo history after relaunch, but **elapsed time is not persisted**. If the restored puzzle already contains play, its timer restarts from 0 for the new process. This is current intentional behavior.
+A saved puzzle restores the board, notes, errors, and undo history after relaunch, and **the play time so far** (#4089). Every save of the game (after a move, and when the app goes to the background or another screen covers the game) writes the current play time, paused and away time excluded, as `accumulatedMs` (in `SerializedState`). On restore the clock starts from that banked time, so the HUD shows it at once and the solved time includes it; a load that lands while the player is away starts paused at the banked time. A save without the field, or with a negative or non-finite one, restores as 0. A new puzzle or start-over resets it to 0.
 
 The device also keeps the best time per mode and difficulty for result-card presentation: the shared personal best (#3757, [`game/_shared/personalBest.ts`](../ARCHITECTURE.md#4-persistence-and-offline-contract), key `personal_best_v1:sudoku`, variants such as `classic.easy`; the old `sudoku_stats_v1` is moved in on the first read), read with the saved puzzle and written only when a solve beats it. No server I/O. Server Stats/history remain authoritative for historical reporting.
 

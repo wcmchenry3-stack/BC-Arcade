@@ -83,6 +83,12 @@ export interface SudokuState {
   readonly entryCount?: number;
   /** Replay rows (events) handed to the recorder so far, bounded by `MAX_REPLAY_ROWS`. */
   readonly replayRows?: number;
+  /**
+   * Play time banked so far, in ms, without paused or away time (#4089). Set when the game is
+   * saved and read when it is restored, so the clock carries on after an app kill. The screen's
+   * clock refs hold the live time; absent (0) on a game from before this field.
+   */
+  readonly accumulatedMs?: number;
   readonly events?: readonly GameEvent[];
 }
 

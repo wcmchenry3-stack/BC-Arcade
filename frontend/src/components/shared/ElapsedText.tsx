@@ -68,7 +68,7 @@ function toSeconds(elapsedMs: number | null): number {
  * A game clock on screen that owns its tick, so only this text re-renders as
  * time passes, never the game screen around it (#2964). The same shape as
  * `PlayClockText`, for a clock that lives in the screen's refs (Sudoku's: it
- * restarts on relaunch and pauses while the app or screen is away) rather
+ * carries its banked time over a relaunch and pauses while the app or screen is away) rather
  * than in a `PlayClock`.
  *
  * Each tick is scheduled for the clock's own next whole second, so the shown
